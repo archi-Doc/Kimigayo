@@ -80,22 +80,25 @@ func passes()
 "Targets = { `"x86_64-pc-windows-msvc`" }`nOutputKind = `"Library`"`nTestSources = { `"tests.kimi`" }" | Set-Content -LiteralPath (Join-Path $testDirectory 'Tests.kimiproj') -Encoding utf8
 $output = Invoke-Kimi @('test', (Join-Path $testDirectory 'Tests.kimiproj'), '--ToolchainRoot', (Join-Path (Split-Path $work) 'missing-toolchain'))
 # The managed form loads only the tatara.dll beside Kimi.dll, never one on PATH: a copy of the compiler's folder without it, with the
-# toolchain root (which holds one) first on PATH, fails the build naming setup and Kimi's rebuild.
+# compiler's own folder (which holds one) first on the child's PATH, fails the build naming setup and Kimi's rebuild.
 if (-not $NativeCompiler) {
+    $onPath = Split-Path $compiler
+    if (-not (Test-Path -LiteralPath (Join-Path $onPath 'tatara.dll'))) { throw "The PATH row needs a tatara.dll in $onPath" }
     $bare = Join-Path (Split-Path $work) 'compiler-without-tatara'
     New-Item -ItemType Directory -Path $bare | Out-Null
-    Copy-Item -Path (Join-Path (Split-Path $compiler) '*') -Destination $bare -Recurse -Exclude 'tatara.dll'
+    Copy-Item -Path (Join-Path $onPath '*') -Destination $bare -Recurse -Exclude 'tatara.dll'
     $managed = $compiler
     $path = $env:Path
     $compiler = Join-Path $bare 'Kimi.dll'
-    $env:Path = "$ToolchainRoot;$path"
+    $env:Path = "$onPath;$path"
     try { $output = Invoke-Kimi @('build', $project) 1 }
     finally {
         $compiler = $managed
         $env:Path = $path
     }
     if (-not $output.Contains('Tatara cannot be loaded: tatara.dll beside the compiler (') -or -not $output.Contains('compiler-without-tatara') -or
-        -not $output.Contains('setup.ps1 -LlvmRoot') -or -not $output.Contains('then build Kimi again')) { throw "A compiler without tatara.dll loaded another: $output" }
+        -not $output.Contains("setup.ps1 -LlvmRoot <the LLVM $($catalog.llvmVersion) archive, extracted> for a toolchain directory of this checkout's own (not a junction to the shared root)") -or
+        -not $output.Contains('then build Kimi again')) { throw "A compiler without tatara.dll loaded another: $output" }
 }
 # A project's LlvmBin is accepted and not read: with a missing directory emit publishes only the LLVM inputs, and the build succeeds.
 Write-Project 'O2' 'missing LLVM directory'

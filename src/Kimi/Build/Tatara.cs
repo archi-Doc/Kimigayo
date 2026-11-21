@@ -11,18 +11,25 @@ namespace Kimi.Build;
 /// build of Kimi copies from the checkout's toolchain (Tatara B6b1). Its nine exports are this type's LibraryImport declarations, which
 /// in the managed form search only the assembly's directory and System32, never PATH. One instance per process (<see cref="Instance"/>),
 /// created at its first use and checked then (its ABI is the SHA-256 of the tatara.h embedded in this assembly, its LLVM version the
-/// catalog's); a failed load or check keeps no instance, so the next use tries again. Its calls are serialized by one lock. A load
-/// failure and a mismatch are each an InvalidDataException naming the values and the remedy; a call's return of 1 or 2 is an
-/// IOException naming the operation with Tatara's message; both are the toolchain's failure (IsToolchainFailure). NativeBuild is its
-/// caller (and toolchain verify reports it). A call checks its token before the lock and again inside it, so a call that waited for
-/// the lock does not start after cancellation; inside the lock it pins its inputs, copies the result's texts and releases the
-/// result.</summary>
+/// catalog's); a failed load or check keeps no instance, so the next use tries again. The check calls two exports; the other seven bind
+/// at their first call, and a library that passes the ABI check but lacks one broke the ABI contract (build.ps1's export-list check
+/// rules it out), so the EntryPointNotFoundException that call raises is a fault, not the toolchain's failure. Its calls are serialized
+/// by one lock. A load failure and a mismatch are each an InvalidDataException naming the values and the remedy; a call's return of 1
+/// or 2 is an IOException naming the operation with Tatara's message; both are the toolchain's failure (IsToolchainFailure).
+/// NativeBuild is its caller (and toolchain verify reports it). A call checks its token before the lock and again inside it, so a call
+/// that waited for the lock does not start after cancellation; inside the lock it pins its inputs, copies the result's texts and
+/// releases the result.</summary>
 internal sealed unsafe partial class Tatara
 {
-    // A mismatch: never setup on the checkout's toolchain (it may be the shared one), but Kimi rebuilt from the toolchain of its revision.
+    // Neither remedy leads to setup into a shared or linked toolchain (a worktree's toolchain is a junction to the shared root, which
+    // only a window's setup writes): a toolchain directory of the checkout's own, or the toolchain's revision.
+    private static readonly string LoadRemedy =
+        $"Run {NativeToolchain.SetupCommand} for a toolchain directory of this checkout's own (not a junction to the shared root), " +
+        "or use a compiler of the toolchain's revision; then build Kimi again.";
+
     private static readonly string StartRemedy =
-        "This compiler's tatara.h or LLVM version differs from the tatara.dll it was built with: build Kimi again after setup of this " +
-        "checkout's toolchain (VERIFICATION: a unit that changes src/Tatara uses a toolchain of its own).";
+        "This compiler's tatara.h or LLVM version differs from the tatara.dll it was built with: build Kimi again with the toolchain of " +
+        "its revision (a toolchain directory of this checkout's own, or a merge to the toolchain's revision).";
 
     private static readonly Lock Gate = new();
 
@@ -60,8 +67,7 @@ internal sealed unsafe partial class Tatara
                     catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
                     {
                         throw new InvalidDataException(
-                            $"Tatara cannot be loaded: tatara.dll beside the compiler ({AppContext.BaseDirectory}): {ex.Message} " +
-                            $"Run {NativeToolchain.SetupCommand}, then build Kimi again.",
+                            $"Tatara cannot be loaded: tatara.dll beside the compiler ({AppContext.BaseDirectory}): {ex.Message} {LoadRemedy}",
                             ex);
                     }
 

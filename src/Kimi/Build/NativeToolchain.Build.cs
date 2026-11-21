@@ -135,14 +135,15 @@ internal static partial class NativeToolchain
     /// identity, Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
     /// version), the libraries (each staged: the compiler's supplies from its resources, a program's from its input), the object, its
     /// inspection, the link to a private file, the report and the commit; the steps fill the record and <see cref="Run"/> writes each of
-    /// its states. The commit, after the report and the last cancellation point, writes the success record, which names the private file's hash, and then moves the file to the executable's
-    /// path, so an Application publishes its executable only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the
-    /// commit, the report included, throws and leaves the previous executable and the record at the last incomplete state written, and a
-    /// failed move writes the invalidation again and rethrows the move's failure. The private file is deleted on every outcome. IMPL
-    /// 20.3.2 states the two windows (the owner's decision 19, O-468 (a)): should the process end between the success record and the
-    /// move, or the move and the invalidation both fail (one IOException naming both, the move's as its inner exception), the attempt's
-    /// success record stays, naming a hash no file at the path has. run --no-build runs only an executable whose hash the record names,
-    /// so it refuses that one, and the next build invalidates the record.</summary>
+    /// its states. The commit, after the report and the last cancellation point, writes the success record, which names the private
+    /// file's hash, and then moves the file to the executable's path, so an Application publishes its executable only on success (IMPL
+    /// 20.3.2; Tatara decision 18): a step that fails before the commit, the report included, throws and leaves the previous executable
+    /// and the record at the last incomplete state written, and a failed move writes the invalidation again and rethrows the move's
+    /// failure. The private file is deleted on every outcome. IMPL 20.3.2 states the two windows (the owner's decision 19, O-468 (a)):
+    /// should the process end between the success record and the move, or the move and the invalidation both fail (one IOException
+    /// naming both, the move's as its inner exception), the attempt's success record stays, naming a hash no file at the path has. run
+    /// --no-build runs only an executable whose hash the record names, so it refuses that one, and the next build invalidates the
+    /// record.</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;

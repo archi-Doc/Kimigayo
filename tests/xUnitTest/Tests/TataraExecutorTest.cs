@@ -62,7 +62,7 @@ public sealed class TataraExecutorTest : IDisposable
         var abi = Assert.Throws<InvalidDataException>(() => Tatara.CheckStart("0123", ToolchainIdentity.LlvmVersion));
         Assert.Contains("0123", abi.Message, StringComparison.Ordinal);
         Assert.Contains(Tatara.ExpectedAbi, abi.Message, StringComparison.Ordinal);
-        Assert.Contains("build Kimi again after setup of this checkout's toolchain", abi.Message, StringComparison.Ordinal);
+        Assert.Contains("build Kimi again with the toolchain of its revision (a toolchain directory of this checkout's own, or a merge to the toolchain's revision)", abi.Message, StringComparison.Ordinal);
         var version = Assert.Throws<InvalidDataException>(() => Tatara.CheckStart(Tatara.ExpectedAbi, "1.0.0"));
         Assert.Contains("1.0.0", version.Message, StringComparison.Ordinal);
         Assert.Contains(ToolchainIdentity.LlvmVersion, version.Message, StringComparison.Ordinal);
