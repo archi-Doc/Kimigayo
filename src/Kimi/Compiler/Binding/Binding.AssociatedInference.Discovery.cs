@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // any inferred binding is read, what each inferring definition can read and the components the inferring definitions form under it.
 // - Inputs: the pass's inferring definitions (the batches with paths, PrepareAssociatedInference) and their members' Types as written: each
 //   function's result and parameters, in the definition's container and in each conditional block (SPEC 8.5.5: the declared results and
-//   the identification keys are a source's reads).
+//   the identification keys are a source's reads), read from their syntax through each use's one lookup (NamePath), never a bound header.
 // - Outputs: per batch its Heads (the definitions its written Types name, at any depth) and Reads (the inferring definitions it can read:
 //   a projection's subject definition; for a value-dependent projection, one whose subject is itself a projection, every inferring
 //   definition among the Heads of the definition that subject reads and of what that definition reads, closed: SPEC 8.5.5 Extraction
@@ -90,18 +90,14 @@ public sealed partial class Binding
         switch (member)
         {
             case FunctionKoto function when this.scopes.TryGetValue(function, out var scope):
-                // The Types as written (AsWritten): a written projection's node binds the Type it resolved to, the projection is its Right.
-                if (function.ReturnType is { BoundType: { } result })
+                if (function.ReturnType is { } result)
                 {
-                    this.DiscoverWritten(batch, this.AsWritten(function.ReturnType, scope, result));
+                    this.DiscoverWritten(batch, result, scope, false);
                 }
 
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
-                    if (function.Parameters[i].Type is { BoundType: { } parameter } syntax)
-                    {
-                        this.DiscoverWritten(batch, this.AsWritten(syntax, scope, parameter));
-                    }
+                    this.DiscoverWritten(batch, function.Parameters[i].Type, scope, false);
                 }
 
                 break;
@@ -115,39 +111,92 @@ public sealed partial class Binding
         }
     }
 
-    private void DiscoverWritten(AssociatedInference batch, BoundType type)
+    // A member's Type syntax as written, walked with the binder's one lookup of each use (NamePath, published on the use as the Type binder's
+    // first call of it publishes it): discovery runs before the members' headers are bound (the batches bind them, IdentifyRequirement), and
+    // binding a header here would complete a pending one before `associatedInferenceReady` (BindFunctionHeader) or, after it, read an
+    // inferred binding. Every named definition is a Head; a projection reads its receiver's definition; one inside another projection's
+    // receiver (`subject`: `S.(EC).W.(FC).U`, `Option<S.(EC).W>.(FC).U`) makes the reader value-dependent on it. The walk takes the Type
+    // forms' own Type parts (a length or an Origin argument is no Type) and looks up only the uses the Type binder looks up, in its order (a
+    // path, then a projection's receiver). Returns the definition a name, generic or path use selects (a projection's receiver), or none.
+    private BindingSymbol? DiscoverWritten(AssociatedInference batch, Koto? syntax, BindingScope scope, bool subject)
     {
-        if (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol is { Declaration: StructKoto or EnumKoto } head &&
-            !batch.Heads.Contains(head))
+        var use = syntax is null ? null : UseNode(syntax);
+        if (use is MemberAccessKoto { Right: not ParenthesizedTypeKoto } or GenericsKoto || (use is not null && TypeSpelling(use) is not null))
         {
-            batch.Heads.Add(head);
-        }
-
-        if (type.Kind == BoundTypeKind.AssociatedProjection && type.Components.Count > 0)
-        {
-            var subject = type.Components[0];
-            if (this.InferringDefinition(subject) is { } read && !ReferenceEquals(read, batch) && !batch.Reads.Contains(read))
+            var path = this.NamePath(use!, scope);
+            if (use is MemberAccessKoto member && path.End == PathEnd.Projection)
             {
-                batch.Reads.Add(read);
+                var receiver = member.Left is MemberAccessKoto { Right: ParenthesizedTypeKoto } qualified ? qualified.Left : member.Left;
+                if (this.InferringDefinition(this.DiscoverWritten(batch, receiver, scope, true)) is { } read && !ReferenceEquals(read, batch))
+                {
+                    AddOnce(batch.Reads, read);
+                    if (subject)
+                    {
+                        AddOnce(batch.Dependent, read);
+                    }
+                }
+
+                return null;
             }
 
-            if (subject.Kind == BoundTypeKind.AssociatedProjection && subject.Components.Count > 0 &&
-                this.InferringDefinition(subject.Components[0]) is { } dependent && !batch.Dependent.Contains(dependent))
+            this.AddHead(batch, path.Symbol);
+            for (var i = 0; use is GenericsKoto generic && i < generic.TypeArguments.Count; i++)
             {
-                batch.Dependent.Add(dependent);
+                this.DiscoverWritten(batch, generic.TypeArguments[i], scope, subject);
             }
+
+            return path.Symbol;
         }
 
-        foreach (var component in (BoundType[])type.Components)
+        switch (use)
         {
-            this.DiscoverWritten(batch, component);
+            case TupleTypeKoto tuple:
+                for (var i = 0; i < tuple.ElementNodes.Count; i++)
+                {
+                    this.DiscoverWritten(batch, tuple.ElementNodes[i], scope, subject);
+                }
+
+                break;
+            case FunctionTypeKoto function:
+                this.DiscoverWritten(batch, function.Parameters, scope, subject);
+                this.DiscoverWritten(batch, function.ReturnType, scope, subject);
+                break;
+            case OptionalTypeKoto optional:
+                this.DiscoverWritten(batch, optional.Type, scope, subject);
+                break;
+            case FixedArrayTypeKoto array:
+                this.DiscoverWritten(batch, array.ElementType, scope, subject);
+                break;
+            case OriginApplicationKoto application:
+                this.DiscoverWritten(batch, application.Type, scope, subject);
+                break;
+            case TypeSemanticsKoto { Type: { } layer }:
+                this.DiscoverWritten(batch, layer, scope, subject);
+                break;
+        }
+
+        return null;
+
+        static void AddOnce(List<AssociatedInference> list, AssociatedInference item)
+        {
+            if (!list.Contains(item))
+            {
+                list.Add(item);
+            }
         }
     }
 
-    // The inferring definition a Type names as its head, or none.
-    private AssociatedInference? InferringDefinition(BoundType type)
-        => type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol is { Declaration: StructKoto or EnumKoto } symbol &&
-            this.associatedInference.TryGetValue(symbol, out var batch) && batch.Paths.Count > 0 ? batch : null;
+    private void AddHead(AssociatedInference batch, BindingSymbol? symbol)
+    {
+        if (symbol is { Declaration: StructKoto or EnumKoto } && !batch.Heads.Contains(symbol))
+        {
+            batch.Heads.Add(symbol);
+        }
+    }
+
+    // The inferring definition a Type name selects, or none.
+    private AssociatedInference? InferringDefinition(BindingSymbol? symbol)
+        => symbol is { Declaration: StructKoto or EnumKoto } && this.associatedInference.TryGetValue(symbol, out var batch) && batch.Paths.Count > 0 ? batch : null;
 
     // Adds to `batch`'s Reads the inferring definitions among `source`'s Heads and Reads; whether any was new.
     private bool AddHeadReads(AssociatedInference batch, AssociatedInference source)
