@@ -216,6 +216,15 @@ public class ArchitectureRulesTest
     [Theory]
     [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
     [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
+    // DECISIONS Z17 (N1): every derived Opaque value is formed by the MIR builder's gate (MirBuilder.Opaque.cs) from a producer table row;
+    // an Opaque site is added only there (AddSite, its one MirBody.AddOpaque call), Site is reached only from the gate, Unsupported and
+    // Invariant, and each caller of the gate is a table row, so a new producer fails here until its row is reviewed.
+    [InlineData("Formers of an Opaque site", "src/Kimi/Compiler/Mir", @"\.AddOpaque\(|\bthis\.AddSite\(", "Build/MirBuilder.Opaque.cs=3")]
+    [InlineData("Callers of the derived-value gate", "src/Kimi/Compiler/Mir/Build", @"\bthis\.(?:Opaque|Derived|DerivedValue|Site)\(", "MirBuilder.Acquisitions.cs=1;MirBuilder.Blocks.cs=2;MirBuilder.Constructors.cs=1;MirBuilder.Defaults.cs=1;MirBuilder.Match.cs=1;MirBuilder.Opaque.cs=5;MirBuilder.Places.cs=2;MirBuilder.Transfers.cs=1;MirBuilder.Values.cs=2;MirBuilder.cs=1")]
+    // DECISIONS Z17: the readers of MirUses are the census's, each reading an Opaque site's undecided use at its root through
+    // MirDescriptors.Judged, or at its Place for A1's reason (MirInit, MirMoveData), so a new reader fails here until its census row is
+    // reviewed. An implementer lists IMirUses in its base list after any other; a generic constraint (where T : struct, IMirUses) is none.
+    [InlineData("Readers of MirUses", "src/Kimi", @"(?<!\bwhere\s+\w+\s*):\s*(?:[\w.<>]+\s*,\s*)*IMirUses\b", "Compiler/Backend/Instances/InstanceCollector.Layouts.cs=1;Compiler/Mir/Analysis/MirBorrows.Accesses.cs=1;Compiler/Mir/Analysis/MirBorrows.Addresses.cs=1;Compiler/Mir/Analysis/MirBorrows.Liveness.cs=1;Compiler/Mir/Analysis/MirBorrows.OwnSteps.cs=1;Compiler/Mir/Analysis/MirEffects.cs=1;Compiler/Mir/Analysis/MirInit.cs=1;Compiler/Mir/Analysis/MirMoveData.cs=1;Compiler/Mir/MirValidator.Diverged.cs=1;Compiler/Mir/MirValidator.cs=1")]
     // R6-check H14 (D7): Parsing reads the Koto semantic slots only in their declarations' bodies and on their write paths (a replaced
     // child's reset, the views and synthetic Kotos Binding builds), which R7 removes with the slots (DECISIONS R5-M9).
     [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]

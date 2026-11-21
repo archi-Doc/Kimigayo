@@ -193,7 +193,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // A use of a Place under the view (Path). A whole use of the return local delivers it, which only the runtime edges can (SPEC
         // 14.10.3). Through a Deref or an Index only the prefix's path is used, and a Move there has no Move Path (SPEC 15.1.3, 15.1.5). A2
         // judges a Drop from the state before it, by its path (-1: none), and whether the runtime edges reach it; a runtime Drop's Move
-        // Path lacks no part (the header's invariant).
+        // Path lacks no part (the header's invariant). An Opaque site's undecided use is checked as a read of its own Place, not at
+        // MirDescriptors.Judged's root: A1 asks only whether the part is usable (DECISIONS Z17).
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             var transfer = this.placed;

@@ -566,7 +566,7 @@ public sealed partial class Binding
         try
         {
             // SPEC 10.8.1, 10.2: each argument is adapted as the trial adapts it, at the pattern under the slots its construction Type fixes.
-            var fixedSlots = ConstructionSlots(function, type, !baseInitializer && this.InfersConstruction(call));
+            var fixedSlots = ConstructionSlots(function, type);
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var slot = mapping[i];
