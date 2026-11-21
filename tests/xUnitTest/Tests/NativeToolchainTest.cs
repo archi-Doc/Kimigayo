@@ -13,6 +13,8 @@ namespace XunitTest;
 
 public sealed class NativeToolchainTest : IDisposable
 {
+    private const string Windows = "Native builds run on Windows.";
+
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-native-" + Guid.NewGuid().ToString("N"));
 
     // The host's console of the test's projects, which reads a refusal's message.
@@ -315,30 +317,140 @@ public sealed class NativeToolchainTest : IDisposable
 
     // The toolchain boundary's known limit closes (R9-M10, PLAN G983): inside the toolchain's call, an exception the toolchain does not
     // raise as its failure, here the host's console throwing InvalidOperationException at the native build's "Built: " report, ends the
-    // build's own result as Faulted (one CheckFaulted_Kd at the project file), never the toolchain's message. The failed attempt leaves
-    // no successful record (IMPL 20.3.2; PLAN G985: the record was linked before the report), so run --no-build refuses its executable.
-    // The build uses the installed toolchain.
+    // build's own result as Faulted (one CheckFaulted_Kd at the project file), never the toolchain's message. The failed attempt (v2,
+    // after a successful v1) publishes nothing (IMPL 20.3.2; PLAN G985: the record was linked before the report; G1045: v2's executable
+    // was in place before it), so run --no-build refuses v1's executable. The builds use the installed toolchain.
     [Fact]
     public async Task AFailingBuiltReportFaultsTheBuildAndLeavesNoSuccessfulRecord()
     {
-        var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
-        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
-        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = "Built: " };
-        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
-        Assert.False(await project.Build(TestContext.Current.CancellationToken), console.Text);
-        Assert.Null(console.FailingLine);
-        Assert.Equal(1, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
-        Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
-        Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
-        var paths = ArtifactPaths.Create(project);
-        using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, _, v1) = await this.BuildHello();
+        this.console.LineAction = ("Built: ", DiagnosticContractTest.DiagnosticConsole.Fail);
+        var project = this.Hello("Hi");
+        Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.Null(this.console.LineAction);
+        Assert.Equal(1, this.console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+        Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), this.console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimiproj", this.console.Text, StringComparison.Ordinal);
+        await this.AssertNothingPublished(project, v1);
+    }
+
+    // G1045 (IMPL 20.3.2: an Application publishes its executable only on success; Tatara decision 18): the build writes the success
+    // record, naming the private file's hash, and then moves the executable into place. After a successful v1, a v2 cancelled at its
+    // "Built: " report, whose success record cannot be written (the record held without write sharing at the report) or whose
+    // executable cannot be moved into place (the executable held without delete sharing at the report; the record is invalidated again)
+    // publishes nothing, so run --no-build refuses v1's executable. The builds use the installed toolchain.
+    [Theory]
+    [InlineData("cancel")]
+    [InlineData("record")]
+    [InlineData("executable")]
+    public async Task AFailureAtTheCommitPublishesNoExecutable(string point)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, paths, v1) = await this.BuildHello();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        FileStream? held = null;
+        this.console.LineAction = ("Built: ", () =>
         {
-            Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+            if (point == "cancel")
+            {
+                cancellation.Cancel();
+            }
+            else
+            {
+                held = new FileStream(point == "record" ? paths.Record : paths.Executable, FileMode.Open, FileAccess.Read, FileShare.Read);
+            }
+        });
+        var project = this.Hello("Hi");
+        try
+        {
+            if (point == "cancel")
+            {
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => project.Build(cancellation.Token));
+            }
+            else
+            {
+                Assert.False(await project.Build(cancellation.Token), this.console.Text);
+            }
+        }
+        finally
+        {
+            held?.Dispose();
         }
 
-        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken));
-        Assert.Contains("The latest build failed or the binary was changed. Run 'kimi build' first.", console.Text, StringComparison.Ordinal);
+        Assert.Null(this.console.LineAction);
+        await this.AssertNothingPublished(project, v1);
+    }
+
+    // The output's lock (IMPL 20.3.2; NativeToolchain.Begin): while another build holds the lock of a build's record
+    // (Name.link.build.lock, which the test holds without sharing), the build waits and reports it once, and builds after the release;
+    // a cancellation ends the wait, and the record (v1's success) and the executable stay as they were. O2 and O0 share the record, so
+    // O0 of a project whose O2 record exists waits; build --Manifest waits for the lock of the source build's record. Each row first
+    // builds Hello at O2 (v1) on the installed toolchain.
+    [Theory]
+    [InlineData("O2", "release")]
+    [InlineData("O2", "cancel")]
+    [InlineData("O0", "release")]
+    [InlineData("manifest", "release")]
+    public async Task ABuildWaitsForTheLockOfItsRecord(string build, string action)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (project, paths, v1) = await this.BuildHello();
+        var record = File.ReadAllText(paths.Record);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var lockPath = Path.ChangeExtension(paths.Record, ".lock");
+        using var held = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Action release = action == "release" ? held.Dispose : cancellation.Cancel;
+        this.console.LineAction = ("Waiting for another build: " + lockPath, release);
+        project.ProjectFile.Optimization = build == "O0" ? "O0" : "O2";
+        var built = build == "manifest"
+            ? NativeToolchain.BuildManifest(paths.Manifest, null, (_, message) => this.console.WriteLine(message), cancellation.Token)
+            : project.Build(cancellation.Token);
+        if (action == "cancel")
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => built);
+            Assert.Equal(record, File.ReadAllText(paths.Record));
+            Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        }
+        else
+        {
+            await built; // A failed source build returns false, and its record is not linked.
+            using var linked = JsonDocument.Parse(File.ReadAllText(paths.Record));
+            Assert.Equal("linked", linked.RootElement.GetProperty("status").GetString());
+            Assert.Equal(project.ProjectFile.Optimization, linked.RootElement.GetProperty("optimization").GetString());
+        }
+
+        Assert.Null(this.console.LineAction);
+        Assert.Equal(1, this.console.Text.Split("Waiting for another build: ").Length - 1);
+    }
+
+    // A build waits only while another build holds its record's lock (NativeToolchain.Begin; C-433 B2, N6): after a build in this process
+    // whose invalidation failed (its record's path a directory, an output failure: the lock was closed again), and while another
+    // output's lock is held, Hello builds with no waiting line (a wait would fail the build at the console instead of hanging the row).
+    // On the installed toolchain.
+    [Theory]
+    [InlineData("failed invalidation")]
+    [InlineData("another output")]
+    public async Task ABuildWaitsForNoLockButItsHeldOne(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = this.Hello("Hello");
+        var paths = ArtifactPaths.Create(project);
+        var output = Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!).FullName;
+        using var other = row == "another output"
+            ? new FileStream(Path.Combine(output, "Other.link.build.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
+            : null;
+        this.console.LineAction = ("Waiting for another build: ", DiagnosticContractTest.DiagnosticConsole.Fail);
+        if (row == "failed invalidation")
+        {
+            Directory.CreateDirectory(paths.Record);
+            Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+            Assert.Equal(0, this.console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+            Directory.Delete(paths.Record);
+        }
+
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.NotNull(this.console.LineAction);
     }
 
     [Fact]
@@ -389,11 +501,8 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("configuration", null, "Optimization must be O0 or O2.")]
     public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
     {
-        var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
-        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
-        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = failingLine };
-        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        this.console.LineAction = failingLine is null ? null : (failingLine, DiagnosticContractTest.DiagnosticConsole.Fail);
+        var project = this.Hello("Hello");
         var root = Path.Combine(this.directory, "toolchain");
         project.KimiOptions.ToolchainRoot = root;
         if (origin == "project checks")
@@ -410,16 +519,16 @@ public sealed class NativeToolchainTest : IDisposable
             File.WriteAllText(Path.Combine(root, "tatara.dll"), "not a DLL");
         }
 
-        Assert.False(await project.Build(TestContext.Current.CancellationToken), console.Text);
-        Assert.Equal(toolchainFailure is null ? 1 : 0, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+        Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.Equal(toolchainFailure is null ? 1 : 0, this.console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
         if (toolchainFailure is null)
         {
-            Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
-            Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
+            Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), this.console.Text, StringComparison.Ordinal);
+            Assert.Contains("Hello.kimiproj", this.console.Text, StringComparison.Ordinal);
         }
         else
         {
-            Assert.Contains(toolchainFailure, console.Text, StringComparison.Ordinal);
+            Assert.Contains(toolchainFailure, this.console.Text, StringComparison.Ordinal);
         }
 
         Assert.False(File.Exists(Path.Combine(this.directory, "out", "Hello.O2.exe")));
@@ -430,6 +539,40 @@ public sealed class NativeToolchainTest : IDisposable
     {
         Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken));
         Assert.Contains(reason, this.console.Text, StringComparison.Ordinal);
+    }
+
+    // After a v2 that failed or was cancelled, past a successful v1: the executable is v1's and the only one in its directory (no private
+    // file remains), the record is incomplete and run --no-build refuses the executable.
+    private async Task AssertNothingPublished(Project project, string v1)
+    {
+        var paths = ArtifactPaths.Create(project);
+        Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        Assert.Equal(paths.Executable, Assert.Single(Directory.GetFiles(Path.GetDirectoryName(paths.Executable)!, "*.exe")));
+        using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
+        {
+            Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+        }
+
+        await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
+    }
+
+    // v1: Hello built at O2 on the installed toolchain, with its paths and its executable's hash.
+    private async Task<(Project Project, ArtifactPaths Paths, string Executable)> BuildHello()
+    {
+        var project = this.Hello("Hello");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        var paths = ArtifactPaths.Create(project);
+        return (project, paths, ArtifactFiles.Hash(paths.Executable));
+    }
+
+    // Hello.kimiproj at O2 into out/Hello.ll, its main.kimi writing the text, on the test's console.
+    private Project Hello(string text)
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), $"::Kimi.Console.writeLine(\"{text}\")");
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
+        return project;
     }
 
     private Project Create(string source = "::Kimi.Console.writeLine(\"Hello\")")

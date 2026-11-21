@@ -27643,3 +27643,27 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     decision 1); `toolchain verify` reads its option. Removal is B6's, after its owner question (the plan's §11; PLAN G1173).
   - Rejected: `schemaVersion` 2; the hash before the load in verify (`Tatara.Load` owns the not-found text; C-428 n1); an
     `ArchitectureRulesTest` name rule for `ToolProcess` (the `file` scope enforces it).
+- **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
+  (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
+  - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
+    "Built: " report, the last cancellation check, the success record, and only then the move into place. A failed move writes
+    the invalidation again and rethrows the move's failure (an output failure); when the re-invalidation fails too, one
+    `IOException` naming both, the move's as its inner exception (`Invalidate` raises only output failures, so any other failure
+    there is a defect's and propagates as itself, a fault no catch classifies; COMPILER_ARCHITECTURE's catch boundaries). The
+    report stays before the commit, so a failing report leaves no successful record (G985) without un-publishing; a failed move
+    (realistically a running v1) prints its error after "Built: ".
+  - The windows (decision 19): the process ending between the success record and the move, and a failed move whose
+    re-invalidation fails, leave the attempt's success record with the previous executable at the path; a failed first
+    invalidation leaves the earlier success. IMPL 20.3.2 states them; `run --no-build` runs only an executable whose hash the
+    record names. No order of two file writes closes them; a held second Ctrl+C over the commit was rejected (decision 17
+    unchanged).
+  - `NativeToolchain.Begin(record, report, token)` replaces `Invalidate` as a build's start: it creates the record's directory,
+    opens the persistent `Name.link.build.lock` with `FileShare.None` (busy: `ArtifactFiles.IsSharingFailure`, HResult 32 or 33,
+    which `IsTransientReplaceFailure` also reads), reports one "Waiting for another build: <lock>" line and awaits 100 ms waits on
+    the token (read only in the wait), writes the invalidation, and closes the handle on any exception after the open.
+    `Project.Build` holds it until `NativeToolchain.Build` or `RecordLibrary` returns; `BuildManifest` to its return; `test` builds
+    in private directories and takes none. Keyed by the record, so O0, O2 and `--Manifest` of one `.link.json` exclude each other.
+  - Rejected: O-467 (b) (the record alone); generation directories (decision 2); the report after the move; failing at once when
+    busy; the lock in `NativeBuild.Run` only (another build's success could overwrite an invalidation); a delete-on-close lock
+    (delete-pending reads as access denied); a reader lock in `run --no-build`; the lock in `emit` (not in B5: it needs the paths
+    before the check or a nested acquisition; the race is PLAN G1202).
