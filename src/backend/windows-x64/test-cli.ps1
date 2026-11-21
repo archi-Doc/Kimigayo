@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'expected-output.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
+$catalog = Read-KimiWindowsProfile
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $utf8 = [Text.UTF8Encoding]::new($false)
@@ -62,20 +63,29 @@ $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', (Join-Path $work '
 if (-not $output.Contains('Tatara not found') -or -not $output.Contains('tatara.dll') -or -not $output.Contains('setup.ps1 -LlvmRoot')) {
     throw "Explicit toolchain root must override the environment, and a root without tatara.dll must request setup: $output"
 }
-# A root holding a copy of tatara.dll (each kimi process maps its own) and no windows_x64: the missing shared kernel32 requests setup,
-# and the build generates nothing.
+# IMPL 20.3.2, 20.4: a native build runs no LLVM tool and links the compiler's own libraries. From a root holding a copy of tatara.dll
+# (each kimi process maps its own) and nothing else, Hello builds and runs, build --Manifest and a test project's build do too, and the
+# root stays as it was.
 $tataraRoot = Join-Path $work 'tatara only'
 New-Item -ItemType Directory -Path $tataraRoot | Out-Null
 Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'tatara.dll') -Destination $tataraRoot
-$output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $tataraRoot) 1
-if (-not $output.Contains('kernel32.lib') -or -not $output.Contains('setup.ps1')) { throw 'Missing shared kernel32 must request setup' }
-if (Test-Path (Join-Path $tataraRoot 'windows_x64')) { throw 'Build implicitly generated toolchain artifacts' }
-# IMPL 20.3.2: a native build runs no LLVM tool. From the same root with windows_x64 (the backend and kernel32) and no tool executable,
-# Hello builds and runs.
-Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'windows_x64') -Destination $tataraRoot -Recurse
 $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $tataraRoot)
 $output = Invoke-Kimi @('run', $project, '--no-build')
-if (-not $output.Contains('Hello, world!')) { throw "A native build needed an LLVM tool: $output" }
+if (-not $output.Contains('Hello, world!')) { throw "A native build needed more than tatara.dll: $output" }
+$output = Invoke-Kimi @('build', '--Manifest', (Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.link.json'), '--ToolchainRoot', $tataraRoot)
+$output = Invoke-Kimi @('run', $project, '--no-build')
+if (-not $output.Contains('Hello, world!')) { throw "A manifest build needed more than tatara.dll: $output" }
+$testDirectory = Join-Path $work 'test project'
+New-Item -ItemType Directory -Path $testDirectory | Out-Null
+@'
+#Test
+func passes()
+    $require(1 == 1)
+'@ | Set-Content -LiteralPath (Join-Path $testDirectory 'tests.kimi') -Encoding utf8
+"Targets = { `"x86_64-pc-windows-msvc`" }`nOutputKind = `"Library`"`nTestSources = { `"tests.kimi`" }" | Set-Content -LiteralPath (Join-Path $testDirectory 'Tests.kimiproj') -Encoding utf8
+$output = Invoke-Kimi @('test', (Join-Path $testDirectory 'Tests.kimiproj'), '--ToolchainRoot', $tataraRoot)
+$rootFiles = @(Get-ChildItem -LiteralPath $tataraRoot -Name) -join ','
+if ($rootFiles -cne 'tatara.dll') { throw "A build wrote into the toolchain root: $rootFiles" }
 $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot)
 # A project's LlvmBin is accepted and not read: with a missing directory emit publishes only the LLVM inputs, and the build succeeds.
 Write-Project 'O2' 'missing LLVM directory'
@@ -94,7 +104,11 @@ foreach ($level in @('O0', 'O2')) {
     if ($output -match '(?m)^Hello, world!') { throw 'Build executed the Application' }
     $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
     if ($record.status -cne 'linked' -or $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Invalid successful build record' }
-    if ($record.kernel32.generator -cne 'llvm-dlltool' -or (Test-Path (Join-Path (Split-Path $ir) "Hello.$level.kernel32.lib"))) { throw 'Ordinary build must reuse shared imports' }
+    # The record's libraries are the compiler's, each its staged snapshot (<stem>.native/<hash>.lib) with the catalog's hash.
+    $libraries = @($record.libraries | ForEach-Object { "$($_.name) $($_.sha256) $($_.path.Replace('\', '/').EndsWith(".native/$($_.sha256).lib"))" }) -join ','
+    if ($null -ne $record.kernel32 -or $libraries -cne "kernel32 $($catalog.kernel32.sha256) True,kimi_backend $($catalog.artifactSha256) True") {
+        throw "Ordinary build must link the compiler's staged libraries: $libraries"
+    }
     # The record's tools name Tatara alone: the root's tatara.dll with its build, ABI and LLVM version.
     $tatara = $record.tools.tatara
     if ((@($record.tools.PSObject.Properties.Name) -join ',') -cne 'tatara' -or -not $tatara.path.Replace('\', '/').EndsWith('/tatara.dll') -or
@@ -342,5 +356,5 @@ Write-ForeignProject 'O0' "NativeRequirements=`n  `"x86_64-pc-windows-msvc`"=`n 
 $output = Invoke-Kimi @('emit', $foreignProject) 1
 if (-not $output.Contains('has no NativeLibraries supply')) { throw "A required foreign supply was not diagnosed: $output" }
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'LlvmBin accepted and not read', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries from a tatara-only root', 'LlvmBin accepted and not read', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"

@@ -34,7 +34,6 @@ public static class EmissionArtifacts
         var settings = compilation.Project.ProjectFile;
         string directory, destination, manifest, outputDirectory;
         string? tempIr = null, tempManifest = null, llvm = null;
-        NativeLibraryInput? backend;
         StreamWriter? writer = null;
         try
         {
@@ -48,13 +47,7 @@ public static class EmissionArtifacts
                 destination = paths.Ir;
                 manifest = paths.Manifest;
                 outputDirectory = Path.GetDirectoryName(destination)!;
-                backend = ResolveBackend(settings);
-                if (backend is not null && HasDirectory(backend.Input) &&
-                    !Hash(Path.GetFullPath(backend.Input, directory)).Equals(ToolchainIdentity.BackendSha256, StringComparison.Ordinal))
-                {
-                    throw new InvalidDataException("The selected backend archive does not match the adopted SHA-256.");
-                }
-
+                CheckLibraryInputs(settings);
                 if (settings.LlvmBin is { } bin)
                 {
                     CheckPath(bin);
@@ -91,7 +84,7 @@ public static class EmissionArtifacts
                     LinkManifest.WriteFixed(json);
                     json.WriteString("optimization", settings.Optimization);
                     WriteOutput(json, Path.GetFileName(destination), hash, module);
-                    WriteLibraries(json, backend, foreign, directory, outputDirectory);
+                    WriteLibraries(json, foreign, directory, outputDirectory);
                     if (llvm is not null)
                     {
                         json.WriteStartObject("toolchain"); // The configured LLVM directory.
@@ -173,31 +166,15 @@ public static class EmissionArtifacts
         return false;
     }
 
-    // Checks every configured library's input, even when unused, and selects the backend supply (SPEC 20.4) of the configuration
-    // preparation validated.
-    private static NativeLibraryInput? ResolveBackend(ProjectFile settings)
+    // Checks every configured library's input, even when unused (SPEC 20.4), of the configuration preparation validated (no supply
+    // names a reserved library: NativeConfiguration).
+    private static void CheckLibraryInputs(ProjectFile settings)
     {
-        NativeLibraryInput? backend = null;
         if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
         {
-            foreach (var (name, library) in libraries)
+            foreach (var (_, library) in libraries)
             {
                 CheckLibraryPath(library.Input);
-                if (name == WindowsProfile.BackendLibrary)
-                {
-                    var (kind, sha256) = NativeConfiguration.Expand(settings, WindowsProfile.Target, name, library);
-                    if (kind != "static")
-                    {
-                        throw new InvalidDataException("kimi_backend must be static.");
-                    }
-
-                    if (sha256 is not null && !sha256.Equals(ToolchainIdentity.BackendSha256, StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidDataException("The kimi_backend Sha256 assertion does not match the adopted SHA-256.");
-                    }
-
-                    backend = library;
-                }
             }
 
             foreach (var library in libraries.Packaged)
@@ -205,8 +182,6 @@ public static class EmissionArtifacts
                 CheckLibraryPath(library.Input);
             }
         }
-
-        return backend;
     }
 
     // IMPL 20.4: the supplies of the module's required libraries (the generation result's, one per library) but the reserved kernel32,
@@ -270,39 +245,19 @@ public static class EmissionArtifacts
         json.WriteEndArray();
     }
 
-    // The libraries in Ordinal name order (SPEC 20.3.2): the generated kernel32 import library, the backend archive (the toolchain's, or
-    // the configured input) and the foreign supplies around them, an input with a directory relative to the output directory.
+    // The libraries in Ordinal name order (SPEC 20.3.2): the compiler's supplies, each its row's entry (LinkManifest), and the foreign
+    // supplies around them, an input with a directory relative to the output directory.
     private static void WriteLibraries(
-        Utf8JsonWriter json,
-        NativeLibraryInput? backend,
-        List<(string Name, string Kind, string Input, string? Sha256)>? foreign,
-        string projectDirectory,
-        string outputDirectory)
+        Utf8JsonWriter json, List<(string Name, string Kind, string Input, string? Sha256)>? foreign, string projectDirectory, string outputDirectory)
     {
         json.WriteStartArray("libraries");
         var next = 0;
-        WriteForeign(WindowsProfile.Kernel32Library);
-        json.WriteStartObject();
-        json.WriteString("name", WindowsProfile.Kernel32Library);
-        json.WriteString("kind", "import");
-        json.WriteString("generator", Kernel32Imports.Generator);
-        json.WriteString("dll", Kernel32Imports.Dll);
-        json.WriteString("definitionSha256", Kernel32Imports.DefinitionSha256);
-        json.WriteEndObject();
-        WriteForeign(WindowsProfile.BackendLibrary);
-        json.WriteStartObject();
-        json.WriteString("name", WindowsProfile.BackendLibrary);
-        json.WriteString("kind", "static");
-        if (backend is null)
+        foreach (var supply in ToolchainIdentity.Supplies)
         {
-            json.WriteString("resolution", "toolchain");
-        }
-        else
-        {
-            json.WriteString("input", Relative(backend.Input));
+            WriteForeign(supply.Name);
+            LinkManifest.WriteCompilerSupply(json, supply);
         }
 
-        json.WriteEndObject();
         WriteForeign(null);
         json.WriteEndArray();
 

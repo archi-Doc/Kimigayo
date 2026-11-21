@@ -73,7 +73,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     [Theory]
-    [InlineData("kimi_backend", "import", "backend.lib")]
+    [InlineData("kimi_backend", "static", "backend.dll")]
     [InlineData("kernel32", "import", "kernel32.dll")]
     [InlineData("kernel32", "import", "/DEFAULTLIB:evil.lib")]
     [InlineData("kernel32", "import", "kernel32.lib\0")]
@@ -107,18 +107,40 @@ public sealed class EmissionArtifactsTest : IDisposable
         ArtifactFiles.CheckPath(Path.Combine(this.directory, "codec.lib"));
     }
 
-    [Fact]
-    public void BackendSupplyExpandsItsSelfTargetedRequirement()
+    // IMPL 20.4 (Tatara B6a, decision 20): kimi_backend is the compiler's supply, so a project's own entry fails at preparation
+    // (NativeConfiguration), whatever its file (the adopted archive or another) or its Sha256 assertion, and with or without the
+    // requirement it expands; nothing is published.
+    [Theory]
+    [InlineData("static", true, null, false)]
+    [InlineData(null, true, null, true)]
+    [InlineData("static", false, null, false)]
+    [InlineData("static", true, "0000000000000000000000000000000000000000000000000000000000000000", false)]
+    public void AProjectsOwnBackendEntryCannotPrepare(string? kind, bool adopted, string? sha256, bool requirement)
     {
-        var c = this.Create();
-        var settings = c.Project.ProjectFile;
-        settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Kind = "static" } };
-        settings.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Input = "kimi_backend.lib" } };
-        Assert.True(EmissionArtifacts.Publish(c, null, out _), MinimalEmissionTest.Describe(c));
+        var archive = Path.Combine(this.directory, "vendor", "kimi_backend.lib");
+        Directory.CreateDirectory(Path.GetDirectoryName(archive)!);
+        using (var bytes = Array.Find(ToolchainIdentity.Supplies, static x => x.Name == WindowsProfile.BackendLibrary)!.Open())
+        using (var file = File.Create(archive))
+        {
+            if (adopted)
+            {
+                bytes.CopyTo(file);
+            }
+        }
 
-        settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"].Sha256 = new string('0', 64);
-        Assert.False(EmissionArtifacts.Publish(c, null, out _));
-        Assert.Contains("Sha256 assertion", PublicationFailure(c));
+        var c = Compilation.CreateForTest();
+        var settings = c.Project.ProjectFile;
+        if (requirement)
+        {
+            settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Kind = "static" } };
+        }
+
+        settings.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Kind = kind, Input = archive, Sha256 = sha256 } };
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.Contains(
+            TestDiagnostics.Of(c),
+            static x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd) &&
+                x.Note == "kimi_backend is supplied by the compiler. Remove the kimi_backend entry from NativeLibraries.");
     }
 
     [Fact]
@@ -133,20 +155,6 @@ public sealed class EmissionArtifactsTest : IDisposable
         NativeToolchain.ValidateManifest(manifest.RootElement);
         using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 4", "\"schemaVersion\": 3", StringComparison.Ordinal));
         Assert.Contains("'schemaVersion' is not this compiler's", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
-    }
-
-    [Fact]
-    public void BackendHashMustMatchTheEmbeddedCatalog()
-    {
-        var c = this.Create();
-        var archive = Path.Combine(this.directory, "fake.lib");
-        File.WriteAllText(archive, "not the adopted archive");
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
-        {
-            ["kimi_backend"] = new() { Kind = "static", Input = archive },
-        };
-        Assert.False(EmissionArtifacts.Publish(c, null, out _));
-        Assert.Contains("SHA-256", PublicationFailure(c));
     }
 
     [Fact]

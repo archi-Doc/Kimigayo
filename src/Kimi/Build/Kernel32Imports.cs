@@ -8,7 +8,8 @@ using Kimi.Compiler;
 
 namespace Kimi.Build;
 
-/// <summary>The project-owned kernel32 import definition and its generated-library identity (SPEC 20.4).</summary>
+/// <summary>The project-owned kernel32 import definition, its generation conditions and a generated library's inspection, which toolchain
+/// verify checks (SPEC 20.4); the compiler's kernel32 supply is ToolchainIdentity's.</summary>
 internal static partial class Kernel32Imports
 {
     internal const string Dll = "KERNEL32.dll";
@@ -28,17 +29,6 @@ internal static partial class Kernel32Imports
         if (ToolchainIdentity.Kernel32DefinitionSha256 != DefinitionSha256 || DlltoolSha256.Length != 64)
         {
             throw new InvalidDataException("Kernel32 definition or tool identity does not match the profile.");
-        }
-    }
-
-    internal static void ValidateManifest(JsonElement library)
-    {
-        // The generated library's identity: an import with this compiler's generator, DLL and definition, each present.
-        var generated = LinkManifest.Text(library, "libraries.kind") == "import" && LinkManifest.OptionalText(library, "libraries.generator") == Generator &&
-            LinkManifest.OptionalText(library, "libraries.dll") == Dll && LinkManifest.OptionalText(library, "libraries.definitionSha256") == DefinitionSha256;
-        if (!generated || LinkManifest.OptionalText(library, "libraries.input") is not null)
-        {
-            throw new InvalidDataException("Invalid generated kernel32 identity. Re-emit the link manifest; external kernel32 paths are no longer supported.");
         }
     }
 
