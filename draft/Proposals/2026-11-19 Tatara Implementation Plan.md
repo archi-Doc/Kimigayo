@@ -34,7 +34,7 @@ tatara> exit
 | 8 | This plan lands in `draft/Proposals` through the Coordinator. |
 | 9 | Stage A revises IMPL twice: a `tatara` row in §20.3 (unit A3) and §20.3.2's Toolchain wording (unit A4). |
 | 10 | The single-shot switch happens in a dedicated window once its gate passes. |
-| 11 | The session that wrote this plan is the T lane's planner. Seats 1+1. The prompt uses SimplePrompt. |
+| 11 | The session that wrote this plan is the T lane's planner. Seats 1+1 (one implementer, one designer or reviewer seat); raised to 2+1 by the owner on 2026-11-21 (「Tataraの席を 2+1に増やしてください。」, relayed by K, 19:1x): two implementers and one designer or reviewer; the one-implementer-per-toolchain-root rule stands. The prompt uses SimplePrompt. |
 | 12 | The T lane is added to AGENTS, WORKFLOW and COMPILER_ARCHITECTURE in the commit that adopts this plan. |
 | 13 | C++ is a thin layer only. Steps and verdicts stay in C# (P13). |
 | 14 | Unit A4 is judged on the `BuildChain` series run as an interleaved paired A/B (the base on the external tools against the candidate): on every row the candidate's p50 wall time is at most 1.03 times the base's, and its p95 peak committed memory is at most 64 MiB above the base's (the owner, 2026-11-20, board O-452, verbatim 「(b) と (m2)」). |
