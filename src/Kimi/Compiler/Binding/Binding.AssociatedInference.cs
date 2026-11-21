@@ -9,7 +9,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(ReferenceEqualityComparer.Instance);
 
-    private readonly Dictionary<Koto, (BoundRequirement Identity, AssociatedBinding Binding)> inferenceFailures = new(ReferenceEqualityComparer.Instance);
+    private readonly InferenceFailureRows inferenceFailures;
 
     // The pass's inference sources, each path whose consumer list (BoundConformancePath.InferenceConsumers) this pass filled, in the order
     // first filled: InvalidateAssociatedEvidence's order, and the lists ResetAssociatedInference empties.
@@ -104,7 +104,6 @@ public sealed partial class Binding
         this.associatedInferenceReady = false;
         this.collectingAssociated = null;
         this.completeTypeIdentities.Clear();
-        this.inferenceFailures.Clear();
         this.inferenceInvalidation.Clear();
         foreach (var source in this.inferenceSources)
         {
@@ -831,5 +830,25 @@ public sealed partial class Binding
         internal HashSet<BoundType> CheckedTypes { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal HashSet<BoundType> ProblemTypes { get; } = new(ReferenceEqualityComparer.Instance);
+    }
+
+    /// <summary>The `inferenceFailures` family's one accessor (DECISIONS BU-220): a pass family, the associated identity and binding an inference
+    /// hole of a conformance failed with (SPEC 8.6.4), stored with the use's failure by the recorder (RecordedFact; a present row always
+    /// has its Identity's Symbol); the first failure a use records stays. Its members keep the names its readers use.</summary>
+    private readonly struct InferenceFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(BoundRequirement Identity, AssociatedBinding Binding), PassCounter> Family(ref NodeColumns columns) => ref columns.InferenceFailures;
+
+        internal void TryAdd(Koto use, (BoundRequirement Identity, AssociatedBinding Binding) failure)
+        {
+            if (!this.TryGetValue(use, out _))
+            {
+                binding.SetRecordedFact(use, Family, failure);
+            }
+        }
+
+        internal bool TryGetValue(Koto use, out (BoundRequirement Identity, AssociatedBinding Binding) failure)
+            => (failure = binding.RecordedFact(use, Family)).Identity.Symbol is not null;
     }
 }

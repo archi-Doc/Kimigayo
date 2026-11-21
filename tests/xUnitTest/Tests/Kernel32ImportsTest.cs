@@ -241,7 +241,7 @@ public sealed class Kernel32ImportsTest
     public void InstallationRejectsAMalformedRecord(string entry)
     {
         using var invalid = JsonDocument.Parse(entry);
-        Assert.Contains("Run setup.ps1 again", Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash")).Message);
+        Assert.Contains($"Run {NativeToolchain.SetupCommand} again", Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash")).Message);
     }
 
     [Fact]

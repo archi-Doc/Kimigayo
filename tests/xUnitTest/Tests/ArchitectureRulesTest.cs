@@ -32,11 +32,9 @@ public class ArchitectureRulesTest
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
     // The R7-R9 plan's unit M2 (ComponentIsReadOnlyByItsReaders): Build's readers, Project and the commands, the hosts that call it, and
-    // DependencyLock (ArtifactFiles.Replace only). Unit/Kimigayo.cs (the native executor's factory) is a temporary row, approved by the
-    // owner (O-455 (a)); unit A4 removes it.
+    // DependencyLock (ArtifactFiles.Replace only).
     private const string BuildReaders = "SolutionAndProject/DependencyLock.cs;SolutionAndProject/Project.cs;Unit/Command/BuildCommand.cs;" +
-        "Unit/Command/CommandExecution.cs;Unit/Command/RestoreCommand.cs;Unit/Command/RunCommand.cs;Unit/Command/TataraCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs;" +
-        "Unit/Kimigayo.cs";
+        "Unit/Command/CommandExecution.cs;Unit/Command/RestoreCommand.cs;Unit/Command/RunCommand.cs;Unit/Command/TataraCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs";
 
     // The R7-R9 plan's unit M1 (ComponentIsReadOnlyByItsReaders): Documentation's readers, hover's projection in check and its rendering in
     // the LSP. The compiler reads only the association, Core's DocumentationSource, which Documentation reads in turn.
@@ -186,7 +184,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 52)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 39)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
