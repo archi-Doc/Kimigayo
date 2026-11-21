@@ -334,11 +334,12 @@ public sealed partial class MirBorrowsTest
                     .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown))}"));
     }
 
-    // SPEC 15.6.4, 22.4.3 (Z7; G224: a `match` Subject borrows a static Shared, so its Loan reaches A5 from source): the row with the
-    // initializations of the statics a live Loan is on left out decides a conflict. f1's Subject Loan on ox would prove ox initialized,
-    // so the conflict rests on the proof: the located Unsupported_Kd until O-456's answer (OQ-F5-6 (a)), as e10f's shape (f1e). A direct
-    // write beside a proved initializer's (f1b, f1f) and an initializer no Loan proves beside an immutable static's Loan (f1d) are errors
-    // (fail-before: f1b and f1d the located Unsupported_Kd, f1f decided by EffectUnknown), and so is a Loan that has ended (f1c).
+    // SPEC 15.6.4, 22.4.3 (Z7, Z7b; G224: a `match` Subject borrows a static Shared, so its Loan reaches A5 from source): the row with the
+    // initializations of the statics every path passes a Borrow of left out decides a conflict. f1's Subject Borrow of ox dominates the
+    // call, so ox is proved and nothing conflicts, as at f1c, whose Loan has ended (the Borrow, not its Loan, proves); f1e's Borrow is on
+    // one path only, so makeOx's write is the error. A direct write beside a proved initializer's (f1b, f1f) and an initializer no Borrow
+    // proves beside an immutable static's Borrow (f1d) are errors. Moved by SPEC 15.6.4's revision (af6410d81, O-456 (a)): fail-before
+    // 3b692162b, f1 and f1e the located Unsupported_Kd, f1c EffectWrite.
     [Fact]
     public void ASubjectLoanOnAStaticMeetsTheInitializationRule()
     {
@@ -434,8 +435,8 @@ public sealed partial class MirBorrowsTest
         var program = AnalyzeUnsupported(c, []);
         Assert.Equal(
             [
-                "f1: State.useOx() Unsupported_Kd", "f1b: State.useOxW() EffectWrite", "f1c: State.useOx() EffectWrite",
-                "f1d: State.useOe3() EffectWrite", "f1e: State.useOx() Unsupported_Kd", "f1f: State.useOxWG(g@move) EffectWrite",
+                "f1b: State.useOxW() EffectWrite", "f1d: State.useOe3() EffectWrite", "f1e: State.useOx() EffectWrite",
+                "f1f: State.useOxWG(g@move) EffectWrite",
             ],
             program.Problems.All.ToArray().Select((x, i) => (x, i))
                 .Where(static x => !x.x.IsRecord && x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
