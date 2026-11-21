@@ -24635,6 +24635,26 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Staged.** The Composed row's proof and the primitive refutation move to Prove with R7-C9; SPEC 8.7.4's supplies, stated five
     times, become one statement with R7-C9 or C2 (PLAN G1235). Outside the table stay the intrinsic Contracts (SPEC 8.7.1,
     `IntrinsicContract`).
+- **R7-M75 Family 2's problems record through `Record`; a fact-less own site records `Record(node, X, [])`** (Back, 2026-11-21;
+  R7-E3 E3a-1, Q-629, D-1025; Major unit of a Major design, R7 plan §5.1 E3; design `back\notes\r7-e3\e3-design.md` §§2-4 with B's
+  E3 rulings 1-7; the Front's design review on C-439, ACCEPT WITH CONDITIONS, C1 for this unit) SPEC 23.1.2, 23.3.
+  - **Rule.** A family-2 check (calls, arguments, conversions; E2 §1.2's boundary) records its failure as a problem through `Record`,
+    as R7-M61 rules for family 1, with **no new fact kind**: a site whose check holds no fact the record shows records
+    `Record(node, X, [])`, which ReportProblem's fact-less row renders (its InvalidConstraint row for `InvalidConstraint`). A site
+    converts only where its record is the node's first failure (no call on its path failed the node: the per-site B1 statement); a
+    dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5; a site that spells its first-failure read
+    carries a Transitional naming R7-E5 and its input (ruling 16 B1 (a), E2-5a's B2 (b)), and a plain `Fail` carries none.
+  - **E3a-1.** Fifteen fact-less own sites in free files (lines at 938a2eee3): NumericConversions 182, 222, 244, 251 (the wrap and
+    bit conversions), FunctionItems 374 and RequirementItems 82 (DirectCallFunctionValue), Conversions 113 (a Move through a custom
+    setter), 335 (NonCopyOperand) and 422 (`@objref`/`@objuniq` of a non-object), ObjectViews 209 and 232 (an upcast's
+    InvalidAssignment), Indexers 94 (a key that selects no single Indexable conformance), RuntimeTypeTests 61 and 74 (a runtime
+    test's target formation) and Comparisons 119 (a library Contract without its one comparison member; unreachable with the shipped
+    library). Dictionaries 58 (B1 real: a key whose fit failed is the node the duplicate check fails) and CaseLimits 79 (an owner
+    over a failed part) keep `Fail` (PLAN G1141's dk2).
+  - **Later units add their lines here:** E3a-2 the mismatch family (`RecordTypeMismatch`'s guard goes, ruling 2), E3a-3 the
+    conversions' stores and `Related`'s role "entry", E3b selection and the call's constraints with the role "candidate" (the Front's
+    C2: each role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
+  - **Moves (Q13).** None: probes base = head (prototype 27 plus C1's), the diagnostic and semantic snapshots 0 differences.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
