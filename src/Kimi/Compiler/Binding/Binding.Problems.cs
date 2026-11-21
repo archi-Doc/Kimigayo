@@ -301,6 +301,9 @@ public sealed partial class Binding
             case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportDisagreement(node, store, index, problem);
                 break;
+            case BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Related) is not null:
+                this.ReportCallablePremise(node, store, index, problem);
+                break;
             case BindingFailure.AssociatedInference when this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportAssociatedInference(node, store, index, problem);
                 break;

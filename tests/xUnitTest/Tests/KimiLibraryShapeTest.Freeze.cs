@@ -60,7 +60,6 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ImplicitPairFollows"] = "never written: the library follows no pair layer",
         ["NodeColumns.PhantomRawOrigins"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.InvalidStaticOriginSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.CallablePremiseFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.EffectBoundRejections"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.InferredArrayLengths"] = "never written: the library writes no length hole",
         ["NodeColumns.ArrayInferenceShapes"] = "never written: the library writes no fixed-array annotation with a hole",

@@ -681,11 +681,12 @@ public class BindingTest
     // library node is the program's one record, through Core's store decision (Koto.ReportIn). No library node records one, so the row
     // records it through the recorder after a Final Bind, with facts at library declarations of the kinds the row reads.
     [Theory]
-    [InlineData((byte)BindingFailure.Ambiguous, DiagnosticCode.AmbiguousBinding_Kd)] // associated ambiguity: two candidates, their instances, a count
-    [InlineData((byte)BindingFailure.InvalidAssociatedType, DiagnosticCode.InvalidAssociatedType_Kd)] // agreement: two instances, each binding the associated Type
-    [InlineData((byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // agreement: two instances' mappings
-    [InlineData((byte)BindingFailure.AssociatedInference, DiagnosticCode.AssociatedTypeInferenceFailed_Kd)] // inference: its reason, the associated Type and its instance
-    public void ALibraryNodesFactRecordIsTheProgramsRecord(byte failure, DiagnosticCode code)
+    [InlineData("ambiguity", (byte)BindingFailure.Ambiguous, DiagnosticCode.AmbiguousBinding_Kd)] // two candidates, their instances, a count
+    [InlineData("agreement", (byte)BindingFailure.InvalidAssociatedType, DiagnosticCode.InvalidAssociatedType_Kd)] // two instances, each binding the associated Type
+    [InlineData("mappings", (byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // two instances' mappings
+    [InlineData("inference", (byte)BindingFailure.AssociatedInference, DiagnosticCode.AssociatedTypeInferenceFailed_Kd)] // its reason, the associated Type and its instance
+    [InlineData("premise", (byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // the bounded clause, the requirement
+    public void ALibraryNodesFactRecordIsTheProgramsRecord(string family, byte failure, DiagnosticCode code)
     {
         var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
         Assert.False(c.Bind().IsComplete);
@@ -694,13 +695,16 @@ public class BindingTest
         var associated = library.OfType<SyntaxFormKoto>().Where(static x => x.Akind == KotoKind.AssociatedType).Take(2).ToArray();
         Koto node = library.OfType<GenericsKoto>().First();
         Koto contract = library.OfType<ContractKoto>().First();
-        ProblemFact[] facts = (BindingFailure)failure switch
+        Koto clause = library.OfType<IsKoto>().First();
+        Koto function = library.OfType<FunctionKoto>().First();
+        ProblemFact[] facts = family switch
         {
-            BindingFailure.Ambiguous => [Related(associated[0]), Instance(associated[0], BoundType.Boolean), Related(associated[1]), Instance(associated[1], BoundType.Unit), new(ProblemFactKind.Count, SourceRef.Of(node), 2)],
-            BindingFailure.InvalidAssociatedType => [Related(contract), Instance(contract, BoundType.Boolean), Instance(associated[0], BoundType.Unit), Related(contract), Instance(contract, BoundType.Unit), Instance(associated[0], BoundType.Boolean)],
-            BindingFailure.IncompatibleImplementation => [Related(contract), Instance(contract, BoundType.Boolean), Related(contract), Instance(contract, BoundType.Unit)],
-            BindingFailure.AssociatedInference => [new(ProblemFactKind.Reason, SourceRef.Of(associated[0]), (long)Binding.InferenceProblem.Shape), Related(associated[0]), Instance(associated[0], BoundType.Boolean)],
-            _ => throw new ArgumentOutOfRangeException(nameof(failure)),
+            "ambiguity" => [Related(associated[0]), Instance(associated[0], BoundType.Boolean), Related(associated[1]), Instance(associated[1], BoundType.Unit), new(ProblemFactKind.Count, SourceRef.Of(node), 2)],
+            "agreement" => [Related(contract), Instance(contract, BoundType.Boolean), Instance(associated[0], BoundType.Unit), Related(contract), Instance(contract, BoundType.Unit), Instance(associated[0], BoundType.Boolean)],
+            "mappings" => [Related(contract), Instance(contract, BoundType.Boolean), Related(contract), Instance(contract, BoundType.Unit)],
+            "inference" => [new(ProblemFactKind.Reason, SourceRef.Of(associated[0]), (long)Binding.InferenceProblem.Shape), Related(associated[0]), Instance(associated[0], BoundType.Boolean)],
+            "premise" => [Related(clause), Related(function, 1)],
+            _ => throw new ArgumentOutOfRangeException(nameof(family)),
         };
         var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
             .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);

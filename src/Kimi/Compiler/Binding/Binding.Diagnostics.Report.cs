@@ -320,10 +320,6 @@ public sealed partial class Binding
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportCallablePremiseFailure(issue.Node, store, requirement))
-        {
-            // SPEC 8.11.4: an implementation cannot add an unrequired Callable bound.
-        }
         else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, store, requirement, issue.Code))
         {
             // SPEC 8.1.2: a pair occurrence's Language cause, at the occurrence.

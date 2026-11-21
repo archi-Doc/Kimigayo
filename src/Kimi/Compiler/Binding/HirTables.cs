@@ -333,7 +333,6 @@ internal struct NodeColumns
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
-    internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
     internal StampedColumn<BoundArgumentOperation, Binding.PassCounter> ReceiverOperations; // Work: the receiver or storage operation selected for a call or member access, released at the freeze (Binding.ArgumentOperations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
@@ -403,7 +402,6 @@ internal struct NodeColumns
         this.ImplicitPairFollows.Grow(length);
         this.PhantomRawOrigins.Grow(length);
         this.InvalidStaticOriginSlots.Grow(length);
-        this.CallablePremiseFailures.Grow(length);
         this.EffectBoundRejections.Grow(length);
         this.ReceiverOperations.Grow(length);
         this.InferredArrayLengths.Grow(length);
@@ -450,7 +448,6 @@ internal struct NodeColumns
         this.ImplicitPairFollows.Freeze(binding);
         this.PhantomRawOrigins.Freeze(binding);
         this.InvalidStaticOriginSlots.Freeze(binding);
-        this.CallablePremiseFailures.Freeze(binding);
         this.EffectBoundRejections.Freeze(binding);
         this.ReceiverOperations.Release();
         this.InferredArrayLengths.Freeze(binding);
@@ -525,7 +522,6 @@ internal struct NodeColumns
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
             PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
             InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
-            CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
             ReceiverOperations = this.ReceiverOperations.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),

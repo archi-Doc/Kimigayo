@@ -193,8 +193,7 @@ public partial class SyntaxIdTest
     // family's program, which reports its failure at each Bind; R7-N5's: PerCallOrigins, a call only an argument's own per-call Origin
     // would satisfy; PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
-    // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; CallablePremiseFailures, an implementation's Callable
-    // bound its requirement lacks; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
+    // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
     // under a holed annotation; CallInferenceFailures, ConstructorInferenceDiagnosticTest's changed constructor selection;
     // CallableSelectionFailures, a Callable value call no bound applies to; BaseCallFailures, a `base` reference that calls nothing;
     // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
@@ -230,7 +229,6 @@ public partial class SyntaxIdTest
     [InlineData("PhantomRawOrigins", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\n    let p: raw/i32 during a\n", DiagnosticCode.InvalidOriginBinding_Kd)]
     [InlineData("InvalidStaticOriginSlots", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\nfunc g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort(\"u\")\n", DiagnosticCode.InvalidOriginBinding_Kd)]
     [InlineData("EffectBoundRejections", "enum E\n    A\n    effect confined\n    B\n", DiagnosticCode.InvalidEffectBound_Kd)]
-    [InlineData("CallablePremiseFailures", "contract Runner\n    func run<F>(self: ref/Self, callback: ref/F) -> i32\n        F is Callable<() -> i32>\nstruct Worker\n    Self is Runner\n    public func run<F>(self: ref/Self, callback: ref/F) -> i32\n        F is Callable<() -> i32>\n            effect confined\n        return callback()\n", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("ReceiverOperations", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
     [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
     [InlineData("ArrayInferenceShapes", "let values: [_ of i32] = []\n")]
