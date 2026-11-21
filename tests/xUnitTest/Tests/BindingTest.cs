@@ -682,6 +682,8 @@ public class BindingTest
     // records it through the recorder after a Final Bind, with facts at library declarations of the kinds the row reads.
     [Theory]
     [InlineData((byte)BindingFailure.Ambiguous, DiagnosticCode.AmbiguousBinding_Kd)] // associated ambiguity: two candidates, their instances, a count
+    [InlineData((byte)BindingFailure.InvalidAssociatedType, DiagnosticCode.InvalidAssociatedType_Kd)] // agreement: two instances, each binding the associated Type
+    [InlineData((byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // agreement: two instances' mappings
     public void ALibraryNodesFactRecordIsTheProgramsRecord(byte failure, DiagnosticCode code)
     {
         var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
@@ -690,9 +692,12 @@ public class BindingTest
         var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         var associated = library.OfType<SyntaxFormKoto>().Where(static x => x.Akind == KotoKind.AssociatedType).Take(2).ToArray();
         Koto node = library.OfType<GenericsKoto>().First();
+        Koto contract = library.OfType<ContractKoto>().First();
         ProblemFact[] facts = (BindingFailure)failure switch
         {
             BindingFailure.Ambiguous => [Related(associated[0]), Instance(associated[0], BoundType.Boolean), Related(associated[1]), Instance(associated[1], BoundType.Unit), new(ProblemFactKind.Count, SourceRef.Of(node), 2)],
+            BindingFailure.InvalidAssociatedType => [Related(contract), Instance(contract, BoundType.Boolean), Instance(associated[0], BoundType.Unit), Related(contract), Instance(contract, BoundType.Unit), Instance(associated[0], BoundType.Boolean)],
+            BindingFailure.IncompatibleImplementation => [Related(contract), Instance(contract, BoundType.Boolean), Related(contract), Instance(contract, BoundType.Unit)],
             _ => throw new ArgumentOutOfRangeException(nameof(failure)),
         };
         var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!

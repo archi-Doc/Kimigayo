@@ -298,6 +298,9 @@ public sealed partial class Binding
             case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportAssociatedAmbiguity(node, store, index, problem);
                 break;
+            case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
+                this.ReportDisagreement(node, store, index, problem);
+                break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
                 break;
