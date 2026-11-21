@@ -164,7 +164,6 @@ public sealed partial class Binding
         }
 
         this.resolvedSlices.Clear();
-        this.uniqIndexing.Clear();
         this.positionWarnings.Clear();
     }
 

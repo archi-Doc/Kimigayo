@@ -7,9 +7,10 @@ managed solution with warnings as errors. Windows uses the ordinary Session veri
 regressions and every regenerated native fixture at O0/O2, then runs the native-worker PowerShell regressions, CLI
 integration, and extension unit/integration tests with the managed compiler. Neither job runs NativeAOT.
 
-The Windows job downloads the adopted LLVM archive only on a toolchain-cache miss, checks its pinned SHA-256, and calls
-the existing backend setup script. Explicit toolchain verification checks cached installations too. Update the archive
-version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
+The Windows job downloads the adopted LLVM archive only on a toolchain-cache miss, checks its pinned SHA-256, extracts it
+and calls the backend setup script with `-LlvmRoot <the extracted archive>`, which also builds `tatara.dll`; the cache key
+covers `profile.json`, `setup.ps1` and `src/Tatara`. Explicit toolchain verification checks cached installations too.
+Update the archive version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
 when a later step fails. A configured lane is not evidence of a successful hosted run; inspect that run's results.
 
 ## Verification scope
@@ -151,6 +152,14 @@ runs execute at once across the sessions. Before starting one, list `artifacts/h
 than four hours (stale); if three or more remain, do targeted work and check again later. Otherwise create
 `<R4|BU|R5>-<unit>-<yyyyMMdd-HHmmss>.run` there, one line naming the worktree and the command, start the run, and delete
 the file when the run ends, passed or failed. A script running several heavy runs in sequence keeps one file.
+
+Every worktree reaches the main checkout's `toolchain` root through a junction, so a native build loads that root's
+`tatara.dll`, the last setup's, unless another root is selected. Only a window reruns setup on it
+(`src/backend/windows-x64/setup.ps1 -LlvmRoot <the pinned archive, extracted>`), after its merge and before its Session,
+with no heavy run registered. A unit that changes `src/Tatara` uses a root of its own (made by setup with
+`-ToolchainRoot <a new directory>`, selected by `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT`) for all its runs, Unit and
+Session included. A window that changes `tatara.h` announces on the board that older bases fail the start check until they
+merge dev.
 
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start
 from: `diagnostic-snapshot.json` (the snapshot step checks its fixed corpus whatever the selection, so

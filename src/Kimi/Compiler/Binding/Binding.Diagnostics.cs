@@ -637,10 +637,7 @@ public sealed partial class Binding
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();
-        this.callableConstraints?.Clear();
-        this.clauseConstraints?.Clear();
         this.pendingJudgments?.Clear();
-        this.arithmeticConformanceFailures?.Clear();
         this.arithmeticSelectionFailures?.Clear();
         this.arithmeticDirectionFailures?.Clear();
         this.rangeIterationFailures?.Clear();
@@ -653,7 +650,6 @@ public sealed partial class Binding
         this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();
         this.rejectedRows.Clear();
-        this.unboundSlots?.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
         this.duplicateDeclarations?.Clear();
