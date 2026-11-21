@@ -24677,9 +24677,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     test's target formation) and Comparisons 119 (a library Contract without its one comparison member; unreachable with the shipped
     library). Dictionaries 58 (B1 real: a key whose fit failed is the node the duplicate check fails) and CaseLimits 79 (an owner
     over a failed part) keep `Fail` (PLAN G1141's dk2).
-  - **Later units add their lines below:** E3a-3 the conversions' stores and `Related`'s role "entry", E3b selection and the call's
-    constraints with the role "candidate" (the Front's C2: each role's meaning at its ReportProblem row), E3c the Front's in-flight
-    files; each lists the stores it deletes.
+  - **Later units add their lines below:** E3b selection and the call's constraints with the role "candidate" (the Front's C2: each
+    role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
   - **Moves (Q13).** None: probes base = head (prototype 27 plus C1's), the diagnostic and semantic snapshots 0 differences.
   - **E3a-2 (Q-635, D-1039).** `RecordTypeMismatch`'s first-failure guard goes (the stage ledger's R7-E3 removal; B's ruling 2,
     measured by the guard mutant: 37 of 43,695 rows, each a dependent duplicate at two callers, snapshot 0, no InternalInvariant_Kd);
@@ -24715,6 +24714,18 @@ R8-M* and R9-M* by the stage of the recording unit.
       Properties 397 (DiagnosticPrecisionTest's five side rows); no M1, M2 or M4; the diagnostic and semantic snapshots 0 differences.
     - Open: PLAN G509's k1 (`let x = 1; x += 1.5`: the operand's mismatch is never judged after a failed destination; B's ruling 4);
       G1141's R7-E5 inputs gain the two spelled reads and C3's w4 and c3.
+  - **E3a-3 (Q-634, D-1038).** NotObjectPayload records `Related` role 0 (the declaration that opts out, its own or the inherited
+    base's; shown as `declaration`); the range iteration's constraint records `Related` role 2, "entry" (the selected entry
+    declaration, SPEC 14.6.2), and `Constraint` (the kept `Subject is entry`), its role's meaning stated at its ReportProblem row (the
+    Front's C2). Deleted: `objectPayloadCauses`, `rangeIterationFailures`, their arms and Reset lines (ratchet "Node-keyed table
+    members in Binding" -2, 24 with E3a-2). Kept until R7-E5: the guards Sequences 193 and Contracts.Registration 148 (O6 (a)) and
+    FailIterationSubject's fact-less outcomes (a non-range subject, an Error proof). `Constraint`'s kind line names the range
+    iteration's entry. Moves: M4 NotObjectPayload_Kd's related declaration; M3 the two range Notes and M4 their related `entry`.
+    `objectErasureFailures` moves to E3b (B's E3a-3 ruling 3: E3b states one form of "a proof's outcome to its record" for every
+    caller of RequireConstraint and FailUnprovenConstraint); FailIterationSubject's outcome table, kept at its site and computed
+    once, is E3b's staged removal too, since it is no RequireConstraint caller and "every caller" does not cover it (the Front's
+    C-634a). E3c takes `arithmeticConformanceFailures` with ArithmeticContracts.cs, its writer, ArithmeticDiagnostics and the
+    selection and direction stores (ruling 4: E3c states the ineligible Type's reading, or B asks the owner then).
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
