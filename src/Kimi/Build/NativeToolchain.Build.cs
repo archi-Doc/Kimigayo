@@ -26,13 +26,13 @@ internal static partial class NativeToolchain
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
     // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. Its toolchain.llvmBin is
-    // accepted and not read, as a project's LlvmBin.
+    // accepted and not read, as a project's LlvmBin. It holds its record's lock (Begin) from its first write to its end.
     internal static async Task BuildManifest(string path, string? toolchainRoot, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         path = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(path)!;
         var record = Path.ChangeExtension(path, ".build.json");
-        WriteRecord(record, CreateBuildRecord());
+        using var output = await Begin(record, report, cancellationToken);
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, cancellationToken));
         var manifest = document.RootElement;
         ValidateManifest(manifest);
@@ -202,7 +202,7 @@ internal static partial class NativeToolchain
                     // which only a defect reaches, is a fault that no catch classifies (C-433 c5).
                     try
                     {
-                        Invalidate(this.paths);
+                        Invalidate(this.paths.Record);
                     }
                     catch (Exception invalidation) when (IsOutputFailure(invalidation))
                     {

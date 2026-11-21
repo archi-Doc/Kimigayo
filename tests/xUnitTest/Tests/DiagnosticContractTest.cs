@@ -430,14 +430,12 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
 
         public bool EnableColor { get; set; }
 
-        // A host's console failure: the first line that starts with this text throws Failure (InvalidOperationException by default)
-        // instead, once.
-        public string? FailingLine { get; set; }
-
-        public Exception? Failure { get; set; }
-
-        // A host's action during a report: the first line that starts with Prefix runs Action before it is written, once.
+        // The host's action during a report: the first line that starts with Prefix runs Action before it is written, once. A host's
+        // console failure is one such action: it throws, and the line is not written (Fail).
         public (string Prefix, Action Action)? LineAction { get; set; }
+
+        // The host's console failing at its line, with InvalidOperationException (a type the toolchain's JSON reads throw).
+        public static void Fail() => throw new InvalidOperationException("The host's console failed.");
 
         public void Write(string? message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
 
@@ -451,12 +449,6 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
             {
                 this.LineAction = null;
                 action.Action();
-            }
-
-            if (this.FailingLine is { } line && message.StartsWith(line, StringComparison.Ordinal))
-            {
-                this.FailingLine = null;
-                throw this.Failure ?? new InvalidOperationException("The host's console failed.");
             }
 
             this.text.Append(message).Append('\n');

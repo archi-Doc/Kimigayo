@@ -325,10 +325,10 @@ public sealed class NativeToolchainTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var (_, _, v1) = await this.BuildHello();
-        this.console.FailingLine = "Built: ";
+        this.console.LineAction = ("Built: ", DiagnosticContractTest.DiagnosticConsole.Fail);
         var project = this.Hello("Hi");
         Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
-        Assert.Null(this.console.FailingLine);
+        Assert.Null(this.console.LineAction);
         Assert.Equal(1, this.console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
         Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), this.console.Text, StringComparison.Ordinal);
         Assert.Contains("Hello.kimiproj", this.console.Text, StringComparison.Ordinal);
@@ -382,6 +382,77 @@ public sealed class NativeToolchainTest : IDisposable
         await this.AssertNothingPublished(project, v1);
     }
 
+    // The output's lock (IMPL 20.3.2; NativeToolchain.Begin): while another build holds the lock of a build's record
+    // (Name.link.build.lock, which the test holds without sharing), the build waits and reports it once, and builds after the release;
+    // a cancellation ends the wait, and the record (v1's success) and the executable stay as they were. O2 and O0 share the record, so
+    // O0 of a project whose O2 record exists waits; build --Manifest waits for the lock of the source build's record. Each row first
+    // builds Hello at O2 (v1) on the installed toolchain.
+    [Theory]
+    [InlineData("O2", "release")]
+    [InlineData("O2", "cancel")]
+    [InlineData("O0", "release")]
+    [InlineData("manifest", "release")]
+    public async Task ABuildWaitsForTheLockOfItsRecord(string build, string action)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (project, paths, v1) = await this.BuildHello();
+        var record = File.ReadAllText(paths.Record);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var lockPath = Path.ChangeExtension(paths.Record, ".lock");
+        using var held = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Action release = action == "release" ? held.Dispose : cancellation.Cancel;
+        this.console.LineAction = ("Waiting for another build: " + lockPath, release);
+        project.ProjectFile.Optimization = build == "O0" ? "O0" : "O2";
+        var built = build == "manifest"
+            ? NativeToolchain.BuildManifest(paths.Manifest, null, (_, message) => this.console.WriteLine(message), cancellation.Token)
+            : project.Build(cancellation.Token);
+        if (action == "cancel")
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => built);
+            Assert.Equal(record, File.ReadAllText(paths.Record));
+            Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        }
+        else
+        {
+            await built; // A failed source build returns false, and its record is not linked.
+            using var linked = JsonDocument.Parse(File.ReadAllText(paths.Record));
+            Assert.Equal("linked", linked.RootElement.GetProperty("status").GetString());
+            Assert.Equal(project.ProjectFile.Optimization, linked.RootElement.GetProperty("optimization").GetString());
+        }
+
+        Assert.Null(this.console.LineAction);
+        Assert.Equal(1, this.console.Text.Split("Waiting for another build: ").Length - 1);
+    }
+
+    // A build waits only while another build holds its record's lock (NativeToolchain.Begin; C-433 B2, N6): after a build in this process
+    // whose invalidation failed (its record's path a directory, an output failure: the lock was closed again), and while another
+    // output's lock is held, Hello builds with no waiting line (a wait would fail the build at the console instead of hanging the row).
+    // On the installed toolchain.
+    [Theory]
+    [InlineData("failed invalidation")]
+    [InlineData("another output")]
+    public async Task ABuildWaitsForNoLockButItsHeldOne(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = this.Hello("Hello");
+        var paths = ArtifactPaths.Create(project);
+        var output = Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!).FullName;
+        using var other = row == "another output"
+            ? new FileStream(Path.Combine(output, "Other.link.build.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
+            : null;
+        this.console.LineAction = ("Waiting for another build: ", DiagnosticContractTest.DiagnosticConsole.Fail);
+        if (row == "failed invalidation")
+        {
+            Directory.CreateDirectory(paths.Record);
+            Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+            Assert.Equal(0, this.console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+            Directory.Delete(paths.Record);
+        }
+
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.NotNull(this.console.LineAction);
+    }
+
     [Fact]
     public async Task EmptySolutionFailsBuildAndEmitAndCannotRun()
     {
@@ -430,7 +501,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("configuration", null, "Optimization must be O0 or O2.")]
     public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
     {
-        this.console.FailingLine = failingLine;
+        this.console.LineAction = failingLine is null ? null : (failingLine, DiagnosticContractTest.DiagnosticConsole.Fail);
         var project = this.Hello("Hello");
         var root = Path.Combine(this.directory, "toolchain");
         project.KimiOptions.ToolchainRoot = root;
