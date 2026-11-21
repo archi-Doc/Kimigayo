@@ -153,6 +153,14 @@ public sealed partial class Binding
         {
             // An expectation that is no Function Type, such as a Type parameter F under Callable (SPEC 7.2.3), names the
             // anonymous function as found.
+            // Transitional, R7-E5 (D-924; B's E3a-2 ruling): the Closure recorded its own located limit at its header first (a
+            // parameter past the subset), so a mismatch here is that header's second record; it keeps its first failure, as a Fail does,
+            // until R7-E5's per-problem inputs (PropertyBindingTest's field-Closure rows; probe g4).
+            if (this.RecordedFailure(function) != BindingFailure.None)
+            {
+                return this.Fail(function, BindingFailure.TypeMismatch);
+            }
+
             return this.RecordMismatch(function, function, new(null, MismatchForm.AnonymousFunction), expected, ComparisonFailure.Shape);
         }
 

@@ -129,6 +129,19 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 9.7, F.5: the path a container reference is written by: below transparent wrappers, a root name's operand and a Constructed
+    // Type's head, the node whose qualifier (a MemberAccess's Left) gives the environment.
+    private static Koto ContainerPath(Koto syntax)
+    {
+        var path = UnwrapTypeSyntax(syntax);
+        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
+        {
+            path = UnwrapTypeSyntax(root.Operands[0]);
+        }
+
+        return path is GenericsKoto generic ? UnwrapTypeSyntax(generic.Identifier!) : path;
+    }
+
     // SPEC 15.4.4, 9.7.2: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no clause
     // of its declaration relates, is inferred from the call. Binding has no inference variables in bodies yet, so such a call is one
     // Unsupported at the qualifier, never a failed selection or a missing Origin. A written part of the qualifier that failed
@@ -286,18 +299,7 @@ public sealed partial class Binding
             return environment;
         }
 
-        var path = UnwrapTypeSyntax(syntax);
-        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
-        {
-            path = UnwrapTypeSyntax(root.Operands[0]);
-        }
-
-        if (path is GenericsKoto generic)
-        {
-            path = UnwrapTypeSyntax(generic.Identifier!);
-        }
-
-        if (path is MemberAccessKoto member)
+        if (ContainerPath(syntax) is MemberAccessKoto member)
         {
             var qualifier = this.TypeName(member.Left, scope);
             if (qualifier?.Declaration is DeclarationContainerKoto container && !container.IsRoot)
@@ -313,11 +315,7 @@ public sealed partial class Binding
                     return this.Fail(member, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
                 }
 
-                if (!ReferenceEquals(container, parent))
-                {
-                    var selected = this.LookupMember(environment, symbol.Name, scope, UseRow(UseNode(syntax))); // The row the path selected it in.
-                    environment = ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
-                }
+                environment = this.QualifierEnvironment(environment, symbol, container, parent, scope, syntax);
             }
             else if (qualifier is null && HirTables.LookupOf(UseNode(member.Left)) == PathEnd.Projection && UseNode(member.Left).BoundType is { Symbol: { } formed } projected)
             {
@@ -381,6 +379,20 @@ public sealed partial class Binding
             this.typeScratch.Return(types, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
         }
+    }
+
+    // SPEC 6.1.3, 9.6: a qualified nested Type's environment from its qualifier's Type: the qualifier when it declares the nested Type, else
+    // the declaring Type (a base layer's, substituted) of the member the qualifier's lookup selects in the row the use's path selected it in,
+    // or none.
+    private BoundType? QualifierEnvironment(BoundType qualifier, BindingSymbol symbol, DeclarationContainerKoto container, DeclarationContainerKoto? parent, BindingScope scope, Koto use)
+    {
+        if (ReferenceEquals(container, parent))
+        {
+            return qualifier;
+        }
+
+        var selected = this.LookupMember(qualifier, symbol.Name, scope, UseRow(UseNode(use)));
+        return ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
     }
 
     private BoundType? BindContainerQualifier(Koto syntax, BindingSymbol symbol, BindingScope scope, TypeBindingContext context)

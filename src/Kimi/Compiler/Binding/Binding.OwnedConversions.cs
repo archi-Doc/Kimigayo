@@ -85,7 +85,7 @@ public sealed partial class Binding
 
         if (erasure.Owned is not { Member: >= 0 and var i, Origin: var origin } owned)
         {
-            return false; // No part failed: the failure rests on no member (the Type mismatch keeps its Note).
+            return false; // No part failed: the failure rests on no member (the Type mismatch stays the record).
         }
 
         // ErasureSubject's member i, in the callable's own numbering (CapabilityParts): a Closure's capture i; an Item's bound argument,
@@ -176,7 +176,7 @@ public sealed partial class Binding
             return false;
         }
 
-        (this.erasureOutcomes ??= new())[(actual, expected)] = new(ErasurePart.Owned, true, BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref, owned);
+        (this.erasureOutcomes ??= new())[(actual, expected)] = new(ErasurePart.Owned, owned);
         this.FailOwnedConversion(actual, expected, node, node);
         return true;
     }

@@ -707,12 +707,13 @@ public sealed partial class Binding
         {
             if (this.associatedInferenceReady && this.associatedInference.TryGetValue(path.Type, out var batch))
             {
-                // Every reader reads an inferred binding as its normal form; a requirement's evidence image of it is open (PLAN G1001). SPEC
-                // 6.2, DECISIONS BU-128: one on an inline cycle names no Type after the failed Binding, as a written one does (its failed
-                // specification fails the conformance's environment, so its path's conditions are Error).
+                // SPEC 8.5.5, 8.6.3 (PLAN G1001): a formation reads an inferred binding as its normal form, a requirement's evidence as its
+                // sources wrote it (InferredEvidence). SPEC 6.2, DECISIONS BU-128: one on an inline cycle names no Type to either reader
+                // after the failed Binding, as a written one does (its failed specification fails the conformance's environment, so its
+                // path's conditions are Error).
                 this.InferAssociatedTypes(batch);
-                return batch.State == 2 && !ReferenceEquals(batch, this.collectingAssociated) && !binding.InferenceConflict && !binding.InlineCycle
-                    ? binding.Inferred : null;
+                return batch.State != 2 || ReferenceEquals(batch, this.collectingAssociated) || binding.InferenceConflict || binding.InlineCycle ||
+                    binding.Inferred is null ? null : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, batch, out pending);
             }
 
             return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.

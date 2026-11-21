@@ -188,7 +188,7 @@ public sealed partial class Binding
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
     // its contract fits under its conditions (DefinitionContractFits), its complete environment is Owned and its result contract does
     // not depend on its receiver (ReceiverIndependence). Initializations, returns and call arguments share this judgment. A failure
-    // publishes its first failed part for its record and Note (erasureOutcomes): the receiver, the signature's structure and the
+    // publishes its first failed part for its record (erasureOutcomes): the receiver, the signature's structure and the
     // receiver dependence, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
     // condition, the value's own failure, recorded here at `node` (FailOwnedConversion, RecordCondition; DECISIONS BU-107), on which every
     // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm. The conversion at the value is a
@@ -230,7 +230,6 @@ public sealed partial class Binding
     // (BindFunctionReference; DECISIONS BU-240, temporary, PLAN G886), so that decision is not searched a second time.
     private bool DecideErasure(Koto node, BoundType actual, BoundType expected, bool fits, in ComparisonFailure failure)
     {
-        var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
         var unformedMark = this.unformedWrites;
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
         this.unformedWrites = unformedMark; // An Item that no case of its split fits fails by itself (ItemSignatureFits).
@@ -252,7 +251,7 @@ public sealed partial class Binding
             return true;
         }
 
-        (this.erasureOutcomes ??= new())[(actual, expected)] = new(part, fits, receiver, owned);
+        (this.erasureOutcomes ??= new())[(actual, expected)] = new(part, owned);
         if (part == ErasurePart.Condition)
         {
             this.RecordCondition(node, failure, signature!, expected);
