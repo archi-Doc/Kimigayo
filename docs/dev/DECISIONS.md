@@ -24054,6 +24054,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Conditions.** A further problem's condition is `BindingReport.Condition`'s one rule: an equal problem's condition, else the
       problem's own (its check's ordinal) or the next after its subject's last recorded one (a refining Contract's conflicts from 0;
       an Origin record beyond its node's first at 1, since that first, held in the slot outside the report, may be set after it).
+      Superseded in part by R7-M75's E3a-2 line (Q-635): "the next after its subject's last recorded one" counts only the problems of
+      its own requirement.
     - **Duplicates.** The pairwise checks fail both declarations and join their group; `RecordDuplicateGroups`, at the end of
       `BindDeclarations` after `PrepareSpecializations` (the pass's last pairwise check), records each later declaration with
       `Related` its group's first, and the first with `Cause` its earliest later (derived from that record). `IsDerived` gains one
@@ -24143,7 +24145,8 @@ R8-M* and R9-M* by the stage of the recording unit.
       `BindingReport.Condition`: ParameterShapes, the agreement, ContractMatching's `Invalid` (an ancestor path's and the child's
       requirement checks meet at one use) and the override family (`RecordOverride`, C4). Condition counts every earlier problem of
       the subject, so a conformance problem at a use that already holds another requirement's record takes a condition above 0; the
-      records and their text are unchanged (PLAN G1141).
+      records and their text are unchanged (PLAN G1141). Superseded in part by R7-M75's E3a-2 line (Q-635): Condition counts only the
+      subject's problems of the same requirement.
     - **Notes.** The absence's and the clause record's Notes stay, rendered by the adapter from the facts (B's O3/O-f (c): CLI and
       LSP rows pin them; PLAN G1223). Those of associated ambiguity, the agreement (both codes) and the undeclared Callable bound go
       (D3).
@@ -24674,10 +24677,44 @@ R8-M* and R9-M* by the stage of the recording unit.
     test's target formation) and Comparisons 119 (a library Contract without its one comparison member; unreachable with the shipped
     library). Dictionaries 58 (B1 real: a key whose fit failed is the node the duplicate check fails) and CaseLimits 79 (an owner
     over a failed part) keep `Fail` (PLAN G1141's dk2).
-  - **Later units add their lines here:** E3a-2 the mismatch family (`RecordTypeMismatch`'s guard goes, ruling 2), E3a-3 the
-    conversions' stores and `Related`'s role "entry", E3b selection and the call's constraints with the role "candidate" (the Front's
-    C2: each role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
+  - **Later units add their lines below:** E3a-3 the conversions' stores and `Related`'s role "entry", E3b selection and the call's
+    constraints with the role "candidate" (the Front's C2: each role's meaning at its ReportProblem row), E3c the Front's in-flight
+    files; each lists the stores it deletes.
   - **Moves (Q13).** None: probes base = head (prototype 27 plus C1's), the diagnostic and semantic snapshots 0 differences.
+  - **E3a-2 (Q-635, D-1039).** `RecordTypeMismatch`'s first-failure guard goes (the stage ledger's R7-E3 removal; B's ruling 2,
+    measured by the guard mutant: 37 of 43,695 rows, each a dependent duplicate at two callers, snapshot 0, no InternalInvariant_Kd);
+    the recorder records through `RecordNumbered`, so a node's further mismatch with other sides takes its own key and an equal one its
+    first's.
+    - Two callers keep their node's first failure by a read spelled at the site, each a Transitional naming R7-E5 and its input
+      (E2-5a's B2 (b) form): `ErasePart` (ArgumentKinds.Completion; the erasure's recorded Origin condition, Owned part or limit at the
+      part) and `FailClosureHeader`'s expectation that is no Function Type (Closures; the Closure's located limit at its header).
+    - The `Fail(.., TypeMismatch)` sites that hold both sides record them through `RecordTypeMismatch` at their node (Operators 95,
+      122; Conversions 274, 592; Conversions.Raw 79; ObjectViews 192; Properties 397, 445; Properties 476 joins 477's `FailMismatch`).
+      The pairless sites (ArrayInference 133, BoundContracts 121, ControlFlow 378, Elements 122, 138, Interpolation 145, Operators 79,
+      137, Ranges 319, 386, 418, 526, RuntimeTypeTests 96, Sequences 175, 393), Conversions 228 (no expected Type in scope) and Ranges
+      488 (no form row fits a boundary's Position: MismatchForm.PositionType states "Position or PositionRange"; B's ruling 10) keep
+      `Fail` until R7-E5's slot removal; no form row is added.
+    - **Numbering within a requirement (B's ruling 10; supersedes R7-M62's Conditions bullet, E2-3b, in its "the next after its
+      subject's last recorded one", and E2-5b's "Condition counts every earlier problem of the subject").** `BindingReport.Condition`
+      numbers a further problem within its requirement: an equal problem's condition, else its check's condition or, when the subject
+      holds a problem of the same requirement at or after it, the condition after that requirement's last; other requirements' problems
+      never move it. The old rule's reason no longer holds: no reader needs numbering across requirements (DIAGNOSTICS 3: the condition
+      distinguishes parts within one requirement; the key and the semantic order compare the requirement first), while `SlotProblem`
+      reads a requirement's first problem at condition 0 (a TypeMismatch beside an UnsatisfiedOriginRelation problem took condition 1
+      and was published twice: RawStorageTest's `b.pair = (fresh, 1, 2)`). Every ReportIssue arm that publishes a problem's key passes
+      its condition (`ConditionOf`).
+    - The mismatch Notes go by code (M3): WrappingConversionNote, the `conversion` Note (ClosureConversionNote, ReferenceSlotNote) with
+      `referenceSlotFacts` (its one writer, its Reset line, ReferenceSlotFact) and ErasureOutcome's SignatureFits and Receiver, which
+      only it read, and OmittedResultNote's TypeMismatch half (OriginRelation keeps it). `erasureOutcomes` stays (FunctionTypes,
+      OwnedConversions). No CLI or LSP contract row pinned them. Ratchet ("Node-keyed table members in Binding") -1, 26 on dev
+      a763e10f7.
+    - **Staged to E3c (C-439's split; B's ruling 10).** `ReferenceSlotFailure`'s four reasons (Structure, Constraint, OriginConflict,
+      InputOrigin) and its `Slot`, unread after E3a-2 (only None and SlotVariables are read), collapse when E3c migrates
+      FunctionReferences; ResultPropagation.Parts 169's R7-E5 Transitional (O6) is E3c's too.
+    - **Moves (Q13).** M3: the Notes above; content (label, evidence) at Operators 95, 122, Conversions 274, Conversions.Raw 79 and
+      Properties 397 (DiagnosticPrecisionTest's five side rows); no M1, M2 or M4; the diagnostic and semantic snapshots 0 differences.
+    - Open: PLAN G509's k1 (`let x = 1; x += 1.5`: the operand's mismatch is never judged after a failed destination; B's ruling 4);
+      G1141's R7-E5 inputs gain the two spelled reads and C3's w4 and c3.
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
