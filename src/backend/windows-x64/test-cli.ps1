@@ -180,7 +180,7 @@ if (-not $NativeCompiler) {
         Remove-Item -LiteralPath $alone -Recurse -Force
     }
 }
-# The command line's LlvmBin names the tools toolchain verify checks; a build accepts it and does not read it: a bin without tools builds.
+# A build accepts the command line's LlvmBin and does not read it (until Tatara B6b4): a bin without tools builds.
 $noTools = Join-Path $work 'no tools'
 New-Item -ItemType Directory -Path $noTools | Out-Null
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $noTools)
