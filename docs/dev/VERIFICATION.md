@@ -155,13 +155,17 @@ than four hours (stale); if three or more remain, do targeted work and check aga
 `<R4|BU|R5>-<unit>-<yyyyMMdd-HHmmss>.run` there, one line naming the worktree and the command, start the run, and delete
 the file when the run ends, passed or failed. A script running several heavy runs in sequence keeps one file.
 
-Every worktree reaches the main checkout's `toolchain` root through a junction, so a native build loads that root's
-`tatara.dll`, the last setup's, unless another root is selected. Only a window reruns setup on it
+Every worktree reaches the main checkout's `toolchain` root through a junction, and a build of `Kimi.dll` copies that
+toolchain's `tatara.dll`, the last setup's, beside it and beside the test output (`PreserveNewest`: build again after setup
+changes it; a root switched to an older `tatara.dll` keeps the newer copy until a `--no-incremental` build). A native build
+loads only that copy. Only a window reruns setup on it
 (`src/backend/windows-x64/setup.ps1 -LlvmRoot <the pinned archive, extracted>`), after its merge and before its Session,
-with no heavy run registered. A unit that changes `src/Tatara` uses a root of its own (made by setup with
-`-ToolchainRoot <a new directory>`, selected by `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT`) for all its runs, Unit and
-Session included. A window that changes `tatara.h` announces on the board that older bases fail the start check until they
-merge dev.
+with no heavy run registered. A worktree whose `tatara.h` differs from the shared root's `tatara.dll` (a unit that changes
+`src/Tatara`, or an older base after a window that changed `tatara.h`) gives itself a toolchain directory of its own, for
+all its runs, Unit and Session included: it removes the link alone (`cmd /c rmdir toolchain`, from Git Bash
+`cmd //c rmdir toolchain`; never `/s` or a recursive delete, which empties the shared root), runs setup into the new
+directory, and builds Kimi again; it never runs setup through the junction. A window that changes `tatara.h` announces on
+the board that older bases fail the start check until they merge dev (or take a toolchain of their own).
 
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start
 from: `diagnostic-snapshot.json` (the snapshot step checks its fixed corpus whatever the selection, so

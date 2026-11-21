@@ -339,7 +339,6 @@ internal struct NodeColumns
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
-    internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
     internal StampedColumn<BoundArgumentOperation, Binding.PassCounter> ReceiverOperations; // Work: the receiver or storage operation selected for a call or member access, released at the freeze (Binding.ArgumentOperations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
@@ -350,10 +349,7 @@ internal struct NodeColumns
     internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
     internal StampedColumn<Binding.ArithmeticConformanceFailure, Binding.PassCounter> ArithmeticConformanceFailures; // Pass: the eligibility condition a declared arithmetic conformance fails (Binding.ArithmeticContracts.cs).
-    internal StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), Binding.PassCounter> AssociatedAmbiguities; // Pass: the two candidates an ambiguous associated Type use found (Binding.AssociatedTypes.cs).
-    internal StampedColumn<(BoundRequirement Identity, Binding.AssociatedBinding Binding), Binding.PassCounter> InferenceFailures; // Pass: the identity and binding a conformance's inference hole failed with (Binding.AssociatedInference.cs).
     internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
-    internal StampedColumn<Binding.ReferenceConstraintFailure, Binding.PassCounter> ClauseConstraints; // Pass: a node's clause record (Binding.ConstraintValidation.Records.cs).
     internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
@@ -421,7 +417,6 @@ internal struct NodeColumns
         this.ImplicitPairFollows.Grow(length);
         this.PhantomRawOrigins.Grow(length);
         this.InvalidStaticOriginSlots.Grow(length);
-        this.CallablePremiseFailures.Grow(length);
         this.EffectBoundRejections.Grow(length);
         this.ReceiverOperations.Grow(length);
         this.InferredArrayLengths.Grow(length);
@@ -432,10 +427,7 @@ internal struct NodeColumns
         this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
         this.ArithmeticConformanceFailures.Grow(length);
-        this.AssociatedAmbiguities.Grow(length);
-        this.InferenceFailures.Grow(length);
         this.CallableConstraints.Grow(length);
-        this.ClauseConstraints.Grow(length);
         this.UnboundSlots.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
@@ -480,7 +472,6 @@ internal struct NodeColumns
         this.ImplicitPairFollows.Freeze(binding);
         this.PhantomRawOrigins.Freeze(binding);
         this.InvalidStaticOriginSlots.Freeze(binding);
-        this.CallablePremiseFailures.Freeze(binding);
         this.EffectBoundRejections.Freeze(binding);
         this.ReceiverOperations.Release();
         this.InferredArrayLengths.Freeze(binding);
@@ -491,10 +482,7 @@ internal struct NodeColumns
         this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
         this.ArithmeticConformanceFailures.Freeze(binding);
-        this.AssociatedAmbiguities.Freeze(binding);
-        this.InferenceFailures.Freeze(binding);
         this.CallableConstraints.Freeze(binding);
-        this.ClauseConstraints.Freeze(binding);
         this.UnboundSlots.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
@@ -565,7 +553,6 @@ internal struct NodeColumns
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
             PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
             InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
-            CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
             ReceiverOperations = this.ReceiverOperations.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
@@ -576,10 +563,7 @@ internal struct NodeColumns
             ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
             ArithmeticConformanceFailures = this.ArithmeticConformanceFailures.Renumbered(length),
-            AssociatedAmbiguities = this.AssociatedAmbiguities.Renumbered(length),
-            InferenceFailures = this.InferenceFailures.Renumbered(length),
             CallableConstraints = this.CallableConstraints.Renumbered(length),
-            ClauseConstraints = this.ClauseConstraints.Renumbered(length),
             UnboundSlots = this.UnboundSlots.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),

@@ -249,16 +249,14 @@ public sealed partial class Binding
             // otherwise the qualifier and the expected Type each supply every slot (SPEC 8.1.3); none fixed is no Types.
             frame.Lengths[..slots].CopyTo(fixedLengths);
             var anyFixed = false;
-            var ownFixed = true;
             for (var i = 0; i < slots; i++)
             {
                 fixedTypes[i] = frame.Types[i] ?? (inferred ? owner!.Components[i] : null);
                 anyFixed |= frame.Types[i] is not null;
-                ownFixed &= frame.Types[i] is not null || i >= declaration.GenericParameterNodes.Count;
             }
 
             var solution = this.Solution(call, declaration, scope, frame, origins);
-            solution.Fixed = new(declaration, anyFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots), ownFixed);
+            solution.Fixed = new(declaration, anyFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots));
             solution.Rows = rows.AsSpan(0, count);
             solution.ChildSlice = ResetSlice(childSlice);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
@@ -282,11 +280,27 @@ public sealed partial class Binding
 
             // SPEC 15.6.4 steps 1, 3, 15.3.6 (F1, DECISIONS R4-M164 U4): a construction is a call. The Origins that its expected Type leaves
             // open are solved by the call's solve, which its clauses and each Signature payload's premises bound (SolveLate).
+            solution.OpenSlotVariables(); // G1128: before the rows read the slots.
             solution.ContributePayloads(payload);
             this.RetainChildRows(ref solution); // R3: the payloads' composition, before their completion.
-            if (expected is null || ReferenceEquals(expected, BoundType.Never))
+            var slotCount = solution.OriginInference?.SlotVariableCount ?? 0; // G1128 R1.3 (e) 2, as SolveLate's.
+            var slotValues = this.originScratch.Rent(slotCount);
+            try
             {
-                this.SolveConstructionOrigins(ref solution);
+                if (expected is null || ReferenceEquals(expected, BoundType.Never) || slotCount > 0)
+                {
+                    this.SolveConstructionOrigins(ref solution, slotValues.AsSpan(0, slotCount));
+                }
+
+                // G1128: the solve's values replace the slot variables; the root rows read them.
+                if (solution.RestoreSlotValues(slotValues.AsSpan(0, slotCount)))
+                {
+                    solution.ContributePayloads(payload);
+                }
+            }
+            finally
+            {
+                this.originScratch.Return(slotValues, clearArray: true);
             }
 
             for (var i = 0; i < originCount; i++)
@@ -328,11 +342,11 @@ public sealed partial class Binding
                 this.ChildGroup(solution, done, out var childStart, out var childEnd);
                 if (childStart != childEnd)
                 {
-                    this.JudgePositionRows(source, rows[done] with { Type = operations[done].ParameterType }, solution);
+                    this.JudgePositionRows(source, rows[done] with { Type = operations[done].ParameterType }, solution, solution.OriginInference);
                 }
                 else
                 {
-                    this.RequireInputPremises(source, payload[done].BoundType!, operations[done].ParameterType!, adapted[done], rows[done].Contribution);
+                    this.RequireInputPremises(source, payload[done].BoundType!, operations[done].ParameterType!, adapted[done], rows[done].Contribution, solution.OriginInference);
                 }
             }
 
@@ -496,7 +510,7 @@ public sealed partial class Binding
     // clauses and each leaf row's premises over its payload's instantiated sub-Type bound (CollectPositionPremises; PLAN G1115), as
     // SolveLate's do a candidate's. Evidence that carries an Origin began the inference (InferAdapted); without it or a Signature row
     // nothing bounds them.
-    private void SolveConstructionOrigins(ref SlotSolution solution)
+    private void SolveConstructionOrigins(ref SlotSolution solution, Span<BoundOrigin> slotValues)
     {
         this.CollectPositionPremises(ref solution);
         this.ReturnSlotSet(solution.EvidenceNamed); // Read by the discoveries above only.
@@ -506,7 +520,7 @@ public sealed partial class Binding
         }
 
         // A selection's solve never fails (SolveOriginInference with `select`); the payload walk and the Type-formation check judge it.
-        _ = this.SolveOriginInference(inference, solution.Origins, solution.Inputs, select: true);
+        _ = this.SolveOriginInference(inference, solution.Origins, solution.Inputs, slotValues, select: true);
     }
 
     // SPEC 10.5.1: whether the construction holds a slot that no evidence binds (`unsolved`) or an F that its waiting callable does not

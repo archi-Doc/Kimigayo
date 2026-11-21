@@ -392,10 +392,7 @@ public sealed partial class Binding
             facts.Add(new(ProblemFactKind.Key, facts[1].Site, this.report.Keep(target)));
         }
 
-        var recorded = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(facts);
-        var requirement = DiagnosticRequirement.Binding(BindingFailure.ParameterShapeMismatch);
-        var condition = this.report.Condition(new(DiagnosticCode.ParameterShapeMismatch_Kd, requirement, SourceRef.Of(subject), 0), recorded);
-        this.Record(subject, BindingFailure.ParameterShapeMismatch, recorded, condition, unresolved);
+        this.RecordNumbered(subject, BindingFailure.ParameterShapeMismatch, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(facts), unresolved);
         facts.Clear();
         this.parameterShapeParties.Clear();
     }
