@@ -37,8 +37,7 @@ namespace XunitTest;
 // a store not in it is a fact:
 // - fact: each program's rows equal the empty program's. Call scratch (suppliedExpansions, activeOriginRequirements and an Origin
 //   requirement work's Dependents) is a fact once its call empties it at its end (G949 S1-e), so a leftover is a difference;
-//   shapeCallCandidates, storedCases, storedFields and the Origin summaries' forming lists likewise (G949 S1-r1b,
-//   ACallsScratchIsEmptyAfterABind);
+//   storedCases, storedFields and the Origin summaries' forming lists likewise (G949 S1-r1b, ACallsScratchIsEmptyAfterABind);
 // - subset: a content interner or Type-keyed memo keeps every row of the empty program's unchanged, and a program's extra row is the
 //   program's level (D2b-d §1.1, §1.5). The table classes each subset store (G949 ruling 167 Q4): a Type interner's extra row is
 //   keyed by a Type the program made, its key naming a Type id above L (LibraryLayer.TypeCount; the subset Fact, over the stores keyed
@@ -207,12 +206,11 @@ public partial class KimiLibraryShapeTest
     public void TheLibraryLayerIsIndependentOfTheCorpus(string program) => SameLayerAsTheEmptyPrograms(program);
 
     // PLAN G949 S1-r1b (S1-e's call-scratch rule; review-s1r1 Re-check 3, RC-e): the scratch of a call or a step is empty at its end,
-    // so what the last call, container or summary left is no row of the layer, whichever pass ran last: the candidates of a call's
-    // shape contracts, the cases and Fields of the container whose storage was prepared last, the nodes of the Origin summary formed
-    // last. Each held a leftover before (the library's last, in one pass; the program's last after the split, a difference from the
-    // empty program's layer in 163, 30, 182 and 6 of the corpus' 517 differing programs).
+    // so what the last container or summary left is no row of the layer, whichever pass ran last: the cases and Fields of the
+    // container whose storage was prepared last, the nodes of the Origin summary formed last. Each held a leftover before (the
+    // library's last, in one pass; the program's last after the split, a difference from the empty program's layer in 30, 182 and 6
+    // of the corpus' 517 differing programs). A call's shape contracts keep no scratch: they read the call's own candidate span.
     [Theory]
-    [InlineData("shapeCallCandidates")]
     [InlineData("storedCases")]
     [InlineData("storedFields")]
     [InlineData("summaryNodes")]

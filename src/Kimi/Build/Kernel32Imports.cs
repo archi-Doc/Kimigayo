@@ -54,7 +54,7 @@ internal static partial class Kernel32Imports
             ("sha256", actualHash));
         if (!generated)
         {
-            throw new InvalidDataException("Installed kernel32 generation conditions or SHA-256 mismatch. Run setup.ps1 again.");
+            throw new InvalidDataException($"Installed kernel32 generation conditions or SHA-256 mismatch. Run {NativeToolchain.SetupCommand} again.");
         }
     }
 

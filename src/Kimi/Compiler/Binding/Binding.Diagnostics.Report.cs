@@ -133,7 +133,7 @@ public sealed partial class Binding
                 (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
             issue.Node.ReportIn(store, requirement, issue.Code, span: span);
         }
-        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
+        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures.TryGetValue(issue.Node, out var arithmetic))
         {
             ReportArithmeticConformance(issue.Node, requirement, issue.Code, arithmetic);
         }
@@ -195,7 +195,7 @@ public sealed partial class Binding
         else if (this.ReportCallableSelection(issue.Node, store, requirement, issue.Code))
         {
         }
-        else if (issue.Code == DiagnosticCode.AmbiguousBinding_Kd && this.associatedAmbiguities?.TryGetValue(issue.Node, out var associated) == true)
+        else if (issue.Code == DiagnosticCode.AmbiguousBinding_Kd && this.associatedAmbiguities.TryGetValue(issue.Node, out var associated))
         {
             var first = $"{DiagnosticTypeName(this.ProjectionContract(associated.First.Symbol, associated.First.Contract))}.{associated.First.Symbol.Name}";
             var second = $"{DiagnosticTypeName(this.ProjectionContract(associated.Second.Symbol, associated.Second.Contract))}.{associated.Second.Symbol.Name}";
@@ -309,7 +309,7 @@ public sealed partial class Binding
         {
             this.ReportCallInferenceFailure(issue.Node, store, requirement, issue.Code, callInference);
         }
-        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots?.TryGetValue(issue.Node, out var unboundSlot) == true)
+        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots.TryGetValue(issue.Node, out var unboundSlot))
         {
             // SPEC 10.6, 10.8: the selected call's slot that no evidence binds, with the waiting argument whose signature holds it.
             ReportUnboundSlots(issue.Node, unboundSlot, requirement, issue.Code);
@@ -423,7 +423,7 @@ public sealed partial class Binding
             var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch);
             issue.Node.ReportIn(store, requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints?.TryGetValue(issue.Node, out var reference) == true)
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints.TryGetValue(issue.Node, out var reference))
         {
             this.ReportClauseConstraint(issue.Node, store, reference, requirement, issue.Code);
         }
@@ -441,7 +441,7 @@ public sealed partial class Binding
         {
             ReportPendingJudgment(issue.Node, pending, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints?.TryGetValue(issue.Node, out var callable) == true)
+        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints.TryGetValue(issue.Node, out var callable))
         {
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
             ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);

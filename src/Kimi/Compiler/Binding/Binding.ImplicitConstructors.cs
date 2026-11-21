@@ -39,14 +39,6 @@ public sealed partial class Binding
     private readonly ImplicitConstructorDecisionRows implicitConstructorDecisions;
     private readonly List<FunctionKoto> judgedConstructors = new();
     private readonly List<FunctionKoto> withdrawnConstructors = new();
-    private Dictionary<FunctionKoto, OmittedBaseSelection>? omittedBaseQueries;
-
-    /// <summary>Gets or sets a value indicating whether each declaration pass records the omitted base query of every explicit
-    /// constructor whose base clause is omitted, for comparison with its bound base call.</summary>
-    internal bool CaptureOmittedBaseQueries { get; set; }
-
-    /// <summary>Gets the omitted base queries of the latest declaration pass when <see cref="CaptureOmittedBaseQueries"/> is set.</summary>
-    internal IReadOnlyDictionary<FunctionKoto, OmittedBaseSelection>? OmittedBaseQueries => this.omittedBaseQueries;
 
     // SPEC 6.3.6: the omitted base clause's ordinary selection over the direct base's constructors with no arguments, made from the
     // derived constructor's scope with the evaluation and classification of a call (Binding.CallSelection), without publishing. The
@@ -276,19 +268,6 @@ public sealed partial class Binding
                 (decision.Winner is { } winner && constructor.BaseInitializer is { } initializer && this.CallOf(initializer) is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
             {
                 this.Fail(structure.BaseClause!, BindingFailure.Unsupported);
-            }
-        }
-    }
-
-    // Records the omitted base query of every explicit constructor whose base clause is omitted (CaptureOmittedBaseQueries).
-    private void CaptureOmittedBases()
-    {
-        this.omittedBaseQueries?.Clear();
-        for (var i = 0; i < this.nodes.Count; i++)
-        {
-            if (this.nodes[i] is FunctionKoto { IsConstructor: true, HasOmittedBaseInitializer: true } constructor && this.scopes.ContainsKey(constructor))
-            {
-                (this.omittedBaseQueries ??= new(ReferenceEqualityComparer.Instance))[constructor] = this.SelectOmittedBaseConstructor(constructor);
             }
         }
     }
