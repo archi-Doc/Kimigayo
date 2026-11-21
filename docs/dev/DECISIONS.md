@@ -28013,6 +28013,11 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     as a file.
   - Amended by T-M10 (unit B6b5, 2026-11-21): the project setting `LlvmBin` and the manifest's `toolchain` member are
     removed (errors); the command line's option goes with B6b4.
+  - Amended by T-M11 (unit B6b3, 2026-11-21): `ToolProcess` and verify's tools are removed, and with them the 5-minute
+    timeout it kept for verify: no Build code launches an LLVM tool. `toolchain verify` reads no installation record, root or
+    `tatara.dll` file and takes no `LlvmBin` (`check-toolchain.ps1` checks the root). `NativeToolchain.Wait`'s `internal`, which
+    was for `ToolProcess`, serves only `RunExecutable`; once B6b3 and G1188 have both landed `Wait` has no reader, and the second
+    of them to land removes it in its merge (T's ruling on C-444 N3).
 - **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
@@ -28074,6 +28079,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     two supplies); keeping the override (two forms for one supply that can carry only the same bytes); two validators; a schema or
     value change (schema 5, `resolution: "compiler"`); an MSBuild or initializer hash check; removing `windows_x64` in B6a (its readers
     include `toolchain verify`, B6b's).
+  - Amended by T-M11 (unit B6b3, 2026-11-21): the temporary structure's checker is `check-toolchain.ps1`, not `toolchain verify`:
+    it compares the root's kernel32 and backend with the catalog and inspects kernel32's content (`Test-KimiKernel32Library`) until
+    B6b6 (PLAN G1210). B6a's design §6, "B6b's verify keeps checking it" (kernel32's content), is superseded (T's ruling R4).
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -28111,6 +28119,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `KimiToolchain` property (a second way to name a root, R1); the copy checked at Kimi's build (a second copy of the installation
     rule); the copy required (it fails CI's Ubuntu job and fresh clones) or warned about (it fails `-warnaserror`);
     `CopyToOutputDirectory="Always"` (a 68.6 MB copy per build).
+  - Amended by T-M11 (unit B6b3, 2026-11-21): the verify interim ends: `toolchain verify` resolves no root, takes neither
+    `--ToolchainRoot` nor `--LlvmBin` and hashes no `tatara.dll` (`check-toolchain.ps1` hashes the root's); `ToolchainResolver`
+    is removed, and Kimi reads `KIMI_TOOLCHAIN_ROOT` nowhere. The build's interim (the options accepted and read by no build)
+    stays until B6b4 (PLAN G1224, G1173).
 - **T-M10 `LlvmBin` removed from projects and manifests** (Tatara, 2026-11-21; the plan's unit B6b5, Q-627, D-1022; Major;
   design `artifacts\handoff\tatara\units\B6\design-b6b.md` §6; design review C-437; implementation review C-443, ACCEPT;
   the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line.
@@ -28132,3 +28144,51 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: deleting the property alone (the setting would be accepted silently, design B6b fact 3); a clause per removed
     name; a `LinkManifest.Rows` row that `WriteFixed` must skip; the general unknown-setting rule in this unit (pre-existing,
     a PLAN open issue with B6b4's docs).
+  - Amended by T-M11 (unit B6b3, 2026-11-21): `toolchain verify` reads no `--LlvmBin` (it takes no such option, its usage
+    error until B6b4's named error); B6b4 makes the option an error for every command.
+- **T-M11 `toolchain verify` as a self-check** (Tatara, 2026-11-21; the plan's unit B6b3, D-1023; Major; design
+  `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §4 with T's rulings R3, R4 and N3-1..N3-6; design review C-437;
+  implementation review C-444, ACCEPT; the owner's decision 20 (O-469 Q3 (a))). Amends T-M6's verify and tool runs, T-M8's
+  temporary structure and the interims of T-M9 and T-M10; closes PLAN G1175.
+  - **The self-check:** `kimi toolchain verify [--Report <path>]` (`ToolchainCommand.Options`: `Report` only) checks what the
+    compiler carries; it reads no root and runs no tool. `NativeToolchain.Verify` states, in order: its Tatara (`Tatara.Instance`:
+    loaded, bound, the start check); each `ToolchainIdentity.Supplies` row's embedded bytes against its catalog SHA-256
+    (`NativeToolchain.VerifySupply`); kernel32's embedded definition, read for `Kernel32Imports`' type initializer, which compares
+    it with the catalog. Output: one Information line for Tatara (build, ABI, LLVM) and one per supply ("<name>: <sha256> (the
+    catalog's)"), then "Toolchain verification passed.".
+  - **Failure semantics (C-437 N3-3):** a load or start-check failure and a supply's mismatch are the toolchain's
+    InvalidDataException ("The compiler's <name> does not match its catalog SHA-256."); the definition's mismatch is the type
+    initializer's fault (TypeInitializationException), as every embedded catalog read's is. Both are reachable only through a
+    defective build of Kimi: the catalog row test owns the invariant, and verify is its user-facing statement.
+  - **The record:** `{status, compilerVersion, llvmVersion, tatara: {build, abi, llvmVersion}, supplies: [{name, sha256,
+    expectedSha256, hashMatched}], error?, seconds}`, written first as `status "incomplete"`; at the end "passed", or "failed"
+    with `error` for the toolchain's failure or a cancellation; a fault leaves it incomplete. Gone from it: `root`, `llvmBin`,
+    `tools`, `toolchainVerification`, `reportedVersionsMatched`, `unverifiedToolchain`, `backendSha256`, `kernel32`. The build
+    record's three verification fields stay (T's ruling R3; PLAN G1227).
+  - **Reading (R4):** Q3 (a)'s "the embedded libraries' hashes against the catalog" includes kernel32's definition and excludes
+    its content inspection (`llvm-dlltool -I`, `llvm-readobj`), which needs a tool: the content is a property of the adopted
+    bytes, inspected when they are adopted (setup's `kernel32.ps1`, `test-kernel32.ps1`). B6a's design §6, "B6b's verify keeps
+    checking it", is superseded.
+  - **The development toolchain's check:** `src/backend/windows-x64/check-toolchain.ps1 [-ToolchainRoot <dir>]`, the C#
+    verify's root checks moved unchanged in rule: `installation.json`'s shape (schema 1, the profile, `tools`, `supportingDlls`
+    an object, `tatara.sha256`); seven version banners and nine hashes against the record (`llvm-dlltool`'s also against
+    `profile.json`); the supporting DLLs'; `tatara.dll`'s hash against the record, hashed and not loaded (T's ruling: moving
+    `build.ps1`'s loader into `src/Tatara/identity.ps1` would change Tatara's build identity); and the root's `windows_x64` until
+    B6b6 (C-437 N3-1): the backend's and kernel32's hashes against the catalog, kernel32's generation record and definition, and
+    its content through `kernel32.ps1`'s `Test-KimiKernel32Library` (one inspection, shared with `New-KimiKernel32Library`).
+    Callers: setup's last step and `verify.ps1 -VerifyToolchain` (its own step and log, after `toolchain verify`; the summary's
+    `toolchainVerification` is `passed` only when both pass).
+  - **G1175 (closed):** setup installs no archive DLL (no tool imports one, `artifacts\tatara\b6b\tool-imports.txt`) and records
+    `supportingDlls: {}` in schema 1, so an older base's verify on a shared root still reads an object; existing roots keep their
+    DLLs (setup deletes nothing). Temporary structure: the always-empty `supportingDlls` member; removal condition: no base
+    before B6b3 reads a shared root (PLAN G1231).
+  - **Deleted:** `ToolProcess`, `InstallationTools`, `RequireInstalledFile`, `VerifyKernel32`, `NativeToolchain.ParseVersion`
+    and `VersionPattern`, `NativeToolchain.SetupCommand` (its one reader, Tatara's load remedy, holds the text),
+    `Kernel32Imports.ValidateInstallation`, `ValidateLibrary`, their regexes and `DlltoolSha256`, `ToolchainIdentity.DlltoolSha256`,
+    `ToolchainResolver` and `ToolchainResolverTest`. Kimi reads `KIMI_TOOLCHAIN_ROOT` nowhere, and no Build code launches an LLVM
+    tool.
+  - **Interim:** `toolchain verify --ToolchainRoot x` (or `--LlvmBin x`) is the command's usage error until B6b4's named error;
+    a build accepts both options and reads neither (PLAN G1173, G1224).
+  - Rejected: verify keeping kernel32's content inspection (a tool, or an ABI change, for a property of adopted bytes); a second
+    PowerShell copy of the inspection; `check-toolchain.ps1` loading `tatara.dll` (T's ruling: no change under `src/Tatara`); a
+    `-Report` for `check-toolchain.ps1` (no reader: `verify.ps1` keeps its log).
