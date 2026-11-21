@@ -149,6 +149,11 @@ public sealed partial class Binding
         return null;
     }
 
+    // A problem its check may find again at the node with other facts (one requirement failing twice): numbered by the report's one rule
+    // (BindingReport.Condition), so a further problem takes its own key and an equal one its first's.
+    private BoundType? RecordNumbered(Koto node, BindingFailure failure, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
+        => this.Record(node, failure, facts, this.report.Condition(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), 0), facts), unresolved);
+
     // SPEC 23.3: the sides a mismatch compared and the syntax that shows them. Until E3 records the family's conditions, a node keeps its
     // first failure, as a Fail does.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
