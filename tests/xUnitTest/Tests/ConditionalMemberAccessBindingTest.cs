@@ -25,6 +25,25 @@ public class ConditionalMemberAccessBindingTest
         AssertMember(restored, property, false);
     }
 
+    // SPEC 9.4.4, 23.1.2, DIAGNOSTICS 4.1 (R7-E2 E2-4a's B2; probes r2, r2s, r3, r3s): each public member of a conditional block that exposes
+    // the premise's internal Contract (directly or through a projection) is its own failed requirement, recorded at the member and relating
+    // the Contract: the premise is the block's, outside every member's syntax, so two members never publish one record twice and the check
+    // completes. The twin's internal members are valid.
+    [Theory]
+    [InlineData("Hidden", "public", true, "InaccessibleBinding_Kd 5:21 value() -> i32 => 1, inaccessible declaration 'Hidden'|InaccessibleBinding_Kd 6:21 other() -> i32 => 2, inaccessible declaration 'Hidden'")] // r2
+    [InlineData("Hidden", "public", false, "InaccessibleBinding_Kd 5:21 value() -> i32 => 1, inaccessible declaration 'Hidden'")] // r2s
+    [InlineData("Hidden", "internal", true, "")] // r2t
+    [InlineData("Source.(Hidden).Item", "public", true, "InaccessibleBinding_Kd 9:21 value() -> i32 => 1, inaccessible declaration 'Hidden'|InaccessibleBinding_Kd 10:21 other() -> i32 => 2, inaccessible declaration 'Hidden'")] // r3
+    [InlineData("Source.(Hidden).Item", "public", false, "InaccessibleBinding_Kd 9:21 value() -> i32 => 1, inaccessible declaration 'Hidden'")] // r3s
+    public void EachPublicMemberOverARestrictedPremiseIsItsOwnRecord(string requirement, string access, bool two, string records)
+    {
+        var source = requirement == "Hidden"
+            ? "internal contract Hidden\ninternal contract C\npublic struct S<T>\n    Self is C when T is Hidden\n"
+            : "internal contract Hidden\n    associate Item\npublic struct Source\n    Self is Hidden\n    associate Hidden.Item is i32\ninternal contract C\npublic struct S<T>\n    Self is C when T is Source.(Hidden).Item\n";
+        source += $"        {access} func value() -> i32 => 1\n" + (two ? $"        {access} func other() -> i32 => 2\n" : string.Empty);
+        Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
+    }
+
     [Theory]
     [InlineData(false, "internal")]
     [InlineData(false, "private")]
