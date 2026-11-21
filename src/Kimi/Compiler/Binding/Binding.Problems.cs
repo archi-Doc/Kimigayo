@@ -307,6 +307,11 @@ public sealed partial class Binding
             case BindingFailure.AssociatedInference when this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportAssociatedInference(node, store, index, problem);
                 break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { } entry && entry.Value == 2:
+                // Role 2, "entry": a range iteration's selected entry declaration (IntoIterable, Iterable or UniqIterable, SPEC 14.6.2),
+                // which the range does not satisfy or is not proven to; ordinal 2 keeps the clause record's roles 0 and 1 apart.
+                this.ReportRangeIteration(node, store, index, problem);
+                break;
             case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is not null && this.FactOf(index, ProblemFactKind.Constraint) is not null:
                 this.ReportClauseConstraint(node, store, index, problem); // No clause record carries an Instance, and no absence a Constraint.
                 break;
@@ -316,6 +321,9 @@ public sealed partial class Binding
             case BindingFailure.MissingOverrideTarget or BindingFailure.AmbiguousOverrideTarget or BindingFailure.OverrideContractMismatch or BindingFailure.DuplicateOverride or BindingFailure.UnprovenOverrideCondition
                 when node is FunctionKoto function && this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportOverrideFailure(function, store, index, problem);
+                break;
+            case BindingFailure.NotObjectPayload when this.FactOf(index, ProblemFactKind.Related) is { } renouncing: // Role 0: the declaration that opts out, its own or an inherited base's.
+                ReportObjectPayload(node, store, problem, this.compilation.SyntaxOf(renouncing.Site));
                 break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
