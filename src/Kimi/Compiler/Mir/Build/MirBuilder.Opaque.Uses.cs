@@ -20,7 +20,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     private readonly List<MirPlace> uses = []; // The uses of the Opaque site being formed (Site).
-    private readonly List<(Koto Node, MirPlace Place)> kept = []; // The kept operands evaluated and their Places, innermost Error node last.
+    private readonly List<(Koto Node, MirPlace Place)> kept = []; // The kept operands collected, then their Places, innermost Error node last.
     private SyntaxUses? collector;
     private KeptOperands? keptOperands;
 
@@ -42,13 +42,20 @@ internal sealed partial class MirBuilder
             node.VisitChildren(this.keptOperands ??= new(this));
         }
 
+        var count = this.kept.Count;
+        for (var i = start; i < count; i++)
+        {
+            var part = this.kept[i].Node;
+            this.kept[i] = (part, this.Place(part));
+        }
+
         this.uses.Clear();
-        for (var i = start; i < this.kept.Count; i++)
+        for (var i = start; i < count; i++)
         {
             this.Part(this.kept[i].Node, this.kept[i].Place);
         }
 
-        this.kept.RemoveRange(start, this.kept.Count - start);
+        this.kept.RemoveRange(start, count - start);
         (this.collector ??= new(this)).Collect(node);
     }
 
@@ -103,7 +110,7 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // An Error node's kept operands in syntax order, each evaluated as its Place and kept; an operand that is an Error again evaluates its
+    // An Error node's kept operands collected in syntax order, which SiteUses evaluates; an operand that is an Error again evaluates its
     // own as its Opaque value is formed.
     private sealed class KeptOperands(MirBuilder builder) : KotoVisitor
     {
@@ -111,7 +118,7 @@ internal sealed partial class MirBuilder
         {
             if (Kept(node))
             {
-                builder.kept.Add((node, builder.Place(node)));
+                builder.kept.Add((node, default));
             }
         }
     }
