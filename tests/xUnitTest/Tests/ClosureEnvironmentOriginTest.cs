@@ -721,8 +721,9 @@ public class ClosureEnvironmentOriginTest
     }
 
     // SPEC 23.1, 15.3.3, IMPL A.4 (D-932): a returned Place k Tuple elements below a local names the Borrow the local's initializer
-    // holds at every depth (RootLocal has no bound of its own: SyntaxNesting's), `the borrow n@ref`, related at `n@ref`; a 64-step
-    // bound named `the borrow n` at the Place itself from k = 64. A generic body (Layout's 64-level window).
+    // holds at every depth (RootLocal has no bound of its own: SyntaxNesting's), `the borrow n@ref`, every related location at `n@ref`
+    // (its origin, and since R7-O1 H the borrow that created the loan); a 64-step bound named `the borrow n` at the Place itself from
+    // k = 64. A generic body (Layout's 64-level window).
     [Theory]
     [InlineData(63)]
     [InlineData(64)]
@@ -733,7 +734,8 @@ public class ClosureEnvironmentOriginTest
             $"    return h0{string.Concat(Enumerable.Repeat(".0", k))}\npublic func main() => ()\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, x => x.Span!.Value.Start == source.IndexOf("h0.", StringComparison.Ordinal));
         Assert.Equal((Unsatisfied, "requires the borrow n@ref outlives p, which is false"), (error.Code, error.Label));
-        Assert.StartsWith("n@ref", source[Assert.Single(error.Related!).Span!.Value.Start..], StringComparison.Ordinal);
+        Assert.All(error.Related!, x => Assert.StartsWith("n@ref", source[x.Span!.Value.Start..], StringComparison.Ordinal));
+        Assert.Contains(error.Related!, static x => x.Role.ToString() == "origin");
     }
 
     // SPEC 23.1, 15.3.3 (DECISIONS R4-M133): a local clause over an environment Borrow names the Borrow its end resolves to through the
