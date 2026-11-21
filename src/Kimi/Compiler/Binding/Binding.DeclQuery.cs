@@ -26,10 +26,13 @@ namespace Kimi.Compiler;
 //   stamped or not (B6: SetQueryState refuses by the declaration's table). Each kind's answer for a Frozen state that is not Done is its
 //   row's "Frozen" clause.
 // - Kinds (one row each): Signature. Re-entry: a Property's whose Type is not yet formed is CyclicBinding_Kd at the declaration and
-//   Error (BindHeader's ReenterHeader, SPEC 11.6, 9); another header's reads no evidence and records nothing. Error's readers: a use of
-//   the Property rests on the declaration's record (BindReference), and so does the declaration's own variable binding, which records
-//   nothing more, even where the interrupted computation formed the Type (BindVariableCore); DeclaredValueType (SPEC 9.6) and the
-//   conformance proof (VerifyPropertyRequirement) read the Type only, not yet the record. Not ready: a header
+//   Error (BindHeader's ReenterHeader, SPEC 11.6, 9); another header's reads no evidence and records nothing. The header frame binds
+//   only what typing the declaration needs (a literal whose Type the header fixes without its body publishes no body, TypedByHeader,
+//   through HeaderRunningOrFailed), so a re-entry is a SPEC 11.6 cycle for every literal it covers. Error's readers: a use of a Property left without a Type rests on the
+//   declaration's record (BindReference); the declaration's own variable binding records nothing more, even where the interrupted
+//   computation formed the Type, and still binds its parts (BindVariableCore); DeclaredValueType (SPEC 9.6), the conformance proof
+//   (VerifyPropertyRequirement) and a use of a Property whose Type was formed read the Type only, not yet the record (PLAN G1181's
+//   remainder). Not ready: a header
 //   waiting on an associated Type is abandoned. Frozen: Done (the freeze verifies every library header Done). SignatureVerdict
 //   (Binding.ConstraintValidation.Formation): output, the state itself: Done means Proven in this pass. Re-entry: Unknown, no evidence
 //   (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances (contractHeadersReady), is abandoned
@@ -133,6 +136,12 @@ public sealed partial class Binding
     // SPEC 23.1.2: the record a demand of a failed query rests on, the declaration's own (its kind's rule recorded it), or null. The
     // readers its row names consult it, so each binding of a use in the pass reaches the same reported record.
     private Koto? QueryRecord(BindingSymbol symbol, DeclQueryKind kind) => this.QueryState(symbol, kind) == DeclState.Error ? symbol.Declaration : null;
+
+    // SPEC 11.6 (G812 rulings 174, 176): whether the declaration's Signature query is Running or Error: its header is being computed, or
+    // a re-entry failed it (the computation the re-entry interrupted continues, and the variable binding that follows binds again only
+    // what is unresolved). An inferred Property's initializer is then bound only as far as typing it needs (TypedByHeader); the variable
+    // binding binds what was left with its parts.
+    private bool HeaderRunningOrFailed(BindingSymbol symbol) => this.QueryState(symbol, DeclQueryKind.Signature) is DeclState.Running or DeclState.Error;
 
     // The library's symbols whose query states the freeze keeps (FreezeLibrary, in the library pass): every library symbol the layer
     // reaches (G949 ruling 200; s11-design 2.2 s1), each with its states as the library pass left them (a symbol no query takes keeps

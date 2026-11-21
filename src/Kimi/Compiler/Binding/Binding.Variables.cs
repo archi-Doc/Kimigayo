@@ -32,16 +32,15 @@ public sealed partial class Binding
             return this.Fail(variable, BindingFailure.Cycle, true);
         }
 
+        // SPEC 11.6, 23.1.2 (DECISIONS BU-105; G812 rulings 173, 174): a header whose query failed (Error, its re-entry's cycle) is final in
+        // the pass, even where the computation the re-entry interrupted formed its Type: the declaration rests at that record and records
+        // nothing more (its Type stays the header's and it is not completed), while its parts are still bound (the initializer, the
+        // literal bodies its header left and the accessor bodies), so their independent records stay visible.
+        var rests = false;
         if (symbol.Property is not null)
         {
-            // SPEC 11.6, 23.1.2 (DECISIONS BU-105; G812 ruling 173): a header whose query failed (Error, its re-entry's cycle) is final in
-            // the pass, even where the computation the re-entry interrupted formed its Type: the declaration rests at that record.
             this.BindHeader(symbol);
-            if (this.QueryRecord(symbol, DeclQueryKind.Signature) is not null)
-            {
-                return null;
-            }
-
+            rests = this.QueryRecord(symbol, DeclQueryKind.Signature) is not null;
             this.CheckCaseBound(variable);
         }
 
@@ -121,17 +120,18 @@ public sealed partial class Binding
         }
 
         // An unavailable written Type cannot be replaced by the initializer's Type.
-        symbol.Type = variable.TypeKoto is null ? declared ?? inferred : declared;
+        symbol.Type = variable.TypeKoto is null && !rests ? declared ?? inferred : declared;
         variable.NameKoto.BoundSymbol = symbol;
         Complete(variable.NameKoto, symbol.Type);
         if (variable is PropertyKoto property)
         {
             // SPEC 23.1.2 (DECISIONS G52-1): a Property's verdict, stored or computed, reads no binding result of its accessors (its Type is
-            // its header's or its initializer's, SPEC 11.4, 11.6), so they are bound outside its frame, as a container's declarations are
-            // (BindContainedDeclarations).
+            // its header's or its initializer's, SPEC 11.4, 11.6), nor of the literal bodies its header left (G812 ruling 174, SPEC 10.5.4),
+            // so they are bound outside its frame, as a container's declarations are (BindContainedDeclarations).
             var consultation = this.SuspendConsultation();
             try
             {
+                this.BindLeftBodies(symbol.Property!);
                 for (var i = 0; i < property.Accessors.Count; i++)
                 {
                     this.BindNode(property.Accessors[i], scope);
@@ -154,6 +154,6 @@ public sealed partial class Binding
             this.Fail(variable, BindingFailure.MissingType, true);
         }
 
-        return Complete(variable, symbol.Type);
+        return rests ? null : Complete(variable, symbol.Type);
     }
 }

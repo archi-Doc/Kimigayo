@@ -28,6 +28,12 @@ public sealed partial class Binding
             _ => false,
         };
 
+    // SPEC 7.7.2: a binding a Closure body can capture: an outer runtime local or parameter (a pattern's, a loop's, an environment's, an
+    // accessor's storage among them); Types, Containers, static storage and named functions are never captures. The one kind rule of an
+    // outer use (BindReference) and of an environment no body forms (TypedByHeader).
+    private static bool IsRuntimeBinding(BindingSymbol symbol)
+        => symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture;
+
     // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats, as a range of captureRepeatRows;
     // empty for a valid list.
     private (int Start, int Count) RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)

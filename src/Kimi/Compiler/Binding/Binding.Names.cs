@@ -89,7 +89,7 @@ public sealed partial class Binding
     }
 
     // A value's declared Type for a member step (SPEC 9.6): its declaration queried (QueryValueType); none for a Property its header
-    // refused or whose header query failed (its re-entry's cycle, recorded at the declaration).
+    // refused, or whose header is re-entered before its Type is formed (its cycle, recorded at the declaration); the Type only after.
     private BoundType? DeclaredValueType(BindingSymbol symbol)
     {
         this.QueryValueType(symbol);
@@ -117,7 +117,7 @@ public sealed partial class Binding
         }
 
         // SPEC 7.7.2: a static Property's storage there is a static access, never a capture (StaticStorageAccess).
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function &&
+        if (IsRuntimeBinding(symbol) && scope.Function != symbol.Scope.Function &&
             !StaticStorageAccess(symbol, scope))
         {
             if (this.CaptureOuterUse(node, symbol, scope) is not { } capture)

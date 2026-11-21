@@ -166,6 +166,56 @@ public class BindingTest
         }
     }
 
+    // G812 ruling 174 (SPEC 7.7.1, 10.5.4, 11.6): typing an initializer needs an anonymous function's Type, which its header gives (a
+    // written result, or the expected signature's), not its body, which the variable binding checks with the Property's parts; so a use
+    // of the Property in that body is no cycle in either pass. A Closure in static storage and its call stay located limits.
+    [Theory]
+    [InlineData("group V\n    let f = func () -> i32 => V.a\n    let a = f()")]
+    [InlineData("group V\n    let a = f()\n    let f = func () -> i32 => V.a")]
+    [InlineData("group G\n    public let f = func () -> i32 => G.f()")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = func () -> i32 => T.b")]
+    [InlineData("group V\n    let f = func () -> i32 => V.g()\n    let g = f")]
+    [InlineData("group V\n    let a = run(func () => V.b)\n    let b = a\n    func run(f: () -> i32) -> i32 => f()")]
+    public void AnAnonymousHeaderTypesItsPropertyWithoutItsBody(string source)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            compilation.Bind();
+            Assert.All(CompilationTestHelper.BindingErrors(compilation), static x => Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), x.Code));
+        }
+    }
+
+    // G812 rulings 174, 176 (SPEC 23.1.2): the body the header left keeps its own records, bound once with the Property's parts, in a cycle
+    // too (the drain on the Error path), the literal before the re-entry or after it in the same computation.
+    [Theory]
+    [InlineData("group V\n    let f = func () -> i32 => V.g\n    let g: bool = true", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("group V\n    let a = (b, func () -> i32 => nosuch)\n    let b = a", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("group V\n    let a = (func () -> i32 => nosuch, b)\n    let b = a", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("group V\n    let a = (func () -> i32 => V.g, b)\n    let b = a\n    let g: bool = true", DiagnosticCode.TypeMismatch_Kd)]
+    public void ABodyTheHeaderLeftKeepsItsRecords(string source, DiagnosticCode code)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            compilation.Bind();
+            Assert.Single(CompilationTestHelper.BindingErrors(compilation), x => x.Code == code.ToString());
+        }
+    }
+
+    // G812 ruling 177 (SPEC 7.7.3, 7.7.4): a written list that leaves the receiver to the body (`var y`) keeps the literal's body in the
+    // header frame, so the erasure check at `() -> ()` reads the classified receiver: an Exclusive Closure is not erased.
+    [Fact]
+    public void AWrittenListThatLeavesTheReceiverToTheBodyKeepsTheErasureRecord()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess("group V\n    let a = (func (y: i32) => run(func [var y] () -> () => y += 1))(1)\n    func run(f: () -> ()) => f()");
+        for (var pass = 0; pass < 2; pass++)
+        {
+            compilation.Bind();
+            Assert.Contains(CompilationTestHelper.BindingErrors(compilation), static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+        }
+    }
+
     // DECISIONS BU-105: an edit between passes binds every header again, so a declaration added beside a chain sees the chain's Types.
     [Fact]
     public void AnEditBindsTheHeadersAgain()

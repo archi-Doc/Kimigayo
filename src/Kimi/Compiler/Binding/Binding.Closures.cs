@@ -18,7 +18,9 @@
 //   earlier binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause)
 //   and has them classified right after the body is bound, its pending relations judged then (Binding.OriginProof.cs); PublishClosure
 //   publishes the definition on both paths, with no Signature where a parameter's or the result's slot failed (BoundClosure's Access
-//   paragraph); a header probe binds no parameter, visits no body and restores the enclosing probe on exit.
+//   paragraph), and, in a Property header's frame, for a literal its header types before any body (TypedByHeader), whose body the
+//   Property's variable binding binds with its parts (BindLeftBodies); a header probe binds no parameter, visits no body and restores
+//   the enclosing probe on exit.
 // - Prohibitions: no receiver classification, capture formation or capture record here (Binding.ClosureReceivers.cs,
 //   Binding.Captures.cs, Binding.CaptureDiagnostics.cs).
 
@@ -296,6 +298,19 @@ public sealed partial class Binding
             return failed;
         }
 
+        if (this.TypedByHeader(function, scope, plan, open) is { } property)
+        {
+            // Typing the Property needs this Type, not the body, which its variable binding binds with its parts (BindLeftBodies).
+            (property.LeftBodies ??= []).Add((function, expected));
+            return this.PublishClosure(function, plan, expected, open);
+        }
+
+        return this.BindClosureChecks(function, scope, plan, expected, open);
+    }
+
+    // The body and what reads it: the receiver's classification, the result's sources and the omitted captures (SPEC 7.7.3, 15.8.2).
+    private BoundType? BindClosureChecks(FunctionKoto function, BindingScope scope, BoundClosure plan, BoundType? expected, OpenParts open)
+    {
         this.BindClosureBody(function, scope);
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
@@ -405,6 +420,66 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // SPEC 11.6, 3.2.1, 7.7.1, 7.7.2, 10.5.4 (G812 rulings 174, 176): typing a Property's initializer needs a literal's Type, not its body,
+    // where the header fixes that Type and the call receiver checks in the header read without the body: its signature (a written or
+    // expected result, no input a split leaves open) and an empty environment (a written empty list, or no runtime binding between it
+    // and the Property it can capture), whose receiver is Shared whatever the body does (SPEC 7.7.3). A capturing literal keeps its body
+    // in the frame: its receiver comes from the body (G812 ruling 179). While that Property's header is computed or failed
+    // (HeaderRunningOrFailed), such a literal of its initializer is published with its Type and no body (BoundProperty.LeftBodies): the
+    // Property, or null.
+    private BoundProperty? TypedByHeader(FunctionKoto function, BindingScope scope, BoundClosure plan, OpenParts open)
+    {
+        if (plan.InfersResult || open.Inputs != 0 || function.Captures is { Length: > 0 } ||
+            Definition(function) is not PropertyKoto { InitializerKoto: { } initializer } definition || !IsWithin(function, initializer) ||
+            this.symbols[definition] is not { Property: { } bound } property || !this.HeaderRunningOrFailed(property))
+        {
+            return null;
+        }
+
+        var declaration = this.DeclarationScope(property);
+        for (var enclosing = scope.Parent; function.Captures is null && !ReferenceEquals(enclosing, declaration); enclosing = enclosing.Parent)
+        {
+            if (enclosing is null || CanCapture(enclosing))
+            {
+                return null;
+            }
+        }
+
+        return bound;
+
+        static bool CanCapture(BindingScope scope)
+        {
+            foreach (var value in scope.Values.Values)
+            {
+                if (IsRuntimeBinding(value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    // SPEC 10.5.4, 23.1.2 (G812 ruling 174): the bodies of the literals a Property's header left (TypedByHeader), bound by its variable
+    // binding with its parts, outside its frame (DECISIONS G52-1): its header is complete, so each body is checked against its written
+    // signature and reads formed headers; its records are its own, as when the header bound it.
+    private void BindLeftBodies(BoundProperty property)
+    {
+        if (property.LeftBodies is not { Count: > 0 } left)
+        {
+            return;
+        }
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            var (literal, expected) = left[i];
+            this.BindClosureChecks(literal, this.scopes[literal], literal.ClosureStorage!, expected, default);
+        }
+
+        left.Clear();
     }
 
     // The body and its result (SPEC 14.9, 15.3.4).
