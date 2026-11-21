@@ -436,6 +436,9 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
 
         public Exception? Failure { get; set; }
 
+        // A host's action during a report: the first line that starts with Prefix runs Action before it is written, once.
+        public (string Prefix, Action Action)? LineAction { get; set; }
+
         public void Write(string? message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
 
         public void Write(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
@@ -444,6 +447,12 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
 
         public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray)
         {
+            if (this.LineAction is { } action && message.StartsWith(action.Prefix, StringComparison.Ordinal))
+            {
+                this.LineAction = null;
+                action.Action();
+            }
+
             if (this.FailingLine is { } line && message.StartsWith(line, StringComparison.Ordinal))
             {
                 this.FailingLine = null;

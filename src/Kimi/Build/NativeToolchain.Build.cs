@@ -128,9 +128,15 @@ internal static partial class NativeToolchain
     /// standalone manifest), the pair, the root its records redact, the optimization and the host's report and cancellation, which Tatara's
     /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> takes the toolchain root's selection, which it
     /// resolves after the pair's check, and runs the steps once, in order: the pair's identity, Tatara (the root's tatara.dll, loaded and
-    /// checked, identified in the record's tools), the libraries, the object, its inspection, the link and the report; the steps fill the
-    /// record and <see cref="Run"/> writes each of its states, the success last, so a step that fails, the report included, throws and
-    /// leaves the record at the last incomplete state written (IMPL 20.3.2).</summary>
+    /// checked, identified in the record's tools), the libraries, the object, its inspection, the link to a private file, the report and
+    /// the commit; the steps fill the record and <see cref="Run"/> writes each of its states. The commit, after the report and the last
+    /// cancellation point, writes the success record, which names the private file's hash, and then moves the file to the executable's
+    /// path, so an Application publishes its executable only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the
+    /// commit, the report included, throws and leaves the previous executable and the record at the last incomplete state written, and a
+    /// failed move writes the invalidation again and rethrows the move's failure. The private file is deleted on every outcome. An open
+    /// limit, with the owner (B5 design §2.1, C-433 B1): should the process end between the success record and the move, or the move and
+    /// the invalidation both fail (one IOException naming both, the move's as its inner exception), the attempt's success record stays,
+    /// naming a hash no file at the path has; run --no-build refuses it by the hash, and the next build invalidates it.</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -179,9 +185,41 @@ internal static partial class NativeToolchain
             WriteRecord(this.paths.Record, this.record);
             var obj = await this.Compile(tatara);
             var undefined = this.Inspect(tatara, obj);
-            this.Link(tatara, obj, libraries, undefined);
-            this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
-            WriteRecord(this.paths.Record, this.record);
+            var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe"; // Private until the commit moves it into place.
+            try
+            {
+                this.Link(tatara, obj, libraries, undefined, executable);
+                this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
+                this.context.CancellationToken.ThrowIfCancellationRequested();
+                WriteRecord(this.paths.Record, this.record);
+                try
+                {
+                    Replace(executable, this.paths.Executable);
+                }
+                catch (Exception move) when (IsOutputFailure(move))
+                {
+                    // Both failures are kept: two output failures are one output failure naming both; any other invalidation failure,
+                    // which only a defect reaches, is a fault that no catch classifies (C-433 c5).
+                    try
+                    {
+                        Invalidate(this.paths);
+                    }
+                    catch (Exception invalidation) when (IsOutputFailure(invalidation))
+                    {
+                        throw new IOException($"{move.Message} The build record was not invalidated again: {invalidation.Message}", move);
+                    }
+                    catch (Exception invalidation)
+                    {
+                        throw new AggregateException(move, invalidation);
+                    }
+
+                    throw;
+                }
+            }
+            finally
+            {
+                File.Delete(executable);
+            }
         }
 
         // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
@@ -361,33 +399,24 @@ internal static partial class NativeToolchain
             return string.Join('\n', lines);
         }
 
-        // The executable: linked to a fresh file, so a failed link never publishes a partially written one, then the record's linked
-        // state, which Run publishes last.
-        private void Link(Tatara tatara, string obj, List<string> libraries, string undefined)
+        // The executable: linked to Run's private file, so neither a failed link nor any failure before the commit publishes it, then the
+        // record's linked state, naming the private file's hash, which Run's commit publishes before the file.
+        private void Link(Tatara tatara, string obj, List<string> libraries, string undefined, string executable)
         {
-            var temporary = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe";
-            try
-            {
-                var link = new string[libraries.Count + 6];
-                link[0] = obj;
-                libraries.CopyTo(link, 1);
-                link[^5] = "/entry:" + WindowsProfile.EntrySymbol;
-                link[^4] = "/subsystem:" + WindowsProfile.Subsystem;
-                link[^3] = "/nodefaultlib";
-                link[^2] = "/Brepro";
-                link[^1] = "/out:" + temporary;
-                tatara.Link(this.context, link);
-                this.context.CancellationToken.ThrowIfCancellationRequested();
-                Replace(temporary, this.paths.Executable);
-                this.record["status"] = "linked";
-                this.record["executable"] = Path.GetFileName(this.paths.Executable);
-                this.record["executableSha256"] = Hash(this.paths.Executable);
-                this.record["objectUndefinedSymbols"] = undefined;
-            }
-            finally
-            {
-                File.Delete(temporary);
-            }
+            var link = new string[libraries.Count + 6];
+            link[0] = obj;
+            libraries.CopyTo(link, 1);
+            link[^5] = "/entry:" + WindowsProfile.EntrySymbol;
+            link[^4] = "/subsystem:" + WindowsProfile.Subsystem;
+            link[^3] = "/nodefaultlib";
+            link[^2] = "/Brepro";
+            link[^1] = "/out:" + executable;
+            tatara.Link(this.context, link);
+            this.context.CancellationToken.ThrowIfCancellationRequested();
+            this.record["status"] = "linked";
+            this.record["executable"] = Path.GetFileName(this.paths.Executable);
+            this.record["executableSha256"] = Hash(executable);
+            this.record["objectUndefinedSymbols"] = undefined;
         }
     }
 }
