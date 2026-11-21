@@ -5,10 +5,10 @@
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
 // pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the compiler's Tatara: linked into
 // kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root; the built Application's run;
-// toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs: its Tatara, its supplies' bytes and
-// kernel32's definition against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
+// toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs, two steps: its Tatara's start check and
+// its supplies' bytes against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
 // toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is;
-// ToolchainIdentity); kernel32's definition (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
+// ToolchainIdentity, with Kernel32Imports' DLL and generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
 // development toolchain's tools and files are checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the compiler's Tatara and embedded supplies (toolchain verify).

@@ -53,6 +53,13 @@ try {
     $changed.tatara.sha256 = '0' * 64
     $changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
     Test-Row 'tatara-hash' 'tatara.dll SHA-256 mismatch'
+    # A tool off profile.json's identity, though its record matches (llvm-dlltool's pin), fails naming the file and setup (C-452 R1).
+    Remove-Item -LiteralPath (Join-Path $copy 'llvm-dlltool.exe')
+    $null = New-Item -ItemType HardLink -Path (Join-Path $copy 'llvm-dlltool.exe') -Target (Join-Path $ToolchainRoot 'llvm-readobj.exe')
+    $changed = $installation | ConvertFrom-Json
+    $changed.tools.'llvm-dlltool' = Get-KimiSha256 (Join-Path $copy 'llvm-dlltool.exe')
+    $changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
+    Test-Row 'dlltool-pin' 'llvm-dlltool.exe. Run src/backend/windows-x64/setup.ps1'
     [IO.File]::WriteAllText($installationPath, $installation)
     # A missing tool is a missing file, whose remedy is setup.
     Remove-Item -LiteralPath (Join-Path $copy 'llvm-objdump.exe')

@@ -26,7 +26,8 @@ if (-not ($installed -is [pscustomobject] -and $installed.schemaVersion -is [lon
 }
 foreach ($name in Get-KimiToolchainToolNames) {
     $path = Get-InstalledFile "$name.exe"
-    $hash = Get-KimiToolchainToolSha256 $name $path
+    try { $hash = Get-KimiToolchainToolSha256 $name $path }
+    catch { throw "Tool identity mismatch: $path. Run $setup after an intentional update ($($_.Exception.Message))" }
     if ($installed.tools.$name -isnot [string] -or $hash -cne $installed.tools.$name) {
         throw "Tool executable SHA-256 mismatch: $path. Run $setup after an intentional update."
     }

@@ -1,6 +1,6 @@
-# Shared import definition, identity checks and generation for all PowerShell builders.
+# Shared import definition, library check and generation for all PowerShell builders; it reads toolchain.ps1, which its callers load.
 # The adopted kernel32 import library, committed beside the catalog (profile.json's kernel32.sha256) and carried by the compiler: the
-# one place naming it, which every script linking kernel32 reads.
+# one place naming it, which every script linking kernel32 reads (build.ps1 names its candidate after it).
 function Get-KimiKernel32 { return Join-Path $PSScriptRoot 'kernel32.lib' }
 
 function Get-KimiKernel32Definition {
@@ -8,21 +8,6 @@ function Get-KimiKernel32Definition {
     $hash = [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($definition)))
     if ($hash -cne (Read-KimiWindowsProfile).kernel32.definitionSha256) { throw 'Kernel32 definition SHA-256 mismatch' }
     return $definition
-}
-
-function Get-KimiDlltoolIdentity {
-    [CmdletBinding()]
-    param([string] $ToolPath, [switch] $AllowUnpinnedToolchain)
-    if (-not (Test-Path -LiteralPath $ToolPath -PathType Leaf)) { throw 'llvm-dlltool not found' }
-    $resolved = (Resolve-Path -LiteralPath $ToolPath).Path
-    $hash = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant()
-    $expected = (Read-KimiWindowsProfile).kernel32.dlltoolSha256
-    $matched = $hash -ceq $expected
-    if (-not $matched) {
-        if (-not $AllowUnpinnedToolchain) { throw 'llvm-dlltool SHA-256 mismatch. Use -AllowUnpinnedToolchain only for exploratory builds.' }
-        Write-Warning 'llvm-dlltool SHA-256 mismatch; continuing with an unverified toolchain.'
-    }
-    return @{ path = $resolved; sha256 = $hash; expectedSha256 = $expected; hashMatched = $matched }
 }
 
 # An import library's content, as the tools read it: llvm-dlltool names KERNEL32.dll, and llvm-readobj lists x64 COFF members only that
@@ -59,7 +44,7 @@ function New-KimiKernel32Library([hashtable] $Tools, [string] $OutputPath) {
         Test-KimiKernel32Library $dlltool $readobj kernel32.lib
         Move-Item -LiteralPath (Join-Path $staging 'kernel32.def') -Destination ([IO.Path]::ChangeExtension($output, '.def')) -Force
         Move-Item -LiteralPath (Join-Path $staging 'kernel32.lib') -Destination $output -Force
-        return @{ path = $output; sha256 = (Get-FileHash -LiteralPath $output).Hash.ToLowerInvariant(); generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
+        return @{ path = $output; sha256 = Get-KimiSha256 $output; generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
     }
     finally {
         Pop-Location

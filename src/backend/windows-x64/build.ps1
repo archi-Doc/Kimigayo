@@ -23,7 +23,7 @@ $inputFiles = @($PSCommandPath, (Join-Path $PSScriptRoot 'toolchain.ps1'), (Join
 $sourceIdentities = [ordered]@{}
 foreach ($file in ($inputFiles | Sort-Object -CaseSensitive)) {
     $relative = [IO.Path]::GetRelativePath($PSScriptRoot, $file)
-    $sourceIdentities[$relative] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sourceIdentities[$relative] = Get-KimiSha256 $file
 }
 function Tool([string] $name) {
     return [IO.Path]::GetFullPath((Join-Path $LlvmBin "$name.exe"), (Get-Location).ProviderPath)
@@ -47,7 +47,7 @@ foreach ($name in $toolNames) {
         $matched = $matched -and $identity.versionMatched
     }
     else {
-        $toolIdentities[$name] = @{ path = $tools[$name]; sha256 = (Get-FileHash -LiteralPath $tools[$name] -Algorithm SHA256).Hash.ToLowerInvariant() }
+        $toolIdentities[$name] = @{ path = $tools[$name]; sha256 = Get-KimiSha256 $tools[$name] }
     }
 }
 @{ status = 'incomplete'; adopted = $false; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = -not $matched; tools = $toolIdentities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
@@ -56,7 +56,7 @@ $toolIdentities['llvm-dlltool'] = Get-KimiDlltoolIdentity $tools['llvm-dlltool']
 $unverified = -not $matched -or -not $toolIdentities['llvm-dlltool'].hashMatched
 @{ status = 'incomplete'; adopted = $false; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; tools = $toolIdentities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
 # The kernel32 candidate is kept beside the backend's (with its definition), for the report and an LLVM update's adoption.
-$kernel = New-KimiKernel32Library $tools (Join-Path $outDir 'kernel32.lib')
+$kernel = New-KimiKernel32Library $tools (Join-Path $outDir ([IO.Path]::GetFileName((Get-KimiKernel32))))
 $kernelPath = $kernel.path
 $objects = @()
 foreach ($name in @('memcmp', 'memcpy', 'memmove', 'memset', 'chkstk')) {
@@ -115,18 +115,18 @@ foreach ($level in @('O0', 'O2')) {
 }
 foreach ($file in $inputFiles) {
     $relative = [IO.Path]::GetRelativePath($PSScriptRoot, $file)
-    $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-KimiSha256 $file
     if ($actual -cne $sourceIdentities[$relative]) { throw "Source changed during verification: $relative" }
 }
+$archiveHash = Get-KimiSha256 $archive
 @{
     status = 'tested-candidate'; adopted = $false; profile = 'windows-x64-v1'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; unversionedTools = @('llvm-lib', 'llvm-dlltool')
     packageId = 'kimi-backend-windows-x64'; abiVersion = $profile.abiVersion; packageVersion = $profile.packageVersion
-    library = 'kimi_backend'; artifactSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    library = 'kimi_backend'; artifactSha256 = $archiveHash
     providedSymbols = $symbols; tests = @('O0', 'O2'); tools = $toolIdentities; versions = $versions; sources = $sourceIdentities
     kernel32 = $kernel
 } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
 Write-Output "Native tests passed. Candidate report: $reportPath (not an adopted compiler catalog)."
-$archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 # The candidates are checked, never installed: the compiler carries the adopted libraries (Tatara B6a), and setup requires the
 # candidates to reproduce them.
 if ($unverified -or $archiveHash -cne $profile.artifactSha256 -or $kernel.sha256 -cne $profile.kernel32.sha256) {
