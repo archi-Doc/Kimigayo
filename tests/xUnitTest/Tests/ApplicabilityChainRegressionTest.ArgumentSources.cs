@@ -462,7 +462,9 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 10.2, 10.8.1, 12.3.1 (PLAN G924 addendum, F's rulings 68 and 71): a Case construction is an owner value, so at an expected
     // `ref/U` it is checked against U and its one temporary is borrowed: contextual or qualified, at an argument or a declared Type
     // (r1-1, r1q-1, lr1, lr1q fail before the addendum). The temporary is never extended for the borrow (lr1u, 10.2 Temporaries). A
-    // failed construction keeps its own record (ri: an undeclared payload name; rn: no such Case; rm: a payload misfit). SPEC 10.2.2
+    // failed construction's own failure keeps its record: an undeclared payload name (ri1, ri1q) and a Case the qualifier's enum does
+    // not declare (rn1q). A contextual Case is checked at the candidate's Type (10.5.1, 6.5.2; PLAN G924 AF-3b, ArgFlow ruling 123), so
+    // one that names no Case there (rn1) leaves the call no applicable candidate, as a payload misfit does (rm1, rm1q). SPEC 10.2.2
     // item 2: a bare-slot result that no evidence binds is a returned value matched against U (bs1); an established binding stays
     // (bs2, bs3).
     [Theory]
@@ -474,7 +476,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("G924", "lr1u", ReferenceCases + "    let r: ref/Option<i64> = .Some(identity(1))\n    return kr1(r)\n", "ComparisonLoanConflict_Kd: let r: ref/Option<i64> = .Some(identity(1))")]
     [InlineData("G924", "ri1", ReferenceCases + "    return kr1(.Some(nosuch))\n", "UnresolvedBinding_Kd: return kr1(.Some(nosuch))")]
     [InlineData("G924", "ri1q", ReferenceCases + "    return kr1(Option.Some(nosuch))\n", "UnresolvedBinding_Kd: return kr1(Option.Some(nosuch))")]
-    [InlineData("G924", "rn1", ReferenceCases + "    return kr1(.Nope(1))\n", "UnresolvedBinding_Kd: return kr1(.Nope(1))")]
+    [InlineData("G924", "rn1", ReferenceCases + "    return kr1(.Nope(1))\n", "NoApplicableOverload_Kd: return kr1(.Nope(1))")]
     [InlineData("G924", "rn1q", ReferenceCases + "    return kr1(Option.Nope(1))\n", "UnresolvedBinding_Kd: return kr1(Option.Nope(1))")]
     [InlineData("G924", "rm1", ReferenceCases + "    return kr1(.Some(true))\n", "NoApplicableOverload_Kd: return kr1(.Some(true))")]
     [InlineData("G924", "rm1q", ReferenceCases + "    return kr1(Option.Some(true))\n", "NoApplicableOverload_Kd: return kr1(Option.Some(true))")]

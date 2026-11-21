@@ -134,7 +134,9 @@ public partial class OriginRelationDiagnosticTest
     // record (`required`, `Code text`; empty: any record) and allows further records, never Unsupported_Kd or a fault of the check. b6fn's
     // location is open: SPEC 10.5.4 lets an anonymous function's header filter candidates, which a join of them may or may not do. pb1h and
     // pb1h_n: a bare Place Subject is borrowed (SPEC 15.1.6, 14.8.1: `x` is `ref/i32`), so the qualified `Option.Some(x)` keeps its own
-    // Type (10.5.1), which fits no candidate at either call kind (D1; R4, 2026-10-31).
+    // Type (10.5.1). At the value call `g` it does not adapt to the value's parameter Type (10.1 step 5, 10.2: a value call has no
+    // candidate set), which is that source's own TypeMismatch_Kd, as pb1b_n's; at the declared function `h` (pb1h_h) it leaves the one
+    // candidate inapplicable (10.5.1, 10.1; PLAN G924 AF-3b, ArgFlow ruling 123).
     [Theory]
     [InlineData("pb1b_n", PbValue + "    return g(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n", "TypeMismatch_Kd .Some(x == 0)")]
     [InlineData("pb1c_n", PbH + PbOption + "    return h(match o\n        .Some(let x) => .Some(true)\n        .None => .None\n    )\n", "NoApplicableOverload_Kd h(match o")]
@@ -144,11 +146,15 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(
         "pb1h",
         PbValue + "    return g(match o\n        .Some(let x) => Option.Some(x)\n        .None => .None\n    )\n",
-        "NoApplicableOverload_Kd g(match o")]
+        "TypeMismatch_Kd Option.Some(x)")]
+    [InlineData(
+        "pb1h_h",
+        PbH + PbOption + "    return h(match o\n        .Some(let x) => Option.Some(x)\n        .None => .None\n    )\n",
+        "NoApplicableOverload_Kd h(match o")]
     [InlineData(
         "pb1h_n",
         PbValue + "    return g(match o\n        .Some(let x) => Option.Some(x == 0)\n        .None => .None\n    )\n",
-        "NoApplicableOverload_Kd g(match o")]
+        "TypeMismatch_Kd Option.Some(x == 0)")]
     [InlineData("b5g_n", RunG + "    return g(if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("b5go_n", RunG + "    return g(if c => Option.None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("b5k_n", RefOne + RefThree + RunK + "    return k(if c => one else => three)\n", "TypeMismatch_Kd three")]

@@ -398,7 +398,7 @@ public partial class OriginRelationDiagnosticTest
             {
                 // A named call's one candidate is inapplicable at the failing leaf (SPEC 10.5.1; PLAN G924 AF-3b, design R1.7, ArgFlow
                 // ruling 121 (a)): the call's record; a value call's leaf keeps its own.
-                var named = body.Split('\n')[2].Trim()["return ".Length..];
+                var named = body.Split('\n')[^2].Trim()["return ".Length..];
                 AssertLanguageErrors($"{form} d={depth} [{unit}]", body, valueCall ? "TypeMismatch_Kd .Some(true)" : $"NoApplicableOverload_Kd {named}");
             }
             else
