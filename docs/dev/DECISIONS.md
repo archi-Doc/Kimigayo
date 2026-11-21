@@ -27667,3 +27667,37 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     busy; the lock in `NativeBuild.Run` only (another build's success could overwrite an invalidation); a delete-on-close lock
     (delete-pending reads as access denied); a reader lock in `run --no-build`; the lock in `emit` (not in B5: it needs the paths
     before the check or a nested acquisition; the race is PLAN G1202).
+- **T-M8 The compiler's supplies** (Tatara, 2026-11-21; the plan's unit B6a, Q-617, D-1004; Major; the owner's decision 20 (O-469
+  (a), (a), (a)): the reserved libraries are supplied by the compiler, and a program cannot supply them; design review C-434;
+  implementation review C-436)
+  - **The bytes:** the adopted `kernel32.lib` (7ff52391...) and `kimi_backend_windows_x64_v1.lib` (4ef5b90f...) are committed beside
+    the catalog in `src/backend/windows-x64/` (`.gitattributes`: `*.lib binary`); `profile.json` pins both (`kernel32.sha256` beside
+    `artifactSha256`), and `Kimi.csproj` embeds them (`Kimi.Kernel32.lib`, `Kimi.WindowsBackend.lib`). Not the development root: CI's
+    Ubuntu job and fresh clones build Kimi without a toolchain (README), and B8's Linux host needs the supplies in every `Kimi.dll`.
+    The catalog row `NativeToolchainTest.EachCompilerSupplyIsTheCatalogsCommittedFile` owns the invariant that each resource is the
+    committed file with the catalog's SHA-256; no build, start or post-staging check repeats it (C-434 C1).
+  - **The rows:** `ToolchainIdentity.Supplies`, one `CompilerSupply` per reserved name (`Name`, `Kind`, `Entry`: the manifest fields
+    that identify it, `Resource`, `Sha256`, `Open()`), in Ordinal name order, an initializer invariant (publication interleaves a
+    program's supplies by name). `LinkManifest.WriteCompilerSupply` and `CheckCompilerSupply` write and check the reserved entries
+    from the rows: accepted is the kind and every `Entry` field equal and no `input`, other members ignored (a `sha256` is an
+    assertion); anything else is one text, "The link manifest's 'libraries' entry '<name>' is not this compiler's. Re-emit the
+    manifest." They replace `Kernel32Imports.ValidateManifest`, `ToolchainResolver.ResolveBackend` and `ResolveLibraries`' kind
+    check. Schema 4 and emit's bytes are unchanged: `resolution: "toolchain"` reads as the compiler's supply.
+  - **Staging:** the native build stages every library through `StageInput(Stream)`, a reserved name from its resource and any other
+    from its input; every row of the build record's `libraries[]` carries its staged path and hash (the reserved rows' `sha256` is no
+    longer null), and the record's `kernel32` member is gone.
+  - **A program cannot supply them:** a project's own `kimi_backend` entry (dev's legacy override) is an error, as a `kernel32` entry
+    was: `NativeConfiguration.CheckReserved`, one note for both names, both record kinds and any target ("<name> is supplied by the
+    compiler. Remove the <name> entry from NativeLibraries."); `EmissionArtifacts.CheckLibraryInputs` (was `ResolveBackend`) only
+    checks the inputs. A `NativeRequirements` entry for a reserved name is unchanged (PLAN G1211).
+  - **Setup and an LLVM update:** setup installs the two libraries only when both reproduce the catalog's hashes, and fails otherwise;
+    kernel32's candidate stays beside the backend's in `artifacts/backend/windows-x64/`. An LLVM update that changes either library
+    adopts its hash in `profile.json` (`kernel32.sha256` beside `artifactSha256`) and commits the reproduced `.lib` file in the same
+    commit (the plan's §6; C-434 C3). CI's toolchain cache key gains the backend's sources and builders (C-434 C2; VERIFICATION).
+  - **Temporary structure:** the root's `windows_x64`, a copy of the committed libraries that setup installs and `toolchain verify`
+    (which also compares its kernel32 with `kernel32.sha256`), the native fixtures and the tool control comparison still read;
+    removal condition: B6b (PLAN G1210). `ToolchainIdentity.BackendFile` stays for them.
+  - Rejected: the development root embedded by `Kimi.csproj`; kernel32 generated in process (a `tatara.h` change, and two rules for
+    two supplies); keeping the override (two forms for one supply that can carry only the same bytes); two validators; a schema or
+    value change (schema 5, `resolution: "compiler"`); an MSBuild or initializer hash check; removing `windows_x64` in B6a (its readers
+    include `toolchain verify`, B6b's).
