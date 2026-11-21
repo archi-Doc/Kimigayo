@@ -226,11 +226,8 @@ public sealed partial class Binding
         return null;
     }
 
-    private bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
-        => this.InaccessibleConstraint(constraint, contract, intersection) is null;
-
-    // SPEC 9.4.4: the first Contract or Type a requirement names whose accessibility does not cover the domain, or null, in the order
-    // ConstraintAccessCovers judged; an Access record relates it (RecordAccess).
+    // SPEC 9.4.4: the first Contract or Type a requirement names whose accessibility does not cover the domain, or null, an And, Or or
+    // Not judged left side first; an Access record relates it (RecordAccess).
     private BindingSymbol? InaccessibleConstraint(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
     {
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
