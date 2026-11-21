@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -194,20 +195,55 @@ public sealed class Kernel32ImportsTest
         };
     }
 
+    // IMPL 20.4 (Tatara B6a): a libraries entry naming a compiler's supply is accepted as this compiler writes it, its kind and every
+    // identifying field equal and no input, any other member ignored (a sha256 is an assertion the build checks); a field changed or
+    // removed, an input added or another kind is not this compiler's, one text naming the entry. Each row edits the entry written from
+    // the supply's row: a JSON value, or null to remove the field.
     [Theory]
-    [InlineData("generator", "other")]
-    [InlineData("dll", "OTHER.dll")]
-    [InlineData("kind", "static")]
-    [InlineData("definitionSha256", "wrong")]
-    [InlineData("input", "kernel32.lib")]
-    public void ManifestRejectsSubstitutedSupplies(string field, string value)
+    [InlineData("kernel32", "generator", "\"other\"")]
+    [InlineData("kernel32", "generator", null)]
+    [InlineData("kernel32", "dll", "\"OTHER.dll\"")]
+    [InlineData("kernel32", "definitionSha256", "\"wrong\"")]
+    [InlineData("kernel32", "definitionSha256", null)]
+    [InlineData("kernel32", "kind", "\"static\"")]
+    [InlineData("kernel32", "input", "\"kernel32.lib\"")]
+    [InlineData("kimi_backend", "resolution", "\"other\"")]
+    [InlineData("kimi_backend", "resolution", null)]
+    [InlineData("kimi_backend", "resolution", "7")]
+    [InlineData("kimi_backend", "kind", "\"import\"")]
+    [InlineData("kimi_backend", "input", "\"override.lib\"")]
+    public void ACompilerSupplysEntryIsAcceptedOnlyAsWritten(string name, string field, string? value)
     {
-        var library = new JsonObject { ["name"] = "kernel32", ["kind"] = "import", ["generator"] = "llvm-dlltool", ["dll"] = "KERNEL32.dll", ["definitionSha256"] = Kernel32Imports.DefinitionSha256 };
-        using var valid = JsonDocument.Parse(library.ToJsonString());
-        Kernel32Imports.ValidateManifest(valid.RootElement);
-        library[field] = value;
-        using var invalid = JsonDocument.Parse(library.ToJsonString());
-        Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateManifest(invalid.RootElement));
+        var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Name == name)!;
+        var written = new ArrayBufferWriter<byte>();
+        using (var json = new Utf8JsonWriter(written))
+        {
+            LinkManifest.WriteCompilerSupply(json, supply);
+        }
+
+        var entry = JsonNode.Parse(written.WrittenSpan)!.AsObject();
+        var asserted = JsonNode.Parse(written.WrittenSpan)!.AsObject();
+        asserted["sha256"] = "any";
+        Assert.Equal(name, entry["name"]!.GetValue<string>());
+        foreach (var valid in new[] { entry, asserted })
+        {
+            using var accepted = JsonDocument.Parse(valid.ToJsonString());
+            LinkManifest.CheckCompilerSupply(accepted.RootElement, supply);
+        }
+
+        if (value is null)
+        {
+            Assert.True(entry.Remove(field));
+        }
+        else
+        {
+            entry[field] = JsonNode.Parse(value);
+        }
+
+        using var invalid = JsonDocument.Parse(entry.ToJsonString());
+        Assert.Equal(
+            $"The link manifest's 'libraries' entry '{name}' is not this compiler's. Re-emit the manifest.",
+            Assert.Throws<InvalidDataException>(() => LinkManifest.CheckCompilerSupply(invalid.RootElement, supply)).Message);
     }
 
     [Theory]

@@ -27,13 +27,6 @@ function Get-KimiDlltoolIdentity {
     return @{ path = $resolved; sha256 = $hash; expectedSha256 = $expected; hashMatched = $matched }
 }
 
-function Assert-KimiKernel32Manifest($Entry) {
-    if ($Entry.kind -cne 'import' -or $Entry.generator -cne 'llvm-dlltool' -or $Entry.dll -cne 'KERNEL32.dll' -or
-        $Entry.definitionSha256 -cne (Read-KimiWindowsProfile).kernel32.definitionSha256 -or $Entry.PSObject.Properties['input']) {
-        throw 'Invalid generated kernel32 identity. Re-emit the link manifest; external kernel32 paths are no longer supported.'
-    }
-}
-
 function New-KimiKernel32Library([hashtable] $Tools, [string] $OutputPath) {
     $output = [IO.Path]::GetFullPath($OutputPath)
     $staging = $output + '-' + [guid]::NewGuid().ToString('N')
