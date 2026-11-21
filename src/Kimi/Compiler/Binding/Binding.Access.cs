@@ -200,9 +200,100 @@ public sealed partial class Binding
         return this.DerivedIncluded(own, owner, access, target);
     }
 
-    private bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
-        => this.TypeAccessCovers(qualifier, domain, intersection ?? domain) && this.AccessCovers(contract, domain, intersection ?? domain) &&
-            (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || this.AccessCovers(requirement, domain, intersection ?? domain));
+    // SPEC 9.4: whether the accessibility of every Type a Type names covers a and b (InaccessibleType).
+    private bool TypeAccessCovers(BoundType type, BindingSymbol a, BindingSymbol b) => this.InaccessibleType(type, a, b) is null;
+
+    // SPEC 9.4: the first Type a Type names whose accessibility does not cover a and b, or null, each distinct part judged once per call
+    // (DECISIONS BU-55, BU-58): a part met again was covered, or the walk has ended. An Access record relates it (RecordAccess).
+    private BindingSymbol? InaccessibleType(BoundType type, BindingSymbol a, BindingSymbol b)
+        => this.InaccessiblePart(type, a, b, this.visitedParts.Begin(this.storageVersion));
+
+    private BindingSymbol? InaccessiblePart(BoundType type, BindingSymbol a, BindingSymbol b, uint query)
+    {
+        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !this.AccessCovers(symbol, a, b))
+        {
+            return symbol;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && this.InaccessiblePart(type.Components[i], a, b, query) is { } part)
+            {
+                return part;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 9.4.4: the first Contract or Type a requirement names whose accessibility does not cover the domain, or null, an And, Or or
+    // Not judged left side first; an Access record relates it (RecordAccess).
+    private BindingSymbol? InaccessibleConstraint(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
+    {
+        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
+        {
+            return this.InaccessibleConstraint(constraint.Left!, contract, intersection) ??
+                (constraint.Right is null ? null : this.InaccessibleConstraint(constraint.Right, contract, intersection));
+        }
+
+        var domain = intersection ?? contract;
+        if (constraint.Contract is { } required)
+        {
+            if (!this.AccessCovers(required, contract, domain))
+            {
+                return required;
+            }
+
+            if (required.Type is { } reference && this.InaccessibleType(reference, contract, domain) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        return constraint.RequiredType is { } type ? this.InaccessibleType(type, contract, domain) : null;
+    }
+
+    // SPEC 9.4.4: the first of an associated projection's qualifier Types, Contract and requirement whose accessibility does not cover the
+    // domain, or null; an Access record relates it (RecordAccess).
+    private BindingSymbol? InaccessibleProjection(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
+    {
+        var other = intersection ?? domain;
+        return this.InaccessibleType(qualifier, domain, other) ?? (!this.AccessCovers(contract, domain, other) ? contract :
+            use.BoundSymbol is { Kind: BindingSymbolKind.AssociatedType } requirement && !this.AccessCovers(requirement, domain, other) ? requirement : null);
+    }
+
+    // SPEC 9.4, 23.1.2: an Access problem (R7-E2 E2-4, one form for the family): the declaration whose accessibility does not cover the
+    // use (Related, role 0) and, where the subject is a declaration whose API signature exposes it (SPEC 9.4.4), the part inside the
+    // subject's own syntax that shows it: its result, parameter, receiver or accessor component Type, its constraint clause, or a
+    // projection use whose signature owner is the subject (Related, role 1). A part outside the subject's syntax (a conditional block's
+    // premise, shared by its members) is never its location, and a part record (a clause, base clause or enum case) and a use are their
+    // own location. So two records at one location belong to one subject, and differ in their part or declaration, or to a declaration
+    // and a part nested in its syntax, and differ in depth: the published order is total (DIAGNOSTICS 4.1). One problem per declaration
+    // and part (RecordNumbered): a function whose result and parameter are both less accessible records two; the same part judged again
+    // keeps its one; a part naming two uncovered Types relates the first its query met.
+    private void RecordAccess(Koto subject, BindingSymbol inaccessible, Koto? part)
+    {
+        Span<ProblemFact> facts = [this.AccessFact(inaccessible), default];
+        if (part is not null)
+        {
+            facts[1] = new(ProblemFactKind.Related, this.FactSite(part), 1);
+        }
+
+        this.RecordNumbered(subject, BindingFailure.Access, part is null ? facts[..1] : facts);
+    }
+
+    // An Access problem's role 0: the declaration whose accessibility does not cover the use (RecordAccess; ContractMatching's binding).
+    private ProblemFact AccessFact(BindingSymbol inaccessible) => new(ProblemFactKind.Related, this.FactSite(inaccessible.Declaration), 0);
+
+    // SPEC 9.4: an Access problem's record (RecordAccess), at the part that shows the inaccessible declaration when it has one, relating
+    // that declaration (a declared symbol's node, whose BoundSymbol names it).
+    private void ReportInaccessible(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var declaration = this.compilation.SyntaxOf(facts[0].Site);
+        var at = facts.Length > 1 ? this.compilation.SyntaxOf(facts[1].Site) : null;
+        node.ReportIn(store, problem.Requirement, problem.Code, at: at, related: [("declaration", declaration, $"inaccessible declaration '{declaration.BoundSymbol!.Name}'")], condition: problem.Condition);
+    }
 
     // A library group's function receives what the group states (WitnessReceiver).
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
@@ -239,11 +330,11 @@ public sealed partial class Binding
                 {
                     var path = this.impls.InPass.Paths[p];
                     if (ReferenceEquals(path.Premises, clause.Parent) &&
-                        !this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
+                        this.InaccessibleProjection(use.Use, use.Type, use.Contract, path.Type, path.Contract) is { } inaccessible)
                     {
                         path.Invalid = true;
                         path.IsVerified = false;
-                        this.Record(clause, BindingFailure.Access, []);
+                        this.RecordAccess(clause, inaccessible, null);
                         this.Fail(conditional, BindingFailure.Access);
                         this.Fail(path.Use, BindingFailure.Access);
                     }
@@ -255,9 +346,9 @@ public sealed partial class Binding
                     {
                         var member = block.Items[m];
                         if (member is FunctionKoto or PropertyKoto && member.BoundSymbol is { } memberDomain &&
-                            !this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, memberDomain))
+                            this.InaccessibleProjection(use.Use, use.Type, use.Contract, memberDomain) is { } inaccessible)
                         {
-                            this.Fail(member, BindingFailure.Access);
+                            this.RecordAccess(member, inaccessible, null); // The premise is the block's, outside the member's syntax.
                         }
                     }
                 }
@@ -279,11 +370,11 @@ public sealed partial class Binding
 
                     // A narrower child Contract cannot narrow an ancestor's domain.
                     // Conditional specifications belong only to their root path.
-                    if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
+                    if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, path.Type, path.Contract) is { } inaccessible)
                     {
                         path.Invalid = true;
                         path.IsVerified = false;
-                        this.Record(clause, BindingFailure.Access, []);
+                        this.RecordAccess(clause, inaccessible, null);
                         this.Fail(path.Use, BindingFailure.Access);
                     }
                 }
@@ -318,9 +409,9 @@ public sealed partial class Binding
             {
                 if (ReferenceEquals(clauses[c], clause))
                 {
-                    if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+                    if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, domain) is { } inaccessible)
                     {
-                        this.Record(clause, BindingFailure.Access, []);
+                        this.RecordAccess(clause, inaccessible, null);
                         this.Fail(owner, BindingFailure.Access);
                     }
 
@@ -353,9 +444,9 @@ public sealed partial class Binding
                     // The normalized base may no longer contain its projection qualifier.
                     this.RequireConstraint(node, this.CheckTypeConstraints(use.Type, this.scopes[structure]), bindingMode);
                 }
-                else if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, structure.BoundSymbol!))
+                else if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, structure.BoundSymbol!) is { } inaccessible)
                 {
-                    this.Record(node, BindingFailure.Access, []);
+                    this.RecordAccess(node, inaccessible, null);
                     this.Fail(structure, BindingFailure.Access);
                 }
             }
@@ -381,9 +472,9 @@ public sealed partial class Binding
                     this.RequireConstraint(node, proof, bindingMode);
                     this.RequireConstraint(enumeration, proof, bindingMode);
                 }
-                else if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, enumeration.BoundSymbol!))
+                else if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, enumeration.BoundSymbol!) is { } inaccessible)
                 {
-                    this.Record(node, BindingFailure.Access, []);
+                    this.RecordAccess(node, inaccessible, null);
                     this.Fail(enumeration, BindingFailure.Access);
                 }
             }
@@ -409,9 +500,9 @@ public sealed partial class Binding
                 var premises = (SyntaxFormKoto)conditional.Operands[1];
                 for (var p = 0; p < premises.Operands.Length; p++)
                 {
-                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } premise } && !this.ConstraintAccessCovers(premise, member))
+                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } premise } && this.InaccessibleConstraint(premise, member) is { } inaccessible)
                     {
-                        this.Fail(this.nodes[i], BindingFailure.Access);
+                        this.RecordAccess(this.nodes[i], inaccessible, null); // The premise is the block's, outside the member's syntax.
                     }
                 }
             }
@@ -424,10 +515,9 @@ public sealed partial class Binding
                     // Self conformances have the intersection of the Type and
                     // Contract domains; their separate witness checks own this case.
                     if (!IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint &&
-                        (!this.ConstraintAccessCovers(constraint, domain) ||
-                            (clause.Left.BoundType is { } subject && !this.TypeAccessCovers(subject, domain, domain))))
+                        (this.InaccessibleConstraint(constraint, domain) ?? (clause.Left.BoundType is { } subject ? this.InaccessibleType(subject, domain, domain) : null)) is { } inaccessible)
                     {
-                        this.Record(clause, BindingFailure.Access, []);
+                        this.RecordAccess(clause, inaccessible, null);
                         this.Fail(container, BindingFailure.Access);
                     }
                 }
@@ -440,24 +530,24 @@ public sealed partial class Binding
 
             // Run after body constraints have been bound, even for unused APIs.
             // Named functions retain their declared result (or the Unit default).
-            if (symbol.Type is { } result && !this.TypeAccessCovers(result, symbol, symbol))
+            if (symbol.Type is { } result && this.InaccessibleType(result, symbol, symbol) is { } inaccessibleResult)
             {
-                this.Fail(function, BindingFailure.Access);
+                this.RecordAccess(function, inaccessibleResult, function.ReturnType);
             }
 
             for (var p = 0; p < function.Parameters.Count; p++)
             {
-                if (function.Parameters[p].Type.BoundType is { } parameter && !this.TypeAccessCovers(parameter, symbol, symbol))
+                if (function.Parameters[p].Type.BoundType is { } parameter && this.InaccessibleType(parameter, symbol, symbol) is { } inaccessible)
                 {
-                    this.Fail(function, BindingFailure.Access);
+                    this.RecordAccess(function, inaccessible, function.Parameters[p].Type);
                 }
             }
 
             for (var c = 0; c < function.TypeConstraints.Count; c++)
             {
-                if (function.TypeConstraints[c] is IsKoto { BoundConstraint: { } constraint } && !this.ConstraintAccessCovers(constraint, symbol))
+                if (function.TypeConstraints[c] is IsKoto { BoundConstraint: { } constraint } && this.InaccessibleConstraint(constraint, symbol) is { } inaccessible)
                 {
-                    this.Fail(function, BindingFailure.Access);
+                    this.RecordAccess(function, inaccessible, function.TypeConstraints[c]);
                 }
             }
         }
@@ -473,9 +563,9 @@ public sealed partial class Binding
             }
 
             var domain = function.IsRequirement ? symbol.Scope.Owner.BoundSymbol! : symbol;
-            if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, domain) is { } inaccessible)
             {
-                this.Fail(function, BindingFailure.Access);
+                this.RecordAccess(function, inaccessible, use.Use);
             }
 
             this.RequireConstraint(function, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);

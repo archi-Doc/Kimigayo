@@ -12,7 +12,7 @@ using Xunit;
 namespace XunitTest;
 
 // Tatara, the native build's LLVM and LLD (Tatara designs A2 §4.5, A4 §2.6 and B6b1 §2), on the compiler's Tatara (the tatara.dll the
-// build copies beside the test output's Kimi.dll) and the resolved toolchain root's tools. A row that loads tatara.dll or runs a tool
+// build copies beside the test output's Kimi.dll) and the checkout's development toolchain's tools. A row that loads tatara.dll or runs a tool
 // skips off Windows; on Windows a missing tatara.dll fails it. KIMI_TATARA_CORPUS names a corpus directory whose fixtures/*.ll (bare
 // IR) replace the fixed rows of the tool control comparison, at O0 and O2; each row's outcome is appended to <corpus>/results.tsv
 // (tests/scripts/run-tatara-corpus.ps1 prepares the corpus and runs this class). A fatal row leaves Tatara refusing every later call for
@@ -39,7 +39,7 @@ public sealed class TataraExecutorTest : IDisposable
 
     private delegate int ModuleFromAddress(uint flags, IntPtr address, out IntPtr module);
 
-    private static string Root => ToolchainResolver.ResolveRoot(null);
+    private static string Root => Path.Combine(Repository.Root, "toolchain");
 
     private static string? Corpus => Environment.GetEnvironmentVariable("KIMI_TATARA_CORPUS");
 
@@ -174,7 +174,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Throws<IOException>(() => tatara.Emit(Context, asm, Path.Combine(this.directory, "asmerror.obj"), 0));
         tatara.Inspect(Context, obj);
         tatara.Link(Context, LinkArguments(obj, Path.Combine(this.directory, "hello.exe")));
-        var module = NativeLibrary.Load("tatara", typeof(Tatara).Assembly, DllImportSearchPath.AssemblyDirectory);
+        var module = NativeLibrary.Load("tatara", typeof(Tatara).Assembly, DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32);
         NativeLibrary.Free(module);
         Assert.Equal(before, FilterOwner());
         Assert.NotEqual(module, before);

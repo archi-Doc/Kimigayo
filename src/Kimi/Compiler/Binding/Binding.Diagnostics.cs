@@ -17,7 +17,6 @@ public sealed partial class Binding
     // check appends its rows with no other append to this list between its first row and RecordRejected.
     private readonly List<RejectedCandidate> rejectedRows = [];
 
-    private Dictionary<Koto, BindingSymbol>? objectPayloadCauses;
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
 
     private FailedSignaturePartVisitor? failedSignaturePartVisitor;
@@ -36,12 +35,6 @@ public sealed partial class Binding
     // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
     private Dictionary<Koto, PerCallSlotFact>? perCallSlots;
 
-    // SPEC 10.5: why a single generic reference's slots did not bind from its fixed expected call signature, for its Type-mismatch Note.
-    private Dictionary<Koto, ReferenceSlotFact>? referenceSlotFacts;
-
-    // The selected iteration entry and the range whose boundary Types cannot supply it.
-    private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
-
     // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
     private Dictionary<Koto, Koto>? writeTargets;
 
@@ -57,9 +50,6 @@ public sealed partial class Binding
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
     // slot would hold (as bits) and that signature.
     private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature);
-
-    // The referenced declaration, its Type parameter when one is known (else -1), the failure and whether Type arguments are written.
-    private readonly record struct ReferenceSlotFact(FunctionKoto Declaration, int Slot, ReferenceSlotFailure Failure, bool Explicit);
 
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
@@ -635,12 +625,10 @@ public sealed partial class Binding
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
-        this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();
         this.pendingJudgments?.Clear();
         this.arithmeticSelectionFailures?.Clear();
         this.arithmeticDirectionFailures?.Clear();
-        this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
         this.takeLayers?.Clear();
         this.captureFailures?.Clear();
@@ -732,12 +720,10 @@ public sealed partial class Binding
         return member;
     }
 
-    /// <summary>Rejects an object form, creation, cast or runtime test over a Type that opts out of ObjectPayload, naming the declaring Type (SPEC 8.7.3).</summary>
+    /// <summary>Rejects an object form, creation, cast or runtime test over a Type that opts out of ObjectPayload (SPEC 8.7.3), relating the
+    /// declaration that opts out, its own or an inherited base's (`Related` role 0), whose name the record shows.</summary>
     private BoundType? FailObjectPayload(Koto use, BindingSymbol renounced)
-    {
-        (this.objectPayloadCauses ??= new(ReferenceEqualityComparer.Instance))[use] = renounced;
-        return this.Fail(use, BindingFailure.NotObjectPayload);
-    }
+        => this.Record(use, BindingFailure.NotObjectPayload, [new(ProblemFactKind.Related, this.FactSite(renounced.Declaration), 0)]);
 
     [Transitional("R7", Reason = "Records only at a node without a failure, so the node keeps its first failure until R7-E5's per-problem inputs (the owner's O-470 (a); R7-E2 E2-5's O2, the Front's C4): RequireConstraint's Error proof at a node that already failed, which would otherwise publish a dependent record (a clause's own Refuted conformance) or an internal error; InheritVirtualConstraints and BindArrayFill, where no program records otherwise (a repeat records the same key). Constraints.Requirements' cause-less Fail keeps the requirement's own Type record (BindType's, at the node).")]
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
