@@ -2,7 +2,8 @@
 
 // Owns publication of HIR facts from the Binding pass: a Final pass's Check publishes between its failure producers and its counting.
 // Input: that pass's decisions and syntax slots. Output: Op, Completion, Adjust and Place columns (the jump binding writes the jump
-// target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace).
+// target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace), and which
+// kept operands their Error's form reads whole (KeptRead: the Adjust rule run for the Error's form, DECISIONS D-986).
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
 // The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs
 // with a by-case need's decider) and passes those to the rows' rules, which read no walk state.
@@ -84,6 +85,9 @@ public sealed partial class Binding
         // The jumps a rejected labeled do's subtree holds (Keeps), one walk reused across nodes and passes.
         private TargetWalk? targets;
 
+        // The running publish's number, which the FormReads rows it writes carry: advanced by Binding.NextQuery at each Publish.
+        private uint publication;
+
         // The nodes the jump walk visited (TargetWalk), which a scaling check reads; kept across passes.
         internal long TargetWork => this.targets?.Visited ?? 0;
 
@@ -97,6 +101,10 @@ public sealed partial class Binding
             if (parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
                 this.uses.FixAdjust(node, new(HirAcquire.None, HirAdaptation.None), default); // A kept operand of an Error (Keeps), used in place.
+                if (FormReads.Of(binding, node, this.publication))
+                {
+                    HirTables.PlanFor(node, written: true).KeptRead = true; // Its Error's form reads its whole Place (DECISIONS D-986).
+                }
             }
             else if (op == HirOp.Error)
             {
@@ -158,6 +166,13 @@ public sealed partial class Binding
 
                 binding.AdjustChildren(node, parts, this.need.Use, ref this.uses);
             }
+            else if (parts == HirOp.Error && node.BindingState != BindingState.Unvisited && binding.KindOp(node) is not (HirOp.Unset or HirOp.Syntax) and var form)
+            {
+                // The takes an Error's form gives its children, of which its kept operands record the whole-Place reads (DECISIONS D-986);
+                // an Error Binding never visited (a parser recovery) keeps none, its children's Op being Unset.
+                var record = new FormReads(binding, this.publication);
+                binding.AdjustChildren(node, form, this.need.Use, ref record);
+            }
 
             (this.parent, this.parentOp, this.position) = (node, parts, parts == op ? position : HirPosition.None);
             node.VisitChildren(this);
@@ -185,15 +200,16 @@ public sealed partial class Binding
                 Array.Clear(hir.Places!);
             }
 
-            // A plan row's Adjust is a take of this publish, as the column's is, so a claim (Claimed) reads no earlier pass's row.
+            // A plan row's Adjust is a take of this publish, as the column's is, so a claim (Claimed) reads no earlier pass's row; a kept
+            // operand's whole-Place read by its Error's form (KeptRead) is this publish's too.
             for (var i = 1; i <= hir.PlanCount; i++)
             {
-                hir.Plans[i].Adjust = default;
+                (hir.Plans[i].Adjust, hir.Plans[i].KeptRead) = (default, false);
             }
 
             (hir.Defaults ??= []).Clear();
             (hir.Broken ??= []).Clear();
-            (this.table, this.uses) = (table, new(binding, table));
+            (this.table, this.uses, this.publication) = (table, new(binding, table), Binding.NextQuery(this.publication));
             this.completion?.Clear();
             (this.parent, this.position, this.need, this.rooted) = (null, HirPosition.None, default, null);
             this.Visit(root);
