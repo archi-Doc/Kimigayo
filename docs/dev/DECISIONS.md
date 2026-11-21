@@ -761,8 +761,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
   `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded by R4-M69 (the Move code is A1's) and R4-M72 (the
-  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90 (for A5 by R4-M97; A1 and A2
-  at 2g-6).
+  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90 (for A5 by R4-M97; amended for
+  A1 and A2 by R4-M233).
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. R4-M71 keys `MirReport` by (code, subject, body) and places the merge across
   bodies at publication.
@@ -931,7 +931,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   one sweep; views above one are rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second
   or third block walk beside `MirReach`.
 - **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69, its clause "a
-  compiler temporary is never a Place of the program" by R4-M188; its clause "except through a raw pointer: an untracked Take" by BU-146: a Move through a raw pointer's
+  compiler temporary is never a Place of the program" by R4-M188; its clause "Opaque-root and Inlined rules stay MirReport's" for the Inlined rule by R4-M233; its clause "except through a raw pointer: an untracked Take" by BU-146: a Move through a raw pointer's
   Deref is untracked only into `TyCtxt.RawPart`'s parts, elsewhere it has no Move Path) Move paths and
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
@@ -1826,8 +1826,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   on 38j). Conditions for 2f (superseded by R4-M106: no Φ_c remains): a Φ_c met at a receiver's formation is located at its later call
   (DIAGNOSTICS); a shared-receiver Φ_c takes the receiver's mode, or 2f reruns this rule's prototype variant with that case.
 - **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75; unit 1c-6; its Inlined rule superseded for A5 by R4-M97 under
-  R4-M90; A1/A2 at
-  2g-6, D15 staged) It supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's
+  R4-M90, for A1 and A2 by
+  R4-M233) It supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's
   rejection of "DefaultArgumentMove decided in A1", whose reason, R4-M10's placement in A6, no longer holds: R5-M23 has each recording
   rule name its requirement, and `MirReport` has no Place and must not derive a requirement from a code.
   - A1's mapping: A1 codes a Move of a PreparedInput slot (`MirLocalRole.PreparedInput`) or of its owned contents
@@ -2512,7 +2512,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     split is due before 2e-4 (the package), Solve.cs's before its next change (superseded by DEC Q9).
 - **R4-M97 A5-F9's copy disposition: a failure in an inline default copy is its template's only within one evaluation** (2026-10-21;
   under R4-M90; supersedes R4-M69's Inlined rule and R4-M10's Inlined sentence for A5, R4-M73's sub-bullet "R4-M69 governs inline
-  default copies" and R4-M92's G171 interim; closes PLAN G171's defect)
+  default copies" and R4-M92's G171 interim; closes PLAN G171's defect; its "Two ownership forms until 2g-6" superseded by
+  R4-M233)
   - Rule (D11; SPEC 7.2.3, 15.6): a failure found in an inline default copy is its template's when every event taking part lies in one
     evaluation of one copy. `MirBorrows.Covered(scope, loan, reservation)`: B, the innermost Inlined scope holding the operation's scope
     and the issue scopes of its Loan and reservation (`MirBody.Common`), moves outward (`Inlining(Outer(B))`) while the Loan or the
@@ -2715,7 +2716,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     root lists; per-Field initializer slices (a second copy of `Construct`); per-constructor premises for layer rows; F1's `Definition`
     deadline in R4 (G210 is BU's); `ResultFit` windows now.
 - **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b; its PD21 due states superseded by DEC
-  Q9)
+  Q9; the mark's recorder amended by R4-M233)
   - Adopted: `MirDropTable.Incomplete(body) → (DiagnosticCode Code, SourceRef Subject)?`, first-wins per body, stored with the body's
     ends at `Close` beside `ViewsOf` (pooled, a warm rebuild 0 B). R4-M6a makes A2's verdicts exact only for a body A1 accepts, so a
     consumer reads which body's table is inexact, and with what.
@@ -7769,6 +7770,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
     site, a second conflict at r-loc-index's site); a decided use with its own source node (A5's subject rule for one rvalue kind); a
     new statement kind for the read (`FakeRead` has the meaning); a per-site "has parts" bit for the landing fact (a side table for one
     reader); telling a kept part's position from syntax, or building a rejected target from syntax.
+- **R4-M233 A1 and A2 omit a copy's Language problems; one path for a problem no body describes** (Middle, 2026-11-22; Major; R7 plan
+  Z20, 2g-6, PLAN G126; Q-636; design `middle\notes\z20-design.md` Revision 1 and its two reviews) Supersedes R4-M97's "Two ownership
+  forms until 2g-6" (D15 staged) and R4-M69's Inlined fact for A1 and A2; amends R4-M10's Inlined sentence and R4-M102 (the mark's
+  recorder); supersedes R4-M21's placement clause "Opaque-root and Inlined rules stay MirReport's (R4-M10, U11)" for the Inlined rule:
+  the producers' one recorder omits a copy's problem, so no Inlined fact reaches MirReport, whose Opaque-root rule is unchanged.
+  - A1 and A2 record their Language problems through `MirDrops.Problem`, which marks the body and adds the problem to MirReport unless
+    its location lies in an inline default copy: that is its template's check, which the template reports at its declaration (SPEC
+    7.2.3), met in an instantiation and grouped with the template's record (SPEC 23.1.2's grouping clause), not a derived record, so
+    MirReport stays the one home of the derived-problem rules. A broken A1 contract is recorded wherever it lies. Deleted:
+    `ProblemFactKind.Inlined`, `MirReport.Add`'s Inlined drop, the publisher's arm. Rejected: a test per analysis (a second copy of the
+    rule); a `MirBody` ownership fact (A5's disposition differs); relocation with `Evaluated` (no A1 or A2 event of a copy lies outside
+    its evaluation).
+  - A problem no body describes is formed only by `MirProblem.WithoutBody`, with `NoBodyViews` (every bit), or by MirReport from such a
+    problem (Defect, the merge, a held round, Keep and Replay); a record gets `NoBodyViews` from `MirProgram.Report`. A4's owing body no
+    longer gives its view bits, and MirReport's merge defect no longer forms views 0. Rejected: 0; normalizing in MirReport; a constant
+    without the path.
+  - Staged: audit finding 7 (A4's readers recorded once per Run, the design's stamp) waits for its RP8 measurement under PLAN G349.
+  - Moves: none at publication (42 test expectations of internal NoBody view values).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -11666,6 +11685,10 @@ resumed by R4-M86 (2026-10-20).
     compilations publish). Publication's throw is unreachable; deleting it is the back's (`C/Emission`, R9-M2).
   - Rejected: an `Unsupported_Kd` from publication (a reporter beyond ARCH's three, G9 Q4); the check before the import's own ones
     (it would hide their Language errors).
+  - Amended by T-M13 (B7a1): the exemption is every reserved supply, which the compiler stages and links for every module (IMPL
+    20.4), not kernel32 alone. No record moves: a dependency module's `kimi_backend` import has its own record before the edge, as in
+    the root (a catalog symbol `InvalidLibraryImport_Kd`, IMPL 21.2; any other `UnavailableReservedImport_Kd`, IMPL 21.4.7), and the
+    edge's `Fail` keeps a failed node's record.
 
 - **BU-93 A whole-contract comparison judges its Origin part from premises alone, at its use** (2026-11-04; PLAN G404, found by BU's
   2c-9 review N3 and G216 (b)'s design; R4 agreeing as R4-M155's owner) SPEC 15.6.1 ("judged under 15.3.7 from premises alone, so it is
@@ -16704,6 +16727,37 @@ resumed by R4-M86 (2026-10-20).
     contextual Case's lookup without writes; `InferredCase` publishes it), `PayloadTypeAt` (a payload's Type in the constructed
     Type) and `FormReference` (a container reference's one formation from its own arguments and its environment, pure;
     `BindContainerReference` keeps the walk and the writes).
+- **BU-246 A kept operand's take and input by its Error's form: `PlanRow.KeptAdjust` and `PlanRow.KeptInput`** (Front,
+  2026-11-22; Binding; Z17c-F, Q-638, D-1047, for stream Z's Z17c (C-448, the Middle's design Revision 1, K4); Major,
+  behaviour-preserving alone; F's ruling on the design check `front\notes\Z17c\design-facts.md`; the code review ACCEPT WITH
+  CONDITIONS, F's Z17c ruling 1) SPEC 15.6.7, 7.3, 7.3.4, 7.4, 10.1, 10.2, 12.2, 15.1.5, 15.1.6, 13.4, 3.2, 6.5.1, 6.5.2, 23.1.2.
+  Amends R7-M67 and R7-M71.
+  - **KeptAdjust.** FormReads already computes the take by which the Error's form reads a kept operand's whole Place (the Adjust
+    rule run for the form, `ChildAdjust`); `PlanRow.KeptAdjust` now publishes it, default where the form does not read the operand.
+    Of two takes it keeps the later one that reads, unlike the column, which keeps the later take (R4-M145), so `KeptAdjust.Reads`
+    is R7-M67's bit, and `KeptRead` goes. Z17c-M (the Middle's MIR rule) reads it as the take of a kept operand, whose column stays
+    the kept mark.
+  - **KeptInput.** Whether the form takes the kept operand as an invocation's receiver or argument, read or not. The owner is the
+    Adjust rule's record protocol: an input is a child given between `IHirUses.Call(ordinal >= 0)` and `Call(-1)`. R7-M71's row for
+    an application Binding did not resolve opens `Call(0)` under the form Call (its one call, which has no plan). A Case
+    construction's payloads, an aggregate's elements, an operator's operands, a Subject, an Iterable and a conversion's operand are
+    none. Its one reader is Z17c-M (the Middle's MIR rule, stream Z, PLAN G396 2g), which lands after this unit: until then it has
+    no reader (PLAN G396).
+  - **Representation.** The `FormReads` family row is `(uint Publication, HirAdjust Take, bool Input)`, 8 bytes. The publisher's
+    kept-operand visit moves the running publication's row into the plan row, and each publish clears both fields with `Adjust`.
+    `PlanRow` grows from 56 to 64 bytes (its measured cost in the unit's commit).
+  - **KindOp and ConstructsCase.** An application is a Case construction (Aggregate) exactly where Binding takes it as one:
+    `Binding.ConstructsCase(call, selected)` holds when the callee's selection is a Case and the callee is a qualified or leading-dot
+    Case name written without generic arguments. It is the one test of BindCallCore's construction branch and of KindOp's arm, which
+    passes the Case Binding selected at the callee (a failed construction keeps it). KindOp used to read the invocation's own symbol,
+    which Binding sets only on success. A resolved and a failed construction, written `.Case` or in full, classify alike, and their
+    payloads are no inputs (the Middle's Z17c design review B6: `.Some(y@uniq, g(y))` keeps base's independent conflict at `g(y)`,
+    since no reservation passes through aggregate storage). An application of any other callee is a call, and its arguments are
+    inputs: a leading-dot name with no such Case (`.Nope(...)`, P9) and a construction's value (`Option.Some(1)(...)`, the code
+    review's C1). Only FormReads reads the form of an Error application, so only KeptInput moves.
+  - **Rejected:** the prototype's stand-ins (`KindOp(parent) == Call`; a thread-static map); the take in `PlanRow.Adjust`, `Flag` or
+    `Mode` (R7-M67); a two-byte take without `ExclusiveMode` to keep 56 bytes (a second representation of a take); Input only for
+    read operands; the Case read at the callee by the Adjust rule (a second copy of KindOp's classification).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -21576,6 +21630,8 @@ structure is recorded here by the unit that first implements it.
     unclassified architecture is 0, so rejected. Every architecture and environment keeps its acceptance and `Compilation.PointerWidth`.
   - Amended by BU-130: what the phases share is `ScalarTypes.SizeWidth`, the profile's width of `isize` and `usize`; `IrTarget` keeps the target's width for the `pointerWidth` Condition and its 0 for no IR target.
   - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
+  - Amended by T-M13 (B7a1): the reserved supplies are the profile's `Supplies` (`TargetSupply`) and `ReservedSymbols`;
+    `Kernel32Library`, `BackendLibrary`, `Kernel32Symbols` and `ProvidedSymbols` are deleted. The split stands.
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -24054,6 +24110,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Conditions.** A further problem's condition is `BindingReport.Condition`'s one rule: an equal problem's condition, else the
       problem's own (its check's ordinal) or the next after its subject's last recorded one (a refining Contract's conflicts from 0;
       an Origin record beyond its node's first at 1, since that first, held in the slot outside the report, may be set after it).
+      Superseded in part by R7-M75's E3a-2 line (Q-635): "the next after its subject's last recorded one" counts only the problems of
+      its own requirement.
     - **Duplicates.** The pairwise checks fail both declarations and join their group; `RecordDuplicateGroups`, at the end of
       `BindDeclarations` after `PrepareSpecializations` (the pass's last pairwise check), records each later declaration with
       `Related` its group's first, and the first with `Cause` its earliest later (derived from that record). `IsDerived` gains one
@@ -24143,7 +24201,8 @@ R8-M* and R9-M* by the stage of the recording unit.
       `BindingReport.Condition`: ParameterShapes, the agreement, ContractMatching's `Invalid` (an ancestor path's and the child's
       requirement checks meet at one use) and the override family (`RecordOverride`, C4). Condition counts every earlier problem of
       the subject, so a conformance problem at a use that already holds another requirement's record takes a condition above 0; the
-      records and their text are unchanged (PLAN G1141).
+      records and their text are unchanged (PLAN G1141). Superseded in part by R7-M75's E3a-2 line (Q-635): Condition counts only the
+      subject's problems of the same requirement.
     - **Notes.** The absence's and the clause record's Notes stay, rendered by the adapter from the facts (B's O3/O-f (c): CLI and
       LSP rows pin them; PLAN G1223). Those of associated ambiguity, the agreement (both codes) and the undeclared Callable bound go
       (D3).
@@ -24388,6 +24447,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     publication in place of the publication's number (the column lives for the pass; ruling 53 keeps the publication's lifetime).
   - Amended by R4-M232 (Z17, Q-621): commit 3 left Z17 as the unit Z17c (D-1003), so "Z17's commit 3 reads
     `HirTables.KeptRead(part) ? Reads : undecided`" and "No reader exists until Z17's commit 3" are Z17c's.
+  - Amended by BU-246 (C-448, Z17c's facts): the bit is the take. `PlanRow.KeptAdjust` (a `HirAdjust`) replaces `KeptRead`, and
+    `KeptAdjust.Reads` is the bit. `PlanRow.KeptInput` is added. The `FormReads` family row is `(Publication, Take, Input)`.
 - **R7-M71 An argument of an application Binding did not resolve is read** (Front, 2026-11-21; G1178, Q-608, stream Z's G396
   rows, an R7 exit condition; Major, behaviour-preserving alone; F's G147 rulings 45 and 48; the Middle's RP17 consent) SPEC 7.3.4,
   7.4, 10.1, 10.1.1, 10.2, 10.5.4, 12.2, 15.1.5, 23.1.2. Amends R7-M67 and R4-M142's rule; closes PLAN G1178.
@@ -24418,6 +24479,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** reading the call's stored plan or a candidate's parameters (a plan Binding did not commit; SPEC 10.1); a case per
     failure or per callee kind; "every kept operand is read" (D-986's rejected (c)); a second bit for this fact; marking the
     arguments outside the rule.
+  - Amended by BU-246 (Z17c's facts): `KeptRead` is `PlanRow.KeptAdjust`'s `Reads`, and under the form Call the row opens
+    `Call(0)`, so the application's written arguments are its inputs (`PlanRow.KeptInput`); a Case construction's are payloads.
 - **R7-M72 The through-layers row has both modes** (Front, 2026-11-21; PLAN G147 (2) (c), R7 plan Z22, Q-615, an R7 exit row; Major, an
   acceptance mover; design and code reviews ACCEPT WITH CONDITIONS, F's G147 rulings 56, 57 and 63; the Middle's RP17 consent) SPEC
   7.3.3, 3.4.3, 10.2, 15.6.2, 15.1.5. Amends BU-212's temporary structure.
@@ -24674,10 +24737,55 @@ R8-M* and R9-M* by the stage of the recording unit.
     test's target formation) and Comparisons 119 (a library Contract without its one comparison member; unreachable with the shipped
     library). Dictionaries 58 (B1 real: a key whose fit failed is the node the duplicate check fails) and CaseLimits 79 (an owner
     over a failed part) keep `Fail` (PLAN G1141's dk2).
-  - **Later units add their lines here:** E3a-2 the mismatch family (`RecordTypeMismatch`'s guard goes, ruling 2), E3a-3 the
-    conversions' stores and `Related`'s role "entry", E3b selection and the call's constraints with the role "candidate" (the Front's
-    C2: each role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
+  - **Later units add their lines below:** E3b selection and the call's constraints with the role "candidate" (the Front's C2: each
+    role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
   - **Moves (Q13).** None: probes base = head (prototype 27 plus C1's), the diagnostic and semantic snapshots 0 differences.
+  - **E3a-2 (Q-635, D-1039).** `RecordTypeMismatch`'s first-failure guard goes (the stage ledger's R7-E3 removal; B's ruling 2,
+    measured by the guard mutant: 37 of 43,695 rows, each a dependent duplicate at two callers, snapshot 0, no InternalInvariant_Kd);
+    the recorder records through `RecordNumbered`, so a node's further mismatch with other sides takes its own key and an equal one its
+    first's.
+    - Two callers keep their node's first failure by a read spelled at the site, each a Transitional naming R7-E5 and its input
+      (E2-5a's B2 (b) form): `ErasePart` (ArgumentKinds.Completion; the erasure's recorded Origin condition, Owned part or limit at the
+      part) and `FailClosureHeader`'s expectation that is no Function Type (Closures; the Closure's located limit at its header).
+    - The `Fail(.., TypeMismatch)` sites that hold both sides record them through `RecordTypeMismatch` at their node (Operators 95,
+      122; Conversions 274, 592; Conversions.Raw 79; ObjectViews 192; Properties 397, 445; Properties 476 joins 477's `FailMismatch`).
+      The pairless sites (ArrayInference 133, BoundContracts 121, ControlFlow 378, Elements 122, 138, Interpolation 145, Operators 79,
+      137, Ranges 319, 386, 418, 526, RuntimeTypeTests 96, Sequences 175, 393), Conversions 228 (no expected Type in scope) and Ranges
+      488 (no form row fits a boundary's Position: MismatchForm.PositionType states "Position or PositionRange"; B's ruling 10) keep
+      `Fail` until R7-E5's slot removal; no form row is added.
+    - **Numbering within a requirement (B's ruling 10; supersedes R7-M62's Conditions bullet, E2-3b, in its "the next after its
+      subject's last recorded one", and E2-5b's "Condition counts every earlier problem of the subject").** `BindingReport.Condition`
+      numbers a further problem within its requirement: an equal problem's condition, else its check's condition or, when the subject
+      holds a problem of the same requirement at or after it, the condition after that requirement's last; other requirements' problems
+      never move it. The old rule's reason no longer holds: no reader needs numbering across requirements (DIAGNOSTICS 3: the condition
+      distinguishes parts within one requirement; the key and the semantic order compare the requirement first), while `SlotProblem`
+      reads a requirement's first problem at condition 0 (a TypeMismatch beside an UnsatisfiedOriginRelation problem took condition 1
+      and was published twice: RawStorageTest's `b.pair = (fresh, 1, 2)`). Every ReportIssue arm that publishes a problem's key passes
+      its condition (`ConditionOf`).
+    - The mismatch Notes go by code (M3): WrappingConversionNote, the `conversion` Note (ClosureConversionNote, ReferenceSlotNote) with
+      `referenceSlotFacts` (its one writer, its Reset line, ReferenceSlotFact) and ErasureOutcome's SignatureFits and Receiver, which
+      only it read, and OmittedResultNote's TypeMismatch half (OriginRelation keeps it). `erasureOutcomes` stays (FunctionTypes,
+      OwnedConversions). No CLI or LSP contract row pinned them. Ratchet ("Node-keyed table members in Binding") -1, 26 on dev
+      a763e10f7.
+    - **Staged to E3c (C-439's split; B's ruling 10).** `ReferenceSlotFailure`'s four reasons (Structure, Constraint, OriginConflict,
+      InputOrigin) and its `Slot`, unread after E3a-2 (only None and SlotVariables are read), collapse when E3c migrates
+      FunctionReferences; ResultPropagation.Parts 169's R7-E5 Transitional (O6) is E3c's too.
+    - **Moves (Q13).** M3: the Notes above; content (label, evidence) at Operators 95, 122, Conversions 274, Conversions.Raw 79 and
+      Properties 397 (DiagnosticPrecisionTest's five side rows); no M1, M2 or M4; the diagnostic and semantic snapshots 0 differences.
+    - Open: PLAN G509's k1 (`let x = 1; x += 1.5`: the operand's mismatch is never judged after a failed destination; B's ruling 4);
+      G1141's R7-E5 inputs gain the two spelled reads and C3's w4 and c3.
+  - **E3a-3 (Q-634, D-1038).** NotObjectPayload records `Related` role 0 (the declaration that opts out, its own or the inherited
+    base's; shown as `declaration`); the range iteration's constraint records `Related` role 2, "entry" (the selected entry
+    declaration, SPEC 14.6.2), and `Constraint` (the kept `Subject is entry`), its role's meaning stated at its ReportProblem row (the
+    Front's C2). Deleted: `objectPayloadCauses`, `rangeIterationFailures`, their arms and Reset lines (ratchet "Node-keyed table
+    members in Binding" -2, 24 with E3a-2). Kept until R7-E5: the guards Sequences 193 and Contracts.Registration 148 (O6 (a)) and
+    FailIterationSubject's fact-less outcomes (a non-range subject, an Error proof). `Constraint`'s kind line names the range
+    iteration's entry. Moves: M4 NotObjectPayload_Kd's related declaration; M3 the two range Notes and M4 their related `entry`.
+    `objectErasureFailures` moves to E3b (B's E3a-3 ruling 3: E3b states one form of "a proof's outcome to its record" for every
+    caller of RequireConstraint and FailUnprovenConstraint); FailIterationSubject's outcome table, kept at its site and computed
+    once, is E3b's staged removal too, since it is no RequireConstraint caller and "every caller" does not cover it (the Front's
+    C-634a). E3c takes `arithmeticConformanceFailures` with ArithmeticContracts.cs, its writer, ArithmeticDiagnostics and the
+    selection and direction stores (ruling 4: E3c states the ineligible Type's reading, or B asks the owner then).
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
@@ -28184,7 +28292,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     after the kill (they take no token); on the cancellation path it awaits them without observing their outcome and rethrows: after a
     cancellation the outcome is the cancellation (130), never a copy's failure. Limit: a descendant that escaped the kill's walk (its
     parent exited first) and holds the program's output keeps a cancelled run waiting until it exits or a second Ctrl+C ends the
-    process (PLAN G1188).
+    process (PLAN G1188). Removed by G1188 (T-M12): the program runs in a kill-on-close job.
   - Amended by T-M9 (unit B6b1, 2026-11-21): the carry list's "Tatara's loaded DLL per path" is Tatara's one instance per
     process (`Tatara.Instance`).
 - **T-M6 The single-shot switch: the build calls Tatara** (Tatara, 2026-11-21; the plan's unit A4, Q-604, D-981; Major; design
@@ -28297,6 +28405,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M11 (unit B6b3, 2026-11-21): the temporary structure's checker is `check-toolchain.ps1`, not `toolchain verify`:
     it compares the root's kernel32 and backend with the catalog and inspects kernel32's content (`Test-KimiKernel32Library`) until
     B6b6 (PLAN G1210). B6a's design §6, "B6b's verify keeps checking it" (kernel32's content), is superseded (T's ruling R4).
+  - Amended by T-M13 (unit B7a1, 2026-11-22): `CompilerSupply` loses `Name` and `Kind` and holds the profile's `TargetSupply`
+    (`Supply`); the Ordinal-order invariant is the row's, checked by `CoreModelTest`, and `ToolchainIdentity`'s initializer checks
+    that its material's keys are the row's supplies in the row's order (InvalidDataException otherwise); `ToolchainIdentity.Backend`
+    is the row's supply the catalog's `library` names. `NativeConfiguration.Reserved` reads the row.
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -28407,3 +28519,62 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: verify keeping kernel32's content inspection (a tool, or an ABI change, for a property of adopted bytes); a second
     PowerShell copy of the inspection; `check-toolchain.ps1` loading `tatara.dll` (T's ruling: no change under `src/Tatara`); a
     `-Report` for `check-toolchain.ps1` (no reader: `verify.ps1` keeps its log).
+- **T-M12 `run`'s program in a kill-on-close job: `JobProcess`** (Tatara, 2026-11-22; PLAN G1188, Q-637, D-1045; Major; design
+  `artifacts\handoff\tatara\units\G1188\design.md`; the Middle's review C-442, review 2 ACCEPT WITH CONDITIONS; the Front's and the
+  Back's consent C-446). Amends T-M5's SP1 limit; closes PLAN G1188.
+  - `JobProcess` (`src/Kimi/Misc/JobProcess.cs`, namespace `Kimi`) is Kimi's launcher for the programs it runs: a child created
+    inside a job of its own before its first instruction (`PROC_THREAD_ATTRIBUTE_JOB_LIST`; `KILL_ON_JOB_CLOSE`,
+    `DIE_ON_UNHANDLED_EXCEPTION`, no breakaway), inheriting exactly its standard handles and the listed ones (`HANDLE_LIST`), with a
+    hidden console. Two launchers outside Kimi keep their own contracts (C-442 N3; AGENTS, Share by meaning): Benchmark's A1b root
+    (`BuildChainMeasurements.Job.cs`: file-backed streams, waits for the whole job and reads its accounting) and the backend's
+    `VerificationJob` (invoke-verification's `Add-Type` helper, `AssignProcessToJobObject` after `Process.Start`).
+  - It is `TestProcess`'s launcher moved out of Testing (commit 1/2, behaviour-preserving), since Build must not read Testing nor
+    Testing Build; `Misc` holds types every layer reads. Its readers are `TestProcess` (a `JobProcess` with the case's environment,
+    closed input and result channel) and `NativeToolchain.RunExecutable` (commit 2/2); Build's dependency row gains it (N1). When
+    the tree ends is the reader's: `TestWorker` after every outcome; `run` after the program's exit and at the cancellation; the
+    second Ctrl+C closes the job's only handle when Kimi's process ends.
+  - One host rule for both readers (N2): a Windows x64 host, as `WindowsProfile`'s target, checked in `JobProcess`
+    (`PlatformNotSupportedException` "Running a program requires Windows x64.": a toolchain failure for `run`, a case error for
+    `test`); its planned later owner is B7b8's `TargetProfile.Host` (design B7b), where the check moves.
+  - `RunExecutable` passes Kimi's standard input, awaits the exit on a thread of its own, kills the job after the exit and at the
+    cancellation, then drains the copies. `Process.Start` and `Kill(entireProcessTree)` leave `run`, and `NativeToolchain.Wait`
+    with them: its last reader went, and this unit's merge after B6b3 removes it (T-M6 as T-M11 amends it).
+  - "No input" (commits 3/4 and 4/4; C-446 N1, T's rulings; C-442 review 2 R2-N2): only run's `NativeToolchain.StandardInput` decides
+    that Kimi has none (no handle, or no open handle of the process). `JobProcess` duplicates the input it is given (inheritable) or
+    fails the start, and gives a child with no input a closed one, the one form of "a child with no input": the read end of an
+    anonymous pipe whose write end closes before the start, so the child reads end of input at once, never its hidden console's input
+    (which a child with no input handle got, so a read blocked). `TestProcess` passes none. So design §5 (6)'s "gives the program
+    none" holds: "none" is a closed input.
+  - Stated changes: a descendant the program leaves ends when `run` returns (as a test case's); the program inherits only its standard
+    handles; no error dialog on an unhandled exception; a breakaway fails; a failure names its call and a start's the executable
+    (N6); `run` refuses a non-x64 Windows host; a program `run` starts while Kimi has no standard input reads end of input.
+  - Known test-environment exposure (N8): between its pipes' creation and the end of its constructor, `JobProcess` holds inheritable
+    write ends and an inheritable input duplicate; a concurrent `Process.Start` in the same process (which inherits every inheritable
+    handle) would take them and hold a run's output open. Product Kimi has no concurrent launcher since B6b3 deleted `ToolProcess`
+    (T-M11); xUnit does (parallel tests start processes while `run` and `test` rows run in process). Recorded, not changed; a flake
+    gets a PLAN row.
+  - Rejected: `Process.Start` then `AssignProcessToJobObject` (the program's first instructions, and a process they create through
+    FFI, run outside the job; a second form of the concept); Kimi in a job of its own; the launcher in Build or Testing with the
+    other reading it (the dependency rules); a 10 ms poll of the exit (latency on every run); checking only Windows and a 64-bit
+    process (N2: one host rule instead).
+- **T-M13 The reserved supplies stated once** (Tatara, 2026-11-22; the plan's unit B7a1, PLAN G1212, Q-639, D-1048; Major,
+  behaviour-preserving; design `artifacts\handoff\tatara\units\B7\design-b7a.md` Revision 1 §2.2, with T's ruling on C-440 (11-22
+  01:34) folding §2.3's commit into it; design review C-440 with the Front's consent on Binding's part; implementation review
+  C-451, ACCEPT). Amends R5-M174, T-M8 and BU-92; closes PLAN G1212.
+  - **The row:** the target profile states the reserved supplies once: `WindowsProfile.Supplies` (`TargetSupply`: name, kind,
+    symbol set; kernel32 `import`, kimi_backend `static`, in Ordinal name order with disjoint symbol sets, checked by
+    `CoreModelTest`), `ReservedSymbols` (IMPL 21.2's list: the float marker and the backend supply's symbols, stated once) and the
+    lookup `Supply(name)` (a loop: no delegate, no allocation per call). `Supplies` and `ReservedSymbols` are static properties after
+    the private `BackendSymbols` field (StyleCop orders internal fields before private ones, and static initializers run in text
+    order).
+  - **Its readers:** Binding's two branches are one rule read from the row: the fixed kind, the symbol check
+    (`UnavailableReservedImport_Kd`), the runtime-declaration join (membership: the reserved supply whose symbols contain the
+    declaration's symbol, IMPL 21.2's providing library), the dependency edge (`reserved is null`: every reserved supply is exempt,
+    BU-92 amended) and the reserved external names; `NativeConfiguration.Reserved` reads the row. Build's `ToolchainIdentity` keys
+    each supply's material by the row's name and checks the keys against the row at its start (InvalidDataException otherwise);
+    `Backend` is the row's supply the catalog's `library` names.
+  - Behaviour-preserving: no record moves, because every `kimi_backend` import fails before the edge (a catalog symbol
+    `InvalidLibraryImport_Kd`, any other `UnavailableReservedImport_Kd`) and the edge's `Fail` keeps a failed node's record; the
+    design's record move (Revision 1, row 4c) does not exist, so its split into two commits was withdrawn.
+  - Rejected: the join as a second statement of the providing library; a capturing lookup; an enum for Kind; material paired by
+    position; the rows in Build.

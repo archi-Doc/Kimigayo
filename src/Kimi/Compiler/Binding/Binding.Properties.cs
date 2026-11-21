@@ -51,12 +51,15 @@ public sealed partial class Binding
     private static bool AccessorReceiverShapeMismatch(BoundAccessor accessor)
         => accessor.Receiver is { } receiver && receiver.Semantics != (accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq);
 
+    // The Type an accessor's use takes: a `get` result or a stored `set` input; none for a computed `set`.
+    private static BoundType? UsedType(BoundAccessor accessor)
+        => accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Property.IsStored ? accessor.Input : null;
+
     // SPEC 11.3, 11.4: the Type an accessor's use takes, a `get` result or a stored `set` input, is its Property's Type. A mismatch is
     // judged between formed Types only (one whose formation fails judges nothing), once per pass, so the declaration check that reports
     // it (ValidateAccessor) and the uses that take the Property's Type instead (BindPropertyCall) agree.
     private bool AccessorTypeMismatch(BoundAccessor accessor)
-        => accessor.TypeMismatch ??= accessor.Declaration is { } syntax &&
-            (accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Property.IsStored ? accessor.Input : null) is { } used &&
+        => accessor.TypeMismatch ??= accessor.Declaration is { } syntax && UsedType(accessor) is { } used &&
             accessor.Property.Type is { } type && !SameType(used, type) &&
             this.CheckTypeConstraints(used, this.scopes[syntax]) == ConstraintProof.Proven && this.CheckTypeConstraints(type, this.scopes[syntax]) == ConstraintProof.Proven;
 
@@ -396,7 +399,7 @@ public sealed partial class Binding
 
             if (this.AccessorTypeMismatch(accessor))
             {
-                this.Fail(syntax!, BindingFailure.TypeMismatch);
+                this.RecordTypeMismatch(syntax!, syntax!, UsedType(accessor)!, accessor.Property.Type!);
                 return ConstraintProof.Error;
             }
         }
@@ -444,7 +447,7 @@ public sealed partial class Binding
 
         if (accessor.Kind == PropertyAccessorKind.Set && !SameType(accessor.Result, BoundType.Unit))
         {
-            this.Fail(syntax!, BindingFailure.TypeMismatch);
+            this.RecordTypeMismatch(syntax!, syntax!, accessor.Result!, BoundType.Unit);
             return ConstraintProof.Error;
         }
 
@@ -492,8 +495,7 @@ public sealed partial class Binding
                 if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
                     actual is not null && accessor.Result is { } result && !this.FitsValueAt(actual, result, syntax, body, out var failure))
                 {
-                    _ = failure.Kind == ComparisonFailureKind.Shape ? this.Fail(body, BindingFailure.TypeMismatch)
-                        : this.RecordMismatch(body, body, actual, result, failure);
+                    this.FailMismatch(body, body, actual, result, failure);
                 }
             }
             finally

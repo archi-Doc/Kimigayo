@@ -76,7 +76,7 @@ public sealed partial class Binding
             return Complete(conversion, target);
         }
 
-        return this.Fail(conversion, BindingFailure.TypeMismatch);
+        return this.RecordTypeMismatch(conversion, conversion, source, target);
     }
 
     // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its Origin is RawAnchor's, which fits every destination, a
