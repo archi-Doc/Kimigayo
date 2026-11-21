@@ -2990,6 +2990,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `()`); L2's list adds 'a derived write's right side', and its 'no censused failure site produces such a consumer over an Error' no
     longer holds for it (validator-clean, no Loan, as L2 states). A Copy right side under a live exclusive Loan reports no conflict:
     the Copy is the securing, which rests on the failed target (a record selection, Q13).
+  - Amended by R4-M232 (Z17, Q-621): Part 3's consumer receives its own derived value, whose site names no use, since the located
+    Error is published `(Temporary, None)` (Rule 2) and a Temporary part is its built value (`MirBuilder.Opaque.Uses`' `Part`;
+    `MirBuildTest.ARejectedInputIsItsConsumersDerivedValue`); Part 3's names are `MirBuilder.Value` and `SiteUses`. The G1022 line's
+    "the site naming the result as a part located already (R5-M63, R5-M84)" becomes: securing a derived write's right side reads it
+    at its own node (a `FakeRead` where its published Adjust decides the taking, undecided at its Place otherwise, no use where
+    Temporary), and the taking stays derived.
   - Superseded for call positions by R7-M51 (R7-O1 b1); its rule stays for an input rejected after selection (a static Place's
     Borrow).
   - Deleted: `MirBuilder.Expansions.cs`' copy of the getter's Adjust (`HirAdjust.Of(argument)` and its ByCase/None choice).
@@ -3467,6 +3473,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     runtime path, since the stand-in, a local, is initialized before each use. The rooted copies are validated under rule (3)
     (`Validated`), and the Rooted rows of `MirBorrowsTest` pass with it. R4-M107's other premises, cause, witnesses and removal by
     P42 stand.
+  - Amended by R4-M232 (Z17, Q-621): rule (2)'s "An Opaque site's roots are left out" and the U-B amendment's predicate become an
+    Opaque site's undecided uses, recognized by `MirDescriptors.IsUndecided` (the Opaque row's access, the only row with Reads and
+    Writes), which replaces `IsOpaqueRoot`. A read part's `FakeRead` is checked as any access, its static ensured where its consumer
+    builds the Place (cr-static-part: no `InternalInvariant_Kd`).
 - **R4-M122 Rule W in SPEC 15.6.5, a read through a reference counted as a Copy; 14.8.3 and 15.8.2 cite it** (owner, 2026-10-24,
   verbatim answers to two questions: 「(a) 今、W だけで開く (推奨)」, this SPEC session holds W alone, and
   「(a) SPEC の W の文に書く (推奨)」, the reading the prototype round needed is one clause of W's sentence; R4-M104's proposal,
@@ -4696,6 +4706,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     without other operands only); A5 ignoring Loans on Opaque temps and lengthening a temp's life (settled: R4-M109, R4-M125).
   - Deleted: the Closure's unbound capture's own stand-in pair (`Temp` and `Unsupported(node, place)`), now `Unsupported(node, type)`,
     the one creator.
+  - Amended by R4-M232 (Z17, Q-621): "the roots `SiteRoots` collects" are the uses `SiteUses` collects; the rule stands, the derived
+    value's site naming only the temp (`DerivedValue`).
 - **R4-M150 A5 composes a destruction as calls of its drops over a `uniq/Self` receiver (PLAN G264 U1; supersedes R4-M143's destruction
   guard and R4-M147's abstract-referent rule)** (superseded in part by R4-M219's U6: c80's four storage-end records came
   from R4-M120's untracked rule; 2026-11-03; prototype-first candidate of the Full change, chosen over the design-first
@@ -7452,6 +7464,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`CallActivationConflict_Kd`) to a later node (`ComparisonLoanConflict_Kd`), a lost independent record (WORKFLOW rule 3); a
     reborrow of `(*$w)` at the setter (a reservation formed through another's holder, R4-M54); a seventh `Call` parameter. Not
     temporary.
+  - Amended by R4-M232 (Z17, Q-621): the setter's reservation and the getter each take their own derived value, whose site names no
+    use, since an Error receiver is a Temporary part (`MirBuilder.Update`'s located receiver).
 - **R4-M224 A callable definition's contract comparison solves its call Origins, a Function Item's and an anonymous function's alike
   (PLAN G1064, closed; board D-822)** (2026-11-19, landing with Q-538 on 2026-11-20; Front, Binding; Major, an acceptance mover;
   design `front\notes\G972\design-d822.md` with §4a, F's G972 rulings 6-11; the independent design review ACCEPT WITH CONDITIONS
@@ -7708,6 +7722,53 @@ and migration obligations remain in force; no numeric cap changes are authorized
     third reading).
   - **Cost:** Θ(heads × passes × ⌈B/64⌉ + issues) per solve, pooled, warm 0 B. The walk runs once per location and view only
     where a proved initializer may decide.
+- **R4-M232 Opaque sites name only what they do not decide; a located part its consumer reads is a `FakeRead` at its own node**
+  (Middle, 2026-11-21; R7 plan stream Z, Z17's commits 1-2 (PLAN G396 (4), 2g-2a and 2g-2), Q-621; Major; design
+  `middle\notes\z17-design.md` Revision 3 and its five reviews, the Middle's rulings P1, P2 and N10-N13, the code review's C1-C3;
+  Z15 2g-D Revision 2 D3, D4, the owner's O-447 (a)) SPEC 12, 12.2, 13.7.1, 15.1.3-15.1.6, 15.6.2, 23.1.2. Its commit 3, a kept
+  part's read, left Z17 as the unit Z17c (D-1003; PLAN G396).
+  - **The representation.** `MirBody.OpaqueUses` (`MirPlace`) replaces `OpaqueRoots`, and `MirDescriptors.IsUndecided` replaces
+    `IsOpaqueRoot` (the Opaque row's access, Reads with Writes). Every use a site names is undecided.
+  - **The builder** (`MirBuilder.Opaque.Uses.cs`, `Part` and `Reads`) takes a kept or located part as its consumer takes it, from the
+    published Adjust, total over `HirAcquire`: a part acquired from its Place (Copy, Move, Reborrow, ByCase) or inspected (a shared
+    borrow in place), of a Type, is read by a `FakeRead` of its Place at its own node and is no use; a Temporary part is its built
+    value and is no use; any other in-place use, a failed or unset acquisition, a Place of no Type and a part the builder's own failed
+    step goes below (`SiteUses(MirPlace?)`) are undecided uses at their Place; a name in replaced syntax, a default's earlier slots and
+    an Opaque temp are undecided at their root. A located part (a derived write's right side, an expansion's operand, a failed jump's
+    operand) is read right before its consumer's site. Kept children are published `(None, None)`, so a kept part stays an undecided
+    use at its Place until Z17c reads `HirTables.KeptRead` (R7-M67).
+  - **The readers.** A `FakeRead` is read as every `FakeRead` is: A5's Read (SPEC 15.6.2's Read row; A5 unchanged) and A1's check of
+    its Place. The readers of `MirUses` are a closed census, the ten `IMirUses` implementers (pinned): A1 (`MirInit`, with
+    `MirMoveData`'s paths) checks an undecided use as a read of its Place; every other reader judges it at its root through
+    `MirDescriptors.Judged`. `MirUses` reports a Place-granular undecided use's index locals with the Index row's `Reads`, outside
+    `Judged`, and a PairLayer step adds `CaseDependent`. The instance collector reads `Judged`, since it runs at check over every body
+    without a finding, Opaque sites included. A4 (`MirEffects`) reads a read part's `FakeRead` as any other: its Place's `StaticRead`,
+    with `RawStaticRead` where the static is immutable and holds a raw pointer, an rc handle or a Weak, so a `confined` implementation
+    whose located part reads one reports `IncompatibleContractImplementation_Kd` as its decided twin does (independent, SPEC 8.11.2
+    and 13.7.1 step 1), where the undecided use gave a dependent write key.
+  - **Exposure and landing.** Exposure (`MirBorrows.Loans`) comes from every use; a read part, no use, exposes nothing. The landing
+    fact (`MirBorrows.Storing`) reads `HasOpaque`: an Opaque site rests on an error whatever it names, since a read part's value
+    reaches the replaced form, so a body whose site names nothing (`missing()`) reports no `UnretainedRawStore_Kd` either (rule W).
+    The validator's Lent exemption covers a site's uses only; a read part needs none, since its consumer is the replaced form, never a
+    Call taking a reserving temp whole.
+  - **The gate.** Every derived Opaque value is formed through `MirBuilder.Opaque.cs`'s gate (`Opaque`, `Derived`, `DerivedValue`)
+    from a closed producer table, each row naming its published fact; `Site` and `AddSite` (the one `MirBody.AddOpaque` call) are
+    reached only from the gate, `Unsupported` and `Invariant`; the gate's callers are pinned (`ArchitectureRulesTest`). A failed jump's
+    operand is located (a constant one: none).
+  - **Moves** (Q13; rejected programs only, no acceptance move, no `InternalInvariant_Kd`, corpus snapshot 0): gone false
+    `MovedPlace_Kd`, merged duplicates, gained independent `ComparisonLoanConflict_Kd` at the part and A4's record above, location
+    moves to the part, and `UnretainedRawStore_Kd` dependent by rule W.
+  - **Amends** each DECISIONS text the unit makes false; each carries its new text as an "Amended by R4-M232" line. The reason that
+    held, a site naming a part by its root since no use carried a Place or a decided read, no longer holds for R4-M109's Part 3 and
+    its PLAN G1022 line, R5-M63 (2) with its "Lasting" line (merged with R7-M67's amendment), R5-M84 with its G168 and G168b
+    amendments, R4-M223's Error receiver, R4-M121's rule (2) and its U-B predicate, R4-M149's `SiteRoots` and R5-M195's Not covered
+    site-root item. R7-M67's "Z17's commit 3" is Z17c's (commit 3 left Z17), and R5-M182's H3-2 removal condition becomes PLAN G121.
+  - **Rejected:** an A1 skip of undecided uses; an admitted update; `Defines` at a derived write's target; a `MirRefKind` column; a
+    decided `Reads` of every kept part (r-weak-sibling: a new Language error on a valid program); an undecided use judged at its Place
+    by readers other than A1 (b3-*: SharedPath's `InternalInvariant_Kd`); a decided site use with its access (Revision 2: judged at the
+    site, a second conflict at r-loc-index's site); a decided use with its own source node (A5's subject rule for one rvalue kind); a
+    new statement kind for the read (`FakeRead` has the meaning); a per-site "has parts" bit for the landing fact (a side table for one
+    reader); telling a kept part's position from syntax, or building a rejected target from syntax.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -18045,8 +18106,15 @@ structure is recorded here by the unit that first implements it.
     receiver and published it (`Published`); its `Signature` is null exactly at a failed parameter or result slot, so "`Signature`
     set" no longer gates the definition.
   - Amended by R7-M65 (Z16): (2)'s kept operands are a case of the one `Keeps` rule; its compound-Place form list goes.
-  - Amended by R7-M67 (D-986): the kept mark `(None, None)` stays the one representation of "kept"; the form's read is the bit
-    `PlanRow.KeptRead` beside it, never the column.
+  - Amended by R7-M67 (D-986) and R4-M232 (Z17, Q-621): the kept mark `(None, None)` stays the one representation of "kept"; the
+    form's read is the bit `PlanRow.KeptRead` beside it, never the column, and Z17c reads it (D-1003). (2)'s "the site names their
+    roots and the roots of the rest of the node's syntax" and "(A1 checks each root at the site's subject)" become: each kept
+    operand is an undecided use at its Place (A1 checks the Place; every other reader judges it at its root, `MirDescriptors.Judged`),
+    the rest of the node's syntax at its roots; a kept operand's own written transfer runs as ordinary MIR. The R5-M84 line's "by its
+    Place's root" becomes "by its Place (an undecided use)". The "Lasting" line's 2g-2a (each root's access kind at
+    `MirBuilder.Root`, the completion-undecided flag at `Site`) is superseded: no access column; an undecided use carries the Opaque
+    row's access, a decided part is a `FakeRead`, and the derived jump and an omitted default's site form their values through
+    `MirBuilder.Opaque.cs`'s gate.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19; plan K6b, R5-M30; under
   R5-M18, R5-M61, R5-M67 and R5-M68; DEC Q6 form 1) What a compiler function, a requirement's function item or a shim runs on a user
   Type is `TyCtxt.Witness` of the requirement there, acted on by R5-M67's kind table, one function (`InstanceCollector.Requirement`,
@@ -18481,6 +18549,9 @@ structure is recorded here by the unit that first implements it.
     typeless projection still reaches MirValidator; a parameter nested in the receiver's Type has no fact (BU-72's limit) and keeps
     that defect (STATUS). Removal: G170's identity query, which gives the Place the identical Type, removes the premise test with
     BU-72.
+  - Amended by R4-M232 (Z17, Q-621): "(R5-M63's rule: an Opaque site names a part located already by its Place's root)" becomes by
+    its Place, an undecided use (`SiteUses(MirPlace?)`); G168's "the Opaque temp's site names only the receiver's (the Place's) root"
+    and G168b's "an Opaque whose site names only the receiver's root" name the receiver's Place.
 - **R5-M85 The codegen deviation form (`Codegen.Expect`, the `CodegenDeviations` catalog, `checked-set-at-check`, its native
   half)** (2026-10-20; plan E12 and K13a; temporary): superseded by R5-M156 (2026-10-29), R5-M158 (2026-10-29) and R5-M160
   (2026-10-30); full text: 4fb6fcdb1.
@@ -21739,6 +21810,7 @@ structure is recorded here by the unit that first implements it.
     with the named exceptions R4-M108's twins (`IsTwinRecord`, `MirTargetSide.MirSide`'s filter), OriginRecoveryTest's two pins and
     the dev defects D-1 (binder widening) and D-2 (a resting InvalidOrigin masks a later failure); the owner's G1 approval travels
     with H11b (R5-M192's amendment).
+  - Amended by R4-M232 (Z17, Q-621): the H3-2 bullet's removal condition, 2g-1 (Z16, R7-M65), becomes PLAN G121.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -22110,6 +22182,8 @@ structure is recorded here by the unit that first implements it.
     value (moves the write's verdict onto a valid child); the builder deciding from an Error write (its children's Place facts are not
     published); a HirPosition or HirAcquire member (a vocabulary entry where `Rejected` carries the meaning); the write's Type Unit as the
     verdict (an Invalid node's BoundType is what a later bind returns); A6 suppression (cannot restore the lost record).
+  - Amended by R4-M232 (Z17, Q-621): its Not covered item "an Opaque site naming a whole root (site-root granularity)" is covered for
+    kept and located parts (Place granularity); a rejected target's part stays PLAN G105 (2).
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)
@@ -24166,6 +24240,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     or `Mode` (class-typed slots); a Broken clause (it could not fire); "acquired" alone (Revision 0: it splits the shared-borrow
     take between Z17's located and kept parts); a node-keyed table for the form's reads (ruling 51); a set cleared at each
     publication in place of the publication's number (the column lives for the pass; ruling 53 keeps the publication's lifetime).
+  - Amended by R4-M232 (Z17, Q-621): commit 3 left Z17 as the unit Z17c (D-1003), so "Z17's commit 3 reads
+    `HirTables.KeptRead(part) ? Reads : undecided`" and "No reader exists until Z17's commit 3" are Z17c's.
 - **R7-M71 An argument of an application Binding did not resolve is read** (Front, 2026-11-21; G1178, Q-608, stream Z's G396
   rows, an R7 exit condition; Major, behaviour-preserving alone; F's G147 rulings 45 and 48; the Middle's RP17 consent) SPEC 7.3.4,
   7.4, 10.1, 10.1.1, 10.2, 10.5.4, 12.2, 15.1.5, 23.1.2. Amends R7-M67 and R4-M142's rule; closes PLAN G1178.
