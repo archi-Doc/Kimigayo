@@ -2312,7 +2312,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     error (`direct`). A key the site may produce both directly and through a proved initializer counts as proved, since keys do not
     record their source (P5). The set is a may-set, so the proof decides nothing exactly (e10f; OQ-F5-6 (a)). A4 publishes
     `MirEffects.Summary(body, view, out classes)`, a body view's row and classes over its existing storage, an atom it keeps counted as
-    Unknown. Superseded by R4-M230 (Z7, 2026-11-21): A5 decides on A4's one row of what the site runs, with Q's initializations left out.
+    Unknown. Its proof arms are superseded by R4-M230 (Z7, 2026-11-21), and the rule by SPEC 15.6.4's sentence with R4-M231
+    (Z7b, 2026-11-21).
   - G136 (i): a direct Loan on a static names E (`Holders`; W's step from E is `MirWrites.None`), storage the body does not own (SPEC
     15.6), so a call's store through a static's borrow lands in E as a parameter's does (`refs.append(y@ref); y = 2` errs); check sets
     do not change, since σ(E) is in each.
@@ -7618,8 +7619,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M230 Static initialization proof: A4's initialization entries and the one read graph** (2026-11-21; Middle, A4 and A5; stream Z
   unit Z7, Q-610, PLAN G396 M4/M7; Major, design `middle\notes\z7-design.md` Revisions 1-4 with R4.3 withdrawn (O-459 (a)); under
   R4-M89 OQ-F5-6 (a) and the owner's O-458 (a), O-459 (a) and O-465 (a))
-  - **Status.** This entry amends R4-M92's X-2 registration. It supersedes R4-M92's "Initialization proof" and "Limit of the proof"
-    bullets, R4-M91's `Keys` signature and R5-M183's A5 "rests" half.
+  - **Status.** Amends R4-M92's X-2 registration of the proof: its producer is Q, the statics a live candidate is on, until
+    R4-M231. Supersedes R4-M92's proof arms: `Proved` (a deciding effect's membership in a proved initializer's flattened summary),
+    `Unproved` as R4-M92 states it, and the may-first-access test, with the "Limit of the proof" bullet that those arms caused, and
+    the bullet's sentence "A key the site may produce both directly and through a proved initializer counts as proved" (Z7's
+    excluded row replaces that membership). Also supersedes R4-M91's `Keys` signature and R5-M183's A5 "rests" half. R4-M92's
+    "Initialization proof" bullet stands as the rule ("a live Loan anchored to a Field proves that Field initialized") until
+    R4-M231.
   - **Rule** (SPEC 15.6.4, 22.4.3, 22.4.4). A5 decides R1 and R3 on A4's row of what the site runs, with every first-access
     initialization composed. When that row conflicts and Q is not empty, the row with Q's one-slot initializations left out decides.
     - Q is the set of statics that a live candidate of the effect set is on (`Holds`), until Z7b implements O-456 (a)'s SPEC 15.6.4
@@ -7664,6 +7670,42 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - Measured by T-323 (StaticKeyMeasurements, including its excluded phase): BEYOND (Run 1.09x, Query 1.21x at N 2048, mostly Spread
       over every node for `Time.counterFrequency`'s entry, inherent to D3/R4.1); RP8's real programs within noise; landed as is by the
       owner's O-465 (a) (`middle\notes\z7-perf.md`).
+- **R4-M231 Static initialization proof: every path passes a Borrow of the slot** (2026-11-21; Middle, A5; stream Z unit Z7b, Q-611,
+  PLAN G396 M4/M7; Major, design `middle\notes\z7b-design.md` Revision 3; the owner's O-456 (a); SPEC 15.6.4's sentence, af6410d81)
+  - **Status.** Supersedes R4-M92's "Initialization proof" bullet, replaced by SPEC 15.6.4's sentence (af6410d81), and R4-M230's
+    "Q = live" for statics with one slot. R4-M89 OQ-F5-6 (a)'s interim U ends for them. Amends R4-M92's X-2 registration again:
+    the proof's producer is Q's several-slot part alone, until P42's key (R4-M103).
+  - **Rule** (SPEC 15.6.4, 22.4.3, 22.4.4). A static with one slot (A4's `Initialization`) is proved initialized at a Call or Drop,
+    a staticEnsure included, where every path of the view to it passes a Borrow of it: a Direct Loan of the body on the static's
+    storage, a part of it, or the payload it owns (an own step), a reservation's included. An Address (`@raw`, SPEC 5.4), a raw
+    Place borrow's anchor, a callee's or a Closure's Borrow, an ensure and a read prove nothing.
+    - P, the proved statics, leave the row: every decision on an effect root (R1, R3, A4's Limit and Deep) reads the site's row
+      with P's initializations left out.
+    - Q, temporary, keeps R4-M230's reading: the statics with several slots that a live candidate is on (`Holds`) and whose
+      initialization the row may run (A4's `Slot`). R4-M92's chain skips a kind Q's initializer may make (`Rests`), and a
+      conflict only such kinds make is the located `Unsupported_Kd`. Removal: P42's static key makes every static one slot per
+      key, so Q, `Holds` and Q's U go together. Until then e10gc's false error is PLAN G1200.
+  - **The fact** (`MirBorrows.Passes`): a gen-only forward problem on MirDataflow (the view's edges, SPEC 14.10.3's phases).
+    - It has a bit per one-slot static a Direct Loan of the view is on, a union of "not passed", so its fixed point is the meet
+      over paths.
+    - It keeps each block's state before its terminator.
+    - It is solved where the view has such a Borrow and an effect root or a Drop of a mutable static, under the analyses' byte
+      limit (R4-M15a). Over it, the existing `MirDataflow.StorageLimit` records one `OwnershipStorageLimit_Kd` at the body (table
+      Loans) and the body is unverified, as at every A5 arena's bound.
+  - **The row.** A5 reads Spread's row where the row without P cannot differ on what the decision reads, and A4's excluded query
+    (`Without`) only where an initializer of P may make it (the walk's trigger, G1166). The row choice is skipped where Spread's
+    row has nothing the root's decisions read (no key of the Field, no Unknown, Limit or Deep). `Rests` skips an initializer with
+    a validator finding (Derived only, R5-M183).
+  - **Moves:** U -> none, U -> Language error, Language error -> none (O-456's verdicts), depth limit -> none (pDeep), and an
+    effect fact changing at the same error (fcA, fcB). Also, required by the revision: a Language error whose only deciding fact
+    is a proved initializer becomes the located limit record of what remains, Q's `Unsupported_Kd` or A4's
+    `OwnershipDepthLimit_Kd` (mixI, mixV, mixD). That fact is false under the revised sentence. Acceptance does not move.
+  - **Rejected:** per-Loan bits (O-456 (b)); must-carry (c); the any-access reading; a callee's Borrow as proof (K's review); the
+    validator's ensure problem extended (another meaning, no views, R4-M121); bits in the carrying state (two lattices); the walk
+    at every conflict (D-957); Q = passed with several slots (it loses e10dd's independent record, Q13); Q = passed and live (a
+    third reading).
+  - **Cost:** Θ(heads × passes × ⌈B/64⌉ + issues) per solve, pooled, warm 0 B. The walk runs once per location and view only
+    where a proved initializer may decide.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
