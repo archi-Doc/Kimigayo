@@ -152,8 +152,8 @@ internal sealed partial class MirBuilder
         }
         else if (HirTables.CompletionOf(container) == HirCompletion.Completes && !this.IsNever(destination))
         {
-            this.SiteRoots((MirPlace?)null);
-            this.Site(container, destination, completes: true);
+            this.SiteUses((MirPlace?)null);
+            this.Derived(container, destination, completes: true);
         }
     }
 

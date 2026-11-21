@@ -80,11 +80,11 @@ internal sealed partial class MirBorrows
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
         Array.Fill(this.referFirst, -1, 0, locals);
-        foreach (var root in this.body.OpaqueRoots)
+        foreach (var use in this.body.OpaqueUses)
         {
-            if (root >= 0)
+            if (use.Root >= 0)
             {
-                this.named[root] |= ExposedHolder; // The replaced form may have written it (R4-M70).
+                this.named[use.Root] |= ExposedHolder; // The replaced form may have written it (R4-M70).
             }
         }
 

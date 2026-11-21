@@ -241,6 +241,25 @@ public class CallableEffectBoundTest
         }
     }
 
+    // SPEC 8.11.4, 23.1.2 (R7-E2 E2-5b, M1): a refinement's conformance checks its parent's requirement on the ancestor path and its own on
+    // the child, both at the one clause; an implementation adding an undeclared bound to each fails two requirements, two records each
+    // naming its requirement (dev kept the first); with the parent's premise declared, the child's alone.
+    [Theory]
+    [InlineData(false, "run, step")]
+    [InlineData(true, "step")]
+    public void EachRequirementAnImplementationAddsABoundToIsItsOwnRecord(bool premise, string requirements)
+    {
+        const string Bounded = "        F is Callable<() -> i32>\n";
+        const string Confined = "            effect confined\n";
+        var source = "contract Runner\n    func run<F>(self: ref/Self, callback: ref/F) -> i32\n" + Bounded + (premise ? Confined : string.Empty) +
+            "contract Stepper: Runner\n    func step<F>(self: ref/Self, callback: ref/F) -> i32\n" + Bounded +
+            "struct Worker\n    Self is Stepper\n    public func run<F>(self: ref/Self, callback: ref/F) -> i32\n" + Bounded + Confined + "        return callback()\n" +
+            "    public func step<F>(self: ref/Self, callback: ref/F) -> i32\n" + Bounded + Confined + "        return callback()\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.All(records, static x => Assert.Equal("IncompatibleContractImplementation_Kd", x.Code));
+        Assert.Equal(requirements, string.Join(", ", records.Select(static x => System.Text.RegularExpressions.Regex.Match(x.Label!, @"requirement (\w+)").Groups[1].Value)));
+    }
+
     // SPEC 8.11.4, 8.6.4 (PLAN G671): a selected requirement call's Callable clause reads the Contract's parameters at its reference, so under
     // `C is Mapper<i32>` map's `F is Callable<(T) -> i32>` is `(i32) -> i32`, which G's premise meets; only its bound decides the call. Under
     // `D is Mapper<bool>` it is `(bool) -> i32`, which G's premise does not meet.

@@ -51,6 +51,12 @@
     <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>
 
+  <!-- The managed form's Tatara (Tatara B6b1): the checkout's toolchain's tatara.dll beside Kimi.dll, beside the outputs that reference
+       Kimi and in its publish (until B6b2 links it); without one, Kimi builds and its first native build names setup. -->
+  <ItemGroup>
+    <None Include="$(KimiRepositoryRoot)toolchain\tatara.dll" Link="tatara.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('$(KimiRepositoryRoot)toolchain\tatara.dll')" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Arc.Collections" Version="2.2.0" />
     <PackageReference Include="Arc.Threading" Version="0.56.0" />

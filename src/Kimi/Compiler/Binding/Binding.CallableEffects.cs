@@ -6,8 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly CallablePremiseFailureRows callablePremiseFailures;
-
     // Each selected use of a bounded Callable clause, once per pass: the running pass's part (PassPart, EnterPass).
     private List<CallableEffectUse> callableEffectUses;
 
@@ -76,22 +74,20 @@ public sealed partial class Binding
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
         => premise == SemanticsMask.Owner || receiver == SemanticsKind.Ref || (premise == SemanticsMask.Uniq && receiver == SemanticsKind.Uniq);
 
-    private bool ReportCallablePremiseFailure(Koto use, Kimi.Diagnostics.DiagnosticCollection? store, Kimi.Diagnostics.DiagnosticRequirement diagnostic)
+    // SPEC 8.11.4: an implementation's bounded Callable clause its requirement's premises do not declare, from its facts: the clause
+    // (Related, role 0) and the requirement (role 1), whose name is read from its declaration.
+    private void ReportCallablePremise(Koto use, Kimi.Diagnostics.DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        if (!this.callablePremiseFailures.TryGetValue(use, out var failure))
-        {
-            return false;
-        }
-
+        var facts = this.report.Facts(index);
+        var requirement = this.compilation.SyntaxOf(facts[1].Site);
         use.ReportIn(
             store,
-            diagnostic,
-            DiagnosticCode.IncompatibleContractImplementation_Kd,
-            evidence: [$"the implementation requires {Constants.ConfinedKeyword}, but the premises of requirement {failure.Requirement.Name} " +
+            problem.Requirement,
+            problem.Code,
+            evidence: [$"the implementation requires {Constants.ConfinedKeyword}, but the premises of requirement {requirement.BoundSymbol!.Name} " +
                 "do not declare it"],
-            note: "An implementation must be callable under its requirement's declared premises",
-            related: [("bound", failure.Clause, "the implementation's bounded Callable Constraint"), ("requirement", failure.Requirement, "the requirement whose premises lack the bound")]);
-        return true;
+            related: [("bound", this.compilation.SyntaxOf(facts[0].Site), "the implementation's bounded Callable Constraint"), ("requirement", requirement, "the requirement whose premises lack the bound")],
+            condition: problem.Condition);
     }
 
     // SPEC 8.11.4: the selected uses of bounded Callable clauses: each selected call, function reference and Type formation, located at
@@ -182,24 +178,4 @@ public sealed partial class Binding
     // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
     // subject, signature and receiver.
     internal readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
-
-    /// <summary>The `callablePremiseFailures` family's one accessor (DECISIONS BU-220): a pass family, an implementation's bounded Callable
-    /// clause that its requirement's premises do not declare, with that requirement, stored with the use's failure by the recorder
-    /// (RecordedFact; a present row always has its Clause); the first failure a use records stays. Its members keep the names its readers
-    /// use.</summary>
-    private readonly struct CallablePremiseFailureRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(IsKoto Clause, FunctionKoto Requirement), PassCounter> Family(ref NodeColumns columns) => ref columns.CallablePremiseFailures;
-
-        internal void TryAdd(Koto use, (IsKoto Clause, FunctionKoto Requirement) failure)
-        {
-            if (!this.TryGetValue(use, out _))
-            {
-                binding.SetRecordedFact(use, Family, failure);
-            }
-        }
-
-        internal bool TryGetValue(Koto use, out (IsKoto Clause, FunctionKoto Requirement) failure) => (failure = binding.RecordedFact(use, Family)).Clause is not null;
-    }
 }
