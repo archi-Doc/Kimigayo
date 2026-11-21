@@ -226,22 +226,23 @@ public sealed partial class Binding
         // skeleton (SlotSkeleton), whose slot variables each binding bounds at its composed polarity through CollectOriginInference, the
         // one composition, and whose well-formedness bounds them as a solution's; the call's one solve gives their values
         // (RestoreSlotValues). A slot whose bindings are one Type keeps it at any polarity: every variable's bounds would be that binding's
-        // Origins, so the solve would give that binding (R1.3 (e)'s shortcut theorem). Past MaxSlotVariables the call is the located
-        // limit, never a shared key.
+        // Origins, so the solve would give that binding (R1.3 (e)'s shortcut theorem). A slot whose skeleton holds no variable (bindings
+        // that differ in no Origin the evidence fixed, such as raw Origins, SPEC 5.7) keeps its Type. Past MaxSlotVariables the call is
+        // the located limit, never a shared key.
         internal void OpenSlotVariables()
         {
             var binding = this.Binding;
             for (var g = 0; g < Math.Min(CallSlotCount(this.Binder), this.Types.Length); g++)
             {
-                if (this.FixedSlot(g) || !this.Frame.BindsDistinctTypes(g) || this.Frame.Bindings(g) is not { } head ||
-                    this.Types[g] is not { } first)
+                if (this.FixedSlot(g) || !this.Frame.BindsDistinctTypes(g) || this.Frame.Bindings(g) is not { } head || !CarriesOrigin(head))
                 {
                     continue;
                 }
 
                 var inference = this.OriginInference ??= binding.BeginOriginInference(this.Call, this.Binder);
+                var opened = inference.SlotVariableCount;
                 var skeleton = binding.SlotSkeleton(head, this.Call, inference);
-                if (ReferenceEquals(skeleton, first))
+                if (inference.SlotVariableCount == opened)
                 {
                     continue;
                 }
@@ -274,6 +275,20 @@ public sealed partial class Binding
                     CollectOldestFirst(binding, node.Next, skeleton, inference);
                     binding.CollectOriginInference(skeleton, node.Type, inference, node.Polarity);
                 }
+            }
+
+            // Whether some binding writes an Origin (a pair layer's in one binding and the original's implicit `o` in another included).
+            static bool CarriesOrigin(SlotBinding? node)
+            {
+                for (; node is not null; node = node.Next)
+                {
+                    if (node.Type.CarriesOrigin)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
         }
 
