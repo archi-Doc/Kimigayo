@@ -15,8 +15,8 @@ internal static partial class NativeToolchain
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
     // A project's native build. A build reads no toolchain root and no LlvmBin: --ToolchainRoot, KIMI_TOOLCHAIN_ROOT and the command
-    // line's LlvmBin name the root toolchain verify checks, and they and a project's LlvmBin are accepted and not read here (Tatara
-    // designs A4 §2.1, B6b1; removed in B6b).
+    // line's LlvmBin select nothing (B6b3), and they are accepted and not read here; a project's LlvmBin and a link manifest's
+    // toolchain member are errors (B6b5) (Tatara designs A4 §2.1, B6b1; the options removed in B6b4).
     internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
@@ -25,8 +25,8 @@ internal static partial class NativeToolchain
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
-    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. Its toolchain.llvmBin is
-    // accepted and not read, as a project's LlvmBin. It holds its record's lock (Begin) from its first write to its end.
+    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. It holds its record's
+    // lock (Begin) from its first write to its end.
     internal static async Task BuildManifest(string path, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         path = Path.GetFullPath(path);

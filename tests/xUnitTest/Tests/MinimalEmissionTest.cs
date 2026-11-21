@@ -241,7 +241,6 @@ public class MinimalEmissionTest
         var file = new ProjectFile
         {
             Targets = [WindowsProfile.Target],
-            LlvmBin = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin",
             OutputPath = "bin/Hello.ll",
             Optimization = "O0",
             NativeLibraries = new()
@@ -253,7 +252,6 @@ public class MinimalEmissionTest
             },
         };
         var read = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(TinyhandSerializer.SerializeToUtf8(file))!;
-        Assert.Equal(file.LlvmBin, read.LlvmBin);
         Assert.Equal(file.OutputPath, read.OutputPath);
         Assert.Equal(file.Optimization, read.Optimization);
         Assert.Equal(file.NativeLibraries[WindowsProfile.Target]["kernel32"], read.NativeLibraries[WindowsProfile.Target]["kernel32"]);
@@ -266,7 +264,6 @@ public class MinimalEmissionTest
         var read = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(File.ReadAllBytes(path))!;
         Assert.Equal(WindowsProfile.Target, Assert.Single(read.Targets));
         Assert.Empty(read.NativeLibraries);
-        Assert.Null(read.LlvmBin);
     }
 
     [Fact]

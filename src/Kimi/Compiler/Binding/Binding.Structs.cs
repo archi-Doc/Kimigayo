@@ -307,6 +307,9 @@ public sealed partial class Binding
         receiver.Type = scope.Parent?.Owner.BoundSymbol?.Type;
         if (!scope.Values.TryAdd("self", receiver))
         {
+            // Transitional, R7-E5 (R7-E2 E2-4's B1 (a)): the written `self` repeats the implicit receiver (SPEC 9.3) and keeps the slot's
+            // failure: the function may also be the first or a later of a Signature group, which RecordDuplicateGroups records after Index
+            // under the same key with its own facts, until R7-E5's per-problem inputs place this record beside the group's.
             this.Fail(function, BindingFailure.Duplicate);
         }
     }

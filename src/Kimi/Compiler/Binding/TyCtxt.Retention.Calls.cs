@@ -16,9 +16,11 @@ internal sealed partial class TyCtxt
 
     // Per callee, signature or erased destruction's receiver, Type instantiation and the premise scope or binder the computation reads;
     // kept across passes with no edit, whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate).
-    // A signature's contract reads its local regions' bounds (Binding.AddRegionMeet), so its key holds the region graph's version: a read while
-    // a body binds (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS: G570).
-    private readonly Dictionary<(object Callee, Subst? Types, object? Scope, int Regions), CallRetention> retentions = new();
+    // A contract reads its local regions' bounds (Binding.AddRegionMeet) and the Origin-atom borrows (Binding.RawOrigins.Borrows), so its
+    // key holds Binding.RetentionState: the region graph's and the borrows' versions until the pass's borrow writers have run, Complete
+    // afterwards, so a read while a body binds (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS:
+    // G570, as the publication amends it).
+    private readonly Dictionary<(object Callee, Subst? Types, object? Scope, int State), CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
     private readonly List<Binding.ErasedSignature> retentionBounds = new();
@@ -39,13 +41,14 @@ internal sealed partial class TyCtxt
         // `I is Iterator`), so its key holds that premise scope; any other reads alike in every definition.
         var types = subst is null ? null : this.Intern(subst.Target, subst.Self, subst.Declaring, subst.Types, subst.Lengths, [], []);
         var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : null;
-        if (this.retentions.TryGetValue((callee, types, scope, 0), out var known))
+        var state = binding.RetentionState;
+        if (this.retentions.TryGetValue((callee, types, scope, state), out var known))
         {
             return known;
         }
 
         var retention = this.InstanceRetention(callee, types, scope, definition) ?? CallRetention.Limit;
-        this.retentions.Add((callee, types, scope, 0), retention);
+        this.retentions.Add((callee, types, scope, state), retention);
         return retention;
     }
 
@@ -85,9 +88,9 @@ internal sealed partial class TyCtxt
         var closure = Closure(callee);
         var owner = closure is null ? (FunctionKoto?)Binding.SignatureOwner(callee) : (FunctionKoto)closure.Symbol!.Declaration!;
         var use = binding.DefinitionUse(definition);
-        (object Callee, Subst? Types, object? Scope, int Regions) key = closure is null
-            ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RegionVersion)
-            : (signature, closure.InstanceContext, owner, binding.RegionVersion);
+        (object Callee, Subst? Types, object? Scope, int State) key = closure is null
+            ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RetentionState)
+            : (signature, closure.InstanceContext, owner, binding.RetentionState);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -118,7 +121,7 @@ internal sealed partial class TyCtxt
     {
         var use = binding.DefinitionUse(definition);
         var receiver = this.DestructionReceiver(part);
-        (object Callee, Subst? Types, object? Scope, int Regions) key = (receiver, null, binding.ConstraintScope(use), 0);
+        (object Callee, Subst? Types, object? Scope, int State) key = (receiver, null, binding.ConstraintScope(use), binding.RetentionState);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;

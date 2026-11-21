@@ -2,14 +2,14 @@
 
 // Owns the native-toolchain identity of the windows-x64 profile, read from the compiler's embedded backend record (profile.json, the
 // resource Kimi.WindowsBackendProfile.json; DECISIONS R5-M165, R5-M174): the pinned LLVM release, the backend archive's package id, ABI
-// version, version, SHA-256 and file name, the kernel32 definition, dlltool and library hashes, and the compiler's supplies (IMPL 20.4's
+// version, version, SHA-256 and file name, the kernel32 definition and library hashes, and the compiler's supplies (IMPL 20.4's
 // reserved names): one row per name, its kind, the manifest fields that identify it, and its bytes, which the compiler carries as an
 // embedded resource (Kimi.Kernel32.lib, Kimi.WindowsBackend.lib, committed beside the catalog) whose SHA-256 is the catalog's.
-// Input: the embedded record and libraries. Output: those values, for the native build, publication's manifest, toolchain verification
-// and the kernel32 import library's generation (P13). Invariants: the record matches the target profile (WindowsProfile's name, backend
+// Input: the embedded record and libraries. Output: those values, for the native build, publication's manifest and toolchain verify's
+// self-check (P13). Invariants: the record matches the target profile (WindowsProfile's name, backend
 // library and provided symbols) and pins a major.minor.patch LLVM version, and the supplies' rows are WindowsProfile's two reserved names
 // in Ordinal order (publication interleaves a program's supplies by name), else the type initializer throws InvalidDataException; each
-// resource's SHA-256 is its row's (NativeToolchainTest's catalog row, not checked at a start).
+// resource's SHA-256 is its row's (NativeToolchainTest's catalog row; not checked at a start, stated by toolchain verify).
 // Must not be read by check (Binding, project configuration, LSP) or code generation: those read WindowsProfile.
 
 using System.Text.Json;
@@ -33,8 +33,6 @@ public static class ToolchainIdentity
     public static string BackendSha256 { get; }
 
     internal static string Kernel32DefinitionSha256 { get; }
-
-    internal static string DlltoolSha256 { get; }
 
     internal static string Kernel32Sha256 { get; }
 
@@ -63,7 +61,6 @@ public static class ToolchainIdentity
         BackendSha256 = root.GetProperty("artifactSha256").GetString()!;
         var kernel = root.GetProperty("kernel32");
         Kernel32DefinitionSha256 = kernel.GetProperty("definitionSha256").GetString()!;
-        DlltoolSha256 = kernel.GetProperty("dlltoolSha256").GetString()!;
         Kernel32Sha256 = kernel.GetProperty("sha256").GetString()!;
         if (!ArtifactFiles.SequenceEqual(root.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols))
         {
