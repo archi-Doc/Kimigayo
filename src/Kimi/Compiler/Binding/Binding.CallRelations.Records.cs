@@ -148,12 +148,10 @@ public sealed partial class Binding
     private void RecordFurtherOriginRecord(Koto node, in OriginRecord record)
     {
         var subject = SourceRef.Of(node);
-        if (this.report.OriginCondition(subject, record) is not 0 and var condition)
-        {
-            var (code, failure) = record.Relation is { } relation
-                ? (OriginRelationCode(relation), BindingFailure.OriginRelation) : (DiagnosticCode.UnprovenOriginContract_Kd, BindingFailure.OriginContract);
-            ProblemFact fact = new(ProblemFactKind.OriginRecord, subject, this.report.Keep(record));
-            this.report.Add(new(code, DiagnosticRequirement.Binding(failure), subject, condition), [fact]);
-        }
+        var (code, failure) = record.Relation is { } relation
+            ? (OriginRelationCode(relation), BindingFailure.OriginRelation) : (DiagnosticCode.UnprovenOriginContract_Kd, BindingFailure.OriginContract);
+        ProblemFact fact = new(ProblemFactKind.OriginRecord, subject, this.report.Keep(record));
+        BindingProblem problem = new(code, DiagnosticRequirement.Binding(failure), subject, 1); // Condition 1 at least: the node's first record, the slot's, may be set after it (RecordOriginChains).
+        this.report.Add(problem with { Condition = this.report.Condition(problem, [fact]) }, [fact]); // An equal record is the one kept.
     }
 }

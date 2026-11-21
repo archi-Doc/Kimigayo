@@ -37,6 +37,7 @@ public sealed partial class Binding
         (MismatchForm.IntegerLiteral, _) => "integer literal",
         (MismatchForm.FloatingPointLiteral, _) => "floating-point literal",
         (MismatchForm.PositionType, _) => "a Type proven Position or PositionRange",
+        (MismatchForm.FixedArray, _) => "a fixed array",
         _ => throw new ArgumentOutOfRangeException(nameof(form)),
     };
 
