@@ -67,12 +67,17 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     }
 
     // SPEC 6.4.3 (the owner's O-370): an override of a slot whose substituted condition is Refuted (`string is Copy`) is one declaration
-    // error at the override, not a contradictory premise of its body.
-    [Fact]
-    public void AClosedInapplicableSlotsOverrideIsOneDeclarationError()
+    // error at the override, not a contradictory premise of its body. R7-E2 E2-5a (the Front's C3, M1; probes s1, s3, labelled from SPEC
+    // first): its result Type (s1) or Origin binders (s3) breaking the slot's contract are compared from the two declarations alone, so
+    // each is its own record beside it (SPEC 6.4.4, 23.1.2; dev kept the first only).
+    [Theory]
+    [InlineData("read(self: objref/Self) -> i32", "1", "read(self: objref/Self) -> i32 => 2", "InvalidConstraint_Kd")]
+    [InlineData("read(self: objref/Self) -> i32", "1", "read(self: objref/Self) -> i64 => 2", "InvalidConstraint_Kd OverrideContractMismatch_Kd")]
+    [InlineData("choose(self: objref/Self, value: ref/i32 during source) -> ref/i32 during source", "value", "choose(self: objref/Self, value: ref/i32 during other) -> ref/i32 during other => value", "InvalidConstraint_Kd OverrideContractMismatch_Kd")]
+    public void AClosedInapplicableSlotsOverrideIsOneDeclarationError(string slot, string result, string implementation, string codes)
     {
-        var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived : Base<string>\n    override func read(self: objref/Self) -> i32 => 2\n()");
-        Assert.Equal([DiagnosticCode.InvalidConstraint_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var c = MinimalEmissionTest.Analyze($"open struct Base<T>\n    public virtual func {slot}\n        T is Copy\n        return {result}\nstruct Derived : Base<string>\n    override func {implementation}\n()");
+        Assert.Equal(codes, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Order(StringComparer.Ordinal)));
     }
 
     // R7-E2 E2-5a (B's O8, M1; labelled from SPEC first): an override of a slot whose substituted condition is Refuted (6.4.3) that also

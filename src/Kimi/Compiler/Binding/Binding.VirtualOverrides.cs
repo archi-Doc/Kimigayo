@@ -413,8 +413,10 @@ public sealed partial class Binding
             var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
             this.PrepareVirtualOverridePremises(function, slot);
             this.DropConsultation(frame);
-            this.CheckVirtualOverrideSignature(function, slot);
-            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
+
+            // SPEC 6.4.4, 23.1.2: the Origin completion compares the two signatures' binders, so it runs when the signature check matched,
+            // whatever else failed the override (a refuted premise above).
+            if (this.CheckVirtualOverrideSignature(function, slot) && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
             {
                 if (incompatible is { } contract)
                 {
@@ -488,6 +490,11 @@ public sealed partial class Binding
         for (var rows = this.virtualOverrides.Values.In(this.pass); rows.MoveNext();)
         {
             var (function, implementation) = ((FunctionKoto)rows.Node, rows.Current);
+
+            // Transitional, R7-E5 (D-924; B's C2 (b)): the slot's failure skips the containing condition, since it carries a dependence the
+            // proof's premises do not: an override its block's own premise error failed (ruling 297 (b)) would add a dependent
+            // UnprovenOverrideCondition_Kd. So an independent condition record beside another failure (probes o5, o5r1, o5r2) and a
+            // duplicate's, which has no premises (o4), are lost until R7-E5's per-problem inputs.
             if (function.BindingFailure != BindingFailure.None || function.BoundSymbol!.ConditionalDeclaration is not { } block)
             {
                 continue;
@@ -564,7 +571,9 @@ public sealed partial class Binding
     private bool SameOverrideType(BoundType slot, BoundType actual, Koto slotBinder, Koto actualBinder, FunctionKoto implementation)
         => SignatureEquals(this.CallableContractType(slot, this.scopes[implementation]), this.CallableContractType(actual, this.scopes[implementation]), slotBinder, actualBinder);
 
-    private void CheckVirtualOverrideSignature(FunctionKoto implementation, VirtualSlot slot)
+    // SPEC 6.4.2 (3), 6.4.4: the override's external names and result against its slot's; true when they match, the answer the Origin
+    // completion reads (SettleVirtualOverridePremises).
+    private bool CheckVirtualOverrideSignature(FunctionKoto implementation, VirtualSlot slot)
     {
         var original = slot.Original;
         for (var i = 0; i < original.Parameters.Count; i++)
@@ -575,7 +584,7 @@ public sealed partial class Binding
                 var span = implementation.Parameters[i].ExternalNameSpan;
                 facts.Add(new(ProblemFactKind.Span, SourceRef.Of(implementation), ((long)span.Start << 32) | (uint)span.Length));
                 this.RecordOverride(implementation, BindingFailure.OverrideContractMismatch, facts);
-                return;
+                return false;
             }
         }
 
@@ -590,7 +599,10 @@ public sealed partial class Binding
             facts.Add(new(ProblemFactKind.Expected, site, this.report.Keep(bound)));
             facts.Add(new(ProblemFactKind.Actual, site, this.report.Keep(actual)));
             this.RecordOverride(implementation, BindingFailure.OverrideContractMismatch, facts);
+            return false;
         }
+
+        return true;
     }
 
     // SPEC 6.4.2-6.4.4: an override problem's facts (ReportOverrideFailure renders them): the closed cause and a condition's proof (its
