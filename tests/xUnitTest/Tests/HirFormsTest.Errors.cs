@@ -28,6 +28,9 @@ public sealed partial class HirFormsTest
         "func g(a: Weak<rc/Node>, b: i32) -> i32 => b\nfunc f(w: Weak<rc/Node>, u: Weak<rc/Node>) -> i32\n" +
         "    var n: Node = Node.init(w@move, 1, 2)\n    let r = n.v@uniq\n    let k = g(u@move, n.x)\n    r@follow = 2\n    return k\n";
 
+    // The Z17c design review's cr-opt-excess rows (B6; SPEC 6.5.1, 15.6.7): an Option construction, its statement appended.
+    private const string OptionExcess = "func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n";
+
     // Declarations whose callers' inputs need an Origin relation between fixed Origins the premises do not prove, whatever the input's
     // acquisition or adaptation: since R7-O1 b1 a row A5 judges (UnprovenOriginRelation_Kd at the input), the input itself resolved. State's
     // static Places, which a call's input borrows, are the inputs Binding still rejects after selection: the located limit until P42
@@ -426,77 +429,102 @@ public sealed partial class HirFormsTest
         Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
     }
 
-    // DECISIONS D-986 (for Z17's commit 3): a kept operand is marked read (PlanRow.KeptRead) where the Adjust rule, run for its Error's
-    // form, reads its whole Place in a use not in place (HirAdjust.Reads: an acquisition or a shared borrow, SPEC 13.4, 15.1.5, 15.1.6), as
-    // it takes a valid node's child of that form: an operator's Copy operand, a non-Copy operand it inspects through a shared Loan and an
-    // Error value, a Tuple's elements, `and`'s left operand, a built-in index's index, a match's Place Subject, which its plan borrows
-    // shared, a for's Iterable, and the operand of a conversion Binding left unclassified (KindOp's Convert arm: a same-Type acquisition
-    // and G839's `h@raw/Missing`); not a selection's receiver or a built-in index's base (in place: r-weak-sibling's `n.w`, valid beside
-    // its limits, an unresolved member, and a value base, which the rule takes as a Temporary in place: `mk()[missing]`, the row that
-    // fails without FormReads' in-place guard), nor a borrow's operand. A failed object creation's operand is read as any conversion's
-    // (`s@rc/Missing`; `s@rc` of a non-Copy `s`, SPEC 13.6.2). DECISIONS G1178 (SPEC 7.4, 10.1, 10.2, 15.1.5): an argument of an
-    // application Binding did not resolve, which no operation takes, is read under every candidate, so it is marked whatever the
-    // failure: a selected callee with a failed argument (`k2(x, missing)`), too many (`k`; an excess first argument `k(1, y)`) or too
-    // few (`k2(x)`) arguments, an unknown label (`k(b: y)`), an unresolved callee (a non-Copy element `a[i]`, a followed `r@follow`, a
-    // static `G.s`), a Case construction with two payloads for one, and r-weak-sibling's twin z1-weak-sibling-arg (valid beside its
-    // limits: `n.x`, disjoint from the live `n.v`); an explicit `@uniq` or `@move` argument is a value, marked at itself, its operand its
-    // own operation's; a Closure literal awaiting the call's Types stays replaced (Keeps), a receiver is no argument (`p.missing(p.a)`),
-    // and an argument whose own take failed is not read (a Weak Field `n.w` at `g2`, valid beside its limits). Only a kept operand is
-    // marked. Fail-before: no kept operand was marked (D-986's rows); an argument of an unresolved application was not (G1178's).
+    // DECISIONS D-986 (for stream Z's Z17c): a kept operand carries the take by which the Adjust rule, run for its Error's form, reads its
+    // whole Place in a use not in place (PlanRow.KeptAdjust; HirAdjust.Reads: an acquisition or a shared borrow, SPEC 13.4, 15.1.5,
+    // 15.1.6), as it takes a valid node's child of that form: an operator's Copy operand, a non-Copy operand it inspects through a shared
+    // Loan and an Error value, a Tuple's elements, `and`'s left operand, a built-in index's index, a match's Place Subject, which its plan
+    // borrows shared, a for's Iterable, and the operand of a conversion Binding left unclassified (KindOp's Convert arm: a same-Type
+    // acquisition and G839's `h@raw/Missing`); none for a selection's receiver or a built-in index's base (in place: r-weak-sibling's
+    // `n.w`, valid beside its limits, an unresolved member, and a value base, which the rule takes as a Temporary in place:
+    // `mk()[missing]`, the row that fails without FormReads' in-place guard), nor a borrow's operand. A failed object creation's operand
+    // is read as any conversion's (`s@rc/Missing`; `s@rc` of a non-Copy `s`, SPEC 13.6.2). DECISIONS G1178 (SPEC 7.4, 10.1, 10.2,
+    // 15.1.5): an argument of an application Binding did not resolve, which no operation takes, is read under every candidate by its
+    // evaluation as a value, whatever the failure: a selected callee with a failed argument (`k2(x, missing)`), too many (`k`; an excess
+    // first argument `k(1, y)`) or too few (`k2(x)`) arguments, an unknown label (`k(b: y)`), an unresolved callee (`missing(y)`, a
+    // non-Copy element `a[i]`, a followed `r@follow`, a stored exclusive reference `r`, Reborrowed, a static `G.s`), a Case construction
+    // with two payloads for one, and r-weak-sibling's twin z1-weak-sibling-arg (valid beside its limits: `n.x`, disjoint from the live
+    // `n.v`); an explicit `@uniq` or `@move` argument is a value, read at itself, its operand its own operation's; a Closure literal
+    // awaiting the call's Types stays replaced (Keeps), a receiver is no argument (`p.missing(p.a)`), and an argument whose own take
+    // failed is not read (a Weak Field `n.w` at `g2`, valid beside its limits). PlanRow.KeptInput (SPEC 15.6.7): the form takes the kept
+    // operand as an invocation's receiver or argument, read or not (`n.w` at `g2`): every argument of such an application under the form
+    // Call, whatever it resolves to; not a Case construction's payloads, resolved or failed, written `.Case` or in full (`.Some(x,
+    // missing)`, `E.A(x, missing)`, and the Z17c design review's cr-opt-excess rows `.Some(y@uniq, g(y))` and `Option.Some(y@uniq,
+    // g(y))`, B6: the payload stores the exclusive borrow, a live Loan while `g(y)` reads `y`): the form is Aggregate by the Case Binding
+    // selected at the callee, which a failed construction keeps (KindOp; its resolved twin AResolvedCaseConstructionIsAnAggregate;
+    // fail-before: each read as inputs). A leading-dot application naming no Case (`.Nope(y@uniq, g(y))`, Z17c-M's P9; F's ruling) is
+    // no Case construction, since no member was found: it is G1178's unresolved application under the form Call, so its arguments are
+    // inputs (its conflict at `g(y)` rests on the member's failure either way); so is an application of a construction's value
+    // (`Option.Some(1)(y@uniq, g(y))`, the code review's C1: not callable, and its arguments are no payloads, Some's being `1`;
+    // fail-before: read as payloads by the callee's Case symbol alone); an aggregate's elements (c-tuple-later's `(y@uniq, g(y), missing)`: no reservation passes through aggregate storage), an operator's operands, a Subject, an
+    // Iterable or a conversion's operand. Only a kept operand carries either fact. Each row lists the kept operands that carry one: the
+    // take, then "input" or "-". Fail-before: no kept operand carried a take (D-986's rows) or was an input (the facts unpublished).
     [Theory]
-    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "k2(x, missing)", "x missing")]
-    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k(x, missing)\n    return 1\n", "k(x, missing)", "x missing")]
-    [InlineData(K + "func f() -> i32\n    var x = 1\n    let z = k2(x)\n    return 1\n", "k2(x)", "x")]
-    [InlineData("func f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    missing(a[i])\n", "missing(a[i])", "a[i]")]
-    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    missing(r@follow)\n    r@follow = 2\n", "missing(r@follow)", "r@follow")]
-    [InlineData("func f(s: string)\n    var y = 1\n    missing(y@uniq, s@move)\n", "missing(y@uniq, s@move)", "y@uniq s@move")]
-    [InlineData("func f()\n    var y = 1\n    missing(y, func (a) => a)\n", "missing(y, func (a) => a)", "y")]
-    [InlineData("func f(x: i32) -> Option<i32>\n    return .Some(x, missing)\n", ".Some(x, missing)", "x missing")]
-    [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing(p.a)\n", "p.missing(p.a)", "p.a")]
-    [InlineData(WeakSiblingArgument, "g(u@move, n.x)", "u@move n.x")]
-    [InlineData("func f()\n    var s = \"a\"\n    let o = s@rc/Missing\n", "s@rc/Missing", "s")]
-    [InlineData("func f(s: string)\n    let o = s@rc\n", "s@rc", "s")]
-    [InlineData(K + "func f() -> i32\n    var y = 1\n    let z = k(1, y)\n    return 1\n", "k(1, y)", "1 y")]
-    [InlineData(K + "func f() -> i32\n    var y = 1\n    let z = k(b: y)\n    return 1\n", "k(b: y)", "y")]
-    [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing(G.s)\n", "missing(G.s)", "G.s")]
-    [InlineData(WeakSiblingArgument + "func g2(a: ref/Weak<rc/Node>) -> i32 => 0\nfunc h(w: Weak<rc/Node>) -> i32\n    var n: Node = Node.init(w@move, 1, 2)\n    let r = n.v@uniq\n    let k = g2(n.w)\n    r@follow = 2\n    return k\n", "g2(n.w)", "")]
-    [InlineData("func f() -> i32\n    var x: i32\n    missing(x + missing2)\n    return 1\n", "x + missing2", "x missing2")]
-    [InlineData("func f(s: string) -> bool\n    return s == missing\n", "s == missing", "s missing")]
-    [InlineData("func f() -> i32\n    var x: i32\n    let t = (x, missing)\n    return 1\n", "(x, missing)", "x missing")]
-    [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing", "c")]
-    [InlineData("func f(v: [3 of i32]) -> i32\n    return v[missing]\n", "v[missing]", "missing")]
+    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "k2(x, missing)", "x Copy/None input; missing Temporary/None input")]
+    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k(x, missing)\n    return 1\n", "k(x, missing)", "x Copy/None input; missing Temporary/None input")]
+    [InlineData(K + "func f() -> i32\n    var x = 1\n    let z = k2(x)\n    return 1\n", "k2(x)", "x Copy/None input")]
+    [InlineData("func f()\n    var y = 1\n    missing(y)\n", "missing(y)", "y Copy/None input")]
+    [InlineData("func f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    missing(a[i])\n", "missing(a[i])", "a[i] Move/None input")]
+    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    missing(r@follow)\n    r@follow = 2\n", "missing(r@follow)", "r@follow Copy/None input")]
+    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    missing(r)\n    r@follow = 2\n", "missing(r)", "r Reborrow/None input")]
+    [InlineData("func f(s: string)\n    var y = 1\n    missing(y@uniq, s@move)\n", "missing(y@uniq, s@move)", "y@uniq Temporary/None input; s@move Temporary/None input")]
+    [InlineData("func g(a: i32) -> i32 => a\nfunc f()\n    var y = 1\n    missing(y@uniq, g(y))\n", "missing(y@uniq, g(y))", "y@uniq Temporary/None input; g(y) Temporary/None input")]
+    [InlineData("func f()\n    var y = 1\n    missing(y, func (a) => a)\n", "missing(y, func (a) => a)", "y Copy/None input")]
+    [InlineData("func f(x: i32) -> Option<i32>\n    return .Some(x, missing)\n", ".Some(x, missing)", "x Copy/None -; missing Temporary/None -")]
+    [InlineData("enum E\n    A(i32, i32)\nfunc f() -> i32\n    var x: i32\n    let e = E.A(x, missing)\n    return 1\n", "E.A(x, missing)", "x Copy/None -; missing Temporary/None -")]
+    [InlineData(OptionExcess + "    let e: Option<uniq/i32> = .Some(y@uniq, g(y))\n", ".Some(y@uniq, g(y))", "y@uniq Temporary/None -; g(y) Temporary/None -")]
+    [InlineData(OptionExcess + "    let e: Option<uniq/i32> = Option.Some(y@uniq, g(y))\n", "Option.Some(y@uniq, g(y))", "y@uniq Temporary/None -; g(y) Temporary/None -")]
+    [InlineData(OptionExcess + "    let e: Option<uniq/i32> = .Nope(y@uniq, g(y))\n", ".Nope(y@uniq, g(y))", "y@uniq Temporary/None input; g(y) Temporary/None input")]
+    [InlineData(OptionExcess + "    let e = Option.Some(1)(y@uniq, g(y))\n", "Option.Some(1)(y@uniq, g(y))", "y@uniq Temporary/None input; g(y) Temporary/None input")]
+    [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing(p.a)\n", "p.missing(p.a)", "p.a Copy/None input")]
+    [InlineData(WeakSiblingArgument, "g(u@move, n.x)", "u@move Temporary/None input; n.x Copy/None input")]
+    [InlineData("func f()\n    var s = \"a\"\n    let o = s@rc/Missing\n", "s@rc/Missing", "s Move/None -")]
+    [InlineData("func f(s: string)\n    let o = s@rc\n", "s@rc", "s Move/None -")]
+    [InlineData(K + "func f() -> i32\n    var y = 1\n    let z = k(1, y)\n    return 1\n", "k(1, y)", "1 Temporary/None input; y Copy/None input")]
+    [InlineData(K + "func f() -> i32\n    var y = 1\n    let z = k(b: y)\n    return 1\n", "k(b: y)", "y Copy/None input")]
+    [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing(G.s)\n", "missing(G.s)", "G.s Copy/None input")]
+    [InlineData(WeakSiblingArgument + "func g2(a: ref/Weak<rc/Node>) -> i32 => 0\nfunc h(w: Weak<rc/Node>) -> i32\n    var n: Node = Node.init(w@move, 1, 2)\n    let r = n.v@uniq\n    let k = g2(n.w)\n    r@follow = 2\n    return k\n", "g2(n.w)", "n.w Unset/None input")]
+    [InlineData("func f() -> i32\n    var x: i32\n    missing(x + missing2)\n    return 1\n", "x + missing2", "x Copy/None -; missing2 Temporary/None -")]
+    [InlineData("func f(s: string) -> bool\n    return s == missing\n", "s == missing", "s None/SharedBorrow -; missing Temporary/None -")]
+    [InlineData("func f() -> i32\n    var x: i32\n    let t = (x, missing)\n    return 1\n", "(x, missing)", "x Copy/None -; missing Temporary/None -")]
+    [InlineData("func g(a: i32) -> i32 => a\nfunc f() -> i32\n    var y = 1\n    let t = (y@uniq, g(y), missing)\n    return 1\n", "(y@uniq, g(y), missing)", "y@uniq Temporary/None -; g(y) Temporary/None -; missing Temporary/None -")]
+    [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing", "c Copy/None -")]
+    [InlineData("func f(v: [3 of i32]) -> i32\n    return v[missing]\n", "v[missing]", "missing Temporary/None -")]
     [InlineData(
         "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n",
         "match y",
-        "y")]
-    [InlineData("func f() -> i32\n    var x: i32\n    for i in missing(x)\n        _ = i\n    return 1\n", "for i in missing(x)", "missing(x)")]
-    [InlineData("func f(s: string) -> string\n    return s@string\n", "s@string", "s")]
-    [InlineData("func f() -> i32\n    var h = 1\n    let r = h@uniq\n    let p = h@raw/Missing\n    r@follow = 2\n    return 0\n", "h@raw/Missing", "h")]
+        "y None/SharedBorrow -")]
+    [InlineData("func f() -> i32\n    var x: i32\n    for i in missing(x)\n        _ = i\n    return 1\n", "for i in missing(x)", "missing(x) Temporary/None -")]
+    [InlineData("func f(s: string) -> string\n    return s@string\n", "s@string", "s Move/None -")]
+    [InlineData("func f() -> i32\n    var h = 1\n    let r = h@uniq\n    let p = h@raw/Missing\n    r@follow = 2\n    return 0\n", "h@raw/Missing", "h Copy/None -")]
     [InlineData(WeakSibling, "n.w", "")]
     [InlineData(WeakSibling, "n.w@ref", "")]
-    [InlineData("func mk() -> [3 of i32] => [1, 2, 3]\nfunc f() -> i32\n    return mk()[missing]\n", "mk()[missing]", "missing")]
+    [InlineData("func mk() -> [3 of i32] => [1, 2, 3]\nfunc f() -> i32\n    return mk()[missing]\n", "mk()[missing]", "missing Temporary/None -")]
     [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing\n", "p.missing", "")]
-    public void AKeptOperandIsReadWhereItsErrorsFormReadsItsPlace(string source, string text, string read)
+    public void AKeptOperandCarriesItsErrorsFormsTakeAndInput(string source, string text, string facts)
     {
         var kept = new HirAdjust(HirAcquire.None, HirAdaptation.None);
         var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
         HirTables.Publish(c);
         var node = Reachable(c.Kotonoha).First(x => x.ToString() is { } written && (written == text || written.StartsWith(text + "\n", StringComparison.Ordinal)) &&
             HirTables.Op(x) == HirOp.Error);
-        var marked = node.Children().Where(x => HirTables.AdjustOf(x) == kept && HirTables.KeptRead(x));
-        Assert.Equal(read, string.Join(" ", marked.Select(static x => x.ToString())));
-        Assert.DoesNotContain(Reachable(c.Kotonoha), x => HirTables.KeptRead(x) && !(x.Parent is { } parent && HirTables.Op(parent) == HirOp.Error && HirTables.AdjustOf(x) == kept));
+        var carrying = node.Children().Where(x => HirTables.AdjustOf(x) == kept && Carries(x));
+        Assert.Equal(facts, string.Join("; ", carrying.Select(static x => $"{x} {Adjust(HirTables.KeptAdjust(x))} {(HirTables.KeptInput(x) ? "input" : "-")}")));
+        Assert.DoesNotContain(Reachable(c.Kotonoha), x => Carries(x) && !(x.Parent is { } parent && HirTables.Op(parent) == HirOp.Error && HirTables.AdjustOf(x) == kept));
         Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
+
+        static bool Carries(Koto x) => HirTables.KeptAdjust(x) != default || HirTables.KeptInput(x);
+        static string Adjust(HirAdjust adjust) => $"{adjust.Acquire}/{adjust.Adaptation}{(adjust.ExclusiveMode ? "/Exclusive" : string.Empty)}";
     }
 
-    // DECISIONS D-986 (G147 ruling 53): a kept operand's read is its publication's. Check publishes again in its pass (after H1's
-    // failures; CheckBound reruns it), so a read an earlier publication of the pass recorded is not a later one's: with the recorded read
-    // of `v[missing]`'s index placed at its kept base `v`, which the form uses in place, CheckBound's republication marks the index alone,
-    // its row rewritten with the republication's number. No program's own republication drops a read today (H1's failures only add
-    // Errors), so the row places the earlier read by hand; a natural program replaces it when one exists. Fail-before (a pass-lived
-    // row): `v` was marked read too.
+    // DECISIONS D-986 (G147 ruling 53): a kept operand's take and input are its publication's. Check publishes again in its pass (after
+    // H1's failures; CheckBound reruns it), so a take an earlier publication of the pass recorded is not a later one's: with the recorded
+    // take of `v[missing]`'s index placed at its kept base `v`, which the form uses in place, CheckBound's republication gives the index
+    // alone its take, its row rewritten with the republication's number; and a publish clears every plan row's kept facts first, so `v`'s,
+    // placed by hand, are gone. No program's own republication drops a read today (H1's failures only add Errors), so the row places the
+    // earlier take by hand; a natural program replaces it when one exists. Fail-before (a pass-lived row): `v` carried the take too; (no
+    // clear at the publish) `v` kept the hand-placed facts.
     [Fact]
-    public void AKeptOperandsReadIsItsPublications()
+    public void AKeptOperandsTakeIsItsPublications()
     {
         var c = MinimalEmissionTest.Analyze("func f(v: [3 of i32]) -> i32\n    return v[missing]\n", output: OutputKind.Library);
         HirTables.Publish(c);
@@ -504,11 +532,26 @@ public sealed partial class HirFormsTest
         var (unread, read) = (node.Children().First(static x => x.ToString() == "v"), node.Children().First(static x => x.ToString() == "missing"));
         ref var rows = ref HirTables.Of(read).Families.FormReads;
         var recorded = rows.Get(read.SyntaxId, c.Binding);
-        Assert.NotEqual(default, recorded);
+        Assert.NotEqual(default, recorded.Take);
         rows.Ref(unread.SyntaxId, c.Binding) = recorded;
+        ref var placed = ref HirTables.PlanFor(unread, written: true);
+        (placed.KeptAdjust, placed.KeptInput) = (recorded.Take, true);
         c.Binding.CheckBound();
-        Assert.NotEqual(recorded, HirTables.Of(read).Families.FormReads.Get(read.SyntaxId, c.Binding)); // CheckBound republished.
-        Assert.Equal("missing", string.Join(" ", node.Children().Where(HirTables.KeptRead).Select(static x => x.ToString())));
+        Assert.NotEqual(recorded.Publication, HirTables.Of(read).Families.FormReads.Get(read.SyntaxId, c.Binding).Publication); // CheckBound republished.
+        Assert.Equal("missing", string.Join(" ", node.Children().Where(static x => HirTables.KeptAdjust(x).Reads).Select(static x => x.ToString())));
+        Assert.Equal((default(HirAdjust), false), (HirTables.KeptAdjust(unread), HirTables.KeptInput(unread)));
+    }
+
+    // The resolved twins of the cr-opt-excess rows (valid; SPEC 6.5.1, 6.5.2): a Case construction Binding resolved, written `.Case` or
+    // in full, is an Aggregate, as KindOp classifies the failed ones whose payloads are no inputs (AKeptOperandCarriesItsErrorsFormsTakeAndInput).
+    [Theory]
+    [InlineData(".Some(y@uniq)")]
+    [InlineData("Option.Some(y@uniq)")]
+    public void AResolvedCaseConstructionIsAnAggregate(string construction)
+    {
+        var c = MinimalEmissionTest.Analyze(OptionExcess + $"    let e: Option<uniq/i32> = {construction}\n", output: OutputKind.Library);
+        HirTables.Publish(c);
+        Assert.Equal(HirOp.Aggregate, HirTables.Op(Reachable(c.Kotonoha).Single(x => x.ToString() == construction)));
     }
 
     // DECISIONS Z16 (Z15 2g-D D2; B1, B4, B6): every failure fact the HIR publishes (Binding.FailureFact: an Error, a failed acquisition at
