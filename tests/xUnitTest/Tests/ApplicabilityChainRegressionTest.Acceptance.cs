@@ -59,6 +59,27 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string CallableOne = "func one<F>(action: ref/F) -> i32\n    F is Callable<(i32, i32) -> i32>\n";
 
+    // Two Indexable conformances whose keys a literal fits alike (SPEC 4.7.1's own example: "pair[1] is ambiguous; write pair[1@i64]").
+    private const string IndexPair =
+        "struct Pair\n    Self is Indexable<i32>\n    Self is Indexable<i64>\n    associate Indexable<i32>.Element is i32\n    associate Indexable<i64>.Element is i32\n" +
+        "    var a: i32 = 1\n    public init() => ()\n    public func index(self, key: ref/i32) -> ref/i32 during self => self.a@ref\n" +
+        "    public func index(self, key: ref/i64) -> ref/i32 during self => self.a@ref\nfunc k(pair: ref/Pair) -> i32\n";
+
+    private const string IndexOne =
+        "struct One\n    Self is Indexable<i64>\n    associate Element is i32\n    var a: i32 = 1\n    public init() => ()\n" +
+        "    public func index(self, key: ref/i64) -> ref/i32 during self => self.a@ref\nfunc k(one: ref/One) -> i32\n";
+
+    // Two Addable conformances whose counterparts a literal fits alike (SPEC 13.3.4: candidates are never ranked).
+    private const string AddPair =
+        "struct V\n    Self is Addable<i32>\n    Self is Addable<i64>\n    associate Addable<i32>.Output is i32\n    associate Addable<i64>.Output is i32\n" +
+        "    public init() => ()\n    public func added(self: ref/Self, right: ref/i32) -> i32 => 0\n" +
+        "    public func added(self: ref/Self, right: ref/i64) -> i32 => 1\nfunc k(v: ref/V) -> i32\n";
+
+    // A generic function, a generic constructor and Option's Cases, each with an argument that binds T or none.
+    private const string Slots =
+        "func mk<T>(v: T) -> Option<T> => .Some(v@move)\nfunc none<T>() -> Option<T> => .None\n" +
+        "struct Bin<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\nfunc k() -> ()\n    let n: i32 = 1\n";
+
     // SPEC 10.1, 10.4, 12.3.3, 23.1.2 (PLAN G377, G500): beside an unbound failed argument, a misfit or a tie that reads no Type of that
     // argument is an independent failure and keeps its record (G377: the unresolved name hid NoApplicable; w2's and w6's sources are lost,
     // these are the forms PLAN names). The pinned rows of ACallBesideAFailedPartReportsWhatReadsNoArgumentType go when these pass.
@@ -93,6 +114,39 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "cf-f-mis", CallableOne + "    return action(true, 1)\n", "NoApplicableOverload_Kd: return action(true, 1)")]
     [InlineData("guard", "cf-f-mis-u", CallableOne + "    return action(true, undefinedName)\n", "NoApplicableOverload_Kd: return action(true, undefinedName) | UnresolvedBinding_Kd: return action(true, undefinedName)")]
     public void EachCallFormTiesAndKeepsIndependentRecordsByOneRule(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // R7-P1's call classes, the synthesized forms (R7-P0's census: indexer and requirement/operator ride BindCall): a literal that fits
+    // two conformances alike is ambiguous, and a key or counterpart that fits none is an error. SPEC 4.7.1 step 1 ("Exactly one
+    // conformance must fit: none is a Type error and several are an ambiguity error"; its example `pair[1]`), 13.3.4 ("More than one
+    // candidate is ambiguous: candidates are never ranked"), 12.3.3; each tie's typed twin is valid.
+    [Theory]
+    [InlineData("guard", "ix-tie", IndexPair + "    return pair[1]\n", "AmbiguousBinding_Kd: return pair[1]")]
+    [InlineData("guard", "ix-typed", IndexPair + "    return pair[1@i64]\n", "")]
+    [InlineData("open", "ix-mis", IndexPair + "    return pair[true]\n", "NoApplicableOverload_Kd: return pair[true]", Explicit = true)]
+    [InlineData("guard", "ix-mis1", IndexOne + "    return one[true]\n", "NoApplicableOverload_Kd: return one[true]")]
+    [InlineData("guard", "op-tie", AddPair + "    return v + 1\n", "ArithmeticSelection_Kd: return v + 1")]
+    [InlineData("guard", "op-typed", AddPair + "    return v + 1@i64\n", "")]
+    [InlineData("guard", "op-mis", AddPair + "    return v + true\n", "ArithmeticSelection_Kd: return v + true")]
+    public void EachSynthesizedCallFormTiesAndMisfitsByOneRule(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // R7-P1's R-c: argument evidence binds a slot first and the expected result fills only unbound parts (SPEC 10.8, 10.1 step 4,
+    // 10.3), at a generic function (rc-d-*) and a generic constructor (rc-c-*, 10.8.1 with its `takeBox(Box.init(1))`); a literal-only
+    // argument is checked against the Type the expected result gives (10.8's `identity([2 of 1])`), and a slot nothing binds is an
+    // error (10.8's `identity(stop())`). An enum Case takes the other order by its own rule (6.5.2 step 2: the expected Type's
+    // arguments first, then the payloads adapt; its examples `Option.Some(1)` at `Option<i64>` and `Option.None`): rc-e-* state it.
+    [Theory]
+    [InlineData("guard", "rc-d-arg", Slots + "    let a: Option<i64> = mk(n)\n", "NoApplicableOverload_Kd: let a: Option<i64> = mk(n)")]
+    [InlineData("guard", "rc-d-lit", Slots + "    let a: Option<i64> = mk(1)\n", "")]
+    [InlineData("guard", "rc-d-fill", Slots + "    let a: Option<i64> = none()\n", "")]
+    [InlineData("guard", "rc-d-open", Slots + "    let a = none()\n", "UnboundTypeArgument_Kd: let a = none()")]
+    [InlineData("guard", "rc-c-arg", Slots + "    let b: Bin<i64> = Bin.init(n)\n", "NoApplicableOverload_Kd: let b: Bin<i64> = Bin.init(n)")]
+    [InlineData("guard", "rc-c-lit", Slots + "    let b: Bin<i64> = Bin.init(1)\n", "")]
+    [InlineData("guard", "rc-e-arg", Slots + "    let o: Option<i64> = Option.Some(n)\n", "TypeMismatch_Kd: let o: Option<i64> = Option.Some(n)")]
+    [InlineData("guard", "rc-e-lit", Slots + "    let o: Option<i64> = Option.Some(1)\n", "")]
+    [InlineData("guard", "rc-e-open", Slots + "    let o = Option.None\n", "UnresolvedBinding_Kd: let o = Option.None")]
+    public void ArgumentsBindSlotsBeforeTheExpectedResultFillsTheRest(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // SPEC 10.8 ("Unbound slots": Constraints needing the slot are not judged; traversal order never chooses), 10.1 step 5, 8.10 (PLAN
