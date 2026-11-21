@@ -28011,6 +28011,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M9 (unit B6b1, 2026-11-21): `NativeBuild` and `toolchain verify` take the compiler's Tatara (`Tatara.Instance`),
     not the root's `tatara.dll` (`Tatara.Load` is removed); `tools.tatara` has no `path`, and verify hashes the root's `tatara.dll`
     as a file.
+  - Amended by T-M10 (unit B6b5, 2026-11-21): the project setting `LlvmBin` and the manifest's `toolchain` member are
+    removed (errors); the command line's option goes with B6b4.
 - **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
@@ -28109,3 +28111,24 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `KimiToolchain` property (a second way to name a root, R1); the copy checked at Kimi's build (a second copy of the installation
     rule); the copy required (it fails CI's Ubuntu job and fresh clones) or warned about (it fails `-warnaserror`);
     `CopyToOutputDirectory="Always"` (a 68.6 MB copy per build).
+- **T-M10 `LlvmBin` removed from projects and manifests** (Tatara, 2026-11-21; the plan's unit B6b5, Q-627, D-1022; Major;
+  design `artifacts\handoff\tatara\units\B6\design-b6b.md` §6; design review C-437; implementation review C-443, ACCEPT;
+  the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line.
+  - **The removed settings:** `ProjectFile.Removed`, one table of removed project settings, each a name and its note:
+    `NativeBindings` (`NativeConfiguration.SupersededBindings`, unchanged) and `LlvmBin` ("LlvmBin was removed: Kimi carries
+    its toolchain. Remove the LlvmBin setting."). `ValidateMapNames` reads it for every name it does not inspect; each hit is
+    one note (SPEC 23.1.2: a file with both settings has both notes) and the file is discarded (`ProjectConfigurationException`),
+    whatever the value, in a root project and in a dependency's project file (`DependencyResolver`'s load,
+    `InvalidConfiguration`). It replaces `ValidateMapNames`' `NativeBindings` clause; a later removal adds a row.
+  - **The manifest's removed member:** `LinkManifest.Removed`, a removed-members table of the same form (`toolchain`: "The
+    link manifest's 'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest."), read once by
+    `CheckFixed` after the fixed fields, whatever the member's content; no row kind that `WriteFixed` skips (C-437 N5-2). The
+    two tables stay apart: they serve two contracts, a project file's load and a manifest's fixed fields (C-443). `emit`
+    writes no `toolchain` member, so an emit of a project without `LlvmBin` is byte-equal to the base's; schema 4 is unchanged.
+  - **Deleted:** `ProjectFile.LlvmBin`; `EmissionArtifacts`' path check, relative path and `toolchain` write; the "accepted and
+    not read" sentences (`LinkManifest`, `NativeToolchain.Build`).
+  - **Interim:** the command line's `--LlvmBin` is accepted and read by no build until B6b4, which also removes
+    `toolchain verify`'s reading (PLAN G1173).
+  - Rejected: deleting the property alone (the setting would be accepted silently, design B6b fact 3); a clause per removed
+    name; a `LinkManifest.Rows` row that `WriteFixed` must skip; the general unknown-setting rule in this unit (pre-existing,
+    a PLAN open issue with B6b4's docs).
