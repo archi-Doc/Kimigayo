@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class AssociatedInferenceTest
+public partial class AssociatedInferenceTest
 {
     private const string InferredHeaderFails = """
         contract Z
