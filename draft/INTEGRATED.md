@@ -1444,6 +1444,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   records V2f as done with V2a and its DeclQuery kind as moved to C9 (a bound reference to a library Contract carries the
   frozen library declaration; completing such a query throws in `SetQueryState`); C7's prerequisite is met; C9's row takes
   the kind. Nothing frozen.
+- Revision 108 (2026-11-22, plan §14; the Front's Q-643 and D-1053, F's V2a2/C3b rulings 1 and 2, R7-V2a2's landing): V2's
+  row records V2a2 as landed in W-309: `ImplTable.Find` and `TryPath` hand out only what the running pass registered
+  (DECISIONS R7-M16's R7-V2a2 amendment); e6 and t1, valid programs the Bind after an edit rejected, are accepted. Nothing
+  frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

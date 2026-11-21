@@ -22660,6 +22660,14 @@ R8-M* and R9-M* by the stage of the recording unit.
   `PublishedBindingTypes` is unchanged). R2b-D3 still holds for `UniversalRelations`, `EffectBoundTable` (R7-V2f decides) and
   `AvailableBounds` (R7-C7). Demand-built paths come with R7-D2 d3. Rejected: keeping the fields in Registration (the readers would
   change again in V2b, V2c and D2b); renaming the record in V2a (it is renamed in V2b, the part that changes its meaning).
+  Amended by R7-V2a2 (Q-643, 2026-11-22): `Find` and `TryPath` hand out only what the running pass registered, as it reads it (an
+  identity with a path, `PathsOf`, rule (a) included; an `Active` path), as `OfType`'s lists already did, so their readers test for
+  no registration; `Path` and `Identities` still hand out what a registration names, which may not be registered yet
+  (`ValidateConformances`' test over `Identities` stays). Before, a key's object came back whether or not the pass had registered it:
+  after an edit that removed or replaced a Self clause, the next Bind read the removed clause's identity, emptied by its reset, as the
+  solver's exact-key answer and skipped its other lookups, rejecting a valid program a fresh Bind accepts (e6, t1; N2d: a Bind's
+  records are a function of the source and mode). Rejected: a stale identity reset on read (a cold Bind never keys it); a
+  registration test at each reader (eight copies of one fact, deleted).
 - **R7-M17 R4-M118's chain judgment is one TyCtxt function family, `TyCtxt.OriginChains`, read by A5's Origin stratum and the
   declaration judge** (2026-11-10; PLAN G318, the Middle's under plan revision 50, DECISIONS Q18; design review 1 REVISE (B1-B3),
   repeated review ACCEPT; the Front's consent on C-197; supersedes BU-62's staged move and its
