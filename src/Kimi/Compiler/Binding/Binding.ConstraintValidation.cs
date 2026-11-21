@@ -245,12 +245,15 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 23.1.2 (F's C2 ruling 320): the direction contradiction, the identity premise error (once per pass, so the certificate
-            // rounds terminate; SPEC 8.2.3) and the facts' proofs are independent: all are judged on the premises as the step found them,
-            // none reading a failure this step records against the owner as its failed context (validationStep). A contradiction then
-            // fails the owner's own premises (FailFacts; an enclosing premise stays valid in its own scope), so no later view meets its pair.
+            // SPEC 23.1.2 (F's C2 rulings 320, 324): the direction contradiction, the identity premise error (once per pass, so the
+            // certificate rounds terminate; SPEC 8.2.3) and the facts' proofs are independent: all are judged on the premises as the step
+            // found them, none reading a failure this step records against the owner as its failed context (validationStep). A
+            // contradiction then fails the pair's own premises alone (FailPairPremise); its report site keeps a member from reporting it
+            // again (MetInParent), so every check reading no premise of the pair is judged.
             this.validationStep = scope.Owner.BindingFailure == BindingFailure.None ? scope.Owner : null;
-            var contradiction = !this.ValidateArithmeticDirections(scope);
+            var state = scope.Owner.BindingState;
+            var contradiction = this.ValidateArithmeticDirections(scope);
+            changed |= state != scope.Owner.BindingState;
             changed |= this.RecordIdentityPremiseError(scope, mode);
             var judged = this.JudgeFacts(scope, environment, environment, mode, ref changed);
 
@@ -265,7 +268,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (contradiction)
+            if (contradiction is { } pair)
             {
                 if (judged is { Failed: true, Rests: false })
                 {
@@ -274,8 +277,7 @@ public sealed partial class Binding
                     this.Record(scope.Owner, BindingFailure.InvalidConstraint, []);
                 }
 
-                this.FailFacts(scope, scope.Owner); // ValidateArithmeticDirections failed the owner; its own premises fail with it.
-                changed = true;
+                changed |= this.FailPairPremise(pair.Row, scope) | this.FailPairPremise(pair.Other, scope);
             }
 
             this.validationStep = null;
