@@ -4,7 +4,7 @@
 // here, in its entry file, for all its types.
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
 // pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the root's tatara.dll), so a
-// native build launches no tool; the built Application's run and the installed toolchain's verification
+// native build launches no tool; the built Application's run (a JobProcess) and the installed toolchain's verification
 // (NativeToolchain.Verification.cs, whose file-scoped ToolProcess is the only code here that launches an LLVM tool: the tools' version
 // banners and kernel32's inspection); the toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and
 // staged as a program's input is) and the root's resolution (ToolchainIdentity, ToolchainResolver); kernel32's definition and
@@ -17,7 +17,8 @@
 // external declarations, each an ExternalFunction read for its Symbol and DllImport; R9-B1); the enum OutputKind, which project
 // configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
-// project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
+// project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput; and JobProcess (Misc),
+// the child whose tree ends with its job, which the run's program is.
 // Output: the pair, the build record, the staged libraries, the object and the executable, each published by
 // replacement, the executable last: linked to a private name, it moves into place after the success record that names its hash, and a
 // failed move invalidates the record again, so its path keeps the previous executable until a build succeeds (IMPL 20.3.2; Tatara
@@ -153,11 +154,12 @@ internal static partial class NativeToolchain
         return await RunExecutable(paths.Executable, Path.GetFullPath(project.Directory.Length == 0 ? "." : project.Directory), cancellationToken);
     }
 
-    // Runs a program and returns its exit code; its output is copied to Kimi's raw standard streams and is complete when this returns
-    // or throws: the copies take no token and are awaited after Wait, which on cancellation kills the tree first, so the pipes reach
-    // their end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome
-    // and the cancellation is rethrown. A descendant that escaped the kill's walk (its parent exited first) and holds the output keeps
-    // a cancelled run waiting until it exits or a second Ctrl+C ends the process.
+    // Runs a program and returns its exit code. The program runs in a job of its own (JobProcess), so its whole tree ends with the run:
+    // after the program's exit its remaining descendants (as a test case's do), on cancellation the program with them, and when Kimi's
+    // process ends (a second Ctrl+C included) with the job's last handle (PLAN G1188). It shares Kimi's standard input (Tatara decision
+    // 15); its output is copied to Kimi's raw standard streams and is complete when this returns or throws: the copies take no token and
+    // are awaited after the job's end, so the pipes reach their end. After a cancellation the outcome is the cancellation (130): the
+    // copies are awaited without observing their outcome and the cancellation is rethrown. The exit is awaited on a thread of its own.
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -166,30 +168,26 @@ internal static partial class NativeToolchain
             throw new FileNotFoundException("Executable not found: " + executable);
         }
 
-        var start = new ProcessStartInfo(executable)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        using var process = Process.Start(start) ?? throw new IOException("Cannot start: " + executable);
+        using var program = new JobProcess(executable, workingDirectory, null, JobProcess.StandardInput());
         var output = Task.WhenAll(
-            process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
-            process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
+            program.Stdout.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
+            program.Stderr.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
+        var exit = Task.Factory.StartNew(() => program.Wait(Timeout.Infinite), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            await Wait(process, cancellationToken);
+            await exit.WaitAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
+            program.Kill();
+            await exit;
             await output.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             throw;
         }
 
+        program.Kill();
         await output;
-        return process.ExitCode;
+        return (int)program.ExitCode;
     }
 
     internal static string ParseVersion(string output)
@@ -263,8 +261,8 @@ internal static partial class NativeToolchain
         }
     }
 
-    // Waits for a launched process; on cancellation kills its tree, waits for its exit and rethrows. RunExecutable's wait, and
-    // Verification's ToolProcess's (internal for that file-scoped type).
+    // Waits for a launched tool; on cancellation kills its tree, waits for its exit and rethrows. Verification's ToolProcess's wait
+    // (internal for that file-scoped type; run's program is a JobProcess).
     internal static async Task Wait(Process process, CancellationToken cancellationToken)
     {
         try

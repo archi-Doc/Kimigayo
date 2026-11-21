@@ -3,6 +3,8 @@
 using System.Collections;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Kimi;
+using Kimi.Build;
 using Kimi.Testing;
 using Xunit;
 
@@ -60,7 +62,7 @@ public class TestProcessRecoveryTest
     }
 
     // The ordinary test apphost doubles as an isolated process fixture. No shell or
-    // external build is needed, and child behavior is selected only by this test.
+    // external build is needed, and child behavior is selected only by this test and NativeToolchainTest's run rows ("escape", "run").
     [ModuleInitializer]
     internal static void ProcessProbe()
     {
@@ -70,7 +72,11 @@ public class TestProcessRecoveryTest
         }
 
         var mode = Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_PROBE");
-        if (mode is not ("exit" or "sleep" or "cancel" or "descendant"))
+        if (mode == "run")
+        {
+            RunProgram();
+        }
+        else if (mode is not ("exit" or "sleep" or "cancel" or "descendant" or "escape"))
         {
             return;
         }
@@ -83,7 +89,14 @@ public class TestProcessRecoveryTest
 
         if (mode == "descendant")
         {
-            StartDescendant();
+            using var descendant = StartDescendant("sleep");
+        }
+        else if (mode == "escape")
+        {
+            // A descendant whose parent exits first: a kill of this process's tree no longer finds it (Tatara SP1's limit, C-427 N7).
+            Console.Error.WriteLine(Environment.ProcessId);
+            using var intermediate = StartDescendant("descendant");
+            intermediate.WaitForExit();
         }
 
         if (mode != "sleep")
@@ -145,7 +158,9 @@ public class TestProcessRecoveryTest
         }
     }
 
-    private static void StartDescendant()
+    // A descendant in the mode, ready, its id on the error output. It holds this process's standard output and error: the redirected
+    // input makes Process.Start pass them (with the input, closed at once).
+    private static Process StartDescendant(string mode)
     {
         var readyName = "kimi-recovery-child-" + Guid.NewGuid().ToString("N");
         using var ready = new EventWaitHandle(initialState: false, EventResetMode.ManualReset, readyName);
@@ -153,15 +168,52 @@ public class TestProcessRecoveryTest
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = true,
         };
-        start.Environment["KIMI_TEST_PROCESS_PROBE"] = "sleep";
+        start.Environment["KIMI_TEST_PROCESS_PROBE"] = mode;
         start.Environment["KIMI_TEST_PROCESS_READY"] = readyName;
-        using var child = Process.Start(start)!;
+        var child = Process.Start(start)!;
+        child.StandardInput.Close();
         if (!ready.WaitOne(TimeSpan.FromSeconds(30)))
         {
             Environment.Exit(124);
         }
 
         Console.Error.WriteLine(child.Id);
+        return child;
+    }
+
+    // Kimi's side of NativeToolchainTest's run rows: runs this apphost as kimi run runs a program, in KIMI_TEST_PROCESS_PROGRAM's mode;
+    // when the row has read the program's output (KIMI_TEST_PROCESS_GO), KIMI_TEST_PROCESS_ACTION "cancel" cancels the run and "end" ends
+    // this process as a second Ctrl+C does (Program.EndProcess). Exits with the run's exit code, 130 for a cancellation.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void RunProgram()
+    {
+        Environment.SetEnvironmentVariable("KIMI_TEST_PROCESS_PROBE", Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_PROGRAM"));
+        using var cancellation = new CancellationTokenSource();
+        var run = NativeToolchain.RunExecutable(Environment.ProcessPath!, Environment.CurrentDirectory, cancellation.Token);
+        if (Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_ACTION") is { } action)
+        {
+            using (var go = EventWaitHandle.OpenExisting(Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_GO")!))
+            {
+                go.WaitOne();
+            }
+
+            if (action == "end")
+            {
+                Program.EndProcess();
+            }
+
+            cancellation.Cancel();
+        }
+
+        try
+        {
+            Environment.Exit(run.GetAwaiter().GetResult());
+        }
+        catch (OperationCanceledException)
+        {
+            Environment.Exit(130);
+        }
     }
 }
