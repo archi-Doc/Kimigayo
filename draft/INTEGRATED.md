@@ -1440,6 +1440,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   12.3.3; G274 and G265 closed, no longer reproducing; R7-P1 keeps their programs as guard rows). Nothing frozen.
 - Revision 106 (2026-11-22, plan §14; the Front's D-1034, R7-C8's state check): C8's row records U-D3 as landed in substance
   with G647 (`2f7d4a10d`, DECISIONS BU-175) and names what is left: U-D3r's fail-first rows, G140 U3 and G309-R. Nothing frozen.
+- Revision 107 (2026-11-22, plan §14; the Front's D-1044, F's V2e/V2f/V1c ruling 1, R7-V2f's state check): V2's row
+  records V2f as done with V2a and its DeclQuery kind as moved to C9 (a bound reference to a library Contract carries the
+  frozen library declaration; completing such a query throws in `SetQueryState`); C7's prerequisite is met; C9's row takes
+  the kind. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
