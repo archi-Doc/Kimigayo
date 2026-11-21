@@ -11685,6 +11685,10 @@ resumed by R4-M86 (2026-10-20).
     compilations publish). Publication's throw is unreachable; deleting it is the back's (`C/Emission`, R9-M2).
   - Rejected: an `Unsupported_Kd` from publication (a reporter beyond ARCH's three, G9 Q4); the check before the import's own ones
     (it would hide their Language errors).
+  - Amended by T-M13 (B7a1): the exemption is every reserved supply, which the compiler stages and links for every module (IMPL
+    20.4), not kernel32 alone. No record moves: a dependency module's `kimi_backend` import has its own record before the edge, as in
+    the root (a catalog symbol `InvalidLibraryImport_Kd`, IMPL 21.2; any other `UnavailableReservedImport_Kd`, IMPL 21.4.7), and the
+    edge's `Fail` keeps a failed node's record.
 
 - **BU-93 A whole-contract comparison judges its Origin part from premises alone, at its use** (2026-11-04; PLAN G404, found by BU's
   2c-9 review N3 and G216 (b)'s design; R4 agreeing as R4-M155's owner) SPEC 15.6.1 ("judged under 15.3.7 from premises alone, so it is
@@ -21654,6 +21658,8 @@ structure is recorded here by the unit that first implements it.
     unclassified architecture is 0, so rejected. Every architecture and environment keeps its acceptance and `Compilation.PointerWidth`.
   - Amended by BU-130: what the phases share is `ScalarTypes.SizeWidth`, the profile's width of `isize` and `usize`; `IrTarget` keeps the target's width for the `pointerWidth` Condition and its 0 for no IR target.
   - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
+  - Amended by T-M13 (B7a1): the reserved supplies are the profile's `Supplies` (`TargetSupply`) and `ReservedSymbols`;
+    `Kernel32Library`, `BackendLibrary`, `Kernel32Symbols` and `ProvidedSymbols` are deleted. The split stands.
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -28428,6 +28434,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M11 (unit B6b3, 2026-11-21): the temporary structure's checker is `check-toolchain.ps1`, not `toolchain verify`:
     it compares the root's kernel32 and backend with the catalog and inspects kernel32's content (`Test-KimiKernel32Library`) until
     B6b6 (PLAN G1210). B6a's design §6, "B6b's verify keeps checking it" (kernel32's content), is superseded (T's ruling R4).
+  - Amended by T-M13 (unit B7a1, 2026-11-22): `CompilerSupply` loses `Name` and `Kind` and holds the profile's `TargetSupply`
+    (`Supply`); the Ordinal-order invariant is the row's, checked by `CoreModelTest`, and `ToolchainIdentity`'s initializer checks
+    that its material's keys are the row's supplies in the row's order (InvalidDataException otherwise); `ToolchainIdentity.Backend`
+    is the row's supply the catalog's `library` names. `NativeConfiguration.Reserved` reads the row.
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -28576,3 +28586,24 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     FFI, run outside the job; a second form of the concept); Kimi in a job of its own; the launcher in Build or Testing with the
     other reading it (the dependency rules); a 10 ms poll of the exit (latency on every run); checking only Windows and a 64-bit
     process (N2: one host rule instead).
+- **T-M13 The reserved supplies stated once** (Tatara, 2026-11-22; the plan's unit B7a1, PLAN G1212, Q-639, D-1048; Major,
+  behaviour-preserving; design `artifacts\handoff\tatara\units\B7\design-b7a.md` Revision 1 §2.2, with T's ruling on C-440 (11-22
+  01:34) folding §2.3's commit into it; design review C-440 with the Front's consent on Binding's part; implementation review
+  C-451, ACCEPT). Amends R5-M174, T-M8 and BU-92; closes PLAN G1212.
+  - **The row:** the target profile states the reserved supplies once: `WindowsProfile.Supplies` (`TargetSupply`: name, kind,
+    symbol set; kernel32 `import`, kimi_backend `static`, in Ordinal name order with disjoint symbol sets, checked by
+    `CoreModelTest`), `ReservedSymbols` (IMPL 21.2's list: the float marker and the backend supply's symbols, stated once) and the
+    lookup `Supply(name)` (a loop: no delegate, no allocation per call). `Supplies` and `ReservedSymbols` are static properties after
+    the private `BackendSymbols` field (StyleCop orders internal fields before private ones, and static initializers run in text
+    order).
+  - **Its readers:** Binding's two branches are one rule read from the row: the fixed kind, the symbol check
+    (`UnavailableReservedImport_Kd`), the runtime-declaration join (membership: the reserved supply whose symbols contain the
+    declaration's symbol, IMPL 21.2's providing library), the dependency edge (`reserved is null`: every reserved supply is exempt,
+    BU-92 amended) and the reserved external names; `NativeConfiguration.Reserved` reads the row. Build's `ToolchainIdentity` keys
+    each supply's material by the row's name and checks the keys against the row at its start (InvalidDataException otherwise);
+    `Backend` is the row's supply the catalog's `library` names.
+  - Behaviour-preserving: no record moves, because every `kimi_backend` import fails before the edge (a catalog symbol
+    `InvalidLibraryImport_Kd`, any other `UnavailableReservedImport_Kd`) and the edge's `Fail` keeps a failed node's record; the
+    design's record move (Revision 1, row 4c) does not exist, so its split into two commits was withdrawn.
+  - Rejected: the join as a second statement of the providing library; a capturing lookup; an enum for Kind; material paired by
+    position; the rows in Build.
