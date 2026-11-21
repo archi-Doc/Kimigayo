@@ -230,32 +230,39 @@ public sealed partial class Binding
             return;
         }
 
-        var layer = this.Library.Layer.Part.Borrows;
-        if (ReferenceEquals(rows, this.borrows) && !ReferenceEquals(rows, layer) && layer.TryGetValue(atom, out var frozen))
+        // The write's row: one find in `rows`. Only an atom it has no row for can be the layer's: a pass's part makes no row of a library
+        // atom (this check runs before it would, and a claim marks only the Origins its own module's body states), so the layer is read
+        // only at a new row.
+        if (!rows.TryGetValue(atom, out var row))
         {
-            // A library body's node bound again by another pass (a default argument at a call): an identical re-record writes nothing;
-            // any other is a write to the layer's part (contract C).
-            if (frozen.Mode(referent) is not { } mode || (exclusive && !mode))
+            var layer = this.Library.Layer.Part.Borrows;
+            if (ReferenceEquals(rows, this.borrows) && !ReferenceEquals(rows, layer) && layer.TryGetValue(atom, out var frozen))
             {
-                throw new InvalidOperationException($"A pass wrote the borrows of the library atom {Describe(atom)} (InternalInvariant; contract C).");
+                // A library body's node bound again by another pass (a default argument at a call): an identical re-record writes nothing;
+                // any other is a write to the layer's part (contract C).
+                if (frozen.Mode(referent) is not { } mode || (exclusive && !mode))
+                {
+                    throw new InvalidOperationException($"A pass wrote the borrows of the library atom {Describe(atom)} (InternalInvariant; contract C).");
+                }
+
+                return;
             }
 
-            return;
+            rows.Add(atom, row = new());
         }
 
-        if (this.BorrowRow(rows, atom).Join(referent, exclusive) && ReferenceEquals(rows, this.borrows))
+        if (row.Join(referent, exclusive) && ReferenceEquals(rows, this.borrows))
         {
             this.borrowVersion++;
         }
     }
 
-    // A write's row (the parts' one find, else a new row in `rows`); a row of the layer's part written by another pass is a broken
-    // contract (contract C).
-    private BorrowList BorrowRow(Dictionary<BoundOrigin, BorrowList> rows, BoundOrigin atom)
+    // A claim's row in the running part (the one find, else a new row).
+    private BorrowList BorrowRow(BoundOrigin atom)
     {
-        if (!rows.TryGetValue(atom, out var row))
+        if (!this.borrows.TryGetValue(atom, out var row))
         {
-            rows.Add(atom, row = new());
+            this.borrows.Add(atom, row = new());
         }
 
         return row;
@@ -365,7 +372,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < (claimed.Kind == OriginKind.Intersection ? claimed.Operands.Count : 1); i++)
         {
-            this.BorrowRow(this.borrows, claimed.Kind == OriginKind.Intersection ? claimed.Operands[i] : claimed).Claimed = true;
+            this.BorrowRow(claimed.Kind == OriginKind.Intersection ? claimed.Operands[i] : claimed).Claimed = true;
         }
     }
 
