@@ -203,6 +203,7 @@ public sealed partial class Binding
         var scope = this.scopes[function];
         var header = this.PrepareVirtualHeaderPremises(function, scope); // An override's inputs and result bind under its header layer.
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
+        var heldReads = this.inferenceHeldReads;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, header);
@@ -218,7 +219,7 @@ public sealed partial class Binding
             pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.PendingAssociatedType(parameterType);
         }
 
-        var pendingHeader = pendingInputs || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
+        var pendingHeader = pendingInputs || heldReads != this.inferenceHeldReads || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
         if (this.associatedInferenceReady && pendingHeader)
         {
             // Result portions that do not depend on missing Type values use the ordinary Origin

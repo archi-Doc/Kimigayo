@@ -690,6 +690,7 @@ public sealed partial class Binding
                 {
                     // R7-C4 (SPEC 8.5.5, 8.3.3): a binding of the component under request is its answer under the reading run's hold, a
                     // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending).
+                    this.inferenceHeldReads++;
                     return this.HeldValue(binding, this.collectingAssociated?.Hold ?? this.inferenceEmptyHold) is { State: HeldState.Type } held ? held.Type : null;
                 }
 
