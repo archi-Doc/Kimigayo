@@ -57,7 +57,7 @@ public sealed partial class Binding
     private bool AccessorTypeMismatch(BoundAccessor accessor)
         => accessor.TypeMismatch ??= accessor.Declaration is { } syntax &&
             (accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Property.IsStored ? accessor.Input : null) is { } used &&
-            accessor.Property.Type is { } type && !SameType(used, type) &&
+            accessor.Property.Type is { } type && !ReferenceEquals(used, type) &&
             this.CheckTypeConstraints(used, this.scopes[syntax]) == ConstraintProof.Proven && this.CheckTypeConstraints(type, this.scopes[syntax]) == ConstraintProof.Proven;
 
     private void IndexAccessor(PropertyAccessorKoto syntax, BindingScope scope)
@@ -440,7 +440,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (accessor.Kind == PropertyAccessorKind.Set && !SameType(accessor.Result, BoundType.Unit))
+        if (accessor.Kind == PropertyAccessorKind.Set && !ReferenceEquals(accessor.Result, BoundType.Unit))
         {
             this.Fail(syntax!, BindingFailure.TypeMismatch);
             return ConstraintProof.Error;
