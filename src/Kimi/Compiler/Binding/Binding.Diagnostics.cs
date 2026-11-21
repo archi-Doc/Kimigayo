@@ -749,7 +749,7 @@ public sealed partial class Binding
         return this.Fail(use, BindingFailure.NotObjectPayload);
     }
 
-    [Transitional("R7", Reason = "Records only at a node without a failure: each caller (ConstraintValidation's use, VirtualOverrides' inherited premise, ArrayInference's fill) may judge a node its own earlier verdict failed, and this guard carries that dependence (R7-E2 E2-5's O2), until R7-E5's per-problem inputs.")]
+    [Transitional("R7", Reason = "Records only at a node without a failure, so each caller keeps the node's earlier verdict (R7-E2 E2-5's O2, the Front's C4), until R7-E5's per-problem inputs: RequireConstraint's Error proof keeps the clause's own formation verdict, whose Error constraint the proof reads (Constraints' clause sites); InheritVirtualConstraints keeps the override's first refuted premise against a later one of its walk (SPEC 6.4.3, one declaration error); ArrayInference's fill, unverified. Constraints.Requirements' cause-less Fail keeps the requirement's own Type record (BindType's, at the node).")]
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
     {
         if (this.RecordedFailure(use) != BindingFailure.None)

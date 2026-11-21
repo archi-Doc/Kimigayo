@@ -452,6 +452,8 @@ public sealed partial class Binding
             {
                 // An invalid required declaration invalidates the implementing Type.
                 // A path-local witness failure must preserve independent conformances.
+                // Transitional, R7-E5 (D-924): an owner over its failed part spelled as a failure (ruling 16 B1 (a)): the Type rests on
+                // its invalid required declaration `failed` and takes that declaration's code until R7-E5's per-problem inputs.
                 var previous = implementation.BindingState;
                 this.Fail(implementation, failed.BindingFailure);
                 changed |= previous != implementation.BindingState;

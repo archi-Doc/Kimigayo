@@ -85,7 +85,8 @@ public sealed partial class Binding
         {
             // SPEC 23.1.2: a transparent wrapper is the requirement it wraps, so the failure rests on that node; one that failed already
             // keeps its own record, whatever wraps it. A failure whose check named the part it rests on records that cause; the cause-less
-            // Fail keeps the node's first failure, which may be the node's own earlier verdict, until R7-E5's per-problem inputs (E2-5's O2).
+            // Fail keeps the node's first failure, which may be the node's own earlier verdict (BindType's record of the complete Type above,
+            // at this node), until R7-E5's per-problem inputs (Transitional, E2-5's O2; FailConstraint's guard names its other callers).
             if (cause is null)
             {
                 this.Fail(UnwrapTransparentType(node)!, BindingFailure.InvalidConstraint);
