@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 // Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys,
 // and RestingCauses, the one cause query of a node a later phase derives a value or a check from (DECISIONS Z16).
 // Checks record the parts they read; publication follows those records without binding or proving them again.
-// Storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
+// A node's consultation range (PrerequisiteRows, a Work pass family: DECISIONS BU-220) holds the running pass's rows by the pass stamp;
+// the other storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
 // A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
 // BindType: BeginConsultation, EndConsultation); a judgment frame (BeginConsultation(use) before a validation check's proof,
 // RequireConstraintInFrame after it; its reads become the outcome's prerequisites only when the outcome is the use's record); a site
@@ -25,7 +26,7 @@ public sealed partial class Binding
     // reused across passes, so neither resolving nodes nor a warm rebind of invalid code allocates.
     private readonly List<Koto> consulted = [];
     private readonly List<Koto> prerequisiteStore = [];
-    private readonly Dictionary<Koto, (int Start, int Count)> prerequisites = new(ReferenceEqualityComparer.Instance);
+    private readonly PrerequisiteRows prerequisites;
     private readonly Dictionary<Koto, Koto> partPrerequisites = new(ReferenceEqualityComparer.Instance);
     private readonly List<DiagnosticKey> prerequisiteKeys = [];
     private readonly HashSet<Koto> prerequisiteVisited = new(ReferenceEqualityComparer.Instance);
@@ -230,10 +231,15 @@ public sealed partial class Binding
         }
     }
 
-    // The fact a failure carries (a failure-fact family's row, such as `qualificationFailures`' stop), stored with its failure by the
-    // recorder's one decision (DECISIONS G949 S1 as R7-N5 B4 amends it): a node of a module the running pass binds in its
-    // module's column at its SyntaxId, any other node in the part's foreign columns at its entry's index (PassPart.ForeignFacts), the
-    // row its entry names; its readers read it as RecordedFailure reads the failure, so no caller chooses a store.
+    // A node's pass fact, stored by the recorder's one decision (DECISIONS G949 S1 as R7-N5 B4 and E amend it): the fact a failure
+    // carries (a failure-fact family's row, such as `qualificationFailures`' stop) and a node's dependence row (PrerequisiteRows' range,
+    // which a rest with no failure carries too). A node of a module the running pass binds keeps it in its module's column at its
+    // SyntaxId, any other node in the part's foreign columns at its entry's index (PassPart.ForeignFacts), the row its entry names; its
+    // readers read it as RecordedFailure reads the failure, so no caller chooses a store. A node of another module without the pass's
+    // entry reads its own module's column: a frozen library's Work column is released (NodeColumns.Freeze), so it reads none, which is
+    // the answer the program pass gave before the columns. No EnsurePassNode refuses it, since these readers are asked of library nodes
+    // (ContractMatching's HasFailureCauses of a library declaration, Stated's TypeSource of a library symbol, a library cause a walk
+    // reaches).
     private T RecordedFact<T>(Koto node, FactFamily<T> family)
         => this.IndexOfForeign(node) is var i and >= 0 ? family(ref this.pass.Part.ForeignFacts).Get(i, this)
             : node.SyntaxOwner is { } table ? family(ref table.Hir.Families).Get(node.SyntaxId, this) : default!;
@@ -693,5 +699,34 @@ public sealed partial class Binding
         }
 
         return pending.Count != count;
+    }
+
+    // R7-N5 E (DECISIONS BU-220 as R7-N5 B2a-2 and B4 amend it): the Prerequisites family's one accessor, a node's consultation range in
+    // prerequisiteStore (Count 0: none). Work: the running pass's dependence store, read by its checks and its publication only, released
+    // at the freeze (on dev the program pass's ResetPass emptied the library pass's rows before any reader ran). The recorder decides the
+    // store (RecordedFact, SetRecordedFact), so a node of a module the running pass does not bind, which CompleteDependent rests, keeps its
+    // range in the pass's foreign columns at its entry, never in a frozen table.
+    private readonly struct PrerequisiteRows(Binding binding)
+    {
+        internal static ref StampedColumn<(int Start, int Count), PassCounter> Family(ref NodeColumns columns) => ref columns.Prerequisites;
+
+        internal (int Start, int Count) this[Koto node]
+        {
+            set => binding.SetRecordedFact(node, Family, value);
+        }
+
+        internal bool TryGetValue(Koto node, out (int Start, int Count) range) => (range = binding.RecordedFact(node, Family)).Count != 0;
+
+        internal bool ContainsKey(Koto node) => binding.RecordedFact(node, Family).Count != 0;
+
+        // A step that fails a use again (VerifyEarlyReads, VerifyEarlyProjections) takes its earlier range off: the row reads absent.
+        // Writes only over a present row, so a node without a range numbers no node, carves no page and makes no foreign entry.
+        internal void Remove(Koto node)
+        {
+            if (this.ContainsKey(node))
+            {
+                this[node] = default;
+            }
+        }
     }
 }

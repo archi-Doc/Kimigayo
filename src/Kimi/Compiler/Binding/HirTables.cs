@@ -367,6 +367,7 @@ internal struct NodeColumns
     internal StampedColumn<Binding.EarlyRead, Binding.PassCounter> EarlyReads; // Pass: a use's lookup that saw a base clause not ready, read again by VerifyEarlyReads (Binding.BaseLayers.cs).
     internal PagedColumn<BoundType?> KnownBases; // Kept: a struct's base clause's final Type from a first run, emptied by a Bind not started from it, before each fill and by an edit (Binding.BaseLayers.cs).
     internal StampedColumn<bool, Binding.PassCounter> ResolvedSlices; // Work: whether a selection applies one ResolvedRange value, the running pass's working state, released at the freeze (Binding.Ranges.cs).
+    internal StampedColumn<(int Start, int Count), Binding.PassCounter> Prerequisites; // Work: a node's consultation range in the pass's prerequisite store, the running pass's dependence store, released at the freeze (Binding.Diagnostics.Prerequisites.cs).
 
     internal void Resize(int length)
     {
@@ -445,6 +446,7 @@ internal struct NodeColumns
         this.KnownBases.Grow(length);
         this.EarlyReads.Grow(length);
         this.ResolvedSlices.Grow(length);
+        this.Prerequisites.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -498,6 +500,7 @@ internal struct NodeColumns
         this.FormReads.Release();
         this.EarlyReads.Freeze(binding);
         this.ResolvedSlices.Release();
+        this.Prerequisites.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -581,6 +584,7 @@ internal struct NodeColumns
             KnownBases = this.KnownBases.Renumbered(length),
             EarlyReads = this.EarlyReads.Renumbered(length),
             ResolvedSlices = this.ResolvedSlices.Renumbered(length),
+            Prerequisites = this.Prerequisites.Renumbered(length),
         };
         return columns;
     }

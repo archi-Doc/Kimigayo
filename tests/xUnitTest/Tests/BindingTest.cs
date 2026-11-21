@@ -623,6 +623,37 @@ public class BindingTest
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.MissingOrigin);
     }
 
+    // R7-N5 E (B4's precedent, AFactALibraryNodesFailureCarriesIsRecordedWithIt): a node's dependence row is stored by the recorder's
+    // decision, so a library node the program pass rests (CompleteDependent's foreign branch: the rest is the node's entry) keeps its
+    // consultation range in the part's foreign row, which the family's reader reads; no library column is written (HirTables.Of refuses
+    // the frozen table, where dev's Dictionary took the row). No program rests one today, so the row rests one through the private writer
+    // after a Final Bind, on the program's failed Type name, and the publication's walk reads the range through the entry: the node's one
+    // cause is that name's record.
+    [Fact]
+    public void ALibraryNodeTheProgramPassRestsKeepsItsRangeInItsEntry()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var cause = c.Binding.Issues.Select(static x => x.Node).First(x => x.FailureOf(c) != BindingFailure.None);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        typeof(Binding).GetMethod("CompleteDependent", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, cause]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var entry = Assert.Single(own.ForeignFailures);
+        Assert.Equal((node, BindingState.Resolved, BindingFailure.None), (entry.Node, entry.Before, entry.Failure));
+        Assert.NotEqual(BindingState.Resolved, entry.State);
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
+        var rows = typeof(Binding).GetField("prerequisites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        object?[] read = [node, null];
+        Assert.True((bool)rows.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(rows, read)!);
+        var range = ((int Start, int Count))read[1]!;
+        var store = (List<Koto>)typeof(Binding).GetField("prerequisiteStore", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal(1, range.Count);
+        Assert.Same(cause, store[range.Start]);
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.Prerequisites.Used);
+        Assert.Empty(c.Library.Layer.Part.ForeignFailures);
+        Assert.Same(cause, Assert.Single(c.Binding.FailureCauses(node)!).Subject);
+    }
+
     // R7-E2 E2-1 (PLAN G1083, D-850): a fact-less family-1 problem a program pass records at a frozen library node goes through Core's one
     // store decision (Compilation.StoreOf; ReportProblem's Koto.ReportIn), so it is the program's record, published once, and another
     // compilation over the same library holds none. No program records one today, so the row records one through the recorder after a

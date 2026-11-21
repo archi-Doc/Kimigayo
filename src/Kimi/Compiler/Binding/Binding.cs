@@ -121,6 +121,7 @@ public sealed partial class Binding
         this.earlyReads = new(this);
         this.resolvedSlices = new(this);
         this.matchPlans = new(this);
+        this.prerequisites = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
         this.issuesView = new(own.Issues, layer.Issues);
