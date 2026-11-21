@@ -24678,6 +24678,23 @@ R8-M* and R9-M* by the stage of the recording unit.
     conversions' stores and `Related`'s role "entry", E3b selection and the call's constraints with the role "candidate" (the Front's
     C2: each role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
   - **Moves (Q13).** None: probes base = head (prototype 27 plus C1's), the diagnostic and semantic snapshots 0 differences.
+- **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
+  (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
+  23.1.2, 15.1, 14.11.
+  - **Rule.** A MIR analysis problem's primary location is the failing location's `MirBody.Subject` (the node `MirBuilder.Info`
+    records for its statement or terminator; the builder owns the choice), except where DIAGNOSTICS' table names another node, each
+    named there (A5: an inline default copy's outermost omitting call, R26-borrow's Borrow, a drop-live holder's declaration, the body
+    for the arena limit, a Return's body block or a constructor's declaration). A1's and A3's rows, which no DIAGNOSTICS row names,
+    are this entry's (Z15's family table): A1 the use's statement or terminator, below a runtime Index the innermost selection
+    (R4-M56); A3 the require row's failure body.
+  - **Opaque sites** (Z17's `MirBuilder.Opaque.Uses` contract): an Opaque site is located at its node, so a kept operand and an
+    undecided use it names report there; a part read by a `FakeRead` reports at the read's node. A kept part's read location is Z17c's.
+  - **Merge.** A Loan problem a body owns in an inline default copy stays one record per code and omitting call (G136's 2g-4b item).
+  - **A3.** A require nested in a construct Binding replaced stays G414 (2)'s (O-474 (b)); G105 (4)'s A3 part closes into it.
+  - **Records (Q13):** none move; the rule is pinned by `MirInitTest.AnOpaqueSitesPartIsCheckedAtItsPlace`'s rows.
+  - Supersedes: the A5 Step 2 plan's 2g-4a and 2g-4b done conditions (ledger rows) and 2g-3's "rows b1 and b3", void with the ledger.
+  - Rejected: a location rule per family in each analysis (three copies of one choice); A3 judging unbuilt syntax (a second judge of
+    SPEC 14.11); keeping an inline copy's failures apart (a key per operation for one table row).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
