@@ -255,7 +255,7 @@ public sealed partial class MirBuildTest
             ["dep: Inlined f", "dep3: Inlined f3", "dep2: Inlined h f2", "val: Inlined f", "val2: Inlined h f2"],
             Callers(c, "dep", "dep3", "dep2", "val", "val2"));
         var bodies = c.BuildMir().Bodies.ToArray();
-        Assert.Contains(bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "dep" }).Locals.ToArray(), static x => TyCtxt.Name(x.Type) == "Option<Bad>");
+        Assert.Contains(bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "dep" }).Locals.ToArray(), static x => TyCtxt.Name(x.Type!) == "Option<Bad>");
         var h = bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "dep2" }).Blocks.ToArray().Single(static x => x.Terminator.Callee.Symbol?.Name == "h");
         Assert.Equal("Bad", h.Terminator.Callee.Subst!.Types[0]!.Symbol!.Name);
     }

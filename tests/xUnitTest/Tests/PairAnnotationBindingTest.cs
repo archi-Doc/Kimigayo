@@ -146,9 +146,9 @@ public class PairAnnotationBindingTest
     [InlineData("func nest<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [[x], [y]]\n    return items.length", null)]
     public void AnOriginPresenceDifferenceIsARelation(string source, string? code)
     {
-        var c = Parse(source);
-        c.Bind();
-        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        // R7-O1 H: the published Errors (a body relation is A5's record; Binding judges none).
+        Assert.Equal(code is null ? [] : [code], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code));
     }
 
     // SPEC 8.1.2, 15.3.6, 10.8 (PLAN G758): an original and an annotated pair occurrence at one generic slot, or a `var` pair local's
@@ -363,9 +363,9 @@ public class PairAnnotationBindingTest
     [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: ref/V, y: ref/T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, y, x)\n", "clean")]
     [InlineData("struct S<s/T>\n    s is owner or ref\n    public init(m: s/T, x: T) => ()\n    public func g(self: ref/Self, m: s/T, x: T) -> i32\n        let k = S.init(m@move, x@move)\n        return 0\n", "clean")]
     [InlineData("struct S<s/T>\n    s is owner or ref\n    public init(m: s/T, x: T) => ()\n    public func g(self: ref/Self, m: s/T, x: T) -> i32\n        let k = S<s/T>.init(m@move, x@move)\n        return 0\n", "clean")]
-    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, m@move)\n", "1*NoApplicableOverload_Kd")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, m@move)\n", "1*MovedPlace_Kd 1*NoApplicableOverload_Kd")]
     [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: V, y: T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, x@move, y@move)\n", "1*NoApplicableOverload_Kd")]
-    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*UnprovenConstraint_Kd")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*MovedPlace_Kd 1*UnprovenConstraint_Kd")]
     public void ARecursivePairTargetMeetsItsBindingAsACallerType(string program, string profile)
         => Assert.Equal(profile, DiagnosticCorpus.RecordProfile(program));
 

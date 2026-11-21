@@ -147,6 +147,7 @@ public sealed partial class Binding
                 continue;
             }
 
+            var supplier = longer; // As formed (R4-M133): the adapter shows its Borrow (OriginRow.Supplier).
             longer = this.CanonicalOrigin(this.OriginAtUse(longer, obligation));
             shorter = this.CanonicalOrigin(this.OriginAtUse(shorter, obligation));
             if (!ReferenceEquals(longer, shorter))
@@ -154,7 +155,7 @@ public sealed partial class Binding
                 var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed : OriginRowSource.Fit;
                 var mask = this.BodyCaseMask(obligation);
                 var unit = this.OriginUnit(obligation.Body);
-                unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask, obligation.FixedBy));
+                unit.Add(new(obligation.Site ?? obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask, obligation.FixedBy, supplier));
                 this.AddRegionValueRows(unit, longer, obligation, mask);
                 this.AddRegionValueRows(unit, shorter, obligation, mask);
             }
@@ -178,7 +179,7 @@ public sealed partial class Binding
             var region = parts == 1 ? end : end.Operands[i];
             if (region.Body == obligation.Body && this.Region(region) is { Value: { } value })
             {
-                unit.Add(new(obligation.Use, this.CanonicalOrigin(this.ReceiverAtUse(value, obligation.Use)), region, false, OriginRowSource.Fit, null, null, mask, null));
+                unit.Add(new(obligation.Site ?? obligation.Use, this.CanonicalOrigin(this.ReceiverAtUse(value, obligation.Use)), region, false, OriginRowSource.Fit, null, null, mask, null, value));
             }
         }
     }
@@ -259,7 +260,7 @@ public sealed partial class Binding
         {
             var longer = this.InternAtom(slice, draft.Longer, draft.Site, part);
             var shorter = this.InternAtom(slice, draft.Shorter, draft.Site, part);
-            builder.Rows.Add(new(SourceRef.Of(draft.Site), longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask, draft.FixedBy));
+            builder.Rows.Add(new(SourceRef.Of(draft.Site), longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask, draft.FixedBy, draft.Supplier));
         }
     }
 
@@ -318,5 +319,6 @@ public sealed partial class Binding
         Koto? Clause,
         BoundType? Destination,
         ulong CaseMask,
-        Koto? FixedBy);
+        Koto? FixedBy,
+        BoundOrigin Supplier);
 }

@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 // Value fits (SPEC 3.8, 10.2, 15.6.1; DECISIONS BU-4): whether a value of Type `actual` fits a position of Type `expected`.
 // - Responsibility: the entries a value position calls: FitsType and FitsTypeAt (a value at an expected Type, at a use whose premises and
 //   Origins the fit reads), FitsValueAt (a value at a position that a local region may reach), FitsStructurallyAt (the structural part
-//   of a fit, SPEC 15.6.1) and CheckTypeUse, the use-site fit whose differing Origin positions, once the structure holds, become
-//   obligations that ownership judges and reports at the value (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
+//   of a fit, SPEC 15.6.1) and CheckTypeUse, the use-site fit whose differing Origin positions, once the structure holds, are rows of
+//   the body that A5 judges and reports at the value (AddOriginFit, FormBodyRelation; R7-O1: Binding judges no body relation), so
+//   only a non-position fact (a condition, a limit, a structural failure) fails it. Never fitting (SPEC 3.8) is decided here, at the root:
 //   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
 // - Outputs: the verdict and, for FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
@@ -39,19 +40,11 @@ public sealed partial class Binding
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         this.comparisonFacts.Clear();
+        this.comparisonRoot = default;
         this.fitRested = false;
         var walk = new RelationWalk(this, this, use, this.comparisonFacts); // No reader of region conjuncts: FitsValueAt's CheckTypeUse is.
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
         failure = walk.Failure;
-
-        // SPEC 23.1.2 (PLAN G739): a fit that holds by a resting position leaves its positions as rows, as its failing path does. The
-        // query-like callers (ArgumentOperations' try-then-read, ResultPropagation's late fits, an enum's and a control-flow join's) form
-        // them too, on rejected programs only.
-        if (fits && this.fitRested)
-        {
-            _ = this.CheckTypeUse(actual, expected, use, out _);
-        }
-
         return fits;
     }
 
@@ -76,15 +69,16 @@ public sealed partial class Binding
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
 
-    // SPEC 10.2, 15.4.4, 15.6.1: a value at a value position: the fit at the use, or, where a local region of a body takes part, the
-    // use-site fit at `value`, whose Origin positions ownership judges. `failure` is the fit's, which a caller that records it passes on.
+    // SPEC 10.2, 15.4.4, 15.6.1: a value at a value position: the fit at the use, or else the use-site fit at `value`, whose Origin
+    // positions are rows A5 judges (R7-O1). A fit that holds by a resting position (fitRested) leaves its positions as rows too, as its
+    // failing path does (SPEC 23.1.2, PLAN G739); a pure FitsTypeAt forms none (H11b D2, PLAN G820). `failure` is the use-site fit's,
+    // which a caller that records it passes on.
     private bool FitsValueAt(BoundType actual, BoundType expected, Koto use, Koto value, out ComparisonFailure failure)
-        => this.FitsTypeAt(actual, expected, use, out failure) || (this.RegionalAt(actual, expected, value) && this.CheckTypeUse(actual, expected, value, out _));
+        => (this.FitsTypeAt(actual, expected, use, out failure) && !this.fitRested) || this.CheckTypeUse(actual, expected, value, out failure);
 
-    // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
-    // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is
-    // (RecordOriginFitFailure; DECISIONS R4-M133): this is the one entry to the positions' obligations (CheckTypeUseCore recurses only into
-    // itself, RelationWalk forms none), so the entries appended before it returns are exactly this fit's.
+    // SPEC 15.6.1, 15.6.5 (R7-O1): a fit whose structure holds leaves each differing Origin position the premises do not prove as a row
+    // that A5 judges and reports at the value (FormBodyRelation); this is the one entry to the positions' rows (CheckTypeUseCore recurses
+    // only into itself, RelationWalk forms none).
     // `failure` is the failure of the walk at which the fit failed: the root's, or a component's that the obligations could not take.
     // The relation is walked once, at the root (PLAN G492-a (i)), and its parts (FitPart) answer each part as a walk rooted there in this
     // fit's orientation would; the facts left for a record (RecordComparisonFacts) are those of the part whose failure is the fit's.
@@ -94,16 +88,10 @@ public sealed partial class Binding
     // takes once (AddObligation).
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
-        var pending = this.pendingRelations.Count;
         var rows = this.comparisonRows.Count;
         failure = default;
         var fits = NeverFits(actual) || this.CheckTypeUseWalk(actual, expected, use, out failure);
         this.FormComparisonRows(rows);
-        for (var i = pending; i < this.pendingRelations.Count; i++)
-        {
-            this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
-        }
-
         return fits;
     }
 
@@ -113,6 +101,7 @@ public sealed partial class Binding
     {
         var facts = this.comparisonFacts;
         facts.Clear();
+        this.comparisonRoot = default;
         this.fitRested = false;
         var cursor = default(FitCursor);
         var fits = this.CheckTypeUseParts(actual, expected, use, OriginVariance.Covariant, ref cursor);
@@ -131,7 +120,9 @@ public sealed partial class Binding
     {
         var parts = this.fitParts;
         var start = parts.Count;
-        _ = new RelationWalk(this, this, use, this.comparisonFacts, parts) { Rows = this.comparisonRows }.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        var walk = new RelationWalk(this, this, use, this.comparisonFacts, parts) { Rows = this.comparisonRows };
+        _ = walk.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        (actual, expected) = walk.Root; // F's C2 ruling 315: its parts are parts of the pair it walked, which the decomposition reads.
         cursor.Next = start;
         var fits = this.CheckTypeUseCore(actual, expected, use, polarity, ref cursor);
         parts.RemoveRange(start, parts.Count - start);
@@ -279,9 +270,13 @@ public sealed partial class Binding
 
     // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant
     // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination, and `condition` the Semantics
-    // case the position exists in.
+    // case the position exists in. A local annotation's fit is recorded at the local's initializer, the value that supplies the longer
+    // end (DIAGNOSTICS; H11b D5: the row's Site).
     private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, ulong condition = 0)
-        => this.AddObligation(variance == OriginVariance.Contravariant
-            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual, Condition: condition)
-            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant, Condition: condition));
+    {
+        var site = use is VariableKoto { InitializerKoto: { } initializer } ? initializer : null;
+        this.FormBodyRelation(variance == OriginVariance.Contravariant
+            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual, Condition: condition, Site: site)
+            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant, Condition: condition, Site: site));
+    }
 }

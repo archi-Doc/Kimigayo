@@ -309,7 +309,10 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);
     }
 
+    // SPEC 9.4.1: an internal library declaration is accessible in Kotonoha(Kimi) only, so a program naming one is inaccessible: the
+    // storage functions, and a `#Lang` group named as a Type (PLAN G147 D-940: its symbol is a Container, 9.2).
     [Theory]
+    [InlineData("let o: Option<Kimi.BoolFormat> = .None")]
     [InlineData("unsafe => Kimi.DictionaryStorage.unlink(null, 24, 1)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.initialize(null)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
@@ -323,7 +326,7 @@ public class DictionaryLibraryTest
     [InlineData("Kimi.Storage.countOverflow()")]
     [InlineData("Kimi.Storage.allocationSizeExceeded()")]
     [InlineData("Kimi.Storage.clockFailure()")]
-    public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)
+    public void InternalLibraryDeclarationsAreInaccessible(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);

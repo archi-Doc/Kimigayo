@@ -15,9 +15,9 @@ namespace Kimi.Compiler;
 //   edges a constructor's components and a projection's Contract arguments (SPEC 8.3.3's expansion), Cyclic only through a
 //   constructor edge (R7-C2c2 c2-4b); a Type that is no node is in the class of the node it is congruent with (ClassOf); the
 //   premise error an error class is (SPEC 8.2.3's table), recorded once per pass at the declaration whose premises first form it;
-//   the identity proposition's Proven (IdentityProven); ContractTypeCore's guard (ProjectionClassFailed); the class key the premise
-//   supply compares by (ClassKey, R7-C2c2 c2-1). Until R7-C2c2 c2-4 replaces it, dev's member substitution (SubstituteIdentity: a
-//   Type parameter's first premise, in scope order) and BU-72's HIR premise stay here.
+//   the identity proposition's Proven (IdentityProven); the class key the premise supply compares by (ClassKey, R7-C2c2 c2-1); the
+//   one form every Type of a class takes in a view (ClassForm, R7-C2c2 c2-4b: its own contract in Binding.TypeIdentity.Keys, its
+//   readers closed to the intakes of the judgments over identical Types); and BU-72's HIR premise (`P is` the ClassForm of `P`).
 // - Inputs: the view's chain of valid Constraint environments: positive identity premises and their availability (R7-C2e1's
 //   Completion); the Origin declarations' relations and completion; the pairs' admitted sets.
 // - Outputs: per view and pass, the classes (ClassesOf) and their Completion (DECISIONS R7-M20's W7); Proven; the premise error; a
@@ -39,10 +39,10 @@ namespace Kimi.Compiler;
 //   attribute domains', which read no identity; an erroneous class proves nothing and makes its declaration's context no failed one.
 public sealed partial class Binding
 {
-    private readonly HashSet<BoundType> identityExpansions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingScope> identityBuilding = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BindingScope, bool> identityRecorded = new(ReferenceEqualityComparer.Instance); // whether it is the owner's failure
+    // A scope's recorded premise error: whether it is the owner's failure, and whether an own class reached the closure limit.
+    private readonly Dictionary<BindingScope, (bool Own, bool Limited)> identityRecorded = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
     private IdentityClasses? identityExtended; // R7-C2c2 c2-2: ExtendedClassesOf's one request-local table
@@ -53,25 +53,12 @@ public sealed partial class Binding
 
     internal long IdentityKeyWork { get; private set; }
 
-    private static bool HasParameterIdentity(BindingScope scope)
-    {
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is { Invalid: false, HasParameterIdentity: true })
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
     private static bool HasTypeIdentity(BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is { Invalid: false, HasTypeIdentity: true })
+            if (current.Constraints is { HasTypeIdentity: true })
             {
                 return true;
             }
@@ -173,7 +160,7 @@ public sealed partial class Binding
             classes.Open(scope);
             for (var current = scope; current is not null; current = current.Parent)
             {
-                if (current.Constraints is not { Invalid: false } environment)
+                if (current.Constraints is not { } environment)
                 {
                     continue;
                 }
@@ -206,7 +193,7 @@ public sealed partial class Binding
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
@@ -239,7 +226,25 @@ public sealed partial class Binding
     // SPEC 8.2.3: `a is b` holds in the view when the two are one complete Type, or its classes make them one (Verdict's Proven); an
     // erroneous or provisional class proves nothing.
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
-        => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
+    {
+        if (this.SameCompleteType(a, b))
+        {
+            return true;
+        }
+
+        if (!HasTypeIdentity(scope) || this.ClassesOf(scope, out _) is not { } classes)
+        {
+            return false;
+        }
+
+        if (classes.Same(a, b))
+        {
+            return true;
+        }
+
+        this.ReadIdentityPremiseError(scope, a, b);
+        return false;
+    }
 
     // SPEC 8.2.3 (Refuted), 8.3.2 ("absence of proof is not enough"; "Unbound Types ... are never negative results"): whether two
     // Types are known to differ at a corresponding position in the view, `a` in the terms of the conforming Type `self` (a
@@ -261,23 +266,19 @@ public sealed partial class Binding
         }
     }
 
-    // ContractTypeCore's guard: a Type in a final erroneous class is completed by no premise; the reading meets the table's Completion (W4).
-    private bool ProjectionClassFailed(BoundType projection, BindingScope scope, out Completion completion)
-        => this.ClassesOf(scope, out completion) is { } classes && classes.Failed(projection);
-
     // SPEC 8.2.3's premise errors at the validation step: a scope's own final error class is recorded once per pass at its owner, from
     // the evidence available there, as that step's own proofs are; the environment stays valid (its facts stay evidence, and an
     // erroneous class publishes no member). In the Final pass an own error class still waiting for its Origin declarations is the
     // located limit (an Origin attribute the judge could not decide).
     private bool RecordIdentityPremiseError(BindingScope scope, BindingMode mode)
     {
-        if (scope.Constraints is not { Invalid: false, HasTypeIdentity: true } || this.identityRecorded.ContainsKey(scope) ||
+        if (scope.Constraints is not { HasTypeIdentity: true } || this.identityRecorded.ContainsKey(scope) ||
             this.ClassesOf(scope, out _) is not { Worst: not IdentityClasses.One } own)
         {
             return false;
         }
 
-        var (worst, waiting) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, out _) : null);
+        var (worst, waiting, limited) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, out _) : null);
         var failure = worst switch
         {
             IdentityClasses.One when waiting && mode == BindingMode.Final => BindingFailure.Unsupported,
@@ -293,33 +294,64 @@ public sealed partial class Binding
             return false;
         }
 
-        this.identityRecorded.Add(scope, scope.Owner.BindingFailure == BindingFailure.None);
+        this.identityRecorded.Add(scope, (scope.Owner.BindingFailure == BindingFailure.None, limited));
         this.Fail(scope.Owner, failure);
         return true;
     }
 
     // SPEC 8.2.3, 23.1.2: a declaration whose own failure is its premise error keeps its context, as a shape violation keeps its signature:
     // the error is reported once, at it, and its other checks are judged as in a valid view.
+    // R7-C3 (B1'): any failed premise is this context's case: an identity premise error recorded at the declaration (identityRecorded),
+    // or a premise whose proof failed and left the evidence (FailPremise), both its own record.
     private bool KeepsPremiseErrorContext(Koto declaration)
-        => this.scopes.TryGetValue(declaration, out var scope) && this.identityRecorded.TryGetValue(scope, out var own) && own &&
-            scope.Constraints is { Invalid: false };
+        => this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { } environment &&
+            ((this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Own) ||
+                ReferenceEquals(environment.FailedPremise?.Use, declaration));
 
-    // SPEC 8.2.3, 23.1.2 (the producer channel): the declaration whose recorded premise error a check at `node` read, when one of the
-    // Types it compared has a part in a final erroneous class of the node's view; the outermost scope whose own classes hold it is the
-    // producer. A failure path only.
-    private Koto? IdentityPremiseErrorRead(Koto node, BoundType? actual, BoundType? expected)
+    // SPEC 8.3.3 Limits: whether a declaration's premise closure (its own premises or an enclosing declaration's) reached the limit,
+    // whatever its first failure: a class past it is cut, so a judgment through it depends on the limited analysis. Binding.CaseLimits'
+    // PartsVerified reads it until a cut class gives Binding's typing no member (the PLAN open issue on cut classes), which removes the read.
+    private bool PremiseClosureLimited(Koto declaration)
     {
-        Koto? producer = null;
-        for (var current = this.ConstraintScope(node); current is not null && this.identityRecorded.Count != 0; current = current.Parent)
+        for (var scope = this.scopes.GetValueOrDefault(declaration); scope is not null; scope = scope.Parent)
         {
-            if (this.identityRecorded.TryGetValue(current, out var own) && own && this.ClassesOf(current, out _) is { } classes &&
-                (classes.Holds(actual) || classes.Holds(expected)))
+            if (this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Limited)
             {
-                producer = current.Owner;
+                return true;
             }
         }
 
-        return producer;
+        return false;
+    }
+
+    // R7-C3 (F's C2 ruling 276 (4); SPEC 8.2.3, 23.1.2): the class table's erroneous state is the identity premise error's one
+    // representation (dev's producer channel, ruling 245 (ii)). A check that reads Types with a part in a final erroneous class of its
+    // view reads that failed input, as the one consult (AvailableConstraintFact) reads a failed premise: the record of the outermost
+    // scope whose own classes hold it (the producer) is its cause. A proof's read is its limit (an answer the valid facts leave open
+    // rests on it, EndProof); a mismatch's record rests on it (RecordTypeMismatch). Nothing is read without a recorded identity error.
+    private PremiseFailure? IdentityPremiseErrorRead(BindingScope scope, BoundType? a, BoundType? b)
+    {
+        BindingScope? producer = null;
+        for (var current = scope; current is not null && this.identityRecorded.Count != 0; current = current.Parent)
+        {
+            // The producer's own checks (its frame) are the error's sites, never its readers (ChecksOwnSite).
+            if (this.identityRecorded.TryGetValue(current, out var recorded) && recorded.Own && !this.ChecksOwnSite(current.Owner) &&
+                this.ClassesOf(current, out _) is { } classes && (classes.Holds(a) || classes.Holds(b)))
+            {
+                producer = current;
+            }
+        }
+
+        return producer?.Constraints!.Cause(producer.Owner);
+    }
+
+    // A judgment's read of an erroneous class (IdentityPremiseErrorRead) is its proof's limit.
+    private void ReadIdentityPremiseError(BindingScope scope, BoundType a, BoundType? b = null)
+    {
+        if (this.identityRecorded.Count != 0 && this.IdentityPremiseErrorRead(scope, a, b) is { } failure)
+        {
+            this.ScopeReads.Limit ??= failure;
+        }
     }
 
     // SPEC 8.2.3's Origin attribute, decided by the Origins' owner: OriginDeclaration's `==` (one Origin substituted by the other) and the
@@ -368,20 +400,6 @@ public sealed partial class Binding
         return agree;
     }
 
-    /// <summary>Substitutes the Type-identity premises available in <paramref name="scope"/> into <paramref name="type"/>.</summary>
-    /// <param name="type">A bound expression Type.</param>
-    /// <param name="scope">The scope whose Constraint environments supply the premises.</param>
-    /// <returns><paramref name="type"/> itself when no premise applies; otherwise the substituted interned Type.</returns>
-    private BoundType SubstituteIdentityPremises(BoundType type, BindingScope scope)
-    {
-        if (!type.ContainsParameter || !HasParameterIdentity(scope))
-        {
-            return type;
-        }
-
-        return this.SubstituteIdentity(type, scope, parametersOnly: false, out _);
-    }
-
     // DECISIONS BU-72: a member access or an element access whose receiver's Type, through its Semantics layers, is a Type parameter P
     // that the premises make the complete Type U was resolved on U; it publishes the interned `P is U` (HirTables.IdentityPremise), since
     // a MIR Place keeps P.
@@ -407,179 +425,6 @@ public sealed partial class Binding
         if (actual.Kind == BoundTypeKind.Parameter && substituted.Kind != BoundTypeKind.Parameter)
         {
             HirTables.PlanFor(access, written: true).Second = this.InternConstraint(new(ConstraintKind.TypeIdentity, actual, substituted));
-        }
-    }
-
-    // W2 (ContractSolver's Completion): Complete without a parameter or at the formation's own recursion (identityExpansions), else
-    // the meet of IdentityPremise's, the components' and the held Type's.
-    private BoundType SubstituteIdentity(BoundType type, BindingScope scope, bool parametersOnly, out Completion completion)
-    {
-        completion = Completion.Complete;
-        if (!type.ContainsParameter)
-        {
-            return type;
-        }
-
-        if (type.Kind == BoundTypeKind.Parameter)
-        {
-            if (!this.identityExpansions.Add(type))
-            {
-                return type; // A recursive structural premise must not expand without bound.
-            }
-
-            try
-            {
-                var required = this.IdentityPremise(type, scope, parametersOnly, out completion);
-                if (required.Kind == BoundTypeKind.Parameter)
-                {
-                    return required;
-                }
-
-                var image = this.SubstituteIdentity(required, scope, parametersOnly, out var part);
-                completion = Meet(completion, part);
-                return image;
-            }
-            finally
-            {
-                this.identityExpansions.Remove(type);
-            }
-        }
-
-        var count = type.Components.Count;
-        var components = this.RentTypes(count);
-        try
-        {
-            var changed = false;
-            for (var i = 0; i < count; i++)
-            {
-                components[i] = this.SubstituteIdentity(type.Components[i], scope, parametersOnly, out var part);
-                completion = Meet(completion, part);
-                changed |= !ReferenceEquals(components[i], type.Components[i]);
-            }
-
-            // DECISIONS BU-60: the Type instance a closure's context holds is substituted with the Closure Type.
-            var context = type.InstanceContext;
-            if (TyCtxt.HeldType(type) is { } held)
-            {
-                var image = this.SubstituteIdentity(held, scope, parametersOnly, out var heldPart);
-                completion = Meet(completion, heldPart);
-                context = ReferenceEquals(image, held) ? context : this.types.HeldContext(type.Symbol!, image);
-            }
-
-            if (!changed && ReferenceEquals(context, type.InstanceContext))
-            {
-                return type;
-            }
-
-            // A substituted struct or enum is another Type: its stored fields and cases follow the substitution, as for the
-            // declared Types whose storage is prepared, so a field of it keeps the substituted Type (SPEC 8.2).
-            var substituted = this.WithContext(this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments), context);
-            this.PrepareTypeStorage(substituted);
-            return substituted;
-        }
-        finally
-        {
-            this.typeScratch.Return(components, clearArray: true);
-        }
-    }
-
-    // Parameter identities form equivalence classes, not directed rewrite chains. Close only over the finite
-    // parameter premises in scope, then choose the same representative for every member. No structural unification
-    // or inference of missing premises is performed. Scratch storage is reused across queries and rebinding.
-    // W3 (ContractSolver's Completion): Complete when every fact whose availability it asks is direct (W6).
-    private BoundType IdentityPremise(BoundType parameter, BindingScope scope, bool parametersOnly, out Completion completion)
-    {
-        completion = Completion.Complete;
-        var capacity = 1;
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is { Invalid: false, HasParameterIdentity: true } environment)
-            {
-                capacity += environment.Facts.Count * 2;
-            }
-        }
-
-        var members = this.RentTypes(capacity);
-        var count = 1;
-        members[0] = parameter;
-        try
-        {
-            var changed = true;
-            while (changed)
-            {
-                changed = false;
-                for (var current = scope; current is not null; current = current.Parent)
-                {
-                    if (current.Constraints is not { Invalid: false, HasParameterIdentity: true } environment)
-                    {
-                        continue;
-                    }
-
-                    foreach (var fact in environment.Facts)
-                    {
-                        if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType.Kind: BoundTypeKind.Parameter })
-                        {
-                            continue;
-                        }
-
-                        var available = this.AvailableConstraintFact(environment, fact, out var availability);
-                        completion = Meet(completion, availability);
-                        if (!available)
-                        {
-                            continue;
-                        }
-
-                        var hasSubject = members.AsSpan(0, count).Contains(fact.Subject);
-                        var hasRequired = members.AsSpan(0, count).Contains(fact.RequiredType);
-                        if (hasSubject != hasRequired)
-                        {
-                            members[count++] = hasSubject ? fact.RequiredType : fact.Subject;
-                            changed = true;
-                        }
-                    }
-                }
-            }
-
-            BoundType? representative = null;
-            for (var current = scope; current is not null; current = current.Parent)
-            {
-                if (current.Constraints is not { Invalid: false, HasParameterIdentity: true } environment)
-                {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: { } required } ||
-                        !members.AsSpan(0, count).Contains(fact.Subject))
-                    {
-                        continue;
-                    }
-
-                    var available = this.AvailableConstraintFact(environment, fact, out var availability);
-                    completion = Meet(completion, availability);
-                    if (available)
-                    {
-                        if (required.Kind != BoundTypeKind.Parameter)
-                        {
-                            if (!parametersOnly)
-                            {
-                                return required;
-                            }
-
-                            continue;
-                        }
-
-                        representative ??= required;
-                    }
-                }
-            }
-
-            return representative ?? parameter;
-        }
-        finally
-        {
-            this.typeScratch.Return(members, clearArray: true);
         }
     }
 }

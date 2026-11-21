@@ -89,9 +89,17 @@ public class PathCapabilityDiagnosticTest
     // A struct G with an Origin parameter, a reference Field and a drop, returned by mkG, and a Tuple with a reference element returned
     // by pr (D-827): f and g write a borrow of another Origin than the temporary's own into its reference part (C-414's C6 and K3), h
     // one of the temporary's own Origin (K2).
-    private const string RefParts = "struct G {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n    drop\n" +
+    private const string RefPrelude = "struct G {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n    drop\n" +
         "        Console.writeLine(\"d\")\nfunc mkG(x: ref/i32) -> G{s}\n    origin s.a == x\n    return G.init(x)\nfunc pr(x: ref/i32) -> (ref/i32 during x, i32)\n" +
-        "    return (x, 1)\nfunc f()\n    var x = 1\n    let y = 2\n    mkG(y@ref).r = x@ref\n    x = 3\nfunc g()\n    let x = 1\n    let y = 2\n" +
+        "    return (x, 1)\n";
+
+    // A temporary whose shared part holds x@ref while an exclusive borrow of x is written into its other part.
+    private const string ExclusivePart = "struct UX {a, b}\n    public var r: ref/i32 during a\n    public var u: uniq/i32 during b\n" +
+        "    public init(r: ref/i32 during a, u: uniq/i32 during b)\n        self.r = r\n        self.u = u@move\n" +
+        "func mkUX(r: ref/i32, u: uniq/i32) -> UX{s}\n    origin s.a == r\n    origin s.b == u\n    return UX.init(r, u@move)\n" +
+        "func fx()\n    var x = 1\n    var z = 2\n    mkUX(x@ref, z@uniq).u = x@uniq\n";
+
+    private const string RefParts = RefPrelude + "func f()\n    var x = 1\n    let y = 2\n    mkG(y@ref).r = x@ref\n    x = 3\nfunc g()\n    let x = 1\n    let y = 2\n" +
         "    pr(y@ref).0 = x@ref\nfunc h()\n    let y = 2\n    mkG(y@ref).r = y@ref\n";
 
     // Enums Color and Shape (a payload of Color) and functions borrowing them or an Option<i32>, shared or exclusively.
@@ -212,7 +220,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Take + Box + "func f() -> ()\n    var b = Box.init()\n    take((b.calc)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Leveled + "func f<T>(t: uniq/T) -> ()\n    T is Leveled\n    take((t.level)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Fixed + "func f(p: uniq/Fixed) -> () => take((p.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData(Take + Fixed + "func f<T>(t: uniq/T) -> ()\n    T is Fixed\n    take((t.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(Take + Fixed + "func f<T>(t: uniq/T) -> ()\n    T is Fixed\n    take((t.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd, "t.y")]
     // SPEC 15.6.2, 13.7.1, 11.2 (D-818): a write or an update of a standard-set target behind a custom get is denied by the shared layer
     // on its path, as with the standard get (the `w.v` twin); before D-818 the target was taken as a getter result, a root, which gave
     // InvalidAssignment_Kd.
@@ -221,12 +229,15 @@ public class PathCapabilityDiagnosticTest
     [InlineData(CustomGet + "func f(w: ref/W) => w.v = 1", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(CustomGet + "func f(w: ref/W)\n    var h = func [w] (c: bool) -> ()\n        w.q = 1\n    h(true)", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(CustomGetSelf, DiagnosticCode.SharedPathAccess_Kd)]
-    public void TheDenyingLayerIsReported(string source, DiagnosticCode code)
+    public void TheDenyingLayerIsReported(string source, DiagnosticCode code, string? limit = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.DoesNotContain(c.Problems, x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.UninitializedPlace_Kd);
+        // A Field of a Type parameter's open-struct base is the MIR builder's located limit in every position, valid programs included, so
+        // the borrow's kept operand reports it (DECISIONS Z16, G147 ruling 5's row 4).
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd ||
+            (x.Code == DiagnosticCode.Unsupported_Kd && (limit is null || c.SyntaxOf(x.Subject).ToString() != limit)));
     }
 
     // SPEC 15.6, 15.6.2, 15.6.4, 11.2: a static Field and its parts are lent as their accessors allow, but no analysis models static Loans
@@ -534,9 +545,10 @@ public class PathCapabilityDiagnosticTest
     // and a ref case (13.5.5); a Temporary Value itself as an assignment's target, also parenthesized (13.7.1: no Place expression, the
     // owner's O-438 (a)); a borrow of a temporary's part used after the temporary ends or returned (3.6: it cannot outlive it). A
     // borrow of another Origin than the temporary's own written into its reference part is valid (3.4.1: a Place in its Temporary
-    // Place; 3.6: writable; 15.6: the written value's Loans are added to the holder) but the located limit (PLAN G1068's open issue):
-    // Binding proves no Origin fit between two resolved local regions (RecordOriginFitFailure), while the temporary's own is accepted.
-    // Only the records after the preludes are compared.
+    // Place; 3.6: writable; 15.6: the written value's Loans are added to the holder) and accepted since R7-O1 H, which deletes Binding's
+    // body Origin judgment and with it PLAN G1068's located limit at such a write (A5 judges it; the Middle's Phase 7 ruling names the
+    // acceptance move); its invalid twins (the temporary kept alive, an exclusive write beside the temporary's shared part, a written
+    // Origin that cannot outlive the Field's) stay rejected. Only the records after the preludes are compared.
     [Theory]
     [InlineData("getter", "func f() => Holder.init().cpt.x = 1\n", "InvalidAssignment_Kd Holder.init().cpt.x")]
     [InlineData("getter_borrow", "func f() => take(Holder.init().cpt.x@uniq)\n", "InvalidAssignment_Kd Holder.init().cpt.x@uniq")]
@@ -550,8 +562,13 @@ public class PathCapabilityDiagnosticTest
     [InlineData("follow_let", Bump + "func f<s/T>(x: s/T, n: s/Tw, b: s/Bc)\n    s is owner or uniq\n    let m = n@move\n    take(m@follow.v@uniq)\n    b.bump()\n", "InvalidAssignment_Kd m@follow.v@uniq; NoApplicableOverload_Kd b.bump()")]
     [InlineData("whole", "func f()\n    tw() = Tw.init()\n    (tw()) = Tw.init()\n    1 = 2\n    var u = Tw.init()\n    u@move = Tw.init()\n", "InvalidAssignment_Kd (tw()); InvalidAssignment_Kd 1; InvalidAssignment_Kd tw(); InvalidAssignment_Kd u@move")]
     [InlineData("outlive", "func f()\n    let r = tw().v@uniq\n    take(r)\n    let t = pair().0@uniq\n    t@follow = 3\n", "ComparisonLoanConflict_Kd pair(); ComparisonLoanConflict_Kd tw()")]
-    [InlineData("return", "func g(w: uniq/Tw) -> uniq/i32 during w\n    return tw().v@uniq\n", "UnsatisfiedOriginRelation_Kd return tw().v@uniq; UnsatisfiedOriginRelation_Kd tw().v@uniq")]
-    [InlineData("origin_limit", RefParts, "Unsupported_Kd mkG(y@ref).r = x@ref; Unsupported_Kd pr(y@ref).0 = x@ref")]
+    [InlineData("return", "func g(w: uniq/Tw) -> uniq/i32 during w\n    return tw().v@uniq\n", "UnsatisfiedOriginRelation_Kd tw().v@uniq")] // The twin at `return` went (R7-O1 H).
+    [InlineData("origin_limit", RefParts, "")]
+    // Its invalid twins: the temporary kept alive past a write of the borrowed local, an exclusive write beside the temporary's
+    // shared part, and a written Origin that cannot outlive the Field's.
+    [InlineData("origin_kept", RefPrelude + "func fk()\n    var x = 1\n    let y = 2\n    var t = mkG(y@ref)\n    t.r = x@ref\n    x = 3\n    Console.writeLine(\"\\(t.r@follow)\")\n", "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("origin_excl", ExclusivePart, "ComparisonLoanConflict_Kd x@ref")]
+    [InlineData("origin_short", RefPrelude + "func fs(p: ref/i32)\n    let l = 5\n    mkG(p).r = l@ref\n", "UnsatisfiedOriginRelation_Kd l@ref")]
     public void APartOfATemporaryKeepsItsPermissions(string form, string body, string records)
     {
         var prelude = Take + Made + Temps;

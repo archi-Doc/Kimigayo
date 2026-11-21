@@ -18,7 +18,7 @@ internal sealed partial class MirValidator
     {
         // The Type a body gives in _0: its function's result (a constructor's object), a default template's parameter's or a static's; none
         // for the top-level statements, which have no symbol.
-        private BoundType? Result(MirDefKey key)
+        private readonly BoundType? Result(MirDefKey key)
         {
             if (key.Decl is not { } decl)
             {

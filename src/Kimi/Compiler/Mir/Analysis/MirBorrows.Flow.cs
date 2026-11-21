@@ -119,17 +119,13 @@ internal sealed partial class MirBorrows
     }
 
     // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k Derefs every holder refs^k names joined (P10; past a
-    // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined; Φ_N into each exposed holder it writes.
+    // raw pointer, the holders it addresses, and E where it carries Φ_E; MirBorrows.Reach's WriteTargets, every mode), into a static E
+    // joined; Φ_N into each exposed holder it writes.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
         this.Storing(place); // The storing rule (MirBorrows.Storing), before the walk buffer is filled.
-        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
-        for (var i = 0; i < count; i++)
-        {
-            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
-        }
-
-        var receiving = this.wCount == 0 ? null : cases.TypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
+        var (count, last, pointer) = this.WriteTargets(state, place); // `pointer`: what its last Deref goes through.
+        var receiving = this.wCount == 0 ? null : cases.KnownTypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
         if (last < 0)
         {
             var slot = place.Root < 0 ? Escaped : this.slots[place.Root];
@@ -144,20 +140,16 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var (layer, parents) = this.Prefix(state, place.Root, last);
-        var pointer = this.PointerOf(place.Root, layer, parents, last); // What its last Deref goes through.
         var through = last == count - 1 ? pointer : 0; // A write of the whole referent (rule W's write-through).
-        this.Refs(pointer);
-        for (var t = 0; t < this.targets.Count; t++)
+        foreach (var (target, root, _) in this.refs) // Every holder, whatever its mode.
         {
-            var (target, root) = (this.targets[t], this.targetRoots[t]);
             var arrived = this.Arrive(target, receiving, false, through, value);
             arrived = root >= 0 && this.Exposed(root) ? this.sets.Union(arrived, this.unformedSet) : arrived;
             arrived = target == Escaped ? this.Rested(arrived, pointer) : arrived; // An undecided write's E (MirBorrows.Puns).
             this.AddSlot(target, arrived, this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
         }
 
-        this.Punning(pointer, place); // The pun rule (MirBorrows.Puns).
+        this.Punning(pointer, place, count, last); // The pun rule (MirBorrows.Puns).
     }
 
     // A Move of a whole root empties it.
