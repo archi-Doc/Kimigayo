@@ -27361,6 +27361,17 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Removed by unit A4 (T-M6, 2026-11-21): `Kimigayo.NativeExecutor`, its `BuildReaders` row and the factory arguments; `Explicit`
     on `TataraCommandNativeTest`. Amended by T-M6: `EndProcess` is `Program`'s, and a press with nothing pending in a session (the
     redirected reader waiting) calls the action the session replaced, by default the root's termination and then the process's end.
+  - SimplePrompt 0.30.0 (unit SP1, Q-605, D-988, 2026-11-21; the owner's release for A3's by-hand row 7): Kimi takes SimplePrompt
+    0.30.0 and the minimums it requires, Arc.Collections 2.2.0, Arc.Threading 0.56.0 and Arc.Unit 0.49.0, with Arc.CrossChannel 3.1.0
+    from Arc.Unit (the smallest move that takes the fix; nothing newer). `Kimigayo.RunEnded` is what the host does after a `run`
+    command's work, whose program output Kimi copied to the raw standard streams (it may run when no program ran): `RunCommand`'s
+    `finally` calls it inside `CommandExecution`'s action, before a cancellation is written; `kimi tatara`'s terminal session installs
+    SimplePrompt's `SynchronizeCursorPosition()` with a line end when the program left the cursor mid-line, and restores the previous
+    action at its end; the redirected path and single-shot commands keep the default. `RunExecutable` drains its two output copies
+    after the kill (they take no token); on the cancellation path it awaits them without observing their outcome and rethrows: after a
+    cancellation the outcome is the cancellation (130), never a copy's failure. Limit: a descendant that escaped the kill's walk (its
+    parent exited first) and holds the program's output keeps a cancelled run waiting until it exits or a second Ctrl+C ends the
+    process (PLAN G1188).
 - **T-M6 The single-shot switch: the build calls Tatara** (Tatara, 2026-11-21; the plan's unit A4, Q-604, D-981; Major; design
   review C-427; implementation reviews C-428, C-429, C-430; the owner's O-460 (a), the plan's decision 17)
   - `NativeBuild` loads `Tatara` (`Tatara.Load`, the root's `tatara.dll`) after the pair's check and the record's first write,
