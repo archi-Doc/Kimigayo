@@ -28261,6 +28261,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Removed by unit A4 (T-M6, 2026-11-21): the private toolchain root as a requirement (setup installs `tatara.dll` into every
     root; a root of one's own stays the ordinary selection, `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT`) and `Explicit` on the tests
     that load `tatara.dll`.
+  - Amended by T-M14 (unit B6b2, 2026-11-22): decision 20 Q1 (a) (the owner, O-469) answers the owner question of B6: rpmalloc
+    becomes `kimi.exe`'s process allocator, the .NET runtime included (`kimi.exe` links Tatara on the static UCRT).
 - **T-M4 A2's temporary structures and the executor's four calls** (Tatara, 2026-11-20; the plan's unit A2, Q-574, D-928; Major;
   design review C-423; implementation review C-424, ACCEPT WITH CONDITIONS, its fix round re-checked).
   - `NativeBuild` runs its tool work through `NativeExecutor`: optimize, emit, inspect, link. The steps, the verdicts, the redaction
@@ -28479,6 +28481,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `--ToolchainRoot` nor `--LlvmBin` and hashes no `tatara.dll` (`check-toolchain.ps1` hashes the root's); `ToolchainResolver`
     is removed, and Kimi reads `KIMI_TOOLCHAIN_ROOT` nowhere. The build's interim (the options accepted and read by no build)
     stays until B6b4 (PLAN G1224, G1173).
+  - Amended by T-M14 (unit B6b2, 2026-11-22): the published form is one file: `kimi.exe` links Tatara's objects, the managed copy
+    reaches no NativeAOT publish (its item is conditioned on `'$(PublishAot)' != 'true'`), and the published folder is `Kimi.exe`
+    alone (PLAN G1225 closed).
 - **T-M10 `LlvmBin` removed from projects and manifests** (Tatara, 2026-11-21; the plan's unit B6b5, Q-627, D-1022; Major;
   design `artifacts\handoff\tatara\units\B6\design-b6b.md` §6; design review C-437; implementation review C-443, ACCEPT;
   the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line.
@@ -28607,3 +28612,54 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     design's record move (Revision 1, row 4c) does not exist, so its split into two commits was withdrawn.
   - Rejected: the join as a second statement of the providing library; a capturing lookup; an enum for Kind; material paired by
     position; the rows in Build.
+- **T-M14 The published `kimi.exe` links Tatara on the static UCRT** (Tatara, 2026-11-22; the plan's unit B6b2, PLAN G1225,
+  Q-642, D-1052; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §3 and §13 (C2, C3); design review C-437; the
+  Middle's implementation review C-447, review 2 ACCEPT; the owner's decision 20 (O-469 Q1 (a)) and O-485 (a)). Amends T-M3's
+  allocator and T-M9's published folder; closes PLAN G1225.
+  - **The link:** the NativeAOT publish (`Kimi.csproj` under `PublishAot`, run by `scripts/build-kimi.ps1 -LlvmRoot <the pinned
+    archive>`) links Tatara into `kimi.exe`: `DirectPInvoke` of `tatara`, `src/Tatara/build.ps1`'s checked objects as
+    `NativeLibrary` and its `link.rsp` lines as `LinkerArg` (target `TataraLink`). One link description serves `tatara.dll` and
+    `kimi.exe`, read from the archive as LLVM's own tools link (T-M3). `tatara.h` is unchanged (the ABI hash and every root's
+    `tatara.dll` stay valid; one object set for both links); in `kimi.exe` the nine `tatara_*` exports have no reader. The managed
+    copy (T-M9) reaches no NativeAOT publish: the published folder is `Kimi.exe` alone.
+  - **The CRT:** NativeAOT's default is the hybrid CRT, the static VC runtime with the UCRT linked dynamically
+    (`/NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib`, `Microsoft.NETCore.Native.Windows.targets`; no property switches it).
+    `TataraLink` removes those two arguments, so the whole image is on the static UCRT: `malloc`, `free`, `_malloc_base` and
+    `_free_base` are rpmalloc's (selected by the link interface's `/include:malloc`), as in LLVM's own `/MT` tools and in
+    `tatara.dll`. Under the hybrid CRT the UCRT's own allocations inside `ucrtbase.dll` (`_wcsdup`, which MSVC STL's `libcpmt`
+    references) come from ucrtbase's heap while the image's `free` is rpmalloc's. Decision 20 Q1 (a) answers T-M3's owner question
+    of B6: rpmalloc is `kimi.exe`'s process allocator, the .NET runtime included.
+  - **The guard:** removing two exact `LinkerArg` values would fail silently under an ILCompiler that renamed them, so every
+    publish reads `Kimi.exe`'s imports (`llvm-readobj --coff-imports`) and fails on a CRT DLL (`api-ms-win-crt-*`, `ucrtbase.dll`,
+    `ucrtbased.dll`, `vcruntime*`, `msvcp*`, `msvcr*` with `msvcrt.dll`, `concrt*`), on a `HeapAlloc` or `HeapFree` import, and
+    when it read no `KERNEL32.dll` symbol line (a changed listing form cannot pass vacuously). A refused `Kimi.exe` stays in the
+    output folder until the next run empties it.
+  - **The package DLLs:** `KimiOneFile` (after `ComputeResolvedFilesToPublishList`) removes exactly two native assets by package
+    and name, Arc.Crypto's `blake3_dotnet.dll` and libsodium's `libsodium.dll` (Arc.Crypto 2.0.0 through Tinyhand; Kimi calls
+    neither); any other native asset reaches the folder and fails the one-file check (C-437 C2: a whitelist, never every native
+    asset). Decision 20 leaves them out on the premise that they do not load (whether a loaded one stays beside `kimi.exe` is a
+    later owner question), so every publish checks that premise: the script fails when the image names `blake3_dotnet` or
+    `libsodium` (ASCII or UTF-16LE, any case; NativeAOT's P/Invoke cells carry the module name), naming that question. The scan
+    costs about 0.2 s.
+  - **The publish's checks** (`build-kimi.ps1`): it first empties its outputs (the objects folder, the published folder and the
+    verify report), so `kimi.exe` links exactly this run's `build.ps1` objects (`$(TataraObjects)*.obj`: one per checkout `*.cpp`,
+    the list `tatara.dll` links) and a deleted or renamed Tatara source leaves no object behind (C-447 B1). It builds the objects
+    with `build.ps1` (which links and checks them as `tatara.dll`: identity, ABI, exports), publishes, and checks the product:
+    `Kimi.exe` alone; the imports and names above; `Kimi.exe toolchain verify --Report` passes (T-M11), and its `tatara.build`
+    equals this checkout's build identity from `src/Tatara/identity.ps1`'s `Get-TataraBuildIdentity` (the rule `build.ps1` uses;
+    T-M3). It reads the archive and no toolchain root; a relative `-LlvmRoot` is relative to the caller's location, as
+    `setup.ps1`'s. `TataraObjects` takes its trailing separator in MSBuild (`EnsureTrailingSlash`, a `TreatAsLocalProperty` of the
+    project), never in the argument (a trailing backslash before a closing quote escapes the quote). A NativeAOT publish without
+    `TataraObjects` fails: "kimi.exe links Tatara: publish it with scripts/build-kimi.ps1."
+  - **The start cost (O-485 (a)):** the one file starts about 4 ms slower than B6b1's pair (`kimi.exe` 31.1 MB + `tatara.dll`
+    68.6 MB): `--version` 32.2 → 36.5 ms, `check docs/examples/Hello` 70.2 → 74.6 ms (medians of 20 A/B/A' rounds, quiet; the
+    control A'/A within 0.6%; `artifacts\tatara\b6b2\one-unit\start-cost.txt`), per process start and constant. Design §3.2's
+    gate sent the cost, above the noise, to the owner (decision 20 Q1 (a)'s facts said "unchanged within the noise"), who accepted
+    it, verbatim 「O-485 受け入れます」. `Kimi.exe` is 99.7 MB; `build-kimi.ps1` took 114 to 181 s (not quiet).
+  - Rejected: the static link's libraries listed in `Kimi.csproj` (a second copy of `build.ps1`'s reading of the archive); the
+    hybrid CRT (the heap split); removing every package's native asset (C2); `lld-link` as NativeAOT's linker (MSVC `link.exe`,
+    the ILCompiler's default, links it); dropping the exports from `tatara.h` (two object sets, a new ABI); a CI publish (C-447
+    R5: the archive's `lib` and `include` are about a gigabyte; a later release workflow, PLAN G1245); reading the identity from
+    `build.ps1`'s report table (a formatted table; `identity.ps1` is the one rule both read); `build.ps1` publishing its object
+    list for both links (it changes `src/Tatara` and its build identity, while the emptied folder gives the same list); O-485 (b),
+    the pair kept, and (c), B6b2 held for a unit that measures where the 4 ms go.
