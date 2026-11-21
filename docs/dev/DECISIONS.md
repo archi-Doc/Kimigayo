@@ -13150,6 +13150,7 @@ resumed by R4-M86 (2026-10-20).
     own members in `Binding.PlaceAuthority.Raw.cs` (the raw part of the Place classification, beside `PathOrigin`); `ElementAccess`
     keeps the element-access predicates. The rule is unchanged. R4-M194's, BU-146's and BU-193's mentions of
     `ElementAccess.IsRawPlace` and `IsRawRooted` are history this line covers.
+  - Amended by R7-M68 (D-941): `IsPointerPath` and its bound are gone; a path's raw step is the path fold's `Raw` (`PathPrefix`).
 - **BU-155 Every Contract reference written in source is formed by one path, `BindContractReference` (PLAN G705)** (2026-11-11;
   Front, Binding; Major; the owner's O-145 (a) and O-151 (a) with its conditions; design review 3 ACCEPT with conditions 1-10,
   implementation review ACCEPT) SPEC 8.4.3, 8.5.1, 8.5.2, 8.11.1, 9.7, 9.7.1.
@@ -23566,6 +23567,49 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves (Q13).** Text only on `InvalidNoInit_Kd`, `InvalidVirtualDeclaration_Kd` (its rule as a Reason and the Label) and
     `InvalidTypeFormation_Kd`'s arity (its counts as Reasons in `kimi.check/2`); `ProtectedPlacement_Kd` at a declaration failed
     earlier is its own record again; no acceptance move.
+  - **E2-3b (Q-587; B's E2 rulings 12, 15, 16).** The last family-1 explanation stores (SPEC 4.3.1, 7.4, 6.1, 8.11.1) become
+    typed facts, and `ProblemFactKind` appends a fourth Binding kind, `Key`.
+    - **Array annotations.** `ArrayAnnotationInference` records `Reason` (`ArrayInferenceProblem`), `Related` and, for a conflict,
+      its sides: `Actual`/`Expected` mean "a kept side, a Type or a length" (`BindingReport` keeps both in one list); a side that is
+      no kept value stays a `MismatchForm` (`FixedArray`).
+    - **Parameter shapes and `Key`.** `ParameterShapeMismatch` records one problem per conflicting parameter: one composite `Reason`
+      (its mode, the other mode and the matching key, a byte each), `Related` role 0 the conflicting parameter or use (the record's
+      own location) and roles 1-3 each overlapping earlier parameter by its ground (external name, bound position, unbound position;
+      the adapter reads name and position from the party's syntax), and `Key`: the conflicting parameter, its Value the kept Type at
+      which its matching key overlaps an earlier parameter's (`Value(T)`, `Object(T)`, either family over `T`), present when the key
+      has a Type. One meaning, Binding's only (a MIR record carrying it is a broken contract). The key is neither side of a mismatch,
+      so it is no `Expected`; this supersedes B's E2 ruling 7 Q3's "no fourth kind".
+    - **Conditions.** A further problem's condition is `BindingReport.Condition`'s one rule: an equal problem's condition, else the
+      problem's own (its check's ordinal) or the next after its subject's last recorded one (a refining Contract's conflicts from 0;
+      an Origin record beyond its node's first at 1, since that first, held in the slot outside the report, may be set after it).
+    - **Duplicates.** The pairwise checks fail both declarations and join their group; `RecordDuplicateGroups`, at the end of
+      `BindDeclarations` after `PrepareSpecializations` (the pass's last pairwise check), records each later declaration with
+      `Related` its group's first, and the first with `Cause` its earliest later (derived from that record). `IsDerived` gains one
+      row, `JudgedByDeclaredNames`: a requirement whose check compares only what declarations declare (Duplicate, at every site) is
+      derived neither by the node's own recovery nor by a recovery or limit it rests on. A name a form bound without its meaning
+      declares (a recovered or unsupported form's child that declares its own symbol, such as a recovered loop's binding) rests on
+      the form; a `for` loop's binding names are pass nodes (visited at Index).
+    - **Effect items.** An effect item's rejection is its problem (`RecordEffectRejection`: `Reason` the `EffectRejection`;
+      `Related` the bounded declaration, an earlier bound and the Contract the cause names; `Count`), and a misplaced item's
+      selector's own rejection is its second problem (conditions 0 and 1): the c6 move named under Temporary above is done.
+    - **Access parts.** A clause, base clause or enum case whose projection access fails records its own problem (`Record`); its
+      owner keeps its own failure beside it (no `RestOnPart` at an owner with a failure of its own).
+    - **Temporary** (both `[Transitional("R7")]`, removed by R7-E5's per-problem inputs; PLAN G1141): `JudgedByDeclaredNames`; the
+      access owners' own failures (`ValidateConstraintProjectionAccess`): resting an owner on its part would derive the owner's
+      other failure through `IsDerived`'s requirement-blind arms.
+    - **Deleted.** `arrayInferenceFailures`; `parameterShapeConflicts` and its two stores; `ReportDuplicateDeclarations` and
+      `ReportFailures`' skip; `ReportEffectBound` and the selector-keyed rejection row; the `ReportIssue` arms of
+      ArrayAnnotationInference, ParameterShapeMismatch and InvalidEffectBound.
+    - **Rejected.** A fourth kind for a length (one kept-side list); three `Reason` facts for one problem (one composite row);
+      `Expected` with a second meaning for the key; the adapter deriving the key from the parameter's Type (a check re-run at
+      publication); dropping pair records after the fact; `RestOnPart` for a group's first (a slot rewrite after the fact) and for
+      an access owner (it derives the owner's other failure); reading the slot for an Origin record's condition (the further chains
+      are recorded before the slot's first, `RecordOriginChains`); a `ForKoto` clause in the recovery arm; a later declaration that
+      is itself a parser recovery deriving its Duplicate (it would drop a record dev publishes, and the Signature comparison reads
+      none of the recovery's guess).
+    - **Moves (Q13).** On rejected programs only: `ParameterShapeMismatch_Kd` one record per conflicting parameter (+1) without its
+      conservative Note; `InvalidEffectBound_Kd` gains the related location `contract` in five kinds; no lost independent record, no
+      acceptance move.
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
@@ -23718,6 +23762,32 @@ R8-M* and R9-M* by the stage of the recording unit.
     `X outlives (X and ...)` (a symptom fix that leaves the hole).
   - **Open:** P8's `BodyLocalIn` Anchor arm leaves out a raw Place's Borrow that SPEC 5.2.2 fits to its destination, so a use of such
     a Closure (r01, valid) is A5's located `Unsupported_Kd` (the Front's).
+- **R7-M68 A Place's path is folded once from its root: `PathFold` and `LendFold`** (Back, 2026-11-21; D-941, Q-596, PLAN G1154,
+  and G1161 (D-950) with it; Major, behaviour-preserving below 64 steps; design `d941-design.md` revision 3 with B's rulings 1-4;
+  the Front's review on C-402 (B1) and its delta read; the Middle's RP17 consent on the 64+ outcomes) SPEC 3.4, 15.1.5, 15.6.2;
+  IMPL A.4. Amends BU-166 (`IsPointerPath`).
+  - **Cause.** Binding's Place authority re-decided the receiver prefixes of a path: `PathAuthority` and `Writable` re-entered each
+    other through `AcquirableByBinding`; `Writable`'s inline-part, Field and payload rules decided the owner prefix again;
+    `LendsPlace` asked each level's path again; an exclusive `AccessType` folded its receiver again (2^k raw, F(2k+2) owned, k^2/2
+    lending steps, 2^k through exclusive references stored in Array elements).
+  - **Rule.** A Place's path is folded once from its root: `PathFold` (each prefix's `PathPrefix`: its `PathGrant` (Authority,
+    Denied, Layers), Access, Raw, Writable) for writes and Moves, and `LendFold` (each prefix's `PathLend`: Path, Exclusive, Lends,
+    StaticRoot) for a borrow in a mode from a scope. Each prefix's grant, writability and lending is decided from its owner prefix's,
+    never by a new query on the path; a receiver outside the path (past a getter result or a view range) is its own fold. Every
+    write, Move and borrow query is k + 1 fold steps (`PathFoldWork`).
+  - **The exclusive reading.** `AccessType`'s former `bool exclusive` is gone: the exclusive reading of a receiver's access Type,
+    `ExclusiveAccessType(node, referent)`, takes the receiver's ReferentAuthority from the fold (the owner prefix's access through
+    the receiver's own layers; for a borrowed base, the node's own access), so no rule queries a path again (PLAN G1161 closes).
+  - **Removed.** `PathAuthority`'s own walk and its 64-step bound (the query reads the fold), `IsPointerPath` and its bound (the
+    fold's `Raw`), the re-entries (`AcquirableByBinding`, `WritableOwner` and `WritablePlace` take the fold) and `PairCapability`'s
+    null-scope branch.
+  - **Moves.** None below 64 steps (diagnostic and semantic HIR+MIR snapshots unchanged). At 64 steps and more a path is no longer
+    cut at its 64th step: Array writes and `@uniq` bind, and a 64-deep owned Array local reaches A5's reported
+    `OwnershipDepthLimit_Kd` (PLAN G1146).
+  - **Rejected.** A memo of `Writable` per node (a side table beside the walk); a demand flag (a steering parameter); lazy owner
+    folds (exponential on alternating paths); a re-fold of the receiver in the exclusive reading (exponential on exclusive
+    references stored in Array elements, the Front's B1); one recursion skeleton for both folds (it would take the reading as a
+    delegate or a mode parameter).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
