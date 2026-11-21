@@ -51,9 +51,11 @@ public sealed partial class Binding
     // R7-C3 (F's C2 rulings 271 (3), 273): a clause list judged at a use reads its declaration's clauses, each a premise of that
     // declaration's environment, through the one consult (AvailableConstraintFact): a failed one is the obligation's Error resting on
     // the declaration's record (RestOnFailure), a derived obligation of the list (DerivedObligation: `S<i32>.f(1)` over f's `U is Missing`).
+    // None at once while nothing failed (premiseFailures, the Failed state's census).
     private PremiseFailure? FailedClauseRead(IsKoto clause, BoundConstraint fact)
-        => clause.Parent is { } declaration && this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { } environment &&
-            environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _) ? environment.FailedPremise : null;
+        => this.premiseFailures != 0 && clause.Parent is { } declaration && this.scopes.TryGetValue(declaration, out var scope) &&
+            scope.Constraints is { } environment && environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _)
+            ? environment.FailedPremise : null;
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
