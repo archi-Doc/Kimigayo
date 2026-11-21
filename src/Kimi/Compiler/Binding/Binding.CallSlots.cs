@@ -62,7 +62,6 @@ public sealed partial class Binding
     // its candidate's frame is seeded (ConstructorType).
     private static FixedSlots ConstructionSlots(FunctionKoto constructor, BoundType declaringType)
         => new(CallSlotOwner(constructor), (BoundType[])declaringType.Components, default);
-    }
 
     // An inferred construction (a structure's or an enum Case's, SPEC 9.7) leaves open each own slot that its constructed Type gives as its
     // own parameter; an outer slot is always a fixed binding, even when it is itself a parameter.
