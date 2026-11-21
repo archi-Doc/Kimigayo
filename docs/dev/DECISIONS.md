@@ -16727,34 +16727,6 @@ resumed by R4-M86 (2026-10-20).
     contextual Case's lookup without writes; `InferredCase` publishes it), `PayloadTypeAt` (a payload's Type in the constructed
     Type) and `FormReference` (a container reference's one formation from its own arguments and its environment, pure;
     `BindContainerReference` keeps the walk and the writes).
-- **BU-245 Comparisons of two Types outside the identity judge stay at reviewed sites, one reason each** (Front, 2026-11-22;
-  Binding; R7-C3 C3c, the plan's §5.0 C3 part c, RP6, Q-623, D-1040; Minor, tests and a behaviour-preserving move; design
-  `...\front\notes\C3\design-c3c.md`; F's C2/C3 rulings 319 and 323; the independent code review ACCEPT WITH CONDITIONS) SPEC 8.2.3.
-  Amends R7-M63.
-  - Rule: Binding.TypeIdentity decides SPEC 8.2.3's identity in a view (IdentityProven, IdentityRefuted, ClassForm at the judgments'
-    intakes). Types are interned, so every other comparison of two Types in Binding is an equality as written: `==`, `!=`,
-    `ReferenceEquals` and `Equals` over two Types (a conditional access's included), SameCompleteType, and a library search of Types
-    for a Type. Each stands at one row `File:Member=n reason` of ArchitectureRulesTest's
-    TypeComparisonsOutsideTheJudgeStayAtTheirSites, under one of the closed reasons kind, unchanged, key, sufficient, formed, declared,
-    representation, record and finding (the test's legend). Read by Roslyn's semantic model over the compiler's sources; the judge's
-    files (`Binding.TypeIdentity.cs` and its `Binding.TypeIdentity.<Concern>.cs`) are exempt. A candidate the model does not resolve
-    (an error-typed operand, or an Equals, ReferenceEquals or search call without its method) fails the test, naming its site.
-  - `finding`: an operand that is not what its owner publishes, a defect found and not fixed by the row's unit; the row's comment names
-    its PLAN open issue, and the reason changes when that issue's fix lands. The first: BindConversion's typed-borrow target (PLAN
-    G1240, D-1036).
-  - A later unit that adds or removes such a comparison updates its row with its reason. A comparison no reason covers is routed
-    through the judge as its own unit (an acceptance mover), never whitelisted. The test checks each member's sum of rows, so a change
-    inside a member with two or more reasons is reviewed against the reasons file (`...\front\notes\C3\c3c\reasons.tsv`, one line per
-    site).
-  - Deleted: `Binding.SameType`, a second spelling of `ReferenceEquals` under SPEC's word for identity; its reads spell
-    `ReferenceEquals` (reason declared). Moved: `Binding.CompleteTypeIdentity.cs` to `Binding.TypeIdentity.Complete.cs` (the judge's
-    complete-Type disjunct; behaviour-preserving).
-  - Not seen (review reads them): a Type as a key (a Dictionary's or HashSet's lookup, a tuple's or record's generated equality), an
-    equality through a comparer, an `object`-typed operand.
-  - Rejected: a regex census (plan §8.1's text census), a syntax count by name (ReferenceEquals compares Types at 390 of its 1,036
-    Binding sites), an IL read (operands are `object` and `==` is `ceq`), one production spelling for every Type equality (a wrapper
-    without semantics, still needing the semantic census); for C1, landing the typed-borrow fix first (it would hold the guard behind
-    an acceptance mover's whole cycle; ruling 323).
 - **BU-246 A kept operand's take and input by its Error's form: `PlanRow.KeptAdjust` and `PlanRow.KeptInput`** (Front,
   2026-11-22; Binding; Z17c-F, Q-638, D-1047, for stream Z's Z17c (C-448, the Middle's design Revision 1, K4); Major,
   behaviour-preserving alone; F's ruling on the design check `front\notes\Z17c\design-facts.md`; the code review ACCEPT WITH
@@ -24332,7 +24304,6 @@ R8-M* and R9-M* by the stage of the recording unit.
     ruling 272); a whole-environment flag or a fourth view state; a mode on the consult; an arm per premise structure emulating its key
     (FailedPremiseRead's arms, where ruling 271's holes fell); a projection's path read as a fourth Failed fact
     (`ProjectionOutcome.Failed`, ruling 296; withdrawn: the capture's dependent record is G1169's memo cause).
-  - Guarded by BU-245 (R7-C3 C3c): every other comparison of two Types in Binding stands at a reviewed row.
 - **R7-M64 A failed slot is a MIR local of no Type** (Middle, 2026-11-21; PLAN G1073, D-834's MIR half, Q-578, a joint unit with
   BU-234; Major; design `...\2026-11-16-pause\middle\notes\d834-mir-design.md` Revision 1; the Middle's ruling 291b) SPEC 23.1.2,
   9.2, 10.5.4, 8.15.3.
