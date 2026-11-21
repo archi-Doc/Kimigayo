@@ -70,14 +70,14 @@
 // of SPEC 4.6 to 4.9, keyed by declaring identity in Binding.Retention.Transfers.cs) retains there a borrowed input by its Chain only,
 // `exchange`'s result only its target's Chain, and a 4.9 operation's receiver storage, of the other inputs, only its added ones
 // (KimiLibraryCatalog.Added; a member without a receiver, construction, has no receiver storage, so its result keeps every input). It
-// writes only its own outputs (TransferWrites): a 4.9 operation its result and its receiver's element storage, `exchange` its result
-// and its target; at another output rule A forms no row and a raw layer there unties nothing (DECISIONS BU-52: an added value's
+// writes only its own outputs (TransferWrites): a 4.9 operation its result and its receiver's element storage; at another output rule
+// A forms no row and a raw layer there unties nothing (DECISIONS BU-52: an added value's
 // Fields, payloads and elements are no storage the operation writes). An operation of SPEC 4.6 to 4.9 writes the store at its
 // borrowed receiver only in the storage that receiver refers to (ReferentStores; 4.9.6).
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
 // An input through which the callee's operation contract stores no value (KimiLibraryCatalog.NoStore, C-189, e.g. Raw.slice's storage;
-// SPEC 5.2 Placement, 5.6) is no output: the call writes no storage through it, so it has no Writes entry, rule A forms no row there
-// and nothing unties it (PLAN G780).
+// SPEC 5.2 Placement, 5.6; the value `replace` and `exchange` place in their target, 15.7) is no output: the call writes no storage
+// through it, so it has no Writes entry, rule A forms no row there and nothing unties it (PLAN G780).
 // Keeps: whether the result or a storage the call may write may hold an input (MirValidator.ConstantRecords).
 // Files: this one (the contract and its records RetentionKind, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
 // (TyCtxt.Retains, RetainsErasedDestruction and their memo, the callables handed to a body); Binding.Retention.cs with .Atoms.cs,

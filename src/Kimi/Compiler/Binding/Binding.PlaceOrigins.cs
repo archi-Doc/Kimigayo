@@ -132,7 +132,7 @@ public sealed partial class Binding
     private BoundOrigin? ContainedOrigin(Koto place, ContainmentWalk walk)
     {
         var path = KotoHelper.UnwrapParentheses(place);
-        for (var depth = 0; depth < 64; depth++)
+        while (true)
         {
             var step = this.NextPathStep(path, out var next);
             next = KotoHelper.UnwrapParentheses(next);
