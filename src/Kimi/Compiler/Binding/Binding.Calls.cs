@@ -173,51 +173,11 @@ public sealed partial class Binding
         BoundDefaultArgument[]? defaults = null;
         try
         {
-            if (generic is not null)
+            if (generic is not null && !this.BindExplicitArguments(generic, evaluated.AsSpan(0, candidateCount), scope, explicitTypes, explicitLengths))
             {
-                for (var i = 0; i < generic.TypeArguments.Count; i++)
-                {
-                    var syntax = generic.TypeArguments[i];
-                    var isLength = this.IsLengthArgument(syntax, scope);
-                    var argumentName = UnwrapTypeSyntax(syntax);
-                    while (argumentName is ParenthesizedTypeKoto parentheses)
-                    {
-                        argumentName = UnwrapTypeSyntax(parentheses.Type);
-                    }
-
-                    // A question, not the argument's lookup (R7-N1e2-1R): whether its spelling also names a Type, in a Type position's row.
-                    // It publishes nothing: the argument is then looked up once, as a length (a value) or by its BindType.
-                    if (isLength && this.ProbePath(argumentName, scope, UseRow(argumentName), 0) is not null)
-                    {
-                        var typeSlot = false;
-                        var lengthSlot = false;
-                        foreach (ref readonly var candidate in evaluated.AsSpan(0, candidateCount))
-                        {
-                            if (candidate.Accessible && candidate.Symbol!.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count)
-                            {
-                                lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
-                                typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
-                            }
-                        }
-
-                        if (typeSlot && lengthSlot)
-                        {
-                            // Both namespaces can supply this spelling. Do not silently choose
-                            // a kind before candidate-local dual-namespace binding is available.
-                            return this.Fail(call, BindingFailure.Unsupported, true);
-                        }
-
-                        isLength = !typeSlot;
-                    }
-
-                    explicitLengths[i] = isLength ? this.BindLength(syntax, scope) : null;
-                    if (explicitLengths[i] is null && syntax.BindingFailure == BindingFailure.None)
-                    {
-                        this.BindType(syntax, scope);
-                    }
-
-                    explicitTypes[i] = explicitLengths[i] is null ? syntax.BoundType : null;
-                }
+                // Both namespaces can supply a spelling. Do not silently choose a kind before candidate-local dual-namespace binding is
+                // available.
+                return this.Fail(call, BindingFailure.Unsupported, true);
             }
 
             var (selection, winnerIndex) = this.SelectAt(ref evaluation, candidates);
@@ -539,6 +499,55 @@ public sealed partial class Binding
 
             this.ReturnEvaluation(evaluation);
         }
+    }
+
+    // SPEC 8.1.3, 4.4.1: a call's explicit Type and length arguments, each bound once as a length (a value) or a Type, by the slots the
+    // accessible candidates declare at its index; false, binding none after it, when both namespaces can supply a spelling.
+    private bool BindExplicitArguments(GenericsKoto generic, ReadOnlySpan<EvaluatedCandidate> evaluated, BindingScope scope, BoundType?[] explicitTypes, BoundLength?[] explicitLengths)
+    {
+        for (var i = 0; i < generic.TypeArguments.Count; i++)
+        {
+            var syntax = generic.TypeArguments[i];
+            var isLength = this.IsLengthArgument(syntax, scope);
+            var argumentName = UnwrapTypeSyntax(syntax);
+            while (argumentName is ParenthesizedTypeKoto parentheses)
+            {
+                argumentName = UnwrapTypeSyntax(parentheses.Type);
+            }
+
+            // A question, not the argument's lookup (R7-N1e2-1R): whether its spelling also names a Type, in a Type position's row.
+            // It publishes nothing: the argument is then looked up once, as a length (a value) or by its BindType.
+            if (isLength && this.ProbePath(argumentName, scope, UseRow(argumentName), 0) is not null)
+            {
+                var typeSlot = false;
+                var lengthSlot = false;
+                foreach (ref readonly var candidate in evaluated)
+                {
+                    if (candidate.Accessible && candidate.Symbol!.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count)
+                    {
+                        lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
+                        typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
+                    }
+                }
+
+                if (typeSlot && lengthSlot)
+                {
+                    return false;
+                }
+
+                isLength = !typeSlot;
+            }
+
+            explicitLengths[i] = isLength ? this.BindLength(syntax, scope) : null;
+            if (explicitLengths[i] is null && syntax.BindingFailure == BindingFailure.None)
+            {
+                this.BindType(syntax, scope);
+            }
+
+            explicitTypes[i] = explicitLengths[i] is null ? syntax.BoundType : null;
+        }
+
+        return true;
     }
 
     // SPEC 10.4, 23.1.2: the Ambiguous outcome of a call's selection. Under the argument probe a nested call waits (DeferNestedCall);

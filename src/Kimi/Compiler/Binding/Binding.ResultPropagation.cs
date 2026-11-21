@@ -56,8 +56,10 @@ namespace Kimi.Compiler;
 //   literal, as RequireType does at a position (RequireAtPosition); the reader reports a misfit of the late fit.
 public sealed partial class Binding
 {
-    // The writes of the last late Type computation, which TryPropagate applies: an aggregate's or result target's Type, and a bound
-    // part's adaptation to the Type at its position (its erasure or its one implicit operation, SPEC 10.2).
+    // The writes of a late Type computation, which TryPropagate applies: an aggregate's or result target's Type, and a bound part's
+    // adaptation to the Type at its position (its erasure or its one implicit operation, SPEC 10.2). Each computation appends after
+    // the lists' entry counts and removes what it appended before it returns (TruncateLate), so a computation nested in another's
+    // (a fit inside a late Type) leaves the enclosing one's writes.
     private readonly List<(Koto Node, BoundType Type)> lateWrites = new();
     private readonly List<(Koto Node, BoundType Type)> lateAdaptations = new();
 
@@ -684,35 +686,50 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 14.9.2 step 3: the Type an expression that awaits takes at `target`; null when it cannot take it.
+    // SPEC 14.9.2 step 3: the Type an expression that awaits takes at `target`; null when it cannot take it. Its writes are dropped.
     private BoundType? LateTypeOf(Koto node, BoundType target)
     {
-        this.lateWrites.Clear();
-        this.lateAdaptations.Clear();
-        return this.LateType(node, target);
+        var (writes, adaptations) = (this.lateWrites.Count, this.lateAdaptations.Count);
+        var late = this.LateType(node, target);
+        this.TruncateLate(writes, adaptations);
+        return late;
     }
 
     // SPEC 14.9.2 step 3: an expression that awaits its position takes `target` when its late Type fits it at `use`.
     private bool TryPropagate(Koto node, BoundType target, Koto use)
     {
-        if (this.LateTypeOf(node, target) is not { } late || !this.FitsTypeAt(late, target, use, out _))
+        var (writes, adaptations) = (this.lateWrites.Count, this.lateAdaptations.Count);
+        try
         {
-            return false;
-        }
+            if (this.LateType(node, target) is not { } late || !this.FitsTypeAt(late, target, use, out _))
+            {
+                return false;
+            }
 
-        foreach (var (part, type) in this.lateWrites)
+            for (var i = writes; i < this.lateWrites.Count; i++)
+            {
+                Complete(this.lateWrites[i].Node, this.lateWrites[i].Type);
+            }
+
+            for (var i = adaptations; i < this.lateAdaptations.Count; i++)
+            {
+                var (part, type) = this.lateAdaptations[i];
+                this.AdaptAtPosition(part, part.BoundType!, type);
+            }
+
+            return true;
+        }
+        finally
         {
-            Complete(part, type);
+            this.TruncateLate(writes, adaptations);
         }
+    }
 
-        foreach (var (part, type) in this.lateAdaptations)
-        {
-            this.AdaptAtPosition(part, part.BoundType!, type);
-        }
-
-        this.lateWrites.Clear();
-        this.lateAdaptations.Clear();
-        return true;
+    // Removes the late writes and adaptations appended after the given counts.
+    private void TruncateLate(int writes, int adaptations)
+    {
+        this.lateWrites.RemoveRange(writes, this.lateWrites.Count - writes);
+        this.lateAdaptations.RemoveRange(adaptations, this.lateAdaptations.Count - adaptations);
     }
 
     // SPEC 10.2, 7.7.4: a bound part takes the Type at its position as a Tuple argument's part does: a Closure or Function Item by its

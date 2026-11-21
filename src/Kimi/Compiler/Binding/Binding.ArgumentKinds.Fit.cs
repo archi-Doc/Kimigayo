@@ -179,15 +179,15 @@ public sealed partial class Binding
     // position that waits (no typed part, one awaiting its call) is checked by the selected candidate, only a waiting anonymous function's
     // header filtering here; an Aggregate one by each part's shape and then its child positions; a Typed one by each typed part's own
     // Type (FitsTypedPart), ranked once; any other part by its late Type (LateFits), which applies no late write: the writes the
-    // late fits record are cleared per candidate, as no reader applies them (TryPropagate computes its own).
+    // late fits record are dropped per candidate, as no reader applies them (TryPropagate computes its own).
     private bool FitsJoin(Koto join, BoundType type)
     {
-        this.lateWrites.Clear();
-        this.lateAdaptations.Clear();
+        var (writes, adaptations) = (this.lateWrites.Count, this.lateAdaptations.Count);
         var start = this.positionParts.Count;
         this.AddResults(join);
         var fits = this.FitsPosition(start, type);
         this.ClosePosition(start);
+        this.TruncateLate(writes, adaptations);
         return fits;
     }
 

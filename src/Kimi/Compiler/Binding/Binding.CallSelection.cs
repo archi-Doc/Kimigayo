@@ -179,6 +179,27 @@ public sealed partial class Binding
         return this.ClassifySelection(ref evaluation);
     }
 
+    // A query's entry (a selection that must not publish, SPEC 10.1: nothing of a candidate that is not selected is reported): the
+    // state its evaluation touches outside its own scratch, saved here and restored by CloseQuery at its exit whatever the outcome: the
+    // obligations its trials add, the deferred acquisition and failed cause SelectAt clears, the requirement reference each candidate
+    // sets and the inference counters. The one owner of that set for every query (SelectOmittedBaseConstructor).
+    private QueryMark OpenQuery()
+        => new(this.obligations.Count, this.acquisitionFailure, this.failedCause, this.activeRequirementContract, this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
+
+    private void CloseQuery(in QueryMark mark)
+    {
+        for (var i = mark.Obligations; i < this.obligations.Count; i++)
+        {
+            this.obligationSet.Remove(this.obligations[i]);
+        }
+
+        this.obligations.RemoveRange(mark.Obligations, this.obligations.Count - mark.Obligations);
+        this.acquisitionFailure = mark.AcquisitionFailure;
+        this.failedCause = mark.FailedCause;
+        this.activeRequirementContract = mark.RequirementContract;
+        (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mark.Mappings, mark.Comparisons, mark.CandidateChecks);
+    }
+
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
     // omitted Origin, and the selected one's bounds are recorded after selection (JudgeSelectedCall).
     private void EvaluateCallCandidates(ref CallEvaluation evaluation, in FunctionGroup candidates)
@@ -355,6 +376,9 @@ public sealed partial class Binding
         var winner = comparable ? this.SelectBest(candidates, evaluation.Operations, evaluation.OperationStride) : -1;
         return (winner < 0 ? CallSelection.Ambiguous : CallSelection.Selected, winner);
     }
+
+    private readonly record struct QueryMark(
+        int Obligations, AcquisitionFailure? AcquisitionFailure, ICheckCause? FailedCause, BindingSymbol? RequirementContract, long Mappings, long Comparisons, long CandidateChecks);
 
     private struct CandidateShape
     {

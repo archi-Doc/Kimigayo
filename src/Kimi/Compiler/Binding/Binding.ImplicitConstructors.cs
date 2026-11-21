@@ -55,11 +55,7 @@ public sealed partial class Binding
         var candidates = FunctionGroup.Of(group);
         var evaluated = this.RentCandidates(candidates, call.Method, this.scopes[constructor]);
         var shape = MeasureCandidates(candidates, true);
-        var obligationCount = this.obligations.Count;
-        var acquisition = this.acquisitionFailure;
-        var failedCause = this.failedCause;
-        var requirementContract = this.activeRequirementContract;
-        var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
+        var query = this.OpenQuery();
         var evaluation = this.RentEvaluation(call, call.Method, null, this.scopes[constructor], null, shape); // The call has no argument.
         evaluation.Evaluated = evaluated;
         try
@@ -83,16 +79,7 @@ public sealed partial class Binding
         }
         finally
         {
-            for (var i = obligationCount; i < this.obligations.Count; i++)
-            {
-                this.obligationSet.Remove(this.obligations[i]);
-            }
-
-            this.obligations.RemoveRange(obligationCount, this.obligations.Count - obligationCount);
-            this.acquisitionFailure = acquisition;
-            this.failedCause = failedCause;
-            this.activeRequirementContract = requirementContract;
-            (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
+            this.CloseQuery(query);
             this.ReturnEvaluation(evaluation);
         }
     }
