@@ -162,6 +162,25 @@ public class ContractBindingTest
         Assert.False(c.Bind().IsComplete);
     }
 
+    // R7-E2 E2-5a (the Front's B1; probes a1, a2, q1, labelled from SPEC first): a refinement's reference without its Type arguments
+    // (9.7.1) and a specification's Name ambiguous among its owner's conformances (8.5.2) are each one failed requirement at that node;
+    // its verdict that nothing was formed rests on it and adds no record (the slot's first failure until R7-E5, D-924). Regression rows
+    // for the records E2-5a's first commit published there, as `Code: span`; a2 keeps dev's records, a dependent one at `K<i32>` among them
+    // (D-924's E5 row); the twins are valid.
+    [Theory]
+    [InlineData("a1", "contract K<T>\n    func k(self: ref/Self) -> i32\ncontract A: K", "InvalidConstraint_Kd: contract | TypeMismatch_Kd: K")]
+    [InlineData("a1t", "contract K<T>\n    func k(self: ref/Self) -> i32\ncontract A: K<i32>", "")]
+    [InlineData("a2", "contract K\n    func k(self: ref/Self) -> i32\ncontract A: K<i32>", "InvalidConstraint_Kd: K<i32> | InvalidConstraint_Kd: contract | TypeMismatch_Kd: K<i32>")]
+    [InlineData("q1", "contract C<E>\n    associate Item\nstruct S\n    Self is C<i32>\n    Self is C<i64>\n    associate Item is i32", "AmbiguousBinding_Kd: Item | AssociatedTypeInferenceFailed_Kd: Self is C<i32> | AssociatedTypeInferenceFailed_Kd: Self is C<i64>")]
+    [InlineData("q1t", "contract C<E>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate Item is i32", "")]
+    public void AReferenceThatFormedNothingAddsNoRecordOfItsOwn(string form, string program, string records)
+    {
+        var source = program + "\npublic func main() => ()";
+        var errors = CompilationTestHelper.BindingErrors(MinimalEmissionTest.Analyze(source));
+        var actual = string.Join(" | ", errors.Select(x => $"{x.Code}: {source.Substring(x.Span.Start, x.Span.Length)}").Order(StringComparer.Ordinal));
+        Assert.True(records == actual, $"{form}: {actual}");
+    }
+
     // SPEC 8.5.1 Qualification, 8.5.3: in a Contract, `associate C.X is R` names an ancestor C, with its Type arguments, and one of
     // its associated Types; the Contract itself, under any path, is no ancestor.
     [Theory]

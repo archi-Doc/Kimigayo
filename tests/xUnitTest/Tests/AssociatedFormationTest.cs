@@ -52,7 +52,8 @@ public class AssociatedFormationTest
     }
 
     // SPEC 8.5: only a requirement may end with a formation Type; a specification fixes its Type, and a formation Type
-    // elsewhere is an invalid Constraint, not an implementation limit.
+    // elsewhere is an invalid Constraint, not an implementation limit. It is one failed requirement, so the formation's own check, which
+    // judges the same rule again, adds no record (R7-E2 E2-5a, probe f1: the slot's first failure until R7-E5, D-924).
     [Fact]
     public void FormationTypesOutsideRequirementsAreInvalid()
     {
@@ -60,6 +61,7 @@ public class AssociatedFormationTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd && x.Node.ToString().StartsWith("associate", StringComparison.Ordinal));
     }
 
     [Theory]

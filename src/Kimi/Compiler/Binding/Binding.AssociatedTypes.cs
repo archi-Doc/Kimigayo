@@ -446,7 +446,9 @@ public sealed partial class Binding
         if (associated is null || (owner.Declaration is not ContractKoto &&
             (this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || this.impls.PathsOf(conformance).Count == 0)))
         {
-            return this.Record(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType, []);
+            // SPEC 23.1.2: FindAssociated may have recorded the Name's ambiguity at this clause first (SPEC 8.5.2) and found nothing, which
+            // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1).
+            return this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
         }
 
         var parameters = this.AssociatedParameters(associated.Declaration);

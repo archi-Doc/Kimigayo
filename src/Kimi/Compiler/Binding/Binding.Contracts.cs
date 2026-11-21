@@ -302,7 +302,9 @@ public sealed partial class Binding
 
             if (parent is null)
             {
-                this.Record(syntax, BindingFailure.InvalidConstraint, []);
+                // SPEC 23.1.2: BindContractReference failed the reference first (its arity or an Origin argument, SPEC 9.7.1) and formed
+                // nothing, which this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe a1).
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;
             }
