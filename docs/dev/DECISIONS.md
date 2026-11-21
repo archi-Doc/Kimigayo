@@ -11204,6 +11204,12 @@ resumed by R4-M86 (2026-10-20).
     Item's bound arguments, a requirement Contract's inherited Origins included.
   - Amended by BU-215 (PLAN G904): a Function Type's `CallSignature` row reads its `BoundType.Binder` (the declaring syntax), not a
     binder guessed from an input's Origin.
+  - Amended by R7-D3 D3-1 (Q-645, 2026-11-22): for `EnclosingAnonymous` the walk reads a Closure part's Origin arguments and
+    components, never its signature (the descent added nothing; nor does the part's closure context, which the walk never visits: a
+    held context erases Origins, BU-60, and a function's instance is a context only of Types naming its nested definitions, which no
+    Type at a formation outside the function names), so ClosureType's walk follows only the parts `BoundType.Height` counts. Only
+    `EnclosingContainer` (`UnimagedClosure`) crosses the signature edge, with `ClosureArgumentVariance`: both are R7-D3 D3-2 (PLAN
+    G348).
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; the owner's 「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds
   publishes a part's relation to its call as one fact, and no consumer infers that relation from BoundType or BindingState. G1b B4 (a

@@ -1448,6 +1448,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   row records V2a2 as landed in W-309: `ImplTable.Find` and `TryPath` hand out only what the running pass registered
   (DECISIONS R7-M16's R7-V2a2 amendment); e6 and t1, valid programs the Bind after an edit rejected, are accepted. Nothing
   frozen.
+- Revision 109 (2026-11-22, plan §14; the Front's Q-645 and D-1055, F's C8 rulings 1 and 2, R7-D3 D3-1's landing): D3's row
+  records D3-1 as landed in W-309: ClosureType's `FixedAtoms` walk no longer crosses a Closure's signature, so a closure chain's
+  formations are linear (DECISIONS BU-73's R7-D3 D3-1 amendment; PLAN G348 F1); D3-2 takes `UnimagedClosure` and
+  `ClosureArgumentVariance`. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
