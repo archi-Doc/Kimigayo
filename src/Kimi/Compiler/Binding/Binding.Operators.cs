@@ -92,7 +92,7 @@ public sealed partial class Binding
             var type = DefaultLiteralType(number, expected);
             if (!LiteralCategoryMatches(number, type) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && type.IsFloatingPoint))
             {
-                return this.Fail(unary, BindingFailure.TypeMismatch);
+                return this.RecordTypeMismatch(unary, unary, new(null, number.IsInteger ? MismatchForm.IntegerLiteral : MismatchForm.FloatingPointLiteral), type);
             }
 
             if (!FitsLiteral(number, type, unary.Akind == KotoKind.PrefixMinus))
@@ -119,7 +119,7 @@ public sealed partial class Binding
         switch (unary.Akind)
         {
             case KotoKind.Not:
-                return this.FitsType(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return this.FitsType(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.RecordTypeMismatch(unary, unary, operand, BoundType.Boolean);
             case KotoKind.PrefixPlus or KotoKind.PrefixMinus:
                 var decision = this.OperatorApplicabilityOf(unary, operand, null, scope);
                 return decision.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, decision);

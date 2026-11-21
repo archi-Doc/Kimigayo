@@ -189,7 +189,7 @@ public sealed partial class Binding
             }
         }
 
-        this.Fail(conversion, BindingFailure.TypeMismatch);
+        this.RecordTypeMismatch(conversion, conversion, actual, target);
         return false;
     }
 

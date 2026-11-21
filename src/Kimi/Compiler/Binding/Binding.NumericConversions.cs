@@ -12,9 +12,6 @@ namespace Kimi.Compiler;
 // literal's selected-precision bits (TryFloatLiteral).
 public sealed partial class Binding
 {
-    // SPEC 13.5.4: the explanation of a numeric conversion rejected for a different integer argument.
-    internal const string WrappingConversionNote = "A numeric conversion enters or leaves Wrapping<U> only from U itself, so the range check stays visible (SPEC 13.5.4)";
-
     // SPEC 13.5.4: a direct literal converted at compile time. The literal, its sign and its parentheses take the target Type,
     // and the conversion carries the folded constant that is produced instead of evaluating the literal.
     private static BoundType? CompleteFolded(ConversionKoto conversion, NumberLiteralKoto number, BoundType target, Int128 folded, ConversionBinding binding)

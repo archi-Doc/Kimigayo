@@ -36,9 +36,6 @@ public sealed partial class Binding
     // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
     private Dictionary<Koto, PerCallSlotFact>? perCallSlots;
 
-    // SPEC 10.5: why a single generic reference's slots did not bind from its fixed expected call signature, for its Type-mismatch Note.
-    private Dictionary<Koto, ReferenceSlotFact>? referenceSlotFacts;
-
     // The selected iteration entry and the range whose boundary Types cannot supply it.
     private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
 
@@ -57,9 +54,6 @@ public sealed partial class Binding
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
     // slot would hold (as bits) and that signature.
     private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature);
-
-    // The referenced declaration, its Type parameter when one is known (else -1), the failure and whether Type arguments are written.
-    private readonly record struct ReferenceSlotFact(FunctionKoto Declaration, int Slot, ReferenceSlotFailure Failure, bool Explicit);
 
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
@@ -635,7 +629,6 @@ public sealed partial class Binding
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
-        this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();
         this.pendingJudgments?.Clear();
         this.arithmeticSelectionFailures?.Clear();

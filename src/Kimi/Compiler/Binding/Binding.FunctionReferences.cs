@@ -158,12 +158,6 @@ public sealed partial class Binding
                     return this.FailExplained(ref this.perCallSlots, use, BindingFailure.MissingOrigin, new PerCallSlotFact((FunctionKoto)only!.Declaration, slot.Slot, slot.Parameters, required));
                 }
 
-                if (slotFailure.Failure != ReferenceSlotFailure.None && only?.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
-                {
-                    // SPEC 10.5: the Type-mismatch Note names why the one generic candidate's slots did not bind from S.
-                    (this.referenceSlotFacts ??= new(ReferenceEqualityComparer.Instance))[use] = new(generic, slotFailure.Slot, slotFailure.Failure, KotoHelper.UnwrapParentheses(use) is GenericsKoto);
-                }
-
                 // SPEC 10.5.3, 10.7: the one candidate's record reads the signature its trial substituted, its Item over the arguments the
                 // trial bound (the written ones where given) and its container; with a slot unbound there is none, and the declaration's
                 // own signature is a Type mismatch whose Note names the slot. When only its Origin contract fails, the record names that

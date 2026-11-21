@@ -98,7 +98,7 @@ public class ErasureOwnedDiagnosticTest
         Assert.Contains("the 1st Type argument is not proven Owned", console.Text, StringComparison.Ordinal);
     }
 
-    // The counterparts: an Owned Constraint proves the conversion, and the receiver condition keeps its Type mismatch with the Note.
+    // The counterparts: an Owned Constraint proves the conversion, and the receiver condition keeps its Type mismatch.
     [Fact]
     public void AnOwnedConstraintProvesTheConversion()
         => Assert.Empty(DiagnosticCorpus.Check("func identity<T>(value: T) -> T => value@move\n\nfunc keepOwned<T>(value: T) -> (T) -> T\n    T is Owned\n    let f: (T) -> T = identity\n    return f@move\n\n" + Main + "    let f = keepOwned(1)\n    require f(2) == 2 else => $abort(\"f\")\n").Diagnostics);
@@ -106,13 +106,14 @@ public class ErasureOwnedDiagnosticTest
     // A call argument, a join's arm (grouped: in an arm's single-item body a closure takes no indented body, SPEC F.4.4), and a closure
     // whose receiver and environment both fail (the receiver is its record).
     [Theory]
-    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\n" + Main + "    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n")]
-    [InlineData(Join + "    var n: i32 = 0\n    let g: () -> i32 = if c => (func [var n] () -> i32\n        n += 1\n        return n\n    ) else => func [] () -> i32 => 1\n    return 0\n")]
-    [InlineData(Join + "    var n: i32 = 0\n    let v = 1\n    let r = v@ref\n    let g: () -> i32 = func [var n, r] () -> i32\n        n += 1\n        return n\n    return 0\n")]
-    public void AnExclusiveClosureStaysATypeMismatch(string source)
+    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\n" + Main + "    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n", "func [var c]", "expected (i32) -> i32, found closure (i32) -> i32")]
+    [InlineData(Join + "    var n: i32 = 0\n    let g: () -> i32 = if c => (func [var n] () -> i32\n        n += 1\n        return n\n    ) else => func [] () -> i32 => 1\n    return 0\n", "if c => (func [var n]", "expected () -> i32, found closure () -> i32")]
+    [InlineData(Join + "    var n: i32 = 0\n    let v = 1\n    let r = v@ref\n    let g: () -> i32 = func [var n, r] () -> i32\n        n += 1\n        return n\n    return 0\n", "func [var n, r]", "expected () -> i32, found closure () -> i32")]
+    public void AnExclusiveClosureStaysATypeMismatch(string source, string at, string label)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), "This closure requires an Exclusive call; a common Function value permits Shared calls only"), (error.Code, error.Note));
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), label, (string?)null), (error.Code, error.Label, error.Note));
+        Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 23.1.2 (DECISIONS BU-75): an Owned proof that could not judge its subject, because a part names a failed declaration, fails the
