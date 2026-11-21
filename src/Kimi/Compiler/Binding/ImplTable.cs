@@ -27,8 +27,8 @@ using Kimi.Compiler.Parsing;
 //   reads as unregistered while stale (Current); the table resets it at its first access through the table in a pass (Find, Path,
 //   TryPath, Register), so no reader sees an earlier pass's state; a path is Active from its registration in the pass to the end of the
 //   pass, a per-pass flag the reset clears (not "Stamp current": a registration names a root path before its own call registers it); so
-//   no lookup hands out an identity or path the pass did not register, and no reader tests for one (an earlier pass's identity, empty
-//   after its reset, read as present was a warm Bind's record after an edit, never a cold one's); a store's lists
+//   neither Find, TryPath nor OfType's lists hand out an identity or path the pass did not register, and their readers test for none
+//   (Path and Identities hand out what a registration names, which may not be registered yet); a store's lists
 //   are emptied at its first access in a pass; a path joins Paths and its identity's paths only at its first registration in a pass, so
 //   both follow the registrars' order and a derived Type's follow its base's; Identities lists the pass's identities in the order the
 //   pass first names them; Register names the root path and the root's own call registers it; each key keeps one object while each pass
