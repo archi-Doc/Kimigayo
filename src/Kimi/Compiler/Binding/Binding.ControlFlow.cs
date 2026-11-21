@@ -147,11 +147,14 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1 (DECISIONS BU-43, BU-78; PLAN G924 B2, F's ruling 46): whether a join that is no conflict is its call's argument probe
-    // control flow, which its call classifies (ClassifiedByCall): a typed one holding a failed source, or one with an array literal
-    // source that awaits its position (step 3 at its typed sources' Type would decide it before the call's places meet).
+    // control flow, which its call classifies (ClassifiedByCall): a typed one holding a failed source, one with an array literal source
+    // that awaits its position (step 3 at its typed sources' Type would decide it before the call's places meet), or one holding a
+    // source that awaits its call (SPEC 14.9.2 step 1, ArgFlow ruling 63: that source is checked and completed at the parameter Type
+    // under each candidate, never at the typed sources' step-2 Type).
     private bool WaitsForItsCall(Koto node, ResultContext context, bool awaiting)
         => context.HasTyped && context.Cause is not null ? this.ClassifiedByCall(node, null)
-            : awaiting && AwaitingAggregateSource(context) is { } shape && this.ClassifiedByCall(node, shape);
+            : awaiting && (AwaitingAggregateSource(context) is { } shape ? this.ClassifiedByCall(node, shape)
+                : this.HoldsPartAwaitingCall(node) && this.ClassifiedByCall(node, null));
 
     // SPEC 14.9.2: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
