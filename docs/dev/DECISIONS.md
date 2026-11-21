@@ -7529,9 +7529,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     were this cause (the old value's erased destruction through a writeback reservation, `value += value` on an abstract T; through
     `indexUniq`'s reference, `owned[key] = value@move`) and run again (fixture UserArithmeticUpdateGeneric; the allocation audit
     DictionaryIndexGeneric); G416's other members stay.
-  - **Not covered.** `replace(r@follow@uniq, ...)`, whose record is Binding's `replace` row (PLAN G1147, D-933), and two exclusive
-    Derefs (`rr@follow@follow = v` and its call `rr@follow.flush()`: Retained's chain re-adds the input's own Loans from the
-    intermediate reference's holder, shared by calls and drops; PLAN G1151, D-935).
+  - **Not covered.** `replace(r@follow@uniq, ...)`, whose record was Binding's `replace` row (fixed by D-933, BU-179's line), and
+    two exclusive Derefs (`rr@follow@follow = v` and its call `rr@follow.flush()`: Retained's chain re-adds the input's own Loans
+    from the intermediate reference's holder, shared by calls and drops; PLAN G1151, D-935).
   - **Rejected.** Excluding the reference's Loans from `Chain` in `Calls.Retained` (a second copy of rule A for one caller); forming an
     address of the destroyed Place past a Deref (a non-direct entry names no holder, so it reads nothing and only adds an entry).
   - **Cost.** One step walk per Drop past a Deref per pass; no allocation (`Issued` uses the walk buffer and the set pool).
@@ -9371,6 +9371,8 @@ resumed by R4-M86 (2026-10-20).
     write (`append<raw/(raw/u8)>`'s store 1, `exchange`'s `with`) `TransferWrites` forms no rule-A row while the hold walk keeps its
     untied store, two answers to "the call writes output j", conservative (one more Φ_E target). Pre-existing: a lent `static` layer
     unties; `unlinkOk` is SPEC-invalid (`Node.init` stores through the null `next` into storage the body does not own: R4's triage).
+  - Amended by BU-179's D-933 line (Q-586): `exchange`'s `with` is a NoStore input, so no output; `TransferWrites`' Exchange arm is
+    deleted and N5's `exchange` half is closed (its `append<raw/(raw/u8)>` store-1 half stays open).
 - **BU-41 An instance keeps its stored parts with their raw Origins: `TyCtxt.StoredParts`, `RawSupplied`** (superseded in part by
   BU-46; amended by BU-58: `TyCtxt.WrittenAt`) (2026-10-26; design S1′, with P13's v3; PLAN G148 (1), P13's U0, unit bu46; the owner's
   answers on P13, Q1 (a), Q2 (a) and 「進める (推奨)」, and SPEC 5.7's clarification ② of 2026-10-26) P13's per-part guard (R4-M76) reads, for
@@ -10716,6 +10718,40 @@ resumed by R4-M86 (2026-10-20).
     over Content). Held's arms and the fills apply it (`Kind ?? Value`), and an input's sources join. The remaining over-approximation
     is R4-M154's grain at a by-value source: an argument that also holds a borrow beside the raw layer, `(ref/i32, raw/u8)`, keeps that
     Loan, so writerPairOk errs at `var k` (the owner's precision line accepts it).
+  - Amended by D-933 (Q-586, 2026-11-20, c6 2026-11-21; Front, Binding; Major, an acceptance mover both ways; F's G147 rulings
+    14 (a), 20 C1 (a) and 39 (a)): a raw layer a struct or enum holds as a part of its value is a raw source, and a raw layer stating
+    an Origin is none. SPEC 15.6.4 ("A raw layer that an argument holds by value through no shared layer, a Tuple element, an Option
+    payload, a Field or a Type argument included, is retained as a raw pointer argument is"; "A raw layer retains as §5.7 states:
+    with an Origin, as the borrow that Origin belongs to would"), 15.6 (`ref`, `objref`, `rc`, `arc` are shared layers).
+    - Rule: one rule, `RawSource` (`Binding.Retention.Atoms.cs`, factored from `RetentionParts`' raw case), classifies every raw
+      layer an input holds by value through no shared layer: among a Type's components (the atom walk, as before, stopping at
+      `SharedLayer`) and in a Field or Case payload of a struct or enum (`StoredRawSources`), read through Holdings by the one
+      by-value criterion the storage walk reads for the same SPEC phrase (`ByValue`: Fields, Case payloads, base, the Tuples and fixed
+      arrays in them, a collection's elements; never past an `rc` or `arc` payload), each Type once per position (`retentionStored`).
+      It adds no atom (the parts' Origins are the instance's Origin arguments). At Binding's Limit the contract is the Limit.
+    - Classification (c6): a layer stating no Origin is a raw source (`retentionRawSources`); a layer stating an Origin (not
+      Unstated) is RawStated only (`retentionRawStated`, with the kind the input holds it by, joined per input as the raw sources
+      are), never a raw source; a raw argument's own layer stays a raw source. Every consumer reads that one classification and none
+      filters by Origin: RetentionRows' undecided seeding, `RawInput` (HiddenKinds), Hold's lent branch, `Held`, `HiddenFill` and
+      `StatedFits`, which keeps a fitting stated entry's input by that entry's joined kind (`KeepRaw` is deleted). Found when C3-1's
+      TypeIdentity proved Iterator's `LentItem(step) is Item` and nextOf's handed `next` filled `I.Item` with a stated raw Field by
+      Chain.
+    - Exposure: `retentionRawSources` and `retentionRawStated` are Binding-private and reach readers only through `CallRetention`'s
+      rows; NoStore stays the one published fact.
+    - Consequences: kept-Type storage read in the callee's terms (HiddenKinds, O-360 (a)) keeps such an input's own value:
+      `Raw.initialize(s, Writer{q: addr of w}); y@follow = 5` now errs (dev accepted it), as its Tuple twin did; Text.writer's result
+      keeps the chain read through HeapBuffer's raw Field (`result {0 Value Chain}, untied`). A raw layer in an `rc` or `arc` payload
+      held in a Field is no raw source, as in a Tuple element (`struct RcH { f: rc/In }` and `(rc/In, i32)` agree; their rows and
+      verdicts come from the handle's own retention). A stated raw layer retains as its borrow twin: `It<raw/i32 during w>` keeps
+      what `It<ref/i32 during w>` keeps (`store 0: own {0 Content}`; dev's component path also kept `result {0 Chain}`).
+    - Rejected: walking stored parts through the atom walk (adds the Fields' Origins and writable positions: a wider move); reading
+      `replace` instantiated as `exchange` (ruling 14 (b): leaves Raw.initialize wrong); `Hold.PassesOn` as the stored-part
+      criterion (passes on an `rc` or `arc` payload, a second reading of "through no shared layer": ruling 20 C1 (b)); each
+      consumer filtering by Origin (ruling 39 (b): consumers deciding what the producer publishes).
+    - Note: `ByValue` walks no Type argument but `Loan<T>`'s (a Type argument has no address, SPEC 15.3.5), while the atom walk
+      counts every component, so a raw Type argument a nested generic holds only past a shared layer (`struct Og { g: Gr<raw/u8> }`,
+      `Gr<T> { f: rc/Bx<T> }`) is a raw source in a Tuple element and not in a Field. Both rows agree (`store 0: own {1 Value}`, from
+      the handle); the atom walk's reading only adds rows (conservative).
 
 - **BU-70 A published row names the Callable input an operation calls: `PublishedRow.Calls`; `truncate` and `removeAll` have rows**
   (2026-10-27, chosen 2026-10-31; PLAN G264 U0′, a Full change under WORKFLOW Q11: BU's design-first candidate and R4's prototype-first
@@ -13623,6 +13659,15 @@ resumed by R4-M86 (2026-10-20).
     the pun rule needs every store, a scalar one included, which retention does not publish (BU-145's rejected column stands).
   - Rejected: A5's Keep reading NoStore (a consumer correcting its owner's published fact; `MirValidator`'s `Keeps` would keep the
     contradicting reading); a `CallRetention` column (BU-145).
+  - Amended by D-933 c2 (Q-586, 2026-11-20; F's G147 ruling 14 (a)): `replace` and `exchange` store no value through `with`. SPEC
+    15.7 (a body Takes the target's value and places `value` through a raw Place of the target; the rules are the identities', never
+    a body's), 15.6.4. `KimiLibraryCatalog.NoStoreRows` gains `replace` and `exchange`, slot 1 (`value`): no output there (no Writes
+    entry, no rule A row, nothing untied), and the pun rule stores nothing there. `TransferWrites`' Exchange arm is deleted
+    (unreachable), closing BU-40's N5 for `exchange`; `TransferWrites` keeps the 4.9 receiver arm (N5's `append<raw/(raw/u8)>`
+    store-1 half stays open). KimiLibraryShapeTest's pin (`NoStoreInputsAreIdentityContractsNamedParameters`) admits a 15.7
+    declaration's body. Moves: `replace(r@follow@uniq, with: W)` (W a `Writer` whose `drop` stores through a raw Field) is accepted;
+    rule A had kept the target's own value in storage written through `with`'s raw Field (records at `var x` and `x@ref`).
+    Rejected: a `TransferWrites` case for `replace` (a clause for one form; `replace` is no transfer operation).
 - **BU-175 A Type walk has no count of its own (PLAN G647)** (2026-11-12; Front, Binding and MIR; Major; the Binding half's design
   review 1 REVISE, design review 2 ACCEPT, implementation review 1 REJECT and its re-check ACCEPT, F's rulings 1-3; the Middle's
   consent C-205, REVISE then ACCEPT WITH NOTES) IMPL A.4; SPEC 13.5.3, 22.6.
