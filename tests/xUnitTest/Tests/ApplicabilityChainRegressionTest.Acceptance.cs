@@ -27,6 +27,14 @@ public partial class ApplicabilityChainRegressionTest
         "func k() -> i32\n    let values: Array<i32> = [11, 22]\n    let others: Array<i32> = [33, 44]\n" +
         "    let c = func [values@move] () => values@ref\n    let e = func [others@move] () => others@ref\n    let n: i32 = 4\n";
 
+    // n4g (PLAN G354: "the environment flag also counts when another argument solves the slot"; its source is lost, rebuilt from its
+    // surviving record `make(c@ref, n, 2)` at `F is Callable<() -> T>`): one candidate, T bound by `n`, V left open by a literal; n4h without V.
+    private const string MakeOne = "func make<T, V, F>(f: ref/F, t: T, v: V) -> i32\n    F is Callable<() -> T>\n    return 0\n";
+
+    private const string MakeOneBound = "func make<T, F>(f: ref/F, t: T) -> i32\n    F is Callable<() -> T>\n    return 0\n";
+
+    private const string MakeClosure = "    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n    let n: i32 = 4\n";
+
     private const string Find = "func find(items: ref/[3 of i32], test: (i32) -> bool) -> i32 => 0\nfunc k(items: ref/[3 of i32]) -> i32\n    let target: i32 = 6\n";
 
     private const string FindBool = "func find(items: ref/[3 of i32], test: (bool) -> bool) -> i32 => 0\nfunc k(items: ref/[3 of i32]) -> i32\n    let target: i32 = 6\n";
@@ -92,6 +100,8 @@ public partial class ApplicabilityChainRegressionTest
     [Theory]
     [InlineData("P3", "p24", MakeFirst + MakeBody + "    return make(c@ref, e@ref, n, 2)\n", "", Explicit = true)]
     [InlineData("P3", "p23", MakeSecond + MakeBody + "    return make(e@ref, c@ref, n, 2)\n", "", Explicit = true)]
+    [InlineData("P3", "n4g", MakeOne + "func k() -> i32\n" + MakeClosure + "    return make(c@ref, n, 2)\n", "NoApplicableOverload_Kd: return make(c@ref, n, 2)", Explicit = true)]
+    [InlineData("guard", "n4h", MakeOneBound + "func k() -> i32\n" + MakeClosure + "    return make(c@ref, n)\n", "NoApplicableOverload_Kd: return make(c@ref, n)")]
     public void AJudgmentOnAnUnboundSlotHidesNoRefutation(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
