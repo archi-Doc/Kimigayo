@@ -105,6 +105,14 @@ public sealed partial class MirBorrowsTest
                 self.q = null
             drop
                 unsafe => *self.p = self.q
+        struct RWD {a}
+            public var p: raw/(ref/i32 during a)
+            public var r: ref/i32 during a
+            public init(r: ref/i32 during a)
+                self.p = null
+                self.r = r
+            drop
+                unsafe => *self.p = self.r
         struct WKey
             Self is Equatable
             public var p: raw/(raw/u8)
@@ -504,6 +512,60 @@ public sealed partial class MirBorrowsTest
             var h = (x@uniq, 0)
             h.0@follow = Writer.init(q: null)
             inspect(x@ref)
+        func rr2v()
+            var x = Writer.init(q: null)
+            var r = x@uniq
+            let rr = r@uniq
+            rr@follow@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func rr3v()
+            var x = Writer.init(q: null)
+            var r = x@uniq
+            var rr = r@uniq
+            let r3 = rr@uniq
+            r3@follow@follow@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func rr2fv()
+            var x = Writer.init(q: null)
+            var h = (x@uniq, 0)
+            let rr = h@uniq
+            rr@follow.0@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func rr2i(y: uniq/i32)
+            let w = y@follow@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            var r = x@uniq
+            let rr = r@uniq
+            rr@follow@follow = Writer.init(q: null)
+            y@follow = 5
+            usep(slot)
+            inspect(x@ref)
+        func rr2td(y: uniq/i32)
+            let w = y@follow@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: null)
+            x.p = slot@raw
+            var h = (x@uniq, w@raw@raw/u8)
+            let rr = h@uniq
+            rr@follow.0@follow = Writer.init(q: null)
+            y@follow = 5
+            usep(slot)
+            inspect(x@ref)
+        func adX2v()
+            var z: i32 = 0
+            var slot: ref/i32 = z@ref
+            var y: i32 = 1
+            let v = y@ref
+            var k: i32 = 3
+            var x = RWD.init(r: v)
+            x.p = slot@raw
+            var h = (x@uniq, v)
+            let rr = h@uniq
+            rr@follow.0@follow = RWD.init(r: k@ref)
+            y = 5
+            inspect(slot@ref)
         func dictIndexBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -666,6 +728,11 @@ public sealed partial class MirBorrowsTest
     //   method twin `r.flush()` is; on dev each kept r's Loan, an error at its referent's storage end and later uses. A Field past the
     //   reference takes the same receiver (derefInnerOk: `r.inner = ...`), and so does a drop row of the Content kind (setDerefBad:
     //   Setter's, whose records are setterScopeBad's).
+    // - `=` through two or more exclusive Derefs (D-935; their call forms are AChainRowIsAReadThroughTheArgument's): the receiver also
+    //   carries the parent Loans, which a read through the intermediate reference's holder gives back, the own value the drop's store
+    //   never keeps (rule A): rr2v, rr3v (three) and rr2fv (a Field between) are valid; rr2i and rr2td keep what the read at the last
+    //   Deref carries (q's, and h.1's address of w: `y@follow = 5`), and adX2v keeps v's Loan, which the old x holds though h.1 holds it
+    //   too (`y = 5`; `var z` and the new x's `var k` are its own records on dev too).
     [Theory]
     [InlineData("localBad", "localBad: y = 5")] // Drop at `=`
     [InlineData("localReachBad", "localReachBad: y = 5")] // Drop at `=`
@@ -714,6 +781,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("uniqElemOk", "")] // `=` through tryGetUniq's reference (D-918)
     [InlineData("derefInnerOk", "")] // `=` of a Field past an exclusive reference (D-918)
     [InlineData("setDerefBad", "setDerefBad: y = 5; setDerefBad: t@ref")] // a Content-kind drop row through a reference: setterScopeBad's records (D-918)
+    [InlineData("rr2v", "")] // `=` through two exclusive Derefs (D-935)
+    [InlineData("rr3v", "")] // `=` through three exclusive Derefs (D-935)
+    [InlineData("rr2fv", "")] // `=` through two Derefs with a Field between (D-935)
+    [InlineData("rr2i", "rr2i: y@follow = 5")] // through two Derefs: q's Loan read at the last Deref stays (D-935)
+    [InlineData("rr2td", "rr2td: y@follow = 5")] // through two Derefs: w's Loan read through h.1's address stays (D-935)
+    [InlineData("adX2v", "adX2v: y = 5; adX2v: var k: i32 = 3; adX2v: var z: i32 = 0")] // through two Derefs: v's Loan, held by x and h.1, stays (D-935)
     public void ADestructionRetainsAsItsDropsCall(string form, string expected)
     {
         var c = MirBuildTest.Compile(DropShapes + Form(DropForms, form));
@@ -778,7 +851,8 @@ public sealed partial class MirBorrowsTest
 
     // V16: A5 on a program version it checked before allocates nothing at destructions: every site's composition, the published
     // destroying calls, a drop writing through a borrow Field and one through stated raw layers, and a Drop through an exclusive
-    // reference, whose receiver is its Reborrow (D-918).
+    // reference, whose receiver is its Reborrow (D-918), also through two (D-935: the referent and the Remove nodes of rr2v, rr2td and
+    // adX2v interned once).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmDestructionAllocatesNothing()
@@ -786,7 +860,7 @@ public sealed partial class MirBorrowsTest
         string[] forms = ["localBad", "tempOnlyBad", "scopeBad", "discardBad", "escapeBad", "setterScopeBad", "statedBad", "fieldBad", "orderBad",
             "baseBad", "tupleBad", "optionBad", "holderBad", "closureBad", "sealedLateBad", "erasedLateBad", "rcCellBad", "arrReassignBad",
             "litScopeBad", "dictReassignBad", "dictKeyReassignBad", "fixedReassignBad", "arrClearBad", "replaceBad", "keyParamBad", "derefOk",
-            "derefBad"];
+            "derefBad", "rr2v", "rr2td", "adX2v"];
         var c = MirBuildTest.Compile(DropShapes + string.Concat(forms.Select(static x => Form(DropForms, x))) + "public func main() => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);

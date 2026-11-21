@@ -84,9 +84,6 @@ public sealed partial class Binding
         // The jumps a rejected labeled do's subtree holds (Keeps), one walk reused across nodes and passes.
         private TargetWalk? targets;
 
-        // The children the Errors visited so far read whole by their forms (FormReads), each marked where it is kept; one per publish.
-        private HashSet<Koto>? reads;
-
         // The nodes the jump walk visited (TargetWalk), which a scaling check reads; kept across passes.
         internal long TargetWork => this.targets?.Visited ?? 0;
 
@@ -100,7 +97,7 @@ public sealed partial class Binding
             if (parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
                 this.uses.FixAdjust(node, new(HirAcquire.None, HirAdaptation.None), default); // A kept operand of an Error (Keeps), used in place.
-                if (this.reads!.Contains(node))
+                if (FormReads.Of(binding, node))
                 {
                     HirTables.PlanFor(node, written: true).KeptRead = true; // Its Error's form reads its whole Place (DECISIONS D-986).
                 }
@@ -168,7 +165,7 @@ public sealed partial class Binding
             {
                 // The takes an Error's form gives its children, of which its kept operands record the whole-Place reads (DECISIONS D-986);
                 // an Error Binding never visited (a parser recovery) keeps none, its children's Op being Unset.
-                var record = new FormReads(binding, this.reads!);
+                var record = new FormReads(binding);
                 binding.AdjustChildren(node, form, this.need.Use, ref record);
             }
 
@@ -205,7 +202,6 @@ public sealed partial class Binding
                 (hir.Plans[i].Adjust, hir.Plans[i].KeptRead) = (default, false);
             }
 
-            (this.reads ??= new(ReferenceEqualityComparer.Instance)).Clear();
             (hir.Defaults ??= []).Clear();
             (hir.Broken ??= []).Clear();
             (this.table, this.uses) = (table, new(binding, table));
