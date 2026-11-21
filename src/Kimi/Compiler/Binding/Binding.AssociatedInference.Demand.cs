@@ -254,7 +254,7 @@ public sealed partial class Binding
         var frozenRun = this.InferenceRun(entry.Batch, frozen);
         BoundType? found = null;
         var conflict = false;
-        if (ownRun.Usable.TryGetValue(entry.Identity.Symbol, out var owned) && frozenRun.Usable.TryGetValue(entry.Identity.Symbol, out var held))
+        if (ownRun.Usable.TryGetValue(binding, out var owned) && frozenRun.Usable.TryGetValue(binding, out var held))
         {
             foreach (var (source, type) in owned)
             {
@@ -411,9 +411,11 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!run.Usable.TryGetValue(identity.Symbol, out var usable))
+                // Per binding (its root path and identity), never per associated symbol: `C<i32> and C<bool>` are two bindings.
+                var binding = this.AssociatedBindingOf(path, identity)!;
+                if (!run.Usable.TryGetValue(binding, out var usable))
                 {
-                    run.Usable.Add(identity.Symbol, usable = new());
+                    run.Usable.Add(binding, usable = new());
                 }
 
                 foreach (var source in evidence)
@@ -437,7 +439,7 @@ public sealed partial class Binding
         var answer = this.inferenceValues[(binding, empty)];
         var frozen = this.InferenceRun(entry.Batch, this.HoldWith(empty, -1, entry.Batch));
         var own = this.InferenceRun(entry.Batch, this.HoldWith(empty, this.inferenceBindingIndex[binding], null));
-        if (frozen.Usable.TryGetValue(entry.Identity.Symbol, out var usable) && own.Usable.TryGetValue(entry.Identity.Symbol, out var owned))
+        if (frozen.Usable.TryGetValue(binding, out var usable) && own.Usable.TryGetValue(binding, out var owned))
         {
             foreach (var (source, type) in owned)
             {

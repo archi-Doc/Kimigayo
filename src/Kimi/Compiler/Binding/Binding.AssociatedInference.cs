@@ -762,7 +762,7 @@ public sealed partial class Binding
 
         internal bool Records { get; set; }
 
-        internal Dictionary<BindingSymbol, List<(AssociatedEvidence Source, BoundType Type)>> Usable { get; } = new(ReferenceEqualityComparer.Instance);
+        internal Dictionary<AssociatedBinding, List<(AssociatedEvidence Source, BoundType Type)>> Usable { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal List<AssociatedInference> RunPool { get; } = new();
 
