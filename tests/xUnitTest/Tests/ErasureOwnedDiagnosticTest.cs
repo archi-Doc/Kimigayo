@@ -34,6 +34,52 @@ public class ErasureOwnedDiagnosticTest
 
     private const string Two = "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0; UnsatisfiedConstraint_Kd func [r] () -> i32 => 1";
 
+    // SPEC 7.7.4, 15.2.3 (dev's records, pinned for PLAN G148 (1)): a capture over a body atom is not Owned, and the erasure's Owned part
+    // decides before independence is read: Refuted where the atom is the body's own (o1, a conversion; o2, an argument), Unknown in a
+    // nested body where it is the enclosing body's (s2, s2r: a Closure literal awaits its call (10.5.1) and is judged at its value after
+    // selection). Labels: originpub labels.txt o1, labels-r1.txt o2, labels-s.txt s2 and s2r (I).
+    [Theory]
+    [InlineData("    let f: () -> () = func [h@move] () => ()\n    f()\n", "UnsatisfiedConstraint_Kd func [h@move] () => ()")]
+    [InlineData("    takes(func [h@move] () => ())\n", "UnsatisfiedConstraint_Kd func [h@move] () => ()")]
+    [InlineData("    let outer = func [h@move] () => g(func [h@move] () => ())\n", "UnprovenConstraint_Kd func [h@move] () => ()")]
+    [InlineData("    let outer = func [h@move] () => g(func [h@ref] () => ())\n", "UnprovenConstraint_Kd func [h@ref] () => ()")]
+    public void TheOwnedPartDecidesAnErasureOverABodyAtom(string tail, string expected)
+    {
+        var source = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nfunc takes(f: () -> ()) => ()\n" +
+            "func g(f: () -> ()) => ()\n" + Main + "    var x = 1\n    var w = (0, x@ref)\n    var r = w.0@uniq\n    var h = Wrap.init(r@follow@raw@raw/u8)\n" + tail;
+        var output = DiagnosticCorpus.Check(source);
+        Assert.Equal(expected, string.Join("; ", output.Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")));
+    }
+
+    // SPEC 7.7.4, 15.2.3 (PLAN G148 (1), the Origin-atom borrows read while a body binds; G147 rulings 11, 36): a named Closure erased at
+    // a call's applicability in a nested body, whose environment's raw layer states an enclosing body's Borrow atom (Owned Unknown there),
+    // is judged by ReceiverIndependence while the bodies bind, through that atom's Borrows so far, and keeps its Unproven record, not the
+    // located limit. The atom: a `let` borrow's P[w] (s2ln); a bare Place Subject's P[o] under a Pattern binding (pm2mn, pm2rn: the
+    // Subject's Borrow formed by BindMatch before the arms bind); an argument's and a receiver's implicit Borrow under a Closure literal
+    // argument's header (ap1, rc1: formed by the selection before the literal binds); a capture entry's slot Borrow (cp1: formed once
+    // the entries are, before the body binds); a payload's implicit Borrow under a later Closure literal payload's header (pl3: formed by
+    // CompletePayloads at its write); a Binding past a qualifying pair layer of an owned Subject or item, which depends on the Subject
+    // Place itself (pv3, pv4: formed where the Patterns bind, before the bodies). Each row has no Borrow for its atom while it binds if
+    // the formation comes later, so a reader of the rows (Z6) fails it first. Labels: originpub rvc\labels.txt s2ln, pm2mn, pm2rn,
+    // c1c5\labels.txt ap1, rc1, cp1, d1d3\labels.txt pl3, pv3, pv4 (I).
+    [Theory]
+    [InlineData("    var x = 1\n    var w = (0, x@ref)\n    let r = w.0@uniq\n    var h = Wrap.init(r@follow@raw@raw/u8)\n    let outer = func [h@move] ()\n        let inner = func [h@move] () => ()\n        g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var o: Option<i32> = .Some(3)\n    match o\n        .Some(let m)\n            var h = Wrap.init(m@follow@raw@raw/u8)\n            let outer = func [h@move] ()\n                let inner = func [h@move] () => ()\n                g(inner@move)\n        _ => ()\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var o: Option<i32> = .Some(3)\n    match o\n        .Some(let m)\n            var h = Wrap.init(m@follow@raw@raw/u8)\n            let outer = func [h@move] ()\n                let inner = func [h@ref] () => ()\n                g(inner)\n        _ => ()\n", "UnprovenConstraint_Kd inner")]
+    [InlineData("    var v = 1\n    apply(v, func (r)\n        var h = Wrap.init(r@follow@raw@raw/u8)\n        let inner = func [h@move] () => ()\n        g(inner@move)\n    )\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var b = Box.init(1)\n    b.each(func (r)\n        var h = Wrap.init(r@follow@raw@raw/u8)\n        let inner = func [h@move] () => ()\n        g(inner@move)\n    )\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var h = 1\n    let outer = func [h@ref] ()\n        var k = Wrap.init(h@follow@raw@raw/u8)\n        let inner = func [k@move] () => ()\n        g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var v = 1\n    let e = Pair.Both(v, func (r)\n        var h = Wrap.init(r@follow@raw@raw/u8)\n        let inner = func [h@move] () => ()\n        g(inner@move)\n    )\nenum Pair {a}\n    Both(ref/i32 during a, (ref/i32 during a) -> ())\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    return\nfunc q<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _)\n            var h = Wrap.init(x@follow@raw@raw/u8)\n            let outer = func [h@move] ()\n                let inner = func [h@move] () => ()\n                g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    return\nfunc q<s/T>(arr: Array<(s/T, i32)>)\n    s is owner or uniq\n    for (x, _) in arr@move\n        var h = Wrap.init(x@follow@raw@raw/u8)\n        let outer = func [h@move] ()\n            let inner = func [h@move] () => ()\n            g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
+    public void ANamedClosureOverAnEnclosingBodyAtomKeepsItsConstraintRecord(string body, string expected)
+    {
+        var source = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nstruct Box\n    var n: i32\n" +
+            "    public init(n: i32) => self.n = n\n    public func each(self: ref/Self, f: (ref/i32 during self) -> ()) => ()\nfunc g(f: () -> ()) => ()\n" +
+            "func apply(x: ref/i32, f: (ref/i32 during x) -> ()) => ()\n" + Main + body;
+        Assert.Equal(expected, string.Join("; ", Records(source)));
+    }
+
     // A let annotation, a default, a call argument, a Case payload (PLAN G381: was the construction's TypeMismatch_Kd), a captured
     // reference value and a join's arm give the same record at the converted value;
     // of two failing captures the body-local borrow is named, whatever their order, and in a nested closure the enclosing body's borrow
@@ -98,7 +144,7 @@ public class ErasureOwnedDiagnosticTest
         Assert.Contains("the 1st Type argument is not proven Owned", console.Text, StringComparison.Ordinal);
     }
 
-    // The counterparts: an Owned Constraint proves the conversion, and the receiver condition keeps its Type mismatch with the Note.
+    // The counterparts: an Owned Constraint proves the conversion, and the receiver condition keeps its Type mismatch.
     [Fact]
     public void AnOwnedConstraintProvesTheConversion()
         => Assert.Empty(DiagnosticCorpus.Check("func identity<T>(value: T) -> T => value@move\n\nfunc keepOwned<T>(value: T) -> (T) -> T\n    T is Owned\n    let f: (T) -> T = identity\n    return f@move\n\n" + Main + "    let f = keepOwned(1)\n    require f(2) == 2 else => $abort(\"f\")\n").Diagnostics);
@@ -106,13 +152,14 @@ public class ErasureOwnedDiagnosticTest
     // A call argument, a join's arm (grouped: in an arm's single-item body a closure takes no indented body, SPEC F.4.4), and a closure
     // whose receiver and environment both fail (the receiver is its record).
     [Theory]
-    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\n" + Main + "    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n")]
-    [InlineData(Join + "    var n: i32 = 0\n    let g: () -> i32 = if c => (func [var n] () -> i32\n        n += 1\n        return n\n    ) else => func [] () -> i32 => 1\n    return 0\n")]
-    [InlineData(Join + "    var n: i32 = 0\n    let v = 1\n    let r = v@ref\n    let g: () -> i32 = func [var n, r] () -> i32\n        n += 1\n        return n\n    return 0\n")]
-    public void AnExclusiveClosureStaysATypeMismatch(string source)
+    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\n" + Main + "    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n", "func [var c]", "expected (i32) -> i32, found closure (i32) -> i32")]
+    [InlineData(Join + "    var n: i32 = 0\n    let g: () -> i32 = if c => (func [var n] () -> i32\n        n += 1\n        return n\n    ) else => func [] () -> i32 => 1\n    return 0\n", "if c => (func [var n]", "expected () -> i32, found closure () -> i32")]
+    [InlineData(Join + "    var n: i32 = 0\n    let v = 1\n    let r = v@ref\n    let g: () -> i32 = func [var n, r] () -> i32\n        n += 1\n        return n\n    return 0\n", "func [var n, r]", "expected () -> i32, found closure () -> i32")]
+    public void AnExclusiveClosureStaysATypeMismatch(string source, string at, string label)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), "This closure requires an Exclusive call; a common Function value permits Shared calls only"), (error.Code, error.Note));
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), label, (string?)null), (error.Code, error.Label, error.Note));
+        Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 23.1.2 (DECISIONS BU-75): an Owned proof that could not judge its subject, because a part names a failed declaration, fails the

@@ -24,7 +24,11 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\n";
 
-    private const string Failed = "IncompatibleContractImplementation_Kd Self is Sink 1";
+    private const string Failed = "IncompatibleContractImplementation_Kd Self is Sink 18446744073709551615";
+
+    // An immutable static whose value is an rc handle, not Transferable, beside a Transferable one.
+    private const string Shared = "struct Item\n    public var value: i32 = 7\n    public init() => ()\ngroup Shared\n    public let limit: i32 = 10\n" +
+        "    public let node: rc/Item = Kimi.Intrinsics.makeRc(Item.init())\n";
 
     // A generic's put and, in a put's body, a writer over a fixed buffer of 64 bytes.
     private const string Put = "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n";
@@ -84,7 +88,10 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.2: an access to a mutable static, a raw pointer read from an immutable static, an integer made a pointer and a foreign
     // call obtain authority from the environment; reading an immutable static (its initializer enters the summary), writing through a raw
-    // input and a foreign call where nothing owes confined do not.
+    // input and a foreign call where nothing owes confined do not. A part a rejected form reads is read at its own node (DECISIONS Z17,
+    // SPEC 13.7.1 step 1), so a derived write's right side reading an rc payload of an immutable static obtains that authority as its
+    // decided twin does, and one reading a Transferable static does not (fail-before: the first, no problem, the site's undecided use of
+    // the static a dependent of the error).
     [Theory]
     [InlineData("group G\n    public var count: i32 = 0\n", "        _ = G.count\n", Failed)]
     [InlineData("group G\n    public let count: i32 = 2 + 3\n", "        _ = G.count\n", "")]
@@ -97,6 +104,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\n",
         "        let output: raw/i64 = null\n        unsafe => _ = Native.query(output)\n",
         Failed)]
+    [InlineData(Shared, "        missing = Shared.node.value\n", Failed)]
+    [InlineData(Shared, "        var m = 0\n        m = Shared.node.value\n", Failed)]
+    [InlineData(Shared, "        missing = Shared.limit\n", "")]
     public void ConfinedExcludesEnvironmentAuthority(string declarations, string body, string expected)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + declarations + Witness + body + "        return .Ok(())\n"));
 
@@ -131,9 +141,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("        values.insert(0, 5)\n        _ = values.remove(0)\n", "")]
     [InlineData("        _ = values.tryGet(1)\n        _ = values.trySlice(0..1)\n", "")]
     [InlineData("        _ = H.at(3, values.length)\n", "")]
-    [InlineData("        _ = H.locate(Spot.init(), values.length)\n", "IncompatibleContractImplementation_Kd Self is Filler 1")]
+    [InlineData("        _ = H.locate(Spot.init(), values.length)\n", "IncompatibleContractImplementation_Kd Self is Filler 18446744073709551615")]
     [InlineData("        _ = H.atItem(3, values.length)\n", "")]
-    [InlineData("        _ = H.locateItem(Spot.init(), values.length)\n", "IncompatibleContractImplementation_Kd Self is Filler 1")]
+    [InlineData("        _ = H.locateItem(Spot.init(), values.length)\n", "IncompatibleContractImplementation_Kd Self is Filler 18446744073709551615")]
     public void ClosedContractRequirementsHaveNoEffect(string body, string expected)
         => Assert.Equal(
             Expected(expected),
@@ -158,7 +168,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("H.place(b)", "")]
     [InlineData("H.place(7@u8)", "")]
     [InlineData("H.place(7@isize)", "")]
-    [InlineData("H.loud(a)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("H.loud(a)", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     public void ADefaultsCopyEntersALibraryWitnessAtItsInstance(string call, string expected)
         => Assert.Equal(
             Expected(expected),
@@ -180,7 +190,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("i64")]
     public void ADefaultsCopyEntersTheWitnessesSpecialization(string key)
         => Assert.Contains(
-            "IncompatibleContractImplementation_Kd Self is Work 1",
+            "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615",
             Problems("contract Gen\n    func f<T>(self: ref/Self, x: ref/T) -> bool\nstruct S\n    Self is Gen\n" +
                 "    public func f<T>(self: ref/Self, x: ref/T) -> bool => true\n" +
                 "    specialize func f<i32>(self: ref/Self, x: ref/i32) -> bool\n        Console.writeLine(\"s\")\n        return true\n" +
@@ -196,7 +206,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [Theory]
     [InlineData("S<Loud>", "1, v", "")]
     [InlineData("S<i32>", "Quiet.init(), v", "")]
-    [InlineData("S<i32>", "Loud.init(), v", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("S<i32>", "Loud.init(), v", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     public void ADefaultsCopyEntersTheWitnessAtTheCallsOwnTypes(string self, string arguments, string expected)
         => Assert.Equal(
             Expected(expected),
@@ -214,9 +224,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // `Unsupported_Kd` at the conformance).
     [Theory]
     [InlineData("f<T, U>(self: ref/Self, x: T, y: ref/U)", "f<U, T>(self: ref/Self, x: U, y: ref/T)", "1, v", "")]
-    [InlineData("f<T, U>(self: ref/Self, x: T, y: ref/U)", "f<U, T>(self: ref/Self, x: U, y: ref/T)", "Loud.init(), n", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("f<T, U>(self: ref/Self, x: T, y: ref/U)", "f<U, T>(self: ref/Self, x: U, y: ref/T)", "Loud.init(), n", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     [InlineData("f<T, length N>(self: ref/Self, x: [N of T])", "f<U, length M>(self: ref/Self, x: [M of U])", "[1, 2]", "")]
-    [InlineData("f<T, length N>(self: ref/Self, x: [N of T])", "f<U, length M>(self: ref/Self, x: [M of U])", "[Loud.init(), Loud.init()]", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("f<T, length N>(self: ref/Self, x: [N of T])", "f<U, length M>(self: ref/Self, x: [M of U])", "[Loud.init(), Loud.init()]", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     public void ADefaultsCopyBindsTheWitnessesOwnSlotsByPosition(string requirement, string witness, string arguments, string expected)
         => Assert.Equal(
             Expected(expected),
@@ -233,9 +243,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("(string, i32)", "same", "bool", "", "")]
     [InlineData("(string, i32)", "order", "i32", "", "")]
     [InlineData("((string, i32), bool)", "same", "bool", "", "")]
-    [InlineData("(Noisy, string)", "same", "bool", Noisy, "IncompatibleContractImplementation_Kd Self is Work 1")]
-    [InlineData("(Ranked, string)", "order", "i32", Ranked, "IncompatibleContractImplementation_Kd Self is Work 1")]
-    [InlineData("((Noisy, string), bool)", "same", "bool", Noisy, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("(Noisy, string)", "same", "bool", Noisy, "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData("(Ranked, string)", "order", "i32", Ranked, "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData("((Noisy, string), bool)", "same", "bool", Noisy, "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     public void AComparisonOfAStringPartReadsItsWitness(string self, string call, string result, string leaf, string expected)
         => Assert.Equal(
             Expected(expected),
@@ -275,18 +285,18 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // case at the matching key), the owner case does. The same in a nested Container, at a key matching one of two own slots, with an own
     // pair binder the specialization fixes at Loud (destroyed) or Quiet, and in a cycle between the specialization and its original.
     [Theory]
-    [InlineData(Box, "b: uniq/Box<Loud>", "b.clear<bool>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Box, "b: uniq/Box<Loud>", "b.clear<bool>()", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     [InlineData(Box, "b: uniq/Box<i32>", "b.clear<i32>()", "")]
     [InlineData(Holder, "x: uniq/Loud, h: ref/Holder<uniq/Loud during x>", "h.put<bool>(x)", "")]
     [InlineData(Holder, "x: uniq/Loud, h: ref/Holder<uniq/Loud during x>", "h.put<i32>(x)", "")]
-    [InlineData(Holder, "h: ref/Holder<Loud>, x: Loud", "h.put<bool>(x@move)", "IncompatibleContractImplementation_Kd Self is Work 1")]
-    [InlineData(Nested, "b: uniq/Outer<Loud>.Inner<i32>", "b.clear<bool>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Holder, "h: ref/Holder<Loud>, x: Loud", "h.put<bool>(x@move)", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData(Nested, "b: uniq/Outer<Loud>.Inner<i32>", "b.clear<bool>()", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     [InlineData(Nested, "b: uniq/Outer<i32>.Inner<Quiet>", "b.clear<i32>()", "")]
-    [InlineData(TwoSlots, "b: uniq/Box<Loud>", "b.m<i32, i32>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(TwoSlots, "b: uniq/Box<Loud>", "b.m<i32, i32>()", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     [InlineData(TwoSlots, "b: uniq/Box<i32>", "b.m<i32, bool>()", "")]
-    [InlineData(OwnBinder + "Loud>(self: ref/Self, v: Loud) => ()\n", "b: ref/Box<i32>, x: uniq/Loud", "b.put(x)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(OwnBinder + "Loud>(self: ref/Self, v: Loud) => ()\n", "b: ref/Box<i32>, x: uniq/Loud", "b.put(x)", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     [InlineData(OwnBinder + "Quiet>(self: ref/Self, v: Quiet) => ()\n", "b: ref/Box<i32>, x: uniq/Loud", "b.put(x)", "")]
-    [InlineData(Cycle, "b: uniq/Box<Loud>", "b.clear<u8>(2)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Cycle, "b: uniq/Box<Loud>", "b.clear<u8>(2)", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     [InlineData(Cycle, "b: uniq/Box<i32>", "b.clear<u8>(2)", "")]
     public void AMethodSpecializationIsEnteredInItsContainersCase(string container, string parameters, string call, string expected)
         => Assert.Equal(
@@ -297,7 +307,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // SPEC 8.4, 15.6.4: a conformance checks every implementation of its witness, specializations included: the witness's summary includes
     // its specialization's effect, reported in each view of the witness.
     [Theory]
-    [InlineData("Console.writeLine(\"s\")", "IncompatibleContractImplementation_Kd Self is Show 1")]
+    [InlineData("Console.writeLine(\"s\")", "IncompatibleContractImplementation_Kd Self is Show 18446744073709551615")]
     [InlineData("()", "")]
     public void AWitnessesSpecializationsOweItsBound(string specialization, string expected)
         => Assert.Equal(
@@ -336,7 +346,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + "group H\n    public func discard<T>(item: T) => ()\n" + Witness + body + "        return .Ok(())\n"));
 
     [Theory]
-    [InlineData("", "IncompatibleContractImplementation_Kd Self is Eater 1")]
+    [InlineData("", "IncompatibleContractImplementation_Kd Self is Eater 18446744073709551615")]
     [InlineData("        T is Copy\n", "")]
     public void AnAbstractDestructionNeedsCopyAtTheTop(string premise, string expected)
         => Assert.Equal(
@@ -348,8 +358,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not. A fixed array's owning
     // iterator is its loop's (SPEC 22.1: its entry is no member; PLAN G776-b).
     [Theory]
-    [InlineData("Loud", "Array<Loud> = []", "let it = a@move.intoIterator()", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "for _ in a@move => exit", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("Loud", "Array<Loud> = []", "let it = a@move.intoIterator()", "IncompatibleContractImplementation_Kd Self is Make 18446744073709551615")]
+    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "for _ in a@move => exit", "IncompatibleContractImplementation_Kd Self is Make 18446744073709551615")]
     [InlineData("i32", "Array<i32> = []", "let it = a@move.intoIterator()", "")]
     [InlineData("i32", "[1 of i32] = [1]", "for _ in a@move => exit", "")]
     public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string entry, string expected)
@@ -365,9 +375,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // (Open: the moved Field's row is Elide, the other Field has none and follows the own bit), a whole one its Type (Keep).
     [Theory]
     [InlineData("        let l = Loud.init()\n        return l@move\n", "")]
-    [InlineData("        let l = Loud.init()\n        return Loud.init()\n", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("        let l = Loud.init()\n        return Loud.init()\n", "IncompatibleContractImplementation_Kd Self is Make 18446744073709551615")]
     [InlineData("        let p = Pair.init()\n        return p.a@move\n", "")]
-    [InlineData("        let p = Twin.init()\n        return p.a@move\n", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("        let p = Twin.init()\n        return p.a@move\n", "IncompatibleContractImplementation_Kd Self is Make 18446744073709551615")]
     public void DropsDestroyWhatA2Leaves(string body, string expected)
         => Assert.Equal(
             Expected(expected),
@@ -413,8 +423,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // evaluation would lose the failure (the 2b-7 review's mutant).
     [Theory]
     [InlineData("42", false, "")]
-    [InlineData("Helpers.noisy()", false, "IncompatibleContractImplementation_Kd Self is Work 1")]
-    [InlineData("Helpers.noisy()", true, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("Helpers.noisy()", false, "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData("Helpers.noisy()", true, "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
     public void SummariesComposeCallbacksThroughActualArguments(string expression, bool workerFirst, string expected)
     {
         const string Helpers = "group Helpers\n    public func invoke<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        return f()\n" +
@@ -460,7 +470,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // arguments chose among them, which MIR does not keep: a located limit (DECISIONS R4-M23).
     [Theory]
     [InlineData("", "")]
-    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 1")]
+    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 18446744073709551615")]
     public void SeveralCallableSignaturesAreALimit(string second, string expected)
     {
         var premises = "        F is Callable<() -> i32>\n            effect confined\n" + second;
@@ -474,8 +484,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // Tuple nested past the destruction walk's bound: the guard's one ranking decides, the unsupported part over the part past the bound,
     // so one record; with one signature the depth limit alone.
     [Theory]
-    [InlineData("", "OwnershipDepthLimit_Kd Self is Work 1")]
-    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 1")]
+    [InlineData("", "OwnershipDepthLimit_Kd Self is Work 18446744073709551615")]
+    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 18446744073709551615")]
     public void AnUnsupportedPartOutranksAPartPastTheBound(string second, string expected)
     {
         var premises = "        F is Callable<() -> i32>\n            effect confined\n" + second;
@@ -497,7 +507,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var (deep, shallow) = (Nested(40), Nested(8));
         var premises = "        F is Callable<() -> i32>\n            effect confined\n";
         Assert.Equal(
-            Expected("IncompatibleContractImplementation_Kd Self is Work 1"),
+            Expected("IncompatibleContractImplementation_Kd Self is Work 18446744073709551615"),
             Problems(Loud + "contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n" +
                 "    Self is Work\n    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises +
                 $"        _ = ({(order == "deep first" ? $"{deep}, {shallow}" : $"{shallow}, {deep}")})\n        return f()\n"));
@@ -517,7 +527,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // virtual-dispatch 6: every original and override owes its slot's bound; destruction counts (Binding's own check does not see it).
     [Theory]
-    [InlineData("Loud.init()", "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 1")]
+    [InlineData("Loud.init()", "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 18446744073709551615")]
     [InlineData("7", "")]
     public void AnOverrideOwesItsSlotsBound(string value, string expected)
         => Assert.Equal(
@@ -539,7 +549,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // nothing; Owned does not).
     [Theory]
     [InlineData("Copy", "")]
-    [InlineData("Owned", "UnsatisfiedEffectBound_Kd public virtual func keep(self: objref/Self, item: T) 1|UnsatisfiedEffectBound_Kd override func keep(self: objref/Self, item: U) 1")]
+    [InlineData("Owned", "UnsatisfiedEffectBound_Kd public virtual func keep(self: objref/Self, item: T) 18446744073709551615|UnsatisfiedEffectBound_Kd override func keep(self: objref/Self, item: U) 18446744073709551615")]
     public void AnOverrideIsJudgedUnderItsInheritedPremises(string premise, string expected)
         => Assert.Equal(
             Expected(expected),
@@ -553,9 +563,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData(
         "",
         "    Self is Getter\n",
-        "IncompatibleContractImplementation_Kd Self is Getter 18446744073709551615|IncompatibleContractImplementation_Kd Self is Reader 1")]
+        "IncompatibleContractImplementation_Kd Self is Getter 18446744073709551615|IncompatibleContractImplementation_Kd Self is Reader 18446744073709551615")]
     [InlineData("        effect confined\n", "    Self is Getter\n", "")]
-    [InlineData("", "", "IncompatibleContractImplementation_Kd Self is Reader 1")]
+    [InlineData("", "", "IncompatibleContractImplementation_Kd Self is Reader 18446744073709551615")]
     [InlineData("        effect confined\n", "", "")]
     public void DispatchedCalleesUseTheirSlotsBound(string bound, string witness, string expected)
     {
@@ -637,7 +647,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // Console.writeStdout, fails its bound: one record at the slot (D1); its twin without the call reports none. Raw.allocate and
     // Raw.release act on their inputs and the allocator, which confined permits (D2).
     [Theory]
-    [InlineData("        let text = \"x\"\n        Console.writeLine(Text.utf8(text@ref))\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let text = \"x\"\n        Console.writeLine(Text.utf8(text@ref))\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 18446744073709551615")]
     [InlineData("        let x = 1\n", "")]
     [InlineData("        let p = Kimi.Raw.allocate<i32>(count: 1)\n        unsafe\n            Kimi.Raw.release(storage: p)\n", "")]
     public void AConfinedSlotOwesTheClassOfTheIntrinsicItReaches(string body, string expected)
@@ -651,9 +661,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // item takes it from Binding's category of the function (MirEffects.Class): the same record, and none through Raw.allocate's item,
     // whose Storage is created in the call (SPEC 8.11.2's table; Raw.release on it is a raw access, Allocation is permitted).
     [Theory]
-    [InlineData("        let path = Test.tempDirectory()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let path = Test.tempDirectory()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 18446744073709551615")]
     [InlineData("        let path = \"x\"\n", "")]
-    [InlineData("        let f = Test.tempDirectory\n        let path = f()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let f = Test.tempDirectory\n        let path = f()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 18446744073709551615")]
     [InlineData("        let f = Kimi.Raw.allocate<i32>\n        let p = f(1)\n        unsafe\n            Kimi.Raw.release(storage: p)\n", "")]
     public void AConfinedTestSlotOwesTheTemporaryDirectorysClass(string body, string expected)
     {
@@ -741,7 +751,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // Outer's erased call still meets the bound it is checked against. Rows labelled from SPEC before running.
     [Theory]
     [InlineData("", "")]
-    [InlineData("        Console.writeLine(\"reserve\")\n", "IncompatibleContractImplementation_Kd Self is BufferWriter 1")]
+    [InlineData("        Console.writeLine(\"reserve\")\n", "IncompatibleContractImplementation_Kd Self is BufferWriter 18446744073709551615")]
     public void AConfinedReservesAdapterOverAUserWriterReportsNothingOfItsOwn(string noise, string expected)
         => Assert.Equal(
             Expected(expected),
@@ -949,7 +959,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             "        self.value = value@move\n        self.next = .None\n";
         Assert.Empty(Problems(Nest + "func release(nest: Nest<i32>) => ()\n"));
         Assert.Equal(
-            ["OwnershipDepthLimit_Kd Self is Sink 1"],
+            ["OwnershipDepthLimit_Kd Self is Sink 18446744073709551615"],
             Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
     }
 
@@ -986,7 +996,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         const string Chain = "struct D<T>\n    var value: T\n    drop => ()\nstruct G<U>\n    var next: Option<rc/D<G<(U, U)>>>\n    public init()\n" +
             "        self.next = .None\n";
         Assert.Empty(Problems(Chain + "func release(g: G<i32>) => ()\n"));
-        Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
+        Assert.Equal(["Unsupported_Kd Self is Sink 18446744073709551615"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
     // The Z2 DECISIONS draft (PLAN G396 (3), E1): A4's broken contract has one form per place, in a complete compilation. A call Local

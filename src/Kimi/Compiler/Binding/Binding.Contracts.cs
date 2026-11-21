@@ -78,20 +78,6 @@ public sealed partial class Binding
             _ => false,
         };
 
-    private bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
-    {
-        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
-        {
-            return this.ConstraintAccessCovers(constraint.Left!, contract, intersection) &&
-                (constraint.Right is null || this.ConstraintAccessCovers(constraint.Right, contract, intersection));
-        }
-
-        return (constraint.Contract is null ||
-            (this.AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
-             (constraint.Contract.Type is not { } reference || this.TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
-            (constraint.RequiredType is null || this.TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
-    }
-
     /// <summary>
     /// SPEC 8.6, 8.6.1: the registered conformance of a Type declaration to a Contract, whether registered under the
     /// Contract declaration itself or under one bound reference of it. Several bound references of one declaration are
@@ -149,7 +135,6 @@ public sealed partial class Binding
         this.projectionUses.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
-        this.contractAgreementFailures?.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
         this.memberSides.Clear();
@@ -235,7 +220,7 @@ public sealed partial class Binding
         {
             if (shape.State == 1)
             {
-                this.Fail(contract, BindingFailure.Cycle);
+                this.Record(contract, BindingFailure.Cycle, []);
                 return false;
             }
 
@@ -249,7 +234,7 @@ public sealed partial class Binding
             var syntax = contract.Bases[i];
             if (!IsRefinementName(syntax))
             {
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 valid = false;
                 continue;
             }
@@ -274,7 +259,7 @@ public sealed partial class Binding
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
                 this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 valid = false;
                 continue;
             }
@@ -302,6 +287,8 @@ public sealed partial class Binding
 
             if (parent is null)
             {
+                // SPEC 23.1.2: BindContractReference failed the reference first (its arity or an Origin argument, SPEC 9.7.1) and formed
+                // nothing, which this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe a1).
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;
@@ -351,7 +338,7 @@ public sealed partial class Binding
             {
                 // An effect specification is checked with the bounds of the Contract (BindEffectBound); a misplaced specialization
                 // (SPEC F.6.2) is no member: it stands for its placement Error, so the Contract's verdict does not rest on it.
-                this.Fail(member, BindingFailure.InvalidConstraint);
+                this.Record(member, BindingFailure.InvalidConstraint, []);
                 valid = false;
             }
         }
@@ -383,6 +370,8 @@ public sealed partial class Binding
 
         if (!valid)
         {
+            // SPEC 23.1.2: invalid over a failed refinement or its own cycle, which it reads: the slot's first failure keeps it derived (no
+            // record of its own beside them) until R7-E5's per-problem inputs (D-924; probe c1).
             this.Fail(contract, BindingFailure.InvalidConstraint);
         }
 
@@ -564,7 +553,8 @@ public sealed partial class Binding
             {
                 if (!this.AccessCovers(shape.Ancestors[i], shape.Symbol, shape.Symbol))
                 {
-                    this.Fail(contract, BindingFailure.Access);
+                    // The Contract is the location: its base references are read only where BuildContract binds them (R7-N2a).
+                    this.RecordAccess(contract, shape.Ancestors[i], null);
                 }
             }
 
@@ -579,24 +569,24 @@ public sealed partial class Binding
 
                     var declaringContract = members[i].Contract;
                     var sa = new FnSig(a);
-                    if (sa.Result is { } result && !this.TypeAccessCovers(result, declaringContract, declaringContract))
+                    if (sa.Result is { } result && this.InaccessibleType(result, declaringContract, declaringContract) is { } inaccessibleResult)
                     {
-                        this.Fail(a, BindingFailure.Access);
+                        this.RecordAccess(a, inaccessibleResult, a.ReturnType);
                     }
 
                     for (var p = 0; p < sa.InputCount; p++)
                     {
-                        if (sa.Input(p) is { } parameter && !this.TypeAccessCovers(parameter, declaringContract, declaringContract))
+                        if (sa.Input(p) is { } parameter && this.InaccessibleType(parameter, declaringContract, declaringContract) is { } inaccessible)
                         {
-                            this.Fail(a, BindingFailure.Access);
+                            this.RecordAccess(a, inaccessible, a.Parameters[p].Type);
                         }
                     }
 
                     for (var p = 0; p < a.TypeConstraints.Count; p++)
                     {
-                        if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && !this.ConstraintAccessCovers(constraint, declaringContract))
+                        if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && this.InaccessibleConstraint(constraint, declaringContract) is { } inaccessible)
                         {
-                            this.Fail(a, BindingFailure.Access);
+                            this.RecordAccess(a, inaccessible, a.TypeConstraints[p]);
                         }
                     }
 
@@ -629,7 +619,7 @@ public sealed partial class Binding
 
                         if (sameSignature && (differentLabels || !SameGenericShape(a, b)))
                         {
-                            this.Fail(contract, BindingFailure.InvalidConstraint);
+                            this.Record(contract, BindingFailure.InvalidConstraint, []);
                         }
                     }
                 }
@@ -637,10 +627,11 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.ClauseStorage.Count; i++)
             {
-                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (!this.ConstraintAccessCovers(constraint, shape.Symbol) ||
-                    (shape.ClauseStorage[i].Left.BoundType is { } subject && !this.TypeAccessCovers(subject, shape.Symbol, shape.Symbol))))
+                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (this.InaccessibleConstraint(constraint, shape.Symbol) ??
+                    (shape.ClauseStorage[i].Left.BoundType is { } subject ? this.InaccessibleType(subject, shape.Symbol, shape.Symbol) : null)) is { } inaccessible)
                 {
-                    this.Fail(shape.ClauseStorage[i], BindingFailure.Access);
+                    // The clause's own record; the Contract keeps its failure beside it until R7-E5 (ValidateConstraintProjectionAccess' y2).
+                    this.RecordAccess(shape.ClauseStorage[i], inaccessible, null);
                     this.Fail(contract, BindingFailure.Access);
                 }
             }

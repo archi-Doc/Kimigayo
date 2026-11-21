@@ -22,7 +22,6 @@ public sealed partial class Binding
     // ResetPass clears both, after a walk a fault aborted too.
     private readonly Dictionary<BoundType, (int Height, int Open)> storageMarks = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> storageStack = new();
-    private Dictionary<Koto, ConstructorAbsence>? constructorAbsences;
     private HelperCaptures? helperCaptures;
     private ulong storageVersion;
 
@@ -308,6 +307,9 @@ public sealed partial class Binding
         receiver.Type = scope.Parent?.Owner.BoundSymbol?.Type;
         if (!scope.Values.TryAdd("self", receiver))
         {
+            // Transitional, R7-E5 (R7-E2 E2-4's B1 (a)): the written `self` repeats the implicit receiver (SPEC 9.3) and keeps the slot's
+            // failure: the function may also be the first or a later of a Signature group, which RecordDuplicateGroups records after Index
+            // under the same key with its own facts, until R7-E5's per-problem inputs place this record beside the group's.
             this.Fail(function, BindingFailure.Duplicate);
         }
     }
@@ -316,7 +318,7 @@ public sealed partial class Binding
     {
         if (member.Parent is not InvocationKoto invocation || !ReferenceEquals(invocation.Method, member))
         {
-            this.Fail(member, BindingFailure.NotCallable);
+            this.Record(member, BindingFailure.NotCallable, []);
             return null;
         }
 
@@ -415,8 +417,8 @@ public sealed partial class Binding
             return decision.Outcome switch
             {
                 OmittedBaseOutcome.NoBaseConstructor or OmittedBaseOutcome.NoneApplicable or OmittedBaseOutcome.Ambiguous =>
-                    this.FailExplained(ref this.constructorAbsences, node, BindingFailure.MissingName, new ConstructorAbsence(type!, decision)),
-                OmittedBaseOutcome.Unproven => this.FailExplained(ref this.constructorAbsences, node, BindingFailure.UnprovenConstraint, new ConstructorAbsence(type!, decision)),
+                    this.RecordConstructorAbsence(node, BindingFailure.MissingName, type!, (ConstructorAbsence)decision.Outcome, null, structure.BaseClause),
+                OmittedBaseOutcome.Unproven => this.RecordConstructorAbsence(node, BindingFailure.UnprovenConstraint, type!, ConstructorAbsence.Unproven, decision.Cause, structure.BaseClause),
                 OmittedBaseOutcome.Dependent when decision.Cause is { } cause => this.CompleteDependent(node, cause),
                 _ => this.Fail(node, BindingFailure.Internal),
             };
@@ -428,60 +430,112 @@ public sealed partial class Binding
             return this.Fail(node, BindingFailure.Unsupported);
         }
 
-        return this.FailExplained(ref this.constructorAbsences, node, BindingFailure.MissingName, new ConstructorAbsence(type, null));
+        var absence = structure is { ConstructorAvailability: ConstructorAvailability.MissingInitializer, UninitializedField: not null } ? ConstructorAbsence.MissingInitializer
+            : type.IsWrappingInteger || structure is { ConstructorAvailability: ConstructorAvailability.CompilerManaged } ? ConstructorAbsence.CompilerManaged : ConstructorAbsence.NoConstructor;
+        return this.RecordConstructorAbsence(node, BindingFailure.MissingName, type, absence, null, absence == ConstructorAbsence.MissingInitializer ? structure!.UninitializedField!.NameKoto : null);
     }
 
-    private void ReportConstructorAbsence(Koto node, DiagnosticCollection? store, ConstructorAbsence absence, DiagnosticRequirement requirement, DiagnosticCode code)
+    // SPEC 6.3.6, 22.1: an absence's problem: its row (Reason), the construction or base call (Related, role 0) with the Type it constructs
+    // (Instance), and the unproven premise (role 1) and the omitted base clause or the Field without an initializer (role 2) its row names.
+    private BoundType? RecordConstructorAbsence(Koto node, BindingFailure failure, BoundType type, ConstructorAbsence absence, Koto? premise, Koto? part)
     {
-        var type = absence.Type;
+        var site = SourceRef.Of(node);
+        Span<ProblemFact> facts = [new(ProblemFactKind.Reason, site, (long)absence), new(ProblemFactKind.Related, site, 0), new(ProblemFactKind.Instance, site, this.report.Keep(type)), default, default];
+        var count = 3;
+        if (premise is not null)
+        {
+            facts[count++] = new(ProblemFactKind.Related, this.FactSite(premise), 1);
+        }
+
+        if (part is not null)
+        {
+            facts[count++] = new(ProblemFactKind.Related, this.FactSite(part), 2);
+        }
+
+        return this.Record(node, failure, facts[..count]);
+    }
+
+    // An absence's record from its facts: the related premise, base clause or Field and, until the owner rules on the reason's form
+    // (R7-E2 E2-5b O3: a CLI/LSP row pins it), the Note its row states, read from the kept Type and the related locations.
+    private void ReportConstructorAbsence(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var absence = (ConstructorAbsence)facts[0].Value;
+        var type = this.report.Value(facts[2]);
         var name = DiagnosticTypeName(type);
-        if (absence.Decision is { } decision && type.Symbol?.Declaration is StructKoto { BaseClause: { } clause })
+        Koto? premise = null, part = null;
+        foreach (ref readonly var fact in facts[3..])
+        {
+            if (fact.Value == 1)
+            {
+                premise = this.compilation.SyntaxOf(fact.Site);
+            }
+            else
+            {
+                part = this.compilation.SyntaxOf(fact.Site);
+            }
+        }
+
+        if (absence is ConstructorAbsence.NoBaseConstructor or ConstructorAbsence.NoneApplicable or ConstructorAbsence.Ambiguous or ConstructorAbsence.Unproven)
         {
             // The decision is made once, from the derived declaration, so its Types are the declaration's own.
-            var declared = DiagnosticTypeName(this.SelfType(type.Symbol));
+            var clause = part!;
+            var declared = DiagnosticTypeName(this.SelfType(type.Symbol!));
             var baseName = clause.BoundType is { } baseType ? DiagnosticTypeName(baseType) : clause.ToString();
             var omitted = declared == name ? "its omitted base clause" : $"the omitted base clause of {declared}";
-            if (decision.Outcome == OmittedBaseOutcome.Unproven)
+            if (absence == ConstructorAbsence.Unproven)
             {
                 // SPEC 6.3.6, 8.3.3: the synthesized constructor is decided once, generically, from the derived declaration.
                 var note = $"{name} has a synthesized constructor only when {omitted} selects a constructor of {baseName}; an Unknown premise of a candidate can change that selection, and the constructor is decided once for every {declared} (SPEC 6.3.6, 8.3.3)";
-                if (decision.Cause is { } premise)
+                if (premise is not null)
                 {
-                    node.ReportIn(store, requirement, code, evidence: [name, "init", premise.ToString()], note: note, related: [("constraint", premise, "unproven premise"), ("declaration", clause, "omitted base clause")]);
+                    node.ReportIn(store, problem.Requirement, problem.Code, evidence: [name, "init", premise.ToString()], note: note, related: [("constraint", premise, "unproven premise"), ("declaration", clause, "omitted base clause")]);
                 }
                 else
                 {
-                    node.ReportIn(store, requirement, code, evidence: [name, "init"], note: note, related: [("declaration", clause, "omitted base clause")]);
+                    node.ReportIn(store, problem.Requirement, problem.Code, evidence: [name, "init"], note: note, related: [("declaration", clause, "omitted base clause")]);
                 }
 
                 return;
             }
 
-            var reason = decision.Outcome switch
+            var reason = absence switch
             {
-                OmittedBaseOutcome.NoBaseConstructor => $"{baseName} has no constructor",
-                OmittedBaseOutcome.NoneApplicable => $"no constructor of {baseName} applies without arguments",
+                ConstructorAbsence.NoBaseConstructor => $"{baseName} has no constructor",
+                ConstructorAbsence.NoneApplicable => $"no constructor of {baseName} applies without arguments",
                 _ => $"more than one constructor of {baseName} applies without arguments",
             };
-            node.ReportIn(store, requirement, code, note: $"{name} has no constructor: {omitted} selects none, since {reason} (SPEC 6.3.6)", related: [("declaration", clause, "omitted base clause")]);
+            node.ReportIn(store, problem.Requirement, problem.Code, note: $"{name} has no constructor: {omitted} selects none, since {reason} (SPEC 6.3.6)", related: [("declaration", clause, "omitted base clause")]);
         }
-        else if (type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto { ConstructorAvailability: ConstructorAvailability.MissingInitializer, UninitializedField: { } field } })
+        else if (absence == ConstructorAbsence.MissingInitializer)
         {
-            node.ReportIn(store, requirement, code, note: $"{name} has no constructor: its Field {field.NameKoto.IdentifierName} has no initializer, so none is synthesized (SPEC 6.3.6)", related: [("declaration", field.NameKoto, "no initializer")]);
+            node.ReportIn(store, problem.Requirement, problem.Code, note: $"{name} has no constructor: its Field {((IdentifierNameKoto)part!).IdentifierName} has no initializer, so none is synthesized (SPEC 6.3.6)", related: [("declaration", part!, "no initializer")]);
         }
-        else if (type.IsWrappingInteger || type.Symbol?.Declaration is StructKoto { ConstructorAvailability: ConstructorAvailability.CompilerManaged })
+        else if (absence == ConstructorAbsence.CompilerManaged)
         {
-            node.ReportIn(store, requirement, code, note: $"{name} is a Kimi Type whose representation the compiler manages; it has only the constructors its declaration declares (SPEC 22.1)");
+            node.ReportIn(store, problem.Requirement, problem.Code, note: $"{name} is a Kimi Type whose representation the compiler manages; it has only the constructors its declaration declares (SPEC 22.1)");
         }
         else
         {
             var subject = type.Kind == BoundTypeKind.Parameter ? "The Type parameter " + name : name;
-            node.ReportIn(store, requirement, code, note: $"{subject} declares no constructor; only a structure declares constructors (SPEC 6.3)");
+            node.ReportIn(store, problem.Requirement, problem.Code, note: $"{subject} declares no constructor; only a structure declares constructors (SPEC 6.3)");
         }
     }
 
-    // A construction or base call of a Type without constructors: the Type, and for a derived structure its omitted base selection.
-    private readonly record struct ConstructorAbsence(BoundType Type, OmittedBaseSelection? Decision);
+    // SPEC 6.3.6, 22.1: why a construction or base call has no constructor (the absence's Reason row): an omitted base clause's outcome
+    // (OmittedBaseOutcome's rows), a Field without an initializer, a Type whose representation the compiler manages, or a Type that
+    // declares none. The first four rows are OmittedBaseOutcome's by value (the omitted base's record converts its outcome), so a new
+    // OmittedBaseOutcome row that is an absence adds its row here; no switch maps them, since a switch over an enum needs a discard arm.
+    private enum ConstructorAbsence : byte
+    {
+        NoBaseConstructor = (byte)OmittedBaseOutcome.NoBaseConstructor,
+        NoneApplicable = (byte)OmittedBaseOutcome.NoneApplicable,
+        Ambiguous = (byte)OmittedBaseOutcome.Ambiguous,
+        Unproven = (byte)OmittedBaseOutcome.Unproven,
+        MissingInitializer = 16,
+        CompilerManaged,
+        NoConstructor,
+    }
 
     // SPEC 6.3, 10.1: the constructed Type, its Origins formed from the arguments before the candidate's trial. Each argument is adapted
     // as the trial adapts it, a missing spelling deferred, and the probe keeps no acquisition fact: the trial records its own, which names
@@ -512,7 +566,7 @@ public sealed partial class Binding
         try
         {
             // SPEC 10.8.1, 10.2: each argument is adapted as the trial adapts it, at the pattern under the slots its construction Type fixes.
-            var fixedSlots = ConstructionSlots(function, type, !baseInitializer && this.InfersConstruction(call));
+            var fixedSlots = ConstructionSlots(function, type);
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var slot = mapping[i];

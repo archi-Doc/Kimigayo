@@ -152,9 +152,11 @@ internal sealed class BindingReport
     /// <returns>The record.</returns>
     internal OriginRecord Origin(in ProblemFact fact) => this.origins[(int)fact.Value];
 
-    /// <summary>Numbers a problem of a subject that may hold several (DIAGNOSTICS 4.1; one rule for a further problem at one key): an
-    /// equal problem's condition, else the problem's own condition (its check's ordinal) or, when the subject has recorded one at or
-    /// after it, the condition after the subject's last, in recording order, so new facts take a new key.</summary>
+    /// <summary>Numbers a problem of a subject that may hold several of its requirement (DIAGNOSTICS 3, 4.1; one rule for a further
+    /// problem at one key): an equal problem's condition, else the problem's own condition (its check's ordinal) or, when the subject
+    /// has recorded one of the same requirement at or after it, the condition after that requirement's last, in recording order, so new
+    /// facts take a new key. Other requirements' problems never move it: the key and the semantic order compare the requirement before
+    /// the condition, and a requirement's first problem stays at its check's condition, where its slot's reads find it.</summary>
     /// <param name="problem">The problem, at its check's condition: an Origin record beyond its node's first is at 1, since that first
     /// failure, held outside the report, may be set after it (RecordOriginChains); a refining Contract's conflict at 0.</param>
     /// <param name="facts">Its facts.</param>
@@ -164,7 +166,12 @@ internal sealed class BindingReport
         var next = (int)problem.Condition;
         for (var i = this.First(problem.Subject); i >= 0; i = this.Next(i))
         {
-            if (this.problems[i].Requirement == problem.Requirement && this.Equal(i, problem.Code, facts))
+            if (this.problems[i].Requirement != problem.Requirement)
+            {
+                continue;
+            }
+
+            if (this.Equal(i, problem.Code, facts))
             {
                 return this.problems[i].Condition;
             }
@@ -280,7 +287,7 @@ internal sealed class BindingReport
 
     private bool EqualValue(in ProblemFact kept, in ProblemFact reported) => kept.Kind switch
     {
-        ProblemFactKind.Actual or ProblemFactKind.Expected or ProblemFactKind.Operand or ProblemFactKind.Terminal or ProblemFactKind.Key
+        ProblemFactKind.Actual or ProblemFactKind.Expected or ProblemFactKind.Operand or ProblemFactKind.Terminal or ProblemFactKind.Key or ProblemFactKind.Instance
             => Equals(this.sides[(int)kept.Value], this.sides[(int)reported.Value]),
         ProblemFactKind.Constraint => ReferenceEquals(this.Constraint(kept), this.Constraint(reported)),
         ProblemFactKind.OriginRecord => this.Origin(kept) == this.Origin(reported),

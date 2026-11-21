@@ -159,7 +159,7 @@ public class ErasureAfterSelectionTest
     // Origin, also as a Tuple element (e04) or an Option payload (e06), retains its call receiver by rule A, so its result contract
     // depends on the receiver and it is not erased: at an initialization (t09; e02, the result the fixed expected signature gives; e03,
     // with no capture; e07, a Copy capture and a parameter), a call argument (e01; e08, a waiting Closure at a pair's instantiated
-    // `raw/i32`) or a return (e05), the Type mismatch whose Note names the dependence. A result stating an Origin (w01, w06), a Function
+    // `raw/i32`) or a return (e05), the Type mismatch of the closure's Type. A result stating an Origin (w01, w06), a Function
     // Item (w02), a result with no raw layer (w03) and a raw layer the call writes through a parameter, which 7.7.4 does not name (w05),
     // still convert.
     [Theory]
@@ -178,7 +178,9 @@ public class ErasureAfterSelectionTest
     [InlineData("w05", "func f(p: raw/i32)\n    let g: (uniq/(raw/i32)) -> () = func (s: uniq/(raw/i32)) => s@follow = p\n    var t: raw/i32 = null\n    g(t@uniq)\n", "")]
     [InlineData("w06", "func f() -> raw/i32\n    let g: () -> raw/i32 = func () -> raw/i32 during static => null\n    return g()\n", "")]
     public void AClosureWhoseResultRetainsItsReceiverIsNotErased(string form, string source, string records)
-        => Assert.All(AssertRecords(form, source, records), x => Assert.Contains("result retains its call receiver", x.Note, StringComparison.Ordinal));
+        => Assert.All(AssertRecords(form, source, records), x => Assert.True(
+            x is { Note: null, Label: { } label } && label.StartsWith("expected ", StringComparison.Ordinal) && label.Contains(", found closure ", StringComparison.Ordinal),
+            $"{form}: {x.Label} / {x.Note}"));
 
     // The program's records, each `Code text` in report order ("; " between them), with a startup body.
     private static CheckDiagnostic[] AssertRecords(string form, string source, string records)

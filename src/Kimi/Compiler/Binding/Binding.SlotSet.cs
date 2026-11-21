@@ -20,6 +20,20 @@ public sealed partial class Binding
 
     private void ReturnSlotSet(SlotSet set) => this.slotWordScratch.Return(set.Tail);
 
+    // J2 (SlotSolution.OpenWaited, OpenWaitedSlots): the waited positions of a candidate (CollectPositionNames): a position opens when
+    // it is waiting and covariant and not blocked. Returned in reverse rent order.
+    private readonly record struct WaitedNames(SlotSet Waiting, SlotSet Covariant, SlotSet Blocked)
+    {
+        internal bool Opens(int index) => this.Waiting.Contains(index) && this.Covariant.Contains(index) && !this.Blocked.Contains(index);
+
+        internal void Return(Binding binding)
+        {
+            binding.ReturnSlotSet(this.Blocked);
+            binding.ReturnSlotSet(this.Covariant);
+            binding.ReturnSlotSet(this.Waiting);
+        }
+    }
+
     private struct SlotSet(ulong[] tail, int words)
     {
         private ulong head;

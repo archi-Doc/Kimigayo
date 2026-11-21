@@ -92,7 +92,7 @@ public sealed partial class Binding
             var type = DefaultLiteralType(number, expected);
             if (!LiteralCategoryMatches(number, type) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && type.IsFloatingPoint))
             {
-                return this.Fail(unary, BindingFailure.TypeMismatch);
+                return this.RecordTypeMismatch(unary, unary, new(null, number.IsInteger ? MismatchForm.IntegerLiteral : MismatchForm.FloatingPointLiteral), type);
             }
 
             if (!FitsLiteral(number, type, unary.Akind == KotoKind.PrefixMinus))
@@ -119,7 +119,7 @@ public sealed partial class Binding
         switch (unary.Akind)
         {
             case KotoKind.Not:
-                return this.FitsType(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return this.FitsType(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.RecordTypeMismatch(unary, unary, operand, BoundType.Boolean);
             case KotoKind.PrefixPlus or KotoKind.PrefixMinus:
                 var decision = this.OperatorApplicabilityOf(unary, operand, null, scope);
                 return decision.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, decision);
@@ -194,11 +194,16 @@ public sealed partial class Binding
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
         // SPEC 23.1.2: whether the destination admits the write does not rest on the value, so a failed value does not hide it. SPEC 5.7: a
-        // write admits a `during self` layer's Place only with null at every layer, which the value decides.
-        if (assignment && left is not null && (!this.CheckDestination(binary, binary.Left, left, scope) || (kind == KotoKind.Equals
-            ? this.HolderPlaceFailure(binary.Left, HolderAccess.Write, binary.Right, binary) : !this.FitsUpdateResult(binary, binary.Left, left))))
+        // write admits a `during self` layer's Place only with null at every layer, which the value decides (JudgeHolderPlace).
+        if (assignment && left is not null &&
+            (!this.CheckDestination(binary, binary.Left, left, scope) || (kind != KotoKind.Equals && !this.FitsUpdateResult(binary, binary.Left, left))))
         {
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, right, scope);
+        }
+
+        if (assignment && left is not null && kind == KotoKind.Equals)
+        {
+            this.JudgeHolderPlace(binary.Left, HolderAccess.Write, binary.Right, binary);
         }
 
         if (decision.Failure == BindingFailure.None && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
@@ -208,8 +213,8 @@ public sealed partial class Binding
 
         var result = decision.Failure != BindingFailure.None ? this.FailOperator(binary, binary, decision)
             : left is null || right is null ? Complete(binary, null) : this.CompleteBinary(binary, left, right, scope, decision);
-        // A typed target reaching here was admitted: every refusal above (CheckDestination, the Holder record, a reference binding's mode
-        // record) returns at once, so a failure recorded since is its value's fit (AdmittedMisfit).
+        // A typed target reaching here was admitted: every refusal above (CheckDestination, a reference binding's mode record) returns at
+        // once and the Holder record fails no node, so a failure recorded since is its value's fit (AdmittedMisfit).
         SetAdmittedMisfit(binary, misfit: left is not null && binary.BindingFailure != BindingFailure.None);
         return result;
     }
@@ -258,7 +263,8 @@ public sealed partial class Binding
     // SPEC 13.7.1, 3.4, 15.1.5: the one destination check of an assignment, compound assignment, increment or decrement, run once the
     // operands and route have bound, whatever they gave: the target is located with write permission under the path, `let`/`var` and
     // Property permissions. It reads the target, never the value's Type. An update of a reference binding names the binding's mode
-    // (SPEC 15.1.6); a plain write's mode record rests on its value (BindBinary). An update reads a `during self` layer's Place (SPEC 5.7).
+    // (SPEC 15.1.6); a plain write's mode record rests on its value (BindBinary). An update of a `during self` layer's Place or an
+    // enclosing one is the allowlist's (JudgeHolderPlace; SPEC 5.7).
     private bool CheckDestination(Koto operation, Koto target, BoundType type, BindingScope scope)
     {
         if (!this.ValidPropertyWritePath(target, scope))
@@ -282,7 +288,12 @@ public sealed partial class Binding
             return false;
         }
 
-        return write || !this.HolderPlaceFailure(target, HolderAccess.Update, null, operation);
+        if (!write)
+        {
+            this.JudgeHolderPlace(target, HolderAccess.Update, null, operation);
+        }
+
+        return true;
     }
 
     // SPEC 13.7.1, 13.7.2: a compound assignment through an arithmetic route (TryArithmetic) has its destination checked whatever the route
@@ -378,16 +389,5 @@ public sealed partial class Binding
             binary,
             BindingFailure.ArithmeticSelection,
             new(rejected, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit));
-    }
-
-    // SPEC 13.4, 10.2: a string operand behind several reference layers is read as one shared reference to the string;
-    // a single ref or uniq layer is inspected as it is.
-    private void StringThroughLayers(Koto operand, BoundType type)
-    {
-        if (type.Components.Count == 1 && ReferenceEquals(ComparisonReferent(type), BoundType.String) && !ReferenceEquals(type.SafeReferent, BoundType.String) &&
-            this.SharedReferenceThroughLayers(type, BoundType.String, this.ConstraintScope(operand), out _) is { } shared)
-        {
-            this.adaptations[operand] = new(ExpectedAdaptationKind.ReferenceRead, shared);
-        }
     }
 }

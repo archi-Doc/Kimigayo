@@ -62,11 +62,11 @@ public sealed partial class Binding
             }
             else if (constraint.Contract is { } closed && this.IsClosedContractGrant(closed, type))
             {
-                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
+                this.Record(use, BindingFailure.ClosedContractConformance, []); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
             }
             else if (constraint.Contract is { } intrinsic && IntrinsicContract.Of(intrinsic.Intrinsic).Declaration is not BindingFailure.None and var failure)
             {
-                this.Fail(use, failure); // SPEC 8.7.1: decided by the Type's structure alone.
+                this.Record(use, failure, []); // SPEC 8.7.1: decided by the Type's structure alone.
             }
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract })
             {
@@ -81,7 +81,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.Fail(use, BindingFailure.InvalidSelfClause);
+                    this.Record(use, BindingFailure.InvalidSelfClause, []);
                 }
             }
         }
@@ -106,7 +106,7 @@ public sealed partial class Binding
             {
                 if (this.AlsoAssociated(type, name, use, scope))
                 {
-                    this.Fail(use, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
+                    this.Record(use, BindingFailure.Ambiguous, [], unresolved: true); // SPEC 9.7.3: it resolves both ways.
                 }
             }
             else if (use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType && this.FindAssociated(type, scope, name, qualifier, use) is not null)
@@ -145,6 +145,7 @@ public sealed partial class Binding
 
         foreach (var (use, target) in forms)
         {
+            // Transitional, R7-E5 (B's E3 ruling 4, O6 (a)): a form that already failed keeps its first failure, as a Fail does.
             if (use.BindingFailure == BindingFailure.None)
             {
                 this.RenouncedObjectTarget(use, target);

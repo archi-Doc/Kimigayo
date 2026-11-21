@@ -17,7 +17,8 @@ internal enum MirStatementKind : byte
     Assign, // Place = Rvalue.
     StorageLive, // The storage of a Var or Temp local begins; its value is uninitialized.
     StorageDead, // The storage of a Var or Temp local ends.
-    FakeRead, // The Place is read for the analyses only (a match subject, a discarded value); nothing is generated.
+    FakeRead, // The Place is read for the analyses only (a guard's Subject, a constructor's exit request, a part a rejected form reads,
+    // DECISIONS R4-M21, Z17); nothing is generated.
     EndBorrow, // A use of a reference local, after which its carrying ends (an abandoned comparison or reservation, which ends unactivated);
     // at a guard candidate's cleanup its guard-local Origin ends, so no value used afterwards may keep it (design A3 E7).
 }

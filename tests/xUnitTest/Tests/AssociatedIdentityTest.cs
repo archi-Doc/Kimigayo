@@ -239,10 +239,12 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         Assert.Equal("no unique best candidate among 2 candidates", record.Label);
         Assert.Equal(new SourceSpan(Source.IndexOf("U.Item", StringComparison.Ordinal), "U.Item".Length), record.Span);
         Assert.Equal(["C<i32>.Item", "C<i64>.Item"], record.Related!.Select(static x => x.Label));
-        Assert.Contains("distinct associated-Type identities", record.Note);
+        Assert.Null(record.Note); // R7-E2 E2-5b (D3, Q13's M3): the identities the Note named stay the related labels, in CLI and LSP.
         Assert.Empty(record.Repairs ?? []);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("C<i32>.Item", console.Text, StringComparison.Ordinal);
+        Assert.Contains("C<i64>.Item", console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })

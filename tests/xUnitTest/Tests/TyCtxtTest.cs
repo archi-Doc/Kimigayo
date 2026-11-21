@@ -99,6 +99,8 @@ public sealed partial class TyCtxtTest
         """;
 
     // A generic function whose closure an instance closes, called with two lengths.
+    private const string BorrowsPrelude = "func inspect<T>(value: ref/T) => ()\npublic func main() -> () => ()\n";
+
     private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
         "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
 
@@ -231,6 +233,24 @@ public sealed partial class TyCtxtTest
 
     // The parameter of ConditionalSource's probe and the part of its raw Field, in its order.
     private static readonly (int At, int Part)[] ConditionalRows = [(3, 1), (4, 1), (5, 2), (6, 2), (7, 2), (8, 2), (9, 1), (10, 1), (11, 1), (12, 1), (13, 2), (14, 2)];
+
+    // ABodyAtomListsTheBorrowsFormedWithIt's rows (binder's first line, atom kind and slot: referent and mode): originpub design R2.9's
+    // expectation, from SPEC before the run. The address `values@raw` adds none: it "checks like an immediately ending @ref ... and
+    // leaves no Loan" (SPEC 5.4), no borrow value whose Origin a Type could state. m, reached with shared access, is ref/i32 (SPEC 15.1.6)
+    // under P[o], the Subject Place's atom, formed where Check decides the binding's acquisition (G147 ruling 19).
+    private static readonly string[] ExpectedRow1 =
+    [
+        "(*p)@uniq Anchor 0: i32 X",
+        "let n = match o@ref Projection 0: i32 S",
+        "let s = w@ref Inference -1:  claimed",
+        "let view = values[0..2] Projection 0: Slice<i32> S",
+        "var b = (0, x@ref) Projection 0: i32 X",
+        "var h = 4 Projection 0: i32 S",
+        "var o: Option<i32> = .Some(3) Projection 0: Option<i32> S, i32 S",
+        "var values: [2 of i32] = [1, 2] Projection 0: i32 S",
+        "var w: ref/i32 = x@ref Projection 0: ref/i32 X",
+        "var x = 1 Projection 0: i32 S",
+    ];
 
     // SPEC 8.1.3, 8.15.1: the declared parameter and result Types of the function a call's substitution instantiates are the call's
     // instantiation (SPEC 8.4.1, 8.6.4: a requirement's under its conforming Self and the bound Contract reference it dispatches through, which
@@ -865,6 +885,35 @@ public sealed partial class TyCtxtTest
 
         // The first kept part of the probe's parameter i.
         BoundType Kept(int i) => types.StoredParts(p[i], out _)[0]!;
+    }
+
+    // SPEC 5.7 Origins ("the outer Origin of a borrow value ... in a body, a local's, to that borrow"), 15.6.5, 5.7 Fits and claims
+    // (PLAN G148 (1), the Origin-atom borrows): each Projection or Anchor atom lists the Borrows formed with it as their outer Origin,
+    // equal referents joined (w's shared then exclusive borrow, X), a part's borrow under its root's atom (b.0), a Slice view, a Subject
+    // and its by-reference binding, a capture's slot borrow, a raw Place's fresh anchor and the implicit argument borrows; a claim marks
+    // the Origin its Type states (s's region). Labels: originpub labels-r1.txt row1 (V).
+    [Fact]
+    public void ABodyAtomListsTheBorrowsFormedWithIt()
+    {
+        var c = MinimalEmissionTest.Analyze(BorrowsPrelude + "func row1()\n    var x = 1\n    var w: ref/i32 = x@ref\n    let s = w@ref\n" +
+            "    var q: raw/u8 during s = null\n    unsafe => q = w@raw@(raw/u8 during s)\n    inspect(s)\n    var r = w@uniq\n    inspect(r)\n" +
+            "    var b = (0, x@ref)\n    var t = b.0@uniq\n    inspect(t)\n    var values: [2 of i32] = [1, 2]\n    let view = values[0..2]\n" +
+            "    inspect(view)\n    var o: Option<i32> = .Some(3)\n    let n = match o@ref\n        .Some(let m) => m\n        _ => 0\n" +
+            "    var h = 4\n    let c = func [h@ref] () => ()\n    c()\n    let p = values@raw@raw/i32\n    unsafe\n        let e = (*p)@uniq\n" +
+            "        inspect(e)\n    inspect(n)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(ExpectedRow1, BorrowRows(c));
+    }
+
+    // SPEC 10.1 (PLAN G148 (1)): a rejected candidate's argument borrow is no Borrow of the program. f(x: ref/i64) and f(x: i32) do not
+    // overlap (7.4.3), so the rejected candidate adapts k before its referent fails; k is copied, so P[k] has no row. Labels:
+    // originpub labels-r1.txt row2c (V).
+    [Fact]
+    public void ACandidateTrialFormsNoBorrow()
+    {
+        var c = MinimalEmissionTest.Analyze(BorrowsPrelude + "func f(x: ref/i64) => ()\nfunc f(x: i32) => ()\nfunc row2()\n    var k = 1\n    f(k)\n    k = 2\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.DoesNotContain(BorrowRows(c), static x => x.StartsWith("var k", StringComparison.Ordinal));
     }
 
     // SPEC 8.6.1, 8.2.3, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct
@@ -2178,4 +2227,11 @@ public sealed partial class TyCtxtTest
 
         void Count(string key) => kinds[key] = kinds.TryGetValue(key, out var count) ? count + 1 : 1;
     }
+
+    // The program part's rows with an entry or a mark: the atom's binder (its first line) and kind, then each entry's referent and mode.
+    private static string[] BorrowRows(Compilation c) => [.. c.Binding.ProgramBorrows
+        .Where(static x => x.Value.Count > 0 || x.Value.Claimed)
+        .Select(static x => $"{x.Key.Binder?.ToString()?.Split('\n')[0].Trim()} {x.Key.Kind} {x.Key.Slot}: " +
+            string.Join(", ", x.Value.Items.ToArray().Select(static m => $"{m.Referent} {(m.Exclusive ? "X" : "S")}")) + (x.Value.Claimed ? " claimed" : string.Empty))
+        .Order(StringComparer.Ordinal)];
 }

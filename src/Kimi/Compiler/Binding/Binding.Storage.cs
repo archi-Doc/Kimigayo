@@ -541,9 +541,9 @@ public sealed partial class Binding
                     {
                         var syntax = payload.Operands[j];
                         shape.Types.Add(syntax);
-                        if (syntax.BoundType is { } type && !this.TypeAccessCovers(type, container.BoundSymbol!, container.BoundSymbol!))
+                        if (syntax.BoundType is { } type && this.InaccessibleType(type, container.BoundSymbol!, container.BoundSymbol!) is { } inaccessible)
                         {
-                            this.Fail(member, BindingFailure.Access);
+                            this.RecordAccess(member, inaccessible, syntax);
                         }
                     }
                 }

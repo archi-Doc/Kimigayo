@@ -6,8 +6,8 @@ namespace Kimi.Command;
 
 public class KimiOptions
 {
-    // The removed options, each with the text a command line naming it fails with, whatever its value (Tatara B6b4, decision 20). A
-    // later removal adds a row.
+    // The removed options, each with the text a command naming it fails with, whatever its value (Tatara B6b4, decision 20). A later
+    // removal adds a row.
     private static readonly (string Name, string Text)[] Removed =
     [
         ("ToolchainRoot", "--ToolchainRoot was removed: Kimi carries its toolchain."),
@@ -27,42 +27,30 @@ public class KimiOptions
     [SimpleOption("Format")]
     public string Format { get; set; } = "text";
 
-    /// <summary>Reads a command line's removed options: one text per occurrence before <c>--</c>, in order. An occurrence is named by
-    /// SimpleCommandLine's own rule for an option (an option word, <see cref="SimpleParserHelper.IsOptionName"/>, whose name after its
-    /// leading '-' equals the option's, ignoring case: <c>SimpleParser.OptionEquals</c>, internal to the parser), so every spelling the
-    /// parser binds as an option is named.</summary>
-    /// <param name="commandLine">The command line (the text after <c>kimi </c>).</param>
-    /// <returns>The texts; empty when the line names no removed option.</returns>
-    internal static List<string> RemovedOptions(string commandLine)
+    /// <summary>Reads one of a command's arguments, as the parser handed it to the command, for a removed option: the reader of an
+    /// invalid option (<see cref="CommandExecution"/> for every command but <c>test</c> and <c>lsp</c>, <c>TestOptions</c> for
+    /// <c>test</c>) reports the text. The argument names one by SimpleCommandLine's own lookup of an option (<c>OptionSet.ParseCore</c>,
+    /// internal to the parser): an option word, <see cref="SimpleParserHelper.IsOptionName"/>, whose name after its leading '-' equals
+    /// the option's, ignoring case, so every spelling the parser binds as an option is named (and a quoted word, which the parser
+    /// hands on unwrapped).</summary>
+    /// <param name="argument">The argument.</param>
+    /// <returns>The removal's text, or null when the argument names no removed option.</returns>
+    internal static string? RemovedOption(string argument)
     {
-        var texts = new List<string>();
-        if (!Array.Exists(Removed, x => commandLine.Contains(x.Name, StringComparison.OrdinalIgnoreCase)))
+        var name = argument.AsSpan();
+        if (name.IsOptionName())
         {
-            return texts;
-        }
-
-        foreach (var argument in SimpleParserHelper.SplitArguments(commandLine, default))
-        {
-            if (argument == "--")
+            name = name.TrimStart('-');
+            foreach (var (removed, text) in Removed)
             {
-                break;
-            }
-
-            var name = argument.AsSpan();
-            if (name.IsOptionName())
-            {
-                name = name.TrimStart('-');
-                foreach (var (removed, text) in Removed)
+                if (name.Equals(removed, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (name.Equals(removed, StringComparison.OrdinalIgnoreCase))
-                    {
-                        texts.Add(text);
-                    }
+                    return text;
                 }
             }
         }
 
-        return texts;
+        return null;
     }
 
     // SimpleCommandLine requires values for Boolean options. Preserve the specified

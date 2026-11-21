@@ -38,12 +38,13 @@ internal sealed class TestOptions
                 continue;
             }
 
-            var flag = name is "--list" or "--allow-empty" or "--no-parallel" or "--locked";
+            var flag = name is "--list" or "--allow-empty" or "--no-parallel";
             if (!flag && name is not ("--filter" or "--case" or "--jobs" or "--timeout" or "--recovery-grace" or "--format" or "--results-dir" or
                 "--case-diagnostic-count" or "--case-diagnostic-bytes" or "--case-log-bytes" or "--run-diagnostic-count" or "--run-diagnostic-bytes" or "--run-log-bytes" or
-                "--Target" or "--Debug"))
+                "--Target" or "--Debug" or "--locked"))
             {
-                throw new InvalidDataException("Unknown test option: " + name);
+                // An invalid option, a removed one named by its removal (Tatara B6b4): test's 2 (IMPL 20.6.4).
+                throw new InvalidDataException(KimiOptions.RemovedOption(name) ?? "Unknown test option: " + name);
             }
 
             if (!result.values.TryAdd(name, flag ? "true" : ++i < args.Length ? args[i] : throw new InvalidDataException("Missing value: " + name)))
@@ -68,7 +69,7 @@ internal sealed class TestOptions
 
         result.Compiler.Target = result.Get("--Target") ?? string.Empty;
         result.Compiler.Debug = Boolean("--Debug");
-        result.Compiler.Locked = result.Get("--locked") is not null;
+        result.Compiler.Locked = Boolean("--locked"); // A bare --locked reaches here as --locked true (KimiOptions.ExpandFlags).
         _ = result.Settings(new());
         return result;
 

@@ -199,7 +199,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
             {
                 if (rows[r].Site.Module < rootModules)
                 {
-                    report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, rows[r].Site, MirProblem.NoBody, ulong.MaxValue));
+                    report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, requirement, rows[r].Site));
                 }
             }
         }
