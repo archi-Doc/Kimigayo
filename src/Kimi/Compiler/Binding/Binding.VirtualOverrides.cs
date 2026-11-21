@@ -413,10 +413,13 @@ public sealed partial class Binding
             var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
             this.PrepareVirtualOverridePremises(function, slot);
             this.DropConsultation(frame);
+            this.CheckVirtualOverrideSignature(function, slot);
 
-            // SPEC 6.4.4, 23.1.2: the Origin completion compares the two signatures' binders, so it runs when the signature check matched,
-            // whatever else failed the override (a refuted premise above).
-            if (this.CheckVirtualOverrideSignature(function, slot) && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
+            // Transitional, R7-E5 (D-924; B's B2 ruling): the Origin completion compares the slot's Types as formed for the derived instance
+            // through the override's inherited premises (BindContractType: MemberType, then ContractType in the override's scope), which a
+            // refuted or Error premise above may have formed, so it runs at an override with no earlier failure, as the slot's first
+            // failure keeps it, until R7-E5's per-problem inputs (probes s3, s6).
+            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
             {
                 if (incompatible is { } contract)
                 {
@@ -571,9 +574,9 @@ public sealed partial class Binding
     private bool SameOverrideType(BoundType slot, BoundType actual, Koto slotBinder, Koto actualBinder, FunctionKoto implementation)
         => SignatureEquals(this.CallableContractType(slot, this.scopes[implementation]), this.CallableContractType(actual, this.scopes[implementation]), slotBinder, actualBinder);
 
-    // SPEC 6.4.2 (3), 6.4.4: the override's external names and result against its slot's; true when they match, the answer the Origin
-    // completion reads (SettleVirtualOverridePremises).
-    private bool CheckVirtualOverrideSignature(FunctionKoto implementation, VirtualSlot slot)
+    // SPEC 6.4.2 (3), 6.4.4: the override's external names and result against its slot's. The names are the two declarations' own, so a
+    // name record stands beside any earlier failure of the override (probes x1, s2, s5n).
+    private void CheckVirtualOverrideSignature(FunctionKoto implementation, VirtualSlot slot)
     {
         var original = slot.Original;
         for (var i = 0; i < original.Parameters.Count; i++)
@@ -584,7 +587,7 @@ public sealed partial class Binding
                 var span = implementation.Parameters[i].ExternalNameSpan;
                 facts.Add(new(ProblemFactKind.Span, SourceRef.Of(implementation), ((long)span.Start << 32) | (uint)span.Length));
                 this.RecordOverride(implementation, BindingFailure.OverrideContractMismatch, facts);
-                return false;
+                return;
             }
         }
 
@@ -593,16 +596,23 @@ public sealed partial class Binding
         if (overridden.Result is { } required && declared.Result is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
             !this.SameOverrideType(bound, actual, overridden.Binder, declared.Binder, implementation))
         {
+            // Transitional, R7-E5 (D-924; B's B2 ruling): the slot's result is formed for the derived instance through the override's
+            // inherited premises (`T.(First).Element` under a refuted `Plain is First`, probe s4), so the mismatch keeps the override's
+            // first failure, as a Fail does, until R7-E5's per-problem inputs; a declared result beside a refuted premise (s1, x2) is lost
+            // until then.
+            if (this.RecordedFailure(implementation) != BindingFailure.None)
+            {
+                this.Fail(implementation, BindingFailure.OverrideContractMismatch);
+                return;
+            }
+
             var facts = this.OverrideFacts(implementation, OverrideFailureCause.ResultType, original);
             var site = this.FactSite(implementation.ReturnType!);
             facts.Add(new(ProblemFactKind.Related, site, 0));
             facts.Add(new(ProblemFactKind.Expected, site, this.report.Keep(bound)));
             facts.Add(new(ProblemFactKind.Actual, site, this.report.Keep(actual)));
             this.RecordOverride(implementation, BindingFailure.OverrideContractMismatch, facts);
-            return false;
         }
-
-        return true;
     }
 
     // SPEC 6.4.2-6.4.4: an override problem's facts (ReportOverrideFailure renders them): the closed cause and a condition's proof (its
