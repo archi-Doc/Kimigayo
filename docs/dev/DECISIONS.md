@@ -23772,9 +23772,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     BU-111's Note clause and its "without a Label": BU-111 rejected a Text Reason for its elision at 96 characters, which no rule now
     reaches (each asserted unelided). `InvalidTypeFormation_Kd` takes `Evidence="declared:Number,written:Number"`, present on arity
     records only (all or none).
-  - **Temporary.** FailConstraint's first-failure guard stays `[Transitional("R7")]` until E2-5 decides each caller (ruling 7 Q1).
-    InvalidEffectBound's record (c6) moves to E2-3b: its rejection's `Symbol` has no kind of this list, and the selector's own
-    rejection as a second problem moves its publication to the further-problem walk (B's E2 ruling 14).
+  - **Temporary.** FailConstraint's first-failure guard stays `[Transitional("R7")]` until E2-5 decides each caller (ruling 7 Q1;
+    superseded by the E2-5a line below: it stays until R7-E5 and names each caller's kept verdict). InvalidEffectBound's record (c6)
+    moves to E2-3b: its rejection's `Symbol` has no kind of this list, and the selector's own rejection as a second problem moves
+    its publication to the further-problem walk (B's E2 ruling 14).
   - **Rejected.** A fourth fact kind for a Binding cause (one concept, one form); a second meaning of `Related` (a never-shown cause
     beside the related location a record shows; the Front's B1); `Span` facts copying a subject's syntax; deleting a table other
     checks judge by (`effectBoundRejections`); a catalog phrase per Enumeration value (a new catalog mechanism; the Text rule within the
@@ -23825,6 +23826,42 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Moves (Q13).** On rejected programs only: `ParameterShapeMismatch_Kd` one record per conflicting parameter (+1) without its
       conservative Note; `InvalidEffectBound_Kd` gains the related location `contract` in five kinds; no lost independent record, no
       acceptance move.
+  - **E2-5a (Q-613; B's E2-5 rulings O2, O4, O6-O8; the fix round's B1, C1-C4).** The Contract, conformance and override sites of
+    SPEC 6.4.2-6.4.4, 8.3-8.7.1 and 9.7.3 record their problems.
+    - **Fact-less sites.** Twenty-eight own-requirement sites record `Record(node, X, [])` (InvalidConstraint, Cycle,
+      InvalidAssociatedType, Ambiguous, IncompatibleImplementation, ClosedContractConformance and its intrinsic row,
+      InvalidSelfClause, NotCallable), rendered by ReportProblem's InvalidConstraint and fact-less rows; a node's further failure
+      under another requirement is its own record. A `Record` at a node whose slot holds the same failure is the slot's own
+      problem, so only an earlier failure of another kind on the site's path could make it a second record; the census names
+      those calls per site (Q-613).
+    - **Overrides.** The override family records `Reason` (the closed cause, a condition's proof in its second byte), `Related`
+      (role 0 the record's own location, the condition or the written result; 1 the original or first candidate; 2 a conflicting
+      declaration), `Span` (a renamed external name) and `Expected`/`Actual` (a result's two Types: a mismatch's sides), numbered
+      by `BindingReport.Condition`, through one kept list. `ReportOverrideFailure` is ReportProblem's override row; it reads a
+      renamed parameter's two names from the declarations at the parameter the Span fact locates. No new kind or table. The
+      override Notes go (D3).
+    - **The override family's two slot reads (C2).** The Origin completion runs when the signature check matched
+      (`CheckVirtualOverrideSignature` answers), whatever else failed the override (C2 (a)). The containing condition keeps the
+      slot read (C2 (b), Transitional naming R7-E5): it carries a dependence the proof's premises do not, an override failed by
+      its block's own premise error (ruling 297 (b)); a duplicate that is not its slot's entry has no premises at all.
+    - **Dependence until R7-E5.** A site whose check reads the node's own earlier failure or a failed part keeps the slot's first
+      failure: Contracts' invalid Contract over a failed refinement or its own cycle, a refinement whose reference formed nothing
+      (BindContractReference's arity or Origin record), AssociatedTypes' specification over its Name's recorded ambiguity,
+      AssociatedFormation's repeat of BindSpecification's formation rule (SPEC 8.5), ConstraintValidation's unsatisfied Contract
+      over an ancestor's invalid context and unsatisfied use over its own rejected registration; ConstraintValidation's
+      implementing Type and AssociatedInference's consumer, owners over a failed part spelled as a failure, carry a Transitional.
+      So do FailConstraint's first-failure guard and Constraints.Requirements' cause-less branch; the guard names each caller's
+      kept verdict (this supersedes the Temporary line's "until E2-5 decides each caller"; the sites: PLAN G1141).
+    - **Deleted.** `overrideFailures`, its `OverrideFailure` record, its ReportIssue arm and ResetVirtualDeclarations' Clear.
+    - **Rejected.** Recording at the dependent sites now: it publishes a dependent record as direct (probes c1, c2, c4, a1, q1,
+      f1). A per-site precondition "record only when the node holds no failure from this path": a second copy of the
+      first-failure rule (the Front's B1 (b)). `RestOnPart` at an owner with a failure of its own (ruling 16). The guard limited
+      to cause-less calls: it moves records with no probe behind it. D-907 through `RestOnPart(function, original)` alone (O6;
+      C5's two causes, PLAN G1131). A per-override table of the signature check's answer: the check returns it.
+    - **Moves (Q13).** M3: the override Notes; three rows now assert the fact the record still shows. M1: a clause failing a
+      closed Contract and ObjectPayload keeps both records; an override of a slot whose substituted condition is Refuted (6.4.3)
+      keeps the record of the slot's contract it breaks (external name, result Type, Origin binders: OverrideContractMismatch_Kd
+      beside O-370's InvalidConstraint_Kd). Corpus: as Q-613 states.
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
