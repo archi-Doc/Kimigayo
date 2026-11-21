@@ -21,16 +21,9 @@ if (-not (Test-Path -LiteralPath $source -PathType Container)) {
 }
 $LlvmRoot = (Resolve-Path -LiteralPath $LlvmRoot).Path
 $source = (Resolve-Path -LiteralPath $source).Path
-$names = @('clang', 'opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj', 'llvm-objdump', 'llvm-lib', 'llvm-dlltool')
+$names = Get-KimiToolchainToolNames
 # Validate the complete source tool set before changing the destination. No downloads or PATH changes.
-foreach ($name in $names) {
-    $path = Join-Path $source "$name.exe"
-    if ($name -eq 'llvm-dlltool') { $null = Get-KimiDlltoolIdentity $path }
-    elseif ($name -eq 'llvm-lib') { $null = Get-FileHash -LiteralPath $path -Algorithm SHA256 }
-    else { $null = Get-KimiLlvmToolIdentity $path $profile.llvmVersion }
-}
-
-function Get-Sha256([string] $Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+foreach ($name in $names) { $null = Get-KimiToolchainToolSha256 $name (Join-Path $source "$name.exe") }
 
 # tatara.dll: built outside the repository before the first write to the root (it needs only the archive), its build identity this
 # checkout's. build.ps1 loads the DLL in a child process and checks its build identity against the checkout's (identity.ps1); the
@@ -62,20 +55,20 @@ $candidate = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../../artifac
 $kernelFailure = 'Toolchain setup did not reproduce the adopted kernel32 import library. Review the candidate report.'
 if ($candidate.kernel32.sha256 -cne $profile.kernel32.sha256) { throw $kernelFailure }
 if ($candidate.status -cne 'tested-candidate' -or $candidate.unverifiedToolchain -or $candidate.artifactSha256 -cne $profile.artifactSha256 -or
-    (Get-Sha256 $installed) -cne $profile.artifactSha256) {
+    (Get-KimiSha256 $installed) -cne $profile.artifactSha256) {
     throw 'Toolchain setup did not produce the adopted backend. Review the candidate report.'
 }
-if ((Get-Sha256 (Join-Path $ToolchainRoot 'windows_x64/kernel32.lib')) -cne $profile.kernel32.sha256) { throw $kernelFailure }
+if ((Get-KimiSha256 (Join-Path $ToolchainRoot 'windows_x64/kernel32.lib')) -cne $profile.kernel32.sha256) { throw $kernelFailure }
 # The backend builder publishes the already-tested shared imports and generation conditions.
 $identities = [ordered]@{}
 foreach ($name in $names) {
-    $identities[$name] = Get-Sha256 (Join-Path $ToolchainRoot "$name.exe")
+    $identities[$name] = Get-KimiSha256 (Join-Path $ToolchainRoot "$name.exe")
     if ($identities[$name] -cne $candidate.tools.$name.sha256) { throw "Tool changed during setup: $name" }
 }
 
 # tatara.dll installed beside a loaded one by renaming that aside (Windows allows renaming a loaded image).
 $tatara = Join-Path $ToolchainRoot 'tatara.dll'
-$tataraSha256 = Get-Sha256 $built
+$tataraSha256 = Get-KimiSha256 $built
 if (-not (Test-KimiSameFile $built $tatara)) {
     $temporary = "$tatara.$([guid]::NewGuid().ToString('N')).tmp"
     Copy-Item -LiteralPath $built -Destination $temporary

@@ -76,3 +76,17 @@ function Get-KimiLlvmToolIdentity {
     }
     return @{ path = $resolved; version = $report.output; actualVersion = $actual; expectedVersion = $ExpectedVersion; versionMatched = $matched; sha256 = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
+
+function Get-KimiSha256([string] $Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+
+# The development toolchain's tools, which setup.ps1 installs and check-toolchain.ps1 checks, in that order.
+function Get-KimiToolchainToolNames { return @('clang', 'opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj', 'llvm-objdump', 'llvm-lib', 'llvm-dlltool') }
+
+# A development toolchain tool's identity check, setup's and check-toolchain.ps1's: the version banner of the seven that print one,
+# llvm-dlltool's pinned SHA-256 (kernel32.ps1's Get-KimiDlltoolIdentity, which its callers load), llvm-lib's SHA-256 alone. A failed
+# check throws; the result is the tool's SHA-256.
+function Get-KimiToolchainToolSha256([string] $Name, [string] $Path) {
+    if ($Name -ceq 'llvm-dlltool') { return (Get-KimiDlltoolIdentity $Path).sha256 }
+    if ($Name -ceq 'llvm-lib') { return Get-KimiSha256 $Path }
+    return (Get-KimiLlvmToolIdentity $Path (Read-KimiWindowsProfile).llvmVersion).sha256
+}
