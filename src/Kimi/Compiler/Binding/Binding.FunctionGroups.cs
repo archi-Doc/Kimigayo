@@ -50,7 +50,7 @@ public sealed partial class Binding
             this.BindHeader(member);
         }
 
-        return this.CheckGatheredParameterShapes(use, group, aliasStage: true);
+        return this.CheckGatheredParameterShapes(use, group);
     }
 
     private readonly struct FunctionGroup(BindingSymbol? first, RequirementGroup? requirements, List<BindingSymbol>? gathered)

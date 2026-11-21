@@ -130,6 +130,17 @@ public sealed partial class Binding
         return ReferenceEquals(taken, taken.Parent switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null });
     }
 
+    // DIAGNOSTICS 4.3 (a problem is derived only from what its check read): a requirement whose check compares only what declarations
+    // declare (their names, normalized signatures, conformance targets or specialization arguments), never what the node's own binding
+    // consulted, so neither the node's own recovery nor a recovery or limit it rests on derives it. Census (E2-3b), Duplicate alone, at every
+    // site: FailDuplicate's six pairwise sites (Scopes, Aliases, Contracts.Registration twice, Signatures, Specializations;
+    // RecordDuplicateGroups records them), a Semantics parameter's name (Indexing), a nested container's name over an inherited member
+    // (MemberLookup), `Kimi` and a module's conflicting names (Modules), a capture list's repeat (CaptureDiagnostics), an Origin set's or
+    // annotation's repeat (OriginDeclarations, Origins.Annotations, AssociatedOrigins) and Origins.Schemas' three (a container fragment's
+    // incompatible header, an Origin name repeating an enclosing abstract Origin, a repeated Origin name).
+    [Transitional("R7", Reason = "The row stands for per-problem inputs (d4: a repeated let beside its initializer's syntax error; k2: a repeated Signature whose later header is a recovery), until R7-E5 states what each problem's check read.")]
+    private static bool JudgedByDeclaredNames(BindingFailure failure) => failure == BindingFailure.Duplicate;
+
     // PLAN G1073, the failed-slot fact: a slot is stated when it has its Type or Binding recorded a cause at its TypeSource (its record
     // reported or resting on a reported one), so a published slot of no Type is the failed slot. The HIR publisher's slot rows read it
     // (HasFacts, SlotsStated); a node with a slot neither typed nor failed is Broken. One direction only: a Closure whose written result
@@ -467,15 +478,16 @@ public sealed partial class Binding
     }
 
     // A recovery node derives from its syntax error, and so does every failure of a check that consulted a recovery node,
-    // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3).
-    // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved;
-    // a failure explained by the Origin rule, or any other definite failure, is direct.
+    // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3), except a
+    // requirement judged by declared names alone (JudgedByDeclaredNames), whose check reads no guess. A failure that reports missing
+    // information is derived when the check consulted prerequisites that stayed unresolved; a failure explained by the Origin rule, or any
+    // other definite failure, is direct.
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
     // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
     // requirement judged: the caller passes the problem's (CollectIssue: the node's recorded failure).
     private bool IsDerived(Koto node, BindingFailure failure)
-        => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
+        => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node))) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&

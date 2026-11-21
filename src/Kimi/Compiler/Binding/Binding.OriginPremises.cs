@@ -358,10 +358,6 @@ public sealed partial class Binding
                 this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Completed)
             {
                 this.AddDeclarationPremises(environment, declaration.Relations);
-                if (environment.Dependence)
-                {
-                    this.ReadFailedClauses(environment, declaration, null);
-                }
             }
         }
 
@@ -481,19 +477,6 @@ public sealed partial class Binding
         }
     }
 
-    // DECISIONS BU-69: a dependence query reads a contract's failed clauses where the extraction reads that contract (R1, or a Type's
-    // premises substituted with the occurrence's Origin `arguments`): one repair per failed clause (DependenceCause).
-    private void ReadFailedClauses(OriginPremiseEnvironment environment, OriginDeclaration declaration, BoundOrigin[]? arguments)
-    {
-        foreach (var (clause, left, right) in declaration.FailedClauses)
-        {
-            environment.Repairs.Add((clause, Substitute(left), Substitute(right), arguments is null ? declaration.Owner : null, arguments));
-        }
-
-        BoundOrigin? Substitute(BoundOrigin? origin)
-            => origin is null || arguments is null ? origin : this.SubstituteStoredOrigin(origin, declaration.Owner, arguments);
-    }
-
     // SPEC 8.5.4: an associated application's inherited formation and its requirement's clauses, substituted with its
     // arguments; the requirement's own declaration is not a premise of itself.
     private void AddAssociatedRequirementPremises(OriginPremiseEnvironment environment, Koto node)
@@ -582,7 +565,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.3: a well-formed Type's own clauses, substituted with its Origin arguments, are premises under `rule` (an input's, R2; a
-    // result's, R3); a dependence query reads their failed clauses there too (DECISIONS BU-69).
+    // result's, R3).
     private void AddTypeClausePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
     {
         if (type.Symbol is not { } symbol || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) || !declaration.Completed)
@@ -595,11 +578,6 @@ public sealed partial class Binding
             var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
             var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
             this.AddPremise(environment, a, b, relation.Equality, rule);
-        }
-
-        if (environment.Dependence)
-        {
-            this.ReadFailedClauses(environment, declaration, (BoundOrigin[])type.OriginArguments);
         }
     }
 
@@ -714,7 +692,7 @@ public sealed partial class Binding
         internal CallableInstance Comparison { get; set; }
 
         // The request's shorter end (EntailsOrigin), where R5 starts in a comparison; null for an environment without one (a body's
-        // oracle, retention, a dependence query).
+        // oracle, retention).
         internal BoundOrigin? Shorter { get; set; }
 
         // In a comparison, R5's Places from the shorter end: its node, then the nodes its stored Origins introduce, each once.
@@ -725,12 +703,6 @@ public sealed partial class Binding
 
         // A session environment's Origin state (originStateVersion) when it was built.
         internal int Version { get; set; }
-
-        // Whether this request is a fit's dependence query (DECISIONS BU-69), which reads a repair of each failed clause of a contract
-        // it reads, with its visible Origins' owner (R1) or occurrence arguments (a Type's premises).
-        internal bool Dependence { get; set; }
-
-        internal List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right, Koto? Owner, BoundOrigin[]? Arguments)> Repairs { get; } = new();
 
         internal void Clear()
         {
@@ -744,8 +716,6 @@ public sealed partial class Binding
             this.Shorter = null;
             this.Places.Clear();
             this.LocalPlaces = 0;
-            this.Dependence = false;
-            this.Repairs.Clear();
         }
     }
 

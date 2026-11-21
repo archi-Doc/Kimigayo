@@ -8,12 +8,14 @@ namespace Verification;
 // shape by `size`; the expected outcome follows from SPEC 15.3.4-15.3.7 and 15.6.1, never from a compiler's speed.
 internal static class OriginProofWorkloads
 {
-    // Every family, with the diagnostic code a size-independent check reports, or null when the program is accepted.
+    // Every family, with the diagnostic codes a size-independent check reports (one per record, space-separated), or null when the
+    // program is accepted. The composite families' join fails for each operand: a meet outlives x only when each operand does, so `a
+    // outlives x` and `b outlives x` are two records (SPEC 15.3, 23.1.2; R7-O1 H, the Middle's (iii)).
     internal static readonly (string Family, string? Code)[] Families =
     [
         ("valid", null),
-        ("composite", "UnprovenOriginRelation_Kd"),
-        ("composite-nokeep", "UnprovenOriginRelation_Kd"),
+        ("composite", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd"),
+        ("composite-nokeep", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd"),
         ("atomic", "UnprovenOriginRelation_Kd"),
         ("proven", null),
         ("transitive", null),
