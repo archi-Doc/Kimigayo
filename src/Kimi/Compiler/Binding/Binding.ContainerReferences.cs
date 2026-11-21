@@ -129,6 +129,19 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 9.7, F.5: the path a container reference is written by: below transparent wrappers, a root name's operand and a Constructed
+    // Type's head, the node whose qualifier (a MemberAccess's Left) gives the environment.
+    private static Koto ContainerPath(Koto syntax)
+    {
+        var path = UnwrapTypeSyntax(syntax);
+        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
+        {
+            path = UnwrapTypeSyntax(root.Operands[0]);
+        }
+
+        return path is GenericsKoto generic ? UnwrapTypeSyntax(generic.Identifier!) : path;
+    }
+
     // SPEC 15.4.4, 9.7.2: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no clause
     // of its declaration relates, is inferred from the call. Binding has no inference variables in bodies yet, so such a call is one
     // Unsupported at the qualifier, never a failed selection or a missing Origin. A written part of the qualifier that failed
@@ -286,18 +299,7 @@ public sealed partial class Binding
             return environment;
         }
 
-        var path = UnwrapTypeSyntax(syntax);
-        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
-        {
-            path = UnwrapTypeSyntax(root.Operands[0]);
-        }
-
-        if (path is GenericsKoto generic)
-        {
-            path = UnwrapTypeSyntax(generic.Identifier!);
-        }
-
-        if (path is MemberAccessKoto member)
+        if (ContainerPath(syntax) is MemberAccessKoto member)
         {
             var qualifier = this.TypeName(member.Left, scope);
             if (qualifier?.Declaration is DeclarationContainerKoto container && !container.IsRoot)
@@ -313,17 +315,13 @@ public sealed partial class Binding
                     return this.Fail(member, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
                 }
 
-                if (!ReferenceEquals(container, parent))
-                {
-                    var selected = this.LookupMember(environment, symbol.Name, scope, UseRow(UseNode(syntax))); // The row the path selected it in.
-                    environment = ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
-                }
+                environment = this.QualifierEnvironment(environment, symbol, container, parent, scope, syntax);
             }
         }
 
         if (inherited is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 })
         {
-            return this.types.Intern(own.IsEmpty ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, own);
+            return this.FormReference(symbol, own, default, default);
         }
 
         if (environment is null)
@@ -343,24 +341,31 @@ public sealed partial class Binding
             return this.RecordArity(syntax, parent!.BoundSymbol!, inherited.GenericSlots.Count, environment?.Components.Count ?? 0);
         }
 
-        var count = own.Length + environment.Components.Count;
+        return this.FormReference(symbol, own, (BoundType[])environment.Components, (BoundOrigin[])environment.OriginArguments);
+    }
+
+    // SPEC 9.7, 9.7.1: a container reference's Type from its own arguments and its environment's components and Origin arguments, the
+    // one formation of it: the own arguments, then the environment's; the declaration's own Origin slots empty, then the environment's
+    // Origins. Pure: it interns, and writes no node, record or table. With no environment it is the declaration's Type at `own`.
+    private BoundType FormReference(BindingSymbol symbol, ReadOnlySpan<BoundType> own, ReadOnlySpan<BoundType> environment, ReadOnlySpan<BoundOrigin> environmentOrigins)
+    {
+        if (environment.IsEmpty && environmentOrigins.IsEmpty)
+        {
+            return this.types.Intern(own.IsEmpty ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, own);
+        }
+
+        var declaration = (DeclarationContainerKoto)symbol.Declaration;
+        var slots = declaration.OriginNames.Count + ((DeclarationContainerKoto)declaration.Parent!).BoundSymbol!.Schema!.Origins.Count;
+        var count = own.Length + environment.Length;
         var types = this.RentTypes(count);
-        var origins = this.originScratch.Rent(declaration.OriginNames.Count + inherited.Origins.Count);
+        var origins = this.originScratch.Rent(slots);
         try
         {
             own.CopyTo(types);
-            for (var i = 0; i < environment.Components.Count; i++)
-            {
-                types[own.Length + i] = environment.Components[i];
-            }
-
-            var originCount = environment.OriginArguments.Count == 0 ? 0 : declaration.OriginNames.Count + inherited.Origins.Count;
+            environment.CopyTo(types.AsSpan(own.Length));
+            var originCount = environmentOrigins.IsEmpty ? 0 : slots;
             Array.Clear(origins, 0, originCount);
-            for (var i = 0; i < environment.OriginArguments.Count; i++)
-            {
-                origins[declaration.OriginNames.Count + i] = environment.OriginArguments[i];
-            }
-
+            environmentOrigins.CopyTo(origins.AsSpan(declaration.OriginNames.Count));
             return this.types.Intern(count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, count), originArguments: origins.AsSpan(0, originCount));
         }
         finally
@@ -368,6 +373,20 @@ public sealed partial class Binding
             this.typeScratch.Return(types, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
         }
+    }
+
+    // SPEC 6.1.3, 9.6: a qualified nested Type's environment from its qualifier's Type: the qualifier when it declares the nested Type, else
+    // the declaring Type (a base layer's, substituted) of the member the qualifier's lookup selects in the row the use's path selected it in,
+    // or none.
+    private BoundType? QualifierEnvironment(BoundType qualifier, BindingSymbol symbol, DeclarationContainerKoto container, DeclarationContainerKoto? parent, BindingScope scope, Koto use)
+    {
+        if (ReferenceEquals(container, parent))
+        {
+            return qualifier;
+        }
+
+        var selected = this.LookupMember(qualifier, symbol.Name, scope, UseRow(UseNode(use)));
+        return ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
     }
 
     private BoundType? BindContainerQualifier(Koto syntax, BindingSymbol symbol, BindingScope scope, TypeBindingContext context)

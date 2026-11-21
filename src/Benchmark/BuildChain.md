@@ -22,7 +22,7 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <fol
 - `--tatara` (Tatara A3 §4): one folder; each row runs A, B, A, ..., A, where A is `Kimi.dll` single-shot on the external tools
   and B the same `Kimi.dll` as `dotnet Kimi.dll tatara` with standard input from a file holding the row's command as its one line
   (`build <project> --ToolchainRoot <root>` or `build --Manifest <pair> --ToolchainRoot <root>`, paths quoted), then end of input.
-  The toolchain root must hold `tatara.dll`. After the O2 source rows of Hello and Milestone30 a session row runs B with k lines
+  B runs the `tatara.dll` beside its `Kimi.dll` (Tatara B6b1); its command line's root is accepted and not read. After the O2 source rows of Hello and Milestone30 a session row runs B with k lines
   of that command, k1, k10, k1, ..., k1 (Session table below).
 - With two sides the summary adds per row p50(B) / p50(A) of wall time and p95(B) - p95(A) of the job's peak committed memory.
 - `--toolchain` defaults to the checkout's `toolchain`. `<name>` is one plain path segment (no separator, not `.` or `..`, not

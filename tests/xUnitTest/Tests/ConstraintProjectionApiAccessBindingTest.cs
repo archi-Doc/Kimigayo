@@ -22,6 +22,20 @@ public class ConstraintProjectionApiAccessBindingTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
+    // SPEC 9.4.4, 23.1.2, DIAGNOSTICS 4.1 (R7-E2 E2-4a, the Front's R2-N1; probes k3, k3t): f exposes the private Contract Hidden through both
+    // of its Constraints. The one requirement (f, Hidden) is found by f's constraint check at each clause and by the projection clause's
+    // own check (a grouping, G): both records at the projection clause are published, f's and the clause's, a declaration and a part
+    // nested in its syntax, so they differ in depth and the order is total; none is suppressed afterwards. The twin's public Contract is
+    // valid.
+    [Theory]
+    [InlineData("", "InvalidConstraint_Kd 5:9 T.(Hidden).Item|InaccessibleBinding_Kd 5:9 T.(Hidden).Item is Hidden, inaccessible declaration 'Hidden'|InaccessibleBinding_Kd 5:9 T.(Hidden).Item is Hidden, inaccessible declaration 'Hidden'|InaccessibleBinding_Kd 6:9 T is Hidden, inaccessible declaration 'Hidden'")] // k3
+    [InlineData("public ", "")] // k3t
+    public void AFunctionsRecordAtAProjectionClauseStandsBesideTheClausesOwn(string access, string records)
+    {
+        var source = access + "contract Hidden\n    associate Item\npublic group Api\n    public func f<T>(value: T) -> ()\n        T.(Hidden).Item is Hidden\n        T is Hidden\n        return ()\n";
+        Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
+    }
+
     [Theory]
     [InlineData("S.Element")]
     [InlineData("S.(C).Element")]

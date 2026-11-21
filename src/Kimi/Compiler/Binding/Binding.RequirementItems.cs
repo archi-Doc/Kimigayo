@@ -79,7 +79,7 @@ public sealed partial class Binding
 
         if (DirectCallOnly((FunctionKoto)selected!.Symbol!.Declaration))
         {
-            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
+            return this.Record(use, BindingFailure.DirectCallFunctionValue, []);
         }
 
         if (this.CompleteFunctionItem(use, selected) is null)

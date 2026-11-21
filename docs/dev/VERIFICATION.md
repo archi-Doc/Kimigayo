@@ -167,6 +167,16 @@ all its runs, Unit and Session included: it removes the link alone (`cmd /c rmdi
 directory, and builds Kimi again; it never runs setup through the junction. A window that changes `tatara.h` announces on
 the board that older bases fail the start check until they merge dev (or take a toolchain of their own).
 
+`-VerifyToolchain` runs `kimi toolchain verify` (the compiler's self-check, `toolchain.json`) and then
+`src/backend/windows-x64/check-toolchain.ps1` (the development toolchain: the tools, `tatara.dll` and the root's libraries
+against `installation.json` and the catalog, `check-toolchain.log`); the summary's `toolchainVerification` is `passed` only
+when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrote, and setup installs no archive DLL
+(`supportingDlls: {}`); a base before Tatara B6b3 still verifies such a root (its verify reads the empty object). After
+B6b6, a newly made root serves only bases from B6a on (builds) and from B6b3 on (verify). Existing roots keep their
+files. `src/backend/windows-x64/test-toolchain-verification.ps1` tests `check-toolchain.ps1` and takes no `-Configuration`
+(it runs no compiler); its rows check a root of its own, whose tools and DLLs are hard links to the toolchain's (never
+written; a hard link needs the toolchain's volume) and whose `installation.json` and `windows_x64` are copies.
+
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start
 from: `diagnostic-snapshot.json` (the snapshot step checks its fixed corpus whatever the selection, so
 `./scripts/verify.ps1 -DiagnosticSnapshot` alone, the build and that step, suffices), optionally `native-results.json` (a Session's

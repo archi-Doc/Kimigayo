@@ -24,8 +24,9 @@ internal sealed unsafe partial class Tatara
     // Neither remedy leads to setup into a shared or linked toolchain (a worktree's toolchain is a junction to the shared root, which
     // only a window's setup writes): a toolchain directory of the checkout's own, or the toolchain's revision.
     private static readonly string LoadRemedy =
-        $"Run {NativeToolchain.SetupCommand} for a toolchain directory of this checkout's own (not a junction to the shared root), " +
-        "or use a compiler of the toolchain's revision; then build Kimi again.";
+        $"Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM {ToolchainIdentity.LlvmVersion} archive, extracted> for a toolchain " +
+        "directory of this checkout's own (not a junction to the shared root), or use a compiler of the toolchain's revision; then build " +
+        "Kimi again.";
 
     private static readonly string StartRemedy =
         "This compiler's tatara.h or LLVM version differs from the tatara.dll it was built with: build Kimi again with the toolchain of " +
