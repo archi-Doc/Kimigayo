@@ -185,6 +185,20 @@ public partial class KimiLibraryShapeTest
         Assert.True(bases.Length == 0, build + string.Join(", ", bases));
     }
 
+    // R7-N5 B6b's second premise (DECISIONS BU-220 as B6b amends it; the first is TheLibraryDeclaresNoParameterDefault): StructuralCompletion's
+    // query memos are working-state families of the composed node's module, which the frozen library refuses, so no program query may
+    // compose a library node. The guess rule, which MIR also asks after the Bind at a require's failure body, answers none at a frozen
+    // library node (the library's pass is complete and recovered nothing), so a program whose pass is incomplete composes none.
+    [Fact]
+    public void TheGuessRuleAnswersNoneAtAFrozenNode()
+    {
+        var c = CompilationTestHelper.Parse("func f(flag: bool) -> i32\n    if flag => return 1\n    missing()\n", "Hello.kimi");
+        Assert.False(c.Bind().IsComplete);
+        var requires = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<RequireKoto>().ToArray();
+        Assert.NotEmpty(requires);
+        Assert.All(requires, x => Assert.True(c.Binding.GuessedCompletionNodes(x.ElseBody, x.ElseBody).IsEmpty, Line(x)));
+    }
+
     // PLAN G949 S1-r1b (commit 9's premise; review-s1r1b Part 3, F's ruling 179): the documents' unnamed aliases are a per-pass map
     // (PassPart.AliasesByDocument), and the library declares no unnamed alias, so the library pass's PrepareAliases prunes no entry a
     // program document needs and the layer's map stays empty. A tripwire, true today: the unit that gives the library its first unnamed

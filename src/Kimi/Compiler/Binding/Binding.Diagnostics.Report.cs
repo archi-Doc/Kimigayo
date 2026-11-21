@@ -495,6 +495,7 @@ public sealed partial class Binding
             this.ReportIssue(issues[i]);
         }
 
+        this.ReportResolvedOriginRecords();
         for (var i = 0; i < derivedIssues.Count; i++)
         {
             var issue = derivedIssues[i];

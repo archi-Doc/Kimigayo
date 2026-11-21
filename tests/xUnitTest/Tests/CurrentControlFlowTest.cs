@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
@@ -250,6 +251,78 @@ public class CurrentControlFlowTest
             }
 
             return c.Binding.GuessCompletionWork - before;
+        }
+    }
+
+    // SPEC 14.9.3 (R7-N5 B6a): N nested labeled loops whose innermost body exits to each label, innermost first, close every target
+    // at its Outward chain's tail, against the chain's order. Without re-adds only the cells above the target, so one composition of
+    // the body does work quadratic in N (the merges' chain reads), not cubic: each doubling of N at most five times the work.
+    [Fact]
+    public void ClosingAgainstTheChainsOrderIsQuadratic()
+    {
+        long[] work = [Work(30), Work(60), Work(120)];
+        Assert.True(work[1] <= 5 * work[0] && work[2] <= 5 * work[1], $"guess walk {string.Join(", ", work)}");
+
+        static long Work(int depth)
+        {
+            var source = new System.Text.StringBuilder("func run(flag: bool) -> i32\n");
+            for (var i = 1; i <= depth; i++)
+            {
+                source.Append(' ', 4 * i).Append("label l").Append(i).Append(": loop\n");
+            }
+
+            for (var i = depth; i >= 1; i--)
+            {
+                source.Append(' ', 4 * (depth + 1)).Append("if flag => exit to l").Append(i).Append('\n');
+            }
+
+            var c = Parse(source.Append("func other() => missing()\n").ToString());
+            Assert.False(c.Bind().IsComplete);
+            var body = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "run").Body!;
+            var before = c.Binding.GuessCompletionWork;
+            Assert.True(c.Binding.GuessedCompletionNodes(body, body).IsEmpty);
+            return c.Binding.GuessCompletionWork - before;
+        }
+    }
+
+    // R7-N5 B6b: a query memo's row holds only in the query that wrote it (Clear advances the instance's query; a row of another query
+    // reads absent), so a guess query asked again, in the same pass and after an edit's rebind, walks again and records its guessed node
+    // again; a row the earlier query left would answer without recording it.
+    [Fact]
+    public void AGuessQueryAskedAgainAnswersTheSameNodes()
+    {
+        var c = Parse("func run(flag: bool)\n    require flag else => missing()\n");
+        Assert.False(c.Bind().IsComplete);
+        for (var i = 0; i < 3; i++)
+        {
+            if (i == 2)
+            {
+                c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+                Assert.False(c.Bind().IsComplete);
+            }
+
+            var body = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<RequireKoto>().Single().ElseBody;
+            var nodes = c.Binding.GuessedCompletionNodes(body, body);
+            Assert.True(nodes.Length == 1 && nodes[0] == body, $"query {i}: {nodes.Length} nodes");
+        }
+    }
+
+    // R7-N5 B6b (the Front's C6): a query number skips 0, the number an absent row carries (Binding.NextQuery, TypeMemo.Begin's step
+    // too), so the first query after the number's wrap reads a node no query of the pass wrote as absent and composes it, recording its
+    // guess. The guess walk's number starts two values before the wrap; each query asks a failure body no earlier query asked.
+    [Fact]
+    public void AGuessQueryAfterTheNumbersWrapComposesItsNode()
+    {
+        var c = Parse("func run(flag: bool)\n    require flag else => missing()\n    require flag else => missing()\n    require flag else => missing()\n");
+        Assert.False(c.Bind().IsComplete);
+        var bodies = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<RequireKoto>().Select(static x => x.ElseBody).ToArray();
+        Assert.Equal(1, c.Binding.GuessedCompletionNodes(bodies[0], bodies[0]).Length);
+        var guessed = typeof(Binding).GetField("guessedCompletion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        typeof(StructuralCompletion).GetField("query", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(guessed, uint.MaxValue - 1);
+        for (var i = 1; i < bodies.Length; i++)
+        {
+            var nodes = c.Binding.GuessedCompletionNodes(bodies[i], bodies[i]);
+            Assert.True(nodes.Length == 1 && nodes[0] == bodies[i], $"body {i}: {nodes.Length} nodes");
         }
     }
 
