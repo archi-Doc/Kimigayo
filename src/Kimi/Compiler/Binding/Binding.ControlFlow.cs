@@ -11,6 +11,7 @@ public sealed partial class Binding
 
     private readonly List<ResultContext> resultPool = new();
     private readonly List<BoundType> resultTypes = new();
+    private readonly List<Koto?> resultValues = new(); // The source node of each of resultTypes (ResultCandidates), null for a formed Type.
     private StructuralCompletion? resultStructure;
     private int resultCursor;
 
@@ -246,7 +247,7 @@ public sealed partial class Binding
     // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
     private StructuralCompletion ResultStructure()
     {
-        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence);
+        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.ResultCompletions);
         structural.Clear();
         return structural;
     }
@@ -303,9 +304,10 @@ public sealed partial class Binding
     // SPEC 14.9.2: the Target Result Type of the collected sources, each source checked against it, and the Expression Type.
     private BoundType? DecideResult(Koto node, ResultContext context)
     {
-        var types = this.resultTypes;
+        var (types, values) = (this.resultTypes, this.resultValues);
         types.Clear();
-        var awaiting = this.ResultCandidates(context, types);
+        values.Clear();
+        var awaiting = this.ResultCandidates(context, types, values);
         if (context.Expected is null && types.Count == 0 && awaiting && this.AwaitsWithoutCandidate(node, context, types))
         {
             return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
@@ -327,13 +329,15 @@ public sealed partial class Binding
         }
         else
         {
-            // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
-            // is the explained one. A region on either side leaves rows, a regional target its source edges too; fixed and omitted targets keep
-            // their immediate/collecting fit.
+            // SPEC 15.6.1, 14.9: each result source fits the expected Type, its Origin positions rows of the body that A5 judges at the
+            // source's value, the value that supplies the fit's longer end (the use-site fit; R7-O1; H11b D5), a structural Unit at the
+            // join; the first that does not fit otherwise is the explained one. A region on either side leaves rows, a regional target its
+            // source edges too.
             for (var i = 0; i < types.Count; i++)
             {
                 ComparisonFailure fit;
-                if (!(this.RegionalAt(types[i], common, node) ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
+                var value = values[i] ?? node;
+                if (!(this.RegionalAt(types[i], common, value) ? this.CheckTypeUse(types[i], common, value, out fit) : this.FitsValueAt(types[i], common, node, value, out fit)))
                 {
                     context.Conflict();
                     if (failed is null)
@@ -367,6 +371,7 @@ public sealed partial class Binding
         }
 
         types.Clear();
+        values.Clear();
         if (context.Outcome == JoinOutcome.Conflict)
         {
             return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common, failure)

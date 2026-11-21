@@ -146,9 +146,9 @@ public class PairAnnotationBindingTest
     [InlineData("func nest<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [[x], [y]]\n    return items.length", null)]
     public void AnOriginPresenceDifferenceIsARelation(string source, string? code)
     {
-        var c = Parse(source);
-        c.Bind();
-        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        // R7-O1 H: the published Errors (a body relation is A5's record; Binding judges none).
+        Assert.Equal(code is null ? [] : [code], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code));
     }
 
     // SPEC 8.1.2, 15.3.6, 10.8 (PLAN G758): an original and an annotated pair occurrence at one generic slot, or a `var` pair local's

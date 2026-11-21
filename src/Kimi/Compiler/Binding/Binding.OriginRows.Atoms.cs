@@ -250,7 +250,8 @@ public sealed partial class Binding
         return new(meet, kind, ProjectionRole.None, region);
     }
 
-    // SPEC 15.3.4: a declaration atom is B's contract when its binder owns B's definition or a scope enclosing it.
+    // SPEC 15.3.4: a declaration atom is B's contract when its binder owns B's definition or a scope enclosing it; SPEC 8.13.2: a verified
+    // specialization keeps its original's call contract, so the original's binders (an inherited result-only Origin) are its contract too.
     private bool InContract(Koto? binder, ExecutableBody body)
     {
         if (this.BodyRoot(body) is not { } root)
@@ -266,6 +267,6 @@ public sealed partial class Binding
             }
         }
 
-        return ReferenceEquals(root, binder);
+        return ReferenceEquals(root, binder) || (root is FunctionKoto function && ReferenceEquals(this.GetSpecializationOriginal(function), binder));
     }
 }

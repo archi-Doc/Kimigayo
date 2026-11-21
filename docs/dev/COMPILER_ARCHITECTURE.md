@@ -264,8 +264,6 @@ is restricted to Parsing/Binding. IntrinsicId's limit is 27 since R8-I1 (DECISIO
     getters and `Koto.HasCurrentBinding`) and `BaseReferenceKoto.BasePath` (R7; R6-check H14
     ended their reads outside Binding except the tests', until R7, and the old control-flow analysis', which H10b-2 deleted; DECISIONS
     R5-M9, R5-M190, R5-M193);
-  - `Binding.IsTwinRecord`, the test MIR side's twin filter (R7's Problem records unit, with the twins; the owner, 2026-11-06,
-    「Cで決定します」; DECISIONS R4-M111, R5-M188, R5-M192);
   - F1's located `Unsupported_Kd` at a returned Closure's call,
     `Binding.ValueCalls.CallAtomsOf`'s `Foreign` row (F1's representation unit; DECISIONS R4-M152);
   - R5's temporaries (recorded by their first units, DECISIONS R5-M18; reviewed with the owner at R5's exit, R5-M148):
