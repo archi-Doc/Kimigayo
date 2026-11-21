@@ -698,7 +698,7 @@ internal struct PlanRow
     /// reads it: the Adjust rule's (<c>Binding.AdjustChildren</c>) take for the Error's form (its <c>KindOp</c>), an acquisition or a
     /// shared borrow, as it takes a valid node's child of the same form, an argument of an application Binding did not resolve by a
     /// stand-in, its evaluation as a value, which every candidate's operation reads as (DECISIONS G1178; SPEC 7.4, 10.1, 10.2); of two
-    /// takes of one operand (a user index's calls by case), the later that reads, as the column keeps the later take (R4-M145).
+    /// takes of one operand (a user index's calls by case), the later that reads, unlike the column, which keeps the later take (R4-M145).
     /// Default for a kept operand the form uses in place (a projection's receiver or base, a follow's, borrow's, runtime test's or case
     /// adaptation's operand, a group's operand), borrows exclusively, reads through a reference or whose acquisition failed, and for
     /// every other node. Written with <see cref="KeptInput"/> at each kept operand of each publish, whose column stays the kept mark

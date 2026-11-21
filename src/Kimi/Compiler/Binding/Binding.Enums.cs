@@ -146,6 +146,12 @@ public sealed partial class Binding
         return Complete(qualifier, type);
     }
 
+    // SPEC 6.5.1, 6.5.2: whether an application constructs the Case its callee selected: a qualified or leading-dot Case name written
+    // without generic arguments. A Case reached any other way (the value of a construction, a generic name) is not callable. The one test
+    // of BindCallCore's construction branch, and of KindOp's Aggregate arm for an application, resolved or failed.
+    private static bool ConstructsCase(InvocationKoto call, BindingSymbol? selected)
+        => selected?.EnumCase is not null && call.Method is MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.InferredCase };
+
     private BindingSymbol? InferredCase(SyntaxFormKoto reference, BindingScope scope, BoundType? expected)
     {
         if (expected is null && this.MissingExpectationCause(reference) is { } cause)
