@@ -81,8 +81,11 @@ public sealed partial class Binding
 
     // SPEC 23.1.2: whether a declaration is failed for the check reading it: Invalid, but not the declaration whose own validation step
     // runs, whatever that step recorded against it (validationStep: a self-read is no failed input). Every read of a declaration's
-    // failure in a proof goes through it: its context (InvalidDeclarationCause, which a leaf capability's Type reads too: a declaration
-    // whose own failure is its premise error keeps it, SPEC 8.2.3; F's C2 ruling 327) and a conformance's Contract.
+    // failure in a proof goes through it. Its readers (F's C2 ruling 328): InvalidDeclarationCause, the context's owner, which a leaf
+    // capability's Type reads (Capabilities' ObjectPayload and Sealed: a declaration whose own failure is its premise error keeps its
+    // context, SPEC 8.2.3, so k2n's own `Self is ObjectPayload` is judged); and the raw failure where a proof uses another declaration:
+    // a conformance's Contract (ResolveConformance's three arms; uses of a failed Contract rest on its record, RecursiveContractTest's
+    // `Missing is Copy` rows) and a called implementation or accessor (ProjectedReceiverProof; uses of a failed declaration rest).
     private bool DeclarationFailed(Koto declaration)
         => declaration.BindingState == BindingState.Invalid && !ReferenceEquals(declaration, this.validationStep);
 
