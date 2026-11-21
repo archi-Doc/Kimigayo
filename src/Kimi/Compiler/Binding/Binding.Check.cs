@@ -18,7 +18,8 @@ namespace Kimi.Compiler;
 // - Prohibitions: the counting decides no failure and writes no fact the publisher reads.
 public sealed partial class Binding
 {
-    // Each call Binding synthesized in this pass, with its consumer (BindSynthesizedCall).
+    // Each call Binding synthesized in this pass, with its consumer (BindSynthesizedCall); read by Check (VerdictUse, SettleSynthesizedCalls)
+    // and by the borrows' formation (CompleteArguments: a synthesized call's plan is its consumer's to commit).
     private Dictionary<InvocationKoto, Koto>? synthesizedCalls;
 
     // Whether a node failed now is this pass's failure: from a pass's start (RunPass: the library pass's and the program pass's) or a

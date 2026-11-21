@@ -12,9 +12,6 @@ namespace Kimi.Compiler;
 // literal's selected-precision bits (TryFloatLiteral).
 public sealed partial class Binding
 {
-    // SPEC 13.5.4: the explanation of a numeric conversion rejected for a different integer argument.
-    internal const string WrappingConversionNote = "A numeric conversion enters or leaves Wrapping<U> only from U itself, so the range check stays visible (SPEC 13.5.4)";
-
     // SPEC 13.5.4: a direct literal converted at compile time. The literal, its sign and its parentheses take the target Type,
     // and the conversion carries the folded constant that is produced instead of evaluating the literal.
     private static BoundType? CompleteFolded(ConversionKoto conversion, NumberLiteralKoto number, BoundType target, Int128 folded, ConversionBinding binding)
@@ -179,7 +176,7 @@ public sealed partial class Binding
         source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
         if (!this.IsArithmeticInteger(source, scope) || !this.IsArithmeticInteger(target, scope))
         {
-            return this.Fail(conversion, BindingFailure.InvalidWrapConversion);
+            return this.Record(conversion, BindingFailure.InvalidWrapConversion, []);
         }
 
         conversion.ConversionBinding = ConversionBinding.Wrap;
@@ -219,7 +216,7 @@ public sealed partial class Binding
             else
             {
                 this.BindNode(conversion.Left, scope);
-                return this.Fail(conversion, target.ContainsParameter ? BindingFailure.GenericBitConversion : BindingFailure.InvalidBitConversion);
+                return this.Record(conversion, target.ContainsParameter ? BindingFailure.GenericBitConversion : BindingFailure.InvalidBitConversion, []);
             }
 
             Complete(conversion.Right, target);
@@ -241,14 +238,14 @@ public sealed partial class Binding
         source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
         if (source.ContainsParameter || target.ContainsParameter)
         {
-            return this.Fail(conversion, BindingFailure.GenericBitConversion);
+            return this.Record(conversion, BindingFailure.GenericBitConversion, []);
         }
 
         var sourceFloating = source.IsFloatingPoint;
         var targetFloating = target.IsFloatingPoint;
         if (sourceFloating == targetFloating || BitWidth(sourceFloating ? target : source) != (ReferenceEquals(sourceFloating ? source : target, BoundType.F32) ? 32 : 64))
         {
-            return this.Fail(conversion, BindingFailure.InvalidBitConversion);
+            return this.Record(conversion, BindingFailure.InvalidBitConversion, []);
         }
 
         conversion.ConversionBinding = ConversionBinding.Bits;

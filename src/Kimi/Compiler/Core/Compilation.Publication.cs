@@ -18,7 +18,7 @@
 // typed fact where it fails), at its subject with its Ordinal as the condition; KeyOf is the key either form records, so a Cause names
 // its problem's record; a problem with Cause facts is PrerequisiteUnavailable_Kd naming its causes' keys, a MIR cause's by KeyOf, a Binding
 // cause's (-1) Binding's; a located problem with a fact, a Required or Limit fact whose argument the code's catalog row has no slot for,
-// a Binding cause without Binding's causes, an Inlined fact and a kind without a row are broken contracts, InternalInvariant_Kd at the
+// a Binding cause without Binding's causes and a kind without a row are broken contracts, InternalInvariant_Kd at the
 // subject under Ownership.Internal, as MirReport's defects. The fact table has one arm per ProblemFactKind: a site fact is a related
 // location with DIAGNOSTICS' A6 role and wording, a Relation fact Binding.OriginRelationFacts' evidence and locations, Required and Limit
 // the code's message arguments (Arguments: a Limit the last, a Required the one before it; OwnershipStorageLimit_Kd's requiredBytes and
@@ -106,7 +106,6 @@ public partial class Compilation
                     break;
                 case ProblemFactKind.Relation: // A relation without a body, Reason ends or row source.
                 case ProblemFactKind.Cause: // A Binding cause at a node with no resting causes, such as one Binding resolved.
-                case ProblemFactKind.Inlined: // MirReport.Add drops its problem.
                 default: // A kind without a row, as Binding's kinds are here (C-103).
                     this.Locate(Defect, DiagnosticCode.InternalInvariant_Kd, problem.Subject);
                     return;

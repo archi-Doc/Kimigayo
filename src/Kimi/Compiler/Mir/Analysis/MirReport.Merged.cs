@@ -85,7 +85,7 @@ internal sealed partial class MirReport
             CollectionsMarshal.AsSpan(this.memberSpans)[slot].Count++;
             if (CollectionsMarshal.AsSpan(this.merged)[slot].Requirement != problem.Requirement)
             {
-                this.Open(new(DiagnosticCode.InternalInvariant_Kd, defect, problem.Subject, MirProblem.NoBody, 0));
+                this.Open(MirProblem.WithoutBody(DiagnosticCode.InternalInvariant_Kd, defect, problem.Subject));
             }
         }
 

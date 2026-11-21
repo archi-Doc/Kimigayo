@@ -48,7 +48,7 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(top.Scopes.ToArray(), static x => x.Kind == MirScopeKind.Inlined);
         var failed = Assert.Single(top.OpaqueSites.ToArray());
         Assert.Equal("h(1)", c.SyntaxOf(failed.Source).ToString());
-        Assert.Equal(MirLocalRole.PendingSlot, top.Locals[Assert.Single(top.OpaqueRoots.Slice(failed.Start, failed.Count).ToArray())].Role);
+        Assert.Equal(MirLocalRole.PendingSlot, top.Locals[Assert.Single(top.OpaqueUses.Slice(failed.Start, failed.Count).ToArray()).Root].Role);
 
         static string[] Templates(MirBody body) => body.Blocks.ToArray().Where(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Arg: > 0 } })
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
@@ -286,7 +286,7 @@ public sealed partial class MirBuildTest
             var callees = body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call)
                 .Select(static x => x.Terminator.Callee.Symbol?.Name);
             var sites = body.OpaqueSites.ToArray().Select(x =>
-                $"; {c.SyntaxOf(x.Source)} reads {string.Join(" ", body.OpaqueRoots.Slice(x.Start, x.Count).ToArray().Select(r => body.Locals[r].Role))}");
+                $"; {c.SyntaxOf(x.Source)} reads {string.Join(" ", body.OpaqueUses.Slice(x.Start, x.Count).ToArray().Select(r => body.Locals[r.Root].Role))}");
             return $"{name}: {string.Concat(scopes)}{string.Join(" ", callees)}{string.Concat(sites)}";
         }), .. program.Records(MirRecordClass.Construction).Where(static x => x.Subject.Module == 0).Select(x => $"record {c.SyntaxOf(x.Subject)} {x.Code}")];
     }

@@ -715,7 +715,7 @@ internal sealed class MirMoveData(TyCtxt types)
     }
 
     // The events of a body's locals in reverse postorder (their chain and whether the first is their StorageLive; a StorageDead is none),
-    // and its Places' paths.
+    // and its Places' paths, an Opaque site's undecided use's at its own Place, which A1 checks (DECISIONS Z17).
     private struct Events(MirMoveData data, MirDataflow flow) : IMirUses
     {
         private int chain;

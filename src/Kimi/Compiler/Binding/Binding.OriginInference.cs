@@ -58,17 +58,41 @@ public sealed partial class Binding
         inference.Comparison = default;
         inference.Conditional = false;
         inference.Source = default;
+        inference.Marked.Clear();
+        inference.SlotVariableCount = 0;
         return inference;
     }
 
+    // SPEC 15.3.5: the polarity (1, -1 or 0) of component `index` of `type` at `polarity`, the one composition of the walks over an
+    // Origin solve's positions (CollectOriginInference, Infer, SlotComponentPolarity): a Constructed Type's slot by its schema's
+    // variance, a component of an invariant layer 0, a Function Type's parameters reversed.
+    private int ComponentPolarity(BoundType type, int index, int polarity, in CallableInstance comparison)
+        => type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } schema && index < schema.GenericSlots.Count ? ComposePolarity(polarity, schema.GenericSlots[index].OriginVariance)
+            : IsInvariantLayer(type, this, null, comparison) ? 0 : type.Kind == BoundTypeKind.Function && index == 0 ? -polarity : polarity;
+
     private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false, Koto? known = null)
     {
-        if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
+        // SPEC 8.1.2 (PLAN G758): the evidence's pair layer's slot is its OuterOrigin, the original's implicit `o` included, an Origin
+        // fixed in the evidence's body (G147 ruling 43: a slot's bound like any other); the pattern's own `o` is bound by its Type
+        // argument (SPEC 8.1.1), so the pattern's Origins are read as written.
+        if (!pattern.CarriesOrigin || !(actual.CarriesOrigin || actual.ContainsPairLayer))
         {
             return;
         }
 
-        if (pattern.Origin is { } p && actual.Origin is { } a && !this.InactiveOuterOrigin(pattern, this, null, inference.Comparison))
+        // G1128 (B2): BU-55's per-query table while a slot's bindings are collected: a repeated (pattern, actual, polarity) adds the
+        // same bounds again. Scoped to that collection, whose queries share `result`, `known`, the comparison and the quantifiers.
+        if (this.slotCollectMemo is { } memo)
+        {
+            if (!memo.Add((pattern, actual, polarity)))
+            {
+                return;
+            }
+
+            this.slotWalks++;
+        }
+
+        if (pattern.Origin is { } p && this.OuterOrigin(actual) is { } a && !this.InactiveOuterOrigin(pattern, this, null, inference.Comparison))
         {
             // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, as the walk's (SlotCondition).
             Add(p, a, polarity, SlotCondition(actual, this, inference.Use, inference.Comparison));
@@ -92,14 +116,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
-            var sign = IsInvariantLayer(pattern, this, null, inference.Comparison) ? 0 :
-                pattern.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
-            if (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema)
-            {
-                sign = ComposePolarity(polarity, schema.GenericSlots[i].OriginVariance);
-            }
-
-            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result, known);
+            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, this.ComponentPolarity(pattern, i, polarity, inference.Comparison), result, known);
         }
 
         inference.Quantifiers.RemoveRange(enclosing, inference.Quantifiers.Count - enclosing);
@@ -139,12 +156,15 @@ public sealed partial class Binding
     // (SPEC 15.6.1, 10.4); the selected call judges them after selection. A call's inputs' well-formedness (SPEC 15.6.4 step 3) also
     // shortens the solution (OriginInference.WellFormed), and the selected call judges it at each input (RequireInputPremises), so it
     // is never verified here. The trials' requests share a premise session (PLAN G778).
-    private bool SolveOriginInference(OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType = null, bool select = false)
+    // G1128 R1.3 (e): `slotValues`, the values of the call's slot variables, a span of their count its caller rents for this solve (empty
+    // when the solve has none).
+    private bool SolveOriginInference(
+        OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues, BoundType? declaringType = null, bool select = false)
     {
         var session = this.OpenPremiseSession();
         try
         {
-            return this.SolveOriginInferenceInSession(inference, origins, inputs, declaringType, select);
+            return this.SolveOriginInferenceInSession(inference, origins, inputs, slotValues, declaringType, select);
         }
         finally
         {
@@ -154,7 +174,7 @@ public sealed partial class Binding
 
     // The local functions that read or write the solution take its spans as parameters: a local function cannot capture a span.
     private bool SolveOriginInferenceInSession(
-        OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType, bool select)
+        OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues, BoundType? declaringType, bool select)
     {
         var binder = inference.Binder;
         var use = inference.Use;
@@ -182,79 +202,57 @@ public sealed partial class Binding
         // Origin from its bounds, keeping contextual inputs that have no Origin equation.
         foreach (var variable in inference.Variables)
         {
-            Set(variable.Origin, null, origins, inputs);
-        }
-
-        var count = inference.Variables.Count;
-        var converged = false;
-        for (var pass = 0; pass <= count * count; pass++)
-        {
-            var changed = false;
-            foreach (var variable in inference.Variables)
-            {
-                var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs);
-                var candidate = variable.Polarity == 2 ? lower : upper ?? lower;
-                if (variable.Polarity == 3 && (upper is null || lower is null ||
-                    !this.ProvesOriginOutlives(upper, lower, use, inference.Comparison) || !this.ProvesOriginOutlives(lower, upper, use, inference.Comparison)))
-                {
-                    candidate = null;
-                }
-
-                if (!ReferenceEquals(Get(variable.Origin, origins, inputs), candidate))
-                {
-                    Set(variable.Origin, candidate, origins, inputs);
-                    changed = true;
-                }
-            }
-
-            if (!changed)
-            {
-                converged = true;
-                break;
-            }
-        }
-
-        if (!converged && !select)
-        {
-            return false;
+            Set(variable.Origin, null, origins, inputs, slotValues);
         }
 
         // A variable without a principal solution takes a representative, so that its relations are judged at their own sources: an
         // invariant one its fixed equality partner, else the meet of its upper bounds, else its lower bound proven to outlive every
         // other (SPEC 15.3.6's covariant and contravariant candidates; the owner's O-350 (a)), each read from the solution reached, so
-        // neither the order of the bounds nor that of the variables decides it. For one open variable the meet satisfies every bound
-        // whenever any Origin does; a bound between two open variables is not read, since each is read where the other is still open
-        // (PLAN: two variables without a principal solution related by a clause). A variable with neither stays open, in a call a
-        // region of the body (SPEC 15.3.6). A call's selection judges no Origin relation (SPEC 15.6.1); a comparison judges every bound
-        // against the representative, and its walk every member, so a variable at both covariant and contravariant positions whose
-        // bounds admit a choice is accepted (SPEC 15.3.7: compatibility admits every call the requirement allows; the owner's O-348 (a)).
-        var open = 0;
-        foreach (var variable in inference.Variables)
+        // neither the order of the bounds nor that of the variables decides it. The solve holds each representative it takes and runs
+        // the fixed point again over the other variables until a round takes no new one (PLAN G960's fixed point, widened to every
+        // bound; G1128 R1.3 (i)), so a variable bounded through a held one, such as a per-call Origin under an input's premise (G1115),
+        // reads its value. For one open variable the meet satisfies every bound whenever any Origin does; a bound between two open
+        // variables is not read, since each is read where the other is still open (PLAN: two variables without a principal solution
+        // related by a clause). A variable with neither stays open, in a call a region of the body (SPEC 15.3.6). A call's selection
+        // judges no Origin relation (SPEC 15.6.1); a comparison judges every bound against the representative, and its walk every
+        // member, so a variable at both covariant and contravariant positions whose bounds admit a choice is accepted (SPEC 15.3.7:
+        // compatibility admits every call the requirement allows; the owner's O-348 (a)).
+        var count = inference.Variables.Count;
+        inference.Marked.Clear();
+        var held = this.flagScratch.Rent(count);
+        try
         {
-            open += Get(variable.Origin, origins, inputs) is null ? 1 : 0;
-        }
-
-        if (open > 0)
-        {
-            var representatives = this.originScratch.Rent(count);
-            try
+            Array.Clear(held, 0, count);
+            for (var round = 0; round <= count; round++)
             {
-                for (var i = 0; i < count; i++)
+                if (!Converge(held, origins, inputs, slotValues) && !select)
                 {
-                    representatives[i] = (Get(inference.Variables[i].Origin, origins, inputs) is null ? Representative(inference.Variables[i], origins, inputs) : null)!;
+                    return false;
                 }
 
-                for (var i = 0; i < count; i++)
+                if (!Hold(held, round == 0, origins, inputs, slotValues))
                 {
-                    if (representatives[i] is { } representative)
-                    {
-                        Set(inference.Variables[i].Origin, representative, origins, inputs);
-                    }
+                    break;
                 }
             }
-            finally
+        }
+        finally
+        {
+            this.flagScratch.Return(held);
+        }
+
+        // G1128 R1.3 (i) (G147 rulings 23, 26): the solve's published fact (OriginInference.Marked) grows from the variables whose own
+        // equality failed to every variable whose bounds or premises read a marked one, a direct read inside the solve.
+        for (var grown = inference.Marked.Count != 0; grown;)
+        {
+            grown = false;
+            foreach (var variable in inference.Variables)
             {
-                this.originScratch.Return(representatives, clearArray: true);
+                if (!inference.ReadsMarked(variable.Origin) && ReadsMarkedBound(variable.Origin))
+                {
+                    inference.Marked.Add(variable.Origin);
+                    grown = true;
+                }
             }
         }
 
@@ -269,7 +267,7 @@ public sealed partial class Binding
             if (Waited(variable))
             {
                 var region = this.CallRegion(use, variable.Origin.Slot);
-                Set(variable.Origin, Get(variable.Origin, origins, inputs) is { } solved ? this.Meet(inference.Open(region, solved), region) : region, origins, inputs);
+                Set(variable.Origin, Get(variable.Origin, origins, inputs, slotValues) is { } solved ? this.Meet(inference.Open(region, solved), region) : region, origins, inputs, slotValues);
             }
         }
 
@@ -280,8 +278,8 @@ public sealed partial class Binding
 
         foreach (var bound in inference.Bounds)
         {
-            var longer = Resolve(bound.Longer, bound.LongerVariable, origins, inputs);
-            var shorter = Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs);
+            var longer = Resolve(bound.Longer, bound.LongerVariable, origins, inputs, slotValues);
+            var shorter = Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues);
             // In a comparison the solve judges no bound, only that it is solved: each bound is a member position, a clause or a
             // well-formedness premise that the comparison's owning check judges after the solve, once (ContractFits,
             // CompareCallableContracts). Outside a comparison (a call) the solve's check is the judge.
@@ -290,12 +288,11 @@ public sealed partial class Binding
             {
                 // An end left open holds a variable without a representative, itself or as an operand of a meet: no upper bound, and
                 // lower bounds none of which outlives the others, whose first such pair fails here; or no bound that reached a fixed
-                // Origin when the representatives were taken, the located limit: none at all (SPEC 15.3.6: "If none is reached, the
-                // variable has no candidate"), or one only through another variable without a principal solution, whose representative
-                // was taken at the same time (until PLAN G960 gives every variable its value inside the fixpoint).
+                // Origin, even through a held representative, the located limit (SPEC 15.3.6: "If none is reached, the variable has no
+                // candidate").
                 var failure = longer is not null && shorter is not null
                     ? BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, bound.Equality)
-                    : Limits(Open(longer is null ? bound.Longer : bound.Shorter, origins, inputs), false, origins, inputs).Conflict;
+                    : Limits(Open(longer is null ? bound.Longer : bound.Shorter, origins, inputs, slotValues), false, origins, inputs, slotValues).Conflict;
                 inference.Failure = failure.Kind == ComparisonFailureKind.None ? new(ComparisonFailureKind.Limit, null, null, false, inference.Comparison) : failure;
                 return false;
             }
@@ -306,7 +303,7 @@ public sealed partial class Binding
         // SPEC 15.3.6, from the solution reached so far: the meet of a variable's upper bounds, its lower bound proven to outlive every
         // other (none when no lower bound does), and the failure of its first pair of lower bounds of which neither outlives the other.
         // `shortens`: an input's well-formedness may shorten the meet (not for an invariant variable).
-        (BoundOrigin? Upper, BoundOrigin? Lower, ComparisonFailure Conflict) Limits(BoundOrigin variable, bool shortens, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        (BoundOrigin? Upper, BoundOrigin? Lower, ComparisonFailure Conflict) Limits(BoundOrigin variable, bool shortens, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
             BoundOrigin? upper = null;
             BoundOrigin? lower = null;
@@ -314,12 +311,12 @@ public sealed partial class Binding
             var incomparable = false;
             foreach (var bound in inference.Bounds)
             {
-                if (bound.Condition == 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Resolve(bound.Longer, bound.LongerVariable, origins, inputs) is { } limit)
+                if (bound.Condition == 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Bounding(bound.Longer, bound.LongerVariable, origins, inputs, slotValues) is { } limit)
                 {
                     upper = upper is null ? limit : this.Meet(upper, limit);
                 }
 
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs) is { } floor)
+                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Bounding(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor)
                 {
                     if (lower is null || this.ProvesOriginOutlives(floor, lower, use, inference.Comparison))
                     {
@@ -334,7 +331,7 @@ public sealed partial class Binding
             }
 
             // A later lower bound can outlive an incomparable pair: the strongest lower bound is then that one, whatever the order.
-            if (incomparable && Strongest(variable, origins, inputs) is { } strongest)
+            if (incomparable && Strongest(variable, origins, inputs, slotValues) is { } strongest)
             {
                 (lower, incomparable) = (strongest, false);
             }
@@ -349,7 +346,7 @@ public sealed partial class Binding
             for (var i = 0; inference.Conditional && i < inference.Bounds.Count; i++)
             {
                 var bound = inference.Bounds[i];
-                if (bound.Condition != 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Resolve(bound.Longer, bound.LongerVariable, origins, inputs) is { } limit &&
+                if (bound.Condition != 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Bounding(bound.Longer, bound.LongerVariable, origins, inputs, slotValues) is { } limit &&
                     (unconditional is null || !this.ProvesOriginOutlives(limit, unconditional, use, inference.Comparison, bound.Condition)))
                 {
                     upper = upper is null ? limit : this.Meet(upper, limit);
@@ -363,7 +360,7 @@ public sealed partial class Binding
             // its other bounds are then checked against.
             for (var i = 0; (upper is not null || inference.PremiseSolved.Contains(variable)) && shortens && i < inference.WellFormed.Count; i++)
             {
-                if (ReferenceEquals(inference.WellFormed[i].Shorter, variable) && Resolve(inference.WellFormed[i].Longer, true, origins, inputs) is { } stored &&
+                if (ReferenceEquals(inference.WellFormed[i].Shorter, variable) && Bounding(inference.WellFormed[i].Longer, true, origins, inputs, slotValues) is { } stored &&
                     (upper is null || !this.ProvesOriginOutlives(stored, upper, use, inference.Comparison)))
                 {
                     upper = upper is null ? stored : this.Meet(upper, stored);
@@ -374,12 +371,12 @@ public sealed partial class Binding
         }
 
         // The lower bound of `variable` proven to outlive every other, if any.
-        BoundOrigin? Strongest(BoundOrigin variable, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        BoundOrigin? Strongest(BoundOrigin variable, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
             foreach (var bound in inference.Bounds)
             {
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs) is { } floor &&
-                    OutlivesEveryFloor(variable, floor, origins, inputs))
+                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Bounding(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor &&
+                    OutlivesEveryFloor(variable, floor, origins, inputs, slotValues))
                 {
                     return floor;
                 }
@@ -388,11 +385,11 @@ public sealed partial class Binding
             return null;
         }
 
-        bool OutlivesEveryFloor(BoundOrigin variable, BoundOrigin candidate, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        bool OutlivesEveryFloor(BoundOrigin variable, BoundOrigin candidate, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
             foreach (var bound in inference.Bounds)
             {
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs) is { } floor &&
+                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Bounding(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor &&
                     !this.ProvesOriginOutlives(candidate, floor, use, inference.Comparison))
                 {
                     return false;
@@ -402,9 +399,128 @@ public sealed partial class Binding
             return true;
         }
 
+        // The fixed point over the variables not held: each takes its candidate from the solution reached (Limits) until a pass changes
+        // none; false when it does not converge.
+        bool Converge(bool[] isHeld, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
+        {
+            for (var pass = 0; pass <= count * count; pass++)
+            {
+                var changed = false;
+                for (var v = 0; v < count; v++)
+                {
+                    var variable = inference.Variables[v];
+                    if (isHeld[v])
+                    {
+                        continue;
+                    }
+
+                    var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs, slotValues);
+                    var candidate = variable.Polarity == 2 ? lower : upper ?? lower;
+                    if (variable.Polarity == 3 && (upper is null || lower is null ||
+                        !this.ProvesOriginOutlives(upper, lower, use, inference.Comparison) || !this.ProvesOriginOutlives(lower, upper, use, inference.Comparison)))
+                    {
+                        candidate = null;
+                    }
+
+                    if (!ReferenceEquals(Get(variable.Origin, origins, inputs, slotValues), candidate))
+                    {
+                        Set(variable.Origin, candidate, origins, inputs, slotValues);
+                        changed = true;
+                    }
+                }
+
+                if (!changed)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // The representatives of the variables still without a solution, taken at once from the solution reached and held; in the
+        // first round an invariant one whose own equality fails is marked (OriginInference.Marked). False when none is taken.
+        bool Hold(bool[] isHeld, bool first, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
+        {
+            var taken = false;
+            var representatives = this.originScratch.Rent(count);
+            try
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    representatives[i] = (Get(inference.Variables[i].Origin, origins, inputs, slotValues) is null ? Representative(inference.Variables[i], origins, inputs, slotValues) : null)!;
+                    if (first && representatives[i] is not null && inference.Variables[i].Polarity == 3 && EqualityFails(inference.Variables[i].Origin))
+                    {
+                        inference.Marked.Add(inference.Variables[i].Origin);
+                    }
+                }
+
+                for (var i = 0; i < count; i++)
+                {
+                    if (representatives[i] is { } representative)
+                    {
+                        Set(inference.Variables[i].Origin, representative, origins, inputs, slotValues);
+                        isHeld[i] = taken = true;
+                    }
+                }
+            }
+            finally
+            {
+                this.originScratch.Return(representatives, clearArray: true);
+            }
+
+            return taken;
+        }
+
+        // Whether an invariant variable's own equality fails: two of its fixed equality partners (the pairs of bounds Representative
+        // reads) are not proven equal. Its other bounds (a clause, a covariant binding, a premise) are checks of their own.
+        bool EqualityFails(BoundOrigin variable)
+        {
+            BoundOrigin? first = null;
+            foreach (var bound in inference.Bounds)
+            {
+                if (bound.LongerVariable && !bound.ShorterVariable && ReferenceEquals(bound.Longer, variable) &&
+                    inference.IndexOf((Longer: bound.Shorter, Shorter: variable, LongerVariable: false, ShorterVariable: true)) >= 0)
+                {
+                    if (first is null)
+                    {
+                        first = bound.Shorter;
+                    }
+                    else if (!this.ProvesOriginOutlives(first, bound.Shorter, use, inference.Comparison) || !this.ProvesOriginOutlives(bound.Shorter, first, use, inference.Comparison))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // Whether a bound or an input's premise of `variable` names a marked variable at its other end, itself or as an operand of a meet.
+        bool ReadsMarkedBound(BoundOrigin variable)
+        {
+            foreach (var bound in inference.Bounds)
+            {
+                if ((ReferenceEquals(bound.Shorter, variable) && inference.ReadsMarked(bound.Longer)) || (ReferenceEquals(bound.Longer, variable) && inference.ReadsMarked(bound.Shorter)))
+                {
+                    return true;
+                }
+            }
+
+            foreach (var premise in inference.WellFormed)
+            {
+                if (ReferenceEquals(premise.Shorter, variable) && inference.ReadsMarked(premise.Longer))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         // The representative of a variable without a principal solution (above): an invariant one's fixed equality partner, an Origin
         // that bounds it from both sides; else the meet of its upper bounds, else its strongest lower bound.
-        BoundOrigin? Representative((BoundOrigin Origin, int Polarity) variable, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        BoundOrigin? Representative((BoundOrigin Origin, int Polarity) variable, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
             for (var i = 0; variable.Polarity == 3 && i < inference.Bounds.Count; i++)
             {
@@ -416,7 +532,7 @@ public sealed partial class Binding
                 }
             }
 
-            var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs);
+            var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs, slotValues);
             return upper ?? lower;
         }
 
@@ -430,27 +546,39 @@ public sealed partial class Binding
             this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments) : origin;
 
         // The first variable without a solution that leaves `expression` unresolved: the expression itself or an operand of its meet.
-        BoundOrigin Open(BoundOrigin expression, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        BoundOrigin Open(BoundOrigin expression, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
             for (var i = 0; i < expression.Operands.Count; i++)
             {
-                if (Resolve(expression.Operands[i], true, origins, inputs) is null)
+                if (Resolve(expression.Operands[i], true, origins, inputs, slotValues) is null)
                 {
-                    return Open(expression.Operands[i], origins, inputs);
+                    return Open(expression.Operands[i], origins, inputs, slotValues);
                 }
             }
 
             return expression;
         }
 
-        BoundOrigin? Get(BoundOrigin origin, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        // A call's slot variable is the solve's third kind of variable, valued in the per-solve span (R1.3 (e) 4: one index space).
+        BoundOrigin? Get(BoundOrigin origin, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
+            if (IsSlotVariable(origin))
+            {
+                return slotValues[SlotVariableIndex(origin, slotValues)];
+            }
+
             var values = origin.Kind == OriginKind.Parameter ? origins : inputs;
             return (uint)origin.Slot < (uint)values.Length ? values[origin.Slot] : null;
         }
 
-        void Set(BoundOrigin origin, BoundOrigin? value, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        void Set(BoundOrigin origin, BoundOrigin? value, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
+            if (IsSlotVariable(origin))
+            {
+                slotValues[SlotVariableIndex(origin, slotValues)] = value!;
+                return;
+            }
+
             var values = origin.Kind == OriginKind.Parameter ? origins : inputs;
             if ((uint)origin.Slot < (uint)values.Length)
             {
@@ -458,16 +586,23 @@ public sealed partial class Binding
             }
         }
 
-        BoundOrigin? Resolve(BoundOrigin expression, bool substitute, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        // A bound's other end as a bound of a variable: none when it reads a marked variable (G1128 R1.3 (i), G147 ruling 43 (4)): a
+        // marked variable's held value is a stand-in that no check reads, so it bounds no other variable either (rule W inside the
+        // solve), and a variable bounded through it takes its candidate from its other bounds.
+        BoundOrigin? Bounding(BoundOrigin end, bool substitute, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
+            => inference.ReadsMarked(end) ? null : Resolve(end, substitute, origins, inputs, slotValues);
+
+        BoundOrigin? Resolve(BoundOrigin expression, bool substitute, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
             if (!substitute)
             {
                 return expression;
             }
 
-            if (ReferenceEquals(expression.Binder, binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input)
+            if ((ReferenceEquals(expression.Binder, binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input) ||
+                inference.SolvesSlotVariable(expression))
             {
-                return Get(expression, origins, inputs);
+                return Get(expression, origins, inputs, slotValues);
             }
 
             if (expression.Kind != OriginKind.Intersection)
@@ -478,7 +613,7 @@ public sealed partial class Binding
             var meet = BoundOrigin.Static;
             for (var i = 0; i < expression.Operands.Count; i++)
             {
-                if (Resolve(expression.Operands[i], true, origins, inputs) is not { } operand)
+                if (Resolve(expression.Operands[i], true, origins, inputs, slotValues) is not { } operand)
                 {
                     return null;
                 }
@@ -516,6 +651,15 @@ public sealed partial class Binding
         // position fixes this Origin" fact: U4's Decided column takes it over (its removal condition).
         internal List<BoundOrigin> PremiseSolved { get; } = new();
 
+        // G1128 R1.3 (i) (G147 rulings 23, 26, 29): the solve's published fact, written by each solve: the invariant variables whose own
+        // equality failed (two fixed equality partners not proven equal; its record is the partners' `==`, formed by the fits) and every
+        // variable whose bounds or premises read a marked one. The held value of a marked variable is read by no check: each check of the
+        // selected call or construction that reads one rests on it (rule W, SPEC 23.1.2), its clauses (JudgeCallClauses) and its inputs'
+        // premises (RequireInputPremises). The result's fit at its destination and a construction Type's clause proof read the substituted
+        // value instead (PLAN: a dependent record of a failed equality outside the solve's readers), as does a value call, whose solve
+        // its solution does not carry.
+        internal List<BoundOrigin> Marked { get; } = new();
+
         // J2 (SPEC 15.3.6; the owner's O-362 (a); PLAN G936): the slots of the callee's own Origin parameters that an evidence position
         // and a position without evidence both name (SlotSolution.OpenWaited, the one writer, a candidate's late solve only): the solve
         // writes a covariant one as its evidence candidate met with the call's region (CallRegion), which the waiting part's check
@@ -540,8 +684,8 @@ public sealed partial class Binding
         internal (byte Member, Koto? Clause, bool Equality) Source { get; set; }
 
         // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits), or the located limit when a
-        // variable left open had no bound that reached a fixed Origin: none at all, or one only through another variable's
-        // representative taken at the same time, until PLAN G960 (SolveOriginInference); None when no bound failed.
+        // variable left open had no bound that reached a fixed Origin, even through a held representative (SolveOriginInference); None
+        // when no bound failed.
         internal ComparisonFailure Failure { get; set; }
 
         // Whether a bound was added with a condition, so a solve folds conditional limits (SolveOriginInference).
@@ -657,9 +801,49 @@ public sealed partial class Binding
             return -1;
         }
 
+        // Whether `origin` or an operand of its meet is a marked variable (Marked): the variable itself or a pattern's spelling of it,
+        // the same kind, binder and slot.
+        internal bool ReadsMarked(BoundOrigin origin)
+        {
+            if (this.Marked.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var marked in this.Marked)
+            {
+                if (ReferenceEquals(marked, origin) || (origin.Kind is OriginKind.Parameter or OriginKind.Input && marked.Kind == origin.Kind &&
+                    ReferenceEquals(marked.Binder, origin.Binder) && marked.Slot == origin.Slot))
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (this.ReadsMarked(origin.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // G1128 (R1.3 (b), (e)): the count of the call's slot variables, measured once at the slot step (OpenSlotVariables), the width
+        // of the span their solve's values take; reset by BeginOriginInference and when the solve's values settle them
+        // (SettleSlotVariables), after which a slot variable left without a value is the call's region, no variable.
+        internal int SlotVariableCount { get; set; }
+
+        // Whether `origin` is one of the call's slot variables this solve values (SlotVariableCount): the one test of the solve's third
+        // kind of variable (Discover, the solver's Resolve, SlotValue).
+        internal bool SolvesSlotVariable(BoundOrigin origin)
+            => IsSlotVariable(origin) && ReferenceEquals(origin.Binder, this.Use) && SlotVariableIndex(origin) < this.SlotVariableCount;
+
         internal void Discover(BoundOrigin expression, int polarity)
         {
-            if (ReferenceEquals(expression.Binder, this.Binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input)
+            if ((ReferenceEquals(expression.Binder, this.Binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input) ||
+                this.SolvesSlotVariable(expression))
             {
                 for (var i = 0; i < this.Variables.Count; i++)
                 {

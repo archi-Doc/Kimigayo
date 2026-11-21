@@ -38,7 +38,6 @@ The surface syntax of `.kimiproj` and `.kimisln` is implementation-defined. An u
 | NativeRequirements, NativeLibraries | per-target records | empty | [§20.4](#204-native-libraries) |
 | Optimization | `O0` or `O2` | `O2` | [§20.3.2](#2032-builds-and-artifacts) |
 | OutputPath | `.ll` path | `bin/<target>/<Name>.ll` | [§20.3.2](#2032-builds-and-artifacts) |
-| LlvmBin | directory | none | [§20.3.2](#2032-builds-and-artifacts) |
 
 ### 20.2.1. Targets and compile-time settings
 
@@ -83,7 +82,7 @@ group Log
 | `tatara` | Runs a session in one process. It reads lines from standard input: a `build ...` or `run ...` line runs as `kimi build ...` or `kimi run ...`; `exit` or end of input ends the session; an empty line does nothing; any other line fails. A failed line, one whose exit code is not 0, does not end the session; the session returns 1 if any line failed and 0 otherwise. Ctrl+C during a line cancels only that line (the line's exit code is 130), and a second Ctrl+C during that line ends the process with 130; at the prompt Ctrl+C shows the prompt again, and while redirected input is awaited it cancels the session. A fatal error of the native build ends the session. |
 | `test <input>` | Runs tests ([§20.6](#206-test-execution)). |
 | `pack`, `publish`, `store verify` | Package operations ([§20.5](#205-packages-and-locks)). |
-| `toolchain verify` | Checks the toolchain without loading a project ([§20.3.2](#2032-builds-and-artifacts)). |
+| `toolchain verify` | Checks the toolchain the compiler carries, without loading a project ([§20.3.2](#2032-builds-and-artifacts)). `--Report <path>` writes its record. |
 | `lsp` | Serves the Language Server Protocol on standard input and output ([§23.4](../spec/23-compiler-services.md#234-language-server)). |
 
 - Option names are case-sensitive and spelled as this chapter writes them (`--Format`, never `--format`). `--Format` takes `text`, the default, or `json`. Boolean options take `true` or `false`; `--no-build` alone means true.
@@ -128,7 +127,7 @@ For `OutputPath` `Name.ll`, `emit` writes `Name.ll` and `Name.link.json`. An App
 - Reuse of earlier results follows [§A.2](appendices/A-compiler-requirements.md#a2-reuse-of-earlier-work).
 - An Unsupported operation produces no placeholder binary.
 
-**Toolchain.** `tatara.dll` (LLVM and LLD in one library) and the LLVM tools that setup installs live in one directory, the toolchain root: `--ToolchainRoot`, else `KIMI_TOOLCHAIN_ROOT`, else `toolchain` beside the compiler. A missing selected root is an error; PATH is never searched and nothing is downloaded. A native build runs no LLVM tool: it loads the root's `tatara.dll` and checks its ABI and LLVM version before any LLVM or LLD work; the reserved supplies are the compiler's (§20.4). `toolchain verify`'s command-line `LlvmBin` names the LLVM tool directory it checks; elsewhere a command-line or project `LlvmBin` and a link manifest's `toolchain.llvmBin` are accepted, and no native build reads them. A relative root or command-line `LlvmBin` is relative to the invocation directory. Only `toolchain verify` checks the tools' versions against the pinned LLVM release and the tools' and `tatara.dll`'s hashes against setup's installation record.
+**Toolchain.** A native build reads no toolchain root and runs no LLVM tool: it runs Tatara (LLVM and LLD in one library), which the compiler carries (`tatara.dll` beside the compiler), and checks Tatara's ABI and LLVM version before any LLVM or LLD work; the reserved supplies are supplied by the compiler (§20.4). PATH is never searched and nothing is downloaded. `toolchain verify` reads only what the compiler carries and runs no tool: it checks Tatara's ABI and LLVM version as a build does, reports them with Tatara's build identity, and checks each reserved supply's bytes and kernel32's embedded definition against the compiler's pinned hashes. A Tatara that does not load or match, or a supply's mismatch, is a toolchain failure; a definition mismatch is an Internal error (a defective build of the compiler). No command reads a toolchain root: a build accepts `--ToolchainRoot` and a command-line `LlvmBin` but does not read them, `toolchain verify` takes neither, and the compiler reads `KIMI_TOOLCHAIN_ROOT` nowhere. The project setting `LlvmBin` and a link manifest's `toolchain` member are errors: a project file that has the setting fails to load, naming the removal, and `build --Manifest` rejects such a manifest, asking for it to be emitted again.
 
 ## 20.4. Native libraries
 
@@ -137,7 +136,7 @@ A `#LibraryImport` ([§22.6](../spec/22-core-execution-and-foreign-functions.md#
 - `NativeRequirements` maps each target to logical names with a `Kind` (`static` or `import`) and optional `ContractId` and `Sha256`. Every selected import outside the reserved names needs one; checking reads no native file.
 - `NativeLibraries` maps each target to supplies: `Name`, `Input`, optional `Package` (default: the declaring Project), `ContractId` and `Sha256`. A supply for the declaring Project may add `Kind`, which also declares the requirement. A supply must match a required `ContractId` and never changes another module's requirements. Several supplies for one name and target must agree in content and `ContractId`.
 - `Input` is a `.lib` path, relative to the declaring Project's directory unless absolute; no search path is used. Each input is hashed when read, its hash assertions are checked, and the linker receives those bytes.
-- `kernel32` and `kimi_backend` are reserved supplies, supplied by the compiler: it carries their pinned bytes and stages and links them as it does an input. They need no entry, and a `NativeLibraries` entry for either is an error. `kernel32` provides every kernel32 function that the Kimi library and runtime import. Its exact symbol set is implementation-defined; a program's import of another kernel32 function is an error at native resolution.
+- `kernel32` and `kimi_backend` are reserved supplies, supplied by the compiler: it carries their pinned bytes and stages and links them as it does an input. They need no entry, and a `NativeLibraries` or `NativeRequirements` entry for either is an error. `kernel32` provides every kernel32 function that the Kimi library and runtime import. Its exact symbol set is implementation-defined; a program's import of another kernel32 function is an error at native resolution.
 - A supplied static library must not depend on CRT startup, automatic C/C++ dynamic initialization, TLS initialization or termination callbacks, or automatic `atexit` handlers; the program provides none of them. Zero-initialized and constant data are allowed.
 - Symbol resolution and linker directives are implementation-defined, but an ambiguous or unsupported native dependency, or one inconsistent with its declared `Kind`, is an error, never resolved by link order.
 

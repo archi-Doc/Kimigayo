@@ -22,6 +22,32 @@ public sealed partial class Binding
         => (candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
             (candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } && !ContainerBound(candidate, declaringType));
 
+    // G1128 R1.3 (h): the first slot of a reference whose bindings from S would take slot variables, or -1: two distinct bindings (the
+    // call's rent condition, SlotFrame.BindsDistinctTypes; Infer records a later one at a reference only where it differs in its
+    // Origins) whose met Type holds only Origins fixed at the reference,
+    // no input Origin of S (InputOrigins, SPEC 10.6, whose rule judges the rest). A reference has no late solve (SPEC 10.5.3 applies 10.8,
+    // but S's result bounds the other end: the gap of the design's R1.6), so such a slot is the located Unsupported_Kd at the reference
+    // (PLAN). One binding, or bindings of one Type, at any polarity give that binding (R1.3 (e)'s shortcut theorem), as dev binds it.
+    // Written Type arguments fix every slot, as at a call (FixCallSlots).
+    private static int VariableReferenceSlot(int count, SlotFrame frame, GenericsKoto? explicitReference, BoundType required, Koto use)
+    {
+        for (var i = 0; explicitReference is null && i < count; i++)
+        {
+            var perCall = 0UL;
+            var foreign = false;
+            if (frame.BindsDistinctTypes(i))
+            {
+                InputOrigins(frame.Types[i]!, required.Components[0], required.Binder, use, false, ref perCall, ref foreign);
+                if (perCall == 0 && !foreign)
+                {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
+    }
+
     private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope, bool erase = true)
     {
         if (this.ReferenceRequirements(use) is { } requirements)
@@ -77,6 +103,11 @@ public sealed partial class Binding
                 var state = this.Accessible(candidate, scope)
                     ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out constraint, operations.AsSpan(index * stride, stride - 1), trial)
                     : CandidateApplicability.Inapplicable;
+                if (this.referenceSlotFailure.Failure == ReferenceSlotFailure.SlotVariables)
+                {
+                    return this.Fail(use, BindingFailure.Unsupported); // G1128 R1.3 (h): the located limit, the reference's one record.
+                }
+
                 if (count == 1)
                 {
                     perCall = this.perCallReferenceSlot;
@@ -127,15 +158,9 @@ public sealed partial class Binding
                     return this.FailExplained(ref this.perCallSlots, use, BindingFailure.MissingOrigin, new PerCallSlotFact((FunctionKoto)only!.Declaration, slot.Slot, slot.Parameters, required));
                 }
 
-                if (slotFailure.Failure != ReferenceSlotFailure.None && only?.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
-                {
-                    // SPEC 10.5: the Type-mismatch Note names why the one generic candidate's slots did not bind from S.
-                    (this.referenceSlotFacts ??= new(ReferenceEqualityComparer.Instance))[use] = new(generic, slotFailure.Slot, slotFailure.Failure, KotoHelper.UnwrapParentheses(use) is GenericsKoto);
-                }
-
                 // SPEC 10.5.3, 10.7: the one candidate's record reads the signature its trial substituted, its Item over the arguments the
                 // trial bound (the written ones where given) and its container; with a slot unbound there is none, and the declaration's
-                // own signature is a Type mismatch whose Note names the slot. When only its Origin contract fails, the record names that
+                // own signature is the Type mismatch's found side. When only its Origin contract fails, the record names that
                 // contract (SPEC 15.6.1), with the candidate's own inputs instantiated: a member, else a condition of the candidate. A
                 // comparison that names no fact read the contract its failed clause made unavailable, so the record rests on that
                 // clause (SPEC 23.1.2, DECISIONS Q13 rule W).
@@ -260,7 +285,9 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (this.Accessible(candidate, scope) && this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) != CandidateApplicability.Inapplicable)
+            this.referenceSlotFailure = default;
+            if (this.Accessible(candidate, scope) && (this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) != CandidateApplicability.Inapplicable ||
+                this.referenceSlotFailure.Failure == ReferenceSlotFailure.SlotVariables))
             {
                 return true;
             }
@@ -291,10 +318,16 @@ public sealed partial class Binding
                 {
                     this.referenceSlotFailure = (-1, ReferenceSlotFailure.Constraint);
                 }
+                else if ((this.perCallReferenceSlot = this.PerCallReferenceSlot(use, symbol, function, required, scope, explicitReference, container)) is null &&
+                    VariableReferenceSlot(count, frame, explicitReference, required, use) is >= 0 and var met)
+                {
+                    // G1128 R1.3 (h): after dev's Constraint and SPEC 10.6's per-call rule, a slot whose distinct bindings would take slot
+                    // variables is the located limit, not an Origin conflict.
+                    this.referenceSlotFailure = (met, ReferenceSlotFailure.SlotVariables);
+                }
                 else
                 {
                     this.referenceSlotFailure = (count == 1 ? 0 : -1, ReferenceSlotFailure.OriginConflict);
-                    this.perCallReferenceSlot = this.PerCallReferenceSlot(use, symbol, function, required, scope, explicitReference, container);
                 }
             }
             else

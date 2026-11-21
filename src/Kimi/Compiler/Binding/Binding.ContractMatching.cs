@@ -66,29 +66,6 @@ public sealed partial class Binding
         return premises;
     }
 
-    // SPEC 9.4: whether the accessibility of every Type a Type names covers a and b, each distinct part judged once per call (DECISIONS
-    // BU-55, BU-58): a part met again was covered, or the walk has ended.
-    private bool TypeAccessCovers(BoundType type, BindingSymbol a, BindingSymbol b)
-        => this.AccessPart(type, a, b, this.visitedParts.Begin(this.storageVersion));
-
-    private bool AccessPart(BoundType type, BindingSymbol a, BindingSymbol b, uint query)
-    {
-        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !this.AccessCovers(symbol, a, b))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.FirstVisit(type.Components[i], query) && !this.AccessPart(type.Components[i], a, b, query))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     // SPEC 8.8.2: a path's conforming Type in its conformance scope, normalized there as both sides of each requirement are (the scope's
     // identity premises included). Every reading of a path's Self (its verification, inherited or declared, its requirement
     // identification and its associated bindings) is this one, so what the path keeps by a requirement (its RequirementMatches) has one
@@ -201,11 +178,13 @@ public sealed partial class Binding
                 for (var p = 0; p < premises.Operands.Length; p++)
                 {
                     if (premises.Operands[p] is IsKoto { BoundConstraint: { } constraint } clause &&
-                        !this.ConstraintAccessCovers(constraint, conformance.Type, conformance.Contract))
+                        this.InaccessibleConstraint(constraint, conformance.Type, conformance.Contract) is { } inaccessible)
                     {
-                        this.Fail(clause, BindingFailure.Access);
+                        // The premise's own record; the conditional and the conformance use keep their failures beside it, fact-less
+                        // owners over the failed premise, until R7-E5 (ValidateConstraintProjectionAccess' y2).
+                        this.RecordAccess(clause, inaccessible, null);
                         this.Fail(premises.Parent!, BindingFailure.Access);
-                        return Invalid(BindingFailure.Access);
+                        return Invalid(BindingFailure.Access, []);
                     }
                 }
             }
@@ -246,19 +225,20 @@ public sealed partial class Binding
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
                         {
-                            return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous);
+                            return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous, []);
                         }
 
-                        this.inferenceFailures.TryAdd(conformance.Use, (identity, binding));
-                        return Invalid(BindingFailure.AssociatedInference);
+                        return Invalid(BindingFailure.AssociatedInference, this.InferenceFacts(identity, binding));
                     }
 
-                    return Invalid(BindingFailure.InvalidAssociatedType);
+                    return Invalid(BindingFailure.InvalidAssociatedType, []);
                 }
 
-                if (!this.TypeAccessCovers(associated, conformance.Type, conformance.Contract))
+                if (this.InaccessibleType(associated, conformance.Type, conformance.Contract) is { } inaccessible)
                 {
-                    return Invalid(BindingFailure.Access);
+                    // SPEC 9.4.4 (any exposed binding), 9.4.6: the use is located, the declaration related; the binding is the Container's
+                    // specification or an inferred one, outside the use's syntax, so no part (RecordAccess' rule).
+                    return Invalid(BindingFailure.Access, [this.AccessFact(inaccessible)]);
                 }
             }
 
@@ -270,7 +250,7 @@ public sealed partial class Binding
             if (failedRequirement is not null)
             {
                 this.partPrerequisites[conformance.Use] = failedRequirement;
-                return Invalid(BindingFailure.InvalidAssociatedType);
+                return Invalid(BindingFailure.InvalidAssociatedType, []);
             }
 
             if (inheritedProof is { } inheritedResult)
@@ -374,7 +354,7 @@ public sealed partial class Binding
                     var propertyProof = this.VerifyPropertyRequirement(conformance, property, self, scope);
                     if (propertyProof is ConstraintProof.Error or ConstraintProof.Refuted)
                     {
-                        return Invalid(BindingFailure.IncompatibleImplementation);
+                        return Invalid(BindingFailure.IncompatibleImplementation, []);
                     }
 
                     proof = CombineProof(proof, propertyProof, true);
@@ -389,7 +369,7 @@ public sealed partial class Binding
                 var match = this.IdentifyRequirement(conformance, identity);
                 if (match.State == RequirementMatchState.Ambiguous)
                 {
-                    return Invalid(BindingFailure.Ambiguous);
+                    return Invalid(BindingFailure.Ambiguous, []);
                 }
 
                 if (match.State == RequirementMatchState.Pending)
@@ -400,15 +380,19 @@ public sealed partial class Binding
 
                 if (match.State == RequirementMatchState.Missing)
                 {
-                    return Invalid(BindingFailure.MissingImplementation);
+                    return Invalid(BindingFailure.MissingImplementation, []);
                 }
 
                 var selected = match.Member!;
                 var selection = match.Selection;
-                var compatibility = this.CompatibleRequirement(conformance, function, (FunctionKoto)selected.Declaration, self, scope, selection);
+                var (compatibility, bound) = this.CompatibleRequirement(conformance, function, (FunctionKoto)selected.Declaration, self, scope, selection);
                 if (compatibility is ConstraintProof.Error or ConstraintProof.Refuted)
                 {
-                    return Invalid(BindingFailure.IncompatibleImplementation);
+                    // SPEC 8.11.4: an implementation's bounded Callable clause the requirement's premises do not declare (Related, role 0)
+                    // and the requirement (role 1); any other incompatibility is fact-less.
+                    return bound is null
+                        ? Invalid(BindingFailure.IncompatibleImplementation, [])
+                        : Invalid(BindingFailure.IncompatibleImplementation, [new(ProblemFactKind.Related, this.FactSite(bound), 0), new(ProblemFactKind.Related, this.FactSite(function), 1)]);
                 }
 
                 proof = CombineProof(proof, compatibility, true);
@@ -440,10 +424,14 @@ public sealed partial class Binding
             this.conformanceChecks--;
         }
 
-        ConstraintProof Invalid(BindingFailure failure)
+        // The conformance's problem at its use (SPEC 8.6, 23.1.2): its own record beside any other of the use, an inference hole's and an
+        // undeclared Callable bound's with their facts, every other one fact-less. Numbered (RecordNumbered): a refinement's ancestor
+        // path checks its own requirements at the same use before the child checks its own, so two failed requirements of one code
+        // (two IncompatibleImplementation problems, a premise's and another's) are two problems; an equal one is its first's.
+        ConstraintProof Invalid(BindingFailure failure, ReadOnlySpan<ProblemFact> facts)
         {
             conformance.Invalid = true;
-            this.Fail(conformance.Use, failure);
+            this.RecordNumbered(conformance.Use, failure, facts);
             return ConstraintProof.Error;
         }
 
@@ -454,7 +442,7 @@ public sealed partial class Binding
         {
             this.partPrerequisites[conformance.Use] = clause;
             (this.specificationLinks ??= new()).Add(conformance.Use);
-            return Invalid(BindingFailure.InvalidAssociatedType);
+            return Invalid(BindingFailure.InvalidAssociatedType, []);
         }
     }
 
@@ -558,11 +546,14 @@ public sealed partial class Binding
     private bool SuppliesNoEvidence(FnSig requirement, FnSig implementation)
         => this.InvalidDeclarationContext(requirement.Binder) || this.InvalidDeclarationContext(implementation.Binder);
 
-    private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
+    // An implementation's compatibility with a requirement, and with a Refuted verdict the first of the implementation's bounded Callable
+    // clauses its requirement's premises do not declare (SPEC 8.11.4), a value the verdict carries: a return without a verdict carries
+    // none.
+    private (ConstraintProof Proof, IsKoto? Bound) CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
         if (this.SuppliesNoEvidence(new(requirement), new(implementation)) || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
         {
-            return ConstraintProof.Error;
+            return (ConstraintProof.Error, null);
         }
 
         var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
@@ -574,7 +565,7 @@ public sealed partial class Binding
         {
             if (((IsKoto)requirement.TypeConstraints[i]).BoundConstraint is not { } constraint)
             {
-                return ConstraintProof.Unknown;
+                return (ConstraintProof.Unknown, null);
             }
 
             this.AddConstraintFact(environment, this.ContractConstraint(constraint, premises, self));
@@ -601,11 +592,12 @@ public sealed partial class Binding
                 this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
                 true);
             var substitution = SubstitutionOf(implementation, selection.DeclaringType, arguments.AsSpan(0, requirement.GenericArguments.Count), default, origins, inputs);
+            IsKoto? bound = null;
             for (var i = 0; i < implementation.TypeConstraints.Count; i++)
             {
                 if (((IsKoto)implementation.TypeConstraints[i]).BoundConstraint is not { } constraint)
                 {
-                    return ConstraintProof.Unknown;
+                    return (ConstraintProof.Unknown, null);
                 }
 
                 var substituted = this.SubstituteConstraint(constraint, substitution);
@@ -619,8 +611,7 @@ public sealed partial class Binding
                     var available = this.AvailableCallableEffects(normalized.Subject!, normalized.RequiredType!, receiver, premises);
                     for (var e = 0; e < clause.EffectBounds.Count; e++)
                     {
-                        var bound = clause.EffectBounds[e];
-                        if (!this.AppliesBound(bound))
+                        if (!this.AppliesBound(clause.EffectBounds[e]))
                         {
                             continue; // An invalid item declares no obligation for the implementation.
                         }
@@ -628,7 +619,7 @@ public sealed partial class Binding
                         if (!available)
                         {
                             proof = CombineProof(proof, ConstraintProof.Refuted, true);
-                            this.callablePremiseFailures.TryAdd(conformance.Use, (clause, requirement));
+                            bound ??= clause;
                         }
                     }
                 }
@@ -644,10 +635,10 @@ public sealed partial class Binding
             if (witness.ObjectCompatibility == ConstraintProof.Unknown)
             {
                 conformance.Unsupported = true; // SPEC 12.7: OCC-X (UnsupportedProof).
-                return proof;
+                return (proof, bound);
             }
 
-            return CombineProof(proof, witness.ObjectCompatibility, true);
+            return (CombineProof(proof, witness.ObjectCompatibility, true), bound);
         }
         finally
         {

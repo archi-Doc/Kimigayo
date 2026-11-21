@@ -95,6 +95,14 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    let t: (f64, f64) = 2.5", "2.5", "expected (f64, f64), found floating-point literal")]
     [InlineData("public func main()\n    let x: i32 = func () => 1", "func () => 1", "expected i32, found an anonymous function")]
     [InlineData("public func main()\n    let counter = 1\n    counter += 1", "counter", "counter cannot be written")]
+
+    // A check that compares no Types still names the two sides it holds (R7-E3 E3a-2): a `not` operand, a signed literal, a typed
+    // borrow's referent, a pointer conversion's target and a `get` result against its Property's Type.
+    [InlineData("public func main()\n    let n = 1\n    let b = not n", "not n", "expected bool, found i32")]
+    [InlineData("public func main()\n    let x: i32 = -1.5", "-1.5", "expected i32, found floating-point literal")]
+    [InlineData("public func main()\n    let v: i32 = 1\n    let r = v@ref/i64", "v@ref/i64", "expected i64, found i32")]
+    [InlineData("unsafe func f(p: raw/i32) -> f64 => p@f64\npublic func main() => ()", "p@f64", "expected f64, found raw/i32")]
+    [InlineData("struct S\n    public computed item: i32\n        get(self: ref/Self) -> bool => true\npublic func main() => ()", "get(self: ref/Self) -> bool => true", "expected i32, found bool")]
     public void TargetChecksShowTheirLocationAndFacts(string source, string text, string label)
     {
         var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)));
