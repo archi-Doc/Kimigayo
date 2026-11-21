@@ -627,6 +627,8 @@ public class PairFollowTest
         "    public func bumpB(self: uniq/Self) => self.hits += 1\n    public init() => ()\n" +
         "struct D: Base\n    public var extra: i32 = 0\n    public init() : base() => ()\n";
 
+    private const string Bump = "contract Bump\n    func bump(self: uniq/Self)\n";
+
     // SPEC 13.5.5, 3.4.3: a member selected through a pair layer follows it as @follow does: with owner admitted, a Field inline
     // in the operand needs it exclusively writable (a let binding or an owned parameter is not), no case offers Take, and a uniq
     // reference stored in the operand still grants Write through it. A user index through a pair layer is the located limit
@@ -641,7 +643,10 @@ public class PairFollowTest
     // `uniq/(uniq/P)` twin is; through one pair layer a member a base declares is projected as through a reference layer: its getter
     // and shared method are valid, its update and assignment the concrete `uniq/D` twin's located limit (G1117). A Tuple element
     // through several layers is lent as a Field is (SPEC 13.5.6): `t.0@ref` and `t.0@uniq` valid in both orders and concrete, an
-    // exclusive borrow through a shared case or layer or of a parameter's owned root invalid.
+    // exclusive borrow through a shared case or layer or of a parameter's owned root invalid. PLAN G147 (2) (c) (R7 plan Z22; labels
+    // from SPEC 3.4.3, 7.3.3, 13.5.5, 8.15): an exclusive receiver of a Type parameter below a concrete top layer, `uniq/(uniq/U)`,
+    // `uniq/(s/U)` under `s is uniq` and an element storing `uniq/(uniq/U)`, is one exclusive reference through the layers; a shared
+    // layer or case is invalid.
     [Theory]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p@move@follow = P.init(1)", DiagnosticCode.Unsupported_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner\n    (p@move)@follow = P.init(1)", DiagnosticCode.Unsupported_Kd)]
@@ -731,6 +736,12 @@ public class PairFollowTest
     [InlineData("func g<s/T>(value: s/T, t: uniq/(s/(i32, i32) during b))\n    s is ref or uniq\n    let r = t.0@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func g(t: ref/(uniq/(i32, i32) during b))\n    let r = t.0@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func g<s/T, u/U>(value: s/T, n: u/U, t: s/(u/(i32, i32) during b))\n    s is owner\n    u is owner\n    let r = t.0@uniq", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(Bump + "func f<U>(g: uniq/(uniq/U during b)) -> ()\n    U is Bump\n    g.bump()", null)]
+    [InlineData(Bump + "func f<U>(g: uniq/(ref/U during b)) -> ()\n    U is Bump\n    g.bump()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData(Bump + "func f<s/T, U>(g: uniq/(s/U during b), m: s/T) -> ()\n    s is uniq\n    U is Bump\n    g.bump()", null)]
+    [InlineData(Bump + "func f<s/T, U>(g: uniq/(s/U during b), m: s/T) -> ()\n    s is ref or uniq\n    U is Bump\n    g.bump()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData(Bump + "func f<U>(values: uniq/Array<uniq/(uniq/U during a) during b>) -> ()\n    U is Bump\n    values[0].bump()", null)]
+    [InlineData(Bump + "func f<U>(values: uniq/Array<uniq/(ref/U during a) during b>) -> ()\n    U is Bump\n    values[0].bump()", DiagnosticCode.NoApplicableOverload_Kd)]
     public void SelectionsFollowPairLayers(string function, DiagnosticCode? code)
     {
         var c = MinimalEmissionTest.Analyze(Selected + function);
