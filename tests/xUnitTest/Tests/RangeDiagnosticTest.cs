@@ -13,6 +13,8 @@ namespace XunitTest;
 
 public class RangeDiagnosticTest(ITestOutputHelper output)
 {
+    // SPEC 4.6.4, 14.6.2, 23.3 (R7-E3 E3a-3): the record shows the range, its selected entry and the boundary Types, and relates the entry
+    // declaration (role "entry"); the constant Note went by code (M3).
     [Theory]
     [InlineData("for i in 1..^1 => ()", "1..^1", "IntoIterable", "Kimi.Range<i32, Kimi.FromEnd<i32>>")]
     [InlineData("for i in ..3 => ()", "..3", "IntoIterable", "Kimi.Range<Kimi.Start, i32>")]
@@ -28,7 +30,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(text, error.Text);
         Assert.Contains(type, error.Label, StringComparison.Ordinal);
         Assert.Contains(entry, error.Label, StringComparison.Ordinal);
-        Assert.Contains("both boundaries", error.Note, StringComparison.Ordinal);
+        Assert.Equal([("entry", entry)], error.Related!.Select(static x => (x.Role, x.Label)));
         var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
         Assert.Contains(record.Reason!, x => x.Name == "entry" && x.Value == entry);
@@ -36,7 +38,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     }
 
     // SPEC 4.6.4, 8.2: boundary Types not proven to be one integer Type in a generic context are reported once, at the
-    // Subject, with the requirement and a conditional repair.
+    // Subject, with the requirement and a conditional repair, relating the entry declaration (R7-E3 E3a-3; the Note went by code, M3).
     [Theory]
     [InlineData("func f<A, B>(p: A, q: B)\n    A is PrimitiveInteger\n    B is PrimitiveInteger\n    for x in p..q => ()", "p..q")]
     [InlineData("func f<P>(p: P, q: P)\n    P is Position\n    for x in p..q => ()", "p..q")]
@@ -46,10 +48,11 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         var error = Assert.Single(Errors(c));
         Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), error.Code);
         Assert.Equal(text, error.Text);
-        Assert.Contains("one integer Type", error.Note, StringComparison.Ordinal);
+        Assert.Equal([("entry", "IntoIterable")], error.Related!.Select(static x => (x.Role, x.Label)));
     }
 
     [Theory]
+    [InlineData("func f<A>(p: A, q: A)\n    A is PrimitiveInteger\n    for x in p..q => ()")]
     [InlineData("for i in (1..^1).resolve(5) => ()")]
     [InlineData("for i in (..3).resolve(5) => ()")]
     [InlineData("for i in 1@i64..3@i64 => ()")]
@@ -151,7 +154,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(first, Assert.Single(Errors(c)));
         var moved = Assert.Single(Errors(Analyze("\n" + source + "\nlet wrong: i32 = true")), static x => x.Code == nameof(DiagnosticCode.UnsatisfiedConstraint_Kd));
         Assert.Equal(first.Label, moved.Label);
-        Assert.Equal(first.Note, moved.Note);
+        Assert.Equal(first.Related!.Select(static x => (x.Role, x.Label)), moved.Related!.Select(static x => (x.Role, x.Label)));
         Assert.Equal(first.Span.Start + 1, moved.Span.Start);
     }
 
