@@ -1,8 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Capture formation (SPEC 7.7.2): which binding a capture entry or a use in an omitted-list Closure captures, the environment binding
-// it initializes and how (CaptureAcquisition), and the repeated names of a written list. A failed capture's facts and record belong to
-// Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its call receiver to Binding.ClosureReceivers.
+// it initializes and how (CaptureAcquisition), the enclosing regions its entries carry (BoundClosure.Carried: each local region an
+// entry's Type names that the evaluating body reads as its value, its own or one the evaluating body's Closure carries; CarryRegions,
+// SPEC 15.6.5, R7-O2 A1; read by Binding.CarriedRegion, which reads what is carried in turn), and the repeated names of a written list.
+// A failed capture's facts and record belong to Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its
+// call receiver to Binding.ClosureReceivers.
 // Interim (DECISIONS BU-184; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case (until
 // PLAN G254's unit), and a captured pair target or projection under an identity premise (until PLAN G170's query), are a located
 // Unsupported_Kd at a written entry; an omitted list's use of one reports InvalidCaptureBinding_Kd instead.
@@ -27,25 +30,6 @@ public sealed partial class Binding
             PropertyAccessorKoto accessor => symbol.Name == "self" || (symbol.Name == "value" && accessor.AccessorKind == PropertyAccessorKind.Set),
             _ => false,
         };
-
-    private static void CarryOrigin(BoundClosure plan, BoundOrigin? origin)
-    {
-        if (origin is null)
-        {
-            return;
-        }
-
-        if (SlotRegion(origin) && (origin.Body == plan.EvaluatingBody || CarriedRegion(origin, plan.EvaluatingBody.Definition?.Declaration)) &&
-            !plan.Carried.Contains(origin))
-        {
-            plan.Carried.Add(origin);
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            CarryOrigin(plan, origin.Operands[i]);
-        }
-    }
 
     // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats, as a range of captureRepeatRows;
     // empty for a valid list.
@@ -188,7 +172,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.5 (R7-O2 A1): the Closure's fact of the regions it carries (BoundClosure.Carried): each local region an entry's Type names
     // (the source's: an entry's binding holds it, by value or under a borrow of its slot) that the evaluating body reads as its value, a
-    // region of that body or one it carries in turn, kept once; each distinct part of the Type once (DECISIONS BU-19).
+    // region of that body or one it carries, kept once; each distinct part of the Type once (DECISIONS BU-19).
     private void CarryRegions(BoundClosure plan, BoundType type) => this.CarryPart(plan, type, this.visitedParts.Begin(this.storageVersion));
 
     private void CarryPart(BoundClosure plan, BoundType type, uint query)
@@ -198,10 +182,10 @@ public sealed partial class Binding
             return;
         }
 
-        CarryOrigin(plan, type.Origin);
+        this.CarryOrigin(plan, type.Origin);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            CarryOrigin(plan, type.OriginArguments[i]);
+            this.CarryOrigin(plan, type.OriginArguments[i]);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
@@ -210,6 +194,27 @@ public sealed partial class Binding
             {
                 this.CarryPart(plan, type.Components[i], query);
             }
+        }
+    }
+
+    // Each region slot `origin` names that is the evaluating body's own or one it carries (CarriedRegion), kept once: the Closure's own
+    // entries' regions alone; what is carried in turn through their values is read where a reader asks (CarriedRegion's walk).
+    private void CarryOrigin(BoundClosure plan, BoundOrigin? origin)
+    {
+        if (origin is null)
+        {
+            return;
+        }
+
+        if (SlotRegion(origin) && (origin.Body == plan.EvaluatingBody || this.CarriedRegion(origin, plan.EvaluatingBody.Definition?.Declaration, out _)) &&
+            !plan.Carried.Contains(origin))
+        {
+            plan.Carried.Add(origin);
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            this.CarryOrigin(plan, origin.Operands[i]);
         }
     }
 

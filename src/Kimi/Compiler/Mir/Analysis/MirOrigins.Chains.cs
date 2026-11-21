@@ -259,14 +259,15 @@ internal sealed partial class MirOrigins
     }
 
     // A fixed source the target's premises do not derive (oracle closed at the target), judged as the Origin it stands for at a longer end:
-    // an enclosing body's local region (the view's Value: BU-127's solved value, a `let` region's value, a `var` region's meet of its
-    // recorded bounds; the owner's O-422 (a)) as its value's operands, as MeetNode's rule splits a Fixed meet, each operand the oracle does
-    // not derive judged the same way, so an operand that is itself an enclosing local region reads as its value too, and every other one is
-    // its own problem or the nested-body limit (PLAN G492-a (ii); SPEC 15.4.4; at a shorter end, in an identity and in a meet's operand
-    // edge it stays the region, DECISIONS BU-28); any other source itself. In Unknown a source is an inner chain's fixed source, never an
-    // end of the in-edge's row, so an Equality row there splits it too (the Middle's C-350 C2 (a): eqw is accepted like eqwp); only
-    // Direct's Equality row relates its ends themselves (Direct). The recursion ends: a value names regions of enclosing
-    // bodies and `var` regions of its own body that do not reach back to the region (RegionValue), so each step moves down its body's
+    // an enclosing body's local region the body carries (the view's Value, row 6: its SPEC 15.3.6 value, RegionValue, set only for a
+    // region the body carries; R7-O2 A1) as its value's operands, as MeetNode's rule splits a Fixed meet, each operand the oracle does
+    // not derive judged the same way, so an operand that is itself a carried region reads as its value too, and every other one, a region
+    // the body does not carry included, is its own problem or the nested-body limit (PLAN G492-a (ii); SPEC 15.4.4; at a shorter end, in
+    // an identity and in a meet's operand edge the oracle's equality reads the value, DECISIONS R7-O2 A1); any other source itself. In
+    // Unknown a source is an inner chain's fixed source, never an end of the in-edge's row, so an Equality row there splits it too (the
+    // Middle's C-350 C2 (a): eqw is accepted like eqwp); only Direct's Equality row relates its ends themselves (Direct). The recursion
+    // ends: a value names regions of enclosing bodies and `var` regions of its own body that do not reach back to the region
+    // (RegionValue), so each step moves down its body's
     // finite order of definitions or one body outward. One judgement visits each operand once (splitNodes; the owner's O-426 (a)), so
     // values that share a region (a diamond of definitions) judge it once. False when no single problem stands for the source (a limit,
     // or a split region).

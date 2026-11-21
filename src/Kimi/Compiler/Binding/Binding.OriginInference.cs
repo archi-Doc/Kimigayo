@@ -1,5 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Origin inference of a call's or a contract comparison's per-call Origins (SPEC 15.3.6, 10.5; DECISIONS BU-221).
+// - Responsibility: the solve's bounds and variables (OriginInference: CollectOriginInference, a declaration's relations), their
+//   candidates in a fixpoint by the solve's reading of SPEC 15.3.6's table (RowCandidate, with its two departures until PLAN D-998;
+//   SolveLocalBounds reads it too) with the strongest lower bound (StrongestLowerBound, which a local region's candidate shares), the
+//   representatives of variables without a principal solution, J2's waited variables, and, outside a selection, the judgment of each
+//   bound.
+// - Inputs: the callee's or the required signature, the actual Types, the use's premises (ProvesOriginOutlives at the use).
+// - Outputs: the solution (`origins`, `inputs`) and the solve's failure (OriginInference.Failure).
+// - Invariants: a candidate depends neither on the order of the bounds nor on that of the variables; a selection judges no bound.
+// - Prohibitions: no record; no state beyond the solve's own.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -33,6 +44,10 @@ public sealed partial class Binding
 
         return new(kind, longer, shorter, equality, comparison) { Clause = clause, Path = member, Depth = (byte)(member == 0 ? 0 : 1) };
     }
+
+    // A solve variable's row (SPEC 15.3.6): its polarity's bits (OriginInference.Variables: 1 a position giving an upper bound, 2 one giving
+    // a lower bound) are OriginVariance's values, both Invariant, neither Unused.
+    private static OriginVariance SolveRow(int polarity) => (OriginVariance)polarity;
 
     // The solve state of `binder`'s candidacy at `use`, retained for every run of the candidate; a candidate that solves no Origin of
     // its own reads and writes only its openings there (OriginInference.Opened), without beginning a solve.
@@ -193,7 +208,7 @@ public sealed partial class Binding
             foreach (var variable in inference.Variables)
             {
                 var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs);
-                var candidate = this.RowCandidate((OriginVariance)variable.Polarity, upper, lower, use, inference.Comparison);
+                var candidate = this.RowCandidate(SolveRow(variable.Polarity), upper, lower, use, inference.Comparison);
                 if (!ReferenceEquals(Get(variable.Origin, origins, inputs), candidate))
                 {
                     Set(variable.Origin, candidate, origins, inputs);
@@ -470,11 +485,14 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.6's row rule (DECISIONS BU-221; R7-O2), read by the call solve (Limits, the representative) and a local's clauses
-    // (SolveLocalBounds): a variable's candidate by its row from the meet of its upper bounds (`upper`) and its
-    // strongest lower bound (`lower`, StrongestLowerBound): covariant, and a row not yet known, the meet, else the lower bound;
-    // contravariant the lower bound; invariant the meet when it and the lower bound are proven equal, else none. Proofs at `use` in
-    // `comparison`.
+    // The call solve's reading of SPEC 15.3.6's table (DECISIONS BU-221; R7-O2 A1), read by the solve's fixpoint, the representative and a
+    // local's clauses (SolveLocalBounds): a variable's candidate by its row from the meet of its upper bounds (`upper`) and its strongest
+    // lower bound (`lower`, StrongestLowerBound); contravariant the lower bound and a variable at no position the meet, else the lower
+    // bound, as SPEC states them. It departs from the table twice: a covariant variable without an upper bound takes the lower bound (the
+    // table: none), and an invariant one gives none unless its meet and its lower bound are proven equal (the table: otherwise the
+    // covariant, else the contravariant candidate), which the representative then takes. Removed when the solve reads the table itself
+    // (PLAN open issue D-998: one owner moves the solve's records); a local region's candidate is the table's (Binding.LocalRegions'
+    // VarCandidate). Proofs at `use` in `comparison`.
     private BoundOrigin? RowCandidate(OriginVariance row, BoundOrigin? upper, BoundOrigin? lower, Koto use, in CallableInstance comparison)
         => row switch
         {

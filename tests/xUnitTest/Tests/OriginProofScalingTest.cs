@@ -131,22 +131,28 @@ public class OriginProofScalingTest(ITestOutputHelper output)
     }
 
     // SPEC 15.6.5's Closure sentence (R7-O2 A1; the Front's T4): n nested Closures, each capturing the `let` binding of the level above's
-    // capture, the innermost returning it at p. Each Closure's carried regions are formed once (BoundClosure.Carried, a list the next
-    // level's formation reads) and each body's oracle reads each region once: the region reads and the time grow linearly with n.
-    [Fact]
-    public void ACarriedRegionChainReadsEachRegionOnce()
+    // capture, the innermost returning it at p (chain); and each capturing two, whose values at the next level are both meets of the two
+    // above (dag: two carried paths per level, 2^n paths in all; the code review's N5). Each Closure's carried regions are formed once
+    // (BoundClosure.Carried, a list the next level's formation reads) and each body's oracle reads each region once, in turn included:
+    // the region reads grow linearly with n (the row asserts them; the time is printed). n is 15, 30, 60 for the chain; the dag's is 5,
+    // 10, 20, below the knee of a compile time exponential in its depth that dev has without A1 (PLAN open issue D-1001: about 36 s at
+    // 30 levels); the unit that fixes D-1001 raises the dag's depths to the chain's.
+    [Theory]
+    [InlineData("chain", 15)]
+    [InlineData("dag", 5)]
+    public void ACarriedRegionChainReadsEachRegionOnce(string shape, int depth)
     {
         var reads = new long[3];
         var times = new long[3];
-        int[] depths = [15, 30, 60];
+        int[] depths = [depth, 2 * depth, 4 * depth];
         for (var i = 0; i < depths.Length; i++)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            reads[i] = CarriedReads(depths[i]);
+            reads[i] = CarriedReads(shape == "dag" ? CarriedDag(depths[i]) : CarriedChain(depths[i]));
             times[i] = watch.ElapsedMilliseconds;
         }
 
-        output.WriteLine($"carried chain N 15, 30, 60: region reads {string.Join(", ", reads)}; ms {string.Join(", ", times)}");
+        output.WriteLine($"carried {shape} N {string.Join(", ", depths)}: region reads {string.Join(", ", reads)}; ms {string.Join(", ", times)}");
         Assert.True(MirBorrowsTest.Grows(reads, 2.5), $"region reads {string.Join(", ", reads)}");
     }
 
@@ -301,7 +307,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
             : $"    let c = func [x{n}] () -> ref/i32 during q => x{n}\n    return 0\n").Append("public func main() => ()\n").ToString();
     }
 
-    private static long CarriedReads(int depth)
+    private static string CarriedChain(int depth)
     {
         var source = new StringBuilder("func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    let x0 = p\n");
         var indent = "    ";
@@ -313,15 +319,41 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         }
 
         source.Append($"{indent}let w: ref/i32 during p = x{depth}\n{indent}see(w)\n");
+        return Called(source, indent, depth);
+    }
+
+    private static string CarriedDag(int depth)
+    {
+        var source = new StringBuilder("func see(p: ref/i32) => ()\nfunc f(p: ref/i32, k: bool)\n    let a0 = p\n    let b0 = p\n");
+        var indent = "    ";
+        for (var i = 1; i <= depth; i++)
+        {
+            source.Append($"{indent}let c{i} = func [a{i - 1}, b{i - 1}, k] ()\n");
+            indent += "    ";
+            source.Append($"{indent}let a{i} = if k => a{i - 1} else => b{i - 1}\n{indent}let b{i} = if k => b{i - 1} else => a{i - 1}\n");
+        }
+
+        source.Append($"{indent}let w: ref/i32 during p = a{depth}\n{indent}see(w)\n");
+        return Called(source, indent, depth);
+    }
+
+    // The calls of the nested Closures c1..c{depth}, innermost first, and the entry point.
+    private static string Called(StringBuilder source, string indent, int depth)
+    {
         for (var i = depth; i > 0; i--)
         {
             indent = indent[..^4];
             source.Append($"{indent}c{i}()\n");
         }
 
+        return source.Append("public func main() => ()\n").ToString();
+    }
+
+    private static long CarriedReads(string source)
+    {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("carried.kimi", source.Append("public func main() => ()\n").ToString()));
+        c.Kotonoha.AddSource(new SourceDocument("carried.kimi", source));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;
         c.Bind();

@@ -46,6 +46,10 @@ public sealed partial class Binding
     private readonly List<BoundOrigin> reachAtoms = new();
     private readonly HashSet<BoundOrigin> reachSeen = new(ReferenceEqualityComparer.Instance);
 
+    // CarriedRegion's walk (Binding.OriginClasses.cs), reused; null while a walk holds it, so a walk inside RegionValue's reading uses its
+    // own.
+    private List<BoundOrigin>? carriedWalk = new();
+
     // The running pass's part of the rows (PassPart.Regions), which its steps write and reset; the driver hands it over (EnterPass),
     // Binding's own between Binds.
     private Dictionary<BoundOrigin, LocalRegion> localRegions;
@@ -223,32 +227,58 @@ public sealed partial class Binding
 
     // SPEC 15.3.6, 15.6.5 (R7-O2 A1): an Origin with each region that the body of `function` reads as its value read so: a `let` region of
     // that body as its published value (as its own body reads it, RegionValueAtUse), a region the body carries (CarriedRegion) as its
-    // candidate (RegionValue), itself or a meet's operand, each region of that candidate read so in turn (O-466 (b)); a `var` region of
-    // the body, a region a nested signature only names (SPEC 15.3.4) and a region with no value stay. Each read moves one body outward or
-    // down that body's definitions.
-    // StaticOrigin's Owned judgment reads it.
-    internal BoundOrigin ValueIn(BoundOrigin origin, Koto? function) => this.ValueIn(origin, function, false);
+    // candidate (RegionValue), itself or a meet's operand, each region of that candidate the body carries in turn read so (O-466 (b)); a
+    // `var` region of the body, a region a nested signature only names (SPEC 15.3.4) and a region with no value (yet) stay. Each read
+    // moves one body outward or down that body's definitions. StaticOrigin's Owned judgment reads it.
+    internal BoundOrigin ValueIn(BoundOrigin origin, Koto? function)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return this.Region(origin) is { Value: { } published } own && ReferenceEquals(own.Body, function) ? this.ValueIn(published, function)
+                : this.CarriedRegion(origin, function, out var value) && value is not null ? this.ValueIn(value, function) : origin;
+        }
+
+        var read = BoundOrigin.Static;
+        var changed = false;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            var operand = this.ValueIn(origin.Operands[i], function);
+            changed |= !ReferenceEquals(operand, origin.Operands[i]);
+            read = this.Meet(read, operand);
+        }
+
+        return changed ? read : origin;
+    }
 
     // SPEC 15.3.6's value of a local region (R7-O2 A1: the one reading; DECISIONS BU-127, the owner's O-422 (a), O-466 (b)), null for any
-    // other Origin and for a region without a candidate, its bounds as recorded, a bound that is another variable staying that variable,
-    // which a reader reads in turn: a `let` region's value as published; a `var` region's candidate by its row (SPEC 15.3.6's
-    // table) from the meet of its recorded upper bounds and its strongest recorded lower bound (StrongestLowerBound over
-    // LocalRegion.Targets), complete once its body is bound (a nested body never bounds an environment region, BU-28): covariant the meet
-    // (none without an upper bound: "never replaced by static"), contravariant the lower bound, invariant the equality, which its upper
-    // bounds' meet is where it has one (an equality records both directions), else the lower bound. Each bound is read as stored with its
-    // receivers resolved and a `let` region of its own body as its
-    // value. A body that carries the region reads it as this value (CarriedRegion: the view's row 6, A5's split at a longer end, the body's
-    // oracle). A `var` region of the own body that reaches back to the region (a cycle of definitions, which share one solved value) is read
+    // other Origin, for a region without a candidate and for one with no answer yet, its bounds as recorded, a bound that is another
+    // variable staying that variable, which a reader reads in turn: a `let` region's value as published, fixed at its declaration (SPEC
+    // 15.4.4); a `var` region's candidate by its row (VarCandidate, SPEC 15.3.6's table) from the meet of its recorded upper bounds and its
+    // strongest recorded lower bound (StrongestLowerBound over LocalRegion.Targets), which reads all of its bounds, so it has no answer
+    // until its body is bound (RegionBounded, the gate SolvedStatic reads too; a nested body never bounds an environment region, BU-28):
+    // a Binding-time judgment in a body nested in it, as a Closure's body bound at its literal, reads the region, and Final reads the
+    // candidate. Each bound is read as stored with its receivers resolved and a `let` region of its own body as its value. A body that
+    // carries the region reads it as this value (CarriedRegion: the view's row 6, A5's split at a longer end, the body's oracle,
+    // StaticOrigin through ValueIn). A value naming a call's open region (PLAN G936's J2: the waiting part gives its bounds after
+    // selection) is a value here: A5's split meets that region as the located limit (MirOrigins.NestedLimit); no region is carried in
+    // turn through it and the body's oracle does not equate it (NamesOpenRegion, CarriedRegion's walk and UniversalRelations.Value), so
+    // that no premise proves what the limit leaves open, until G936's late solve. A
+    // `var` region of the own body that reaches back to the region (a cycle of definitions, which share one solved value) is read
     // through its own bounds, so a value names regions of enclosing bodies and `var` regions of its own body that do not reach the region:
-    // each read moves down that body's definitions or one body outward. A `var` region's value is computed once per graph version (its
-    // bounds are complete once its body is bound; the owner's O-426 (a)); a frozen row of the library layer is read, never written
-    // (contract C, PLAN G949 S1-1), so its value is computed at each read.
+    // each read moves down that body's definitions or one body outward. A `var` region's value is computed once per graph version once
+    // its body is bound (the owner's O-426 (a)); a frozen row of the library layer is read, never written (contract C, PLAN G949 S1-1),
+    // so its value is computed at each read.
     internal BoundOrigin? RegionValue(BoundOrigin origin)
     {
         var region = this.Region(origin);
-        if (region is null || origin.Binder is not { } binder || !SlotRegion(origin))
+        if (region is null || origin.Binder is not { } binder || !SlotRegion(origin) || region.Value is not null || !IsMutableDeclaration(binder))
         {
             return region?.Value;
+        }
+
+        if (!this.RegionBounded(origin))
+        {
+            return null;
         }
 
         if (region.SolutionVersion == this.regionVersion)
@@ -256,8 +286,7 @@ public sealed partial class Binding
             return region.Solution;
         }
 
-        var body = BodyOwner(binder);
-        var solution = region.Value ?? (IsMutableDeclaration(binder) ? this.VarCandidate(origin, region, body, binder) : null);
+        var solution = this.VarCandidate(origin, region, BodyOwner(binder), binder);
         if (region.Version != FrozenRegion)
         {
             (region.Solution, region.SolutionVersion) = (solution, this.regionVersion); // Contract C: a frozen library row is never written.
@@ -318,29 +347,36 @@ public sealed partial class Binding
         }
     }
 
-    // `inTurn`: `origin` is read from a carried region's value, whose regions are read as their values in turn (O-466 (b)).
-    private BoundOrigin ValueIn(BoundOrigin origin, Koto? function, bool inTurn)
+    // SPEC 15.3.6 (R7-O2 A1): whether a local region's recorded bounds are complete, so that its candidate has an answer: its body is not
+    // being bound, that is the forming body is neither its body nor evaluated in it (a Closure's body, bound at its literal: the
+    // EvaluatingBody chain) nor declared in it (a nested function's), or its body is a Closure whose binding has ended
+    // (BoundClosure.Classified; its publication's fit re-enters it). The one gate of a candidate's Binding-time reading: RegionValue and
+    // SolvedStatic read it.
+    private bool RegionBounded(BoundOrigin region)
     {
-        if (origin.Kind != OriginKind.Intersection)
+        var owner = region.Binder is { } binder ? BodyOwner(binder) : null;
+        if (!this.formingBody.IsBody || owner is FunctionKoto { IsAnonymous: true, ClosureStorage.Classified: true })
         {
-            return this.Region(origin) is { Value: { } published } own && ReferenceEquals(own.Body, function) ? this.ValueIn(published, function, inTurn)
-                : SlotRegion(origin) && (inTurn || CarriedRegion(origin, function)) && this.RegionValue(origin) is { } value ? this.ValueIn(value, function, true) : origin;
+            return true;
         }
 
-        var read = BoundOrigin.Static;
-        var changed = false;
-        for (var i = 0; i < origin.Operands.Count; i++)
+        for (var body = this.formingBody; body.IsBody; body = EvaluatingBody(body))
         {
-            var operand = this.ValueIn(origin.Operands[i], function, inTurn);
-            changed |= !ReferenceEquals(operand, origin.Operands[i]);
-            read = this.Meet(read, operand);
+            if (body == region.Body)
+            {
+                return false;
+            }
         }
 
-        return changed ? read : origin;
+        return !(this.formingBody.Definition?.Declaration is { } forming && owner is not null && IsWithin(forming, owner));
     }
 
-    // A `var` region's candidate by its row over its recorded bounds (RegionValue), its own body's `var` regions that reach back to it
-    // read through their bounds; null with none.
+    // SPEC 15.3.6's table for a local region's candidate (R7-O2 A1; RegionValue): a `var` region's candidate by its row over its recorded
+    // bounds, its own body's `var` regions that reach back to it read through their bounds: covariant the meet of its upper bounds (none
+    // without one: "never replaced by static"), contravariant its strongest lower bound (LowerBound), invariant the proven equality, which
+    // its upper bounds' meet is where it has one (an equality records both directions), otherwise the covariant, else the contravariant
+    // candidate. The strongest lower bound is read only for a row that takes it. The call solve's reading departs from the table
+    // (OriginInference's RowCandidate, until PLAN D-998). Null with no candidate.
     private BoundOrigin? VarCandidate(BoundOrigin origin, LocalRegion region, Koto? body, Koto binder)
     {
         var (value, bounded) = (BoundOrigin.Static, false);

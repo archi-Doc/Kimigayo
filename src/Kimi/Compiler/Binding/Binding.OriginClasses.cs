@@ -2,7 +2,7 @@
 
 // SPEC 15.6.5's classes of an Origin in a body B, as Binding's judge and the C1-F4 view read them: fixed by the contract (FixedOrigin), fixed
 // in B (FixedIn), a region B judges through its sources (RegionIn), an enclosing body's region B reads as its value (CarriedRegion, from
-// the capture formation's fact), an Origin B judges through the sources the region graph records
+// the capture formation's fact, in turn through the regions' values), an Origin B judges through the sources the region graph records
 // (SourcesIn) or may bound (BoundableIn), a finite Origin local to B (BodyLocalIn), a relation A5 judges as a row (BodyChain, 2a0-D D1;
 // RegionChain), a Refuted relation (RefutesOriginRelation) and a pending atom (PendingAtom). They share one rule, the
 // view's row 6 (EnclosingAtom; 2a0-D section 3, DECISIONS R4-M101 E5, BU-28): in a Closure body the Origins of its captures, atoms an
@@ -17,7 +17,8 @@
 // - Outputs: the class, read by the judge (Binding.OriginProof.cs, Binding.LocalRegions.cs), the records (Binding.OriginFits.cs,
 //   Binding.OriginClauses.cs, Binding.CallRelations.cs) and the view (Binding.OriginRows.Atoms.cs, ClassifyAtom).
 // - Invariants: each class is decided here once, by one predicate that every reader shares; only SourcesIn and CarriedRegion read state,
-//   the region graph's and the capture formation's; a pending atom is tested before any other class.
+//   the region graph's, and the capture formation's with the regions' values (RegionValue); a pending atom is tested before any other
+//   class.
 // - Prohibitions: no proof, judgment, record or state; no class derived from syntax.
 
 namespace Kimi.Compiler;
@@ -105,24 +106,6 @@ public sealed partial class Binding
     // SPEC 15.3.6, 15.6.5: a local region that `body` judges through its sources; an enclosing body's region is fixed in it.
     internal static bool RegionIn(BoundOrigin origin, ExecutableBody body) => IsLocalRegion(origin) && !EnclosingAtom(origin, body);
 
-    // SPEC 15.6.5 (its Closure sentence; DECISIONS R7-O2 A1), 7.7.2: whether the body of `function`, a Closure, receives `region`, a local
-    // region of an enclosing body, through an environment: an entry's Type of that Closure or of a Closure it is evaluated in names it,
-    // formed in a body where the region is its own or carried in turn (BoundClosure.Carried, the capture formation's fact); a named
-    // function ends the chain. There the region is a fixed Origin equal to its value (RegionValue). A region a nested signature names is
-    // not carried by that name: it stays a fixed Origin with no premise (SPEC 15.3.4).
-    internal static bool CarriedRegion(BoundOrigin region, Parsing.Koto? function)
-    {
-        for (var current = function; current is Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan }; current = plan.EvaluatingBody.Definition?.Declaration)
-        {
-            if (plan.Carried.Contains(region))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 15.6.5: an Origin a relation formed in `body` may bound in the region graph: a local region, a Borrow's Origin or a meet, unless
     // it is an enclosing body's atom, fixed in `body`.
     internal static bool BoundableIn(BoundOrigin origin, ExecutableBody body)
@@ -149,6 +132,57 @@ public sealed partial class Binding
     // `body`, is never followed.
     internal bool SourcesIn(BoundOrigin origin, ExecutableBody body) => this.HasRegionBounds(origin) && !EnclosingAtom(origin, body);
 
+    // SPEC 15.6.5 (its Closure sentence and last clause; DECISIONS R7-O2 A1), 7.7.2, 15.3.6 (O-466 (b); D-993's bullet: a region reached
+    // through a carried region's candidate is read in turn): whether the body of `function`, a Closure, carries `region`, a local region
+    // of an enclosing body, and what it reads it as (`value`, its RegionValue; null while it has no answer yet, RegionBounded). The one
+    // reading of carried regions, at read time (CarriedRegions): the regions the Closure's own entries name (BoundClosure.Carried, the
+    // capture formation's fact), then, in turn, each region slot the value of a carried region names. A Closure that captures no binding
+    // naming the region carries nothing, though it is evaluated in one that does, and a region a nested signature only names is not
+    // carried by that name: either stays a fixed Origin with no premise (SPEC 15.3.4). Readers: the view's row 6 Value, the body's oracle,
+    // StaticOrigin (ValueIn) and the capture formation (CarryOrigin).
+    internal bool CarriedRegion(BoundOrigin region, Parsing.Koto? function, out BoundOrigin? value)
+    {
+        value = null;
+        if (!SlotRegion(region) || function is not Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan })
+        {
+            return false;
+        }
+
+        if (!plan.Carried.Contains(region))
+        {
+            var walk = this.carriedWalk ?? new();
+            this.carriedWalk = null;
+            this.CarriedRegions(function, walk);
+            var carried = walk.Contains(region);
+            this.carriedWalk = walk;
+            if (!carried)
+            {
+                return false;
+            }
+        }
+
+        value = this.RegionValue(region);
+        return true;
+    }
+
+    // PLAN G936's J2: whether `value` is, or has as a meet operand, a local region that is no region slot (a call's open region), whose
+    // bounds the waiting part gives after selection: a carried region with such a value is read as it (A5's split meets that region as
+    // the located limit, MirOrigins.NestedLimit) but no region is carried in turn through it, and the body's oracle does not equate it
+    // (UniversalRelations.Value), so that no premise proves what the limit leaves open, until G936's late solve.
+    private static bool NamesOpenRegion(BoundOrigin value)
+    {
+        for (var i = 0; i < (value.Kind == OriginKind.Intersection ? value.Operands.Count : 1); i++)
+        {
+            var atom = value.Kind == OriginKind.Intersection ? value.Operands[i] : value;
+            if (IsLocalRegion(atom) && !SlotRegion(atom))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 15.6.5: a finite Origin local to `body` (a Borrow's), or a meet with one; an enclosing body's Borrow is fixed in it, a pending
     // atom neither.
     private static bool BodyLocalIn(BoundOrigin origin, ExecutableBody body)
@@ -167,5 +201,36 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // CarriedRegion's walk, into `carried` (cleared first): the regions the body of `function` carries (none unless it is a Closure's), its
+    // entries' first, then, in turn, each region slot named by the value of one (RegionValue, none while it has no answer yet), unless
+    // that value names a call's open region (NamesOpenRegion); each region once. Read where a reader asks (the body's oracle once per
+    // Open), so a `var` region's candidate is read once its body is bound.
+    private void CarriedRegions(Parsing.Koto? function, List<BoundOrigin> carried)
+    {
+        carried.Clear();
+        if (function is not Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan })
+        {
+            return;
+        }
+
+        carried.AddRange(plan.Carried);
+        for (var i = 0; i < carried.Count; i++)
+        {
+            if (this.RegionValue(carried[i]) is not { } value || NamesOpenRegion(value))
+            {
+                continue;
+            }
+
+            for (var j = 0; j < (value.Kind == OriginKind.Intersection ? value.Operands.Count : 1); j++)
+            {
+                var atom = value.Kind == OriginKind.Intersection ? value.Operands[j] : value;
+                if (SlotRegion(atom) && !carried.Contains(atom))
+                {
+                    carried.Add(atom);
+                }
+            }
+        }
     }
 }

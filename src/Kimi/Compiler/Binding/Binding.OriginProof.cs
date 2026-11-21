@@ -394,6 +394,9 @@ public sealed partial class Binding
     // SPEC 15.6.1 under the owner's O-261 Q2 (a) (DECISIONS <G492-a (iii)>): the one decision for a condition of a comparison that its
     // premises did not prove, called by the condition's owning check (the walk's leaf, the clause check, the well-formedness visit; never
     // the solve). With a local region of the forming body at its longer end it is that body's relation, a row A5 judges by SPEC 15.6.5.
+    // This member owns which ends leave a row (DECISIONS R4-M222) and keeps the one-way form (a region at the longer end only, not
+    // RegionChain's either end): the rows it leaves are the longer end's conjuncts, and a region at a condition's shorter end is judged by
+    // the comparison's premises alone, as before R7-O2 A1 widened RegionChain for the body's own relations.
     // A meet at the longer end is its operands' conjuncts (SPEC 15.3.6): a conjunct with a fixed longer end keeps the premises alone (J1
     // included) and the condition fails with it; a region operand's conjunct the premises do not prove is a row. The comparison forms
     // no row: it publishes each to its query's row sink (CallableInstance.Rows), whose reader forms or drops them; a query without one

@@ -54,7 +54,8 @@ public sealed partial class Binding
 
     // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`, each region the judgment's body reads
     // as its value read so (ValueIn: a `let` region of that body, a region the body carries; R7-O2 A1), a region a nested signature names
-    // staying the region (SPEC 15.3.4); a null Origin argument and an unproven Origin are Unknown. A function's scope judges in its body
+    // staying the region (SPEC 15.3.4), a `var` region whose body is still being bound too (RegionValue has no answer yet, so the
+    // judgment is Unknown until Final); a null Origin argument and an unproven Origin are Unknown. A function's scope judges in its body
     // (JudgedAt): its literal stands in the enclosing body, whose `let` regions are not its values (D-862's e-owsin).
     private ConstraintProof StaticOrigin(BoundOrigin? origin, BindingScope scope)
     {
@@ -68,11 +69,11 @@ public sealed partial class Binding
     }
 
     // SPEC 15.2.3, 15.3.6, 8.3.3 (DECISIONS: G572 U2a): whether a local region's solved value, in `origin` or a meet's operand, is
-    // `static`, the oracle's one reading of a region (UniversalRelations.Outlives); its bounds are complete once no body is being bound,
-    // and until then it has no answer.
+    // `static`, the oracle's one reading of a region (UniversalRelations.Outlives); its bounds are complete once its body is bound
+    // (RegionBounded, RegionValue's gate), and until then it has no answer.
     private bool SolvedStatic(BoundOrigin origin)
     {
-        if (this.formingBody.IsBody || RegionOperand(origin) is not { } region)
+        if (RegionOperand(origin) is not { } region || !this.RegionBounded(region))
         {
             return false;
         }

@@ -139,8 +139,9 @@ public partial class OriginPremiseCatalogTest
     // Closures down) are rejected as their `var` twins (they were accepted when the graph read the stored slot back as its value); cenv, a
     // comparison in a Closure on an environment Borrow, is accepted as its twin; sib2esc and cenvg keep their twins' independent records
     // (SPEC 23.1.2). A read of x at a use in its own body still takes the value (sibr, veqzrc, cveqz; O-375 Q1 (a)); one step and no second
-    // bound (sib3, sib2ok, mxy) and an initializer alias over a compared region (s6a) are as before. A comparison in a nested Closure over
-    // two enclosing `let` regions (ncmp) relates two fixed Origins with no premise: the twin's Unknown at the shorter end (O-261 Q1 (a)).
+    // bound (sib3, mxy) and an initializer alias over a compared region (s6a) keep the comparison's records. A comparison in a nested
+    // Closure that captures nothing over two enclosing `let` regions (ncmp) relates two fixed Origins its signature only names, which give
+    // no premise (SPEC 15.6.5's last clause): the twin's Unknown at the shorter end.
     // Under the owner's O-400 (b) (Revision 5), a comparison whose failed condition only the region reading decides is the located limit
     // at the comparison instead (ALetLocalsRegionReachesTheComparisonRules): sib1, sib2, sib3, sib2c, csib2, sib2n, sibr, mxy, mxyg, veqzrc,
     // cveqz and s6a; sib2esc keeps its independent record beside it. Their `var` twins keep their records. chain (valid: each
