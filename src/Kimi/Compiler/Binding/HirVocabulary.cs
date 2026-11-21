@@ -123,6 +123,17 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
     /// <summary>Gets a value indicating whether this take is exclusive by its operation's target or by an exclusive borrow.</summary>
     internal bool Exclusive => this.ExclusiveMode || this.Adaptation == HirAdaptation.ExclusiveBorrow;
 
+    /// <summary>Gets a value indicating whether this take reads its node's whole Place (SPEC 15.1.5: an acquisition and a shared borrow
+    /// need Read; 13.4: an operand inspected through a shared Loan; 15.1.6: a Place Subject borrowed shared): an acquisition (Copy, Move,
+    /// Reborrow, ByCase or Temporary, any adaptation) or a shared borrow <c>(None, SharedBorrow)</c>. Not an exclusive borrow, a reference
+    /// read, a projection, a group's pass-through, a failed acquisition or no take. The pair also comes from a use in place, a
+    /// selection's receiver carrying Binding's synthesized shared read (SPEC 3.4.3), and a value used in place is a Temporary, neither a
+    /// whole-Place read: a reader that knows the use filters it by kind, as the kept record does (Binding.FormReads), and a reader of the
+    /// Adjust column, which cannot, relies on its sources being taken not in place. The one predicate of a read take, for a kept operand's
+    /// form use (DECISIONS D-986) and for the MIR builder's Opaque uses at a located part's column (R7 plan Z17).</summary>
+    internal bool Reads => this.Acquire is HirAcquire.Copy or HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase or HirAcquire.Temporary ||
+        (this.Acquire == HirAcquire.None && this.Adaptation == HirAdaptation.SharedBorrow);
+
     // A Pattern binding (SPEC 15.1.6): Copied, or borrowed in the mode its path grants; an owned part whose Copy is not proven is
     // transferred, which an instance whose Type is Copy performs as a Copy. One whose Pattern Type check failed (None) or whose Copy proof
     // is Error (Deferred) failed (SPEC 23.1.2; DECISIONS BU-103).
