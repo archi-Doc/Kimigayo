@@ -348,6 +348,16 @@ public sealed partial class RecursiveContractTest
     public void ADeclarationStateChangedInsideAnEpochGivesTheRecordsOfEitherCallOrder(string form, string contract, string calls, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, contract + "    func k(self) -> i32\ncontract K2\n    func k2(self) -> i32\nfunc needsK<V>(v: ref/V)\n    V is K\n    ()\nfunc needsK2<V>(v: ref/V)\n    V is K2\n    ()\nfunc probe<T>(t: ref/T)\n    T is K\n    T is K2\n" + calls + "()", records);
 
+    // R7-E2 E2-5a (probe c1, labelled from SPEC 8.3 and 23.1.2 first): refinement is acyclic, so the cycle is one failed requirement per
+    // member the check fails; a Contract invalid only over its own cycle or a failed refinement rests on them and adds no record of its
+    // own (the slot's first failure until R7-E5, D-924). A regression row for the record E2-5's first prototype published at `contract A`;
+    // the twin without the cycle is valid.
+    [Theory]
+    [InlineData("c1", "contract A: B\ncontract B: A", "CyclicBinding_Kd: contract A: B | InvalidConstraint_Kd: contract B: A")]
+    [InlineData("c1t", "contract A: B\ncontract B", "")]
+    public void AContractOverItsOwnCycleAddsNoRecord(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
+
     // R7-C2a: Enumerate's walk demands nothing, so a clause whose normalization proves a conformance condition over a taller projection
     // (Box<Self.(K).Y>.(C).X under `Self.(K).Y is M`) cannot continue it, and under a parameter identity the view's preparation
     // normalizes each fact once. Each check ends without an internal failure; an invalid twin is rejected.

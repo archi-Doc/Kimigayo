@@ -333,7 +333,7 @@ public sealed partial class Binding
                     // SPEC 8.4, Appendix D: a Contract declares Type parameters; Contract-owned Origin parameters are not introduced.
                     if (container is ContractKoto && container.OriginNames.Count != 0)
                     {
-                        this.Fail(container, BindingFailure.InvalidConstraint);
+                        this.Record(container, BindingFailure.InvalidConstraint, []);
                     }
 
                     for (var j = 0; j < container.ConstraintNodes.Count; j++)
@@ -472,7 +472,7 @@ public sealed partial class Binding
         {
             // Every entry path, including conditional premises, depends on the clause's complete syntax.
             clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
-            this.Fail(clause, BindingFailure.InvalidConstraint);
+            this.Record(clause, BindingFailure.InvalidConstraint, []);
             if (IsRecovery(clause.Left, out _))
             {
                 // A rejected subject (SPEC F.6) supplies none, and the requirement's own records stay (SPEC 23.1.2), as a failed selector's below.
@@ -484,7 +484,7 @@ public sealed partial class Binding
 
         if (clause.FormationType is not null && !IsAssociatedRequirement(clause))
         {
-            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.5: only a requirement may end with a formation Type.
+            this.Record(clause, BindingFailure.InvalidConstraint, []); // SPEC 8.5: only a requirement may end with a formation Type.
             return;
         }
 
@@ -576,7 +576,7 @@ public sealed partial class Binding
                 }
             }
 
-            this.Fail(clause, BindingFailure.InvalidConstraint);
+            this.Record(clause, BindingFailure.InvalidConstraint, []);
         }
 
         clause.BoundConstraint = requirement;
