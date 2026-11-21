@@ -98,7 +98,7 @@ public sealed partial class MirEffectsTest
                 var unknown = false;
                 for (var view = 0L; view < MirCases.Count(body) && kind is MirTerminatorKind.Call or MirTerminatorKind.Drop; view++)
                 {
-                    _ = effects.Keys(body, view, block, out var classes);
+                    _ = effects.Keys(body, view, block, default, out var classes);
                     unknown |= (classes & MirEffects.Unknown) != 0;
                 }
 

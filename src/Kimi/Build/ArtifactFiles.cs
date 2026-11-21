@@ -113,6 +113,9 @@ internal static class ArtifactFiles
     // A failure of an output file or directory, which its writer reports as the output's (DECISIONS R5-M169).
     internal static bool IsOutputFailure(Exception ex) => ex is IOException or UnauthorizedAccessException;
 
+    // Another handle holds the file: ERROR_SHARING_VIOLATION (32) or ERROR_LOCK_VIOLATION (33). An access denial is not one.
+    internal static bool IsSharingFailure(Exception ex) => ex is IOException && (ex.HResult & 0xFFFF) is 32 or 33;
+
     internal static void CheckPath(string path)
     {
         // An option: a leading '-', or a slash-prefixed linker option, which is also a fully qualified Unix path.
@@ -125,7 +128,6 @@ internal static class ArtifactFiles
         }
     }
 
-    // ERROR_SHARING_VIOLATION (32) and ERROR_LOCK_VIOLATION (33); a missing source or directory is not transient.
-    private static bool IsTransientReplaceFailure(Exception ex)
-        => ex is UnauthorizedAccessException || (ex is IOException && (ex.HResult & 0xFFFF) is 32 or 33);
+    // An access denial or a sharing failure; a missing source or directory is not transient.
+    private static bool IsTransientReplaceFailure(Exception ex) => ex is UnauthorizedAccessException || IsSharingFailure(ex);
 }

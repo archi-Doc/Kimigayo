@@ -336,7 +336,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var file = Path.Combine(this.directory, "Hello.kimiproj");
         File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
-        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = phase == "report" ? "Generated LLVM inputs" : null };
+        var console = new DiagnosticContractTest.DiagnosticConsole { LineAction = phase == "report" ? ("Generated LLVM inputs", DiagnosticContractTest.DiagnosticConsole.Fail) : null };
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
         if (phase.EndsWith("project checks", StringComparison.Ordinal))
         {
