@@ -49,12 +49,14 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
+using Microsoft.Win32.SafeHandles;
 using static Kimi.Build.ArtifactFiles;
 
 namespace Kimi.Build;
@@ -158,9 +160,10 @@ internal static partial class NativeToolchain
     // Runs a program and returns its exit code. The program runs in a job of its own (JobProcess), so its whole tree ends with the run:
     // after the program's exit its remaining descendants (as a test case's do), on cancellation the program with them, and when Kimi's
     // process ends (a second Ctrl+C included) with the job's last handle (PLAN G1188). It shares Kimi's standard input (Tatara decision
-    // 15); its output is copied to Kimi's raw standard streams and is complete when this returns or throws: the copies take no token and
-    // are awaited after the job's end, so the pipes reach their end. After a cancellation the outcome is the cancellation (130): the
-    // copies are awaited without observing their outcome and the cancellation is rethrown. The exit is awaited on a thread of its own.
+    // 15; none when Kimi has none: StandardInput); its output is copied to Kimi's raw standard streams and is complete when this returns
+    // or throws: the copies take no token and are awaited after the job's end, so the pipes reach their end. After a cancellation the
+    // outcome is the cancellation (130): the copies are awaited without observing their outcome and the cancellation is rethrown. The
+    // exit is awaited on a thread of its own.
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -169,7 +172,7 @@ internal static partial class NativeToolchain
             throw new FileNotFoundException("Executable not found: " + executable);
         }
 
-        using var program = new JobProcess(executable, workingDirectory, null, JobProcess.StandardInput());
+        using var program = new JobProcess(executable, workingDirectory, null, StandardInput());
         var output = Task.WhenAll(
             program.Stdout.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
             program.Stderr.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
@@ -288,6 +291,14 @@ internal static partial class NativeToolchain
         ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
 
+    // Kimi's own standard input for run's program (Tatara decision 15), which the caller does not own; null when Kimi has none: no handle,
+    // or a value that is no open handle of this process (one its parent passed without letting it inherit), so the program gets none.
+    private static SafeFileHandle? StandardInput()
+    {
+        var input = new SafeFileHandle(GetStdHandle(-10), ownsHandle: false);
+        return !input.IsInvalid && GetHandleInformation(input.DangerousGetHandle(), out _) ? input : null;
+    }
+
     // The record's invalidation: the incomplete record a build writes first (Begin) and again after a failed move of its executable.
     private static void Invalidate(string record) => WriteRecord(record, CreateBuildRecord());
 
@@ -307,4 +318,11 @@ internal static partial class NativeToolchain
 
     [GeneratedRegex(@"(?im)^\s*(?:.*\b(?:LLVM|clang) version|LLD)\s+([0-9]+\.[0-9]+\.[0-9]+[^\s()]*)")]
     private static partial Regex VersionPattern();
+
+    [DllImport("kernel32.dll")]
+    private static extern nint GetStdHandle(int kind);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetHandleInformation(nint handle, out uint flags);
 }
