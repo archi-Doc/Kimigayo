@@ -83,6 +83,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ClauseConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UnboundSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UniqIndexing"] = "never written: the library indexes no user Indexable and no view",
+        ["NodeColumns.EarlyReads"] = "never written: the library declares no struct with a base (TheLibraryDeclaresNoStructWithABase), so no library lookup sees a clause not ready",
         ["NodeColumns.RequirementGroups"] = "released at the freeze: the library pass's requirement groups, its member lookups' working state, no reader reads after it (R7-N5 B3-2; TheFreezeReleasesTheLibrarysWorkingState)",
     };
 

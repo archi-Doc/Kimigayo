@@ -26,23 +26,23 @@ namespace Kimi.Compiler;
 // - Ends: a chain follows values final in the run, each a function of the declaration, so it is periodic and BaseWalk ends it; a parameter
 //   or a projection through one is no struct and ends it. A recursion among a name's evaluation, Accessible and LookupMember passes
 //   DirectBase, Running at most once per struct on the stack, or BindType, resolvingTypes at most once per syntax.
-// - Removal: clausesBindable, notReadyReads, earlyReads, knownBases with its NodeColumns family KnownBases, knownMode, secondRun,
-//   verifiedClause, StartRuns, VerifyEarlyReads, Bind's loop and the second PublishInheritedOptOuts go at R7-D2 d3 (plan §5.0,
-//   conformances), when a conformance's specification is read by demand.
+// - Removal: clausesBindable, notReadyReads, earlyReads and knownBases with their NodeColumns families EarlyReads and KnownBases,
+//   knownMode, secondRun, verifiedClause, StartRuns, VerifyEarlyReads, Bind's loop and the second PublishInheritedOptOuts go at R7-D2 d3
+//   (plan §5.0, conformances), when a conformance's specification is read by demand.
 // - Prohibited: a guard, depth bound or visited set in a reader; a judgment or a record here (ValidateBaseDeclaration owns them).
 public sealed partial class Binding
 {
+    private readonly EarlyReadRows earlyReads;
     private readonly KnownBaseRows knownBases;
     private bool clausesBindable;
     private int notReadyReads;
-    private Dictionary<Koto, EarlyRead>? earlyReads;
     private BindingMode? knownMode;
     private bool secondRun;
     private Koto? verifiedClause;
     private int baseSteps;
 
     // Name: a value name's (Lookup), read again by name; null for a Type name, read again by its syntax (ReadAgain).
-    private readonly record struct EarlyRead(BindingScope Scope, LookupRole Role, int Arity, BindingSymbol? Symbol, string? Name);
+    internal readonly record struct EarlyRead(BindingScope Scope, LookupRole Role, int Arity, BindingSymbol? Symbol, string? Name);
 
     /// <summary>Gets the steps the walks over BaseLayers took in the latest pass, read by the scaling tests.</summary>
     internal int BaseLayerWork => this.baseSteps;
@@ -124,42 +124,40 @@ public sealed partial class Binding
 
     private BaseChain BaseLayers(StructKoto structure) => new(this, structure.BoundSymbol!);
 
-    // True when the declarations must run again, with every clause that names no struct known.
+    // True when the declarations must run again, with every clause that names no struct known. The walk reads the running pass's early
+    // reads in d8's order and writes none: ReadAgain publishes nothing, and an early read's writers (NamePath, Lookup) publish. No later
+    // step reads them: this step runs once per run, and a rerun's run advances the pass counter.
     private bool VerifyEarlyReads()
     {
         var again = false;
-        if (this.earlyReads is { Count: > 0 } reads)
+        var reads = this.earlyReads.Values.In(this.pass);
+        while (reads.MoveNext())
         {
-            this.earlyReads = null;
-            foreach (var (use, read) in reads)
+            var (use, read) = (reads.Node, reads.Current);
+
+            // A clause's own read is evaluated as it was read: without its struct's layers.
+            this.verifiedClause = read.Scope.Owner is StructKoto { BaseClause: { } own } && IsWithin(use, own) ? own : null;
+            var final = this.ReadAgain(use, read);
+            this.verifiedClause = null;
+            var missing = use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType;
+            if (ReferenceEquals(final, read.Symbol) || !(missing || read.Symbol is not null || use.BoundType is not null))
             {
-                // A clause's own read is evaluated as it was read: without its struct's layers.
-                this.verifiedClause = read.Scope.Owner is StructKoto { BaseClause: { } own } && IsWithin(use, own) ? own : null;
-                var final = this.ReadAgain(use, read);
-                this.verifiedClause = null;
-                var missing = use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType;
-                if (ReferenceEquals(final, read.Symbol) || !(missing || read.Symbol is not null || use.BoundType is not null))
-                {
-                    continue;
-                }
-
-                again |= !this.secondRun;
-                if (!this.secondRun)
-                {
-                    continue;
-                }
-
-                if (missing)
-                {
-                    use.BindingFailure = BindingFailure.None;
-                    this.prerequisites.Remove(use);
-                }
-
-                this.Fail(use, BindingFailure.Unsupported, missing);
+                continue;
             }
 
-            reads.Clear();
-            this.earlyReads = reads;
+            again |= !this.secondRun;
+            if (!this.secondRun)
+            {
+                continue;
+            }
+
+            if (missing)
+            {
+                use.BindingFailure = BindingFailure.None;
+                this.prerequisites.Remove(use);
+            }
+
+            this.Fail(use, BindingFailure.Unsupported, missing);
         }
 
         if (!again)
@@ -227,6 +225,19 @@ public sealed partial class Binding
 
             this.Current = next;
             return true;
+        }
+    }
+
+    /// <summary>The `earlyReads` family's one accessor (DECISIONS BU-220): a pass family, a use's last lookup in the pass that saw a base
+    /// clause not ready, with what it selected, in the use's module's NodeColumns at its SyntaxId; VerifyEarlyReads, its one reader, walks
+    /// the running pass's rows. Its members keep the names its readers use.</summary>
+    private readonly struct EarlyReadRows(Binding binding)
+    {
+        internal FamilyRows<EarlyRead> Values => new(binding, static (table, b) => table.Hir.Families.EarlyReads.Enumerate(b));
+
+        internal EarlyRead this[Koto use]
+        {
+            set => HirTables.Of(use).Families.EarlyReads.Ref(use.SyntaxId, binding) = value;
         }
     }
 
