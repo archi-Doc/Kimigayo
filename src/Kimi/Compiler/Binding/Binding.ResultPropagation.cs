@@ -648,11 +648,12 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1, 14.9.2 step 3 at every position: the join's own position (depth 0) and each child position of its Tuple and array
-    // results, one row per kind (PositionKind, ChildPositions). Typed: its waiting parts take the Target Result Type at the position
-    // (`target`): a step-1 Type where an outer expectation fixed one (at a call argument the selected candidate's parameter Type, ArgFlow
-    // ruling 63, superseding U1.6g2's step-2 Type there), else DecideResult's step-2 Type, PositionType selecting over the same supplied
-    // Types, which is the typed parts' common Type; with neither it has no part (Never or failed parts only), and a waiting part there is
-    // a broken contract. Aggregate: each child position at its element of `target`. The sources are then bound at `target` as wholes
+    // results, one row per kind (PositionKind, ChildPositions). Typed: a waiting nested call, construction or Case takes the Target
+    // Result Type at the position (`target`), the step-1 Type where an outer expectation fixed one (at a call argument the selected
+    // candidate's parameter Type: ArgFlow ruling 63, superseding U1.6g2 for them), every other waiting part, and one with no `target`,
+    // its typed parts' common Type, with no call (U1.6g2; D-735's open issue for an anonymous function); at depth 0 that is
+    // DecideResult's step-2 Type, PositionType selecting over the same supplied Types; with no Type it has no part (Never or failed parts
+    // only), and a waiting part there is a broken contract. Aggregate: each child position at its element of `target`. The sources are then bound at `target` as wholes
     // (BindWaitedSources), each aggregate adapting its bound parts to its element Type (7.7.4, per element): a typed position's value at
     // a borrowed element is each source's own (PLAN G924 R8).
     private void BindStepThree(Koto join, int start, int end, BoundType? target)
@@ -664,7 +665,8 @@ public sealed partial class Binding
                 {
                     if (this.positionParts[i] is { BoundType: null } part && this.Deferred(part))
                     {
-                        _ = (target ?? common) is not { } type ? this.Fail(part, BindingFailure.Internal) : this.BindWaiting(part, type);
+                        var type = (this.AwaitedKind(part) is PartKind.Call or PartKind.Case ? target : null) ?? common;
+                        _ = type is null ? this.Fail(part, BindingFailure.Internal) : this.BindWaiting(part, type);
                     }
                 }
 
