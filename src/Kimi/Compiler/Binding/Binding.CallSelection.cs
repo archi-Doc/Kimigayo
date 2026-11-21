@@ -6,8 +6,11 @@ namespace Kimi.Compiler;
 
 // SPEC 10.2-10.4, 8.4.8.2: candidate evaluation and selection, shared by a call and by a query that must not publish, the omitted base
 // selection of an implicit constructor (SPEC 6.3.6). Each candidate's accessibility is decided and its header bound before the set is
-// measured (RentCandidates); evaluation records each candidate's applicability and plan facts in the call's rented scratch;
-// classification decides the selection from them. Neither fails, completes nor records a node.
+// measured (RentCandidates); RentEvaluation and ReturnEvaluation are the one place the call's scratch is rented and returned, and
+// SelectAt the one entry: evaluation records each candidate's applicability and plan facts in that scratch; classification decides
+// the selection from them. Neither fails, completes nor records a node, except on a broken contract: BetterCandidate, reached from
+// classification through SelectBest and PremisesCannotAffect, records Fail(Source, Internal) when two fits of one argument record
+// unequal position counts.
 public sealed partial class Binding
 {
     private enum CallSelection : byte
@@ -119,43 +122,18 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 10.1-10.4: a call's selection at its evaluation's expected Type: every candidate evaluated, from no acquisition or cause fact
-    // of an earlier selection, and the selection classified. The one evaluation and classification of a named call (BindCall), of an
-    // omitted base clause and of a part that awaits its call; a query that must not publish brackets it (BeginSelectionQuery).
-    private (CallSelection Kind, int Winner) EvaluateSelection(ref CallEvaluation evaluation, in FunctionGroup candidates)
-    {
-        this.acquisitionFailure = null;
-        this.failedCause = null;
-        this.EvaluateCallCandidates(ref evaluation, candidates);
-        return this.ClassifySelection(ref evaluation);
-    }
-
-    // A named call's evaluation at `expected` over its group's candidates (their requirements and Self; its explicit arguments are
-    // the Generics its method names), with its candidate rows rented before the set is measured (RentCandidates), and the shape its
-    // other scratch takes (RentEvaluation). The rows are returned with that scratch (ReturnEvaluation), or alone before it is rented.
-    private (CallEvaluation Evaluation, CandidateShape Shape) NewEvaluation(
-        InvocationKoto call, Koto callee, BindingSymbol group, in FunctionGroup candidates, BindingScope scope, BoundType? expected)
+    // A named call's candidate rows (RentCandidates, rented before the set is measured), its Self (its requirements' or a requirement
+    // callee's) and the measured shape: what RentEvaluation leaves to its caller, shared by BindCall and ProbeSelection. The rows go
+    // into the evaluation RentEvaluation rents (returned with it by ReturnEvaluation), or are returned alone before it is rented.
+    private (EvaluatedCandidate[] Evaluated, BoundType? Self, CandidateShape Shape) NamedCandidates(Koto callee, BindingSymbol group, in FunctionGroup candidates, BindingScope scope)
     {
         var self = candidates.Requirements?.Self ?? (callee as RequirementCalleeKoto)?.Self;
-        var evaluation = new CallEvaluation
-        {
-            Call = call,
-            Callee = callee,
-            Generic = KotoHelper.UnwrapParentheses(call.Method) as GenericsKoto,
-            Scope = scope,
-            Expected = expected,
-            Self = self,
-            Requirements = candidates.Requirements,
-            Evaluated = this.RentCandidates(candidates, callee, scope),
-            Winner = -1,
-            PremisesOnly = true,
-        };
-        return (evaluation, MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto));
+        return (this.RentCandidates(candidates, callee, scope), self, MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto));
     }
 
     // SPEC 10.1, 10.4, 10.5.1, 8.3 (G812 rulings 122, 123, 126, 139): a named call's own selection at `expected`, judged in full as
-    // BindCall judges it, as a query that does not publish (BeginSelectionQuery): the evaluation BindCall makes (NewEvaluation,
-    // RentEvaluation, BindExplicitArguments, EvaluateSelection), its classification (ClassifySelection's outcome, which BindCall
+    // BindCall judges it, as a query that does not publish (BeginSelectionQuery): the evaluation BindCall makes (NamedCandidates,
+    // RentEvaluation, BindExplicitArguments, SelectAt), its classification (ClassifySelection's outcome, which BindCall
     // dispatches on) and winner, the candidates that applied (bits of their indices: an ambiguity's, CompleteAmbiguous) and whether a
     // pending candidate's Unknown premise reads the split (PremiseReadsSplit). A callee that names no function group, or explicit
     // arguments it does not choose, select nothing to judge (Selected, -1).
@@ -169,9 +147,12 @@ public sealed partial class Binding
         }
 
         var candidates = this.GroupOf(callee, group);
-        var (evaluation, shape) = this.NewEvaluation(call, callee, group, candidates, scope, expected);
+        var (evaluated, self, shape) = this.NamedCandidates(callee, group, candidates, scope);
         var query = this.BeginSelectionQuery();
-        this.RentEvaluation(ref evaluation, shape);
+        var evaluation = this.RentEvaluation(call, callee, method as GenericsKoto, scope, expected, shape);
+        evaluation.Evaluated = evaluated;
+        evaluation.Self = self;
+        evaluation.Requirements = candidates.Requirements;
         try
         {
             if (!this.BindExplicitArguments(ref evaluation, shape.Count))
@@ -179,13 +160,13 @@ public sealed partial class Binding
                 return new(CallSelection.Selected, -1, 0, false);
             }
 
-            var (kind, winner) = this.EvaluateSelection(ref evaluation, candidates);
+            var (kind, winner) = this.SelectAt(ref evaluation, candidates);
             return new(kind, winner, AppliedCandidates(in evaluation), evaluation.PremiseReadsSplit);
         }
         finally
         {
             this.EndSelectionQuery(query);
-            this.ReturnEvaluation(evaluation, shape);
+            this.ReturnEvaluation(evaluation);
         }
     }
 
@@ -206,61 +187,6 @@ public sealed partial class Binding
         this.failedCause = query.Cause;
         this.activeRequirementContract = query.Contract;
         (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = query.Counters;
-    }
-
-    // The scratch of a named call's evaluation (BindCall) beside its candidate rows (NewEvaluation's), sized by its candidates' shape (a
-    // frame per candidate, RentFrames), with the bases of the rows and position operations its trials retain; ReturnEvaluation returns
-    // it and the candidate rows in the reverse order.
-    private void RentEvaluation(ref CallEvaluation evaluation, in CandidateShape shape)
-    {
-        var call = evaluation.Call;
-        var arguments = call.ArgumentNodes.Count;
-        var explicitCount = evaluation.Generic?.TypeArguments.Count ?? 0;
-        var saved = shape.Count > 1 ? shape.Count : 0;
-        evaluation.OriginSlots = shape.SolveOrigins ? shape.Origins : 0;
-        evaluation.InputSlots = shape.SolveOrigins ? shape.InputOrigins : 0;
-        evaluation.SavedCandidates = saved;
-        evaluation.Frames = this.RentFrames(shape.Count, shape.Generics, call, evaluation.Scope);
-        evaluation.ExplicitTypes = this.typeScratch.Rent(explicitCount);
-        evaluation.ExplicitLengths = this.lengthScratch.Rent(explicitCount);
-        evaluation.Mapping = this.indexScratch.Rent(Math.Max(1, arguments));
-        evaluation.Used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
-        evaluation.CompletedWaiting = this.flagScratch.Rent(arguments);
-        evaluation.WaitingContexts = this.typeScratch.Rent(arguments);
-        evaluation.CompletedWaiting.AsSpan(0, arguments).Clear();
-        evaluation.Origins = this.originScratch.Rent(evaluation.OriginSlots);
-        evaluation.Inputs = this.originScratch.Rent(evaluation.InputSlots);
-        evaluation.AllMaps = this.indexScratch.Rent(saved * arguments);
-        evaluation.AllOrigins = this.originScratch.Rent(saved * evaluation.OriginSlots);
-        evaluation.AllInputs = this.originScratch.Rent(saved * evaluation.InputSlots);
-        evaluation.OperationStride = arguments + 1;
-        evaluation.Operations = this.argumentOperationScratch.Rent(shape.Count * evaluation.OperationStride);
-        evaluation.Rows = this.rowScratch.Rent(shape.Count * arguments);
-        evaluation.ChildSlices = this.indexScratch.Rent(shape.Count * 2);
-        evaluation.ChildBase = this.childRows.Count;
-        evaluation.PositionBase = this.positionOperations.Count;
-    }
-
-    private void ReturnEvaluation(in CallEvaluation evaluation, in CandidateShape shape)
-    {
-        this.argumentOperationScratch.Return(evaluation.Operations, clearArray: true);
-        this.rowScratch.Return(evaluation.Rows, clearArray: true);
-        this.indexScratch.Return(evaluation.ChildSlices);
-        this.childRows.RemoveRange(evaluation.ChildBase, this.childRows.Count - evaluation.ChildBase); // R3: the evaluation's retained rows end with it.
-        this.positionOperations.RemoveRange(evaluation.PositionBase, this.positionOperations.Count - evaluation.PositionBase);
-        this.originScratch.Return(evaluation.AllInputs, clearArray: true);
-        this.originScratch.Return(evaluation.AllOrigins, clearArray: true);
-        this.indexScratch.Return(evaluation.AllMaps);
-        this.lengthScratch.Return(evaluation.ExplicitLengths, clearArray: true);
-        this.candidateScratch.Return(evaluation.Evaluated, clearArray: true);
-        this.originScratch.Return(evaluation.Inputs, clearArray: true);
-        this.originScratch.Return(evaluation.Origins, clearArray: true);
-        this.typeScratch.Return(evaluation.WaitingContexts, clearArray: true);
-        this.typeScratch.Return(evaluation.ExplicitTypes, clearArray: true);
-        this.flagScratch.Return(evaluation.CompletedWaiting);
-        this.flagScratch.Return(evaluation.Used);
-        this.indexScratch.Return(evaluation.Mapping);
-        this.ReturnFrames(evaluation.Frames, shape.Count);
     }
 
     // SPEC 10.1, 9.4.1: a candidate set's rows, rented before the set is measured. Each candidate's accessibility is decided once, into
@@ -294,6 +220,89 @@ public sealed partial class Binding
         }
 
         return rows;
+    }
+
+    // The scratch of one call's candidate evaluation, sized by its measured candidate set and returned by ReturnEvaluation: the one
+    // place a selection's scratch is rented, for a call that publishes and for a query that does not. The candidate rows
+    // (RentCandidates, rented before the set is measured), the explicit Type arguments, Self and the requirement group are the
+    // caller's to fill; ReturnEvaluation returns the rows with the rest.
+    private CallEvaluation RentEvaluation(InvocationKoto call, Koto callee, GenericsKoto? generic, BindingScope scope, BoundType? expected, in CandidateShape shape)
+    {
+        var candidateCount = shape.Count;
+        var argumentCount = call.ArgumentNodes.Count;
+        var originSlots = shape.SolveOrigins ? shape.Origins : 0;
+        var inputSlots = shape.SolveOrigins ? shape.InputOrigins : 0;
+        var savedCandidates = candidateCount > 1 ? candidateCount : 0;
+        var explicitCount = generic?.TypeArguments.Count ?? 0;
+        var evaluation = new CallEvaluation
+        {
+            Call = call,
+            Callee = callee,
+            Generic = generic,
+            Scope = scope,
+            Expected = expected,
+            FrameCount = candidateCount,
+            OperationStride = argumentCount + 1,
+            SavedCandidates = savedCandidates,
+            OriginSlots = originSlots,
+            InputSlots = inputSlots,
+            Winner = -1,
+            PremisesOnly = true,
+        };
+        evaluation.Frames = this.RentFrames(candidateCount, shape.Generics, call, scope);
+        evaluation.ExplicitTypes = this.typeScratch.Rent(explicitCount);
+        evaluation.ExplicitLengths = this.lengthScratch.Rent(explicitCount);
+        evaluation.Mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
+        evaluation.Used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
+        evaluation.CompletedWaiting = this.flagScratch.Rent(argumentCount);
+        evaluation.WaitingContexts = this.typeScratch.Rent(argumentCount);
+        evaluation.CompletedWaiting.AsSpan(0, argumentCount).Clear();
+        evaluation.Origins = this.originScratch.Rent(originSlots);
+        evaluation.Inputs = this.originScratch.Rent(inputSlots);
+        evaluation.AllMaps = this.indexScratch.Rent(savedCandidates * argumentCount);
+        evaluation.AllOrigins = this.originScratch.Rent(savedCandidates * originSlots);
+        evaluation.AllInputs = this.originScratch.Rent(savedCandidates * inputSlots);
+        evaluation.Operations = this.argumentOperationScratch.Rent(candidateCount * evaluation.OperationStride);
+        evaluation.Rows = this.rowScratch.Rent(candidateCount * argumentCount);
+        evaluation.ChildSlices = this.indexScratch.Rent(candidateCount * 2);
+        evaluation.ChildBase = this.childRows.Count;
+        evaluation.PositionBase = this.positionOperations.Count;
+        return evaluation;
+    }
+
+    // Returns what RentEvaluation rented and the candidate rows, and ends the evaluation's retained rows (R3) and element positions.
+    private void ReturnEvaluation(in CallEvaluation evaluation)
+    {
+        this.argumentOperationScratch.Return(evaluation.Operations, clearArray: true);
+        this.rowScratch.Return(evaluation.Rows, clearArray: true);
+        this.indexScratch.Return(evaluation.ChildSlices);
+        this.childRows.RemoveRange(evaluation.ChildBase, this.childRows.Count - evaluation.ChildBase);
+        this.positionOperations.RemoveRange(evaluation.PositionBase, this.positionOperations.Count - evaluation.PositionBase);
+        this.originScratch.Return(evaluation.AllInputs, clearArray: true);
+        this.originScratch.Return(evaluation.AllOrigins, clearArray: true);
+        this.indexScratch.Return(evaluation.AllMaps);
+        this.lengthScratch.Return(evaluation.ExplicitLengths, clearArray: true);
+        this.candidateScratch.Return(evaluation.Evaluated, clearArray: true);
+        this.originScratch.Return(evaluation.Inputs, clearArray: true);
+        this.originScratch.Return(evaluation.Origins, clearArray: true);
+        this.typeScratch.Return(evaluation.WaitingContexts, clearArray: true);
+        this.typeScratch.Return(evaluation.ExplicitTypes, clearArray: true);
+        this.flagScratch.Return(evaluation.CompletedWaiting);
+        this.flagScratch.Return(evaluation.Used);
+        this.indexScratch.Return(evaluation.Mapping);
+        this.ReturnFrames(evaluation.Frames, evaluation.FrameCount);
+    }
+
+    // SPEC 10.1-10.4: one call's selection over its rented evaluation: every candidate evaluated, then the selection they determine.
+    // The entry a publishing call and a query share: it starts from no deferred acquisition and no failed cause, and neither fails,
+    // completes nor records a node, but for a broken contract's Fail(Source, Internal) in BetterCandidate (reached from
+    // ClassifySelection through SelectBest and PremisesCannotAffect); the caller acts on the outcome.
+    private (CallSelection Kind, int Winner) SelectAt(ref CallEvaluation evaluation, in FunctionGroup candidates)
+    {
+        this.acquisitionFailure = null;
+        this.failedCause = null;
+        this.EvaluateCallCandidates(ref evaluation, candidates);
+        return this.ClassifySelection(ref evaluation);
     }
 
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
@@ -655,14 +664,17 @@ public sealed partial class Binding
         internal BoundLength?[] ExplicitLengths;
         internal int[] Mapping;
         internal bool[] Used;
-        internal bool[] CompletedWaiting;
-        internal BoundType?[] WaitingContexts;
         internal BoundOrigin[] Origins;
         internal BoundOrigin[] Inputs;
         internal EvaluatedCandidate[] Evaluated;
         internal BoundArgumentOperation[] Operations;
         internal PositionRow[] Rows;
         internal int[] ChildSlices;
+        internal bool[] CompletedWaiting;
+        internal BoundType?[] WaitingContexts;
+        internal int ChildBase;
+        internal int PositionBase;
+        internal int FrameCount;
         internal int OperationStride;
         internal int SavedCandidates;
         internal int[] AllMaps;
@@ -670,8 +682,6 @@ public sealed partial class Binding
         internal BoundOrigin[] AllInputs;
         internal int OriginSlots;
         internal int InputSlots;
-        internal int ChildBase;
-        internal int PositionBase;
         internal int Count;
         internal int Applicable;
         internal int Winner;

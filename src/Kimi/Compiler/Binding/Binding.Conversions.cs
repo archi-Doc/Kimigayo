@@ -106,7 +106,7 @@ public sealed partial class Binding
             {
                 if (!property.Setter.IsStandard)
                 {
-                    return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                    return this.Record(conversion, BindingFailure.InvalidAssignment, []);
                 }
 
                 if (!this.Accessible(property.Symbol, scope, property.Setter.Access, (source as MemberAccessKoto)?.Left.BoundType))
@@ -332,7 +332,7 @@ public sealed partial class Binding
             Complete(conversion.Right, copied);
             if (this.ProveCopy(copied, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
             {
-                return this.Fail(conversion, BindingFailure.NonCopyOperand);
+                return this.Record(conversion, BindingFailure.NonCopyOperand, []);
             }
 
             conversion.ConversionBinding = this.IsNeverValue(conversion.Left, copied) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
@@ -424,7 +424,7 @@ public sealed partial class Binding
             if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !this.IsNeverValue(conversion.Left, operandType))
             {
                 Complete(conversion.Right, operandType);
-                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Record(conversion, BindingFailure.InvalidAssignment, []);
             }
 
             this.Fail(conversion.Right, BindingFailure.Unsupported, true);

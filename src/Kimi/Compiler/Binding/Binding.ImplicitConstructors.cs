@@ -56,40 +56,11 @@ public sealed partial class Binding
         var evaluated = this.RentCandidates(candidates, call.Method, this.scopes[constructor]);
         var shape = MeasureCandidates(candidates, true);
         var query = this.BeginSelectionQuery();
-        var frames = this.RentFrames(shape.Count, shape.Generics, constructor, this.scopes[constructor]);
-        var mapping = this.indexScratch.Rent(1);
-        var used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
-        var origins = this.originScratch.Rent(shape.Origins);
-        var inputs = this.originScratch.Rent(shape.InputOrigins);
-        var operations = this.argumentOperationScratch.Rent(shape.Count);
-        var childSlices = this.indexScratch.Rent(shape.Count * 2); // R3: each candidate's (empty) slice; the call has no argument.
+        var evaluation = this.RentEvaluation(call, call.Method, null, this.scopes[constructor], null, shape); // The call has no argument.
+        evaluation.Evaluated = evaluated;
         try
         {
-            var evaluation = new CallEvaluation
-            {
-                Call = call,
-                Callee = call.Method,
-                Scope = this.scopes[constructor],
-                Frames = frames,
-                ExplicitTypes = [],
-                ExplicitLengths = [],
-                Mapping = mapping,
-                Used = used,
-                Origins = origins,
-                Inputs = inputs,
-                Evaluated = evaluated,
-                Operations = operations,
-                ChildSlices = childSlices,
-                OperationStride = 1,
-                AllMaps = [],
-                AllOrigins = [],
-                AllInputs = [],
-                OriginSlots = shape.Origins,
-                InputSlots = shape.InputOrigins,
-                Winner = -1,
-                PremisesOnly = true,
-            };
-            var (selection, winner) = this.EvaluateSelection(ref evaluation, candidates);
+            var (selection, winner) = this.SelectAt(ref evaluation, candidates);
 
             // A winner whose own slots stay unsolved is selected as by a written base call, whose binding then reports them.
             return selection switch
@@ -109,14 +80,7 @@ public sealed partial class Binding
         finally
         {
             this.EndSelectionQuery(query);
-            this.argumentOperationScratch.Return(operations, clearArray: true);
-            this.indexScratch.Return(childSlices);
-            this.candidateScratch.Return(evaluated, clearArray: true);
-            this.originScratch.Return(inputs, clearArray: true);
-            this.originScratch.Return(origins, clearArray: true);
-            this.flagScratch.Return(used);
-            this.indexScratch.Return(mapping);
-            this.ReturnFrames(frames, shape.Count);
+            this.ReturnEvaluation(evaluation);
         }
     }
 

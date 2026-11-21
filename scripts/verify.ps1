@@ -247,8 +247,13 @@ if (-not $failed -and $VerifyToolchain) {
     $log = Join-Path $evidence 'toolchain.log'
     & dotnet (Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll") toolchain verify --Report (Join-Path $evidence 'toolchain.json') *> $log
     $ok = $LASTEXITCODE -eq 0
-    $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
     Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
+    # The compiler's self-check above; the development toolchain's tools and files (Tatara B6b3).
+    $timer = Start-Step 'development toolchain check'
+    $log = Join-Path $evidence 'check-toolchain.log'
+    $checked = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/check-toolchain.ps1') } $log
+    Add-Step 'development toolchain check' $checked $log $timer.Elapsed.TotalSeconds
+    $toolchainVerification = if ($ok -and $checked) { 'passed' } else { 'failed' }
 }
 $runsTests = $Mode -eq 'Session' -or $hasTestSelection -or $TestPurpose -ne 'All'
 if (-not $failed -and $runsTests -and $Mode -eq 'Unit') { Test-Selection $Configuration $filters }

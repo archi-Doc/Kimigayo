@@ -143,7 +143,7 @@ public sealed partial class Binding
         if (group?.EnumCase is not null)
         {
             return generic is null && callee is MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.InferredCase }
-                ? this.BindEnumConstruction(call, callee, group, call, scope, expected)
+                ? this.BindEnumConstruction(call, callee, this.PublishedTarget(callee, group, expected), call, scope, expected)
                 : this.Fail(call, BindingFailure.NotCallable);
         }
 
@@ -200,8 +200,8 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
-        var (evaluation, shape) = this.NewEvaluation(call, callee, group, candidates, scope, expected);
-        var (requirementGroup, self) = (evaluation.Requirements, evaluation.Self);
+        var requirementGroup = candidates.Requirements;
+        var (evaluated, self, shape) = this.NamedCandidates(callee, group, candidates, scope);
 
         // SPEC 6.3.4, 7.3.2-7.3.3: a group with a receiver shape acquires the call's Receiver Expression whole, a use that a special
         // receiver's row without Whole never permits (BindReference rejects its other uses). The record is at the receiver, and the
@@ -215,18 +215,21 @@ public sealed partial class Binding
         callee.BindingState = BindingState.Resolved;
         if (this.GatheredGroupFails(callee, candidates))
         {
-            this.candidateScratch.Return(evaluation.Evaluated, clearArray: true); // NewEvaluation's rows; RentEvaluation rented nothing yet
+            this.candidateScratch.Return(evaluated, clearArray: true); // NamedCandidates' rows; RentEvaluation rented nothing yet
             return Complete(call, null);
         }
 
+        var evaluation = this.RentEvaluation(call, callee, generic, scope, expected, shape);
+        evaluation.Evaluated = evaluated;
+        evaluation.Self = self;
+        evaluation.Requirements = requirementGroup;
+        var candidateCount = shape.Count;
+        var solveOrigins = shape.SolveOrigins;
         var argumentCount = call.ArgumentNodes.Count;
-        this.RentEvaluation(ref evaluation, shape);
-        var (frames, explicitTypes, explicitLengths, mapping) = (evaluation.Frames, evaluation.ExplicitTypes, evaluation.ExplicitLengths, evaluation.Mapping);
-        var (origins, inputs, evaluated, operations) = (evaluation.Origins, evaluation.Inputs, evaluation.Evaluated, evaluation.Operations);
-        var (allMaps, allOrigins, allInputs) = (evaluation.AllMaps, evaluation.AllOrigins, evaluation.AllInputs);
-        var (completedWaiting, waitingContexts) = (evaluation.CompletedWaiting, evaluation.WaitingContexts);
-        var (operationStride, savedCandidates, maxGenerics) = (evaluation.OperationStride, evaluation.SavedCandidates, shape.Generics);
-        var (originSlots, inputSlots, solveOrigins) = (evaluation.OriginSlots, evaluation.InputSlots, shape.SolveOrigins);
+        var (originSlots, inputSlots, savedCandidates, frames) = (evaluation.OriginSlots, evaluation.InputSlots, evaluation.SavedCandidates, evaluation.Frames);
+        var (explicitTypes, explicitLengths, mapping, completedWaiting, waitingContexts) = (evaluation.ExplicitTypes, evaluation.ExplicitLengths, evaluation.Mapping, evaluation.CompletedWaiting, evaluation.WaitingContexts);
+        var (origins, inputs, allMaps, allOrigins, allInputs) = (evaluation.Origins, evaluation.Inputs, evaluation.AllMaps, evaluation.AllOrigins, evaluation.AllInputs);
+        var (operations, operationStride) = (evaluation.Operations, evaluation.OperationStride);
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -237,10 +240,9 @@ public sealed partial class Binding
                 return this.Fail(call, BindingFailure.Unsupported, true);
             }
 
-            var (selection, winnerIndex) = this.EvaluateSelection(ref evaluation, candidates);
+            var (selection, winnerIndex) = this.SelectAt(ref evaluation, candidates);
             var count = evaluation.Count;
-            var applicable = evaluation.Applicable;
-            if (evaluation.Error)
+            if (selection == CallSelection.InvalidDeclaration)
             {
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
                 // associated specification or limited by OCC-X, so the selection rests on that failure (SPEC 23.1.2).
@@ -248,7 +250,7 @@ public sealed partial class Binding
                     : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
-            if (!this.CheckCallShapeContracts(call, explicitTypes.AsSpan(0, generic?.TypeArguments.Count ?? 0), explicitLengths.AsSpan(0, generic?.TypeArguments.Count ?? 0), scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))
+            if (!this.CheckCallShapeContracts(call, explicitTypes.AsSpan(0, generic?.TypeArguments.Count ?? 0), explicitLengths.AsSpan(0, generic?.TypeArguments.Count ?? 0), scope, expected, evaluated.AsSpan(0, count), allMaps, shape.Generics))
             {
                 return Complete(call, null);
             }
@@ -569,7 +571,7 @@ public sealed partial class Binding
                 this.defaultArgumentScratch.Return(defaults, clearArray: true);
             }
 
-            this.ReturnEvaluation(evaluation, shape);
+            this.ReturnEvaluation(evaluation);
         }
     }
 

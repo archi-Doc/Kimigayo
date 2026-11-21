@@ -11,12 +11,6 @@ public sealed class ToolchainCommand : ISimpleCommand<ToolchainCommand.Options>
 {
     public sealed class Options
     {
-        [SimpleOption("ToolchainRoot")]
-        public string? ToolchainRoot { get; set; }
-
-        [SimpleOption("LlvmBin")]
-        public string? LlvmBin { get; set; }
-
         [SimpleOption("Report")]
         public string? Report { get; set; }
     }
@@ -31,13 +25,13 @@ public sealed class ToolchainCommand : ISimpleCommand<ToolchainCommand.Options>
         {
             if (args.Length != 1 || args[0] != "verify")
             {
-                throw new CommandInputException("Use kimi toolchain verify [--ToolchainRoot <path>] [--LlvmBin <path>] [--Report <path>].");
+                throw new CommandInputException("Use kimi toolchain verify [--Report <path>].");
             }
 
-            if (await CommandExecution.Toolchain(this.kimigayo, async () =>
+            if (await CommandExecution.Toolchain(this.kimigayo, () =>
             {
-                await NativeToolchain.Verify(options.ToolchainRoot, options.LlvmBin, options.Report, this.kimigayo.WriteLine, cancellationToken);
-                return 0;
+                NativeToolchain.Verify(options.Report, this.kimigayo.WriteLine, cancellationToken);
+                return Task.FromResult(0);
             }) != 0)
             {
                 return 1;
