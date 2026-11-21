@@ -41,6 +41,11 @@ public sealed partial class Binding
     // by ValidateClosedTypeConstraints, which the rounds' condition runs before the walk (InvalidateProjectionCertificates).
     private int invalidations;
 
+    // R7-C3 (F's C2 ruling 317 (1)): the census of the Failed state (ConstraintEnvironment's contract): every premise newly failed
+    // (FailPremise) and every unproven input named (FailInput), zeroed with the pass's environments (ResetPass). While it is 0 no
+    // environment a judgment reads holds either, so the per-proof readers answer "nothing failed" at once.
+    private int premiseFailures;
+
     // The running pass's part (PassPart.DerivedIssues), which its Check writes (EnterPass).
     private List<BindingIssue> derivedIssues;
 
@@ -288,15 +293,12 @@ public sealed partial class Binding
 
         foreach (var fact in environment.Facts)
         {
-            if (environment.FailPremise(fact, owner))
-            {
-                this.Invalidated();
-            }
+            this.FailPremise(environment, fact, owner);
         }
     }
 
-    // R7-C3 (B1'): a premise failed alone (ConstraintEnvironment.FailPremise), counted in the change signal when it newly failed: the
-    // environment's judgments read the remainder. True when it newly failed.
+    // R7-C3 (B1'): a premise failed alone (ConstraintEnvironment.FailPremise), counted in the change signal and in the Failed state's
+    // census when it newly failed: the environment's judgments read the remainder. True when it newly failed.
     private bool FailPremise(ConstraintEnvironment environment, BoundConstraint fact, Koto owner)
     {
         if (!environment.FailPremise(fact, owner))
@@ -304,6 +306,7 @@ public sealed partial class Binding
             return false;
         }
 
+        this.premiseFailures++;
         this.Invalidated();
         return true;
     }

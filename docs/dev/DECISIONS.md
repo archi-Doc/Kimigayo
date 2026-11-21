@@ -2267,6 +2267,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     key storage is unchanged.
   - Rejected: the list (A5 would pay Θ(keys reached) per site); a stored per-site record (R4-M38); a union over a views mask (collapses
     views). Not temporary.
+  - Amended by R4-M230 (Z7, 2026-11-21): `Keys(body, view, block, excluded, out classes)` returns key and slot words over A4's read
+    graph; with nothing excluded it gives Spread's row.
   - 2x-R13 moved `MirBorrows.Checks.cs`'s location driver (`Check`, `Accessing`, `Accessed`, `Dropping`, `Destruction`, `Borrowing`) to
     `MirBorrows.Locations.cs`, behavior-preserving, `.Checks.cs` keeping the conflicts relation; `MirProblem.cs`, due by count, has no
     split: the problem and fact records with their fact kinds are one responsibility.
@@ -2310,7 +2312,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     error (`direct`). A key the site may produce both directly and through a proved initializer counts as proved, since keys do not
     record their source (P5). The set is a may-set, so the proof decides nothing exactly (e10f; OQ-F5-6 (a)). A4 publishes
     `MirEffects.Summary(body, view, out classes)`, a body view's row and classes over its existing storage, an atom it keeps counted as
-    Unknown.
+    Unknown. Superseded by R4-M230 (Z7, 2026-11-21): A5 decides on A4's one row of what the site runs, with Q's initializations left out.
   - G136 (i): a direct Loan on a static names E (`Holders`; W's step from E is `MirWrites.None`), storage the body does not own (SPEC
     15.6), so a call's store through a static's borrow lands in E as a parameter's does (`refs.append(y@ref); y = 2` errs); check sets
     do not change, since σ(E) is in each.
@@ -2321,7 +2323,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Limit of the proof: for an immutable d the proof applies at every site, since A4 keys no immutable static and A5 cannot tell
     whether the site reaches d; so `let lm = lim2.view(); let ll = log.view(); let v = e3.n`, whose ensured initializer writes log and
     never reaches lim2, is U where SPEC errs (sound: U still rejects). Removed when A4 keys immutable-static accesses, or at P42;
-    registered under X-2's proof producer.
+    registered under X-2's proof producer. Superseded by R4-M230 (Z7, 2026-11-21): the immutable-static limit is gone.
   - Driver: `MirBorrows` takes `MirEffects` (`MirAnalysis`); the effect access is listed by `MirBorrows.Locations` (`Effecting`).
   - PD21: `MirBorrows.Activations.cs` has one responsibility, the activation and observing-destruction checks of a location, and 2b-3's
     change is an argument at its two `Code`/`Report` call sites, so no split exists; 2x-R9 keeps its 2f-D condition (a split if 2f-D
@@ -7613,6 +7615,55 @@ and migration obligations remain in force; no numeric cap changes are authorized
   receiver has no Loan); a per-Loan referent table formed at the Loan's issue (a side table read across the fixed point); a second
   reach walk inside Content or Chain; subtracting markers; a Binding change. Cost: one step walk per borrow input at its first
   Value-less read, two memoized `Remove`s and a memoized `Range` per retention; warm 0 B. No vocabulary entry.
+- **R4-M230 Static initialization proof: A4's initialization entries and the one read graph** (2026-11-21; Middle, A4 and A5; stream Z
+  unit Z7, Q-610, PLAN G396 M4/M7; Major, design `middle\notes\z7-design.md` Revisions 1-4 with R4.3 withdrawn (O-459 (a)); under
+  R4-M89 OQ-F5-6 (a) and the owner's O-458 (a), O-459 (a) and O-465 (a))
+  - **Status.** This entry amends R4-M92's X-2 registration. It supersedes R4-M92's "Initialization proof" and "Limit of the proof"
+    bullets, R4-M91's `Keys` signature and R5-M183's A5 "rests" half.
+  - **Rule** (SPEC 15.6.4, 22.4.3, 22.4.4). A5 decides R1 and R3 on A4's row of what the site runs, with every first-access
+    initialization composed. When that row conflicts and Q is not empty, the row with Q's one-slot initializations left out decides.
+    - Q is the set of statics that a live candidate of the effect set is on (`Holds`), until Z7b implements O-456 (a)'s SPEC 15.6.4
+      sentence.
+    - The decision follows R4-M92's R2-B1 chain: a write key, else Unknown, else a read key.
+    - Each kind is skipped where the initializer of a Q static with several slots, which the site may run, has that kind in its
+      summary. This holds until P42's per-access key (R4-M103).
+    - The first kind left decides: if it meets the Loan, the result is the Language problem with that kind as its fact.
+    - If no kind is left, or the kind meets no Loan, the result is the located `Unsupported_Kd`.
+    - P, the set of statics proved and accepted, stays empty until Z7b.
+  - **A4's entries.**
+    - A staticEnsure of a static with one slot (`TyCtxt.Instantiates` false) is an initialization entry, not an edge. Its initializer
+      holds no atom; a broken invariant is InternalInvariant.
+    - A static with several slots keeps its edge until P42. A slot bit tells A5 that the site may run it.
+  - **A4 states what a node runs once, as the read graph.**
+    - `Compose` records each read once, both in the worklist's `dependents` and in the forward list `reads`.
+    - Spread appends each entry's initializer views, tagged with the entry's number. For an initializer with a validator finding, it
+      appends one edge to none instead (Derived, R5-M183).
+    - Spread joins each node's own facts (`Seed`) over the graph, once per Run.
+    - A query with exclusions walks the same graph without the excluded entries' edges (`Without`). With nothing excluded, it gives
+      Spread's row.
+    - API: `Keys(body, view, block, excluded, out classes)` returns key and slot words. `Initialization`, `Slot`, `Summary` (the
+      spread row) and `Walked` complete it.
+  - **Removed:** `Proved`, the membership chain over the flattened row, the may-first-access test, the immutable-static limit, the P5
+    note, and the R5-M183 `Rests` path.
+  - **Temporary:** Q = live, until Z7b; the several-slot part, until P42.
+  - **Open:** PLAN G1165 (A4's query still runs `Initialize`); PLAN G1166 (the excluded query costs Θ(K × reach) on rejected
+    programs; this matters for Z7b's P query); PLAN G1189 (the small measured fixes and T-323's benchmark, O-465 (a)).
+  - **Rejected:**
+    - A must fact over the flattened row: unsound (`direct2`).
+    - `Expand` per query: K1, 64-120 ms per query at N 2048, F 1024.
+    - Initialization bits per row, with a second spread: 1.3-1.8x Run.
+    - `Reach` over the local calls and entries: D1. It is a second statement of what a node runs, and it loses destructors, value
+      calls and witnesses.
+    - Reuse of Spread's component rows: it needs per-component entry sets.
+    - Numbering statics from a body's table in `Local`: F1. An Opaque site's roots name statics that no ensure names, some with no
+      initializer.
+  - **Cost:**
+    - Per excluded query: Θ(nodes reached + their reads, keys and entries) + Θ(rowWords). It runs once per location and view whose
+      full row conflicts with a live static Loan, and each such location records.
+    - Run: one 12-byte record per recorded dependency.
+    - Measured by T-323 (StaticKeyMeasurements, including its excluded phase): BEYOND (Run 1.09x, Query 1.21x at N 2048, mostly Spread
+      over every node for `Time.counterFrequency`'s entry, inherent to D3/R4.1); RP8's real programs within noise; landed as is by the
+      owner's O-465 (a) (`middle\notes\z7-perf.md`).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -21556,6 +21607,8 @@ structure is recorded here by the unit that first implements it.
     on such an initializer, and `Met`'s second block still runs. Tests: `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`,
     `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted` (the rows that need a live static Loan, which no source program has
     until P42).
+  - Superseded in part by R4-M230 (Z7, 2026-11-21): the A5 "rests" half (`Proved`'s `bool?`, `Unproved`'s `Rests`) is gone; A4's Spread
+    appends one edge to none for an initializer with a validator finding (`Derived`).
   - Amended (GR-1a, 2026-11-04): a second per-body fact, `MirBody.HasConstructionRecord`, whether a construction record lies in the body.
     Its one writer is the builder's one record path of the body in hand, `MirBuilder.Record` (every builder record but a module's broken
     HIR contracts, made before its bodies); `Reset` clears it, and it is read-only after build. A record made without a body in hand
@@ -23847,11 +23900,57 @@ R8-M* and R9-M* by the stage of the recording unit.
     null-scope branch.
   - **Moves.** None below 64 steps (diagnostic and semantic HIR+MIR snapshots unchanged). At 64 steps and more a path is no longer
     cut at its 64th step: Array writes and `@uniq` bind, and a 64-deep owned Array local reaches A5's reported
-    `OwnershipDepthLimit_Kd` (PLAN G1146).
+    `OwnershipDepthLimit_Kd` (PLAN G1146, closed by R7-M70).
   - **Rejected.** A memo of `Writable` per node (a side table beside the walk); a demand flag (a steering parameter); lazy owner
     folds (exponential on alternating paths); a re-fold of the receiver in the exclusive reading (exponential on exclusive
     references stored in Array elements, the Front's B1); one recursion skeleton for both folds (it would take the reading as a
     delegate or a mode parameter).
+- **R7-M69 The Failed state's census: the per-proof readers answer "nothing failed" at once** (Front, 2026-11-21; R7-C3, F's C2
+  rulings 317 (1) and 318; O-463: W-292's RP8 BEYOND on Bind; Q-609; Minor, behaviour-preserving; `claude/f-c3-cost2`).
+  - **The census.** `Binding.premiseFailures` counts every write of a ConstraintEnvironment's Failed state:
+    - each premise newly failed, through `Binding.FailPremise`, the one caller of `ConstraintEnvironment.FailPremise` (FailFacts
+      goes through it);
+    - each unproven input named, through FailInput, the one caller of `NameUnprovenInput`.
+
+    ResetPass zeroes the count where it resets the pass's environments.
+  - **The readers.** While the count is 0, the five readers on every proof answer at once: SpokenVerdict, SpokenConformance,
+    UnprovenInputRead, FailedClauseRead and DerivedFailure. Their answers are unchanged.
+  - **Why it is sound.** No environment a pass reads holds the state without a write counted in that pass:
+    - every writer writes an environment of the running pass's own scopes, never an overlap, collision or path scope;
+    - those environments are reset with the count;
+    - a mid-pass `Reset` only leaves the count high;
+    - the frozen library's environments hold none: each failure has a record, and FreezeLibrary refuses a library with records.
+  - **Where the contract is checked.** The contract sits at `ConstraintEnvironment.FailedPremises`. ArchitectureRulesTest's row
+    "Writers of the Failed state" pins the two callers, so a new writer counts the state or fails the row. FreezeLibrary's verify
+    phase throws the internal-invariant form if the census is not 0, so the library premise is checked once per freeze.
+  - It counts the existing state: no second state, side table or flag steering a function.
+  - Rejected:
+    - SpokenVerdict and UnprovenInputRead walking the scope chain first, as SpokenConformance does (still three walks per Contract
+      proof);
+    - a per-environment flag (a second state);
+    - making the environment's writers private behind a wrapper type (a wrapper without semantics for two calls).
+- **R7-M70 A walk over syntax keeps no count of its own** (Back, 2026-11-21; R7-T2's D-932, Q-603, PLAN G1146 (closed); the Front's
+  review ACCEPT through fix (4) and the Middle's RP17 CONSENT, C-402; `claude/b-d932`)
+  - **Rule.** A walk over syntax keeps no count of its own: the published tree's depth (`SyntaxNesting.Limit`, IMPL A.4, BU-112)
+    bounds it. A walk that loops on anything but syntax keeps a located Resource record instead.
+  - **The walks.** The own bounds of IsRawPlace, IsRawRooted, PathOrigin, ReachesThroughBorrow, BorrowedPathRoot, OwnedPathRoot,
+    TakeJudgment, ContainedOrigin and RootLocal are removed, and the dead `+` chain IsStringJoin/IsStringOperand is deleted (R7-M68
+    removed PathAuthority's walk and IsPointerPath; D-972 the PathOrigin buffer's 16-entry cut).
+  - **The HIR publisher** carries the parent's raw-rootedness (`rooted`) down a rooted step (IsRootedStep), asked once per chain, so
+    NeedOf is linear.
+  - **ReachesThroughBorrow's answer has one carrier**, a pass family of the selection (`NodeColumns.ReachedThroughBorrow`): a memo of
+    a final fact of its syntax, filled at its first query from its receiver's row and its own step, valid while its pass's stamp
+    stands. So it may be filled after the pass (the reports' folds, ReportDiagnostics); it is released at the freeze, and it is linear
+    per chain (the Front's B1, B1b and C1).
+  - **Findings fixed with it.** ContainedOrigin's bound rejected a valid 65-step `@uniq` through fixed arrays storing `uniq/` (class
+    3, the Front's fu-33) and, with IsRawRooted's, accepted a returned 64-deep raw borrow `during other` (class 2). OwnedPathRoot's let
+    a 65-step Take below `self` pass Binding, refused only by MIR's MovedPlace_Kd at `init` (class 4), and refused its `@uniq` twin
+    with a Language error (class 3). TakeJudgment's left a verified Take required; RootLocal's named the wrong Borrow.
+  - **Moves.** None below 64 steps (diagnostic and semantic snapshots unchanged); the rows' programs of 64 steps and more.
+  - **Rejected.** A single carried answer (overwritten by interleaved queries); saving and restoring it around nested binding (a
+    second fix of one symptom); a second carrier per fold prefix (fix (2)'s `PathPrefix.Borrowed`, a copy of the family's fact); a
+    located Resource record at 64 (no IMPL A.4 limit is reached); raising the bounds (a silent route change stays); raw-rootedness in
+    UseNeed (a path fact, not a need).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
