@@ -592,13 +592,18 @@ public sealed partial class Binding
             var completed = fit == CandidateApplicability.Error ? null : this.PropagateBound(source, type) ?? this.BindNode(source, scope, type);
 
             // SPEC 5.7, 23.1.2: the layers admit what the bound payload puts in them, a failed part being no evidence (NonNullAtLayers), so
-            // the payload's own failure does not hide another layer's record.
-            var refused = this.HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source);
-            if (completed is null || this.PartFailed(source) || refused ||
+            // the payload's own failure does not hide another layer's record; a refused layer is a relation problem that leaves the
+            // construction Resolved (JudgeHolderAccess).
+            if (this.HoldsHolder(stored))
+            {
+                this.JudgeHolderAccess(stored, HolderAccess.Write, source, source);
+            }
+
+            if (completed is null || this.PartFailed(source) ||
                 (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
                 !this.ErasePart(source, completed, type)))
             {
-                Complete(use, null); // The payload's own failure or its layers' refusal, on which the construction rests.
+                Complete(use, null); // The payload's own failure, on which the construction rests.
                 return false;
             }
 
