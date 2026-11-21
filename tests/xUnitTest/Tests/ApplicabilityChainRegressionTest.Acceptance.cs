@@ -131,6 +131,25 @@ public partial class ApplicabilityChainRegressionTest
     public void EachSynthesizedCallFormTiesAndMisfitsByOneRule(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
+    // R7-P1's R-b at the other synthesized forms, each over a fixed callee whose argument or conformance fails: object creation (SPEC
+    // 13.6.2: "the input Type is fixed independently of the target ... `1@obj/i64` is an error; write `1@i64@obj`"), a range's
+    // boundary (4.6.2: a value of a Position Type), a substitution (12.4.2: it needs Utf8Format), a comparison (4.6.2's
+    // `(0..3) == (0..=2)`: different range Types cannot be compared) and iteration (14.6.2: a missing conformance is an error; 4.6.2's
+    // `0@i32..2@i64` is not iterable). Object creation has no tie: `@` cannot be overloaded and never reselects (13.5, 13.5.2).
+    [Theory]
+    [InlineData("guard", "obj-mis", "func k() -> ()\n    let o = 1@obj/i64\n", "TypeMismatch_Kd: let o = 1@obj/i64")]
+    [InlineData("guard", "obj-ok", "func k() -> ()\n    let o = 1@i64@obj\n", "")]
+    [InlineData("guard", "rg-mis", "func k() -> ()\n    let r = true..false\n", "TypeMismatch_Kd: let r = true..false")]
+    [InlineData("guard", "rg-ok", "func k() -> ()\n    let r = 0..2\n", "")]
+    [InlineData("guard", "fmt-mis", "struct S\n    public init() => ()\nfunc k() -> ()\n    let s = S.init()\n    let t = \"\\(s)\"\n", "NoApplicableOverload_Kd: let t = \"\\(s)\"")]
+    [InlineData("guard", "fmt-ok", "func k() -> ()\n    let n: i32 = 1\n    let t = \"\\(n)\"\n", "")]
+    [InlineData("guard", "eq-mis", "func k() -> ()\n    let f = (0..3) == (0..=2)\n", "TypeMismatch_Kd: let f = (0..3) == (0..=2)")]
+    [InlineData("guard", "eq-ok", "func k() -> ()\n    let f = (0..3) == (0..3)\n", "")]
+    [InlineData("guard", "it-mis", "func k() -> ()\n    for i in 0@i32..2@i64 => ()\n", "UnsatisfiedConstraint_Kd: for i in 0@i32..2@i64 => ()")]
+    [InlineData("guard", "it-ok", "func k() -> ()\n    for i in 0..2 => ()\n", "")]
+    public void EachFixedSynthesizedCallReportsItsMisfit(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
     // R7-P1's R-c: argument evidence binds a slot first and the expected result fills only unbound parts (SPEC 10.8, 10.1 step 4,
     // 10.3), at a generic function (rc-d-*) and a generic constructor (rc-c-*, 10.8.1 with its `takeBox(Box.init(1))`); a literal-only
     // argument is checked against the Type the expected result gives (10.8's `identity([2 of 1])`), and a slot nothing binds is an
