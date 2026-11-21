@@ -53,12 +53,6 @@ public sealed partial class Binding
         => type.Kind == BoundTypeKind.Slice ||
             (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
 
-    // SPEC 5.7 ("Reading a Field"): the Origin a raw layer of an input states as it is read at its position: a `during self` layer the
-    // holder's, which past a dereference is the Origin of the nearest borrow above it (`at.Layer`) and by value none; any other layer the
-    // Origin it states (OwnedOrigin; Unstated for one its declaration writes without `during`).
-    private static BoundOrigin? ReadOrigin(BoundType layer, in RetentionAtom at)
-        => layer.RawOrigin?.Kind == OriginKind.Holder ? (at.Kind == RetentionKind.Value ? null : at.Layer) : OwnedOrigin(layer);
-
     // BU-225's one predicate at a layer (PLAN G963): whether a walk that meets `type` through no shared layer and outside a callable meets
     // what lies past it so: past a pair layer only where its binder admits an exclusive Semantics (IsInvariantLayer, BU-3); past no
     // callable Type, shared layer (SharedLayer) or raw layer whose step at its position (`step`) is Shared. The atom walk narrows
@@ -304,7 +298,7 @@ public sealed partial class Binding
     private void RawSource(BoundType layer, in RetentionAtom at)
     {
         var kind = at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain;
-        if (!this.RecordStatedOrigin(ReadOrigin(layer, at), at.Input, kind))
+        if (!this.RecordStatedOrigin(this.ReadOrigin(layer, at), at.Input, kind))
         {
             this.retentionRawSources.Add((at.Input, kind));
         }
@@ -349,6 +343,13 @@ public sealed partial class Binding
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
     }
+
+    // SPEC 5.7 ("Reading a Field"): the Origin a raw layer of an input states as it is read at its position: a `during self` layer
+    // (HoldsHolder: for a raw layer, the layer itself) the holder's, which past a dereference is the Origin of the nearest borrow above it
+    // (`at.Layer`) and by value none; any other layer the Origin it states (OwnedOrigin; Unstated for one its declaration writes without
+    // `during`).
+    private BoundOrigin? ReadOrigin(BoundType layer, in RetentionAtom at)
+        => this.HoldsHolder(layer) ? (at.Kind == RetentionKind.Value ? null : at.Layer) : OwnedOrigin(layer);
 
     // A raw layer of input `index`, held with `kind`, as it is read (`origin`): recorded in retentionRawStated where it states an Origin;
     // whether it does.
