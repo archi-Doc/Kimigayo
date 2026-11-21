@@ -40,6 +40,7 @@ public sealed partial class Binding
             }
         }
 
+        this.DiscoverInferenceComponents();
         this.associatedInferenceReady = true;
         for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
         {

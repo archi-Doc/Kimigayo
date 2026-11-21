@@ -724,5 +724,25 @@ public sealed partial class Binding
         internal HashSet<BoundType> CheckedTypes { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal HashSet<BoundType> ProblemTypes { get; } = new(ReferenceEqualityComparer.Instance);
+
+        // Discovery (Binding.AssociatedInference.Discovery): the definitions the batch's written Types name, the inferring definitions it can
+        // read, the definitions whose value its value-dependent projections read, and its Tarjan state and component.
+        internal List<BindingSymbol> Heads { get; } = new();
+
+        internal List<AssociatedInference> Reads { get; } = new();
+
+        internal List<AssociatedInference> Dependent { get; } = new();
+
+        internal int Index { get; set; }
+
+        internal int Low { get; set; }
+
+        internal int Cursor { get; set; }
+
+        internal int Visit { get; set; }
+
+        internal bool OnStack { get; set; }
+
+        internal int Component { get; set; } = -1;
     }
 }

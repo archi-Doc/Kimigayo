@@ -142,4 +142,42 @@ public partial class AssociatedInferenceTest
     [InlineData("C4", "generic-conflict", C4GenericConflict, "AssociatedTypeInferenceFailed_Kd: Self is MC | ...", Explicit = true)]
     public void EveryValueFollowsItsEvidenceInEveryOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program, records);
+
+    // R7-C4 commit 2 (design Revision 2 §3.2, the validator, counted until the cutover enforces it): every read the batches make of another
+    // inferring definition's binding lies in the reader's Reach as discovery computes it from the declarations (Heads, D2-B1 included).
+    [Theory]
+    [InlineData("C4N1D", C4N1D)]
+    [InlineData("C4N1E", C4N1E)]
+    [InlineData("C4N1EVw", C4N1EVw)]
+    [InlineData("C4N2D", C4N2D)]
+    [InlineData("C4N2E", C4N2E)]
+    [InlineData("C4N4Def", C4N4Def)]
+    [InlineData("C4N4Efd", C4N4Efd)]
+    [InlineData("C4N4Fde", C4N4Fde)]
+    [InlineData("C4C3Abc", C4C3Abc)]
+    [InlineData("C4C3Bca", C4C3Bca)]
+    [InlineData("C4C3Cab", C4C3Cab)]
+    [InlineData("C4C3X", C4C3X)]
+    [InlineData("C4K1S", C4K1S)]
+    [InlineData("C4K1E", C4K1E)]
+    [InlineData("C4K2S", C4K2S)]
+    [InlineData("C4K2E", C4K2E)]
+    [InlineData("C4K3S", C4K3S)]
+    [InlineData("C4K3E", C4K3E)]
+    [InlineData("C4K3X", C4K3X)]
+    [InlineData("C4DrAef", C4DrAef)]
+    [InlineData("C4DrFea", C4DrFea)]
+    [InlineData("C4DrEfa", C4DrEfa)]
+    [InlineData("C4Ring6", C4Ring6)]
+    [InlineData("C4PremOwn", C4PremOwn)]
+    [InlineData("C4PremE", C4PremE)]
+    [InlineData("C4PremP", C4PremP)]
+    [InlineData("C4B2012", C4B2012)]
+    [InlineData("C4B2210", C4B2210)]
+    [InlineData("C4Ov12", C4Ov12)]
+    [InlineData("C4Ov12R", C4Ov12R)]
+    [InlineData("C4Generic", C4Generic)]
+    [InlineData("C4GenericConflict", C4GenericConflict)]
+    public void EveryReadLiesInTheReadersReach(string form, string program)
+        => Assert.Equal((form, 0), (form, MinimalEmissionTest.Analyze(program).Binding.InferenceReachMisses));
 }
