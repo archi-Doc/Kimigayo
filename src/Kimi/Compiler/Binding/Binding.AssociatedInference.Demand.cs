@@ -4,12 +4,41 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The associated-inference owner's demand side (R7-C4, PLAN G172): how the pass determines the inferred bindings and publishes them. Until
-// R7-C4's cutover this is the per-definition batch driver, moved here unchanged from Binding.AssociatedInference.cs: a batch per conforming
-// definition, run in declaration order and nested when a batch reads a definition whose batch has not run (SPEC 8.5.5, the defect PLAN
-// G172 records). The cutover replaces it with one request per component of the definitions (design Revision 2 §3.3).
+// The associated-inference owner's demand side (R7-C4, PLAN G172; design Revision 2 §3.1-§3.4; the owner's O-484 (1 a, 2 x)): how the pass
+// determines the inferred bindings and publishes them.
+// - Inputs: discovery's components in emission order (Binding.AssociatedInference.Discovery), each inferring definition's paths.
+// - Outputs: each hole's binding (AssociatedBinding.Inferred, InferenceConflict, Problem, EvidenceSources), published when its component's
+//   request ends; then the paths' AssociatedStorage and InferenceStorage, and the inherited paths' inference.
+// - The rule (SPEC 8.5.5, 8.3.3 Finality): Value(v | P) is pending when v is held; else a source position supplies its Type when the
+//   collection with v held and the collection with v's definition's bindings held give it the same complete Type (HeldValue). A
+//   collection under a hold is a run (a batch's run object, InferenceRun): identification, extraction and the usable positions, every
+//   read of another binding of the component answered under the run's hold (ResolveAssociated), every answer Provisional.
+// - Invariants: one request per component, none nested in another; a request's tables (values, runs, holds) are request-local and
+//   dropped at its end (capacity kept); a binding is written once, at its request's end; problems are recorded by the root's frozen
+//   run (the hold of the definition's bindings, today's batch hold), never by a held run.
+// - Prohibitions: no held answer outside its request; no read of a later component's binding (the validator); no identification cached
+//   inside a request (a held answer is Provisional).
 public sealed partial class Binding
 {
+    // The component whose request is open, or -1.
+    private int inferenceRequest = -1;
+
+    private int inferenceEmptyHold;
+
+    private readonly Dictionary<AssociatedBinding, int> inferenceBindingIndex = new(ReferenceEqualityComparer.Instance);
+
+    private readonly List<InferenceEntry> inferenceBindings = new();
+
+    private readonly List<int> inferenceHoldArena = new();
+
+    private readonly List<HoldKey> inferenceHolds = new();
+
+    private readonly Dictionary<(AssociatedBinding Binding, int Hold), HeldAnswer> inferenceValues = new();
+
+    private readonly Dictionary<(AssociatedInference Batch, int Hold), AssociatedInference> inferenceRuns = new();
+
+    private Dictionary<HoldKey, int>? inferenceHoldIds;
+
     private void PrepareAssociatedInference()
     {
         foreach (var path in this.impls.InPass.Paths)
@@ -42,13 +71,7 @@ public sealed partial class Binding
 
         this.DiscoverInferenceComponents();
         this.associatedInferenceReady = true;
-        for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
-        {
-            if (batches.Current is { Paths.Count: > 0 } batch)
-            {
-                this.InferAssociatedTypes(batch);
-            }
-        }
+        this.InferComponents();
 
         // Explicit equations may point at a newly completed binding. Normalize their values again,
         // preserving their original candidates for final formation/projection verification.
@@ -132,86 +155,39 @@ public sealed partial class Binding
         }
     }
 
-    private void InferAssociatedTypes(AssociatedInference batch)
+    // SPEC 8.5.5, 8.3.3 Finality (R7-C4; the owner's O-484 (2 x)): the inferring definitions' components in Tarjan's emission order, one
+    // request each; a component's bindings are published when its request ends, so a later component reads them as Complete.
+    private void InferComponents()
     {
-        if (batch.State != 0)
+        var start = 0;
+        while (start < this.inferenceComponents.Count)
         {
-            return;
+            var component = this.inferenceComponents[start].Component;
+            var end = start;
+            while (end < this.inferenceComponents.Count && this.inferenceComponents[end].Component == component)
+            {
+                end++;
+            }
+
+            this.RunComponent(component, start, end);
+            start = end;
         }
+    }
 
-        batch.State = 1;
-        var previous = this.collectingAssociated;
-        this.collectingAssociated = batch;
-        var held = this.BeginFormation(); // SPEC 8.5.5, 8.6.3: the inferred bindings are formed from the signatures, whatever the reader.
-        try
+    // One component's request: every binding's root state Value(v | {}) and the held states they reach, in request-local tables; then
+    // publication. Nothing but the published bindings outlives the request.
+    private void RunComponent(int component, int start, int end)
+    {
+        this.inferenceValues.Clear();
+        this.inferenceRuns.Clear();
+        this.inferenceBindingIndex.Clear();
+        this.inferenceBindings.Clear();
+        this.inferenceHoldArena.Clear();
+        this.inferenceHolds.Clear();
+        (this.inferenceHoldIds ??= new(new HoldComparer(this.inferenceHoldArena))).Clear();
+        for (var b = start; b < end; b++)
         {
-            var hasHole = false;
-            foreach (var path in batch.Paths)
-            {
-                foreach (var identity in path.Contract.Contract!.AssociatedStorage)
-                {
-                    hasHole |= this.InferenceHole(path, identity);
-                }
-            }
-
-            if (!hasHole)
-            {
-                return;
-            }
-
-            foreach (var path in batch.Paths)
-            {
-                if (path.InheritedFrom is not null)
-                {
-                    continue;
-                }
-
-                var self = this.ConformanceSelf(path);
-                foreach (var identity in path.Contract.Contract!.RequirementStorage)
-                {
-                    if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement)
-                    {
-                        continue;
-                    }
-
-                    this.BindHeader(identity.Symbol);
-                    var match = this.IdentifyRequirement(path, identity);
-                    if (match.State != RequirementMatchState.Unique && identity.Symbol.Type is { } waitingResult)
-                    {
-                        batch.Pairs.Clear();
-                        Koto? input = null;
-                        if (match.State == RequirementMatchState.Pending)
-                        {
-                            for (var i = 0; i < requirement.Parameters.Count; i++)
-                            {
-                                var syntax = requirement.Parameters[i].Type;
-                                if (syntax.BoundType is not { } parameter || this.PendingAssociatedType(this.ContractType(parameter, path.Scope, self)))
-                                {
-                                    input = syntax;
-                                    break;
-                                }
-                            }
-                        }
-
-                        this.RecordInferenceProblem(path, this.ContractType(waitingResult, path.Scope, self), match.State == RequirementMatchState.Pending ? InferenceProblem.Input : match.State == RequirementMatchState.Ambiguous ? InferenceProblem.Ambiguous : InferenceProblem.Missing, requirement, input);
-                    }
-
-                    if (match.State != RequirementMatchState.Unique || match.Member!.Declaration is not FunctionKoto implementation ||
-                        requirement.BoundSymbol!.Type is not { } required || match.Member.Type is not { } actual)
-                    {
-                        continue;
-                    }
-
-                    required = this.ContractType(required, path.Scope, self);
-                    var written = this.MemberType(this.AsWritten(implementation.ReturnType, this.scopes[implementation], actual), match.Selection.DeclaringType)!;
-                    actual = this.ContractType(this.MemberType(actual, match.Selection.DeclaringType)!, path.Scope);
-                    batch.Pairs.Clear();
-                    batch.Source = implementation;
-                    this.ExtractAssociatedEvidence(batch, path, required, actual, written, null);
-                }
-            }
-
-            // Collection is finished for the entire nominal definition before any inferred value is visible.
+            var batch = this.inferenceComponents[b];
             foreach (var path in batch.Paths)
             {
                 if (path != path.RootPath || path.InheritedFrom is not null)
@@ -221,42 +197,390 @@ public sealed partial class Binding
 
                 foreach (var identity in path.Contract.Contract!.AssociatedStorage)
                 {
-                    if (!this.InferenceHole(path, identity) || !batch.Evidence.TryGetValue(identity.Symbol, out var evidence))
+                    if (this.InferenceHole(path, identity) && this.AssociatedBindingOf(path, identity) is { } binding &&
+                        this.inferenceBindingIndex.TryAdd(binding, this.inferenceBindings.Count))
                     {
-                        continue;
-                    }
-
-                    var binding = this.AssociatedBindingOf(path, identity)!;
-                    foreach (var source in evidence)
-                    {
-                        if (!this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) ||
-                            this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope) != ConstraintProof.Proven)
-                        {
-                            continue;
-                        }
-
-                        var type = this.ContractType(source.Type, path.Scope);
-                        if (binding.Inferred is not null && !this.SameCompleteType(binding.Inferred, type))
-                        {
-                            binding.InferenceConflict = true;
-                            binding.Problem = InferenceProblem.Conflict;
-                            binding.ProblemSource = source.Source;
-                            binding.ProblemDetail = null;
-                        }
-
-                        binding.Inferred = type;
-                        binding.InferenceSource ??= source.Source;
-                        binding.EvidenceSources.Add(source);
+                        this.inferenceBindings.Add(new(binding, batch, path, identity));
                     }
                 }
             }
         }
+
+        this.inferenceRequest = component;
+        var empty = this.InternHold(this.inferenceHoldArena.Count);
+        try
+        {
+            for (var i = 0; i < this.inferenceBindings.Count; i++)
+            {
+                this.HeldValue(this.inferenceBindings[i].Binding, empty);
+            }
+
+            for (var i = 0; i < this.inferenceBindings.Count; i++)
+            {
+                this.PublishInferred(this.inferenceBindings[i], empty);
+            }
+        }
         finally
         {
-            this.EndFormation(held);
+            this.inferenceRequest = -1;
+            for (var b = start; b < end; b++)
+            {
+                var batch = this.inferenceComponents[b];
+                batch.State = 2;
+                batch.RunsRented = 0;
+            }
+        }
+    }
+
+    // Value(v | P) (design §3.1): pending when v is held; else a source position supplies its Type when the run with v held and the run
+    // with v's definition's bindings held give it the same complete Type; none: missing; two Types: conflict; else the Type.
+    private HeldAnswer HeldValue(AssociatedBinding binding, int hold)
+    {
+        var index = this.inferenceBindingIndex[binding];
+        if (this.HoldContains(hold, index))
+        {
+            return new(null, HeldState.Pending);
+        }
+
+        if (this.inferenceValues.TryGetValue((binding, hold), out var known))
+        {
+            return known;
+        }
+
+        var entry = this.inferenceBindings[index];
+        var own = this.HoldWith(hold, index, null);
+        var frozen = this.HoldWith(hold, -1, entry.Batch);
+        var ownRun = this.InferenceRun(entry.Batch, own);
+        var frozenRun = this.InferenceRun(entry.Batch, frozen);
+        BoundType? found = null;
+        var conflict = false;
+        if (ownRun.Usable.TryGetValue(entry.Identity.Symbol, out var owned) && frozenRun.Usable.TryGetValue(entry.Identity.Symbol, out var held))
+        {
+            foreach (var (source, type) in owned)
+            {
+                if (!this.SuppliesInBoth(source, type, held))
+                {
+                    continue;
+                }
+
+                if (found is null)
+                {
+                    found = type;
+                }
+                else if (!this.SameCompleteType(found, type))
+                {
+                    conflict = true;
+                }
+            }
+        }
+
+        var answer = conflict ? new HeldAnswer(null, HeldState.Conflict) : found is null ? new HeldAnswer(null, HeldState.Missing) : new HeldAnswer(found, HeldState.Type);
+        this.inferenceValues[(binding, hold)] = answer;
+        return answer;
+    }
+
+    // Whether the source position supplies the same complete Type in the other run (the evidence's position: its path, source, written
+    // part and requirement's part).
+    private bool SuppliesInBoth(AssociatedEvidence source, BoundType type, List<(AssociatedEvidence Source, BoundType Type)> other)
+    {
+        foreach (var (position, held) in other)
+        {
+            if (ReferenceEquals(position.Path, source.Path) && ReferenceEquals(position.Source, source.Source) &&
+                ReferenceEquals(position.Written, source.Written) && ReferenceEquals(position.Required, source.Required))
+            {
+                return this.SameCompleteType(held, type);
+            }
+        }
+
+        return false;
+    }
+
+    // A collection of `batch`'s evidence under `hold` (a run), once per request: identification, extraction and each hole's usable
+    // positions (SPEC 8.5.5 Completion: the source path's premises proven under the run's hold), with every read of another binding of
+    // the component answered under the hold (ResolveAssociated).
+    private AssociatedInference InferenceRun(AssociatedInference batch, int hold)
+    {
+        if (this.inferenceRuns.TryGetValue((batch, hold), out var run))
+        {
+            return run;
+        }
+
+        run = batch.RentRun();
+        run.Hold = hold;
+        run.Records = hold == this.HoldWith(this.inferenceEmptyHold, -1, batch); // the root's frozen run records the problems
+
+        this.inferenceRuns[(batch, hold)] = run;
+        var previous = this.collectingAssociated;
+        this.collectingAssociated = run;
+        var formation = this.BeginFormation(); // SPEC 8.5.5, 8.6.3: the inferred bindings are formed from the signatures, whatever the reader.
+        try
+        {
+            this.CollectRun(batch, run);
+        }
+        finally
+        {
+            this.EndFormation(formation);
             this.collectingAssociated = previous;
-            batch.State = 2;
             this.pendingAssociatedTypes.Clear();
+        }
+
+        return run;
+    }
+
+    // The batch driver's collection, per run: identification, extraction, problems (the recording run only), then each hole's usable
+    // positions with their normal Types.
+    private void CollectRun(AssociatedInference batch, AssociatedInference run)
+    {
+        var hasHole = false;
+        foreach (var path in batch.Paths)
+        {
+            foreach (var identity in path.Contract.Contract!.AssociatedStorage)
+            {
+                hasHole |= this.InferenceHole(path, identity);
+            }
+        }
+
+        if (!hasHole)
+        {
+            return;
+        }
+
+        foreach (var path in batch.Paths)
+        {
+            if (path.InheritedFrom is not null)
+            {
+                continue;
+            }
+
+            var self = this.ConformanceSelf(path);
+            foreach (var identity in path.Contract.Contract!.RequirementStorage)
+            {
+                if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement)
+                {
+                    continue;
+                }
+
+                this.BindHeader(identity.Symbol);
+                var match = this.IdentifyRequirement(path, identity);
+                if (match.State != RequirementMatchState.Unique && identity.Symbol.Type is { } waitingResult)
+                {
+                    run.Pairs.Clear();
+                    Koto? input = null;
+                    if (match.State == RequirementMatchState.Pending)
+                    {
+                        for (var i = 0; i < requirement.Parameters.Count; i++)
+                        {
+                            var syntax = requirement.Parameters[i].Type;
+                            if (syntax.BoundType is not { } parameter || this.PendingAssociatedType(this.ContractType(parameter, path.Scope, self)))
+                            {
+                                input = syntax;
+                                break;
+                            }
+                        }
+                    }
+
+                    this.RecordInferenceProblem(path, this.ContractType(waitingResult, path.Scope, self), match.State == RequirementMatchState.Pending ? InferenceProblem.Input : match.State == RequirementMatchState.Ambiguous ? InferenceProblem.Ambiguous : InferenceProblem.Missing, requirement, input);
+                }
+
+                if (match.State != RequirementMatchState.Unique || match.Member!.Declaration is not FunctionKoto implementation ||
+                    requirement.BoundSymbol!.Type is not { } required || match.Member.Type is not { } actual)
+                {
+                    continue;
+                }
+
+                required = this.ContractType(required, path.Scope, self);
+                var written = this.MemberType(this.AsWritten(implementation.ReturnType, this.scopes[implementation], actual), match.Selection.DeclaringType)!;
+                actual = this.ContractType(this.MemberType(actual, match.Selection.DeclaringType)!, path.Scope);
+                run.Pairs.Clear();
+                run.Source = implementation;
+                this.ExtractAssociatedEvidence(run, path, required, actual, written, null);
+            }
+        }
+
+        foreach (var path in batch.Paths)
+        {
+            if (path != path.RootPath || path.InheritedFrom is not null)
+            {
+                continue;
+            }
+
+            foreach (var identity in path.Contract.Contract!.AssociatedStorage)
+            {
+                if (!this.InferenceHole(path, identity) || !run.Evidence.TryGetValue(identity.Symbol, out var evidence))
+                {
+                    continue;
+                }
+
+                if (!run.Usable.TryGetValue(identity.Symbol, out var usable))
+                {
+                    run.Usable.Add(identity.Symbol, usable = new());
+                }
+
+                foreach (var source in evidence)
+                {
+                    // SPEC 8.5.5 Completion: evidence from another path is usable when the destination's premises prove the source's; the
+                    // proof is one of the source's reads, under the run's hold (design §3.1, B3).
+                    if (this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) &&
+                        this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope) == ConstraintProof.Proven)
+                    {
+                        usable.Add((source, this.ContractType(source.Type, path.Scope)));
+                    }
+                }
+            }
+        }
+    }
+
+    // Publication (the request's end): the binding is Value(v | {}); its evidence sources the root's frozen run's positions supplying it.
+    private void PublishInferred(InferenceEntry entry, int empty)
+    {
+        var binding = entry.Binding;
+        var answer = this.inferenceValues[(binding, empty)];
+        var frozen = this.InferenceRun(entry.Batch, this.HoldWith(empty, -1, entry.Batch));
+        var own = this.InferenceRun(entry.Batch, this.HoldWith(empty, this.inferenceBindingIndex[binding], null));
+        if (frozen.Usable.TryGetValue(entry.Identity.Symbol, out var usable) && own.Usable.TryGetValue(entry.Identity.Symbol, out var owned))
+        {
+            foreach (var (source, type) in owned)
+            {
+                if (!this.SuppliesInBoth(source, type, usable))
+                {
+                    continue;
+                }
+
+                if (binding.Inferred is not null && !this.SameCompleteType(binding.Inferred, type))
+                {
+                    binding.InferenceConflict = true;
+                    binding.Problem = InferenceProblem.Conflict;
+                    binding.ProblemSource = source.Source;
+                    binding.ProblemDetail = null;
+                }
+
+                binding.Inferred ??= type;
+                binding.InferenceSource ??= source.Source;
+                binding.EvidenceSources.Add(source);
+            }
+        }
+
+        if (answer.State == HeldState.Conflict && !binding.InferenceConflict)
+        {
+            throw new InvalidOperationException("A conflict of Value(v | {}) has no two supplying positions (InternalInvariant; R7-C4).");
+        }
+    }
+
+    // Holds: sorted lists of the component's binding indices interned in the request's arena; a hold's id indexes inferenceHolds.
+    private int InternHold(int start)
+    {
+        var length = this.inferenceHoldArena.Count - start;
+        var key = new HoldKey(start, length);
+        if (this.inferenceHoldIds!.TryGetValue(key, out var id))
+        {
+            this.inferenceHoldArena.RemoveRange(start, length);
+            return id;
+        }
+
+        id = this.inferenceHolds.Count;
+        this.inferenceHolds.Add(key);
+        this.inferenceHoldIds.Add(key, id);
+        if (length == 0)
+        {
+            this.inferenceEmptyHold = id;
+        }
+
+        return id;
+    }
+
+    // `hold` with the binding `index` (when >= 0) and every binding of `batch` (when given), interned.
+    private int HoldWith(int hold, int index, AssociatedInference? batch)
+    {
+        var arena = this.inferenceHoldArena;
+        var start = arena.Count;
+        var (from, length) = this.inferenceHolds[hold];
+        for (var i = 0; i < length; i++)
+        {
+            arena.Add(arena[from + i]);
+        }
+
+        if (index >= 0)
+        {
+            arena.Add(index);
+        }
+
+        if (batch is not null)
+        {
+            for (var i = 0; i < this.inferenceBindings.Count; i++)
+            {
+                if (ReferenceEquals(this.inferenceBindings[i].Batch, batch))
+                {
+                    arena.Add(i);
+                }
+            }
+        }
+
+        arena.Sort(start, arena.Count - start, null);
+        var write = start;
+        for (var read = start; read < arena.Count; read++)
+        {
+            if (write == start || arena[write - 1] != arena[read])
+            {
+                arena[write++] = arena[read];
+            }
+        }
+
+        arena.RemoveRange(write, arena.Count - write);
+        return this.InternHold(start);
+    }
+
+    private bool HoldContains(int hold, int index)
+    {
+        var (start, length) = this.inferenceHolds[hold];
+        return this.inferenceHoldArena.BinarySearch(start, length, index, null) >= 0;
+    }
+
+    internal enum HeldState : byte
+    {
+        Type,
+        Pending,
+        Missing,
+        Conflict,
+    }
+
+    // A held state's answer (design §3.1): a Type, or pending, missing or a conflict.
+    internal readonly record struct HeldAnswer(BoundType? Type, HeldState State);
+
+    // A binding of the component under request, numbered for holds: its batch, root path and identity.
+    internal readonly record struct InferenceEntry(AssociatedBinding Binding, AssociatedInference Batch, BoundConformancePath Path, BoundRequirement Identity);
+
+    internal readonly record struct HoldKey(int Start, int Length);
+
+    // A hold's identity is its sorted indices in the arena.
+    private sealed class HoldComparer(List<int> arena) : IEqualityComparer<HoldKey>
+    {
+        public bool Equals(HoldKey x, HoldKey y)
+        {
+            if (x.Length != y.Length)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < x.Length; i++)
+            {
+                if (arena[x.Start + i] != arena[y.Start + i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public int GetHashCode(HoldKey key)
+        {
+            var hash = key.Length;
+            for (var i = 0; i < key.Length; i++)
+            {
+                hash = (hash * 31) + arena[key.Start + i];
+            }
+
+            return hash;
         }
     }
 }

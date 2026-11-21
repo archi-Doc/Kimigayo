@@ -414,7 +414,12 @@ public sealed partial class Binding
 
     private void RecordInferenceProblem(BoundConformancePath path, BoundType required, InferenceProblem problem, FunctionKoto source, Koto? detail = null)
     {
-        this.collectingAssociated!.ProblemTypes.Clear();
+        if (!this.collectingAssociated!.Records)
+        {
+            return; // R7-C4: only the root's frozen run records (a held run's problems are its hold's).
+        }
+
+        this.collectingAssociated.ProblemTypes.Clear();
         this.RecordInferenceProblemCore(path, required, problem, source, detail);
     }
 
@@ -570,7 +575,8 @@ public sealed partial class Binding
     private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity)
     {
         var identified = path.RequirementMatches ??= new();
-        if (MatchIndex(identified, identity) is var known and >= 0 && identified[known].Match.State != RequirementMatchState.Pending)
+        var cached = this.inferenceRequest < 0; // R7-C4: inside a request a key may read a held answer (Provisional): never cached.
+        if (cached && MatchIndex(identified, identity) is var known and >= 0 && identified[known].Match.State != RequirementMatchState.Pending)
         {
             return identified[known].Match;
         }
@@ -605,6 +611,11 @@ public sealed partial class Binding
 
         var state = selection.Ambiguous || matches > 1 ? RequirementMatchState.Ambiguous : pending ? RequirementMatchState.Pending : selected is null ? RequirementMatchState.Missing : RequirementMatchState.Unique;
         var result = new RequirementMatch(state, selected, selection);
+        if (!cached)
+        {
+            return result;
+        }
+
         if (MatchIndex(identified, identity) is var index and >= 0)
         {
             identified[index] = (identity, result); // The identification above may have stored one for the same requirement.
@@ -744,5 +755,47 @@ public sealed partial class Binding
         internal bool OnStack { get; set; }
 
         internal int Component { get; set; } = -1;
+
+        // A run (R7-C4, Binding.AssociatedInference.Demand): the hold it collects under, whether it records the problems (the root's
+        // frozen run), each hole's usable positions with their normal Types; the batch's pool of runs, rented per request.
+        internal int Hold { get; set; }
+
+        internal bool Records { get; set; }
+
+        internal Dictionary<BindingSymbol, List<(AssociatedEvidence Source, BoundType Type)>> Usable { get; } = new(ReferenceEqualityComparer.Instance);
+
+        internal List<AssociatedInference> RunPool { get; } = new();
+
+        internal int RunsRented { get; set; }
+
+        // A run of this batch, from its pool (kept across passes), empty.
+        internal AssociatedInference RentRun()
+        {
+            if (this.RunsRented == this.RunPool.Count)
+            {
+                this.RunPool.Add(new AssociatedInference(this.Type));
+            }
+
+            var run = this.RunPool[this.RunsRented++];
+            run.State = 0;
+            run.Normalized.Clear();
+            run.Holes.Clear();
+            run.Pairs.Clear();
+            run.CheckedTypes.Clear();
+            run.ProblemTypes.Clear();
+            run.Source = null;
+            run.Component = this.Component;
+            foreach (var evidence in run.Evidence.Values)
+            {
+                evidence.Clear();
+            }
+
+            foreach (var usable in run.Usable.Values)
+            {
+                usable.Clear();
+            }
+
+            return run;
+        }
     }
 }

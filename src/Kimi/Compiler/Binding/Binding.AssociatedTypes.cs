@@ -686,9 +686,15 @@ public sealed partial class Binding
                 // sources wrote it (InferredEvidence). SPEC 6.2, DECISIONS BU-128: one on an inline cycle names no Type to either reader
                 // after the failed Binding, as a written one does (its failed specification fails the conformance's environment, so its
                 // path's conditions are Error).
+                if (this.inferenceRequest >= 0 && batch.Component == this.inferenceRequest)
+                {
+                    // R7-C4 (SPEC 8.5.5, 8.3.3): a binding of the component under request is its answer under the reading run's hold, a
+                    // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending).
+                    return this.HeldValue(binding, this.collectingAssociated?.Hold ?? this.inferenceEmptyHold) is { State: HeldState.Type } held ? held.Type : null;
+                }
+
                 this.CountInferenceRead(path.Type);
-                this.InferAssociatedTypes(batch);
-                return batch.State != 2 || ReferenceEquals(batch, this.collectingAssociated) || binding.InferenceConflict || binding.InlineCycle ||
+                return batch.State != 2 || binding.InferenceConflict || binding.InlineCycle ||
                     binding.Inferred is null ? null : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, batch, out pending);
             }
 
