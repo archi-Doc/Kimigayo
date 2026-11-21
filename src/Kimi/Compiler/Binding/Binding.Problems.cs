@@ -266,6 +266,9 @@ public sealed partial class Binding
             case BindingFailure.NoInit when this.FactOf(index, ProblemFactKind.Reason) is { } reason:
                 ReportNoInit(node, store, problem, (NoInitProblem)reason.Value);
                 break;
+            case BindingFailure.ArrayAnnotationInference:
+                this.ReportArrayInference(node, store, index, problem);
+                break;
             case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
                 ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
                 break;
@@ -274,6 +277,18 @@ public sealed partial class Binding
                 break;
             case BindingFailure.InvalidTypeFormation when this.FactOf(index, ProblemFactKind.Count) is not null:
                 this.ReportArity(node, store, index, problem);
+                break;
+            case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Related) is { } first:
+                ReportDuplicate(node, store, problem, this.compilation.SyntaxOf(first.Site));
+                break;
+            case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Cause) is { } later:
+                node.ReportDerivedIn(store, problem.Requirement, [this.compilation.SyntaxOf(later.Site).KeyIn(this.compilation.StoreOf(this.compilation.SyntaxOf(later.Site)), problem.Requirement)], problem.Condition);
+                break;
+            case BindingFailure.ParameterShapeMismatch when this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportParameterShapes(node, store, index, problem);
+                break;
+            case BindingFailure.InvalidEffectBound when node is EffectBoundKoto effect && this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportEffectRejection(effect, store, index, problem);
                 break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);

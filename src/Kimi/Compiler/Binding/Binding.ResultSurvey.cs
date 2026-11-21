@@ -102,7 +102,7 @@ public sealed partial class Binding
 
                 if (IsArrayHole(leaf))
                 {
-                    this.FailExplained(ref this.arrayInferenceFailures, leaf, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Element, target));
+                    this.RecordArrayInference(leaf, ArrayInferenceProblem.Element, target, []);
                 }
             }
 
