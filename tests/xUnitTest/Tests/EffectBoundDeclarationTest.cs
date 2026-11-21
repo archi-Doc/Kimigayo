@@ -204,6 +204,36 @@ public class EffectBoundDeclarationTest
         Assert.Equal(label, error.Related![^1].Label);
     }
 
+    // SPEC 8.11.1, 23.3 (R7-E2 E2-3b c6, M4 by code): a rejection whose cause names a Contract relates that Contract's declaration (role
+    // "contract"): the selector's ancestor that lacks the Name or holds it twice, the Contract the item is no ancestor reference of or
+    // that is not its ancestor; a cause that names none relates none (the selector names no Contract, or is the Contract itself).
+    [Theory]
+    [InlineData("contract Bounded: Source\n    effect Source.missing confined\n", "Source")]
+    [InlineData("contract Bounded: Source\n    effect Source.size confined\n", "Source")]
+    [InlineData("contract Other\n    func run(self: ref/Self) -> ()\ncontract Bounded: Source\n    effect Other.run confined\n", "Bounded")]
+    [InlineData(Generic + "contract Bounded: P<i32>\n    effect P.value confined\n", "P")]
+    [InlineData("struct Plain\ncontract Bounded: Source\n    effect Plain.take confined\n", null)]
+    [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n    effect Bounded.own confined\n", null)]
+    public void RelatesTheContractTheCauseNames(string declarations, string? contract)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(Source + declarations + Main).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.InvalidEffectBound_Kd), error.Code);
+        var related = (error.Related ?? []).Where(static x => x.Role == "contract").Select(static x => x.Label).ToArray();
+        Assert.Equal(contract is null ? [] : [$"the Contract {contract}"], related);
+    }
+
+    // SPEC 23.1.2, DIAGNOSTICS 4.3 (R7-E2 E2-3b c6): a misplaced item whose selector also fails on its own holds two problems, conditions 0
+    // and 1, each a direct issue of the item; a misplaced item with a valid selector holds one.
+    [Theory]
+    [InlineData("struct Plain\nenum E\n    A\n    effect (Plain).take confined\n", 2)]
+    [InlineData("enum E\n    A\n    effect (Source).take confined\n", 1)]
+    public void AMisplacedItemsSelectorIsItsSecondProblem(string declarations, int problems)
+    {
+        var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
+        Assert.Equal(problems, c.Binding.Issues.Count(static x => x.Node is EffectBoundKoto));
+        Assert.DoesNotContain(c.Binding.DerivedIssues, static x => x.Node is EffectBoundKoto);
+    }
+
     // Warm rebinding of valid and rejected effect items reuses every table and the rejection store.
     [Trait("Purpose", "Allocation")]
     [Fact]
