@@ -184,8 +184,8 @@ public static class EmissionArtifacts
         }
     }
 
-    // IMPL 20.4: the supplies of the module's required libraries (the generation result's, one per library) but the reserved kernel32,
-    // sorted by Ordinal name. Only the root module's own self-targeted supplies connect yet: a logical name alone cannot identify another
+    // IMPL 20.4: the supplies of the module's required libraries (the generation result's, one per library) but the compiler's (a name
+    // with a row of ToolchainIdentity.Supplies, which needs no supply), sorted by Ordinal name. Only the root module's own self-targeted supplies connect yet: a logical name alone cannot identify another
     // module's requirement, and combined-module native records are not generated, so Binding makes a dependency module's import, but
     // kernel32's, the located Unsupported_Kd (DECISIONS BU-92).
     private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(
@@ -195,7 +195,7 @@ public static class EmissionArtifacts
         for (var i = 0; i < required.Count; i++)
         {
             var (name, kind) = required[i];
-            if (name == WindowsProfile.Kernel32Library)
+            if (Array.Exists(ToolchainIdentity.Supplies, x => x.Name == name))
             {
                 continue;
             }

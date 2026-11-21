@@ -80,9 +80,12 @@ public static class ToolchainIdentity
                 Kernel32Sha256),
             new(WindowsProfile.BackendLibrary, "static", [("resolution", "toolchain")], "Kimi.WindowsBackend.lib", BackendSha256),
         ];
-        if (string.CompareOrdinal(Supplies[0].Name, Supplies[1].Name) >= 0)
+        for (var i = 1; i < Supplies.Length; i++)
         {
-            throw new InvalidDataException("The compiler's supplies are not in Ordinal name order.");
+            if (string.CompareOrdinal(Supplies[i - 1].Name, Supplies[i].Name) >= 0)
+            {
+                throw new InvalidDataException("The compiler's supplies are not in Ordinal name order.");
+            }
         }
     }
 }

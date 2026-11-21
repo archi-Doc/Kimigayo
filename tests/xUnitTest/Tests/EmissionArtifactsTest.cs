@@ -107,35 +107,13 @@ public sealed class EmissionArtifactsTest : IDisposable
         ArtifactFiles.CheckPath(Path.Combine(this.directory, "codec.lib"));
     }
 
-    // IMPL 20.4 (Tatara B6a, decision 20): kimi_backend is the compiler's supply, so a project's own entry fails at preparation
-    // (NativeConfiguration), whatever its file (the adopted archive or another) or its Sha256 assertion, and with or without the
-    // requirement it expands; nothing is published.
-    [Theory]
-    [InlineData("static", true, null, false)]
-    [InlineData(null, true, null, true)]
-    [InlineData("static", false, null, false)]
-    [InlineData("static", true, "0000000000000000000000000000000000000000000000000000000000000000", false)]
-    public void AProjectsOwnBackendEntryCannotPrepare(string? kind, bool adopted, string? sha256, bool requirement)
+    // IMPL 20.4 (Tatara B6a, decision 20): kimi_backend is the compiler's supply, so a project's own entry fails at preparation as
+    // InvalidDependencyConfiguration_Kd with the load's note (NativeConfiguration); the rule's rows are DependencyConfigurationTest's.
+    [Fact]
+    public void AProjectsOwnBackendEntryCannotPrepare()
     {
-        var archive = Path.Combine(this.directory, "vendor", "kimi_backend.lib");
-        Directory.CreateDirectory(Path.GetDirectoryName(archive)!);
-        using (var bytes = Array.Find(ToolchainIdentity.Supplies, static x => x.Name == WindowsProfile.BackendLibrary)!.Open())
-        using (var file = File.Create(archive))
-        {
-            if (adopted)
-            {
-                bytes.CopyTo(file);
-            }
-        }
-
         var c = Compilation.CreateForTest();
-        var settings = c.Project.ProjectFile;
-        if (requirement)
-        {
-            settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Kind = "static" } };
-        }
-
-        settings.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Kind = kind, Input = archive, Sha256 = sha256 } };
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Kind = "static", Input = "vendor/kimi_backend.lib" } };
         Assert.False(c.Prepare(WindowsProfile.Target));
         Assert.Contains(
             TestDiagnostics.Of(c),

@@ -66,7 +66,7 @@ public partial record class ProjectFile
     /// <summary>Gets or sets per-target definition-side native requirements keyed by this module's logical name.</summary>
     public Dictionary<string, Dictionary<string, NativeRequirement>> NativeRequirements { get; set; } = new(StringComparer.Ordinal);
 
-    /// <summary>Gets or sets per-target native supplies. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
+    /// <summary>Gets or sets per-target native supplies. kernel32 and kimi_backend are the compiler's supplies and take no entry.</summary>
     public NativeLibraryMap NativeLibraries { get; set; } = new();
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
