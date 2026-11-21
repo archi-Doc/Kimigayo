@@ -349,6 +349,18 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
             let v: T.(Has2).Out
         """;
 
+    private static readonly Dictionary<string, string> EditedSelfClauses = new()
+    {
+        ["e1"] = "contract Nominals\nstruct Numbers {source}\n    Self is Iterator\n    associate Iterator.Item is i32\n    let value: ref/i32 during source\n" +
+            "    public init(value: ref/i32 during source) => self.value = value\n    public func next(self: uniq/Self) -> Option<i32> => .None\n" +
+            "struct Bin<T>\n    Self is Iterable\n    associate Iterable.IteratorType(source) is Numbers during source\n    var value: i32 = 7\n" +
+            "    public init() => ()\n    public func iterate(self: ref/Self during source) -> Numbers during source => Numbers.init(self.value@ref)\n" +
+            "    public func walk(self: ref/Self) -> ()\n        for x in self\n            _ = x\nlet present = 1",
+        ["e6"] = "contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\n    public init() => ()\n" +
+            "contract Iter<T>\nstruct B<S>\n    Self is Iter<i32>\n    S is HasItem\n    public init() => ()\nfunc need<T>(x: ref/T) -> i32\n    T is Iter<i32>\n" +
+            "    return 1\nlet b = B<SrcI>.init()\nlet n = need(b@ref)",
+    };
+
     // The 24 orders of four declarations, each with its bound's two spellings and without Wrap's K
     // (ACapabilityReadUnderAnOpenObligationIsJudgedAgain).
     public static TheoryData<int, string, bool> DeclarationOrders
@@ -1041,6 +1053,38 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
         Assert.Equal(disjoint, c.Binding.Result.IsComplete);
     }
+
+    // SPEC 8.6, 8.6.1 (R7-V2a2): after an edit replaces a Self clause, a Bind reads only the conformances the edited source declares, so its
+    // records are a fresh Compilation's of that source, and undoing the edit gives the original's. An earlier pass's identity, empty after
+    // its reset, was read as a conformance: e6's call, whose argument conforms to Iter<i32> through the normalized reference (valid both
+    // ways, SPEC 8.2.3, 8.6.1), was rejected by the Bind after the edit. e1, a `for` over a Type that no longer conforms to Iterable
+    // (invalid after the edit, SPEC 4.6.4), is the same reading through the by-declaration lookup, kept as a guard.
+    [Theory]
+    [InlineData("e1", "Bin", "Self is Iterable", "Self is Nominals")]
+    [InlineData("e6", "B", "Self is Iter<i32>", "Self is Iter<S.(HasItem).Item>")]
+    public void AnEditedSelfClauseBindsAsTheEditedSource(string id, string owner, string before, string after)
+    {
+        var source = EditedSelfClauses[id];
+        var edited = source.Replace(before, after, StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(source);
+        var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == owner).ConstraintNodes[0];
+        var original = clause.Right;
+        var replacement = KotoTree.Walk(CompilationTestHelper.ParseSuccess(edited).Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == owner).ConstraintNodes[0].Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
+        foreach (var (text, from, to) in new[] { (edited, original, replacement), (source, replacement, original) })
+        {
+            Assert.True(KotoHelper.Replace(clause, from, to));
+            var fresh = BindingRecords(MinimalEmissionTest.Analyze(text));
+            for (var bind = 0; bind < 2; bind++)
+            {
+                c.Bind();
+                Assert.Equal($"{id} {bind}: {fresh}", $"{id} {bind}: {BindingRecords(c)}");
+            }
+        }
+    }
+
+    private static string BindingRecords(Compilation c)
+        => string.Join(" | ", c.Binding.Issues.Select(static x => $"{x.Code}@{x.Node.GetType().Name}").Order(StringComparer.Ordinal));
 
     private static string TwoAssociatedPairs(string other)
         => "contract C<E>\n    associate Item(a)\n    associate Other(b)\ncontract Q<U>: C<i32>, C<U>\n    associate C<i32>.Item(a) is i32\n" +

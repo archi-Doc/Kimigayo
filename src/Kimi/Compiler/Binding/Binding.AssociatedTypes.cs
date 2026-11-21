@@ -492,7 +492,7 @@ public sealed partial class Binding
         var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause, out reference) : null;
         var ambiguous = false;
         if (associated is null || (owner.Declaration is not ContractKoto &&
-            (this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || this.impls.PathsOf(conformance).Count == 0)))
+            this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is null))
         {
             // SPEC 23.1.2: FindAssociated may have recorded the Name's ambiguity at this clause first (SPEC 8.5.2) and found nothing, which
             // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1).
@@ -533,7 +533,7 @@ public sealed partial class Binding
     private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract)
         => owner.Declaration is ContractKoto
             ? !ReferenceEquals(contract, owner) && IsRefinement(owner, contract)
-            : this.ConformanceByDeclaration(self.Symbol!, contract, out _) is { } declared && this.impls.PathsOf(declared).Count > 0;
+            : this.ConformanceByDeclaration(self.Symbol!, contract, out _) is not null;
 
     private void PrepareAssociatedBindings()
     {

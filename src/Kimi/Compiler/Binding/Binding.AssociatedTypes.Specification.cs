@@ -218,7 +218,7 @@ public sealed partial class Binding
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (this.impls.PathsOf(identity).Count != 0 && identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
+            if (identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
                 (ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope)))
             {
                 if (found is not null && !ReferenceEquals(found, identity))

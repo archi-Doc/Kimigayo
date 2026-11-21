@@ -86,7 +86,7 @@ public sealed partial class Binding
             // The block's declaring path is the one its clause registered in this pass (DECISIONS BU-220): a path an earlier pass
             // registered and this one did not is not a conformance, and the end-of-Bind sweep pools it.
             var scope = this.scopes[syntax];
-            if (syntax.Operands[0] is IsKoto { BoundConstraint.Contract: { } contract } target && this.impls.TryPath(owner.BoundSymbol!, contract, target, contract) is { Active: true } path)
+            if (syntax.Operands[0] is IsKoto { BoundConstraint.Contract: { } contract } target && this.impls.TryPath(owner.BoundSymbol!, contract, target, contract) is { } path)
             {
                 scope.ConformancePath = path;
             }
