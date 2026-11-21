@@ -91,8 +91,8 @@ public sealed partial class Binding
 
         if (group?.EnumCase is not null)
         {
-            return generic is null && callee is MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.InferredCase }
-                ? this.BindEnumConstruction(call, callee, group, call, scope, expected)
+            return ConstructsCase(call, group) // Then the callee is the call's Method: it is no generic name.
+                ? this.BindEnumConstruction(call, callee, this.PublishedTarget(callee, group, expected), call, scope, expected)
                 : this.Fail(call, BindingFailure.NotCallable);
         }
 
@@ -159,33 +159,17 @@ public sealed partial class Binding
             return Complete(call, null);
         }
 
+        var evaluation = this.RentEvaluation(call, callee, generic, scope, expected, shape);
+        evaluation.Evaluated = evaluated;
+        evaluation.Self = self;
+        evaluation.Requirements = requirementGroup;
         var candidateCount = shape.Count;
-        var maxParameters = shape.Parameters;
-        var maxGenerics = shape.Generics;
         var solveOrigins = shape.SolveOrigins;
         var argumentCount = call.ArgumentNodes.Count;
-        var originSlots = solveOrigins ? shape.Origins : 0;
-        var inputSlots = solveOrigins ? shape.InputOrigins : 0;
-        var savedCandidates = candidateCount > 1 ? candidateCount : 0;
-        var frames = this.RentFrames(candidateCount, maxGenerics, scope);
-        var explicitTypes = this.typeScratch.Rent(generic?.TypeArguments.Count ?? 0);
-        var explicitLengths = this.lengthScratch.Rent(generic?.TypeArguments.Count ?? 0);
-        var mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
-        var used = this.flagScratch.Rent(Math.Max(1, maxParameters));
-        var completedWaiting = this.flagScratch.Rent(argumentCount);
-        var waitingContexts = this.typeScratch.Rent(argumentCount);
-        completedWaiting.AsSpan(0, argumentCount).Clear();
-        var origins = this.originScratch.Rent(originSlots);
-        var inputs = this.originScratch.Rent(inputSlots);
-        var allMaps = this.indexScratch.Rent(savedCandidates * argumentCount);
-        var allOrigins = this.originScratch.Rent(savedCandidates * originSlots);
-        var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
-        var operationStride = argumentCount + 1;
-        var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
-        var rows = this.rowScratch.Rent(candidateCount * argumentCount);
-        var childSlices = this.indexScratch.Rent(candidateCount * 2);
-        var childBase = this.childRows.Count;
-        var positionBase = this.positionOperations.Count;
+        var (originSlots, inputSlots, savedCandidates, frames) = (evaluation.OriginSlots, evaluation.InputSlots, evaluation.SavedCandidates, evaluation.Frames);
+        var (explicitTypes, explicitLengths, mapping, completedWaiting, waitingContexts) = (evaluation.ExplicitTypes, evaluation.ExplicitLengths, evaluation.Mapping, evaluation.CompletedWaiting, evaluation.WaitingContexts);
+        var (origins, inputs, allMaps, allOrigins, allInputs) = (evaluation.Origins, evaluation.Inputs, evaluation.AllMaps, evaluation.AllOrigins, evaluation.AllInputs);
+        var (operations, operationStride) = (evaluation.Operations, evaluation.OperationStride);
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -236,42 +220,9 @@ public sealed partial class Binding
                 }
             }
 
-            var evaluation = new CallEvaluation
-            {
-                Call = call,
-                Callee = callee,
-                Generic = generic,
-                Scope = scope,
-                Expected = expected,
-                Self = self,
-                Requirements = requirementGroup,
-                Frames = frames,
-                ExplicitTypes = explicitTypes,
-                ExplicitLengths = explicitLengths,
-                Mapping = mapping,
-                Used = used,
-                Origins = origins,
-                Inputs = inputs,
-                Evaluated = evaluated,
-                Operations = operations,
-                Rows = rows,
-                ChildSlices = childSlices,
-                OperationStride = operationStride,
-                SavedCandidates = savedCandidates,
-                AllMaps = allMaps,
-                AllOrigins = allOrigins,
-                AllInputs = allInputs,
-                OriginSlots = originSlots,
-                InputSlots = inputSlots,
-                Winner = -1,
-                PremisesOnly = true,
-            };
-            this.acquisitionFailure = null;
-            this.failedCause = null;
-            this.EvaluateCallCandidates(ref evaluation, candidates);
+            var (selection, winnerIndex) = this.SelectAt(ref evaluation, candidates);
             var count = evaluation.Count;
-            var applicable = evaluation.Applicable;
-            if (evaluation.Error)
+            if (selection == CallSelection.InvalidDeclaration)
             {
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
                 // associated specification or limited by OCC-X, so the selection rests on that failure (SPEC 23.1.2).
@@ -279,12 +230,11 @@ public sealed partial class Binding
                     : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
-            if (!this.CheckCallShapeContracts(call, explicitTypes.AsSpan(0, generic?.TypeArguments.Count ?? 0), explicitLengths.AsSpan(0, generic?.TypeArguments.Count ?? 0), scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))
+            if (!this.CheckCallShapeContracts(call, explicitTypes.AsSpan(0, generic?.TypeArguments.Count ?? 0), explicitLengths.AsSpan(0, generic?.TypeArguments.Count ?? 0), scope, expected, evaluated.AsSpan(0, count), allMaps, shape.Generics))
             {
                 return Complete(call, null);
             }
 
-            var (selection, winnerIndex) = this.ClassifySelection(ref evaluation);
             if (unknownArgument && AnyArgumentsMatch(evaluated.AsSpan(0, count), generic, explicitLengths))
             {
                 // SPEC 10.1, 23.1.2 (DECISIONS BU-79, its G455 amendment): beside an unprepared argument the call reports only the checks
@@ -587,24 +537,7 @@ public sealed partial class Binding
                 this.defaultArgumentScratch.Return(defaults, clearArray: true);
             }
 
-            this.argumentOperationScratch.Return(operations, clearArray: true);
-            this.rowScratch.Return(rows, clearArray: true);
-            this.indexScratch.Return(childSlices);
-            this.childRows.RemoveRange(childBase, this.childRows.Count - childBase); // R3: the evaluation's retained rows end with it.
-            this.positionOperations.RemoveRange(positionBase, this.positionOperations.Count - positionBase);
-            this.originScratch.Return(allInputs, clearArray: true);
-            this.originScratch.Return(allOrigins, clearArray: true);
-            this.indexScratch.Return(allMaps);
-            this.lengthScratch.Return(explicitLengths, clearArray: true);
-            this.candidateScratch.Return(evaluated, clearArray: true);
-            this.originScratch.Return(inputs, clearArray: true);
-            this.originScratch.Return(origins, clearArray: true);
-            this.typeScratch.Return(waitingContexts, clearArray: true);
-            this.typeScratch.Return(explicitTypes, clearArray: true);
-            this.flagScratch.Return(completedWaiting);
-            this.flagScratch.Return(used);
-            this.indexScratch.Return(mapping);
-            this.ReturnFrames(frames, candidateCount);
+            this.ReturnEvaluation(evaluation);
         }
     }
 

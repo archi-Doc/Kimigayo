@@ -12,10 +12,8 @@
 // facts included, and ORs the views; merged problems name one requirement, and a disagreement is a recording rule's defect, reported as
 // one InternalInvariant_Kd problem at the subject, as is a Cause fact whose Value is neither -1 nor an index in All (H3-2 N2), which no
 // producer writes (rule W's causes are indices Add returned). Every analysis InternalInvariant_Kd names Ownership.Internal (these defects
-// and A5's broken contracts). Add is the one home of the derived-problem rules: a problem with an Inlined fact, a Language problem found
-// inside an inline default copy, is its template's check and dropped (R4-M10, SPEC 7.2.3, R4-M69); a problem with
-// Cause facts (its tail) is derived (rule W, SPEC 15.6.5, R4-M132), and a merged problem is derived exactly when every report it groups
-// is, its causes their union (a direct report drops the first's Cause tail; a derived one adds its new causes). Merged, the view
+// and A5's broken contracts). Add is the one home of the derived-problem rules: a problem with Cause facts (its tail) is derived (rule
+// W, SPEC 15.6.5, R4-M132), and a merged problem is derived exactly when every report it groups is, its causes their union (a direct report drops the first's Cause tail; a derived one adds its new causes). Merged, the view
 // publication reads (MirReport.Merged.cs; R4-M11, R6-check H3-2), has one merged problem per code, subject, Reason and class, in the order
 // of its first member, with its members (indices in All), its facts (its first member's but their Cause tail, then by the rule above
 // over its members, each Cause's Value an index in Merged, once each, never its own) and its Ordinal, its Reason's position among the merged problems of
@@ -62,12 +60,11 @@ internal sealed partial class MirReport
 
     /// <summary>Adds a problem with its facts, or merges its views into the first problem of the same code, subject, body and Reason, which must
     /// name the same requirement: a merge that names another is the recording rules' defect, an InternalInvariant_Kd problem at the
-    /// subject, as is a Cause fact naming no problem (neither -1 nor an index in <see cref="All"/>). A problem with an Inlined fact is
-    /// dropped: found inside an inline default copy, it is its template's check (SPEC 7.2.3, R4-M69). A merged problem is derived exactly
+    /// subject, as is a Cause fact naming no problem (neither -1 nor an index in <see cref="All"/>). A merged problem is derived exactly
     /// when every report of it is, its Cause facts their union (R4-M132).</summary>
     /// <param name="problem">The problem.</param>
     /// <param name="facts">Its facts, kept for a new problem, of which only the Cause facts merge.</param>
-    /// <returns>The problem's index in <see cref="All"/>, the first problem's on a merge; -1 for a dropped problem, a defect and a problem an
+    /// <returns>The problem's index in <see cref="All"/>, the first problem's on a merge; -1 for a defect and a problem an
     /// open round holds (<see cref="Begin"/>).</returns>
     internal int Add(in MirProblem problem, ReadOnlySpan<ProblemFact> facts = default)
     {
@@ -80,11 +77,6 @@ internal sealed partial class MirReport
         var namesNoProblem = false;
         foreach (var fact in facts)
         {
-            if (fact.Kind == ProblemFactKind.Inlined)
-            {
-                return -1;
-            }
-
             namesNoProblem |= fact.Kind == ProblemFactKind.Cause && fact.Value != -1 && (ulong)fact.Value >= (ulong)this.problems.Count;
         }
 

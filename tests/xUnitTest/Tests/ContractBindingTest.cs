@@ -735,6 +735,21 @@ public class ContractBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InaccessibleBinding_Kd);
     }
 
+    // SPEC 9.4.4, 23.1.2, 23.3 (R7-E2 E2-4a; probes a1, a3m, b3a): each (declaration, inaccessible T) pair is its own failed requirement,
+    // recorded at the part that shows T (a requirement's parameter or result) and relating T's declaration: the requirement's two pairs
+    // are two records (M1), as are a Contract's two inaccessible ancestors, each located at the Contract (its base references are
+    // BuildContract's, R7-N2a) and relating its ancestor; a public conformance's binding exposing a private Type is located at the
+    // conformance and relates it. The twins name public declarations and are valid.
+    [Theory]
+    [InlineData("struct H1\nstruct H2\npublic contract C\n    func f(value: H1) -> H2\n", "InaccessibleBinding_Kd 4:19 H1, inaccessible declaration 'H1'|InaccessibleBinding_Kd 4:26 H2, inaccessible declaration 'H2'")] // a1
+    [InlineData("public struct H1\npublic struct H2\npublic contract C\n    func f(value: H1) -> H2\n", "")] // a1t
+    [InlineData("contract H1\ncontract H2\npublic contract C: H1, H2\n", "InaccessibleBinding_Kd 3:8 contract, inaccessible declaration 'H1'|InaccessibleBinding_Kd 3:8 contract, inaccessible declaration 'H2'")] // a3m
+    [InlineData("public contract H1\npublic contract C: H1\n", "")] // a3t
+    [InlineData("struct Hidden\npublic contract C\n    associate E\npublic struct S\n    Self is C\n    associate C.E is Hidden\n", "InaccessibleBinding_Kd 5:5 Self is C, inaccessible declaration 'Hidden'")] // b3a
+    [InlineData("public struct Hidden\npublic contract C\n    associate E\npublic struct S\n    Self is C\n    associate C.E is Hidden\n", "")] // b3t
+    public void EachInaccessibleDeclarationOfAContractIsItsOwnRecord(string source, string records)
+        => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
+
     [Theory]
     [InlineData("i32", true)]
     [InlineData("string", false)]

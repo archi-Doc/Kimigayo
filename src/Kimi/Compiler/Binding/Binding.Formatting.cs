@@ -108,25 +108,16 @@ public sealed partial class Binding
             : this.CompilerRequirementTarget(selected, self);
 
     private BindingSymbol CompilerRequirementTarget(BindingSymbol selected, BoundType? self)
-    {
-        if (self is not null && ArithmeticContractSyntax.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic &&
-            ArithmeticContracts.Supports(self, arithmetic))
-        {
-            return Prepared(this.builtinArithmetic[ArithmeticSlot(arithmetic)]);
-        }
+        => this.BuiltinTarget(ImplTable.Builtin(self, selected.Scope.Owner.BoundSymbol)) ?? selected;
 
-        if (self is not null && selected.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract &&
-            ComparisonKindOf(self, contract.LibraryDeclaration, operators: false) is ComparisonKind.Composite or ComparisonKind.Builtin)
-        {
-            return Prepared(contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals : this.builtinCompare);
-        }
-
-        return selected;
-
-        // A built-in target exists from the first pass's PrepareBuiltinTargets on; no requirement is resolved before it.
-        static BindingSymbol Prepared(BindingSymbol? target)
-            => target ?? throw new InvalidOperationException("A built-in target is read before PrepareBuiltinTargets.");
-    }
+    // F fact 11a: the built-in target a built-in row's requirement runs (ImplTable.Builtin's Target and Composed rows), its Contract's one
+    // own requirement executed by the compiler; null for another row. A built-in target exists from the first pass's
+    // PrepareBuiltinTargets on; no requirement is resolved before it.
+    private BindingSymbol? BuiltinTarget(in ImplTable.BuiltinRow row)
+        => row.Kind is not (ImplTable.BuiltinKind.Target or ImplTable.BuiltinKind.Composed) ? null
+            : (row.Contract == KimiDeclarationId.Equatable ? this.builtinEquals
+                : row.Contract == KimiDeclarationId.Comparable ? this.builtinCompare : this.builtinArithmetic[ArithmeticSlot(row.Contract)])
+                ?? throw new InvalidOperationException("A built-in target is read before PrepareBuiltinTargets.");
 
     // F fact 11a: a built-in target is its Contract's one own requirement executed by the compiler, with that requirement's name,
     // declaration, result Type and receiver slot, taken once per pass after headers, so resolving a requirement writes nothing.
