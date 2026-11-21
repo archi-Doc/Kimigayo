@@ -13693,6 +13693,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: substituting the fixed bindings in `SlotSolution.Pattern` (moves the R4-M164 position rows; R7-P3's normalization);
     reading the referent in `Infer` at a bound slot (a second copy of the value-read rule; misses the borrow rows); skipping the
     evidence of a bare slot that a written argument binds (G731's prototype: a clause for one form, beside the entry).
+  - Amended by R7-M73 (G1128, F's G147 ruling 62): `FixedSlots` carries no `Own`, and only a function reference passes
+    `commonOrigins`; the two sentences on them are superseded.
 - **BU-173 An effect target's group is a grouped Contract reference (PLAN G740)** (2026-11-11; Front, Parsing and Binding; Major;
   design review 1 REVISE (B1), design review 2 ACCEPT, implementation review ACCEPT; the owner's O-160 (a); commit 6d91ceb9a on
   `claude/f-g740`; extends BU-162) SPEC F.6.2, F.5, 8.11.1.
@@ -15782,6 +15784,9 @@ resumed by R4-M86 (2026-10-20).
     (snapshot 0). No valid program newly rejected, no invalid one newly accepted. c0v (PLAN G905, a Closure) is not this cause.
   - Closes PLAN G913. Open: two variables without a principal solution related by a clause, each read where the other is still
     open (PLAN G960).
+  - Amended by BU-241 (G1128, Q-618): the solve holds each representative it takes and solves the other variables again with it,
+    and it publishes an invariant variable's failed equality (`OriginInference.Marked`), on which the call's clause and input-premise
+    checks rest.
 - **BU-222 A nested definition's Type carries the instance it was formed in; its inherited arguments are Owned parts read
   through it** (2026-11-14; Front, designed and implemented at the Back's seat (C-305); Binding; PLAN G846, G856; Q17 class 1;
   Major, an acceptance mover; the owner's O-249 Q4 (a), verbatim 「Q1〜Q4 は、すべてa」, O-258 (a), verbatim 「O-258 a」, O-262 (a),
@@ -15930,6 +15935,9 @@ resumed by R4-M86 (2026-10-20).
     meaning any open Origin. R2: J2's two gates (`SlotSolution.OpenWaited`, `RecordOpenings`) read the rows `CollectPositionNames`
     reads (`HasWaitingPosition`: a Signature root without child rows or a Signature leaf row, BU-104 R4), so a join argument whose
     sources wait opens T and its waited Origin parameters as one leading-dot Case does (SPEC 10.5.1).
+  - Amended by R7-M73 (G1128, Q-618): a slot's contravariant and invariant Origins are valued by the call's solve as slot variables,
+    not kept as the evidence binds them; J2's opening splits (`OpenWaited` before the solve, `OpenWaitedSlots` after it, a slot
+    opening only when every binding is covariant).
 - **BU-224 The expected Type reaches every part of an argument, and a value at `ref/U` is one temporary borrowed once: principles A
   and B of argument flow (PLAN G924 AF-1, AF-2)** (2026-11-18; Front, Binding; Major, an acceptance mover (Q-477); the owner's
   direction of 2026-11-15 answering O-331, verbatim 「提案の方針（原則A：期待型を引数の式に下ろす、原則B：ref/U に渡す値の式は引数の位置で一時値にして1回借用する）でOKです。提案書を作成し、設計、実装を進めて下さい。SPECもそれに合わせて、修正して下さい。」, and its
@@ -16483,6 +16491,45 @@ resumed by R4-M86 (2026-10-20).
     formation validator in `TyCtxt.Intern` (hot path, facts the formation sites already establish); a shared container-kind rule read
     by `KimiLibrary.Register` (no group reaches it: a mechanism with no need); moving the access check before role filtering
     (contradicts SPEC 9.5's order for every group).
+- **BU-241 A call's solve holds its representatives and publishes a failed equality** (Front, 2026-11-21; PLAN G1128 R1.3 (i),
+  Q-618, its commit 2a; Major, a record and acceptance mover; F's G147 rulings 22, 23, 26, 29, 43; the Middle's word of 2026-11-21
+  01:54) SPEC 15.3.6, 15.6.1, 23.1.2. Amends BU-221; closes PLAN G960's r4aL class.
+  - **Rule.** The solve (`SolveOriginInferenceInSession`, BU-221's one owner of the representatives) holds each representative it
+    takes for a variable without a principal solution and runs its fixed point again over the other variables until a round takes
+    no new one (PLAN G960's fixed point, widened to every bound), so a variable bounded through a held one, such as a per-call Origin
+    under an input's premise (G1115), reads its value. While the fixed point runs, a bound's other end that reads a marked variable
+    bounds nothing (`Bounding`; ruling 43 (4)), so rule W holds inside the solve as at its checks: a comparison reports the
+    partners' `==` (SPEC 15.6.1), not a later member's relation over the stand-in.
+  - **PLAN G960's r4aL class closes:** r4aL and w4L4 (valid) are accepted, and r4aLn's located limit becomes its `p outlives q`
+    record; two variables whose representatives one round takes still do not read each other (mv1-mv3, mv1c: PLAN G960 stays for
+    them).
+  - **The failed equality.** An invariant variable whose own equality fails (two fixed equality partners, the pairs Representative
+    reads, not proven equal) is published by the solve with every variable whose bounds or premises read a marked one
+    (`OriginInference.Marked`, written by each solve). Its record is the partners' `==`, formed by the fits. The selected call's
+    declared clauses (`JudgeCallClauses`) and its inputs' well-formedness premises (`RequireInputPremises`; a construction's payloads
+    included) that read a marked variable rest on it (rule W; Q13, counted by code). So no check of those reads the held value, and
+    the Representative entry's "whatever the bounds' order" (O-348 (a), O-350 (a)) holds for them; dev's first partner stays only as
+    that value.
+  - **Residue** (PLAN G1128 (2), D-971; Front, Binding with the Middle): three readers read the substituted value, not the solve's
+    Marked fact, so whether their dependent record is reported depends on the argument order: the result's fit at its destination
+    (fro, fr; fr is new against dev), a construction Type's clause proof (fe), and an argument's covariant fit over a slot's
+    invariant Origin (pko: the fit reads the slot's substituted value). A value call's solve (`SolveValueCallOrigins`) is its own, not
+    its solution's, so its premises and clauses read no Marked fact (they are passed none). Their rows assert each program's
+    independent `==` in both orders, never the count (`CallOriginRelationTest.AFailedEqualityIsReportedInEitherOrder`).
+  - **Over a slot the fact is not carried** (design R1.3 (i)'s "carry the fact through RestoreSlotValues" is replaced): a premise
+    over a slot's own Type cannot hold at one partner only, since its held values come from the first invariant binding, a
+    well-formed evidence Type (the implementer's finding, taken by F's G147 ruling 43 (6)). So RestoreSlotValues publishes no mark,
+    and over a slot the residue is pko's fit.
+  - **Moves** (Q13, by code): Fresh, o-inv, o-inv3, fk, fk-sw, fc, fc-sw, fc-dep and fc-dep-sw lose their dependent records (rule
+    W); MirBorrowsTest's `same(h, r@uniq)` in a Closure goes from 2 records to 1 (the premise over the marked `o` rests; ruling 43
+    (3)); ApplicabilityChain's comparison keeps dev's `x == y`, its swapped row `y == x` (ruling 43 (4)); the residue pairs fro, fr,
+    fe and pko are pinned on their `==` only.
+  - **Rejected:** re-judging each check at every partner (a dependence analysis beyond the check's inputs, AGENTS); the meet of the
+    partners (it splits the `==` and keeps fc-dep's dependent record); argument order deciding a record (prototype r3); a marked
+    variable published as a resting Unbound atom (BU-102: an Unbound atom only where a Binding failure leaves one, R4-M118); the
+    failed equality as a Binding failure of the call (it moves the owner of R7-O1 b1's record); a comparison failing with the solve's
+    failed equality (ruling 43 (4): its Unit rejected 17 valid LocalOriginClauseTest rows, the solve's equality test lacking the use
+    site's facts the walk reads).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -23043,6 +23090,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     saves and the restore; warm Bind 0 B at N = 10/20/40. RP8 in c's window (design-c P2.4 N1).
   - Amended by R7-M52 (R7-P2 commit 1): `SlotFrame` gains the environment-judgment column beside the invariant marks; the store's
     column list is stated once there.
+  - Superseded in part by R7-M73 (G1128, Q-618): the third column, the invariant marks (`IsInvariant`, `SetInvariant`), is the
+    slot bindings, each evidence binding of a slot with its composed polarity (`SlotBinding`, `AddBinding`).
 - **R7-M41 A judgment about a Type reads its identity class** (Front, 2026-11-19; R7-C2c2 c2-4a, Q-514; Major, an acceptance
   mover; design `design-c24.md` Revision 1 with R1.4 and R1.8: the design review and R1.8's short check ACCEPT WITH NOTES, the
   implementation review ACCEPT WITH NOTES, F's C2 ruling 146; F's C2 rulings 125-234; the owner's O-344 (a), O-345 (b), O-410 (a);
@@ -23434,6 +23483,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     **Left (O10, PLAN G1098):** `MatchInputOrigin`'s skip and `MatchResultOrigins`' bound stay for their callers that reserve
     their own widths. Behaviour unchanged; Bind bytes unchanged; time is the landing window's RP8 slot.
   - Commits 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
+  - Amended by R7-M73 (G1128): the store's column list reads the slot bindings for the invariant marks.
 - **R7-M53 G396's remainder and G147 (2) are R7's stream Z: every no-stage producer removed, not excepted** (K for the Middle's D-872
   and the Front's D-874, 2026-11-19; the owner's order, DECISIONS Q22; R7 plan revision 102's stream Z and §10.1 item 6; censuses on
   dev 5dd6543e6, `middle\notes\g396-plan.md` and `front\notes\G147\census.md`). Under Q22, supersedes R4-M165's X-2 line ("the 25
@@ -24136,6 +24186,94 @@ R8-M* and R9-M* by the stage of the recording unit.
     second fix of one symptom); a second carrier per fold prefix (fix (2)'s `PathPrefix.Borrowed`, a copy of the family's fact); a
     located Resource record at 64 (no IMPL A.4 limit is reached); raising the bounds (a silent route change stays); raw-rootedness in
     UseNeed (a path fact, not a need).
+- **R7-M73 A slot's Origins are variables of the call's one Origin solve** (Front, 2026-11-21; PLAN G1128, Q-618; Major, an
+  acceptance mover; the owner's O-450 (a), verbatim 「すべて推奨のaです」, and O-451 (a), verbatim 「O-451 a」; design
+  `front\notes\G147\g1128\design.md` Revision 1; F's G147 rulings 13, 16, 29, 38, 43, 52, 59, 61, 62; B's R7-P2 ruling 15 as widened
+  (board 11-21 04:12 B: "B accepts the widened rent condition ('a slot not fixed (FixedSlot) with more than one binding, or any
+  non-covariant one'; R1.3 (e), the Front's ruling 16 B3) in place of P2 ruling 15's 'only for a slot with a non-covariant
+  binding'"), then narrowed by F's ruling 38; the Middle's RP17 CONSENT WITH CONDITIONS) SPEC 10.8 as revised, 15.3.5, 15.3.6,
+  10.5.3. Supersedes in part R7-M40; amends BU-223, BU-163 and R7-M52's column list; closes PLAN G1128 for calls.
+  - **Rule.** Infer records each evidence binding of an open slot with its composed polarity (`ComponentPolarity`, the one 15.3.5
+    composition of CollectOriginInference, Infer and SlotComponentPolarity) and merges no Origins on that path. A slot not fixed
+    with more than one distinct binding takes a skeleton (`SlotSkeleton`) whose Origins are the call's slot variables
+    (`SlotVariable`, keys below SlotRegion's range; at most 2^26 per call, past which the call is the located `Unsupported_Kd`), one
+    per distinct (bindings' sub-Types, polarity) query, each binding's bounds collected by CollectOriginInference and the skeleton's
+    well-formedness as premises. The call's one solve values them with the callee's Origins (its third kind of variable, valued in a
+    span of SlotVariableCount values that the two slot solves, SolveLate's and the construction's, rent from originScratch for that
+    solve only and pass as the solver's third span; an index past it is InternalInvariant). RestoreSlotValues writes the values back
+    before the rows are contributed again and settles them into the inference (`SettleSlotVariables`: each bound's and premise's
+    end names its value, the variables leave the solve's variables, the count is reset), so the inference's later solves see none
+    and take no span. A construction whose slot step opened variables is solved whatever its expected Type.
+    SolveCallOriginInference reads its callee from the inference (every caller passed the inference's binder; the span took that
+    parameter's place under the 6-parameter limit).
+  - **The component.** `Binding.SlotVariables.cs` (its contract at the file's head) owns the skeleton, the variables, the values'
+    substitution and the settling, with their per-query tables; opening a slot's variables and reading their values is the slot
+    step's (`SlotSolution.OpenSlotVariables`, `RestoreSlotValues`), solving them the call's one solve's.
+  - **Rent condition** (F's ruling 38, narrowing B3 as B accepted it at 04:12): "distinct" is Type identity as the identity judge
+    publishes it (R7-C3 C3-1's one judge), no new comparison: the bindings are formed in the solve's view, where identical Types are
+    one object, so `SlotFrame.BindsDistinctTypes` compares references. Reason, the design's shortcut theorem (R1.3 (e)): one binding
+    at any polarity solves to that binding (every variable's bounds are that binding's Origins; the skeleton's premises are proven of
+    an evidence Type; no clause names a slot variable), so bindings of one Type, or a single binding at any polarity, give the
+    binding the frame already holds: variables there add nothing, and B3's count over identical bindings sent a valid program dev
+    accepts to the function reference's limit (AnEnclosingInputOriginIsAFixedSlotBinding's `origin x outlives static` twin;
+    DECISIONS Q13: a valid program never moves from accepted to a limit).
+  - **Skeleton positions** (F's G147 ruling 43 (1), (2)): a position of the skeleton is a slot variable when some binding has an
+    Origin the evidence fixed there (OpensAsSlotRegion), the caller's pair outer Origin `o` included (fixed in the caller's body;
+    design R1.3 (c)'s second exclusion read SPEC 8.1.1's callee rule into the evidence and kept `o` as the slot's Origin: k08
+    rejected, pres-PU two records), other than a nested Function Type's per-call input, which bounds no variable (SPEC 15.3.4).
+    Decided over every binding (`BecomesSlotVariable`), never by the newest one, so no argument order decides whether a position is
+    solved (rt2i/rt2j: the per-call argument is the record's in either order; rt2c/rt2d valid in either order). Each binding bounds
+    the variable with its pair layer's slot as SPEC 8.1.2 reads it: CollectOriginInference reads the evidence's side through
+    OuterOrigin (an original `s/T` writes no Origin; its slot is the binder's implicit `o`), the pattern's side as written (8.1.1). A
+    slot whose skeleton opens no variable keeps its Type.
+  - **Every evidence binding is recorded, steered by no caller's flag** (F's G147 rulings 59, 61): the evidence branch recorded a
+    later structurally equal binding only under the caller's `commonOrigins`, which the known-signature paths (an anonymous header's
+    parameters and result, an `F` slot's Callable signature) never passed, so their binding counted only as a slot's first and
+    argument order decided (hr-sw, hr-ret, dn-sw, cf-anon-sw rejected, their other orders accepted). The slot's own fixedness is the
+    slot step's one test (`SlotSolution.FixedSlot`, read before the bindings); the merge keeps its `commonOrigins` test.
+  - **Function references** (SPEC 10.5.3; no late solve): a slot without written Type arguments whose two distinct bindings meet to
+    a Type holding only Origins fixed at the reference (no input Origin of S, SPEC 10.6's InputOrigins) is the located
+    `Unsupported_Kd` at the reference (`ReferenceSlotFailure.SlotVariables`, `VariableReferenceSlot`; PLAN G1128's R1.3 (h) line),
+    decided after dev's Constraint check of the met binding and SPEC 10.6's per-call rule, which keep their records. Infer's last
+    merge (`commonOrigins && CommonOriginType`, the code review's C1) stays only for function references: counted over the whole
+    suite, every hit is a reference's slot (InferReferenceSlots with `commonOrigins`), none a call's, and two labelled join probes
+    (typed parts at a Function Type pattern, both orders) do not reach it. It meets a reference's covariant bindings and records each
+    for the limit; its met Type is read by ReferenceArgumentProof, PerCallReferenceSlot and VariableReferenceSlot's InputOrigins. It
+    goes when a reference's solve owns frame bindings and an OriginInference and gives those readers its values (PLAN G1128's
+    removal condition).
+  - **Supersedes in part R7-M40:** its third column, the invariant marks, becomes the slot bindings (`SlotBinding`: Type, composed
+    polarity, frame; newest first; pooled nodes reused, the head in the marks column, rolled back with the pool count, the pool
+    reset when the outermost frame returns); R7-M52's column list reads the slot bindings in their place. The reason that no longer
+    holds: SPEC 10.8 before O-450 and O-451 named only invariant and covariant bindings.
+  - **Amends BU-223:** a slot's contravariant or invariant Origin, which D1 left as the evidence binds it (its "Why only these": "a
+    contravariant Origin's candidate is a lower bound and an invariant one's the equality"), is valued by the solve as a slot
+    variable; `IsSlotRegion` keeps one meaning, a waited or open position's region; G942's scope narrows to J2's waited opening. J2's
+    opening splits: the Origin parameters' half before the solve (`OpenWaited`), the Type slots' half over the slots' values after
+    the solve (`OpenWaitedSlots`), a slot opening only when every binding is covariant (`SlotFrame.BindsCovariantly`).
+  - **Amends BU-163** (F's G147 ruling 62, C2): `FixedSlots` no longer carries `Own`, and a call's evidence (InferFrom) passes no
+    `commonOrigins`: after ruling 59 the flag steered only Infer's merge, which no call reaches, and `Own` had no other reader.
+    BU-163's "`commonOrigins` is off exactly when every own slot is fixed" and "whether every own slot is fixed" are superseded: only
+    a function reference passes `commonOrigins` (InferReferenceSlots, the reference's result solve), so the merge is reached by
+    references alone by construction, and the merge keeps its test there.
+  - **Scaling** (Q20): a slot's skeleton, its bindings' collection and the values' substitution decide each distinct query once
+    (`SlotWalkWork`, `SlotVariableWork`; `InferenceSlotScalingTest`), so their work is linear in a DAG-shaped binding's depth;
+    Binding's other walks over two distinct bindings of a DAG stay exponential (PLAN G1152).
+  - **Moves** (Q13; labels from SPEC first; the Middle's RP17): valid, newly accepted: c1-let, c1-ret-a, c1-ret-b, c2-pair, e7, e8,
+    r-f2b, r-con2, r-fs-sw, rt2c, dq-c-sw, fx-c, fx-f-c, hr-sw, hr-ret, dn-sw, cf-anon-sw, cf-t, cf-t-sw, t-hr-loc-ok, t-sk-sw (dn,
+    k08, k08-sw, rt2d stay accepted). Valid, a Language error to the located `Unsupported_Kd`: r-fr1, r-fr2, r-fr2-u, r-fr3 (the
+    reference's limit); p2 (dev's two `UnprovenOriginContract_Kd`) and t-c1-loc (dev's three records), two each (PLAN G960).
+    Invalid, records only: r-fr3-e `TypeMismatch_Kd` to the limit; t-c1-loc-e to G960's two `Unsupported_Kd`, its Language records
+    resting on them; the twins name their label's relation, not a meet (c2-pair-e 5 records to 1, `a outlives e0`; e5, r-con-e,
+    r-fs-sw-e, arg2_nn, arg2_nn-sw, hr-ret-n `b outlives a`; r-f2b-e `a outlives b`); rt2i's record at the per-call argument
+    `x0@move`. arg2_n and arg2_n-sw (valid) keep one record in both orders, the Closure comparison's pre-existing reader's (PLAN
+    G1192): no move toward SPEC.
+  - **Rejected:** (A) a per-slot candidate function (a second copy of 15.3.6); (C) a contravariant mark beside Infer's merge;
+    variables per pre-order position (2^n on a DAG); a strided per-candidate column (the width is known only after evidence); r5's
+    64-slot mask (a silent cut, C1); B3's count over identical bindings (the reason above); r5's retained per-inference array of
+    values (each later solve solved the variables again from it); passing `commonOrigins` at the three known-signature calls (a
+    caller-steered rule kept).
+  - **Open:** the function reference's limit and BU-241's residue (PLAN G1128); c-fr1's `UnprovenConstraint_Kd`, pre-existing
+    (PLAN G1222); the DAG's other walks (PLAN G1152).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
