@@ -1668,3 +1668,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   D-1004): §6's last sentence: after B6a the compiler carries the link material, so an LLVM update also adopts the reproduced
   `kernel32.lib`'s hash (`kernel32.sha256`) beside the backend's `artifactSha256` and commits both reproduced `.lib` files under
   `src/backend/windows-x64/` ("the procedure does not change" goes). No decision of the owner changes. Nothing frozen.
+- Revision 6 (2026-11-21, the owner's 「Tataraの席を 2+1に増やしてください。」 in K's dialog, 19:1x, relayed by K; T's D-1009): §2 decision 11: the
+  T lane's seats 1+1 (one implementer, one designer or reviewer seat) are raised to 2+1, two implementers and one designer or
+  reviewer; the one-implementer-per-toolchain-root rule stands. Decision 11 changes by the owner's own instruction; no other decision
+  changes. Nothing frozen.
