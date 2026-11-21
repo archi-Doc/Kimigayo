@@ -640,6 +640,8 @@ public sealed partial class Binding
                     consumer.Identity.IsVerified = false;
                     if (!ReferenceEquals(consumer.Use, source.Use))
                     {
+                        // Transitional, R7-E5 (D-924): an owner over its failed part spelled as a failure (ruling 16 B1 (a)): the consumer's
+                        // use rests on its invalidated source's use, its part prerequisite, until R7-E5's per-problem inputs.
                         this.AddPrerequisite(consumer.Use, source.Use);
                         this.Fail(consumer.Use, BindingFailure.UnprovenConstraint);
                     }

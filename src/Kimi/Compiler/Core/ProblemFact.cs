@@ -30,8 +30,9 @@
 // 7.4), neither side of a mismatch (R7-E2), and an Instance fact (R7-E2 E2-5b) as its Value an index in BindingReport's kept sides, a
 // Type its location does not determine, read by its site: at the preceding Related fact's own site, the instance that party is (a related
 // Contract's or associated declaration's declaring instance, or a construction's constructed Type), and at a member declaration of that
-// party, the Type that instance binds the member to; a kind that names no value has -1; a problem has at most one fact of each kind but its witness's, its causes, which come last, and its
-// Related, Count and Instance facts, in their row's order.
+// party, the Type that instance binds the member to; a kind that names no value has -1; a problem has at most one fact of each kind but
+// its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order its site
+// records them, and its Count and Instance facts, in their row's order.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
@@ -64,7 +65,7 @@ internal enum ProblemFactKind : byte
     Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value, -1 Binding's); facts' tail.
     Actual, // Binding: the syntax that shows a mismatch, the side found (Value, an index in BindingReport's kept sides, a Type or length; SPEC 23.3).
     Expected, // Binding: the syntax that shows a mismatch, the side required (Value, the same).
-    Span, // Binding: the subject of a located record, its part (Value, start << 32 | length; SPEC 23.1.1).
+    Span, // Binding: the part of its subject the record is located at (Value, start << 32 | length; SPEC 23.1.1).
     ActualForm, // Binding: as Actual, for a side with no kept value, a form (Value, a MismatchForm row and its count).
     ExpectedForm, // Binding: as Expected, the same.
     Operand, // Binding: the syntax an operator failed at, its operand's Type (Value, an index in BindingReport's kept sides; SPEC 13).

@@ -215,13 +215,6 @@ public sealed partial class Binding
             expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
     }
 
-    // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
-    private static bool IsStringJoin(Koto node, int depth)
-        => depth < 32 && KotoHelper.UnwrapParentheses(node) is BinaryKoto { Akind: KotoKind.Plus } join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
-
-    private static bool IsStringOperand(Koto node, int depth)
-        => ReferenceEquals(ComparisonReferent(KotoHelper.UnwrapParentheses(node).BoundType), BoundType.String) || IsStringJoin(node, depth);
-
     // SPEC 15.6.1, 23.1: an Origin relation record at the value that supplies the longer end, with both ends as Origin
     // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
     // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.
@@ -748,7 +741,7 @@ public sealed partial class Binding
         return this.Fail(use, BindingFailure.NotObjectPayload);
     }
 
-    [Transitional("R7", Reason = "Records only at a node without a failure (Q1: a cause-less failure resting on the node's own record), until R7-E2 E2-5 with its callers.")]
+    [Transitional("R7", Reason = "Records only at a node without a failure, so each caller keeps the node's earlier verdict (R7-E2 E2-5's O2, the Front's C4), until R7-E5's per-problem inputs: RequireConstraint's Error proof keeps the clause's own formation verdict, whose Error constraint the proof reads (Constraints' clause sites); InheritVirtualConstraints keeps the override's first refuted premise against a later one of its walk (SPEC 6.4.3, one declaration error); ArrayInference's fill, unverified. Constraints.Requirements' cause-less Fail keeps the requirement's own Type record (BindType's, at the node).")]
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
     {
         if (this.RecordedFailure(use) != BindingFailure.None)

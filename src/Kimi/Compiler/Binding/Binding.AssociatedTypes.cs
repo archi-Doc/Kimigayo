@@ -314,7 +314,7 @@ public sealed partial class Binding
 
         if (this.ProjectsThroughItsOwnClause(syntax, type, scope))
         {
-            return this.Fail(syntax, BindingFailure.Cycle, true);
+            return this.Record(syntax, BindingFailure.Cycle, [], unresolved: true);
         }
 
         var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
@@ -330,7 +330,7 @@ public sealed partial class Binding
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
         {
-            return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
+            return this.Record(syntax, BindingFailure.InvalidAssociatedType, []);
         }
 
         var evidence = qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
@@ -395,7 +395,7 @@ public sealed partial class Binding
         if (IsRecovery(clause, out _) || IsRecovery(clause.Left, out _))
         {
             // The head failed (SPEC F.6.2): the specification is judged no further, and its requirement keeps its own records (23.1.2).
-            this.Fail(clause, BindingFailure.InvalidConstraint);
+            this.Record(clause, BindingFailure.InvalidConstraint, []);
             this.BindRequirement(clause.Right, BoundType.Unit, false, this.NodeScope(clause, scope));
             clause.BoundConstraint = owner.Declaration is ContractKoto ? this.InternConstraint(new(ConstraintKind.Error)) : null;
             return;
@@ -424,7 +424,7 @@ public sealed partial class Binding
     {
         if (clause.FormationType is not null)
         {
-            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.5: a specification fixes its Type; only a requirement may end with a formation Type.
+            this.Record(clause, BindingFailure.InvalidConstraint, []); // SPEC 8.5: a specification fixes its Type; only a requirement may end with a formation Type.
             return null;
         }
 
@@ -476,12 +476,12 @@ public sealed partial class Binding
                 this.QualifierReference(written, selection, scope) is not { } bound)
             {
                 pending = this.PendingReference(member.Left, selection, scope);
-                return pending ? null : this.Fail(clause, BindingFailure.InvalidAssociatedType);
+                return pending ? null : this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
 
             if (!this.SelectorQualifies(owner, self, bound))
             {
-                return this.Fail(clause, BindingFailure.InvalidAssociatedType);
+                return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
 
             qualifier = bound;
@@ -494,13 +494,15 @@ public sealed partial class Binding
         if (associated is null || (owner.Declaration is not ContractKoto &&
             (this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || this.impls.PathsOf(conformance).Count == 0)))
         {
+            // SPEC 23.1.2: FindAssociated may have recorded the Name's ambiguity at this clause first (SPEC 8.5.2) and found nothing, which
+            // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1).
             return this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
         }
 
         var parameters = this.AssociatedParameters(associated.Declaration);
         if (parameters.Length != (applied?.ArgumentNodes.Count ?? 0))
         {
-            return this.Fail(clause, BindingFailure.InvalidAssociatedType);
+            return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
         }
 
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: parameters);

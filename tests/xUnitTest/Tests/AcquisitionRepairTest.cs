@@ -48,6 +48,22 @@ public class AcquisitionRepairTest
         Assert.Empty(DiagnosticCorpus.Check(UnnecessaryUnsafeBlockTest.Apply(source, repair.Edits)).Diagnostics);
     }
 
+    // SPEC 15.1.5, 23.1.3, IMPL A.4 (D-932): Take is judged from a bare Place's path at every depth (TakeJudgment has no bound of its
+    // own: SyntaxNesting's): `v.0..0`, k Tuple elements below an owned parameter, has Take verified; a 64-step bound left it required at
+    // k = 64. A generic body, so that Layout's 64-level window does not refuse the Type first.
+    [Theory]
+    [InlineData(63)]
+    [InlineData(64)]
+    [InlineData(65)]
+    public void ADeepOwnedPathsTakeIsVerified(int k)
+    {
+        var type = new string('(', k) + "Array<i32>" + string.Concat(Enumerable.Repeat(", i32)", k));
+        var source = $"func f<T>(v: {type})\n    let s = v{string.Concat(Enumerable.Repeat(".0", k))}\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
+        Assert.Equal([RepairCondition.Take], Assert.Single(error.Repairs!).Verified);
+    }
+
     // A Place reached through a shared reference, a dynamically indexed element and a Dictionary element offer no Take.
     [Theory]
     [InlineData("struct Holder\n    public var item: Resource\n    public init(item: Resource) => self.item = item@move\nfunc total(holder: ref/Holder) => consume(holder.item)\npublic func main() => ()\n", "holder.item")]

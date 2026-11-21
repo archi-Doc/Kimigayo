@@ -478,9 +478,15 @@ public sealed partial class Binding
     // would decide every proposition about it; or an admitted-set premise on the binder of a pair layer of the subject (SPEC 8.3.4,
     // F's C2 ruling 281: `s is obj` decides `s/A`). The last two give no verdict of their own. Unless the valid facts give the verdict
     // the speaking premises give, the answer is Error resting on the declaration's record; where none speaks, the valid facts decide.
-    // The Contract judge's exit: the proposition is interned only in a view that holds a Failed premise.
+    // The Contract judge's exit: the proposition is interned only in a view that holds a Failed premise. Both answer the verdict at once
+    // while nothing failed (premiseFailures, the Failed state's census).
     private ConstraintProof SpokenConformance(BoundType type, BindingSymbol contract, BindingScope scope, ConstraintProof verdict)
     {
+        if (this.premiseFailures == 0)
+        {
+            return verdict;
+        }
+
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is { FailedPremise: not null })
@@ -494,7 +500,7 @@ public sealed partial class Binding
 
     private ConstraintProof SpokenVerdict(BoundConstraint proposition, BindingScope scope, ConstraintProof verdict)
     {
-        if (verdict == ConstraintProof.Error)
+        if (verdict == ConstraintProof.Error || this.premiseFailures == 0)
         {
             return verdict;
         }
@@ -920,6 +926,11 @@ public sealed partial class Binding
     // state the origin's environment holds (FailedClauseRead), so its cause is the origin declaration's record. No state is copied.
     private PremiseFailure? DerivedFailure(ConstraintEnvironment environment, BoundConstraint fact)
     {
+        if (this.premiseFailures == 0)
+        {
+            return null; // Nothing failed (the Failed state's census).
+        }
+
         for (var i = 0; i < environment.DerivedFacts.Count; i++)
         {
             if (environment.DerivedFacts[i] is { Origin: { BoundConstraint: { } origin } clause } derived && ReferenceEquals(derived.Fact, fact) &&

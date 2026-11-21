@@ -503,7 +503,7 @@ public sealed partial class Binding
         return known!;
     }
 
-    // Whether input i is a raw pointer or holds a raw layer by value (a hold-walk source, retentionRawSources).
+    // Whether input i is a raw pointer or holds a raw layer stating no Origin by value (a hold-walk source, retentionRawSources; RawSource).
     private bool RawInput(int input)
     {
         foreach (var (raw, _) in this.retentionRawSources)
@@ -1173,10 +1173,11 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4 "with an Origin, as the borrow that Origin belongs to would", 5.7 Fits and claims (the owner's O-329 (a); C-352): at each
-    // raw layer stating an Origin the hold walk met (retentionStated), in its storage, each raw source but `output` (a pointer is never part
-    // of its own pointee) by its kind where one of its layers states an Origin that the stated one's premise closure reaches, whatever the
-    // pointee Types (a conversion between raw pointer Types keeps the Origin, SPEC 5.4; DECISIONS BU-66's P2): a source fits there. A layer
-    // stating none (retentionRawStated has no entry) fits a stated layer only by a claim, which promises that storage.
+    // raw layer stating an Origin the hold walk met (retentionStated), in its storage, each input but `output` (a pointer is never part of
+    // its own pointee) by the kind it holds its raw layers by where one of them states an Origin that the stated one's premise closure
+    // reaches, whatever the pointee Types (a conversion between raw pointer Types keeps the Origin, SPEC 5.4; DECISIONS BU-66's P2): it
+    // fits there, a raw argument by its own value, else by its entry's joined kind (DECISIONS BU-66, A2). A layer stating none
+    // (retentionRawStated has no entry) fits a stated layer only by a claim, which promises that storage.
     private void StatedFits(OriginPremiseEnvironment environment, int output)
     {
         foreach (var (storage, origin) in this.retentionStated)
@@ -1190,22 +1191,13 @@ public sealed partial class Binding
                 marks[reached] = stamp;
             }
 
-            foreach (var (input, stated) in this.retentionRawStated)
+            foreach (var (input, stated, kind) in this.retentionRawStated)
             {
                 if (input != output && this.PremiseNode(environment, stated) is var node && node < marks.Length && marks[node] == stamp)
                 {
-                    this.KeepRaw(storage, input);
+                    this.retentionKept[storage][input] |= kind ?? RetentionKind.Value;
                 }
             }
-        }
-    }
-
-    // A raw source's kinds in a storage's kept rows: the input's own value at its own layer, else its entry's kind (DECISIONS BU-66, A2).
-    private void KeepRaw(int storage, int input)
-    {
-        foreach (var (source, kind) in this.retentionRawSources)
-        {
-            this.retentionKept[storage][input] |= source == input ? kind ?? RetentionKind.Value : RetentionKind.None;
         }
     }
 
@@ -1229,8 +1221,8 @@ public sealed partial class Binding
     // layer admitting only borrows, a Slice's or UniqSlice's elements) or below a result raw layer stating an input's or slot's Origin
     // (stepping Exclusive or Shared: it retains as that borrow would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1;
     // PLAN G255's C1), Dependency in a Type argument that is no part by value (ByValue: a Loan entry, row 3b), whose layers give nothing.
-    // Each raw source other than `output` retains its own value at a raw layer stating an Origin or `static` where it fits
-    // that Origin, whatever its pointee Type (it retains as the borrow its Origin belongs to would, SPEC 15.6.4, and a raw cast keeps the
+    // Each input other than `output` with a stated raw layer (retentionRawStated) is kept by its joined kind at a raw layer stating an
+    // Origin or `static` where one of its layers fits that Origin, whatever its pointee Type (it retains as the borrow its Origin belongs to would, SPEC 15.6.4, and a raw cast keeps the
     // address and the Origin, 5.4; StatedFits judges the fit by the premise closure), at a `during self` layer or a pair layer's raw case, which
     // state no Origin the closure judges, as before, and at an abstract part only where a callable the call may run may retain it there
     // (Filled, per input: rule 3, DECISIONS BU-66, PLAN G935 R1.3; no premise makes an abstract part such storage); at a raw layer without an Origin rule A or R′
@@ -1287,9 +1279,9 @@ public sealed partial class Binding
 
         var stated = stepped && type is { IsPointer: true } &&
             OwnedOrigin(type) is { Kind: not OriginKind.Unstated } origin ? origin : null;
-        if (stated is not null && this.retentionRawSources.Count > 0)
+        if (stated is not null && this.retentionRawStated.Count > 0)
         {
-            this.retentionStated.Add((storage, stated)); // StatedFits keeps the raw sources that fit it.
+            this.retentionStated.Add((storage, stated)); // StatedFits keeps the inputs whose stated raw layers fit it.
         }
 
         var holds = stepped && stated is null;

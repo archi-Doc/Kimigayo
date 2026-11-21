@@ -184,7 +184,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 37)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 36)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -245,15 +245,18 @@ public class ArchitectureRulesTest
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.ResolvePath.cs=1")]
     // PLAN G647: a walk of one Type's parts has no count of its own, so a depth or count compared with a literal stays at the census's
     // sites, over the whole compiler (Mir/Build and Mir/Analysis are in scope and have none): Origin-term nesting (FunctionTypes'
-    // inner Origin, TypeRelations' InstanceOutlives), syntax-path walks (ElementAccess, PlaceAuthority, PlaceOrigins, OriginDiagnostics'
-    // RootLocal, Diagnostics' `+` chain), a record path's length (TypeRelations.Walk) and sizes that bound no walk (Attributes' stackalloc
-    // threshold, SlotSet's word count, TemporaryKotoList's inline slots). A walk across a declaration names its
-    // bound, which this pattern does not read.
-    [InlineData("A walk's own count", "src/Kimi/Compiler", @"\b(?:[dD]epth|layers|count|steps|level|fields)\s*(?:<=|>=|==|<|>)\s*(?:[2-9]|\d\d+)\b", "Binding/Binding.Attributes.cs=1;Binding/Binding.Diagnostics.cs=1;Binding/Binding.ElementAccess.cs=3;Binding/Binding.FunctionTypes.cs=1;Binding/Binding.OriginDiagnostics.cs=1;Binding/Binding.PlaceAuthority.Raw.cs=3;Binding/Binding.PlaceAuthority.cs=1;Binding/Binding.PlaceOrigins.cs=1;Binding/Binding.SlotSet.cs=1;Binding/Binding.TypeRelations.Walk.cs=1;Binding/Binding.TypeRelations.cs=1;Parsing/Koto/Common/TemporaryKotoList.cs=2")]
+    // inner Origin, TypeRelations' InstanceOutlives), a record path's length (TypeRelations.Walk) and sizes that bound no walk
+    // (Attributes' stackalloc threshold, SlotSet's word count, TemporaryKotoList's inline slots). A walk over syntax has none
+    // (SyntaxNesting's bound, IMPL A.4; D-932). A walk across a declaration names its bound, which this pattern does not read.
+    [InlineData("A walk's own count", "src/Kimi/Compiler", @"\b(?:[dD]epth|layers|count|steps|level|fields)\s*(?:<=|>=|==|<|>)\s*(?:[2-9]|\d\d+)\b", "Binding/Binding.Attributes.cs=1;Binding/Binding.FunctionTypes.cs=1;Binding/Binding.SlotSet.cs=1;Binding/Binding.TypeRelations.Walk.cs=1;Binding/Binding.TypeRelations.cs=1;Parsing/Koto/Common/TemporaryKotoList.cs=2")]
     // DECISIONS R7-C2e1: a view's state is counted where it is written, so a ConstraintEnvironment's fact sets are written only by its own
     // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
     [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")] // R7-C3 (F's C2 rulings 272-273): a failed premise stays in the sets (its state)
     [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=3;BindingModel.cs=1")] // R7-C3: FailPremise's change replaces Fail(Koto)'s (rulings 272-273)
+    // R7-C3 cost (F's C2 ruling 318, C1): only the census's writers write the Failed state. ConstraintEnvironment.FailPremise is called
+    // by Binding.FailPremise only, and NameUnprovenInput by FailInput only (Binding.premiseFailures). A direct call anywhere else would
+    // leave the census at 0, and the per-proof readers would answer "nothing failed".
+    [InlineData("Writers of the Failed state", "src/Kimi/Compiler", @"(?<!\bthis)\.(?:FailPremise|NameUnprovenInput)\(", "Binding/Binding.ConstraintValidation.cs=1;Binding/Binding.Diagnostics.Prerequisites.cs=1")]
     // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W8 and an outermost walk, the
     // ContractSolver header) give Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here.
     // Every spelling of Complete is counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
@@ -281,7 +284,7 @@ public class ArchitectureRulesTest
     // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
     // input (Expressions.cs: the expected and the bound Type; Variables.cs, Conversions.cs, NumericConversions.cs); Keys.cs is
     // ClassForm's own recursion. J2 reads the classes, no form. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=7;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a

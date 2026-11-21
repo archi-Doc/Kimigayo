@@ -12,15 +12,33 @@ namespace Kimi.Compiler;
 //   and view-range calls, resolved slices, path and referent authority, object cases and pair-layer borrows (BorrowsInEveryCase), a
 //   node's constraint scope, an operand's terminal Type (OperandTerminal) and the Binding's TyCtxt (Types.Reference,
 //   AdtDef.FindField); never a node's own compilation (DECISIONS R8-M51).
-// - Outputs: the answers; nothing here writes a fact or reports a diagnostic.
-// - Invariants: the readers are Binding's own steps and the HIR publisher, which reads the Binding it publishes.
+// - Outputs: the answers, and one memo: ReachesThroughBorrow's answer for a selection (the reachedThroughBorrow family), a final fact
+//   of the selection's syntax, filled at its first query from its receiver's row and its own step, so that every later query reads it
+//   in O(1); valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next
+//   ResetPass), released at the freeze.
+// - Invariants: the readers are Binding's own steps and the HIR publisher, which reads the Binding it publishes. A selection's answer
+//   reads only what its own binding and its receivers' bindings wrote: every adaptation writer writes the node being bound or its
+//   operand or receiver while that parent is bound, and a query at a selection runs while the selection's parent's parent is bound, so
+//   everything below it is final; the writers that run later (CompareInPlace, SharedElementView, Comparisons) write into chains that
+//   no later walk enters from above (a walk crosses no comparison and no range selection), so a stored answer stays the walk's.
 // - Prohibitions: no member fetches a Binding from a node.
 public sealed partial class Binding
 {
+    private readonly ReachedThroughBorrowRows reachedThroughBorrow;
+    private long reachWalkSteps;
+
+    /// <summary>Gets the steps ReachesThroughBorrow took (one per selection it judges), which a scaling check reads.</summary>
+    internal long ReachWalkWork => this.reachWalkSteps;
+
     // SPEC 15.1.3: a constant index's value, else -1: one nonnegative integer literal (any base) in optional grouping parentheses that
     // fits i32.
     private static int Literal(Koto key) => KotoHelper.UnwrapParentheses(key) is NumberLiteralKoto { IsInteger: true } number &&
         number.TryGetIntegerMagnitude(out var magnitude) && magnitude <= int.MaxValue ? (int)magnitude : -1;
+
+    // One step of ReachesThroughBorrow: a selection at no range position that is no getter result; null for any other node.
+    private static BinaryKoto? ReachStep(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
+            !IsGetterResult(selection) ? selection : null;
 
     // SPEC 4.8.2, 4.7.1: an element of a Slice or of a referenced array, including a fixed array reached through a
     // borrowed receiver; no owned root holds it.
@@ -36,8 +54,8 @@ public sealed partial class Binding
     private bool IsExclusiveArrayElement(IndexKoto element, SemanticsKind receiverPath) => element.Right is not RangeKoto && !this.IsSlicing(element) &&
         ((this.ExclusiveAccessType(element.Left, this.ReferentAuthority(element.Left, receiverPath)) is { Semantics: SemanticsKind.Uniq } receiver &&
             receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
-        (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && this.ReachesThroughBorrow(element.Left) &&
-            receiverPath == SemanticsKind.Uniq));
+        (receiverPath == SemanticsKind.Uniq && HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray &&
+            this.ReachesThroughBorrow(element.Left)));
 
     // SPEC 4.7.1: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
@@ -45,23 +63,30 @@ public sealed partial class Binding
         => this.AccessType(receiverNode) is var receiver &&
             (receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || this.BorrowsInEveryCase(receiver, receiverNode));
 
-    // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
+    // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it: its own step
+    // (BorrowsAt) or its receiver's answer. The answer is a fact of the selection, memoized with it (reachedThroughBorrow) at its first
+    // query, so each selection is judged once per pass however the queries interleave (the Front's B1 and B1b on D-932).
     private bool ReachesThroughBorrow(Koto source)
     {
-        for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
-            !IsGetterResult(selection); depth++)
+        if (ReachStep(source) is not { } selection)
         {
-            var receiver = this.AccessType(selection.Left);
-            if (receiver?.Kind == BoundTypeKind.Slice || this.BorrowsInEveryCase(receiver, selection.Left))
-            {
-                return true;
-            }
-
-            source = selection.Left;
+            return false;
         }
 
-        return false;
+        if (this.reachedThroughBorrow[selection] is { } known)
+        {
+            return known;
+        }
+
+        this.reachWalkSteps++;
+        var reaches = this.BorrowsAt(selection) || this.ReachesThroughBorrow(selection.Left);
+        this.reachedThroughBorrow[selection] = reaches;
+        return reaches;
     }
+
+    // Whether a selection's receiver is a Slice or borrows in every case, so that the selection reaches its Place through it.
+    private bool BorrowsAt(BinaryKoto selection)
+        => this.AccessType(selection.Left) is var receiver && (receiver?.Kind == BoundTypeKind.Slice || this.BorrowsInEveryCase(receiver, selection.Left));
 
     private bool IsSyntax(Koto source) => source is IndexKoto index ? !this.IsUserIndex(index) && this.ViewRangeCall(index) is null : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto member && HirTables.Symbol(member) is { Property.IsStored: true } && AdtDef.IsStruct(HirTables.TypeOf(member.Left)));
@@ -169,9 +194,12 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(selection) is IndexKoto element && this.IsSyntax(element) && !this.IsSlicing(element) && !IsGetterResult(element) &&
             HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.FixedArray && this.StaticSelector(element) < 0;
 
+    // SPEC 3.4.3: the borrowed base an inline Tuple level is selected from (Writes' borrowed-base rule). It takes one step: its one
+    // caller reaches it only where the inline-part rule did not answer, so TryType of the node is false, and a second iteration needs
+    // it true (the Front's D-932 read).
     private Koto? BorrowedPathRoot(MemberAccessKoto field)
     {
-        for (var depth = 0; depth < 64; depth++)
+        while (true)
         {
             if (IsGetterResult(field))
             {
@@ -198,15 +226,13 @@ public sealed partial class Binding
 
             field = parent;
         }
-
-        return null;
     }
 
     // SPEC 15.6: a direct inline field/Tuple/static-array path whose root is an owned local
     // or parameter Name. Returns that Name, or null for other forms.
     private IdentifierNameKoto? OwnedPathRoot(BinaryKoto field)
     {
-        for (var depth = 0; depth < 64; depth++)
+        while (true)
         {
             if (IsGetterResult(field) || !this.IsSyntax(field) || this.StaticSelector(field) < 0)
             {
@@ -227,8 +253,6 @@ public sealed partial class Binding
 
             field = parent;
         }
-
-        return null;
     }
 
     private bool TryBorrowedTupleElement(BinaryKoto source, out BoundType? element, out int position)
@@ -283,5 +307,18 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    /// <summary>The `reachedThroughBorrow` family's one accessor (DECISIONS BU-220): a memo of ReachesThroughBorrow's answer for a
+    /// selection, a final fact of its syntax, kept in its node's module's NodeColumns at its SyntaxId (null: not yet asked under the
+    /// pass's stamp) and valid while that stamp stands: the pass, then the queries after it, its reports included, until the next
+    /// ResetPass. No query reads a library row after the library pass, so the freeze releases them (NodeColumns.Freeze).</summary>
+    private readonly struct ReachedThroughBorrowRows(Binding binding)
+    {
+        internal bool? this[Koto selection]
+        {
+            get => selection.SyntaxOwner is { } table ? table.Hir.Families.ReachedThroughBorrow.Get(selection.SyntaxId, binding) : null;
+            set => HirTables.Of(selection).Families.ReachedThroughBorrow.Ref(selection.SyntaxId, binding) = value;
+        }
     }
 }
