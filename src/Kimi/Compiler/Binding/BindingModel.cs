@@ -7,6 +7,7 @@
 
 using System.Numerics;
 using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Target;
 
 namespace Kimi.Compiler;
 
@@ -457,6 +458,11 @@ public sealed class BoundType : IEquatable<BoundType?>
     // primitives in CreatePrimitives' order, Range, then the twelve wrapping Scalars; each compilation's TyCtxt numbers its own after them.
     internal const int StaticCount = 32;
 
+    // The width in bits of isize and usize for every Compilation, with or without a target: the profile's (SPEC 22, O-79 (a); IMPL
+    // 21.1.3; DECISIONS BU-130), from IrTarget's row for its triple, read once by Row; every reader of their width asks the Type (Width).
+    // A target's own width is only the pointerWidth Condition's (SPEC 19.2). Declared before the static Types, whose rows read it.
+    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).PointerWidth;
+
     private readonly NumericCategory numeric;
     private readonly byte width;
 
@@ -490,7 +496,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.Length = length;
         // DECISIONS BU-24, BU-46: the slot's role is the layer's. Holder and Unstated only in the raw role (Unstated, a kept part's mark
         // of a layer its declaration writes without `during`, Binding.WithUnstatedOrigins).
-        if (semantics != SemanticsKind.Raw && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
+        if (!this.IsPointer && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
         {
             throw new InvalidOperationException($"An Origin of kind {origin.Kind} is no Origin of a {semantics} layer.");
         }
@@ -504,7 +510,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
-        var raw = semantics == SemanticsKind.Raw && origin is not null;
+        var raw = this.IsPointer && origin is not null;
         var found = (origin is not null && !raw) || originArguments is { Length: > 0 };
         var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
@@ -604,7 +610,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     public BoundLength? LengthExpression { get; }
 
     /// <summary>Gets the Origin of a borrow, handle, Slice, pair or Parameter layer; never a raw layer's (its <see cref="RawOrigin"/>).</summary>
-    public BoundOrigin? Origin => this.Semantics == SemanticsKind.Raw ? null : this.origin;
+    public BoundOrigin? Origin => this.IsPointer ? null : this.origin;
 
     public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
@@ -665,7 +671,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated; Unstated only on a kept part's layer its declaration writes
     /// without `during`, DECISIONS BU-46); null on any other layer (DECISIONS BU-24).</summary>
-    internal BoundOrigin? RawOrigin => this.Semantics == SemanticsKind.Raw ? this.origin : null;
+    internal BoundOrigin? RawOrigin => this.IsPointer ? this.origin : null;
 
     /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin (<see cref="Origin"/>).</summary>
     /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>
@@ -714,12 +720,17 @@ public sealed class BoundType : IEquatable<BoundType?>
     // TyCtxt.EnclosingDeclaration gives an enclosing declaration: a root function's Item passes it and the closing step leaves it as it is.
     internal bool ContainsNested => this.containsNested;
 
+    /// <summary>Gets a value indicating whether this Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a
+    /// wrapping integer Core (SPEC 3.1.1); no layer is followed. The one definition every phase reads: Binding, the MIR builder's
+    /// recorded values, MirValidator's testRecordValue row, A5's pun Types and the Backend's static-storage row.</summary>
+    internal bool IsScalar => ReferenceEquals(this, Boolean) || ReferenceEquals(this, Char) || this.IsNumeric;
+
     /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;
     /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>
     internal bool IsSigned => this.numeric == NumericCategory.Signed;
 
     /// <summary>Gets the width in bits of an integer or wrapping integer Type (SPEC 3.1's storage size; <c>Wrapping&lt;T&gt;</c> has T's,
-    /// SPEC 3.1.1; <c>isize</c> and <c>usize</c> the profile's, <see cref="ScalarTypes.SizeWidth"/>); 0 for every other Type, among them
+    /// SPEC 3.1.1; <c>isize</c> and <c>usize</c> the profile's, <see cref="SizeWidth"/>); 0 for every other Type, among them
     /// a Type whose instance decides its width (SPEC 8.7.4).</summary>
     internal int Width => this.width;
 
@@ -755,6 +766,16 @@ public sealed class BoundType : IEquatable<BoundType?>
     /// <summary>Gets a value indicating whether this is an objref or objuniq borrow of an object.</summary>
     internal bool IsObjectBorrow => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 };
 
+    /// <summary>Gets the referent of a safe value reference <c>ref/T</c> or <c>uniq/T</c> (SPEC 3.4), whatever the referent; null for
+    /// any other Type, a raw pointer, an object borrow or a pair layer among them. The one test of a safe reference layer every phase
+    /// reads; no further layer is followed.</summary>
+    internal BoundType? SafeReferent => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent : null;
+
+    /// <summary>Gets a value indicating whether this is a raw pointer <c>raw/T</c> (SPEC 5.1: a Copy address value; null is its only
+    /// literal), whatever the pointee; false for any other Type, a safe reference or an object borrow among them. The one test of a raw
+    /// layer every phase reads; no further layer is followed.</summary>
+    internal bool IsPointer => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 };
+
     /// <inheritdoc/>
     public bool Equals(BoundType? other) => ReferenceEquals(this, other);
 
@@ -785,13 +806,13 @@ public sealed class BoundType : IEquatable<BoundType?>
         "i32" => (NumericCategory.Signed, 32),
         "i64" => (NumericCategory.Signed, 64),
         "i128" => (NumericCategory.Signed, 128),
-        "isize" => (NumericCategory.Signed, (byte)ScalarTypes.SizeWidth),
+        "isize" => (NumericCategory.Signed, (byte)SizeWidth),
         "u8" => (NumericCategory.Unsigned, 8),
         "u16" => (NumericCategory.Unsigned, 16),
         "u32" => (NumericCategory.Unsigned, 32),
         "u64" => (NumericCategory.Unsigned, 64),
         "u128" => (NumericCategory.Unsigned, 128),
-        "usize" => (NumericCategory.Unsigned, (byte)ScalarTypes.SizeWidth),
+        "usize" => (NumericCategory.Unsigned, (byte)SizeWidth),
         "f32" or "f64" => (NumericCategory.Float, 0),
         _ => default,
     };
@@ -896,6 +917,10 @@ internal sealed class BindingScope(Koto owner)
 
     // Retained with the declaration scope; never includes an implementation's own conditional block.
     internal BindingScope? ImplementationPremises { get; set; }
+
+    // An override's header layer (R7-C2c2 c2-4a): the virtual group's common premises its inputs and result bind under (SPEC 6.4.2),
+    // its Parent the function's scope; never the body's premises, which the slot's settle point decides.
+    internal BindingScope? HeaderPremises { get; set; }
 
     internal BoundConformancePath? ConformancePath
     {
@@ -1019,8 +1044,7 @@ internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
 // `WellFormed` marks the intrinsic relation of an input's instantiated Type (source `wellFormed`, SPEC 15.3.7, 15.6.4 step 3).
 // `Supplier` is the atom (or meet operand) that supplied `Longer` at the use: the end after the Origin declarations and local initializers
 // and before any Closure's receiver resolution (Binding.SuppliedAtUse); the record's Borrow is the one whose Origin is it, by identity
-// (BorrowSource; DECISIONS R4-M133). `Condition` is the Semantics case a fit's position exists in (0: every case), which the
-// dependence query reads (DECISIONS BU-69).
+// (BorrowSource; DECISIONS R4-M133).
 internal readonly record struct OriginRelationFact(
     Koto At, BoundOrigin Longer, BoundOrigin Supplier, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null,
-    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false, ulong Condition = 0);
+    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);

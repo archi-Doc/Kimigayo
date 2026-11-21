@@ -20,7 +20,9 @@ public sealed partial class TyCtxtTest
         "func probe<T>(x: uniq/u8 during a, tuple: (raw/u8 during a, i32), option: Option<raw/u8 during a>, field: Wrap<raw/u8 during a>,\n" +
         "    nested: Option<Outer<raw/u8 during a>>, array: Array<raw/u8 during a>, selfHeld: SelfHeld, borrow: (uniq/u8 during a, raw/u8 during static),\n" +
         "    loan: Loan<uniq/u8 during a>, empty: Empty<raw/u8 during a>, scalar: i32, bare: raw/u8, rc: rc/Wrap<raw/u8 during a>,\n" +
-        "    abstract: (T, raw/u8 during a), slot: Slot<raw/u8 during a>, derived: Derived, object: obj/Wrap<raw/u8 during a>) -> ()\n    return ()\n" +
+        "    abstract: (T, raw/u8 during a), slot: Slot<raw/u8 during a>, derived: Derived, object: obj/Wrap<raw/u8 during a>,\n" +
+        "    loanPair: (Loan<uniq/u8 during a>, raw/u8 during a), loanRaw: Loan<uniq/(raw/u8) during a>,\n" +
+        "    loanBorrow: (Loan<uniq/u8 during a>, uniq/u8 during a), borrowLoan: (uniq/u8 during a, Loan<uniq/u8 during a>)) -> ()\n    return ()\n" +
         "func pairs<b/B>(x: uniq/u8 during a, pair: b/(raw/u8 during a)) -> ()\n    b is owner or uniq\n    return ()\n" +
         "public func main() => ()\n";
 
@@ -53,6 +55,28 @@ public sealed partial class TyCtxtTest
         var into = new List<OwnLayer>();
         Assert.True(c.Types.OwnLayers(PlaceKey.Root(p[parameter]), into));
         Assert.Equal(expected, string.Join("; ", into.Select(static x => $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step}")));
+    }
+
+    // SPEC 15.3.5 (a Type argument has no address; the Middle's C-370, its landing hunk's R2 (b2')): a part the key walk lists past a
+    // Loan's Type argument, which it walks by value until G416 U3a, is marked Loan (L), so a reader takes no write Type and no key past
+    // it: the Loan's exclusive borrow, alone, beside a raw layer the Tuple states (not marked) and over a raw pointee; an exclusive borrow
+    // that is no Loan's argument, and the layers beside it, are not marked. A part reached both through a Loan's Type argument and
+    // directly is listed both ways, in either order (loanBorrow, borrowLoan: the direct borrow keeps its key; G935 review 2c's C1, these
+    // two fail with the walked key's Loan bit removed). Fail-before: no Loan mark on 4d510bf64.
+    [Theory]
+    [InlineData("loan", "- Exclusive L")]
+    [InlineData("loanPair", "- Exclusive L; raw/u8 Exclusive")]
+    [InlineData("loanRaw", "- Exclusive L")]
+    [InlineData("x", "- Exclusive")]
+    [InlineData("borrow", "- Exclusive; raw/u8 Static")]
+    [InlineData("loanBorrow", "- Exclusive L; - Exclusive")]
+    [InlineData("borrowLoan", "- Exclusive; - Exclusive L")]
+    public void APartPastALoansTypeArgumentIsMarked(string parameter, string expected)
+    {
+        var (c, p) = OwnLayersForms();
+        var into = new List<OwnLayer>();
+        Assert.True(c.Types.OwnLayers(PlaceKey.Root(p[parameter]), into));
+        Assert.Equal(expected, string.Join("; ", into.Select(static x => $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step}{(x.Loan ? " L" : string.Empty)}")));
     }
 
     // A Closure part as the contract's body sees it (DECISIONS R4-M148, the storage walk's BodyRun): its environment's bindings, a raw layer
@@ -116,6 +140,7 @@ public sealed partial class TyCtxtTest
         "    public func put2<U>(self: uniq/Self, p: raw/T, u: raw/U) => ()\n" +
         "struct Box3<T>\n    internal let b: T\n    public func put3<U>(self: uniq/Self, p: raw/U) -> ()\n        U is T\n        return ()\n" +
         "contract HasItem\n    associate Item\n" +
+        "contract HasItemOf<A>\n    associate Item\n" +
         "contract RawItem: HasItem\n    Self.(HasItem).Item is raw/u8\n" +
         "struct HA<S>\n    S is HasItem\n    internal let x: S.Item\n" +
         "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
@@ -145,6 +170,13 @@ public sealed partial class TyCtxtTest
         "func r28<U, V>(p: uniq/Wrap<U>) -> ()\n    U is Wrap<V>\n    V is raw/u8\n    return ()\n" +
         "func r29<U, V>(p: uniq/Wrap<U>) -> ()\n    U is Wrap<V>\n    return ()\n" +
         "func r30<U, V>(p: uniq/(U, V)) -> ()\n    U is V\n    return ()\n" +
+        "func cg0<S>(p: uniq/Wrap<S.Item>) -> ()\n    S is HasItem\n    S.Item is raw/u8\n    return ()\n" +
+        "func cg1<S, T>(p: uniq/Wrap<T.Item>) -> ()\n    S is HasItem\n    T is HasItem\n    S is T\n    S.Item is raw/u8\n    return ()\n" +
+        "func cg1n<S, T>(p: uniq/Wrap<T.Item>) -> ()\n    S is HasItem\n    T is HasItem\n    S.Item is raw/u8\n    return ()\n" +
+        "func cg2<S, U, V>(p: uniq/Wrap<S.(HasItemOf<V>).Item>) -> ()\n    S is HasItemOf<U>\n    S is HasItemOf<V>\n    U is V\n" +
+        "    S.(HasItemOf<U>).Item is raw/u8\n    return ()\n" +
+        "func cg2n<S, U, V>(p: uniq/Wrap<S.(HasItemOf<V>).Item>) -> ()\n    S is HasItemOf<U>\n    S is HasItemOf<V>\n" +
+        "    S.(HasItemOf<U>).Item is raw/u8\n    return ()\n" +
         "func rb<U>(p: uniq/DB<U>) => ()\nfunc rbp<U>(p: uniq/DB<U>) -> ()\n    U is raw/u8\n    return ()\n" +
         "func gargs<V>(gv: raw/V) -> ()\n    return ()\n" +
         "func wa<U>(p: raw/U) => ()\nfunc wa2<U>(p: raw/(raw/U)) => ()\nfunc wu<U>(p: uniq/Wrap<U>) => ()\nfunc wu2<U>(p: uniq/Wrap2<U>) => ()\n" +
@@ -158,7 +190,9 @@ public sealed partial class TyCtxtTest
         "public func main() => ()\n";
 
     // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key marks each part in the binding of the function's own
-    // Type parameter (H; S shown), at the root and at every key past it (Past, nested in braces, four keys deep): G790's rAliasClean
+    // Type parameter (H; S shown), at the root and at every key past it (Past, nested in braces, four keys deep) as far as the Place is
+    // storage of that Type: past a raw layer the binding holds, the Place is a holder the value addresses, read as the input writes it
+    // (shown: wa's t and n below their first hidden layer; the owner's O-312 (a), PLAN G935 c3-5). The rows: G790's rAliasClean
     // three and hPunWriteOk (wa's U, t and n), a nested layer the Type expression writes (wa2's outer raw/U), a Field of U beside a Field
     // the declaration states (wu, wu2), a bare U (wv), a projection (r1, r2), a pair target (r4), Fields of T and V beside a stated one
     // (r6), an Option or enum payload (r7, r15), a fixed-array and an Array element (r8, r10), a method's own U (put2's u); shown: an
@@ -168,11 +202,14 @@ public sealed partial class TyCtxtTest
     // the pairing, shown (r5; SPEC labels it hidden). The function's view (SPEC 8.2.3, 8.5.3; the review's View twins i1-i7): a Contract's
     // associated-Type requirement (r20, r20b), a chain of premises (r21; r21c without its last), a pair target under a premise (r22), a
     // Field of a Field (r24; r25 without the premise), a case view then the premise (r26; r27), two premises at depth 2 (r28; r29 with
-    // one), a class of two own abstract Types (r30: no form); a generic caller's own V as the input (r18, r17). Labels: F's G823
-    // labels.md and its reviews' twins.
+    // one), a class of two own abstract Types (r30: no form); a generic caller's own V as the input (r18, r17). A spelling that is no
+    // node of the view's identity table but congruent with one takes its class's form (R7-C2c2 c2-4b commit (1), the class lookup
+    // ClassOf; 8.2.3's closure, BU-202): the subject congruent through `S is T` (cg1) or a Contract argument through `U is V` (cg2)
+    // shows the raw layer as the node spelling does (cg0), and without the identity (cg1n, cg2n) it is hidden (before commit (1)
+    // cg1 and cg2 were hidden). Labels: F's G823 labels.md and its reviews' twins; cg*: the Middle's C-390 probe.
     [Theory]
-    [InlineData("wa", "p", "t", "raw/(raw/uniq/u8, raw/raw/raw/u8) S {raw/uniq/u8 H {- H}, raw/raw/raw/u8 H {raw/raw/u8 H {raw/u8 H}}}")]
-    [InlineData("wa", "p", "n", "raw/raw/raw/u8 S {raw/raw/u8 H {raw/u8 H}}")]
+    [InlineData("wa", "p", "t", "raw/(raw/uniq/u8, raw/raw/raw/u8) S {raw/uniq/u8 H {- S}, raw/raw/raw/u8 H {raw/raw/u8 S {raw/u8 S}}}")]
+    [InlineData("wa", "p", "n", "raw/raw/raw/u8 S {raw/raw/u8 H {raw/u8 S}}")]
     [InlineData("wa2", "p", "w2", "raw/raw/raw/u8 S {raw/raw/u8 S {raw/u8 H}}")]
     [InlineData("wu", "p", "wu", "- S {raw/u8 H}")]
     [InlineData("wu2", "p", "wu2", "- S {raw/u8 H, raw/u8 S}")]
@@ -208,6 +245,11 @@ public sealed partial class TyCtxtTest
     [InlineData("r29", "p", "a28", "- S {raw/u8 H}")]
     [InlineData("r30", "p", "a9", "- S {raw/u8 H, raw/u8 H}")]
     [InlineData("r18", "p", "gv", "raw/V S {- H {- H {- H}}}")]
+    [InlineData("cg0", "p", "a13", "- S {raw/u8 S}")]
+    [InlineData("cg1", "p", "a13", "- S {raw/u8 S}")]
+    [InlineData("cg1n", "p", "a13", "- S {raw/u8 H}")]
+    [InlineData("cg2", "p", "a13", "- S {raw/u8 S}")]
+    [InlineData("cg2n", "p", "a13", "- S {raw/u8 H}")]
     public void AParameterKeyHidesTheBindingOfTheCalledFunctionsOwnTypeParameter(string callee, string parameter, string argument, string expected)
     {
         var c = MinimalEmissionTest.Analyze(ParameterKeysSource);
@@ -219,6 +261,115 @@ public sealed partial class TyCtxtTest
         var slot = function.Parameters.Select(static x => x.InternalName).ToList().IndexOf(parameter);
         var key = c.Types.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, slot, input);
         Assert.Equal(expected, Hiding(c.Types, key, 0));
+    }
+
+    // SPEC 15.6.4's abstract-storage sentence (PLAN G935; the Middle's C-370, its N5): TyCtxt.EntryType names a storage's entry and
+    // says whether the name is the callee's kept Type, one answer of one rule. Kept: past slot's two layers, storage of f's T (the
+    // output read in f's terms). Not kept: the same storage of a callee that writes the Type itself; past a raw layer T's binding
+    // holds (T = `raw/(raw/u8)`: the holder it addresses, read as the input writes it, c3-5) or a safe reference it holds (T =
+    // `uniq/(raw/u8)`: the holder its Loan names, B2); and a wholly hidden key of an output not read in the callee's terms (the root
+    // of a by-value input that is the kept Type itself), whose answer stays the instantiated Type. Fail-before: no Kept answer on
+    // 53dee7570.
+    [Theory]
+    [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: T) => ()\n", "uniq/(uniq/(raw/u8) during a)", 2, "T kept")]
+    [InlineData("func f(slot: uniq/(uniq/(raw/u8) during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/u8) during a)", 2, "raw/u8 instantiated")]
+    [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/(raw/u8)) during a)", 2, "T kept")]
+    [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/(raw/u8)) during a)", 3, "raw/u8 instantiated")]
+    [InlineData("func f<T>(slot: T, value: raw/u8) => ()\n", "uniq/(raw/u8)", 1, "raw/u8 instantiated")]
+    [InlineData("func f<T>(slot: T, value: raw/u8) => ()\n", "uniq/(raw/u8)", 0, "uniq/raw/u8 instantiated")]
+    public void AnEntryTypeSaysWhetherItIsTheKeptType(string callee, string input, int steps, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(callee + $"func g(x: {input}, v: raw/u8)\n    f(x, v)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single();
+        var written = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray().Single(static x => x.Output == 0);
+        var (key, into) = (c.Types.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
+        for (var i = 0; i < steps; i++)
+        {
+            into.Clear();
+            Assert.True(c.Types.OwnLayers(key, into));
+            key = into.Single().Past;
+        }
+
+        var (type, kept) = c.Types.EntryType(written, key);
+        Assert.Equal(expected, $"{Binding.DiagnosticTypeName(type!)} {(kept ? "kept" : "instantiated")}");
+    }
+
+    // SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... through its result or its writes" (PLAN G935;
+    // the Middle's C-370, F's rulings 40 and 45, the owner's O-398 (a)): OutputRetention.Handed lists the kept Types the output's walk
+    // meets that a callable the callee's declaration hands its body writes, so a kept binding's "no reach of its own" is not the call's
+    // whole reach in that Type's binding, and stays so in another kept Type's. Handed: T for a Function value writing through `uniq/T`
+    // (writerFn's), a requirement with a `uniq/Self` receiver (writerReq's), a writer taking only the T. None: a requirement returning
+    // Self (mkConc's), a callable reaching T only through a shared borrow, a writer through another kept Type (output 0 beside output 1,
+    // which lists U), and a by-value input that is the kept Type itself, read instantiated (Kept null). The root rule's pair (G935's
+    // review C1, twins I and J): a by-value input holding the kept Type (`x: Bx<T>`) meets it at a position the call does not write,
+    // listed with a writer and not without one; a writer a Field of an input holds (`Hd<T, E>`, twin L) lists T. One output meeting T and
+    // U (the Middle's handedOtherOk, valid, and handedSameBad): a writer of T lists T only, a writer of U lists U only, a writer of the
+    // pair lists both. Fail-before: the per-Type rows do not compile on 52efd20ca (Handed was one bool per output). Under the callee's
+    // identity premises (SPEC 8.2.3: `T is U` makes them one Type in f, so a writer of U writes T's binding; G935's review H1, twin K9,
+    // idWriterBad's contract): T listed (fail-before on 3a8f2e251: `0 kept: -`); the same contract without the premise lists nothing.
+    [Theory]
+    [InlineData("func f<T, E>(slot: uniq/T, y: E, set: (uniq/T, E) -> ()) => set(slot, y@move)\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: T")]
+    [InlineData("contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\nstruct HoldR\n    Self is Absorb<raw/u8>\n    public var held: raw/(raw/u8)\n    public init() => self.held = null\n    public func absorb(self: uniq/Self, r: raw/u8) -> () => ()\nfunc f<T, E>(slot: uniq/T, y: E)\n    T is Absorb<E>\n    slot.absorb(y@move)\n", "x: uniq/HoldR, v: raw/u8", "x, v", "0 kept: T")]
+    [InlineData("func f<T, E>(slot: uniq/T, y: E, set: (uniq/T) -> ()) => set(slot)\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8))) -> ()", "x, v, set@move", "0 kept: T")]
+    [InlineData("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\nstruct Wk\n    Self is MakeW\n    public var k: raw/(raw/(raw/u8))\n    public init() => self.k = null\n    public func make(p: raw/(raw/u8), q: raw/u8) -> Self => Wk.init()\nfunc f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return\n", "x: uniq/Wk, v: raw/u8", "x, v", "0 kept: -")]
+    [InlineData("func f<T, E>(slot: uniq/T, y: E, get: (ref/T, E) -> ()) => ()\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, get: (ref/(raw/(raw/u8)), raw/u8) -> ()", "x, v, get@move", "0 kept: -")]
+    [InlineData("func f<T, U, E>(x: uniq/T, u: uniq/U, y: E, set: (uniq/U, E) -> ()) => set(u, y@move)\n", "x: uniq/(raw/(raw/u8)), u: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, u, v, set@move", "0 kept: - | 1 kept: U")]
+    [InlineData("func f<T, E>(slot: T, y: E, set: (uniq/T, E) -> ()) => ()\n", "x: raw/(raw/u8), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 instantiated")]
+    [InlineData("struct Bx<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\nfunc f<T, E>(x: Bx<T>, y: E, set: (uniq/T, E) -> ()) -> ()\n    var b = x@move\n    set(b.item@uniq, y@move)\n", "p: raw/(raw/u8), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "Bx.init(item: p), v, set@move", "0 kept: T")]
+    [InlineData("struct Bx<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\nfunc f<T, E>(x: Bx<T>, y: E) -> ()\n    return\n", "p: raw/(raw/u8), v: raw/u8", "Bx.init(item: p), v", "0 kept: -")]
+    [InlineData("struct Hd<T, E>\n    public var set: (uniq/T, E) -> ()\n    public init(set: (uniq/T, E) -> ()) => self.set = set@move\nfunc f<T, E>(slot: uniq/T, y: E, h: Hd<T, E>) => ()\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, Hd.init(set: set@move)", "0 kept: T")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/T, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/u64, raw/u8) -> ()", "x, v, set@move", "0 kept: T")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: U")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/(T, U), E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(u64, raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: T, U")]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, set: (uniq/U, E) -> ())\n    T is U\n    return\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: T")]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: -")]
+    public void AnOutputSaysWhetherAHandedCallableWritesItsKeptType(string callee, string parameters, string arguments, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(callee + $"func g({parameters})\n    f({arguments})\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single(static x => x.Target.Name == "f");
+        var writes = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray();
+        var outputs = expected.Count(static x => x == '|') + 1; // The outputs holding a kept part: the first one, or the first two.
+        Assert.Equal(expected, string.Join(" | ", writes.Where(x => x.Output < outputs).Select(static x => $"{x.Output} {(x.Kept is null ? "instantiated" : $"kept: {Listed(x.Handed.ToArray())}")}")));
+
+        static string Listed(BoundType[] types) => types.Length == 0 ? "-" : string.Join(", ", types.Select(static x => Binding.DiagnosticTypeName(x)).Order(StringComparer.Ordinal));
+    }
+
+    // SPEC 15.6.4 (PLAN G935; the Middle's C-370, F's ruling 47): a hidden layer names the kept Type whose binding it lies in
+    // (OwnLayer.Kept), the same interned Type OutputRetention.Handed lists, so a reader of the layer asks Handed for it by identity. One
+    // output meeting T and U at the key `(T, U)` past slot's layer: the Middle's handedOtherOk (V: the writer writes T; U's hidden raw
+    // layer carries cell's address, which route 1 reaches (the owner's O-312 (a)), but cell is used only before `y = 5`), handedSameBad
+    // and handedBothBad (I: the writer writes U, or the pair); hidPunOtherOk (I by O-312 (a): T's hidden raw layer carries an address
+    // the read reaches, route 1; A5 rejects it after the landing hunk's T1 fix; this row asserts Binding's listing only) and
+    // hidPunSameBad (I: the writer writes T). A layer the declaration shows has no kept Type. Fail-before: no Kept member
+    // on 110b7ff24. Under `T is U` (SPEC 8.2.3; G935's review H1, twin K1) a writer of U writes both layers' kept Types: T listed (fail-
+    // before on 3a8f2e251: `T not listed`).
+    [Theory]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/T, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/u64, raw/u8) -> ()", "raw/raw/u8 U not listed")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "raw/raw/u8 U listed")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/(T, U), E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(u64, raw/(raw/u8)), raw/u8) -> ()", "raw/raw/u8 U listed")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(raw/usize, u64), v: usize, set: (uniq/u64, usize) -> ()", "raw/usize T not listed")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/T, E) -> ()) => ()\n", "x: uniq/(raw/usize, u64), v: usize, set: (uniq/(raw/usize), usize) -> ()", "raw/usize T listed")]
+    [InlineData("func f<U, E>(slot: uniq/(raw/(raw/u8), U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(raw/(raw/u8), u64), v: raw/u8, set: (uniq/u64, raw/u8) -> ()", "raw/raw/u8 shown")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ())\n    T is U\n    return\n", "x: uniq/(raw/(raw/u8), raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "raw/raw/u8 T listed | raw/raw/u8 U listed")]
+    public void AHiddenLayerNamesTheKeptTypeHandedLists(string callee, string parameters, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(callee + $"func g({parameters})\n    f(x, v, set@move)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single(static x => x.Target.Name == "f");
+        var handed = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray().Single(static x => x.Output == 0).Handed.ToArray();
+        var (key, into) = (c.Types.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
+        Assert.True(c.Types.OwnLayers(key, into));
+        key = into.Single().Past; // Past slot's own layer: the Tuple holding both parts.
+        into.Clear();
+        Assert.True(c.Types.OwnLayers(key, into));
+        Assert.Equal(expected, string.Join(" | ", into.Where(static x => x.Layer is not null).Select(x => x.Kept is not { } kept
+            ? $"{Binding.DiagnosticTypeName(x.Layer!)} shown"
+            : $"{Binding.DiagnosticTypeName(x.Layer!)} {Binding.DiagnosticTypeName(kept)} {(handed.Any(y => ReferenceEquals(y, kept)) ? "listed" : "not listed")}")));
     }
 
     // Base steps a parameter key's Signature by Select's rule (SPEC 8.2.3, 15.6.4; review N3, N5): a generic derived struct's base, its

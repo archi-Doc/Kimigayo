@@ -36,16 +36,16 @@ try {
     Expect-Failure $data $LlvmBin "'externalDeclarations' is missing or not a JSON Array"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kimi_backend') | Add-Member -NotePropertyName input -NotePropertyValue 'override.lib'
-    Expect-Failure $data $LlvmBin 'Invalid backend toolchain resolution'
+    Expect-Failure $data $LlvmBin "'libraries' entry 'kimi_backend' is not this compiler's"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kimi_backend').resolution = 'unknown'
-    Expect-Failure $data $LlvmBin 'Invalid backend toolchain resolution'
+    Expect-Failure $data $LlvmBin "'libraries' entry 'kimi_backend' is not this compiler's"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kernel32').definitionSha256 = '0' * 64
-    Expect-Failure $data $LlvmBin 'Invalid generated kernel32 identity'
+    Expect-Failure $data $LlvmBin "'libraries' entry 'kernel32' is not this compiler's"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kernel32') | Add-Member -NotePropertyName input -NotePropertyValue 'kernel32.lib'
-    Expect-Failure $data $LlvmBin 'Invalid generated kernel32 identity'
+    Expect-Failure $data $LlvmBin "'libraries' entry 'kernel32' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.irSha256 = '0' * 64
     Expect-Failure $data $LlvmBin 'IR/manifest SHA-256.*mismatch'

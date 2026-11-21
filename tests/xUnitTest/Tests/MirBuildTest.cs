@@ -97,10 +97,32 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             }
 
             c.Binding.Bind(mode);
-            Assert.NotEqual(0ul, HirTables.LibraryVersion(c)); // Its publication's version, set by its own pass in every mode.
+            Assert.NotEqual(0ul, HirTables.LibraryVersion(c)); // Its publication's version: the frozen library's in every mode (n4).
             var mir = new StringBuilder();
             MirDump.Write(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), SyntaxTable.LibraryModule, mir);
             return mir.ToString();
+        }
+    }
+
+    // n4 (PLAN G949 Stage 2 U3; C-378 N4): the library's publication version is Binding.Frozen in every compilation over a frozen library,
+    // from its Binding's construction, before its first Bind and after it, so G950-K's stamp holds (0 is a broken contract) and a later
+    // MIR version keeps the library segment. Before the switch a compilation's version was its own run counter, 0 before its first Bind.
+    [Fact]
+    public void EveryCompilationPublishesTheFrozenLibraryVersion()
+    {
+        foreach (var program in new[] { "docs/examples/Hello/Hello.kimi", "tests/milestones/Milestone26.kimi" })
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText(program.Split('/'))));
+            Assert.Equal(Binding.Frozen, HirTables.LibraryVersion(c));
+            Assert.True(c.Bind().IsComplete, program);
+            Assert.Equal(Binding.Frozen, HirTables.LibraryVersion(c));
+            var segment = c.BuildMir().LibrarySegment;
+            Assert.Equal(Binding.Frozen, c.BuildMir().LibraryVersion);
+            c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+            Assert.True(c.Bind().IsComplete, program);
+            Assert.Equal((Binding.Frozen, segment), (c.BuildMir().LibraryVersion, c.BuildMir().LibrarySegment));
         }
     }
 
@@ -550,7 +572,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                     cases.Select(body, view);
                     foreach (var local in body.Locals)
                     {
-                        _ = cases.Type(local.Type);
+                        _ = cases.KnownType(local.Type);
                     }
                 }
             }
@@ -661,6 +683,40 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     [Fact]
     public void CompileAllowsBindingErrors()
         => Assert.NotEmpty(Compile("func f() => missing\n").Binding.Issues);
+
+    // R7 plan Z23 (SPEC 8.14, 4.7.1 step 3, 4.7.4, 7.2.3): a take by case owns one case branch where its decision splits the views: a1's
+    // `v[0]` and n5's `w[0][0]` (the outer index takes the side) one, r2's key of the same decision none of its own, r1's key of another
+    // binder one on each side; t1's take of another binder in the opened index's own key closes its branch before v's (the key is
+    // located before the branch), and t1s's of the same binder too, two branches of one decision in sequence; d2's default copy in
+    // `main` keeps its branch on the case-free decider `ref/i32`.
+    [Theory]
+    [InlineData("    let x = v[0]\n", "f", 1, "s/T")]
+    [InlineData("    let x = w[0][0]\n", "f", 1, "s/T")]
+    [InlineData("    let x = w[0][pick(u[0])]\n", "f", 1, "s/T")]
+    [InlineData("    let x = w[0][pick(r[0])]\n", "f", 3, "s/T, r/U, r/U")]
+    [InlineData("    let x = v[pick(r[0])]\n", "f", 2, "r/U, s/T")]
+    [InlineData("    let x = v[pick(u[0])]\n", "f", 2, "s/T, s/T")]
+    [InlineData("", "", 1, "ref/i32")]
+    public void ATakeByCaseBranchesWhereItsDecisionSplitsTheViews(string take, string function, int branches, string deciders)
+    {
+        const string Two = "struct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n" +
+            "    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
+            "func pick<X>(value: X) -> isize => 0\n";
+        var source = take.Length == 0
+            ? Two + "func g<s/T>(v: s/T, k: isize = pick(Two.init(5@s)[0])) -> isize\n    s is ref or uniq\n    return k\nvar n: i32 = 1\n_ = g(n@ref)\n"
+            : Two + "func f<s/T, r/U>(v: uniq/Two<s/T>, w: uniq/Two<Two<s/T>>, u: uniq/Two<s/T>, r: uniq/Two<r/U>) -> ()\n    s is ref or uniq\n" +
+              "    r is ref or uniq\n" + take + "    _ = x\n";
+        var c = Compile(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+        var body = program.Bodies.ToArray().Single(x => function.Length == 0 ? x.Key.Decl is null && x.Source.Module == 0 : x.Key.Decl?.Name == function);
+        var found = body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.CaseSwitch).ToArray();
+        Assert.Equal(branches, body.CaseSwitches);
+        Assert.Equal(deciders, string.Join(", ", found.Select(x => body.Consts[x.Terminator.Operand.Arg].Type.ToString())));
+    }
 
     // A body's TestRecordValue calls, in block order.
     internal static MirTerminator[] Records(MirBody body) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
@@ -900,7 +956,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 var (program, body) = (programs[i], bodies[i]);
                 work[i] = body.Blocks.Length + body.Statements.Length;
                 Assert.True(!body.HasOpaque && program.Records(MirRecordClass.Construction).Count() == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
-                var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(compilations[i].Types));
+                var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(compilations[i].Types)), new MirMoveData(compilations[i].Types));
                 flow.Begin(body);
                 moves.Build(body, flow);
                 arena[i] = MirInitTest.ArenaWords(body, flow, moves);

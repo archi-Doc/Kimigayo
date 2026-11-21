@@ -27,7 +27,7 @@ public sealed partial class Binding
         Receiver,
         Shape,
         Owned,
-        Dependence, // The result contract depends on the receiver (ResultDependsOnReceiver).
+        Dependence, // The result contract depends on the receiver (ReceiverIndependence).
         Condition,
     }
 
@@ -152,7 +152,7 @@ public sealed partial class Binding
     // fact a broken contract (design-r2 §2).
     private void RecordCondition(Koto node, in ComparisonFailure failure, BoundType implementation, BoundType required)
     {
-        if (failure.IsCondition && ReferenceTypes.StorageMatches(required, implementation))
+        if (failure.IsCondition && TyCtxt.StorageMatches(required, implementation))
         {
             this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(node, failure, node));
         }
@@ -165,7 +165,7 @@ public sealed partial class Binding
     // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
     // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
     // entry and related there.
-    private void ReportOwnedConversion(Koto node, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportOwnedConversion(Koto node, DiagnosticCollection? store, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var subject = DiagnosticTypeName(owned.Subject);
         var entry = owned.Entry is { Operation: not null and not Constants.MoveOperation } borrowEntry ? borrowEntry : (CaptureKoto?)null;
@@ -229,7 +229,7 @@ public sealed partial class Binding
         }
 
         object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];
-        node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
+        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
 
         static string OriginText(DiagnosticOrigin origin) => origin.Kind switch
         {
@@ -244,7 +244,8 @@ public sealed partial class Binding
     // the closure's minimum receiver, and its Owned failure. Diagnostic payload only; no decision reads it.
     private readonly record struct ErasureOutcome(ErasurePart Part, bool SignatureFits, SemanticsKind Receiver, OwnedFact Owned);
 
-    // An erasure's Owned failure (R4-M161): an Error's held cause, and the explaining member (OwnedMember; -1 none, -2 no work) with its
-    // Origin and whether that Origin is Refuted in the forming body.
-    private readonly record struct OwnedFact(ICheckCause? Cause, int Member, BoundOrigin? Origin, bool Refuted);
+    // An erasure's Owned fact (R4-M161; G379 R4, OwnedMember): an Error's held cause; the explaining member (-1 none, -2 no work) with
+    // its Origin; whether a part at any depth is Refuted in the forming body; and whether one is decided only once the body is bound
+    // (Final: read by applicability, ErasedArgumentsEnvironment; the record keeps O-57's recorded limit).
+    private readonly record struct OwnedFact(ICheckCause? Cause, int Member, BoundOrigin? Origin, bool Refuted, bool Final);
 }

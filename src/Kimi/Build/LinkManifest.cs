@@ -2,25 +2,30 @@
 
 // Owns the link manifest's fixed fields and its readers (schema 4; IMPL 20.3.2 leaves the format implementation-defined; R9-B1): the
 // fixed fields, the profile and backend supply identity this compiler states, as one row table that publication writes (WriteFixed) and
-// the native build checks (CheckFixed) in the same order; and the readers (Field, Text, OptionalText, Items, Flag), which turn a field
-// that is missing, of another JSON kind or, for an Int32 row, another number into InvalidDataException at the read (form J, the
-// manifest's share of PLAN G983). The variable fields (optimization, the output section, the libraries, the toolchain) are written by
-// EmissionArtifacts and read, through these readers, by NativeToolchain.Build, Kernel32Imports and ToolchainResolver.
-// Input: a Utf8JsonWriter (publication) or a manifest element (the native build, kernel32's and the backend's library entries), each
-// field named by its path ("section.name" in a section or an array's items).
-// Output: the fixed fields' JSON; for a read, the field's value or InvalidDataException naming the field's path, one text for a missing
-// field or another kind and one for another fixed value.
+// the native build checks (CheckFixed) in the same order; the libraries entries of the compiler's supplies (IMPL 20.4's reserved names,
+// ToolchainIdentity.Supplies), each written from its row (WriteCompilerSupply) and checked against it (CheckCompilerSupply); and the
+// readers (Field, Text, OptionalText, Items, Flag), which turn a field that is missing, of another JSON kind or, for an Int32 row, another
+// number into InvalidDataException at the read (form J, the manifest's share of PLAN G983). The variable fields (optimization, the output
+// section, the libraries array and its programs' entries, the toolchain) are written by EmissionArtifacts, which orders and fills the
+// libraries array; all but the toolchain are read, through these readers, by NativeToolchain.Build. The toolchain's llvmBin is accepted
+// and not read (Tatara design A4 §2.1; removed in B6b).
+// Input: a Utf8JsonWriter (publication) or a manifest element (the native build, a library entry), each field named by its path
+// ("section.name" in a section or an array's items).
+// Output: the fixed fields' and the compiler's supplies' JSON; for a read, the field's value or InvalidDataException naming the field's
+// path, one text for a missing field or another kind, one for another fixed value and one for a compiler's supply's entry that is not
+// this compiler's.
 // Invariants: every manifest read goes through these readers, so no JsonElement accessor exception (KeyNotFound, InvalidOperation,
 // Format) leaves a manifest read; a member's lookup and an Int32's read are ArtifactFiles' (Member, Number), the toolchain files' one
-// rule; the fixed fields are written and checked by the one table. Must not: read the build record, the installation or the kernel32
-// records (their readers compare ArtifactFiles' total reads with what they expect, PLAN G983), or decide a variable field's value.
+// rule; the fixed fields are written and checked by the one table, a compiler's supply's entry by its row. Must not: read the build
+// record, the installation or the kernel32 records (their readers compare ArtifactFiles' total reads with what they expect, PLAN G983),
+// or decide a variable field's value.
 
 using System.Text.Json;
 using Kimi.Compiler;
 
 namespace Kimi.Build;
 
-/// <summary>The link manifest's fixed fields and readers (R9-B1).</summary>
+/// <summary>The link manifest's fixed fields, the compiler's supplies' entries and the readers (R9-B1).</summary>
 internal static class LinkManifest
 {
     // The fixed fields in writing and checking order, by path, each a string, an Int32 or a string list.
@@ -118,6 +123,36 @@ internal static class LinkManifest
             {
                 throw new InvalidDataException($"The link manifest's '{path}' is not this compiler's. Re-emit the manifest.");
             }
+        }
+    }
+
+    /// <summary>Writes a compiler's supply's libraries entry: its name, its kind and its row's identifying fields, in that order.</summary>
+    /// <param name="json">The manifest's writer, inside its libraries array.</param>
+    /// <param name="supply">The supply's row.</param>
+    internal static void WriteCompilerSupply(Utf8JsonWriter json, CompilerSupply supply)
+    {
+        json.WriteStartObject();
+        json.WriteString("name", supply.Name);
+        json.WriteString("kind", supply.Kind);
+        foreach (var (name, value) in supply.Entry)
+        {
+            json.WriteString(name, value);
+        }
+
+        json.WriteEndObject();
+    }
+
+    /// <summary>Checks that a libraries entry naming a compiler's supply is the one this compiler writes: its kind and every identifying
+    /// field equal and no input; any other member is ignored, a sha256 being an assertion the native build checks.</summary>
+    /// <param name="entry">The libraries entry.</param>
+    /// <param name="supply">The row of the supply the entry names.</param>
+    /// <exception cref="InvalidDataException">The entry is not this compiler's.</exception>
+    internal static void CheckCompilerSupply(JsonElement entry, CompilerSupply supply)
+    {
+        if (!ArtifactFiles.States(entry, ("kind", supply.Kind)) || !ArtifactFiles.States(entry, supply.Entry) ||
+            ArtifactFiles.Member(entry, "input").ValueKind != JsonValueKind.Undefined)
+        {
+            throw new InvalidDataException($"The link manifest's 'libraries' entry '{supply.Name}' is not this compiler's. Re-emit the manifest.");
         }
     }
 

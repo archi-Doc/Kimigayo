@@ -13,9 +13,11 @@ public sealed partial class Binding
     // R7-I2 c: one frame per candidate of a selection; a candidate's solution is its own frame, the winner's the call's.
     private readonly ScratchBuffers<SlotFrame> frameScratch = new();
 
-    // SPEC 10.4 step 1: the adaptation classes of the element positions of each candidate's Tuple and array literal arguments, in each
-    // fit's order (BoundArgumentOperation.Positions; FitElement appends them); a candidate evaluation removes what it appended when it ends.
-    private readonly List<ArgumentAdaptation> positionClasses = new();
+    // SPEC 10.5.1: the operations of the element positions of each candidate's Tuple and array literal arguments, each element fitted as
+    // an argument at its position, in each fit's order (BoundArgumentOperation.Positions; FitElement appends them): ranked by their
+    // classes (SPEC 10.4 step 1) and read by step 5 as the arguments' (ErasedArgumentsEnvironment); a candidate evaluation removes what
+    // it appended when it ends.
+    private readonly List<BoundArgumentOperation> positionOperations = new();
 
     // The pending judgment of a call that a single Pending candidate blocks (FailPendingJudgment), for its record (DECISIONS BU-86).
     private Dictionary<Koto, PendingJudgment>? pendingJudgments;
@@ -66,13 +68,14 @@ public sealed partial class Binding
         return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
     }
 
-    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent); a candidate's trial and re-trials write only its own.
-    private SlotFrame[] RentFrames(int count, int capacity)
+    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent) and judged in the use's `view`; a candidate's trial
+    // and re-trials write only its own.
+    private SlotFrame[] RentFrames(int count, int capacity, BindingScope view)
     {
         var frames = this.frameScratch.Rent(count);
         for (var i = 0; i < count; i++)
         {
-            frames[i] = this.infer.Rent(Math.Max(1, capacity));
+            frames[i] = this.infer.Rent(Math.Max(1, capacity), view);
         }
 
         return frames;
@@ -207,8 +210,7 @@ public sealed partial class Binding
 
                 var function = (FunctionKoto)candidates[candidate].Symbol!.Declaration;
                 var pattern = function.Parameters[operation.ParameterIndex].Type.BoundType!;
-                SemanticsKind? mode = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }
-                    ? pattern.Semantics : null;
+                SemanticsKind? mode = pattern.SafeReferent is not null ? pattern.Semantics : null;
                 // SPEC 10.5: a waiting reference, like an anonymous body, never ranks the outer candidates; once their ordinary
                 // inputs and defaults select one, its fixed call signature selects the reference, even when the signatures differ.
                 if (CallableSlotType(pattern, CallSlotOwner(function)) is null || (!first && acquisition != mode))
@@ -233,11 +235,11 @@ public sealed partial class Binding
     {
         var better = false;
         var worse = false;
-        var classes = CollectionsMarshal.AsSpan(this.positionClasses);
+        var positions = CollectionsMarshal.AsSpan(this.positionOperations);
         for (var i = 0; i < left.Length; i++)
         {
-            var x = classes[left[i].Positions];
-            var y = classes[right[i].Positions];
+            var x = positions[left[i].Positions];
+            var y = positions[right[i].Positions];
             if (!CompareClasses(left[i].Adaptation, right[i].Adaptation, ref better, ref worse))
             {
                 return false;
@@ -256,7 +258,7 @@ public sealed partial class Binding
 
             for (var p = 0; p < x.Length; p++)
             {
-                if (!CompareClasses(x[p], y[p], ref better, ref worse))
+                if (!CompareClasses(x[p].Adaptation, y[p].Adaptation, ref better, ref worse))
                 {
                     return false;
                 }
@@ -314,7 +316,7 @@ public sealed partial class Binding
     private BoundType? FailCallableSelection(InvocationKoto call, CallableConstraintFact fact)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailExplained(ref this.callableConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
+        return this.FailExplained(CallableConstraintRows.Family, call, BindingFailure.UnprovenConstraint, fact, true);
     }
 
     // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused.
@@ -345,9 +347,10 @@ public sealed partial class Binding
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
     // HeldRefusal: the refusal its trial read and held (TakeTrialRefusal), settled only if it is selected (SettleSelected).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false)
+    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation the rest.
+    private record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false)
     {
-        internal Refusal? HeldRefusal { get; init; }
+        internal Refusal? HeldRefusal { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.

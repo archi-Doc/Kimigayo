@@ -124,7 +124,10 @@ public partial class KimiLibraryShapeTest
 
     // M-N4, R2-N5: the library declares no parameter default, for a function or an `init`, so after its Final Bind its published HIR holds
     // no default and its MIR no default template. Temporary: a frozen library would have to freeze a template's omission facts (Recursive,
-    // Failed, Reads), which the builder's omission graph reads; removal: U5b or a later unit freezes them, and this pin goes.
+    // Failed, Reads), which the builder's omission graph reads; removal: U5b or a later unit freezes them, and this pin goes. It is also
+    // R7-N5 B6b's first premise: a query reaches another module's node only through an omitted default argument, and StructuralCompletion's
+    // query memos are working-state families the frozen library refuses, so the unit that removes this pin keeps such a query off the
+    // library's columns first (TheGuessRuleAnswersNoneAtAFrozenNode is the second).
     [Fact]
     public void TheLibraryDeclaresNoParameterDefault()
     {
@@ -195,7 +198,7 @@ public partial class KimiLibraryShapeTest
         var scopes = new HashSet<BindingScope>(ReferenceEqualityComparer.Instance);
         for (var id = 1; id <= table.Count; id++)
         {
-            if (table.Nodes[id]!.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, table.Nodes[id]))
+            if (c.Binding.Semantics.SymbolOf(table.Nodes[id]!) is { } symbol && ReferenceEquals(symbol.Declaration, table.Nodes[id]))
             {
                 scopes.Add(symbol.Scope);
                 if (id <= table.ParsedCount)
@@ -255,10 +258,11 @@ public partial class KimiLibraryShapeTest
         for (var id = table.ParsedCount + 1; id <= table.Count; id++)
         {
             var (line, row, node) = (new Printer(false), new Printer(true), table.Nodes[id]!);
+            line.Attach(c);
             line.Node(node);
             row.Attach(c);
             row.Node(node);
-            var own = node.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
+            var own = c.Binding.Semantics.SymbolOf(node) is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
             facts.Add($"{line.ToString().TrimEnd('\n')} | {row.Hir.TrimEnd('\n')} | {own}");
         }
 

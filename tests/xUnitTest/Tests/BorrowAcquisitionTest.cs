@@ -16,6 +16,10 @@ public class BorrowAcquisitionTest
 
     private const string Link = "struct Holder2 {a}\n    public var link: uniq/i32 during a\n";
 
+    // A `confined` witness whose body calls a Closure `g` (SPEC 8.11.4).
+    private const string Work = "contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\nstruct W\n    Self is Work\n    public init() => ()\n" +
+        "    public func run(self: ref/Self) -> i32\n        let g = func () -> i32 => 2\n";
+
     [Theory]
     [InlineData("Initializer", "var number: i32 = 1\nlet r = number@uniq\nlet first = r\nfirst@follow += 1\nlet second: uniq/i32 = r\nsecond@follow += 1\nr@follow += 1\nrequire number == 4 else => $abort(\"initializer\")")]
     [InlineData("Discard", "var number: i32 = 1\nlet r = number@uniq\n_ = r\nr@follow += 1\nlet moved = r@move\nmoved@follow += 1\nrequire number == 3 else => $abort(\"discard\")")]
@@ -142,7 +146,8 @@ public class BorrowAcquisitionTest
     // SPEC 23.1.2, 15.6.1 (PLAN G262): a payload's acquisition and its fit are independent, so a bare Place without a plan (`x@follow`
     // through `ref` in the uniq case, a stored `uniq/i32` through `ref`, an owned `q` at `uniq/i32`) whose Origin also misfits has both
     // records, each twin one of them; a misfit only in Origins is the relation at the payload, a structural one the construction's mismatch
-    // with no acquisition record. A value call's are AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: Binding's errors.
+    // with no acquisition record. A value call's are AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: the published Errors
+    // (R7-O1 H: the relation is A5's record, Binding's twin gone).
     [Theory]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
     [InlineData("x: ref/(uniq/i32 during a) during b, y: ref/i32 during c", "s is ref", "let o: Option<uniq/i32 during c> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
@@ -156,10 +161,9 @@ public class BorrowAcquisitionTest
     [InlineData("x: uniq/(uniq/T during a) during b", "s is ref", "let o = Option<uniq/T during a>.Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
     public void APayloadsAcquisitionAndFitAreEachRecorded(string parameters, string constraints, string use, string errors)
     {
-        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    {use}\n";
-        var c = CompilationTestHelper.ParseSuccess(source);
-        c.Bind();
-        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    {use}\npublic func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.PublishedErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
     // SPEC 10.1 step 5, 23.1.2 (PLAN G453): a construction of an Origin-carrying structure is a named call, so a bare Place without its
@@ -219,6 +223,36 @@ public class BorrowAcquisitionTest
         Assert.Equal(records, string.Join("; ", check.Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
         Assert.Equal(records.Length == 0, check.Accepted);
     }
+
+    // SPEC 7.7.3, 7.3.3, 3.4.3, 8.10, 13.5.5 (PLAN G1120, D-888): a value call acquires its callee like a method receiver, on the path
+    // that continues below every ref and uniq layer to the Callable (a Closure, a Function value, a function item, a Callable F) or to a
+    // handle's View Target: through any number of layers, also in a `confined` witness, with arguments and a result over its input;
+    // exclusively only where every layer and the path grant exclusive capability (`uniq/ref/F` and `ref/uniq/F` supply no Exclusive
+    // call). A Shared call reads an `obj` or `rc` payload through the layers; an Exclusive one through them is the located limit. A raw
+    // pointer is no layer the path follows, so `p()` calls nothing. A result naming the call receiver through the layers keeps the Loan
+    // of the Callable (SPEC 15.8.2, 15.6.3), so moving it while the result is used is a conflict. Fail-before (dev 7979e3a56):
+    // NotCallable_Kd or Unsupported_Kd on the valid forms, `ur()` and `p()` accepted (InternalInvariant_Kd at build), that Move accepted;
+    // on 11974eb35, Unsupported_Kd at `ro`, `uo` and `ur`. Each row: the published records in order; an accepted program has none.
+    [Theory]
+    [InlineData("func f() -> i32\n    let g = func () -> i32 => 2\n    let r = g@ref\n    let rr = r@ref\n    let rrr = rr@ref\n    return rrr()\n", "")]
+    [InlineData("func f() -> i32\n    let g = func (x: ref/i32) -> ref/i32 => x\n    let r = g@ref\n    let rr = r@ref\n    let v: i32 = 5\n    let got = rr(v@ref)\n    return got\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var u = next@uniq\n    var uu = u@uniq\n    let uuu = uu@uniq\n    return uuu()\n", "")]
+    [InlineData("func f(g: (i32) -> i32) -> i32\n    let r = g@ref\n    let rr = r@ref\n    return rr(4)\n", "")]
+    [InlineData("func helper(a: i32, b: i32) -> i32 => a + b\nfunc f() -> i32\n    let h = helper\n    let r = h@ref\n    let rr = r@ref\n    let rrr = rr@ref\n    return rrr(2, 3)\n", "")]
+    [InlineData("func f<F>(g: ref/F) -> i32\n    F is Callable<() -> i32>\n    let r = g@ref\n    let rr = r@ref\n    return rr()\n", "")]
+    [InlineData("func f<F>(g: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    var u = g\n    let uu = u@uniq\n    return uu()\n", "")]
+    [InlineData(Work + "        let r = g@ref\n        let rr = r@ref\n        return rr()\n", "")]
+    [InlineData(Work + "        let r = g@ref\n        let rr = r@ref\n        let rrr = rr@ref\n        return rrr()\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var r = next@ref\n    let ur = r@uniq\n    return ur()\n", "InvalidAssignment_Kd ur")]
+    [InlineData("func f<F>(g: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    let r = g@ref\n    return r()\n", "InvalidAssignment_Kd r")]
+    [InlineData("func f() -> i32\n    var g = func () -> i32 => 2\n    let p = g@raw\n    return p()\n", "NotCallable_Kd p()")]
+    [InlineData("func f() -> i32\n    let o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let ro = o@ref\n    return ro()\n", "")]
+    [InlineData("func f() -> i32\n    var o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let uo = o@uniq\n    return uo()\n", "")]
+    [InlineData("func f() -> i32\n    var r = Kimi.Intrinsics.makeRc(func () -> i32 => 2)\n    let ur = r@uniq\n    return ur()\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var o = Kimi.Intrinsics.makeObj(next@move)\n    let uo = o@uniq\n    return uo()\n", "Unsupported_Kd uo")]
+    [InlineData("func f() -> i32\n    let n: i32 = 7\n    let g = func [n] () => n@ref\n    let r = g@ref\n    let rr = r@ref\n    let v = rr()\n    let moved = g@move\n    return v\n", "ComparisonLoanConflict_Kd g")]
+    public void AValueCalleeIsAcquiredThroughEveryReferenceLayer(string body, string records)
+        => this.AValueCallsAcquisitionAndRelationsAreEachRecorded(body, records);
 
     // SPEC 6.5.2, 3.5, 8.15.2 (R6-check (b2)'s acceptance move): a payload Place is acquired by its bare acquisition, so `s/(uniq/i32)`, whose
     // owner case Reborrows its target, is no TransferRequired_Kd (before (b2) the owner case had no plan).

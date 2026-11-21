@@ -9,18 +9,10 @@ namespace Kimi.Compiler;
 // lookup, ranking and final call publication remain with their existing owners.
 public sealed partial class Binding
 {
-    private readonly ScratchBuffers<PendingJudgment?> environmentScratch = new();
-
-    private FunctionKoto? activeInferenceFunction;
-
-    // DECISIONS BU-86: per slot of the candidate being evaluated, the judgment that a known call signature's result over its closure's
-    // hidden environment receiver supplied no evidence for it, with that argument (Infer): the slot is not unsolved but judged by the
-    // Callable proof or the conversion (SPEC 8.10, 7.7.4). TryCandidateCore publishes one only for a slot no evidence binds.
-    private PendingJudgment?[] environmentJudgments = [];
-
-    // The environment judgments belong to one candidate; a nested call bound while it is evaluated keeps its own (its invariant marks
-    // are its own frame's, SlotFrame.IsInvariant). `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an
-    // Applicable or Waiting candidate with such slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
+    // A candidate's environment judgments (DECISIONS BU-86) and invariant marks are its own frame's (SlotFrame.EnvironmentJudgment,
+    // IsInvariant), so a nested call bound while it is evaluated keeps its own. `unsolved` holds the required structural slots that no
+    // evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such slots stays rankable, and its selection is the
+    // inference-boundary record (FailUnboundSlots).
     private CandidateApplicability TryCandidate(
         SlotSolution solution,
         int[] mapping,
@@ -39,12 +31,8 @@ public sealed partial class Binding
             this.inferenceCandidateChecks++;
         }
 
-        var savedInferenceFunction = this.activeInferenceFunction;
-        this.activeInferenceFunction = solution.Function;
-        var savedEnvironment = this.environmentJudgments;
         var savedAcquisition = this.acquisitionFailure;
         this.acquisitionFailure = null;
-        this.environmentJudgments = this.environmentScratch.Rent(CallSlotCount(solution.Function));
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         var wholesMark = this.wholes.Count;
         try
@@ -81,9 +69,6 @@ public sealed partial class Binding
         {
             this.wholes.RemoveRange(wholesMark, this.wholes.Count - wholesMark);
             this.CloseTrial(enclosing);
-            this.activeInferenceFunction = savedInferenceFunction;
-            this.environmentScratch.Return(this.environmentJudgments, clearArray: true);
-            this.environmentJudgments = savedEnvironment;
             this.acquisitionFailure = savedAcquisition;
         }
     }
@@ -96,13 +81,13 @@ public sealed partial class Binding
     }
 
     // DECISIONS BU-86: with every piece of evidence in, the environment judgment that decides: that of the first slot, in slot order, that
-    // an environment result left without evidence and no other evidence binds (SPEC 10.8; never argument order). A bound slot's part is no
-    // inference part, and the Callable proof or the conversion judges it (SPEC 10.8, 8.10).
-    private PendingJudgment? EnvironmentJudgment(FunctionKoto function, in SlotSet unsolved)
+    // an environment result left without evidence (Infer, in the candidate's frame) and no other evidence binds (SPEC 10.8; never argument
+    // order). A bound slot's part is no inference part, and the Callable proof or the conversion judges it (SPEC 10.8, 8.10).
+    private PendingJudgment? EnvironmentJudgment(FunctionKoto function, SlotFrame frame, in SlotSet unsolved)
     {
         for (var g = 0; g < CallSlotCount(function); g++)
         {
-            if (this.environmentJudgments[g] is { } judgment && unsolved.Contains(g))
+            if (frame.EnvironmentJudgment(g) is { } judgment && unsolved.Contains(g))
             {
                 return judgment;
             }
@@ -158,8 +143,8 @@ public sealed partial class Binding
             }
 
             solution.Fixed = this.FixCallSlots(call, function, declaringType, solution.ExplicitTypes, solution.ExplicitLengths, frame, solution.FixedConstruction);
-            Array.Clear(origins, 0, function.Origins.Count);
-            Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
+            origins.Slice(0, function.Origins.Count).Clear();
+            solution.InputSpan().Clear();
 
             for (var i = 0; i < CallOwnSlots(function).Count; i++)
             {
@@ -289,7 +274,7 @@ public sealed partial class Binding
                 var referent = this.ExpectedTypeOf(expected);
                 var resultExpected = !ReferenceEquals(referent, expected) &&
                     OwnerResult(returnPattern.Kind == BoundTypeKind.Parameter ? solution.Type(returnPattern) ?? returnPattern : returnPattern) ? referent : expected;
-                expectedStructure = this.Infer(returnPattern, resultExpected, CallSlotOwner(function), frame, true, true);
+                expectedStructure = this.Infer(returnPattern, resultExpected, solution.Solve, frame, true, true);
                 this.MatchResultOrigins(returnPattern, resultExpected, function, origins, inputs);
                 if (returnPattern.CarriesOrigin)
                 {
@@ -452,11 +437,12 @@ public sealed partial class Binding
                         }
                     }
 
-                    var applicability = this.FitArgument(call.ArgumentNodes[i], type, scope, call, out var operation);
-                    if (applicability == CandidateApplicability.Inapplicable && type.Kind == BoundTypeKind.Function)
-                    {
-                        applicability = solution.FitPerCall(call.ArgumentNodes[i], type, out operation);
-                    }
+                    // SPEC 10.7, 10.8: an argument with a per-call stand-in is decided by it (FitPerCall), a fact of the solve, never by
+                    // its fit failing first.
+                    BoundArgumentOperation operation;
+                    var applicability = solution.HasPerCallStandIn(call.ArgumentNodes[i], type)
+                        ? solution.FitPerCall(call.ArgumentNodes[i], type, out operation)
+                        : this.FitArgument(call.ArgumentNodes[i], type, scope, call, out operation);
 
                     if (operation.Source is not null)
                     {
@@ -480,12 +466,12 @@ public sealed partial class Binding
             }
 
             // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
-            this.OpenUnsolvedOrigins(call, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
+            this.OpenUnsolvedOrigins(call, origins.Slice(0, function.Origins.Count), solution.InputSpan());
 
             // SPEC 10.8: required structural slots, length slots included, remain rankable. An open position closed by a later literal
             // default, or a slot an environment result left without evidence, still keeps the candidate pending.
             this.UnsolvedSlots(call, function, frame.Types, frame.Lengths, mapping, ref unsolvedSlots);
-            var environment = this.EnvironmentJudgment(function, unsolvedSlots);
+            var environment = this.EnvironmentJudgment(function, frame, unsolvedSlots);
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
                 (environment is not null || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
             {
@@ -541,6 +527,14 @@ public sealed partial class Binding
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
                 proof = ConstraintProof.Proven;
+            }
+
+            // SPEC 10.1 step 5, 7.7.4: one ordering for the step: a candidate its own Constraints or premises refute is inapplicable whatever
+            // an erased argument's limit says, so the erasures' environment (which orders its own arguments so) is read only when nothing
+            // has refuted the candidate; the located limit only where nothing does.
+            if (proof != ConstraintProof.Refuted)
+            {
+                proof = CombineProof(proof, this.ErasedArgumentsEnvironment(operations), true);
             }
 
             constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
@@ -602,9 +596,9 @@ public sealed partial class Binding
 
     // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3: after the expected result, the late pass of the evidence walk (the Literal parts' defaults
     // applied to the selected candidate and range typing), then the arguments' root rows (Contribute) and the first solve of the
-    // candidate's Origins, which the well-formedness of each Signature position (F1, R4-M164: each leaf row of an argument,
-    // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted),
-    // after the variables that a waiting part bounds too are opened (J2, SlotSolution.OpenWaited); false when the candidate is
+    // candidate's Origins, which the well-formedness of each instantiated input (F1, R4-M164: each leaf row of an argument and the
+    // receiver, CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots; PLAN G1115) shortens once the slots are
+    // solved, after the variables that a waiting part bounds too are opened (J2, SlotSolution.OpenWaited); false when the candidate is
     // inapplicable. Before the walk it publishes the slots that steps 3 and 4 left unbound in `left` (SlotSolution.Left): only they take
     // their literals whole in it (SPEC 4.3.1 Places, 10.8).
     private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet left)

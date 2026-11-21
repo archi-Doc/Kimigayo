@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<VariableKoto> objectErasureAliases = new();
-    private Dictionary<Koto, (BoundType Source, BoundType Target)>? objectErasureFailures;
+    private readonly ObjectErasureFailureRows objectErasureFailures;
 
     internal readonly record struct ObjectErasureEvidence(BoundType Source, BoundType Target, FunctionKoto? Entry);
 
@@ -45,7 +45,7 @@ public sealed partial class Binding
             return true;
         }
 
-        (this.objectErasureFailures ??= new(ReferenceEqualityComparer.Instance))[use] = (source, target);
+        this.objectErasureFailures[use] = (source, target);
         this.RequireConstraint(use, proof, this.capabilityMode);
         return false;
     }
@@ -209,7 +209,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
-            if (this.IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(actual, this.ConstraintScope(conversion)))
+            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
             {
                 return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }
@@ -254,5 +254,22 @@ public sealed partial class Binding
         // A present row's Source is a Type, so the column's default, an absent row, has none.
         internal bool TryGetValue(Koto use, out ObjectErasureEvidence evidence)
             => (evidence = use.SyntaxOwner is { } table ? table.Hir.Families.ObjectErasures.Get(use.SyntaxId, binding) : default).Source is not null;
+    }
+
+    /// <summary>The `objectErasureFailures` family's one accessor (DECISIONS BU-220): a pass family, the erasure an operation's Owned proof
+    /// did not prove (SPEC 3.4.3), stored by the recorder (RecordedFact, SetRecordedFact) for the constraint failure it explains (a present
+    /// row always has its Source). Its members keep the names its readers use.</summary>
+    private readonly struct ObjectErasureFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(BoundType Source, BoundType Target), PassCounter> Family(ref NodeColumns columns) => ref columns.ObjectErasureFailures;
+
+        internal (BoundType Source, BoundType Target) this[Koto use]
+        {
+            set => binding.SetRecordedFact(use, Family, value);
+        }
+
+        internal bool TryGetValue(Koto use, out (BoundType Source, BoundType Target) erasure)
+            => (erasure = binding.RecordedFact(use, Family)).Source is not null;
     }
 }

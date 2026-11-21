@@ -45,11 +45,16 @@ public sealed partial class Binding
     // passes and reads absent after an edit until its first write.
     private ulong edit;
 
-    internal Binding(Compilation compilation)
+    internal Binding(Compilation compilation, KimiLibrary library)
     {
+        if (library.Target != compilation.TargetTriple)
+        {
+            throw new InvalidOperationException($"A Binding for `{compilation.TargetTriple.Value}` is given the library of `{library.Target.Value}` (InternalInvariant; PLAN G949 Stage 2 U3).");
+        }
+
         this.compilation = compilation;
         this.indexer = new(this);
-        this.Library = new(compilation);
+        this.Library = library;
         this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);
         this.symbols = new(this);
@@ -84,13 +89,38 @@ public sealed partial class Binding
         this.viewRangeCalls = new(this);
         this.rangeCalls = new(this);
         this.resolvedKeys = new(this);
+        this.aliasTargets = new(this);
+        this.importedContainers = new(this);
+        this.qualificationFailures = new(this);
+        this.perCallOrigins = new(this);
+        this.pairFollows = new(this);
+        this.implicitPairFollows = new(this);
+        this.phantomRawOrigins = new(this);
+        this.invalidStaticOriginSlots = new(this);
+        this.callablePremiseFailures = new(this);
+        this.effectBoundRejections = new(this);
+        this.receiverOperations = new(this);
+        this.reachedThroughBorrow = new(this);
+        this.inferredArrayLengths = new(this);
+        this.arrayInferenceShapes = new(this);
+        this.callInferenceFailures = new(this);
+        this.callableSelectionFailures = new(this);
+        this.baseCallFailures = new(this);
+        this.objectErasureFailures = new(this);
+        this.resultContexts = new(this);
+        this.arithmeticConformanceFailures = new(this);
+        this.associatedAmbiguities = new(this);
+        this.inferenceFailures = new(this);
+        this.callableConstraints = new(this);
+        this.clauseConstraints = new(this);
+        this.unboundSlots = new(this);
+        this.uniqIndexing = new(this);
+        this.requirementGroups = new(this);
+        this.formationCauses = new(this);
+        this.knownBases = new(this);
+        this.earlyReads = new(this);
+        this.resolvedSlices = new(this);
         this.matchPlans = new(this);
-        this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
-        foreach (var symbol in this.Library.RegisteredSymbols)
-        {
-            this.symbols.Add(symbol.Declaration, symbol);
-        }
-
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
         this.issuesView = new(own.Issues, layer.Issues);
@@ -127,78 +157,6 @@ public sealed partial class Binding
 
     /// <summary>Gets the Type context: interned Types and substitutions.</summary>
     internal TyCtxt Types => this.types;
-
-    /// <summary>Gets the entries of the tables KimiLibrarySize sizes, as the latest pass left them.</summary>
-    internal KimiLibrarySize.Tables TableCounts
-        => new(
-            this.nodesView.Count,
-            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Used,
-            this.types.KeyCount,
-            this.Library.Layer.Constraints.Count + this.constraints.Count,
-            this.pendingAssociatedTypes.Count,
-            this.memberSelections.Count,
-            this.memberSides.Count,
-            this.capabilityNodes.Count,
-            this.substitutedParts.Count);
-
-    /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
-    /// (symbols, their parameters, scopes, Origin atoms, open regions, associated Origins, special receivers) its arena's slots no page
-    /// holds.</summary>
-    internal KimiLibrarySize.Tables TableFree
-        => new(
-            this.programPart.Nodes.Capacity + this.Library.Layer.Part.Nodes.Capacity - this.nodesView.Count,
-            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Free,
-            this.types.KeyFree,
-            this.constraints.Capacity - this.constraints.Count,
-            this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
-            this.memberSelections.Capacity - this.memberSelections.Count,
-            this.memberSides.Capacity - this.memberSides.Count,
-            this.capabilityNodes.Capacity - this.capabilityNodes.Count,
-            this.substitutedParts.Free);
 
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>
@@ -292,7 +250,7 @@ public sealed partial class Binding
         // module's edit columns stale, StampedColumn), local regions, item contexts with the atoms their plans hold at library binders
         // (programAtoms, G949 ruling 205 N4) and the Type context's view memos.
         this.edit++;
-        this.knownBases?.Clear();
+        this.knownBases.Empty();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
         this.programAtoms.Empty();
@@ -349,16 +307,13 @@ public sealed partial class Binding
         this.capabilitiesReady = true;
         this.ValidateConformances(mode, false);
         this.VerifyEarlyProjections(); // The proofs answer from here on (contractHeadersReady).
-        this.ValidateConstraintEnvironments(mode);
+        this.SettleVirtualOverridePremises(); // R7-C2c2 c2-4: a refuted inherited condition fails the override (SPEC 6.4.3).
+        this.SettlePremiseFailures(mode);
         this.PrepareSpecializations();
+        this.RecordDuplicateGroups(); // After PrepareSpecializations, the pass's last pairwise duplicate check (Index declared every scope).
         this.CompleteImplicitConstructors();
         this.MakeLibraryAccessorFunctions(); // The library's facts a program may demand, complete before any body (PLAN G949 S1-e).
         this.FormLibrarySignatures();
-        if (this.CaptureOmittedBaseQueries)
-        {
-            this.CaptureOmittedBases();
-        }
-
         return true;
     }
 

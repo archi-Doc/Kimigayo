@@ -117,7 +117,7 @@ public partial class ClosureResultOriginTest
 
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd);
 
-    private const string Constraint = nameof(DiagnosticCode.UnsatisfiedConstraint_Kd);
+    private const string NoApplicable = nameof(DiagnosticCode.NoApplicableOverload_Kd);
 
     private const string UnprovenOwned = nameof(DiagnosticCode.UnprovenConstraint_Kd);
 
@@ -212,8 +212,8 @@ public partial class ClosureResultOriginTest
     [InlineData(
         "i1_f1in_bad",
         ReturnH + "    let local: i32 = 1\n" + InputOuter + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
-        Unsatisfied + " return a()",
-        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " return a()",
+        Unsatisfied + " a()")]
     [InlineData("i2_f1inok", Inspect + MainBody + InputMaker + "    let a = outer(local@ref)\n    let r = a()\n" + InspectR + "    local = 2\n", "", null)]
     [InlineData("i2_f1inbad", Inspect + MainBody + InputMaker + "    let a = outer(local@ref)\n    let r = a()\n    local = 2\n" + InspectR, Conflict + " local = 2", null)]
     [InlineData("i3_once_ok", Inspect + MainBody + InputMaker + "    let r = outer(local@ref)()\n" + InspectR + "    local = 2\n", "", null)]
@@ -223,8 +223,8 @@ public partial class ClosureResultOriginTest
     [InlineData(
         "i5_literal_outer_bad",
         ReturnH + "    let local: i32 = 1\n    return (func (x: ref/i32) => func [x] () => x)(local@ref)()\n" + MainUnit,
-        Unsatisfied + " return (func (x: ref/i32) => func [x] () => x)(local@ref)()",
-        Unsatisfied + " return (func (x: ref/i32) => func [x] () => x)(local@ref)(); " + Unsatisfied + " (func (x: ref/i32) => func [x] () => x)(local@ref)()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " return (func (x: ref/i32) => func [x] () => x)(local@ref)()",
+        Unsatisfied + " (func (x: ref/i32) => func [x] () => x)(local@ref)()")]
     [InlineData("i6_maker_body", MakerBody, "", null)]
     [InlineData("i7_mid_in_outer", MidInOuter, "", null)]
     [InlineData("i8_mixed", Inspect + MainBody + Mixed + "    inspect(r.0)\n    inspect(r.1)\n    local = 2\n", "", null)]
@@ -286,7 +286,7 @@ public partial class ClosureResultOriginTest
 
     // The returned Closure at a Callable proof or an erasure (problem-draft §4.4; SPEC 8.10, 10.7, 15.4.3 rule 2, 7.7.4): its result keeps
     // its own input or no Origin (valid); a result over the maker's ρ or input is Unknown (...AtACallableProof below). An erasure needs an Owned
-    // environment (q10).
+    // environment, so a result borrowing the local maker's capture leaves the lone `apply` not applicable (q10; SPEC 10.1, 15.6.5).
     [Theory]
     [InlineData(
         "q1_noorigin",
@@ -303,8 +303,8 @@ public partial class ClosureResultOriginTest
     [InlineData(
         "q10_erased_receiver",
         Apply + Use + "    let n: i32 = 1\n    let outer = func [n] () => func [n@ref] () => n@follow\n    let a = outer()\n    let r = apply(a)\n" + MainUnit,
-        Constraint + " let r = apply(a)",
-        Constraint + " a")]
+        NoApplicable + " let r = apply(a)",
+        NoApplicable + " apply(a)")]
     public void AReturnedClosureKeepsItsImagesAtACallableProofOrAnErasure(string form, string source, string mir, string? published)
         => AssertSides(form, source, mir, published);
 
@@ -329,32 +329,35 @@ public partial class ClosureResultOriginTest
     // Refuted where it is a local's borrow (a17_bad, a17_static_bad, a18_bad, a20); with no Origin stated every Origin fits (a16, a18, a19,
     // a21). Through a raw layer whose Origin is the maker's input a call stores what that Origin's borrow admits, and the storage retains as
     // the borrow would (SPEC 5.7 Calls): w1's `t` keeps lr's Loan while it is used (problem-check, rows to add: the soundness row).
+    // With `a` a `let` region (PLAN G492-a (ii)) the bad rows also report the Loan conflict at the local's (a20: the outer Closure's)
+    // declaration, as their `var a` twins do: caused only by the Refuted relation (R4-M104), so SPEC 23.1.2 permits it; rule W does not
+    // derive it through a raw layer, for `var` and `let` alike (the Middle's open issue; its consent on C-350).
     [Theory]
     [InlineData("a16_raw_input", "func use() -> i32\n    var local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    let p = a()\n    return 0\n" + MainUnit, "", null)]
     [InlineData("a17_raw_input_ret", RawReturnH + RawInput + "    let a = outer(q)\n    return a()\n" + MainUnit, "", null)]
     [InlineData(
         "a17_bad",
         RawReturnH + "    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
-        Unsatisfied + " return a()",
-        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " return a()",
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " a()")]
     [InlineData(
         "a17_static_bad",
         "func h() -> raw/i32 during static\n    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
-        Unsatisfied + " return a()",
-        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " return a()",
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " a()")]
     [InlineData("a18_raw_input_store", RawStore, "", null)]
     [InlineData("a18_ok", RawOut + RawInput + "    let a = outer(q)\n    out@follow = a()\n" + MainUnit, "", null)]
     [InlineData(
         "a18_bad",
         RawOut + "    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    out@follow = a()\n" + MainUnit,
-        Unsatisfied + " out@follow = a()",
-        Unsatisfied + " out@follow = a(); " + Unsatisfied + " a()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " out@follow = a()",
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " a()")]
     [InlineData("a19_raw_receiver", "func use() -> i32\n" + RawReceiver + "    let a = outer()\n    let p = a()\n    return 0\n" + MainUnit, "", null)]
     [InlineData(
         "a20_raw_receiver_ret_bad",
         RawReturnH + RawReceiver + "    let a = outer()\n    return a()\n" + MainUnit,
-        Unsatisfied + " return a()",
-        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
+        Conflict + " let outer = func [n] () => func [n@ref] () => n@follow@raw; " + Unsatisfied + " return a()",
+        Conflict + " let outer = func [n] () => func [n@ref] () => n@follow@raw; " + Unsatisfied + " a()")]
     [InlineData("a21_raw_in_ref_store", RawInRefStore, "", null)]
     [InlineData("w1_raw_retain", RawRetain + "    usep(t)\n    local = 2\n", "", null)]
     [InlineData("w1_raw_retain_bad", RawRetain + "    local = 2\n    usep(t)\n", Conflict + " local = 2", null)]
@@ -367,8 +370,8 @@ public partial class ClosureResultOriginTest
     // default side), and a10, its Closure part last, is the control.
     [Theory]
     [InlineData("a1", "func f(a: ref/i32 during static, b: ref/i32) -> i32\n" + TwoParts + "    let mk = outer(a, b)\n    return need(mk().1)\n", UnprovenOwned + " return need(mk().1)", UnprovenOwned + " need(mk().1)")]
-    [InlineData("a2", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + TwoParts + "    let mk = outer(a, x@ref)\n    return mk().1()\n", Unsatisfied + " return mk().1()", Unsatisfied + " return mk().1(); " + Unsatisfied + " mk().1()")]
-    [InlineData("a3", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + RefPart + "    let mk = outer(a, x@ref)\n    return mk().1\n", Unsatisfied + " return mk().1", Unsatisfied + " return mk().1; " + Unsatisfied + " mk().1")]
+    [InlineData("a2", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + TwoParts + "    let mk = outer(a, x@ref)\n    return mk().1()\n", Conflict + " let x = 5; " + Unsatisfied + " return mk().1()", Conflict + " let x = 5; " + Unsatisfied + " mk().1()")]
+    [InlineData("a3", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + RefPart + "    let mk = outer(a, x@ref)\n    return mk().1\n", Conflict + " let x = 5; " + Unsatisfied + " return mk().1", Conflict + " let x = 5; " + Unsatisfied + " mk().1")]
     [InlineData("a5", "func f(a: ref/i32 during static) -> ref/i32 during static\n" + TwoParts + "    let mk = outer(a, a)\n    return mk().1()\n", "", null)]
     [InlineData("a6", "func f(a: ref/i32, b: ref/i32) -> i32\n" + TwoParts + "    let mk = outer(a, b)\n    let p = mk()\n    return 1\n", "", null)]
     [InlineData("a8", "func f(a: ref/i32 during static) -> ref/i32 during static\n" + RefPart + "    let mk = outer(a, a)\n    return mk().1\n", "", null)]
@@ -380,8 +383,11 @@ public partial class ClosureResultOriginTest
     // A program's MIR side after Binding and the analysis, each program parse-clean: the MIR side (MirTargetSide.MirSide), Binding's
     // records and the MIR's, is exactly `mir`: each Error record as its code and the trimmed source line its subject starts on, in source
     // order. A verdict Binding owns, an Origin relation at a returned or stored value or a Callable or erasure constraint, is published
-    // as well: the published records are exactly `published`, code and span (since the MIR decides, H5, an Origin relation's record beside
-    // A5's twin at its statement until R7: H0b §5.4, R4-M108).
+    // as well: the published records are exactly `published`, code and span (an Origin relation's record is A5's one at the value, R7-O1
+    // H; its twin at the statement, H0b §5.4, R4-M108, went with Binding's record). A returned or stored image of a local's Borrow also
+    // shows the Loan conflict at that storage's end (F-H1-1's aggregate class: SPEC 15.6.5's `store` comment derives it; rule W shows
+    // an arrival through the Closure's environment, R4-M132), on the MIR side alone where the call's input image carries it (i1, i5:
+    // F-H-9's class, the derived conflict listed on the MIR side and one published record).
     private static void AssertSides(string form, string source, string mir, string? published)
     {
         var c = VerifiedSpecExampleTest.Bind(source);

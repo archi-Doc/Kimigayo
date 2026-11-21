@@ -50,7 +50,7 @@ public sealed partial class Binding
 
         // SPEC 10.5.3: the one candidate's trial binds its slots here, so that its record reads the signature the trial substituted.
         var slots = only?.Declaration is FunctionKoto one ? one.GenericArguments.Count : 0;
-        SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots);
+        SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots, scope);
         BindingSymbol selected;
         (int Slot, ulong Parameters)? perCall = null;
         (int Slot, ReferenceSlotFailure Failure) slotFailure = default;
@@ -147,8 +147,8 @@ public sealed partial class Binding
                     if (this.FunctionItemSignature(candidateItem) is { } actual)
                     {
                         var contract = ComparisonFailure.Shape;
-                        var structure = bound && ReferenceTypes.StorageMatches(required, actual);
-                        return structure && !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
+                        var structure = bound && TyCtxt.StorageMatches(required, actual);
+                        return structure && !this.DefinitionContractFits(candidateItem, required, use, null, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
                             : this.FailMismatch(use, use, actual, required, contract);
                     }
@@ -190,7 +190,7 @@ public sealed partial class Binding
         if (target.GenericArguments.Count != 0)
         {
             // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.7.4).
-            var frame = this.infer.Rent(target.GenericArguments.Count);
+            var frame = this.infer.Rent(target.GenericArguments.Count, scope);
             try
             {
                 if (!this.FunctionReferenceFits(use, selected, target, required, scope, boundFrame: frame))
@@ -366,14 +366,14 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter ||
-                !this.Infer(parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+                !this.Infer(parameter, parameters.Components[i], new(function), frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
             {
                 return false;
             }
         }
 
         return !result || (symbol.Type is { } writtenResult && this.MemberType(writtenResult, container) is { } bound &&
-            this.Infer(bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
+            this.Infer(bound, required.Components[1], new(function), frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
     }
 
     // SPEC 10.5: explicit Type arguments agree with the binding from S when they are the same normalized Type: identical, or equivalent
@@ -427,7 +427,8 @@ public sealed partial class Binding
     }
 
     // SPEC 15.4.4: an Origin that a written Type argument omits is an inference variable of the local whose initializer holds the
-    // reference; the selected binding from S solves it, as an initializer's acquisition bounds it. Elsewhere it stays unsolved.
+    // reference; the selected binding from S solves it, as an initializer's acquisition bounds it, read at the reference (SuppliedAtUse:
+    // the one reading, which the alias keeps, as a fit's bound is read at its use; the owner's O-385 (a)). Elsewhere it stays unsolved.
     private void SolveOmittedOrigins(BoundType written, BoundType binding, Koto use)
     {
         if (ReferenceEquals(written, binding))
@@ -452,7 +453,7 @@ public sealed partial class Binding
     {
         if (written is { Kind: OriginKind.Inference } atom && binding is not null && !ReferenceEquals(atom, binding) && this.OpenInitializerInference(atom, use) is { } pending)
         {
-            this.MeetInitializerBound(pending, atom, binding);
+            this.MeetInitializerBound(pending, atom, this.SuppliedAtUse(binding, use));
         }
     }
 
@@ -470,8 +471,8 @@ public sealed partial class Binding
             return null;
         }
 
-        var frame = this.infer.Rent(count);
-        var fromResult = this.infer.Rent(count);
+        var frame = this.infer.Rent(count, scope);
+        var fromResult = this.infer.Rent(count, scope);
         try
         {
             if (!this.InferReferenceSlots(symbol, function, required, frame, container, true, false, true))
@@ -482,7 +483,7 @@ public sealed partial class Binding
             fromResult.ClearTypes(count);
             fromResult.ClearLengths(count);
             if (symbol.Type is not { } writtenResult || this.MemberType(writtenResult, container) is not { } result ||
-                !this.Infer(result, required.Components[1], function, fromResult, inferOrigins: true, lengths: true, commonOrigins: true, structural: true))
+                !this.Infer(result, required.Components[1], new(function), fromResult, inferOrigins: true, lengths: true, commonOrigins: true, structural: true))
             {
                 return null;
             }
@@ -607,7 +608,7 @@ public sealed partial class Binding
 
         var generic = function.GenericArguments.Count;
         var container = this.ReferenceContainer(use, symbol);
-        SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic);
+        SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic, scope);
         var origins = this.originScratch.Rent(function.Origins.Count);
         var inputCount = InputOriginCount(function);
         var inputs = this.originScratch.Rent(inputCount);
@@ -623,9 +624,17 @@ public sealed partial class Binding
                     return CandidateApplicability.Inapplicable;
                 }
             }
-            else if (!this.ContractFits(use, symbol, function, required, container, null, frame, operations, origins, inputs))
+            else
             {
-                return CandidateApplicability.Inapplicable;
+                // SPEC 15.6.1: an Origin relation never changes a selection, so the reference's applicability takes the comparison's
+                // region conjuncts and drops them; the erasure at the value forms them (ErasesToFunction).
+                var rows = this.comparisonRows.Count;
+                var fits = this.ContractFits(use, symbol, function, ContractComparison(required, this.comparisonRows), container, null, frame, operations, origins, inputs);
+                this.DropComparisonRows(rows);
+                if (!fits)
+                {
+                    return CandidateApplicability.Inapplicable;
+                }
             }
 
             // A bound enclosing Type can supply conditions even when the function has no own slots.

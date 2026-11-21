@@ -7,9 +7,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The solution of the call's `candidate`-th candidate from its evaluation: the call's slot arrays, scope, Self, explicit Type
-    // arguments and the candidate's root rows.
+    // arguments and the candidate's root rows. Its Origin views cover the candidate's slots (RequireOriginWidths).
     private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
-        => new()
+    {
+        RequireOriginWidths(function, evaluation.OriginSlots, evaluation.InputSlots);
+        return new()
         {
             Rows = evaluation.Rows.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
             ChildSlice = evaluation.ChildSlices.AsSpan(candidate * 2, 2),
@@ -26,6 +28,7 @@ public sealed partial class Binding
             Origins = evaluation.Origins,
             Inputs = evaluation.Inputs,
         };
+    }
 
     // SPEC 6.5.2, 10.8.1: a Case construction's solution: the enum owns its slots and binds its Origins; it has no Self, declaring Type,
     // explicit Type argument or input Origin, and its Type is never inferred apart from its slots. A Case without payload has no call,
@@ -69,8 +72,8 @@ public sealed partial class Binding
         internal BoundType? Self;
         internal BoundType? DeclaringType;
         internal SlotFrame Frame;
-        internal BoundOrigin[] Origins;
-        internal BoundOrigin[] Inputs;
+        internal Span<BoundOrigin> Origins;
+        internal Span<BoundOrigin> Inputs;
         internal bool FixedConstruction;
 
         // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
@@ -126,6 +129,9 @@ public sealed partial class Binding
         internal readonly bool Constructor => !ReferenceEquals(this.SlotOwner, this.Binder);
 
         internal readonly int OriginCount => CallOriginCount(this.Binder);
+
+        // The binder as the unifier's input (Infer); a binder is a function or an enum.
+        internal readonly SolveBinder Solve => this.Binder is FunctionKoto function ? new(function) : new((EnumKoto)this.Binder);
 
         // The candidate's function, for the operations of a call.
         internal readonly FunctionKoto Function => (FunctionKoto)this.Binder;
@@ -226,21 +232,16 @@ public sealed partial class Binding
         // an Origin parameter is published to the solve (OriginInference.WaitingNamed), which writes a covariant one as its evidence
         // candidate met with the call's region (CallRegion). Either way the solution is `(E and region)`, SPEC 15.3.6's candidate
         // with the region for the bounds not known yet, and E is kept in the candidate's openings (OriginInference.Opened), which
-        // start empty at its first solve. A candidate without a Signature row reads nothing more.
+        // start empty at its first solve. A candidate without a position without evidence (HasWaitingPosition, the rows
+        // CollectPositionNames reads) reads nothing more.
         internal readonly void OpenWaited()
         {
-            var signature = false;
-            for (var i = 0; !signature && i < this.Rows.Length; i++)
-            {
-                signature = this.Rows[i].Contribution == Contribution.Signature;
-            }
-
-            if (!signature)
+            var binding = this.Binding;
+            if (!binding.HasWaitingPosition(this))
             {
                 return;
             }
 
-            var binding = this.Binding;
             var opened = binding.InferenceOf(this.Call, this.Function);
             if (this.FirstSolve)
             {
@@ -324,19 +325,28 @@ public sealed partial class Binding
             return proof;
         }
 
-        // SPEC 10.7, 10.8, 15.3.6: a callable value at a common Function Type that fits only once its per-call input is instantiated at
-        // a required input over a fixed Origin, or only through its own per-call Origin, which is reported after selection.
+        // SPEC 7.7.4, 10.7, 10.8, 15.3.6: whether `argument` is decided by its per-call stand-in (FitPerCall), a fact of the solve: an
+        // implementation erased at the common Function Type, a function group or a Closure or Function Item value, whose own per-call
+        // input left an open region in `type`. Any other argument keeps its fit (FitArgument): a Function value's fit is structural and
+        // judged after selection (DECISIONS R4-M155), an anonymous function written in the call is completed by the selected candidate.
+        internal readonly bool HasPerCallStandIn(Koto argument, BoundType type)
+        {
+            var node = KotoHelper.UnwrapParentheses(argument);
+            return type.Kind == BoundTypeKind.Function &&
+                (this.Binding.KindOf(node) == PartKind.Reference || node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem }) &&
+                this.Binding.PerCallStandIn(type, argument, type) is not null;
+        }
+
+        // SPEC 10.7, 10.8, 15.3.6: an argument with a per-call stand-in (HasPerCallStandIn) fits once its per-call input is instantiated at
+        // a required input over a fixed Origin and no open region of it remains, or else only through its own per-call Origin, which is
+        // reported after selection.
         internal readonly CandidateApplicability FitPerCall(Koto argument, BoundType type, out BoundArgumentOperation operation)
         {
             var binding = this.Binding;
             var node = KotoHelper.UnwrapParentheses(argument);
             operation = default;
-            if (binding.KindOf(node) != PartKind.Reference && node.BoundType is not { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem })
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            if (binding.PerCallStandIn(type, argument, type, true) is { } instantiated && this.FitsCallable(node, instantiated))
+            if (binding.PerCallStandIn(type, argument, type, true) is { } instantiated && binding.PerCallStandIn(instantiated, argument, type) is null &&
+                this.FitsCallable(node, instantiated))
             {
                 binding.InstantiateOpenOrigins(this.Frame, CallOwnSlots(this.Function).Count, argument, type);
                 operation = new(argument, node.BoundType, instantiated, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
@@ -352,17 +362,29 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
+        // The binder's input Origins: none when the call solves no Origins (its input scratch is empty), else every input of the binder,
+        // which the call's width covers (RequireOriginWidths).
+        internal readonly Span<BoundOrigin> InputSpan() => this.Inputs.IsEmpty ? this.Inputs : this.Inputs.Slice(0, InputOriginCount(this.Binder));
+
         // Whether the callable value converts to the common Function Type: a function group by one of its functions (SPEC 7.7.4).
         private readonly bool FitsCallable(Koto node, BoundType type)
-            => node.BoundType is { } actual
-                ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+        {
+            var binding = this.Binding;
+            if (node.BoundType is not { } actual)
+            {
+                return binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+            }
+
+            var rows = binding.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
+            var fits = binding.ErasureSignatureFits(actual, type, node, binding.comparisonRows, out _);
+            binding.DropComparisonRows(rows);
+            return fits;
+        }
 
         // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot
         // that its declaring Type gives (an open construction slot is its own parameter there).
         private readonly bool FixedSlot(int slot)
             => slot < this.Fixed.Types.Length && this.Fixed.Types[slot] is { } bound && OwnSlot(bound, this.SlotOwner) != slot;
-
-        private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.

@@ -2,10 +2,14 @@
 
 // Owns publication of HIR facts from the Binding pass: a Final pass's Check publishes between its failure producers and its counting.
 // Input: that pass's decisions and syntax slots. Output: Op, Completion, Adjust and Place columns (the jump binding writes the jump
-// target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace).
+// target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace), and which
+// kept operands their Error's form reads whole (KeptRead: the Adjust rule run for the Error's form, DECISIONS D-986).
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
-// The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs,
-// whether it is an unresolved operation) and passes those to the rows' rules, which read no walk state.
+// The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs
+// with a by-case need's decider) and passes those to the rows' rules, which read no walk state.
+// Two by-case needs meeting at one node have deciders of one pair, which decide alike (UseNeed.Meet: a discarded group's take and its
+// operand's, one pair's occurrences annotated apart); deciders of two pairs meeting is a broken contract (InternalInvariant).
+// Invariant (DECISIONS Z16): every failure fact it publishes (FailureFact) has its causes (RestingCauses); one without is on Broken.
 // Must not resolve again.
 
 using Kimi.Compiler.Parsing;
@@ -19,11 +23,9 @@ public sealed partial class Binding
     private HirPublisher? hirPublisher;
     private ulong hirVersion;
 
-    // The run whose library pass published the library module (RB1, C-379 F1); 0 before the first.
-    private ulong libraryVersion;
-
-    // The library module's publication version (HirTables.LibraryVersion).
-    internal ulong LibraryVersion => this.libraryVersion;
+    // The library module's publication version (HirTables.LibraryVersion; PLAN G949 Stage 2 U3): Frozen once the compilation's library is
+    // frozen, the same in every compilation; 0 for a library not frozen (the freeze compilation's before its freeze, a refused one).
+    internal ulong LibraryVersion => this.Library.Frozen ? Frozen : 0;
 
     // The nodes the publisher's jump walk visited (Keeps, DECISIONS BU-106): a scaling check's work measure.
     internal long KeptTargetWork => this.hirPublisher?.TargetWork ?? 0;
@@ -49,7 +51,7 @@ public sealed partial class Binding
 
     // The columns of the pass's modules, in their order, from the pass's facts. RB1 (PLAN G949 S1-r1b; review-s1r1 Re-check 3; C-379
     // F1): a pass that holds the library module publishes it at its end, since the program pass empties the per-pass tables the
-    // publisher reads for the library's nodes; its version is the library's (LibraryVersion, which the pass driver sets), never
+    // publisher reads for the library's nodes; its version is the library's (LibraryVersion: Frozen once frozen), never
     // hirVersion, which PublishHir compares for the program pass's modules. So the library pass, Final in every Bind, leaves a
     // Provisional program pass's modules to PublishHir.
     private void PublishPass()
@@ -72,8 +74,8 @@ public sealed partial class Binding
         private Koto? parent;
         private HirOp parentOp;
         private HirPosition position;
-        private bool exclusive;
-        private bool unresolvedOperation; // The parent is an operation Binding left unresolved (Keeps).
+        private UseNeed need;
+        private bool? rooted; // Whether the parent is rooted at a raw Place (IsRawRooted); null until asked, passed down a rooted step (D-932).
 
         // Binding's structural completion with its Never evidence, one per body.
         private StructuralCompletion? completion;
@@ -83,20 +85,26 @@ public sealed partial class Binding
         // The jumps a rejected labeled do's subtree holds (Keeps), one walk reused across nodes and passes.
         private TargetWalk? targets;
 
+        // The running publish's number, which the FormReads rows it writes carry: advanced by Binding.NextQuery at each Publish.
+        private uint publication;
+
         // The nodes the jump walk visited (TargetWalk), which a scaling check reads; kept across passes.
         internal long TargetWork => this.targets?.Visited ?? 0;
 
         public override void Visit(Koto node)
         {
-            var (parent, parentOp, outer, exclusive, operation) = (this.parent, this.parentOp, this.position, this.exclusive, this.unresolvedOperation);
-            var position = this.PositionOf(node, parent, parentOp, outer, operation);
+            var (parent, parentOp, outer, need, rooted) = (this.parent, this.parentOp, this.position, this.need, this.rooted);
+            var position = this.PositionOf(node, parent, parentOp, outer);
             var op = this.OpOf(node, position);
             var parts = this.Parts(node, op, position);
-            var unresolvedOperation = node.BindingState != BindingState.Resolved && op == HirOp.Error && !Rejected(node) && Operation(binding.KindOp(node));
             var claimed = this.uses.Claimed(node); // The takes' claim, which the rows of a kept or an Error node replace.
             if (parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
                 this.uses.FixAdjust(node, new(HirAcquire.None, HirAdaptation.None), default); // A kept operand of an Error (Keeps), used in place.
+                if (FormReads.Of(binding, node, this.publication))
+                {
+                    HirTables.PlanFor(node, written: true).KeptRead = true; // Its Error's form reads its whole Place (DECISIONS D-986).
+                }
             }
             else if (op == HirOp.Error)
             {
@@ -110,15 +118,17 @@ public sealed partial class Binding
 
             if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Completions: { } completions, Hir.Places: { } places } && node.SyntaxId < ops.Length)
             {
-                // An Error Binding resolved without rejecting it lacks the facts its Op guarantees (HasFacts): a broken HIR contract.
-                if (op == HirOp.Error && node.BindingState == BindingState.Resolved && !Rejected(node))
+                // A failure fact without its causes is a broken HIR contract, such as an Error Binding resolved without rejecting it, which
+                // lacks the facts its Op guarantees (HasFacts); so is an Error with a slot neither typed nor failed, whatever its state
+                // (SlotsStated, PLAN G1073).
+                if ((FailureFact(node, op) && !binding.HasRestingCauses(node)) || (op == HirOp.Error && !binding.SlotsStated(node)))
                 {
                     node.SyntaxOwner.Hir.Broken!.Add(node);
                 }
 
                 ops[node.SyntaxId] = op;
                 completions[node.SyntaxId] = op is HirOp.Unset or HirOp.Syntax or HirOp.Body ? HirCompletion.Unset
-                    : (this.completion ??= new(binding, binding.ResultNeverEvidence)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
+                    : (this.completion ??= new(binding, binding.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.PublishedCompletions)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
                 BoundType? discardedType = null;
                 if (completions[node.SyntaxId] != HirCompletion.Unset)
                 {
@@ -139,29 +149,39 @@ public sealed partial class Binding
             }
 
             // Every take of the node has written its row: its consumer's, then its container's discard row (DECISIONS BU-8).
-            this.exclusive = claimed || this.ExclusiveUse(node, parent, parentOp, exclusive);
+            this.need = this.NeedOf(node, parent, parentOp, claimed, need, ref rooted);
+            this.rooted = parent is ParenthesizedKoto || (parent is BinaryKoto step && ReferenceEquals(step.Left, node) && !IsRawRoot(step) && binding.IsRootedStep(step)) ? rooted : null;
             this.Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
-                (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
+                (parts != HirOp.Syntax || (node is FunctionKoto function && binding.PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
-                // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1).
+                // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1, 8.14), and a
+                // selection by case with its decider, read through HirTables.IndexCaseDecider (R7 plan Z23).
                 if (node is IndexKoto)
                 {
-                    var uniq = binding.SelectsUniq(node, this.exclusive);
-                    HirTables.PlanFor(node, uniq).Mode = uniq ? (byte)1 : (byte)0;
+                    var mode = binding.SelectionMode(node, this.need.Use);
+                    ref var row = ref HirTables.PlanFor(node, mode != 0);
+                    (row.Mode, row.Plan) = (mode, mode == 2 ? this.need.Decider : null);
                 }
 
-                binding.AdjustChildren(node, parts, this.exclusive, ref this.uses);
+                binding.AdjustChildren(node, parts, this.need.Use, ref this.uses);
+            }
+            else if (parts == HirOp.Error && node.BindingState != BindingState.Unvisited && binding.KindOp(node) is not (HirOp.Unset or HirOp.Syntax) and var form)
+            {
+                // The takes an Error's form gives its children, of which its kept operands record the whole-Place reads (DECISIONS D-986);
+                // an Error Binding never visited (a parser recovery) keeps none, its children's Op being Unset.
+                var record = new FormReads(binding, this.publication);
+                binding.AdjustChildren(node, form, this.need.Use, ref record);
             }
 
-            (this.parent, this.parentOp, this.position, this.unresolvedOperation) = (node, parts, parts == op ? position : HirPosition.None, unresolvedOperation);
+            (this.parent, this.parentOp, this.position) = (node, parts, parts == op ? position : HirPosition.None);
             node.VisitChildren(this);
             if (node is ForKoto { Iteration: { } iteration } && op == HirOp.For)
             {
                 this.Visit(iteration.Receiver); // The step's receiver, the iterator local the loop declares (SPEC 14.6.2).
             }
 
-            (this.parent, this.parentOp, this.position, this.exclusive, this.unresolvedOperation) = (parent, parentOp, outer, exclusive, operation);
+            (this.parent, this.parentOp, this.position, this.need, this.rooted) = (parent, parentOp, outer, need, rooted);
         }
 
         internal void Publish(SyntaxTable table, Koto root)
@@ -180,37 +200,39 @@ public sealed partial class Binding
                 Array.Clear(hir.Places!);
             }
 
-            // A plan row's Adjust is a take of this publish, as the column's is, so a claim (Claimed) reads no earlier pass's row.
+            // A plan row's Adjust is a take of this publish, as the column's is, so a claim (Claimed) reads no earlier pass's row; a kept
+            // operand's whole-Place read by its Error's form (KeptRead) is this publish's too.
             for (var i = 1; i <= hir.PlanCount; i++)
             {
-                hir.Plans[i].Adjust = default;
+                (hir.Plans[i].Adjust, hir.Plans[i].KeptRead) = (default, false);
             }
 
             (hir.Defaults ??= []).Clear();
             (hir.Broken ??= []).Clear();
-            (this.table, this.uses) = (table, new(binding, table));
+            (this.table, this.uses, this.publication) = (table, new(binding, table), Binding.NextQuery(this.publication));
             this.completion?.Clear();
-            (this.parent, this.position, this.exclusive, this.unresolvedOperation) = (null, HirPosition.None, false, false);
+            (this.parent, this.position, this.need, this.rooted) = (null, HirPosition.None, default, null);
             this.Visit(root);
         }
 
         // The constant Binding decided that a node's own plan row keeps (Folded): a number literal's value as Binding fits it (SPEC 3.1,
-        // 13.5.4), its floating-point Type's bits, else its integer value as its Type's payload (ScalarTypes.Normalize, DECISIONS BU-133;
+        // 13.5.4), its floating-point Type's bits, else its integer value as its Type's payload (TyCtxt.Normalize, DECISIONS BU-133;
         // a literal its Type does not hold, the operand of a folded wrap conversion or the number under a direct literal's sign, keeps
-        // its value modulo 2^N, and a generic literal its value); a fixed-array element's literal position, beside its PlaceShape
-        // (SPEC 15.1.3); a Tuple element's position (SPEC 3.2), the integer its Field names.
+        // its value modulo 2^N, and a generic literal its value); a fixed-array element's constant index (SPEC 15.1.3, 15.6.2;
+        // Binding.ConstantIndex): a ConstIndex Place's position, beside its PlaceShape, and an Index Place's constant, which Place
+        // comparison reads; a Tuple element's position (SPEC 3.2), the integer its Field names.
         private void Fold(Koto node, HirOp op)
         {
             if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
             {
-                var value = node.BoundType is { IsFloatingPoint: true } type ? ScalarTypes.TryFloatLiteral(number, type, negative, out var bits) ? (Int128)bits : null
-                    : number.TryGetIntegerMagnitude(out var magnitude) ? (Int128?)ScalarTypes.Normalize(unchecked((Int128)(negative ? 0 - magnitude : magnitude)), node.BoundType?.Width ?? 0)
+                var value = node.BoundType is { IsFloatingPoint: true } type ? TryFloatLiteral(number, type, negative, out var bits) ? (Int128)bits : null
+                    : number.TryGetIntegerMagnitude(out var magnitude) ? (Int128?)TyCtxt.Normalize(unchecked((Int128)(negative ? 0 - magnitude : magnitude)), node.BoundType?.Width ?? 0)
                     : null;
                 HirTables.PlanFor(node, value is not null).Folded = value;
             }
-            else if (node is IndexKoto index && HirTables.PlaceOf(node).Kind == HirPlaceKind.ConstIndex)
+            else if (node is IndexKoto index && binding.ConstantIndex(index) is >= 0 and var constant)
             {
-                HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(binding, index);
+                HirTables.PlanFor(node, written: true).Folded = constant;
             }
             else if (op == HirOp.Field && node is MemberAccessKoto { Right: NumberLiteralKoto element } && element.TryGetIntegerMagnitude(out var position))
             {
@@ -251,8 +273,8 @@ public sealed partial class Binding
             },
             HirOp.Field => HirPlaceKind.Field,
             HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
-            HirOp.Index => ElementAccess.IsSlicing(binding, node) ? HirPlaceKind.Value : ElementAccess.StaticSelector(binding, (IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
-            HirOp.Call => ElementAccess.IsUserIndex(binding, node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
+            HirOp.Index => binding.IsSlicing(node) ? HirPlaceKind.Value : binding.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
+            HirOp.Call => binding.IsUserIndex(node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
             HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, binding.OpOf(inner)),
             _ => HirPlaceKind.Value,
         };

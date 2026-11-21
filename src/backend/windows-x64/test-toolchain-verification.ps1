@@ -11,7 +11,8 @@ $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $work = Join-Path $repo "artifacts/verify/toolchain/$([guid]::NewGuid().ToString('N'))"
 $copy = Join-Path $work 'installation'
 New-Item -ItemType Directory -Path (Join-Path $copy 'windows_x64') -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'installation.json') -Destination $copy
+# Every row's root holds the toolchain's tatara.dll, which each verify process maps on its own.
+foreach ($name in @('installation.json', 'tatara.dll')) { Copy-Item -LiteralPath (Join-Path $ToolchainRoot $name) -Destination $copy }
 foreach ($name in @('kernel32.lib', 'kernel32.def', 'kernel32.json', 'kimi_backend_windows_x64_v1.lib')) {
     Copy-Item -LiteralPath (Join-Path $ToolchainRoot "windows_x64/$name") -Destination (Join-Path $copy "windows_x64/$name")
 }
@@ -33,6 +34,10 @@ $changed = $installation | ConvertFrom-Json
 $changed.tools.opt = '0' * 64
 $changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
 Verify 'tool-hash' 'Tool executable SHA-256 mismatch'
+$changed = $installation | ConvertFrom-Json
+$changed.tatara.sha256 = '0' * 64
+$changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
+Verify 'tatara-hash' 'tatara.dll SHA-256 mismatch'
 [IO.File]::WriteAllText($installationPath, $installation)
 $kernelPath = Join-Path $copy 'windows_x64/kernel32.json'
 $metadata = [IO.File]::ReadAllText($kernelPath)
@@ -49,6 +54,14 @@ Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'windows_x64/kernel32.def') -De
 [IO.File]::WriteAllText((Join-Path $copy 'windows_x64/kimi_backend_windows_x64_v1.lib'), 'changed')
 Verify 'backend' 'Adopted backend SHA-256 mismatch'
 Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib') -Destination (Join-Path $copy 'windows_x64/kimi_backend_windows_x64_v1.lib') -Force
-Remove-Item -LiteralPath (Join-Path $copy 'windows_x64/kernel32.lib')
+# A kernel32.lib its kernel32.json agrees with, but not the catalog's kernel32.sha256 (the compiler's supply's bytes).
+$kernelLibrary = Join-Path $copy 'windows_x64/kernel32.lib'
+[IO.File]::WriteAllText($kernelLibrary, 'changed')
+$changed = $metadata | ConvertFrom-Json
+$changed.sha256 = (Get-FileHash -LiteralPath $kernelLibrary -Algorithm SHA256).Hash.ToLowerInvariant()
+$changed | ConvertTo-Json | Set-Content -LiteralPath $kernelPath -Encoding utf8
+Verify 'kernel-catalog' 'Adopted kernel32 SHA-256 mismatch'
+[IO.File]::WriteAllText($kernelPath, $metadata)
+Remove-Item -LiteralPath $kernelLibrary
 Verify 'missing-kernel' 'setup.ps1'
 Write-Output "Toolchain verification tests passed: $work"

@@ -49,12 +49,12 @@ public sealed partial class Binding
         // SPEC 3.4.3, 4.7, 12.5.1: metadata shares access through safe value references to the sequence; a raw pointer or
         // an object handle is not followed.
         var layers = 0;
-        for (; ReferenceTypes.IsReference(receiver); layers++)
+        for (; receiver?.SafeReferent is { } referent; layers++)
         {
-            receiver = receiver!.Components[0];
+            receiver = referent;
         }
 
-        var utf8 = FormattingTypes.IsUtf8Slice(receiver);
+        var utf8 = receiver?.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice;
         if (!utf8 && receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary))
         {
             return false; // A ResolvedRange exposes its fields and computed Properties through the library struct (SPEC 4.6.2).

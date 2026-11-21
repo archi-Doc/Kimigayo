@@ -190,7 +190,7 @@ public sealed partial class Binding
         var inferred = reference is MemberAccessKoto qualified && this.inferredConstructionTargets.Contains(qualified.Left);
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
-        var frame = this.infer.Rent(slots);
+        var frame = this.infer.Rent(slots, scope);
         var origins = this.originScratch.Rent(originCount);
         var operations = this.argumentOperationScratch.Rent(count);
         var settled = this.RentSlotSet(count);
@@ -200,7 +200,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(count);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
-        var classBase = this.positionClasses.Count;
+        var positionBase = this.positionOperations.Count;
         Array.Clear(origins, 0, originCount);
         try
         {
@@ -322,7 +322,6 @@ public sealed partial class Binding
 
             // SPEC 15.6.4 step 3: the call's walk over the instantiated inputs, each payload by its rows (JudgePositionRows) where it has
             // child rows, else by its contribution (RequireInputPremises; R4, DECISIONS BU-104).
-            this.callRelationScratch.Clear();
             var done = 0;
             for (; done < count && operations[done].Source is { } source; done++)
             {
@@ -336,8 +335,6 @@ public sealed partial class Binding
                     this.RequireInputPremises(source, payload[done].BoundType!, operations[done].ParameterType!, adapted[done], rows[done].Contribution);
                 }
             }
-
-            this.PublishCallRelations();
 
             // A construction that holds its own record (a payload's Type mismatch or acquisition) has no second one: R7-E1's one record
             // per node, whose removal removes this gate (PLAN G418).
@@ -386,7 +383,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
-            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+            this.positionOperations.RemoveRange(positionBase, this.positionOperations.Count - positionBase);
             this.lengthScratch.Return(fixedLengths, clearArray: true);
             this.typeScratch.Return(fixedTypes, clearArray: true);
             this.typeScratch.Return(adapted, clearArray: true);
@@ -417,7 +414,7 @@ public sealed partial class Binding
 
             // Before any evidence the frame holds exactly the fixed bindings, an open slot unbound: a payload is settled when they complete it.
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
-                !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)))
+                !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.Slice(0, solution.OriginCount)))
             {
                 settled.Add(i);
                 _ = this.RecordsWaitingForm(solution.Call.ArgumentNodes[i]); // Recorded as a named call's argument is (P1), unbound.
@@ -496,9 +493,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4 steps 1, 3, 15.3.6 (Rule C): the call's solve of the construction's Origins (SolveOriginInference), which the enum's
-    // clauses and each Signature leaf row's premise over its payload's instantiated sub-Type bound (CollectPositionPremises), as
-    // SolveLate's do a candidate's. Evidence that carries an Origin began the inference (InferAdapted); without it or such a row nothing
-    // bounds them.
+    // clauses and each leaf row's premises over its payload's instantiated sub-Type bound (CollectPositionPremises; PLAN G1115), as
+    // SolveLate's do a candidate's. Evidence that carries an Origin began the inference (InferAdapted); without it or a Signature row
+    // nothing bounds them.
     private void SolveConstructionOrigins(ref SlotSolution solution)
     {
         this.CollectPositionPremises(ref solution);

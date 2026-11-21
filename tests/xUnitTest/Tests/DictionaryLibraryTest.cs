@@ -152,7 +152,7 @@ public class DictionaryLibraryTest
     {
         const string Source = "var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c)));
         var definitions = FunctionCodegenTest.GeneratedDefinitions(Source).Definitions;
         Assert.Contains(definitions, static x => x is FunctionKoto { Name: "grow" } && IsStorage(x));
         Assert.Contains(definitions, static x => x is FunctionKoto { Name: "reserve" } && IsStorage(x));
@@ -247,7 +247,7 @@ public class DictionaryLibraryTest
     public void PrivateHandleUsesTheExpectedPlatformLayout()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
-        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!;
+        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf(c)!;
         var handle = pointer.Components[0];
         Assert.True(handle.Symbol!.Adt!.IsCLayout);
         var layout = c.Layout.Of(handle).Value!.Layout;
@@ -304,12 +304,15 @@ public class DictionaryLibraryTest
         Assert.DoesNotContain(LibrarySource.Declaration(texts.Library, "DictionaryStorage.clearEntries"), dropped);
         Assert.DoesNotContain(sel.Library.DictionaryCompact, generated);
         Assert.DoesNotContain(LibrarySource.Declaration(sel.Library, "DictionaryStorage.shrinkToFit"), generated);
-        Assert.Equal(DispositionKind.Body, c.Library.DictionaryUnlink.SymbolOf()!.Definition.Kind);
+        Assert.Equal(DispositionKind.Body, c.Library.DictionaryUnlink.SymbolOf(c)!.Definition.Kind);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);
     }
 
+    // SPEC 9.4.1: an internal library declaration is accessible in Kotonoha(Kimi) only, so a program naming one is inaccessible: the
+    // storage functions, and a `#Lang` group named as a Type (PLAN G147 D-940: its symbol is a Container, 9.2).
     [Theory]
+    [InlineData("let o: Option<Kimi.BoolFormat> = .None")]
     [InlineData("unsafe => Kimi.DictionaryStorage.unlink(null, 24, 1)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.initialize(null)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
@@ -323,7 +326,7 @@ public class DictionaryLibraryTest
     [InlineData("Kimi.Storage.countOverflow()")]
     [InlineData("Kimi.Storage.allocationSizeExceeded()")]
     [InlineData("Kimi.Storage.clockFailure()")]
-    public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)
+    public void InternalLibraryDeclarationsAreInaccessible(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);

@@ -6,7 +6,7 @@ OQ11 (R5-M1); integrated by [H0-design](H0-design.md) (the planning session's ru
 Working time (DECISIONS Q12): 17:40–18:02 on 2026-11-02, about 22 minutes, one session, within the one-hour limit.
 
 Base: dev `1ec539c79` (code, DECISIONS, PLAN). "Plan" is the
-[R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` = `src/Kimi/Compiler/`, `T/` = `tests/xUnitTest/Tests/`. "mir" = `KIMI_PIPELINE=mir`. Facts are read from the base; no build,
+[R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` = `src/Kimi/Compiler/`, `T/` = `tests/xUnitTest/Tests/`. "mir" = `KIMI_PIPELINE=mir`. Facts are read from the base; no build,
 test or probe was run. (H) marks an unchecked inference. Standing request: the owner's 「その役割分担でOKです。H0の設計から始めて下さい。
 終わったら、R4の完了を待ってください。」 (2026-11-02): R4 owns H3's publication in `MirReport`, R5 the Core wiring, BU the Binding facts.
 

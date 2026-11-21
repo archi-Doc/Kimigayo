@@ -20,7 +20,7 @@ public sealed partial class Binding
         }
 
         // Only a Type with a layer needs its scope: a ref or uniq layer, or a pair layer, whose admitted set the scope states.
-        return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } || TryPairLayer(type, out _, out _)
+        return type?.SafeReferent is not null || TryPairLayer(type, out _, out _)
             ? this.ReadTypeReferent(type, this.ConstraintScope(use)) : null;
     }
 
@@ -47,7 +47,7 @@ public sealed partial class Binding
     {
         if (type.Kind == BoundTypeKind.Primitive)
         {
-            return ScalarTypes.Supports(type);
+            return type.IsScalar;
         }
 
         if (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed)

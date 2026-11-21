@@ -7,8 +7,8 @@ using Xunit;
 
 namespace XunitTest;
 
-// R4-M111 (R4-M108; R6-check H10a D4, D12): Binding's Origin relation records of a node whose relation is also a row A5 judges are its
-// twins, which the MIR side leaves out while A5's twin stands for each (until R7).
+// R7-O1 H (superseding R4-M111, R4-M108's twins and R6-check H10a D4, D12): Binding judges no Origin relation of a body, so no record of
+// a body's relation is Binding's and the MIR side compares no twin.
 public partial class OriginRelationDiagnosticTest
 {
     // A fit's twin (SPEC 15.6.5's `bad`), a mixed fit whose first recorded chain is fixed-fixed (BU's `fncomp`) and an all-fixed-fixed fit.
@@ -30,32 +30,23 @@ public partial class OriginRelationDiagnosticTest
     private const string CallPositions = "func store(slot: uniq/(ref/i32 during a), pair: (ref/i32 during a, ref/i32 during a)) => ()\n" +
         "func caller(s: uniq/(ref/i32 during x), y: ref/i32)\n    let local = 1\n    let t = (y, local@ref)\n    store(s, t)\n";
 
-    // R4-M111 (R4-M108): Binding's Origin relation records are twins, left out of the MIR side (compared with A5, `A5`), only where the
-    // node's relation is also a row A5 judges: at a fit every record of the node, the mixed fit's fixed-fixed first chain included, and at
-    // a local's clause its body-chain record. An all-fixed-fixed node's records stay on it (`-`), Binding's until R7; a Closure result over
-    // call-local storage is a twin, its Refuted source at the returned value (DECISIONS R4-M152); a call argument's fixed-fixed record
-    // beside a body-chain position of the same call, a row without a record at the same node (BU's review N6). Each row has a record that
-    // stays. The mixed fit's Function component is one UnprovenOriginContract_Kd (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC
-    // 15.6.1; it was an Origin relation record compared as `return t`), so only its borrow's record is a twin, and only when the borrow
-    // comes first (no row after the differing Function component until R7).
+    // R7-O1 H: no body relation is Binding's record (R4-M111's twins were every record of a fit, a local's clause's body-chain record and
+    // a Closure result over call-local storage; the all-fixed-fixed records stayed Binding's until R7): each is a row A5 judges, the
+    // fixed-fixed ones included, and the MIR side holds each relation's one record. A call position's relation was a row since R7-O1 b1
+    // (MirOriginsTest.ACallPositionsRelationIsTheStratums). The mixed fit's Function component stays Binding's contract record (OJ4),
+    // which the MIR side lists at `return t`.
     [Theory]
-    [InlineData(TwinFits, "UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
-    [InlineData(TwinFitsSwapped, "UnsatisfiedOriginRelation_Kd A5 return t", "")]
-    [InlineData(TwinClauses, "UnsatisfiedOriginRelation_Kd A5 origin x.s outlives a", "UnprovenOriginRelation_Kd - origin x.s outlives b")]
-    [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "UnsatisfiedOriginRelation_Kd A5 x@ref", "")]
-    [InlineData(CallPositions, "", "UnprovenOriginRelation_Kd - t")]
-    public void OnlyTwinsOfBindingsOriginRecordsAreCompared(string source, string compared, string passed)
+    [InlineData(TwinFits, "UnprovenOriginContract_Kd return t|UnprovenOriginRelation_Kd x|UnsatisfiedOriginRelation_Kd local@ref|UnsatisfiedOriginRelation_Kd t")]
+    [InlineData(TwinFitsSwapped, "UnprovenOriginContract_Kd return t|UnsatisfiedOriginRelation_Kd t")]
+    [InlineData(TwinClauses, "UnprovenOriginRelation_Kd h0@move|UnsatisfiedOriginRelation_Kd H.init(local@ref)")]
+    [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "UnsatisfiedOriginRelation_Kd x@ref")]
+    [InlineData(CallPositions, "UnprovenOriginRelation_Kd t|UnsatisfiedOriginRelation_Kd t")]
+    public void NoBodyRelationIsBindingsRecord(string source, string records)
     {
         var c = MirBuildTest.Compile(source);
-        var requirement = DiagnosticRequirement.Binding(BindingFailure.OriginRelation);
-        var side = MirTargetSide.MirSide(c).Where(x => x.Requirement == requirement).Select(static x => (x.Code, x.Node)).ToHashSet();
-        var records = c.Binding.Issues.Where(static x => x.Failure == BindingFailure.OriginRelation)
-            .Select(x => (Twin: !side.Contains((x.Code, x.Node)), Text: $"{x.Code} {(side.Contains((x.Code, x.Node)) ? "-" : "A5")} {source.Substring(x.Node.Span.Start, x.Node.Span.Length)}"))
-            .ToArray();
-        Assert.Equal(compared.Split('|', StringSplitOptions.RemoveEmptyEntries), Texts(records.Where(static x => x.Twin)));
-        Assert.Equal(passed.Split('|', StringSplitOptions.RemoveEmptyEntries), Texts(records.Where(static x => !x.Twin)));
-
-        // The records `code analysis subject` by the subject's source text, in ordinal order.
-        static string[] Texts(IEnumerable<(bool Twin, string Text)> rows) => [.. rows.Select(static x => x.Text).Order(StringComparer.Ordinal)];
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Failure == BindingFailure.OriginRelation);
+        var origins = string.Join('|', MirTargetSide.MirSide(c).Where(static x => x.Code.ToString().Contains("Origin", StringComparison.Ordinal))
+            .Select(x => $"{x.Code} {source.Substring(x.Node.Span.Start, x.Node.Span.Length)}").Order(StringComparer.Ordinal));
+        Assert.True(records == origins, origins);
     }
 }

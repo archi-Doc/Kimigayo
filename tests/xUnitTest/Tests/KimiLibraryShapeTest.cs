@@ -150,36 +150,11 @@ public partial class KimiLibraryShapeTest
         var registered = c.Library.RegisteredSymbols.ToArray();
         foreach (var symbol in registered)
         {
-            Assert.Same(symbol, symbol.Declaration.SymbolOf());
-            Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf());
+            Assert.Same(symbol, symbol.Declaration.SymbolOf(c));
+            Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf(c));
         }
 
         Assert.Equal((120, 82), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
-    }
-
-    // KimiLibrarySize's statement: the library's size is what the library pass fills (LibraryLayer.Size, its table counts at its end:
-    // the program pass empties the per-pass tables it filled, O8 (a)), each count rounded up to the Granule. A library change that moves
-    // a count past its Granule restates KimiLibrarySize.Stated: the message gives the counts.
-    [Fact]
-    public void TheStatedSizeIsTheLibrarys()
-    {
-        // A Bind of the empty program: the shared Library compilation has run later stages, which intern further Types.
-        var c = CompilationTestHelper.Parse(string.Empty);
-        Assert.True(c.Bind().IsComplete);
-        var counts = c.Binding.Library.Layer.Size;
-        Assert.True(counts.Rounded() == KimiLibrarySize.Stated, $"stated {KimiLibrarySize.Stated}, counted {counts}");
-    }
-
-    // KimiLibrarySize's room contract: after a Bind of the library alone, each sized table with a room keeps at least its kind's room
-    // free, so a program smaller than the room resizes none of them, whatever the library holds.
-    [Fact]
-    [Trait("Purpose", "Allocation")]
-    public void TheLibraryLeavesEachSizedTableItsRoom()
-    {
-        var c = CompilationTestHelper.Parse(string.Empty);
-        Assert.True(c.Bind().IsComplete);
-        var free = c.Binding.TableFree;
-        Assert.True(free.Nodes >= KimiLibrarySize.NodeRoom && free.LeastKeyed >= KimiLibrarySize.KeyedRoom, $"free {free}");
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
@@ -296,7 +271,7 @@ public partial class KimiLibraryShapeTest
         Assert.Same(weak, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration);
         Assert.Empty(weak.Members);
         Assert.Null(weak.SynthesizedConstructor);
-        Assert.DoesNotContain(KotoTree.Walk(weak), static x => x.SymbolOf() is { Kind: BindingSymbolKind.Function });
+        Assert.DoesNotContain(KotoTree.Walk(weak), x => x.SymbolOf(c) is { Kind: BindingSymbolKind.Function });
 
         void Visit(DeclarationContainerKoto container)
         {
@@ -315,7 +290,7 @@ public partial class KimiLibraryShapeTest
                 }
 
                 // Its symbol is the one registration gives it: its lang item's, or an unnamed one (R8-G1 G1-6).
-                var symbol = function.SymbolOf();
+                var symbol = function.SymbolOf(c);
                 Assert.True(symbol is not null && registered.Contains(symbol), Line(function));
                 Assert.True(symbol!.LibraryDeclaration is not { } id ? LangName(function) is null : ReferenceEquals(c.Library.GetSymbol(id), symbol) && LangName(function) == id.ToString(), Line(function));
                 var served = symbol.Definition.Kind == DispositionKind.Intrinsic;
@@ -428,7 +403,7 @@ public partial class KimiLibraryShapeTest
             var container = Assert.IsAssignableFrom<DeclarationContainerKoto>(c.Library.GetSymbol(id)!.Declaration);
             foreach (var function in container.Members.OfType<FunctionKoto>())
             {
-                var symbol = function.SymbolOf()!;
+                var symbol = function.SymbolOf(c)!;
                 var writes = c.Types.Retains(symbol, null, null).Writes.ToArray();
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
@@ -461,10 +436,10 @@ public partial class KimiLibraryShapeTest
         var covered = new List<string>();
         foreach (var function in KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>())
         {
-            var symbol = function.SymbolOf()!;
+            var symbol = function.SymbolOf(c)!;
             var retention = c.Types.Retains(symbol, null, null);
             if (retention.ReferentStores.IsEmpty || (function.Parent is { } parent && c.Library.MembersOf(parent) is WitnessMembers.FixedArray or WitnessMembers.FixedArrayEntries) ||
-                function.Parent?.SymbolOf()?.LibraryDeclaration is KimiDeclarationId.Array or KimiDeclarationId.Dictionary)
+                function.Parent?.SymbolOf(c)?.LibraryDeclaration is KimiDeclarationId.Array or KimiDeclarationId.Dictionary)
             {
                 continue;
             }
@@ -605,7 +580,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Storage.StringRepr", "internal struct StringRepr\ninternal var data: raw/u8\ninternal var length: isize\ninternal var releaseKind: u8")]
     [InlineData("Storage.InlineStorage", "internal struct InlineStorage<A>\ninternal var value: A")]
     [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize = 0\ninternal var count: isize\ndrop")]
-    [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\npublic let length: isize\ninternal let loan: Loan<uniq/T during source>")]
+    [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\ninternal let count: isize\ninternal let loan: Loan<uniq/T during source>")]
     [InlineData("ResolvedRange", "public struct ResolvedRange\npublic let start: isize\npublic let end: isize")]
     [InlineData("FromEnd", "public struct FromEnd<T>\npublic let offset: T")]
     [InlineData("Range", "public struct Range<S, E>\npublic let start: S\npublic let end: E")]
@@ -624,7 +599,7 @@ public partial class KimiLibraryShapeTest
     public void RecordFieldsAreFixed(string path, string shape)
     {
         var c = Library.Value;
-        var type = c.Binding.SelfType(Record(path).SymbolOf()!);
+        var type = c.Binding.SelfType(Record(path).SymbolOf(c)!);
         var lines = new List<string> { Line(Record(path)) };
         for (var i = 0; i < AdtDef.Count(type); i++)
         {
@@ -675,7 +650,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(parameter < 0 ? 0 : 1, payload.Length);
             if (parameter >= 0)
             {
-                Assert.Same(declaration.GenericParameterNodes[parameter].TypeOf(), payload[0].TypeOf());
+                Assert.Same(declaration.GenericParameterNodes[parameter].TypeOf(Library.Value), payload[0].TypeOf(Library.Value));
             }
 
             ordinal++;
@@ -846,7 +821,7 @@ public partial class KimiLibraryShapeTest
 
     private static (TypeLayout Layout, BoundType Type) Layout(string path)
     {
-        var type = Library.Value.Binding.SelfType(Record(path).SymbolOf()!);
+        var type = Library.Value.Binding.SelfType(Record(path).SymbolOf(Library.Value)!);
         return (Library.Value.Layout.Of(type).Value!.Layout, type);
     }
 

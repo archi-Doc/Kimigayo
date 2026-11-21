@@ -18,7 +18,7 @@ public sealed partial class Binding
     // the receiver the selection evaluated (an EvaluatedKoto), so any receiver is evaluated once. A failed resolution
     // yields a value that the selection's own bounds check rejects. A ResolvedRange key is applied as written and rechecked.
     private readonly ResolvedKeyRows resolvedKeys;
-    private readonly HashSet<IndexKoto> resolvedSlices = new(ReferenceEqualityComparer.Instance);
+    private readonly ResolvedSliceRows resolvedSlices;
 
     private BoundType ResolvedRangeType => this.types.Intern(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
 
@@ -163,8 +163,6 @@ public sealed partial class Binding
             this.ResetSynthetic(input!);
         }
 
-        this.resolvedSlices.Clear();
-        this.uniqIndexing.Clear();
         this.positionWarnings.Clear();
     }
 
@@ -176,12 +174,12 @@ public sealed partial class Binding
     {
         result = null;
         this.resolvedSlices.Remove(source);
-        var core = receiver is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? receiver.Components[0] : receiver;
-        if (core.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
+        if (!IsSequence(receiver))
         {
             return false;
         }
 
+        var core = receiver.SafeReferent ?? receiver;
         var element = core.Components[0];
         BoundType? key;
         if (source.Right is RangeKoto range)
@@ -239,7 +237,7 @@ public sealed partial class Binding
             this.CheckLiteralKey(source, core); // A parenthesized `^a` resolves through a call.
         }
 
-        var resolved = ReferenceTypes.IsResolvedRange(key);
+        var resolved = key is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
         var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
         if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
         {
@@ -594,5 +592,25 @@ public sealed partial class Binding
 
         internal bool TryGetValue(IndexKoto node, [NotNullWhen(true)] out InvocationKoto? value)
             => (value = node.SyntaxOwner is { } table ? table.Hir.Families.ResolvedKeys.Get(node.SyntaxId) : null) is not null;
+    }
+
+    /// <summary>The `resolvedSlices` family's one accessor (DECISIONS BU-220): a pass family, the selections that apply one ResolvedRange
+    /// value, written or resolved from a range key (SPEC 4.7, 4.8.2), a set kept in the selection's module's NodeColumns at its SyntaxId as
+    /// a `bool` row. Its rows are the running pass's working state: IsResolvedSlice refuses a library node, so the freeze releases them
+    /// (NodeColumns.Freeze). Its members keep the names its readers use.</summary>
+    private readonly struct ResolvedSliceRows(Binding binding)
+    {
+        internal void Add(IndexKoto index) => HirTables.Of(index).Families.ResolvedSlices.Ref(index.SyntaxId, binding) = true;
+
+        // Writes only over a present row, so a selection that is no slice numbers no node and carves no page.
+        internal void Remove(IndexKoto index)
+        {
+            if (this.Contains(index))
+            {
+                HirTables.Of(index).Families.ResolvedSlices.Ref(index.SyntaxId, binding) = false;
+            }
+        }
+
+        internal bool Contains(IndexKoto index) => index.SyntaxOwner is { } table && table.Hir.Families.ResolvedSlices.Get(index.SyntaxId, binding);
     }
 }

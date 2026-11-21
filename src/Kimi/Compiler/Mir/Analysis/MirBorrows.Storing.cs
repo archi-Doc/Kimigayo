@@ -144,7 +144,7 @@ internal sealed partial class MirBorrows
 
         for (var i = 1; complete && i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
-            if (MirTypes.HoldsRaw(types, cases.Type(this.body.Locals[i].Type), this.seen))
+            if (MirTypes.HoldsRaw(types, cases.KnownType(this.body.Locals[i].Type), this.seen))
             {
                 return true;
             }
@@ -257,8 +257,9 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included).
-    private bool PointerType(MirPlace place) => this.Holds(cases.TypeOf(place), out _);
+    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included); none of no Type, a whole
+    // write's destination (MirCases.KnownTypeOf, PLAN G1073).
+    private bool PointerType(MirPlace place) => this.Holds(cases.KnownTypeOf(place), out _);
 
     // A chain head of the checks replay: every M is ∅ but each input's, Own(i, 0).
     private void EnterStoring()
@@ -316,7 +317,7 @@ internal sealed partial class MirBorrows
         }
 
         if (this.StoringInput(place.Root) && cases.TypeOf(this.body.Operands[index]) is var type &&
-            (MirTypes.IsReference(type) || type.Semantics == Parsing.SemanticsKind.Raw) && this.Depth(place) == 0)
+            (MirTypes.IsReference(type) || type.IsPointer) && this.Depth(place) == 0)
         {
             return this.sets.Add(0, this.Own(place.Root, place.Projection));
         }
@@ -389,7 +390,7 @@ internal sealed partial class MirBorrows
         // The own step applies only where the destination holds raw layers and none states an Origin; elsewhere a part reads as its
         // layer's (the owner's O-190 (b)).
         var count = this.placeSteps.Walk(place, reborrow: false, ref this.mustSteps);
-        var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)))] is { RawInline: true, AnyStated: false };
+        var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)), 0)] is { RawInline: true, AnyStated: false };
         var at = stepped ? part : LayerPart(part);
         var own = false;
         foreach (var element in this.sets.Elements(this.mustValue))

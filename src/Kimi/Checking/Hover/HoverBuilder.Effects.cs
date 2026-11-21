@@ -15,14 +15,6 @@ internal sealed partial class HoverBuilder
 
     private HoverInfo? Call(InvocationKoto syntax)
     {
-        for (var scope = query.ConstraintScope(syntax); scope is not null; scope = scope.Parent)
-        {
-            if (scope.Constraints is { Invalid: true })
-            {
-                return null;
-            }
-        }
-
         HoverInfo info;
         List<EffectEvidence>? evidence = null;
         StringBuilder? text = null;
@@ -52,7 +44,8 @@ internal sealed partial class HoverBuilder
                 WriteBounds(text, available);
             }
         }
-        else if (query.ValueCallOf(syntax) is { CalleeType: { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType } virtualItem)
+        else if (query.ValueCallOf(syntax) is { } virtualItem &&
+            query.CallableCore(virtualItem.CalleeType) is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType)
         {
             info = new(
                 [this.Declaration(originalSlot)],

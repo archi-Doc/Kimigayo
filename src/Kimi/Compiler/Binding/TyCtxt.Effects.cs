@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 // per definition (Binding.EffectPremises).
 internal sealed partial class TyCtxt
 {
-    private readonly Dictionary<Koto, CopyFacts> copies = new(ReferenceEqualityComparer.Instance); // By premises node (a view, ResetViews).
+    private readonly Dictionary<BindingSymbol, CopyFacts> copies = new(); // By the definition's declaration symbol, never an instance's (a symbol is its declaration's identity, MirDefKey's), a view (ResetViews).
+    private CopyFacts? topLevelCopies; // A module's top-level statements' (definition null): the library root's premises (a view, ResetViews).
     private bool callsRowsChecked; // Whether CheckCallsRows has held: the catalog's Calls rows are checked once, not at each read.
 
     // SPEC 8.11.2, 22.1, 22.6: what a function without a MIR body is, the one decider, from facts fixed when Binding is final: an
@@ -74,15 +75,20 @@ internal sealed partial class TyCtxt
     // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
     internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item)?.RequirementContract;
 
-    // SPEC 8.7.2, 16.3.3: the Copy facts of a definition's premises (CopyFacts), one per node its premises are read at (Binding.DefinitionUse),
-    // a view memo (ResetViews; DECISIONS BU-88).
+    // SPEC 8.7.2, 16.3.3: the Copy facts of a definition's premises (CopyFacts), one per definition, whose premises are read at its
+    // declaration (Binding.DefinitionUse), a view memo (ResetViews; DECISIONS BU-88): a view keyed by its definition, as the other views,
+    // since a library definition's facts are the program's proofs, which the frozen library's node columns cannot hold.
     internal CopyFacts Copies(BindingSymbol? definition)
     {
-        var use = binding.DefinitionUse(definition);
-        if (!this.copies.TryGetValue(use, out var facts))
+        if (definition is null)
+        {
+            return this.topLevelCopies ??= new(binding, binding.EffectPremises(null));
+        }
+
+        if (!this.copies.TryGetValue(definition, out var facts))
         {
             facts = new(binding, binding.EffectPremises(definition));
-            this.copies.Add(use, facts);
+            this.copies.Add(definition, facts);
         }
 
         return facts;
@@ -126,7 +132,7 @@ internal sealed partial class TyCtxt
         {
             if (!this.proven.TryGetValue(type, out var copy))
             {
-                copy = binding.CopiesInEveryCase(type, premises); // SPEC 8.14, 8.15.2: per Semantics case (G642).
+                copy = binding.ProveCopy(type, premises) == ConstraintProof.Proven; // SPEC 8.14, 8.15.2: per Semantics case (G642).
                 this.proven.Add(type, copy);
             }
 

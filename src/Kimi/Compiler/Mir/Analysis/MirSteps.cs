@@ -8,20 +8,26 @@
 // the root; the whole Place for a Reborrow's added Deref), whose case Type a Deref's class is read from; and Prepared, whether a root is a
 // default template's PreparedInput.
 // Invariants: a Base of depth d is d steps and an owner-case pair layer none; a Deref or another pair layer is classed by the Semantics of
-// the Type it applies to; a default template's Deref directly on a PreparedInput is the caller's pending slot itself, Inline (E17). The
-// scratch is the projection chain, reset by counts.
+// the Type it applies to, an Index by its sequence's Type (SPEC 4.7.1: a view's, an Array's or a fixed array's); a default template's
+// Deref directly on a PreparedInput is the caller's pending slot itself, Inline (E17). The scratch is the projection chain, reset by counts.
 // Must not read MirBorrows' state, syntax or HIR, judge Origins or conflicts, intern projections, or copy the body per view.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The class of a Place's step (A3 3): an inline step, a runtime index into inline storage, an owning handle's payload, a
-/// shared or exclusive borrow Deref (a Slice's index is a shared one, E6), or a raw pointer's referent.</summary>
+/// <summary>The class of a Place's step (A3 3): an inline step, an index into inline storage that forms no Move Path (a runtime one, or
+/// a fixed array's constant index on an Index row, D-910), an Array's element (ArrayElement), an owning handle's payload, a shared or
+/// exclusive borrow Deref (a Slice's index is a shared one, E6), or a raw pointer's referent.</summary>
 internal enum MirStepClass : byte
 {
     Inline,
     Index,
+
+    // An Array's element: the referent of its `index` or `indexUniq` call, which borrows the whole Array (SPEC 4.7.1, D-920; the
+    // statement TyCtxt.RawPart makes for raw Places, PLAN G672). Every reader but MirBorrows' conflicts relation (Loan.ReceiverSteps)
+    // reads it as Index.
+    ArrayElement,
     Own,
     Shared,
     Uniq,
@@ -29,7 +35,8 @@ internal enum MirStepClass : byte
 }
 
 /// <summary>A step of a Place: its projection kind and argument (a Base of depth 1), its class and its prefix.</summary>
-/// <param name="Kind">The projection kind (a pair layer that is a Deref is one).</param>
+/// <param name="Kind">The projection kind (a pair layer that is a Deref is one; an Index at a constant index, its row's Position, is a
+/// ConstIndex one at that position, classed Index: SPEC 15.6.2 compares constant indices, and it forms no Move Path).</param>
 /// <param name="Class">The step's class.</param>
 /// <param name="Arg">The projection's argument.</param>
 /// <param name="Prefix">The projection id of the Place prefix the step applies to: 0 at the root, the whole Place for a Reborrow's added
@@ -83,8 +90,8 @@ internal sealed class MirSteps(MirCases cases)
             for (var depth = row.Kind == MirProjectionKind.Base ? row.Arg : 1; @class is { } known && depth > 0; depth--)
             {
                 MirDataflow.Grow(ref into, count + 2);
-                var kind = row.Kind == MirProjectionKind.PairLayer ? MirProjectionKind.Deref : row.Kind;
-                into[count++] = new(kind, known, row.Kind == MirProjectionKind.Base ? 1 : row.Arg, row.Prefix);
+                var kind = row.Kind == MirProjectionKind.PairLayer ? MirProjectionKind.Deref : row.Position >= 0 ? MirProjectionKind.ConstIndex : row.Kind;
+                into[count++] = new(kind, known, row.Kind == MirProjectionKind.Base ? 1 : row.Position >= 0 ? row.Position : row.Arg, row.Prefix);
             }
         }
 
@@ -116,6 +123,12 @@ internal sealed class MirSteps(MirCases cases)
         _ => MirStepClass.Own,
     };
 
-    // An Index step's class by its sequence's Type: a view's Deref (a Slice's index is a shared one, E6), else an Index into inline storage.
-    private MirStepClass Index(MirPlace sequence) => MirTypes.View(cases.TypeOf(sequence)) is { } view ? Deref(view) : MirStepClass.Index;
+    // An Index step's class by its sequence's Type (SPEC 4.7.1's table): a view's Deref (a Slice's index is a shared one, E6), an Array's
+    // element, its index call's referent (ArrayElement), else a fixed array's built-in projection, an Index into inline storage.
+    private MirStepClass Index(MirPlace sequence) => cases.TypeOf(sequence) switch
+    {
+        var type when MirTypes.View(type) is { } view => Deref(view),
+        { Kind: BoundTypeKind.Array } => MirStepClass.ArrayElement,
+        _ => MirStepClass.Index,
+    };
 }

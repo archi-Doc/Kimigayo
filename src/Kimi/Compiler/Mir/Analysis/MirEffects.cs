@@ -14,7 +14,11 @@
 // Output: Run's result, whether its round was clean; IncompatibleContractImplementation_Kd,
 // UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport for the obligations whose subject is in the root
 // range (the library's are the library check's, PLAN G951 E3), added by a clean round only; and for A5 the per-node summaries and a site's
-// key row and classes per view (Keys, Field).
+// key row and classes per view (Keys, Field). A broken contract has one form per place (Broken): one Local meets at a call (a function
+// without a body Binding gives no category, a comparison leaf with no answer) is InternalInvariant_Kd at the call through MirReport, its
+// class Derived; one the solve meets throws (DECISIONS BU-102's form: the check ends as CheckFaulted_Kd), since no program reaches it,
+// so the solve keeps no state to record it. Both only in a
+// complete compilation (TyCtxt.BindingComplete); in an incomplete one either is Derived with no record, resting on Binding's records.
 // The solve runs in rounds (PLAN G951): Compose is the one read of a body's nodes, and a read of a body A2 does not hold (one built since the
 // driver's last step, with no local facts) misses; the round goes on to its end, so it demands every body it reads, and commits nothing,
 // and the driver steps and runs the next round until one is clean.
@@ -31,6 +35,7 @@
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
 // Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
+using Kimi.Diagnostics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
@@ -50,8 +55,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     internal const byte Limit = 4;
 
     /// <summary>A class of a summary: an effect only an Opaque site, a callee whose definition rests on a recorded error (Binding rejected
-    /// it or the parser recorded its Body missing: TyCtxt.Bodyless's Dependent) or a body with a validator finding causes, a dependent of
-    /// that error (R4-M10, R5-M183).</summary>
+    /// it or the parser recorded its Body missing: TyCtxt.Bodyless's Dependent), a body with a validator finding or a broken contract
+    /// recorded at its call (Broken) causes, a dependent of that error (R4-M10, R5-M183).</summary>
     internal const byte Derived = 8;
 
     /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
@@ -72,10 +77,12 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private readonly List<MirDropStep> destroyed = []; // MirDropTable.Destroyed's steps of the Drop being read (Dropped).
+    private readonly MirReach reach = new(); // The blocks a body with a case branch reaches under the view (Local).
     private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while the segment holds.
     private readonly Locals programLocals = new(); // The program segment's, cleared per program version.
     private Locals writing = null!; // The segment Local records into, which a begin call names.
     private byte found; // The classes the current evaluation or local walk found.
+    private (MirReport Problems, SourceRef Subject, int Body, ulong Views) site; // The call Local reads (Terminator), where Broken records.
 
     /// <summary>Gets the one answer of classes (DECISIONS R4-M153): the Join of their outcomes, an <see cref="Environment"/> or
     /// <see cref="Unknown"/> effect decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep. A4's obligations and A5's effect
@@ -98,6 +105,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.libraryLocals.Clear(0);
         this.programLocals.Clear(0);
         this.fieldIds.Clear();
+        this.initIds.Clear();
+        this.fixedIds.Clear();
         this.writing = this.libraryLocals;
     }
 
@@ -119,6 +128,12 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             this.fieldIds.Remove(field);
         }
 
+        foreach (var field in this.programLocals.Initialized)
+        {
+            this.initIds.Remove(field);
+            this.fixedIds.Remove(field);
+        }
+
         this.programLocals.Clear(this.libraryLocals.End);
         this.writing = this.programLocals;
     }
@@ -126,7 +141,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body) in the
     /// segment begun (<see cref="BeginLibrary"/>, <see cref="BeginProgram"/>): its effects and static accesses, its calls with a body as
     /// edges into the callee views their substitution selects, and the parts its Drops destroy (by A2's verdicts) and the Callable inputs
-    /// it calls through as inputs of its summary; a body's views are recorded in order.</summary>
+    /// it calls through as inputs of its summary; a body's views are recorded in order. In a body with a case branch only the blocks
+    /// the view reaches are read (MirReach under the view): the other side's calls run in no instance of the view.</summary>
     /// <param name="program">The program.</param>
     /// <param name="body">The body, whose view is selected.</param>
     /// <param name="view">The selected view.</param>
@@ -135,8 +151,19 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         var node = this.writing.Open(body.Ordinal, view);
         this.found = 0;
         var uses = new Uses(this, body);
+        if (body.CaseSwitches > 0)
+        {
+            this.reach.Clear(body.Blocks.Length);
+            this.reach.Walk(body, 0, checks: true, cases);
+        }
+
         for (var block = 0; block < body.Blocks.Length; block++)
         {
+            if (body.CaseSwitches > 0 && !this.reach[block])
+            {
+                continue;
+            }
+
             for (var index = 0; index <= body.Blocks[block].Count; index++)
             {
                 MirUses.ForEach(cases, new(block, index), ref uses);
@@ -173,14 +200,15 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // SPEC 8.11.2: the class of a call of a function without a MIR body, by Binding's category of it (TyCtxt.Bodyless): an intrinsic's
     // from MIR's own row of it (MirDescriptors: an environment effect where the row has one, else its inputs alone), a shim's its
-    // inputs, an import's an environment effect, a dependent's Derived, any other a limit.
-    private static byte Class(BindingSymbol function) => TyCtxt.Bodyless(function) switch
+    // inputs, an import's an environment effect, a dependent's Derived; none for Unclassified, a broken contract (BodylessKind: every
+    // other declaration with a Body disposition has a MIR body, built on demand while the program's demands are open, PLAN G951).
+    private static byte? Class(BindingSymbol function) => TyCtxt.Bodyless(function) switch
     {
         BodylessKind.Intrinsic => (MirDescriptors.Of(function.Definition.Id).Effects & MirEffect.Environment) != 0 ? Environment : (byte)0,
         BodylessKind.Shim => 0,
         BodylessKind.Import => Environment,
         BodylessKind.Dependent => Derived,
-        _ => Limit,
+        _ => null,
     };
 
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
@@ -189,20 +217,24 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // comparisons (Compared). A requirement call that selects a built-in
     // target or whose Self is not abstract (an inline default copy's instance, SPEC 7.2.3) runs what its Self's witnesses run under the
     // Contract reference the call recorded (Require); one on an abstract Self or a dynamic virtual call has the bounds of the caller's
-    // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
-    // the static's initializer; a Drop destroys what A2's verdicts leave (Dropped).
+    // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure is
+    // the static's first-access initialization (Initialize); a Drop destroys what A2's verdicts leave (Dropped).
     private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
     {
         var callee = terminator.Callee;
         if (terminator.Kind == MirTerminatorKind.Drop)
         {
             this.Dropped(program, body, block, view, cases.TypeOf(terminator.Place));
+            return;
         }
-        else if (terminator.Kind != MirTerminatorKind.Call)
+
+        if (terminator.Kind != MirTerminatorKind.Call)
         {
             return;
         }
-        else if (callee.Kind == MirCalleeKind.Fn)
+
+        this.site = (program.Problems, body.Subject(terminator.Source), body.Ordinal, 1UL << (int)view);
+        if (callee.Kind == MirCalleeKind.Fn)
         {
             this.Function(program, callee);
         }
@@ -231,7 +263,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             var type = cases.TypeOf(terminator.Operand);
             _ = TyCtxt.Layer(type, out var callable, out _);
-            this.Item(callable, (byte)(1 + (int)(type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq ? type.Semantics : SemanticsKind.Owner)));
+            this.Item(callable, (byte)(1 + (int)(type.SafeReferent is not null ? type.Semantics : SemanticsKind.Owner)));
             if (callable is { IsAbstract: true })
             {
                 this.Given(body, terminator);
@@ -239,7 +271,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
         else if (callee.Arg == (int)IntrinsicId.StaticEnsure)
         {
-            this.AddEdge(program.StaticInit(body, body.Operands[terminator.Start])!, null); // The validator checks it has one (G191).
+            this.Initialize(program.StaticInit(body, body.Operands[terminator.Start])!); // The validator checks it has one (G191).
         }
         else if (callee.Arg == (int)IntrinsicId.DestroyValues)
         {
@@ -280,14 +312,37 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             return;
         }
 
+        // A function without a body: a published row's, else Binding's category of it, none a broken contract at the call.
+        if (types.Published(symbol) is null && Class(symbol) is null)
+        {
+            this.found |= this.Broken();
+            return;
+        }
+
         this.Enter(null, subst, symbol);
+    }
+
+    // A broken contract Local meets at the call it reads (the class header's one form with a site; DECISIONS R4-M148's path, as A5's
+    // MirBorrows.Reports' Internal): InternalInvariant_Kd at the call in its view under Ownership.Internal, in a complete compilation
+    // (TyCtxt.BindingComplete); Derived, so every obligation over it is its dependent and records nothing (SPEC 23.1.2: the other bodies'
+    // failures stay reported). In an incomplete one the missing body or answer rests on Binding's records, no record of its own (BU-102:
+    // the state rests on a Binding failure; R5-M183: a Closure in a declaration Binding rejected has no body, the collector's Report alike).
+    private byte Broken()
+    {
+        if (types.BindingComplete)
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+            _ = this.site.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, this.site.Subject, this.site.Body, this.site.Views));
+        }
+
+        return Derived;
     }
 
     // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs, once per distinct node of its Self's comparison under source
     // operators (the validator checked it composes), what that node's leaf runs: a Witness leaf its witness (Function), a Requirement leaf
     // the requirement under the caller's premises (X2; its operands are shared borrows, so it destroys nothing), a Builtin leaf and a
-    // Composite's own node nothing. A None leaf, no answer (a broken contract the collector records as InternalInvariant_Kd at the item,
-    // a dependent in an incomplete Binding), is what Require gives a Type nothing resolves for: the Limit, never a silent empty summary.
+    // Composite's own node nothing. A None leaf, no answer, is a broken contract at the call (Broken; the collector records it as
+    // InternalInvariant_Kd at the item), never a silent empty summary.
     private void Compared(MirProgram program, MirBody body, BindingSymbol contract, ComparisonNode node)
     {
         if (!this.compared.Add(node))
@@ -311,7 +366,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.found |= types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true ? (byte)0 : Unknown;
                 break;
             case ComparisonKind.None:
-                this.found |= Limit;
+                this.found |= this.Broken();
                 break;
             default:
                 throw new InvalidOperationException($"The comparison kind {node.Kind} has no effect row.");
@@ -413,23 +468,24 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, Subst? Call = null);
 
     // A call of a body: the callee's ordinal, the views its substitution selects under the caller's view and the substitution: the call's;
-    // null for a body entered in every view (a static's initializer); the identity (TyCtxt.Identity) for the callee's own Types read in the
+    // null for a body entered in every view (the initializer of a static with several slots, Initialize); the identity (TyCtxt.Identity) for the callee's own Types read in the
     // caller's view (a specialization of the caller's declaration, Local).
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);
 
-    // A node's entry in its store: its body (an ordinal), the classes of its local facts and the ends of its local inputs, calls and keys
-    // in the store.
-    private readonly record struct NodeFacts(int Owner, byte Classes, int Items, int Edges, int Keys);
+    // A node's entry in its store: its body (an ordinal), the classes of its local facts and the ends of its local inputs, calls, keys and
+    // initialization entries in the store.
+    private readonly record struct NodeFacts(int Owner, byte Classes, int Items, int Edges, int Keys, int Inits);
 
     // A segment's local facts in record order (PLAN G950, the Back's C-378 (1)(a)), data only, so the library segment's are kept while the
     // segment holds: its nodes' entries by node id and its bodies' first nodes by ordinal, each the id or ordinal itself (the
-    // program's after the library's, no offset), its nodes' local inputs, calls and keys, and the Fields it numbered (BeginProgram removes
-    // the program's numbers).
+    // program's after the library's, no offset), its nodes' local inputs, calls, keys and initialization entries, and the Fields and
+    // statics it numbered (BeginProgram removes the program's numbers).
     private sealed class Locals
     {
         private Atom[] items = [];
         private Edge[] edges = [];
         private int[] keys = [];
+        private int[] inits = [];
         private NodeFacts[] nodes = []; // By node id, its nodes from its first.
         private int[] bases = []; // By body ordinal, the first node of each of its bodies: a node is a body view.
 
@@ -442,13 +498,19 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
         internal int KeyCount { get; private set; }
 
+        internal int InitCount { get; private set; }
+
         internal List<BindingSymbol> Fields { get; } = [];
+
+        internal List<BindingSymbol> Initialized { get; } = [];
 
         internal ReadOnlySpan<Atom> Items => this.items.AsSpan(0, this.ItemCount);
 
         internal ReadOnlySpan<Edge> Edges => this.edges.AsSpan(0, this.EdgeCount);
 
         internal ReadOnlySpan<int> Keys => this.keys.AsSpan(0, this.KeyCount);
+
+        internal ReadOnlySpan<int> Inits => this.inits.AsSpan(0, this.InitCount);
 
         // A node's entry.
         internal NodeFacts this[int node] => this.nodes[node];
@@ -470,8 +532,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             return node;
         }
 
-        // Closes a node with its body and its local classes: its inputs, calls and keys are those added since it was opened.
-        internal void Close(int node, int body, byte classes) => this.nodes[node] = new(body, classes, this.ItemCount, this.EdgeCount, this.KeyCount);
+        // Closes a node with its body and its local classes: its inputs, calls, keys and entries are those added since it was opened.
+        internal void Close(int node, int body, byte classes)
+            => this.nodes[node] = new(body, classes, this.ItemCount, this.EdgeCount, this.KeyCount, this.InitCount);
 
         internal void Add(in Atom item)
         {
@@ -491,15 +554,22 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             this.keys[this.KeyCount++] = key;
         }
 
-        // Drops the inputs and calls added past the given counts (a site's, which are not a node's).
-        internal void Truncate(int items, int edges) => (this.ItemCount, this.EdgeCount) = (items, edges);
+        internal void AddInit(int init)
+        {
+            MirDataflow.Grow(ref this.inits, this.InitCount + 1);
+            this.inits[this.InitCount++] = init;
+        }
+
+        // Drops the inputs, calls and entries added past the given counts (a site's, which are not a node's).
+        internal void Truncate(int items, int edges, int inits) => (this.ItemCount, this.EdgeCount, this.InitCount) = (items, edges, inits);
 
         // Removes its facts, keeping the storage: its next node has the id first.
         internal void Clear(int first)
         {
             this.End = first;
-            this.ItemCount = this.EdgeCount = this.KeyCount = 0;
+            this.ItemCount = this.EdgeCount = this.KeyCount = this.InitCount = 0;
             this.Fields.Clear();
+            this.Initialized.Clear();
         }
     }
 

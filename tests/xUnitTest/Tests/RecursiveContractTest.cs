@@ -136,14 +136,25 @@ public sealed partial class RecursiveContractTest
 
     // DECISIONS R7-C2e2-1 at c2-2's merge (N3 of its merge review): o1's view has no identity premise, so its Tree request keeps the
     // view's entry; the Copy request extends, filing the facts again under its extended keys, so it reopens the entry as its own and
-    // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders', exact: an
-    // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (46).
+    // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders' after each
+    // request, exact: the Tree request forms the entry (24); the Copy request extends as its class's closure (R7-C2c2 c2-4b, DECISIONS
+    // R4.13), from its root and again from its re-rooted root under the declaration's table, each walking round reopening the entry
+    // before it files (74); the last request forms the entry again (84). Each publication's start forgets the Kept entries (R7-C2e2
+    // e2-3a, ForgetKeptTables), so a Kept entry of the view is formed again at its next read, 10 pairs each: the capability phase's
+    // first publication adds 10 to each program, the after-bodies one 10 where the last request left the entry Kept (the Tree requests;
+    // the Copy request's own entry went when it returned): 44, 84 and 104 (24, 74 and 84 without the forget). N3's observable: an
+    // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (104 -> 84; reopening by the
+    // table's finality did: a round with no rows builds a Final table).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
-        var probe = "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, o: ref/T.(Tree).Other)\n    T is AT2\n" +
-            "    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal(66, Work(Orders + probe) - Work(Orders));
+        var probe = "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, o: ref/T.(Tree).Other)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n";
+        var orders = Work(Orders);
+        var tree = Work(Orders + probe) - orders;
+        probe += "    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n";
+        var copy = Work(Orders + probe) - orders;
+        probe += "    needsTree<T.(Tree).Other>(o)\n";
+        Assert.Equal((44, 84, 104), (tree, copy, Work(Orders + probe) - orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }
@@ -273,14 +284,13 @@ public sealed partial class RecursiveContractTest
     [InlineData("C2c2", "d09t-paraminf", Marks + "func f<T>(y: ref/T)\n    T is i32\n    T is Mark\n    needMark(y)\n", "InvalidConstraint_Kd: func f<T>(y: ref/T)")]
     [InlineData("C2c2", "d09z-prim2", Marks + "func f<T, U>(x: ref/i32)\n    U is T\n    T is i32\n    U is Mark\n    needMark<i32>(x)\n", "InvalidConstraint_Kd: func f<T, U>(x: ref/i32)")]
     [InlineData("C2c2", "d09r-struct", Marks + "struct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Leaf\n    T is Mark\n    needMark<Leaf>(x)\n", "InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
-    [InlineData("C2c2", "d09y-leafproj", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    needMark<Leaf>(x)\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
-    [InlineData("C2c2", "d09y-noquery", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    ()\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
-    [InlineData("C2c2", "d09-option", Marks + "func f<T, U>(x: ref/Option<U>)\n    T is Option<U>\n    T is Mark\n    needMark<Option<U>>(x)\n", "UnprovenConstraint_Kd: needMark<Option<U>>(x)")]
-    [InlineData("C2c2", "d09d-optioninf", Marks + "func f<T, U>(y: ref/T)\n    T is Option<U>\n    T is Mark\n    needMark(y)\n", "UnprovenConstraint_Kd: needMark(y)")]
-    // SPEC 8.2.3: `T is Copy` is evidence for the identical `Option<U>`, whose own Copy path is Unknown (not Refuted): valid. The
-    // implementation's limit (Binding.TypeIdentity.Keys' ClassKey): a premise is not yet read as evidence for a constructed member whose
-    // conformance is Unknown, so it is rejected, as on base, until R7-C2c2 c2-4 (the Middle's R2-C1, its N7 with r2-c2 and r2-c7).
-    [InlineData("c2-4", "d09c-optioncopy", "func f<T, U>(x: Option<U>) -> (Option<U>, Option<U>)\n    T is Option<U>\n    T is Copy\n    return (x, x)\n", "", Explicit = true)]
+    [InlineData("C2c2", "d09y-leafproj", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    needMark<Leaf>(x)\n", "InvalidConstraint_Kd: func f<T>(x: ref/Leaf) <- T.(Holder).Item is Mark")] // R7-C3 (C2 rulings 245 (i), 273, 278; DECISIONS Q13): SPEC 8.2.3's "once"; the record's related premises are its Failed premises (`Item is Leaf` stays valid; the failed `Item is Mark` speaks to `Leaf is Mark`)
+    [InlineData("C2c2", "d09y-noquery", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    ()\n", "InvalidConstraint_Kd: func f<T>(x: ref/Leaf) <- T.(Holder).Item is Mark")] // R7-C3 (C2 rulings 245 (i), 273, 278; DECISIONS Q13): SPEC 8.2.3's "once"; the record's related premises are its Failed premises (`Item is Leaf` stays valid; the failed `Item is Mark` speaks to `Leaf is Mark`)
+    [InlineData("C2c2", "d09-option", Marks + "func f<T, U>(x: ref/Option<U>)\n    T is Option<U>\n    T is Mark\n    needMark<Option<U>>(x)\n", "InvalidConstraint_Kd: func f<T, U>(x: ref/Option<U>)")] // O-344 (a): the premise's error
+    [InlineData("C2c2", "d09d-optioninf", Marks + "func f<T, U>(y: ref/T)\n    T is Option<U>\n    T is Mark\n    needMark(y)\n", "InvalidConstraint_Kd: func f<T, U>(y: ref/T)")] // O-344 (a)
+    // SPEC 8.2.3: `T is Copy` is evidence for the identical `Option<U>`, whose own Copy path is Unknown (not Refuted): valid; c2-4a
+    // keys a constructed member to its class, so the premise reaches it (the Middle's R2-C1, its N7 with r2-c2 and r2-c7).
+    [InlineData("c2-4", "d09c-optioncopy", "func f<T, U>(x: Option<U>) -> (Option<U>, Option<U>)\n    T is Option<U>\n    T is Copy\n    return (x, x)\n", "")]
     [InlineData("guard", "d09s-primcopy", "func f<T>(x: i32) -> (i32, i32)\n    T is i32\n    T is Copy\n    return (x, x)\n", "")]
     [InlineData("guard", "d09r-ok", Marks + "struct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(x: ref/Leaf2)\n    T is Leaf2\n    T is Mark\n    needMark<Leaf2>(x)\n", "")]
     [InlineData("guard", "d09t-ok", Marks + "struct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(y: ref/T)\n    T is Leaf2\n    T is Mark\n    needMark(y)\n", "")]
@@ -311,13 +321,13 @@ public sealed partial class RecursiveContractTest
     [InlineData("C2b", "b1-r1-pending", IntTrees + "    i32 is PrimitiveInteger\n" + IntTwice, "")]
     [InlineData("C2b", "b1-r5-enclosing", IntTrees + "struct Holder<T>\n    T is IntTree\n    public var tag: i32 = 0\n    public func twice(self: ref/Self, value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)\n        return (value, value)\n", "")]
     [InlineData("C2b", "b1-valueread-d2", IntTrees + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Value) -> T.(Tree).Child.(Tree).Value\n    T is IntTree\n    return r\n", "")]
-    [InlineData("C2b", "b1-notcopy-d2", IntTrees + "func probe<T>(value: T.(Tree).Child.(Tree).Value) -> i32\n    T is IntTree\n    T.(Tree).Child.(Tree).Value is not Copy\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(value: T.(Tree).Child.(Tree).Value) -> i32 | InvalidConstraint_Kd: T.(Tree).Child.(Tree).Value is not Copy")]
+    [InlineData("C2b", "b1-notcopy-d2", IntTrees + "func probe<T>(value: T.(Tree).Child.(Tree).Value) -> i32\n    T is IntTree\n    T.(Tree).Child.(Tree).Value is not Copy\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(value: T.(Tree).Child.(Tree).Value) -> i32 <- T.(Tree).Child.(Tree).Value is not Copy")] // R7-C3 (C2 ruling 245 (i), Q13): SPEC 8.2.3's "once"; the premise clauses are the record's related premises
     [InlineData("guard", "b1-r22-formation", "struct Pair<X>\n    X is Copy\n    public var first: X\nfunc g<T, U>(u: ref/U)\n    T is PrimitiveInteger\n    U is Pair<T>\n    ()\n", "")]
     [InlineData("guard", "b1n1-marker", "contract Tree\n    associate Child is Tree\n    associate Value\ncontract Marker\ncontract IntTree: Tree\n    Self.(Tree).Child is IntTree\n    Self.(Tree).Value is Marker\n" + IntTwice, "TransferRequired_Kd: return (value, value)")]
     [InlineData("guard", "b1n2-sealed", IntTrees + "func needsSealed<V>(v: ref/V)\n    V is Sealed\n    ()\nfunc probe<T>(value: ref/T.(Tree).Child.(Tree).Value)\n    T is IntTree\n    needsSealed<T.(Tree).Child.(Tree).Value>(value)\n", "UnprovenConstraint_Kd: needsSealed<T.(Tree).Child.(Tree).Value>(value)")]
     [InlineData("guard", "b1n3-notcopy", "group H\n    public func twice<T>(value: T) -> (T, T)\n        T is PrimitiveInteger\n        T is not Copy\n        return (value, value)\n", "InvalidConstraint_Kd: public func twice<T>(value: T) -> (T, T)")]
     [InlineData("guard", "b1n4-noparent", "contract Tree\n    associate Child is Tree\ncontract PTree: Tree\n    Self.(Tree).Child is PTree\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is PTree\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
-    [InlineData("guard", "b1-r2-failed", IntTrees + "    bool is PrimitiveInteger\n" + IntTwice, "UnsatisfiedConstraint_Kd: contract IntTree: Tree | UnprovenConstraint_Kd: Self.(Tree).Child is IntTree | UnprovenConstraint_Kd: Self.(Tree).Value is PrimitiveInteger | UnsatisfiedConstraint_Kd: bool is PrimitiveInteger | UnprovenConstraint_Kd: public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)")]
+    [InlineData("guard", "b1-r2-failed", IntTrees + "    bool is PrimitiveInteger\n" + IntTwice, "UnsatisfiedConstraint_Kd: contract IntTree: Tree | UnprovenConstraint_Kd: Self.(Tree).Child is IntTree | UnprovenConstraint_Kd: Self.(Tree).Value is PrimitiveInteger | UnsatisfiedConstraint_Kd: bool is PrimitiveInteger | InvalidConstraint_Kd: public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)")] // R7-C3 C3-1b (F's C2 rulings 288 (2), 290; DECISIONS Q13, code): `twice`'s premise `T is IntTree` names an invalid declaration (IntTree's closed `bool is PrimitiveInteger` is Refuted; SPEC 8.3.1, 8.2.3), as `caller`'s `T is Marker` does: one record, same site
     [InlineData("guard", "b1-r12-userchild", "contract IntP: PrimitiveInteger\nstruct S\n    Self is IntP\n    public var tag: i32 = 0\n", "UnsatisfiedConstraint_Kd: Self is IntP")]
     public void APremiseSuppliesItsRefinementsByDemand(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);

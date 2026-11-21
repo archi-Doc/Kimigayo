@@ -13,6 +13,20 @@ internal static class CompilationTestHelper
     /// <summary>The prefix of a library document's location.</summary>
     internal const string Library = "Kimi/";
 
+    // The seam for a test that edits the Kimi library (PLAN G949 Stage 2 U3, design 4.1, x1): the edit runs on a library of the test's own,
+    // before any Binding reads it, and the test compilation is given that library (Compilation.UseLibrary), so no test writes a library
+    // another compilation reads: the library is frozen through the seam (KimiLibrary.Unfrozen for the compilation's target, the edit,
+    // KimiLibrary.Freeze), frozen or refused, and the test compilation reads it as it reads the process's.
+    internal static KimiLibrary UseEditedLibrary(Compilation c, Action<KimiLibrary> edit)
+    {
+        var kimigayo = Compilation.CreateForTest().Kimigayo; // A console-less compiler service, as Of's default preparation has.
+        var freeze = KimiLibrary.Unfrozen(c.TargetTriple, kimigayo, new Project(kimigayo));
+        edit(freeze.Library);
+        var library = KimiLibrary.Freeze(freeze);
+        c.UseLibrary(library);
+        return library;
+    }
+
     // Preparation and parsing only: callers choose when to Bind and analyze ownership.
     internal static Compilation Parse(string source, string? path = null)
     {
@@ -157,19 +171,32 @@ internal static class CompilationTestHelper
 
     private static void AssertLines(string form, string program, string records, TestDiagnostic[] errors)
     {
-        var actual = errors.Select(x => (x.Code, Line: LineAt(program, x.Span.Start))).Distinct().ToArray();
+        // SPEC 8.2.3: a premise error's record relates the premises that linked it (role `premise`); an entry naming them after ` <- `
+        // asserts them, in source order.
+        var actual = errors.GroupBy(x => (x.Code, Line: LineAt(program, x.Span.Start)))
+            .Select(g => (g.Key.Code, g.Key.Line, Premises: string.Join("; ", g.Select(x => LinkedPremises(program, x)).Where(static x => x.Length != 0).Distinct()))).ToArray();
         var entries = records.Split(" | ", StringSplitOptions.RemoveEmptyEntries);
         var expected = entries.Where(static x => x != "...").ToArray();
-        var named = expected.All(e => actual.Any(a => NamesRecord(e, a.Code, a.Line)));
+        var named = expected.All(e => actual.Any(a => NamesRecord(e, a.Code, a.Line, a.Premises)));
         var unnamed = actual.Any(a => a.Code is nameof(DiagnosticCode.Unsupported_Kd) or nameof(DiagnosticCode.InternalInvariant_Kd) && !expected.Any(e => e.StartsWith($"{a.Code}: ", StringComparison.Ordinal)));
         var counted = entries.LastOrDefault() == "..." || actual.Length == expected.Length;
-        Assert.True(named && !unnamed && counted, $"{form}: expected [{records}], found [{string.Join(" | ", actual.Select(static x => $"{x.Code}: {x.Line}"))}]");
+        Assert.True(named && !unnamed && counted, $"{form}: expected [{records}], found [{string.Join(" | ", actual.Select(static x => $"{x.Code}: {x.Line}{(x.Premises.Length == 0 ? null : " <- " + x.Premises)}"))}]");
     }
 
-    private static bool NamesRecord(string entry, string code, string line)
+    private static string LinkedPremises(string program, TestDiagnostic record)
+        => string.Join("; ", record.Related?.Where(static r => r.Role == "premise" && r.Span is not null).Select(r => LineAt(program, r.Span!.Value.Start)) ?? []);
+
+    private static bool NamesRecord(string entry, string code, string line, string premises)
     {
         var colon = entry.IndexOf(": ", StringComparison.Ordinal);
         var (wanted, at) = (entry[..colon], entry[(colon + 2)..]);
+        var linked = at.IndexOf(" <- ", StringComparison.Ordinal);
+        if (linked >= 0 && at[(linked + 4)..] != premises)
+        {
+            return false;
+        }
+
+        at = linked < 0 ? at : at[..linked];
         var category = wanted == "Resource" && Enum.TryParse<DiagnosticCode>(code, out var parsed) && DiagnosticEntries.TryGet(parsed, out var written) &&
             written.Category == Kimi.Diagnostics.DiagnosticCategory.Resource;
         return (wanted == code || wanted == "*" || category) && (at == "*" || at == line);

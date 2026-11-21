@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 //   composed once per candidate at its first solve (RetainChildRows, the probe's state) and retained, which every later solve of the
 //   candidate (CollectPositionPremises) and its selected call's judgment (JudgePositionRows) read, each leaf at its own sub-Type; both
 //   readers stay here until U5's shared relation judge. Its evidence leaves (IsEvidenceLeaf) are read by EvidenceNames and by a value
-//   call's solve (SolveValueCallOrigins, PLAN G504); the variables its rows name, by CollectPositionNames (J2, PLAN G936).
+//   call's solve (SolveValueCallOrigins, PLAN G504); the variables its rows name, by CollectPositionNames (J2, PLAN G936), and
+//   whether a candidate has a position without evidence at all (HasWaitingPosition, the same rows).
 // - Inputs: the arguments, the candidate's parameter patterns, solution and contributions (SlotSolution.Contribute, ContributePayloads);
 //   the position composition (Binding.ArgumentKinds.Positions.cs) and each part's contribution (PartContribution) for child rows.
 // - Outputs: PositionRow; SlotSolution.Rows, the candidate's root rows, a slice of CallEvaluation.Rows (rowScratch); childRows, the
@@ -135,10 +136,12 @@ public sealed partial class Binding
         solution.ChildSlice[1] = this.childRows.Count - solution.ChildSlice[0];
     }
 
-    // R2 (SPEC 15.6.4 step 3; DECISIONS BU-99, BU-104): a candidate's solve is bounded by the premise of each leaf row of its arguments
-    // that is a Signature position, at its own sub-Type under this solve's solution: the rows its selected call judges (JudgePositionRows),
-    // read from the retained composition. The first such row begins the solve's inference, and its callee Origins that no evidence names
-    // become premise-solved variables (DiscoverPremiseOrigins).
+    // R2 (SPEC 15.6.4 step 3, 15.3.6; DECISIONS BU-99, BU-104; PLAN G1115): every well-formedness premise of each instantiated input
+    // bounds the candidate's solve: each leaf row of its arguments and the receiver, at its own sub-Type under this solve's solution,
+    // walked at its pattern, once the slots are solved, so a slot's solution that replaced an argument's Origin bounds the per-call Origin
+    // of the layer above it (15.3.6: the meet of all upper bounds); its selected call requires those its argument's own Type does not
+    // satisfy (JudgeSelectedCall, JudgePositionRows). The first Signature row begins the solve's inference, and its callee Origins that no
+    // evidence names become premise-solved variables (DiscoverPremiseOrigins).
     private void CollectPositionPremises(ref SlotSolution solution)
     {
         this.RetainChildRows(ref solution);
@@ -168,6 +171,40 @@ public sealed partial class Binding
                 }
             }
         }
+
+        if (solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var index } function &&
+            this.CallReceiver(solution.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(solution.Call.Method)) is { } receiver &&
+            function.Parameters[index].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } receiverPattern)
+        {
+            var receiverType = this.SubstituteType(receiverPattern, solution.SlotOwner, solution.Types, solution.Lengths);
+            this.CollectLeafPremises(ref solution, new(-1, -1, 0, receiver, receiverPattern, receiverType, Contribution.Evidence));
+        }
+    }
+
+    // J2 (PLAN G936, G1127 R2): whether the candidate has a position without evidence, of the rows CollectPositionNames reads: a
+    // Signature root without child rows or a Signature leaf row (BU-104 R4: a root with child rows is read through them), so a join
+    // argument whose sources wait (an Evidence root over Signature leaves) has one. The one gate of SlotSolution.OpenWaited and
+    // RecordOpenings: a candidate without one opens and records nothing.
+    private bool HasWaitingPosition(in SlotSolution solution)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            this.ChildGroup(solution, i, out var start, out var end);
+            if (start == end && solution.Rows[i] is { Pattern: not null, Contribution: Contribution.Signature })
+            {
+                return true;
+            }
+
+            for (var j = start; j < end; j++)
+            {
+                if (this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j] is { Pattern: not null, Contribution: Contribution.Signature })
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // J2 (SPEC 10.5.1, 10.8, 15.3.6, 15.3.7; the owner's O-358 (a), O-362 (a); PLAN G936): the callee variables that the candidate's
@@ -296,12 +333,25 @@ public sealed partial class Binding
 
     private void CollectLeafPremises(ref SlotSolution solution, in PositionRow row)
     {
-        if (row is { Contribution: Contribution.Signature, Pattern: { StoresOrigin: true } pattern, Type: { } type })
+        if (row is not { Pattern: { StoresOrigin: true } pattern, Type: { } type })
+        {
+            return;
+        }
+
+        if (row.Contribution == Contribution.Signature)
         {
             solution.OriginInference ??= this.BeginOriginInference(solution.Call, solution.Binder);
             this.DiscoverPremiseOrigins(solution, solution.OriginInference, type);
-            this.CollectInputPremises(pattern, type, solution.OriginInference, solution.Call);
         }
+        else if (solution.OriginInference is null || KotoHelper.UnwrapParentheses(row.Part) is not { BindingFailure: BindingFailure.None } part ||
+            part.BoundType?.StoresOrigin == false)
+        {
+            // An Evidence position that carries an Origin has begun the inference (InferFrom); one that carries none, or a failed one
+            // (rule W, SPEC 23.1.2), supplies none, as at the judge (RequireInputPremises).
+            return;
+        }
+
+        this.CollectInputPremises(pattern, type, solution.OriginInference, solution.Call);
     }
 
     // C3 (G216 (a) U2.2 U2; SPEC 10.5.1, 15.6.4 step 3; DECISIONS R4-M164, BU-99, BU-104): an argument `at` is judged by its positions'

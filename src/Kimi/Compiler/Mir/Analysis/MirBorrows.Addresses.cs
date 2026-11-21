@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
-
 namespace Kimi.Compiler.Mir;
 
 // A5's raw addresses of the view (SPEC 15.6 Addresses, 5.2.1, 5.7; DECISIONS R4-M116, design B′ §4.1–§4.3 on B §5.1–§5.2): entries of the
@@ -13,8 +11,7 @@ namespace Kimi.Compiler.Mir;
 // address is no whole-value reference, and a call's write past a holder takes the Reached entry of the Place's Type), and it is never
 // a conflict candidate (MirBorrows.Candidates). A raw Ref issues its entry (loanAt); `ownAt` gives a layer Place's own-step entry.
 // A `during self` layer is decided from the MIR Place path, by the stored step Binding publishes (TyCtxt.StoredStep: Own), never by an
-// Origin. The untracked rule (PQ-2): a raw value formed with a direct address or exclusive Loan naming a local that is no holder also
-// carries Φ_E. A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and a Copy or Move of such an
+// Origin. A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and a Copy or Move of such an
 // enclosing Place, mark its location for a located Unsupported_Kd and make the view a producer (PQ-10; registered for X-2, PD28; removal
 // stage: the Loan records the layer's own-step entry and positions). An own-step entry makes its root borrowed, so the root's accesses are
 // listed for its departures (MirBorrows.OwnSteps), and the view a producer where an access may depart it (OwnSteps' MayDepart, D5,
@@ -41,7 +38,7 @@ internal sealed partial class MirBorrows
         {
             this.Work++;
             var component = type.Components[i];
-            if (component.Semantics == SemanticsKind.Raw || (this.visited.Add((component, null)) && this.Inline(component)))
+            if (component.IsPointer || (this.visited.Add((component, null)) && this.Inline(component)))
             {
                 return true;
             }
@@ -87,7 +84,7 @@ internal sealed partial class MirBorrows
         this.visited.Clear();
         foreach (var row in this.body.Projections)
         {
-            if (row.Type is { } type && (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } || this.Inline(cases.Type(type))))
+            if (row.Type is { } type && (type is { IsPointer: true } || this.Inline(cases.Type(type))))
             {
                 return true;
             }
@@ -122,12 +119,13 @@ internal sealed partial class MirBorrows
     // none, the value being the borrow's parents.
     private int Formation(MirPlace place, int location)
     {
-        var (count, deref, own) = (this.AddressWalk(place, location), -1, -1);
+        var (count, own) = (this.AddressWalk(place, location), -1);
         for (var i = 0; i < count; i++)
         {
-            deref = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : deref;
             own = this.walk[i].Class == MirStepClass.Own ? i : own;
         }
+
+        var deref = this.LastDeref(count);
 
         if (own > deref)
         {
@@ -149,7 +147,7 @@ internal sealed partial class MirBorrows
     // The own-step entry of a raw Place that is a `during self` layer (B §5.2 item 2), decided once per view; -1 for another Place.
     private int Layer(MirPlace layer, int location)
     {
-        if (this.body.TypeOf(layer) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        if (this.body.TypeOf(layer) is not { IsPointer: true })
         {
             return -1;
         }
@@ -184,12 +182,7 @@ internal sealed partial class MirBorrows
         }
 
         var count = this.placeSteps.Walk(place, reborrow: false, ref this.walk);
-        var direct = true;
-        for (var i = 0; i < count; i++)
-        {
-            direct &= this.walk[i].Class is not (MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw);
-        }
-
+        var direct = this.LastDeref(count) < 0;
         var address = new Loan
         {
             Root = this.Key(place.Root),
@@ -199,6 +192,7 @@ internal sealed partial class MirBorrows
             Holder = -1,
             Named = direct ? place.Root : -1,
             Direct = direct,
+            ReceiverSteps = count,
             OwnStep = key >= 0,
             Location = location,
         };
@@ -256,12 +250,13 @@ internal sealed partial class MirBorrows
         return -1;
     }
 
-    // Whether a Tuple or fixed-array Place inside a stored part encloses a `during self` layer inline (PQ-10, S4).
+    // Whether a Tuple or fixed-array Place inside a stored part encloses a `during self` layer inline (PQ-10, S4); an operand of no Type, a
+    // whole slot or derived temp read (PLAN G1073, MirCases.KnownTypeOf), encloses none (rule W).
     private bool Encloses(MirPlace place)
     {
-        var type = cases.TypeOf(place);
+        var type = cases.KnownTypeOf(place);
         this.visited.Clear();
-        return type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray && this.Owner(place, out var part, out var length) is var owner and >= 0 &&
+        return type is { Kind: BoundTypeKind.Tuple or BoundTypeKind.FixedArray } && this.Owner(place, out var part, out var length) is var owner and >= 0 &&
             this.Encloses(cases.TypeOf(place with { Projection = owner }), part, length, type);
     }
 
@@ -281,7 +276,7 @@ internal sealed partial class MirBorrows
             MirDataflow.Grow(ref this.positions, length + 1);
             this.positions[length] = i;
             var component = type.Components[i];
-            if (component.Semantics == SemanticsKind.Raw
+            if (component.IsPointer
                 ? types.StoredStep(instance, part, this.positions.AsSpan(0, length + 1)) == HoldStep.Own
                 : this.Encloses(instance, part, length + 1, component))
             {
@@ -291,27 +286,6 @@ internal sealed partial class MirBorrows
 
         return false;
     }
-
-    // The untracked rule (B′ §4.2, PQ-2): whether a set has a direct element naming a local that is no holder and granting a write there
-    // (an address or an exclusive Loan; a pointer formed through a shared borrow writes nothing, SPEC 5.2.1 condition 3), through which a
-    // raw pointer may place a Loan-carrying value where A5 tracks none.
-    private bool Untracked(int set)
-    {
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
-        {
-            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: < 0, Mode: not MirRefKind.Shared } entry &&
-                entry.Root < this.body.Locals.Length)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // A raw value formed (a raw Ref, a layer's read, a call result that may hold a raw pointer): Φ_E with it where it is untracked.
-    private int Formed(int value) => this.Untracked(value) ? this.sets.Union(value, this.escapedSet) : value;
 
     // The addresses' uses of one location: its Places with their accesses, an operand's Place read by a Copy, Move or PairAcquire.
     private struct Addressing(MirBorrows owner) : IMirUses

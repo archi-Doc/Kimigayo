@@ -3,13 +3,15 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
 
 /// <summary>A5 on values derived from Binding's errors (SPEC 23.1.2; docs/dev/DECISIONS.md R4-M109): an input Binding rejected after
-/// selection is its consumer's derived value, which carries no Loan, so A5 reports no conflict derived from it, while the independent
-/// records beside it stay.</summary>
+/// selection (a static Place's Borrow, the located limit) is its consumer's derived value, which carries no Loan, so A5 reports no
+/// conflict derived from it, while the independent records beside it stay; since R7-O1 b1 a call position's relation rejects no input
+/// (its row is A5's).</summary>
 public sealed partial class MirBorrowsTest
 {
     // R4's m1: st's kept row stores x's borrow into c, whose Type argument gives Loan facts only (R4-M147), beside a Bad input, then y
@@ -23,12 +25,45 @@ public sealed partial class MirBorrowsTest
     private const string Written = "    v = 2\n    let k = r@follow\n";
     private const string Moved = "struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\n";
 
-    // SPEC 23.1.2 (DECISIONS R4-M109): an argument Binding rejects after selection (an Origin relation it cannot prove) is an Opaque of the
-    // reference the call takes, so a result kept past the statement carries no Loan on a temporary: no ComparisonLoanConflict_Kd beside
-    // Binding's record, also where the rejected argument keeps a call that moves twice (A1's MovedPlace_Kd stays), while the true conflict of
-    // a literal's temporary borrowed for static stays (fail-before: a conflict at each rejected argument).
+    // PLAN G1022's writes: a holder whose update has a custom set and a standard get over S.Output (HS<bool> is ill-formed: bool is not
+    // Addable<bool>), and f's locals a write's right side reads, moves or borrows.
+    private const string Writes = "func take(x: string) -> i32 => 5\nfunc at(x: string) -> isize => 0\nfunc k(x: i32) -> i32 => x\nfunc use(x: string) => ()\nstruct HS<S>\n" +
+        "    S is Addable<S>\n    public var x: S.Output\n        set(value: S.Output) -> ()\n            storage = value@move\n" +
+        "    public init(x: S.Output) => self.x = x@move\nfunc f(c: bool, h: uniq/HS<HOLDER>)\n    var t = \"t\"\n    var s = \"s\"\n" +
+        "    var u = \"u\"\n    var y = 1\n    var m = 0\n    var xs: [2 of i32] = [0, 0]\n    var p = Pair.init()\n";
+
+    // The codes PLAN G1022's write rows observe: A5's Loan conflicts and A1's MovedPlace_Kd and UninitializedPlace_Kd.
+    private static DiagnosticCode[] WriteCodes => [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.UninitializedPlace_Kd];
+
+    // SPEC 23.1.2 (DECISIONS R4-M109; superseded for call positions only, ACallPositionsInputIsJudgedAsAValidOne): an argument Binding
+    // rejects after selection, here a static Place's Borrow (the located limit until P42, DECISIONS BU-25), is an Opaque of the reference
+    // the call takes, so a result kept past the statement carries no Loan on a temporary: no ComparisonLoanConflict_Kd beside Binding's
+    // record, also where the rejected argument keeps an index call that moves twice (A1's MovedPlace_Kd stays).
     [Fact]
     public void ARejectedInputFormsNoLoan()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            struct Tally
+                public var n: i32 = 0
+                public init() => ()
+            group State
+                public var tallies: [2 of Tally] = [Tally.init(), Tally.init()]
+            func pick(a: string, b: string) -> isize => 0
+            func kept(s: string)
+                let r = keep(State.tallies[pick(s@move, s@move)].n)
+                inspect(r)
+            """);
+        var program = AnalyzeUnsupported(c, ["State.tallies[pick(s@move, s@move)].n"]);
+        Assert.Equal(["kept: s MovedPlace_Kd"], Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
+    }
+
+    // SPEC 15.6.1, 15.6.5, 23.1.2 (R7-O1 b1, superseding DECISIONS R4-M109 for call positions): an argument whose call-position relation the
+    // premises do not prove (`c.n` and `chosen(...).n` outliving static) is no rejected input: the relation is a row the stratum judges, its
+    // record A5's, and the argument is built and judged as a valid one, so its Loans are the records a valid argument's are: none derived
+    // from borrowing through the shared `c`, A1's MovedPlace_Kd of a call that moves twice, and the true conflict of a literal's temporary
+    // borrowed for static.
+    [Fact]
+    public void ACallPositionsInputIsJudgedAsAValidOne()
     {
         var c = MirBuildTest.Compile(Prelude + """
             struct Tally
@@ -46,10 +81,11 @@ public sealed partial class MirBorrowsTest
                 let r = keepStatic(5)
                 inspect(r)
             """);
-        Assert.Equal(2, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         new Stratum(c.Types).Run(program);
+        Assert.Equal(["field", "kept"], Problems(c, program, [DiagnosticCode.UnprovenOriginRelation_Kd]).Select(static x => x.Split(':')[0]));
         Assert.Equal(["kept: s MovedPlace_Kd", "literal: 5"], Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
     }
 
@@ -121,11 +157,84 @@ public sealed partial class MirBorrowsTest
         }
     }
 
+    // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2 (PLAN G1022): a write whose target Binding rejected (an unresolved name, its index or
+    // referent, a missing member, an update of a Property over an ill-formed holder Type), also through parentheses, whose Place is the
+    // operand's (SPEC 3.4; DECISIONS Z16: the fact is read at the Place the target designates), is derived from that failure after its right
+    // side, which is evaluated first, so the right side's own failures stay: a second Move (A1) and a read under a live exclusive Loan (A5)
+    // (fail-before: neither), also where locating a Place right side evaluates its index. The write's securing of the right side at the
+    // destination Type (a Place's Copy or Reborrow) rests on the failure and adds nothing (before the rule, a Reborrow's InternalInvariant_Kd),
+    // nor does a right side that reads only the failed target, and the twin whose target resolves is accepted with none; no row has a
+    // construction record (Unsupported_Kd, InternalInvariant_Kd). Each row: the holder's Type argument, the body, the problems, and whether
+    // Binding accepts the program.
+    [Theory]
+    [InlineData("i32", "missing = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "m = take(t@move)", "", true)]
+    [InlineData("i32", "missing = k(missing)", "", false)]
+    [InlineData("i32", "let r = y@uniq\n    missing = k(y)\n    r@follow = 2", "f: k(y)", false)]
+    [InlineData("i32", "let r = y@uniq\n    r@follow = 2\n    m = k(y)", "", true)]
+    [InlineData("i32", "missing += take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "m += take(t@move)", "", true)]
+    [InlineData("i32", "p.nofield = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "p.a = take(t@move)", "", true)]
+    [InlineData("i32", "p.nofield = k(p.nofield)", "", false)]
+    [InlineData("i32", "missing[0] = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "xs[0] = take(t@move)", "", true)]
+    [InlineData("i32", "missing@follow = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "let q = m@uniq\n    q@follow = take(t@move)", "", true)]
+    [InlineData("i32", "missing = s@move\n    use(s@move)", "f: s MovedPlace_Kd", false)]
+    [InlineData("i32", "u = s@move", "", true)]
+    [InlineData("i32", "missing = if c => take(t@move) else => 2\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "m = if c => take(t@move) else => 2", "", true)]
+    [InlineData("bool", "h.x += take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "h.x += take(t@move)", "", true)]
+    [InlineData("bool", "h.x += h.x", "", false)]
+    [InlineData("i32", "let q = m@uniq\n    missing = q", "", false)]
+    [InlineData("i32", "let r = y@uniq\n    missing = y\n    r@follow = 2", "", false)]
+    [InlineData("i32", "missing = xs[at(t@move)]\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)] // Z16: the Place a parenthesized target designates (SPEC 3.4).
+    [InlineData("i32", "((missing)) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing) += take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing)++", "", false)]
+    [InlineData("i32", "(p.nofield) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "var q = missing\n    (q) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(m) = take(t@move)", "", true)]
+    public void AWriteWhoseTargetBindingRejectedBuildsItsRightSide(string holder, string body, string expected, bool accepted)
+    {
+        var c = MirBuildTest.Compile(Prelude + Writes.Replace("HOLDER", holder, StringComparison.Ordinal) + "    " + body + "\n");
+        Assert.Equal(accepted, c.Binding.Issues.Count == 0);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.IsRecord);
+        Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, WriteCodes));
+    }
+
+    // PLAN G1022's exposure (SPEC 23.1.1): valid programs Binding rejects only through its Unsupported_Kd limits reach the derived write
+    // too (tests/milestones/Milestone41.kimi's `self.selfWeak = selfWeak@move`, Milestone43.kimi's `owner.level = 30`), and keep the
+    // records they had before it: Binding's limits, no construction record, and (w2) the false UninitializedPlace_Kd the derived write's
+    // site gives the construction receiver `self` while `v` is uninitialized, a root of the target the site names as read (a PLAN open
+    // issue of SiteRoots, D-799's follow-up; not G1022's). Each row: the program, Binding's codes, the problems.
+    [Theory]
+    [InlineData("struct Node\n    public let w: Weak<rc/Node>\n    public let v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n        self.w = w@move\n        self.v = v\n", "Unsupported_Kd Unsupported_Kd", "init: self.w = w@move UninitializedPlace_Kd")]
+    [InlineData("open struct Device\n    public var level: i32\n        set(value: i32) -> ()\n            storage = value\n    protected init(level: i32)\n        self.level = level\nstruct Lamp : Device\n    public init(level: i32) : base(level) => ()\nfunc g()\n    var owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init(40))\n    owner.level = 30\n", "Unsupported_Kd", "")]
+    public void AWriteRejectedOnlyThroughALimitKeepsItsRecords(string source, string binding, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + source);
+        Assert.Equal(binding, string.Join(" ", c.Binding.Issues.Select(static x => x.Code)));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.IsRecord);
+        Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, WriteCodes));
+    }
+
     // SPEC 23.1.2 (G240; DECISIONS BU-36): a call over storage whose part Binding did not bind keeps the rows that hold whatever the part
     // is, so A5 reports its repaired program's Loan conflicts beside it and no Unsupported_Kd at the call (fail-before: Unsupported_Kd at
-    // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict that rests on the failed
-    // part is its dependent and goes (q1: `result` holds `first` only through the failed payload, its repair's conflict). An independent
-    // conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays its record at the call, the depth limit (the
+    // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict the check finds over holder
+    // states stays, also one whose value reaches its holder only through rows that hold whatever the failed part is (Selection: `result`
+    // receives choose's result, which the contract's relation ties to pair and so to first's Loan, and the value-flow rule H makes it a
+    // holder whatever its failed payload's Type; the check reads holder states, never which input failed: AGENTS Diagnostics, a record
+    // kept under DECISIONS Q13). An independent conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays its record at the call, the depth limit (the
     // owner's 「G272: (1)」, R4-M153), beside the failed part (a Field of height 66, a growing Field) and in its repair, and so do X and T,
     // which reach T's Box^64 Field.
     [Theory]
@@ -133,17 +242,17 @@ public sealed partial class MirBorrowsTest
     [InlineData(RetentionTest.Stash, "Missing", "i32", "g: x = 3")]
     [InlineData(RetentionTest.Pick, "missing", "s", "g: x = 2")]
     [InlineData(RetentionTest.Handle, "Missing", "i32", "")]
-    [InlineData(RetentionTest.Selection + "    first.value = 5\n    inspect(result@ref)\n", "missing", "source", "", "run: first.value = 5")]
+    [InlineData(RetentionTest.Selection + "    first.value = 5\n    inspect(result@ref)\n", "missing", "source", "run: first.value = 5")]
     [InlineData(Kept, "Missing", "i32", "g: y = 3")]
     [InlineData(RetentionTest.Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Fielded, "Missing", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Tall, "Missing", "i32", "g: f(b, null) OwnershipDepthLimit_Kd")]
     [InlineData(RetentionTest.Growing, "Missing", "i32", "h: f(g, null) OwnershipDepthLimit_Kd")]
     [InlineData(RetentionTest.Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "Missing", "i32", "g: fx(x, null) OwnershipDepthLimit_Kd | g: ft(t, null) OwnershipDepthLimit_Kd")]
-    public void ACallOverRejectedStorageKeepsItsRows(string source, string failed, string repaired, string expected, string? twin = null)
+    public void ACallOverRejectedStorageKeepsItsRows(string source, string failed, string repaired, string expected)
     {
         Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
-        Assert.Equal(twin ?? expected, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
+        Assert.Equal(expected, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
     }
 
     // SPEC 6.5.1, 23.1.2 (G242, G245's enum half; DECISIONS BU-37): an enum whose Case A Binding did not bind publishes its other Cases, so
@@ -187,6 +296,59 @@ public sealed partial class MirBorrowsTest
         Assert.Contains(record, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node.ToString().Split('\n')[0]}"));
         Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
         Assert.Equal(twin, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
+    }
+
+    // SPEC 13.3.1, 23.1.2 (PLAN G1073; rule W): a shift Binding rejected (a float's, NonIntegerOperand_Kd) is a temp of no Type, whose
+    // conversion inside a loop is stored into an element of an array the body later slices: a read value of no Type encloses no `during
+    // self` layer (Encloses), so A5 adds nothing to the shift's record (fail-before: an InvalidOperationException at MirCases.TypeOf from
+    // Encloses, the driver's CheckFaulted_Kd; the diagnostic snapshot's Milestone31 float-shift mutation).
+    [Fact]
+    public void ARejectedShiftsValueEnclosesNoLayer()
+    {
+        var c = MirBuildTest.Compile(
+            "func f() -> i32\n    let half = 1.5@bits<u32>@bits<f32>\n    var floatBytes: [4 of u8] = [0, 0, 0, 0]\n    for i in 0..4\n" +
+            "        floatBytes[i] = (half >> (i * 8))@wrap<u8>\n    let s = floatBytes[..]\n    return 0\n");
+        Assert.Equal([DiagnosticCode.NonIntegerOperand_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.Empty(Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
+    }
+
+    // PLAN G1073 (rule W; MirValidator's Bounded): an Opaque temp of no Type read as the first operand of an operator that takes its Type
+    // from its operands, with a Loan live across it so A5's step walk reads the operator, in a body MirValidator accepts: a value of no
+    // Type is no raw pointer, so Add and Sub keep no displaced value (Keeps) and A5 reports nothing (fail-before for Add and Sub: an
+    // InvalidOperationException at MirCases.TypeOf from Keeps; Mul is no displacement either way).
+    [Theory]
+    [InlineData("Add")]
+    [InlineData("Sub")]
+    [InlineData("Mul")]
+    public void AnOperandOfNoTypeIsNoRawPointer(string op)
+    {
+        var c = MirBuildTest.Compile("func w() -> i32 => 1\n");
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var body = new MirBody();
+        body.Reset(Body(program, "w").Key, default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, default));
+        var reference = c.Types.Reference(SemanticsKind.Ref, BoundType.I32);
+        MirPlace Local(BoundType? type, MirLocalKind kind) => new(body.AddLocal(new(type, kind, default)));
+        var (x, r) = (Local(BoundType.I32, MirLocalKind.Var), Local(reference, MirLocalKind.Var));
+        var (unknown, value) = (Local(null, MirLocalKind.Temp), Local(BoundType.I32, MirLocalKind.Temp));
+        SourceInfo At(int id) => new(new(0, id), 0, true);
+        int Constant(long n) => body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, n))));
+        var block = body.AddBlock();
+        body.Push(block, MirStatement.Assign(x, MirRvalue.Use(Constant(2)), At(1)));
+        body.Push(block, MirStatement.Assign(r, MirRvalue.Ref(MirRefKind.Shared, x, reference), At(2)));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(null, body.AddOpaque(new(0, 3), [])), At(3)));
+        var operands = body.AddOperand(MirOperand.Move(unknown));
+        _ = Constant(1);
+        body.Push(block, MirStatement.Assign(value, MirRvalue.Binary(Enum.Parse<MirBinaryOp>(op), operands, proven: true), At(4)));
+        body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, r, At(5)));
+        body.Push(block, MirStatement.Assign(new(0), MirRvalue.Use(body.AddOperand(MirOperand.Move(value))), At(6)));
+        body.Terminate(block, MirTerminator.Return(At(7)));
+        new Stratum(c.Types).Run(program, Validated(c, body));
+        Assert.Empty(program.Problems.All.ToArray());
     }
 
     // A5's Loan conflicts, A1's MovedPlace_Kd and limit records (a located Unsupported_Kd, the depth limit) over a program (with an

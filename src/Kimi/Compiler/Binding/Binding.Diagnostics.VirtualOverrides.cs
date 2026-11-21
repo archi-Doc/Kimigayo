@@ -1,8 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Converts retained SPEC 6.4 failures (declaration eligibility, overrides, direct base calls) to diagnostic facts and explanations.
-// Inputs are the recorded causes, comparisons and locations; outputs retain the original requirement, code and primary span, and the
-// explanation is the Note alone. Never select a slot or repeat an eligibility, signature or premise check.
+// Inputs are the recorded causes, comparisons and locations (a declaration's eligibility cause is its problem's Reason fact, published
+// with the rule it breaks); outputs retain the original requirement, code and primary span. Never select a slot or repeat an eligibility,
+// signature or premise check.
 
 using System.Diagnostics;
 using Kimi.Compiler.Parsing;
@@ -12,7 +13,25 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private void ReportOverrideFailure(FunctionKoto function, DiagnosticRequirement requirement, DiagnosticCode code)
+    // SPEC 6.4.1: the closed cause and the rule it breaks, the code's Label; each rule fits DiagnosticLimits.ValueLength, so none is elided.
+    private static void ReportVirtualDeclarationFailure(FunctionKoto function, DiagnosticCollection? store, in BindingProblem problem, VirtualDeclarationCause cause)
+    {
+        var rule = cause switch
+        {
+            VirtualDeclarationCause.NotStructFunction => "virtual and override require a direct struct instance function",
+            VirtualDeclarationCause.OwnGenericParameters => "a virtual slot has no own generic parameters; enclosing Type parameters remain allowed",
+            VirtualDeclarationCause.Receiver => "the receiver must be objref/Self or objuniq/Self; bare self means ref/Self",
+            VirtualDeclarationCause.NoBody => "a virtual or override function requires a body",
+            VirtualDeclarationCause.NotOpen => "an original virtual slot requires an open struct",
+            VirtualDeclarationCause.Private => "an original virtual slot cannot be private; omitted accessibility is private",
+            VirtualDeclarationCause.RedeclaredConstraints => "an override inherits constraints; do not redeclare them",
+            _ => throw new UnreachableException(),
+        };
+        (string, Koto, string?)[] related = [("declaration", function, "the virtual or override declaration")];
+        function.ReportIn(store, problem.Requirement, problem.Code, span: function.DispatchModifierSpan, evidence: [cause, rule], related: related);
+    }
+
+    private void ReportOverrideFailure(FunctionKoto function, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var failure = this.overrideFailures![function];
         var related = failure.First is null ? null : failure.Second is null
@@ -42,34 +61,16 @@ public sealed partial class Binding
         var span = failure.Span ?? (failure.At is null ? function.DispatchModifierSpan : null);
         if (report.Evidence is null)
         {
-            function.Report(requirement, DiagnosticCode.InternalInvariant_Kd, at: failure.At, span: span);
+            function.ReportIn(store, requirement, DiagnosticCode.InternalInvariant_Kd, at: failure.At, span: span);
             return;
         }
 
-        function.Report(requirement, code, at: failure.At, span: span, note: report.Note, evidence: report.Evidence, related: related);
+        function.ReportIn(store, requirement, code, at: failure.At, span: span, note: report.Note, evidence: report.Evidence, related: related);
     }
 
-    private void ReportVirtualDeclarationFailure(FunctionKoto function, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportBaseCallFailure(BaseReferenceKoto reference, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        var cause = this.virtualDeclarationFailures![function];
-        var note = cause switch
-        {
-            VirtualDeclarationCause.NotStructFunction => "virtual and override require a direct struct instance function",
-            VirtualDeclarationCause.OwnGenericParameters => "a virtual slot has no function-owned generic parameters; enclosing Type parameters remain allowed",
-            VirtualDeclarationCause.Receiver => "the receiver must be objref/Self or objuniq/Self; bare self means ref/Self",
-            VirtualDeclarationCause.NoBody => "a virtual or override function requires a body",
-            VirtualDeclarationCause.NotOpen => "an original virtual slot requires an open struct",
-            VirtualDeclarationCause.Private => "an original virtual slot cannot be private; omitted accessibility is private",
-            VirtualDeclarationCause.RedeclaredConstraints => "an override inherits constraints; do not redeclare them",
-            _ => throw new UnreachableException(),
-        };
-        (string, Koto, string?)[] related = [("declaration", function, "the virtual or override declaration")];
-        function.Report(requirement, code, span: function.DispatchModifierSpan, note: note, evidence: [cause], related: related);
-    }
-
-    private void ReportBaseCallFailure(BaseReferenceKoto reference, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var cause = this.baseCallFailures![reference];
+        var cause = this.baseCallFailures[reference];
         var note = cause switch
         {
             BaseCallCause.NotCall => "base has no value; use base.name(arguments)",
@@ -80,6 +81,6 @@ public sealed partial class Binding
             BaseCallCause.NotInstanceFunction => "base.name(arguments) must name an instance function; use Type qualification for receiverless functions",
             _ => throw new UnreachableException(),
         };
-        reference.Report(requirement, code, note: note, evidence: [cause]);
+        reference.ReportIn(store, requirement, code, note: note, evidence: [cause]);
     }
 }

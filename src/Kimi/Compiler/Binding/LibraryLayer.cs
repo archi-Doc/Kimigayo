@@ -8,8 +8,7 @@ namespace Kimi.Compiler;
 //   effect obligations' sources and the counts, S1-r1a; the local-region graph, PLAN G949's localRegions batch; the keepers, the
 //   Contract shapes, the effect bounds, the import declarations, the prune steps' sets, the closure index and the aliases, S1-r1b),
 //   which only the library pass writes (PLAN G949 S1-r1b); the interners' frozen levels (Types, Substs, Intersections, Lengths,
-//   Constraints; PLAN G949 Stage 2 U4); the library's size (Size: the library pass's table counts at its end,
-//   KimiLibrarySize's measure, O8 (a)); a refused library pass's refusal (Refusal, PLAN G949 Stage 2 U2a).
+//   Constraints; PLAN G949 Stage 2 U4); a refused library pass's refusal (Refusal, PLAN G949 Stage 2 U2a).
 // - Inputs: the library's registrations, routed here by ImplTable's key rule (a library Type symbol's module, SPEC 8.6.1); the library
 //   pass's writes to the part Binding's pass driver hands it.
 // - Outputs: Impls, which only the compilation's ImplTable reads and composes (its one composition point); Part, which only Binding's
@@ -17,16 +16,15 @@ namespace Kimi.Compiler;
 //   the refused library pass's Binding-side records as located facts, which Core publishes, and the first record the freeze counted,
 //   where Core publishes the refusal's own record (the syntax list stays its own records' owner, the module's DiagnosticOwner's: form (R));
 //   each interner level, which only its interner's find reads (PassPart.Levels) and only its insert writes, until the seal.
-// - Invariants: never a region of an overlay store and never copied into one; its stores fill and reset with each library pass, one
-//   per compilation: the library pass fills them once and S1-1's freeze stamps them Frozen (Binding.FreezeLibrary); written only by
-//   the library's registrations and the library pass. The library version is per compilation (HirTables.LibraryVersion, the run of
-//   the compilation's own Binding that froze the library), and the library HIR is identical in every Bind of a compilation after the
-//   freeze (G949 ruling 174). A refused layer's part is reset, nothing in it is Frozen and its Size is the refused pass's measure
-//   (Binding's FreezeLibrary refuses; the next Bind runs the library pass again); besides its refusal, which owns its Binding-side
-//   records and refers to the syntax list it does not own, it keeps only its interner levels' objects (immutable, found again by the
-//   next run), which no reader of a refused library reads. An interner level is filled until the library's table freezes (the seal,
-//   KimiLibrary.Frozen) and only read after it; no content of a level is in the compilation's level, so no frozen object holds a
-//   compilation-level one.
+// - Invariants: never a region of an overlay store and never copied into one; its stores are filled once per process and target, in
+//   the freeze compilation's library pass, and S1-1's freeze stamps them Frozen (Binding.FreezeLibrary); written only by the library's
+//   registrations and that pass; read by every compilation of the target (PLAN G949 Stage 2 U3). The library's publication version is
+//   Binding.Frozen once frozen (HirTables.LibraryVersion), the same in every compilation, and the library HIR is identical in each.
+//   A refused layer's part is reset and nothing in it is Frozen (Binding's FreezeLibrary refuses); a refused layer is never bound again
+//   (the driver reads its refusal first), so no compilation interns into its levels or reads them; besides its refusal, which owns its
+//   Binding-side records and refers to the syntax list it does not own, it keeps only its interner levels' objects (immutable). An
+//   interner level is filled until the library's table freezes (the seal, KimiLibrary.Frozen) and only read after it; no content of a
+//   level is in the compilation's level, so no frozen object holds a compilation-level one.
 // - Prohibitions: no field holds a Compilation, Binding, TyCtxt, DiagnosticOwner or diagnostic collection (C-376 condition 3); no
 //   reader composes it with an overlay outside the overlay's own accessor.
 internal sealed class LibraryLayer
@@ -35,12 +33,8 @@ internal sealed class LibraryLayer
     internal ImplTable Impls { get; } = new();
 
     /// <summary>Gets the library pass's part of the per-pass collections, the published lists and the local-region graph (Binding's pass
-    /// driver). Its node list starts at the library's stated count, a library-only table (KimiLibrarySize).</summary>
-    internal Binding.PassPart Part { get; } = new(KimiLibrarySize.Stated.Nodes);
-
-    /// <summary>Gets or sets the library's size: the library pass's table counts at its end (KimiLibrarySize's measure; Binding's pass
-    /// driver writes it).</summary>
-    internal KimiLibrarySize.Tables Size { get; set; }
+    /// driver).</summary>
+    internal Binding.PassPart Part { get; } = new();
 
     /// <summary>Gets or sets L (PLAN G949 S1-1, d2b-d 1.4): the last Type id the library pass gave, so every Type the library made has an
     /// id at most this; Binding's freeze writes it.</summary>
@@ -50,7 +44,7 @@ internal sealed class LibraryLayer
     // lengths and constraints, each keyed as its interner keys it. Each interner's one find reads its level here first, then the
     // compilation's own; an insert goes here until the library's table freezes (the seal, Binding.FreezeLibrary) and to the compilation's
     // level after it, so equal content is one object in both levels and no frozen object holds a compilation-level one.
-    internal Dictionary<int, List<BoundType>> Types { get; } = new(KimiLibrarySize.Stated.TypeKeys);
+    internal Dictionary<int, List<BoundType>> Types { get; } = new();
 
     internal Dictionary<int, List<Subst>> Substs { get; } = new();
 
@@ -58,7 +52,7 @@ internal sealed class LibraryLayer
 
     internal Dictionary<(LengthOperation Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right, BoundType? Values), BoundLength> Lengths { get; } = new();
 
-    internal Dictionary<ConstraintKey, BoundConstraint> Constraints { get; } = new(KimiLibrarySize.Stated.Constraints);
+    internal Dictionary<ConstraintKey, BoundConstraint> Constraints { get; } = new();
 
     /// <summary>Gets or sets the refusal of the latest library pass (PLAN G949 Stage 2 U2a; design 5.3): its Binding-side records, kept
     /// while its tables stood, and whether the library module's syntax list held a record; null for a library its freeze did not refuse.

@@ -53,10 +53,10 @@ public sealed partial class Binding
     // SPEC 13.5.6: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores, Never too.
     private static bool BorrowsWrittenSlot(BoundType type)
         => AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
-            ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || IsRuntimeRecordType(type) ||
+            TyCtxt.IsStoredReference(type) || type.IsPointer || type.IsScalar || IsRuntimeRecordType(type) ||
             IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
 
-    // Unit, string and Never: the intrinsic Types the runtime's records lay out (IMPL 21.1.3), which ScalarTypes does not cover.
+    // Unit, string and Never: the intrinsic Types the runtime's records lay out (IMPL 21.1.3), which are no Scalar (BoundType.IsScalar).
     private static bool IsRuntimeRecordType(BoundType type)
         => ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceEquals(type, BoundType.Never);
 
@@ -75,7 +75,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
 
-        if (this.IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(type, scope))
+        if (this.IsBarePlace(conversion.Left) && this.ProveCopy(type, scope) != ConstraintProof.Proven)
         {
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
@@ -90,7 +90,7 @@ public sealed partial class Binding
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
         if (!this.OffersTake(conversion.Left) ||
-            (this.ReceiverOfPart(conversion.Left) is not null && !this.CopiesInEveryCase(type, this.ConstraintScope(conversion))))
+            (this.ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, this.ConstraintScope(conversion)) != ConstraintProof.Proven))
         {
             return this.FailTake(conversion, conversion.Left);
         }
@@ -119,7 +119,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || ElementAccess.IsSyntax(this, projection)) ||
+            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || this.IsSyntax(projection)) ||
                 projection.Left.BoundType?.Semantics != SemanticsKind.Owner)
             {
                 break;
@@ -191,7 +191,7 @@ public sealed partial class Binding
                 return Complete(conversion, reference);
             }
 
-            if (reference is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] })
+            if (reference.SafeReferent is { } referent)
             {
                 Complete(conversion.Right, referent);
                 conversion.ConversionBinding = ConversionBinding.Follow;
@@ -251,8 +251,7 @@ public sealed partial class Binding
 
             if (TryAdaptationSelector(actual, out _) && IsBorrow(pattern.Semantics))
             {
-                var origin = pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq
-                    ? this.SlotOrigin(conversion.Left) : this.PlaceOrigin(conversion.Left);
+                var origin = pattern.SafeReferent is not null ? this.SlotOrigin(conversion.Left) : this.PlaceOrigin(conversion.Left);
                 var borrowed = this.types.Reference(pattern.Semantics, pattern.Components[0], pattern.Origin ?? origin);
                 return this.BindCaseAdaptation(conversion, scope, actual, borrowed);
             }
@@ -270,17 +269,17 @@ public sealed partial class Binding
 
             // SPEC 13.5.6: a typed borrow names exactly the stored Type of the written slot; it selects no
             // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && !ReferenceEquals(actual, pattern.Components[0]))
+            if (pattern.SafeReferent is { } referent && !ReferenceEquals(actual, referent))
             {
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawRooted(this, conversion.Left))
+            if (pattern.SafeReferent is not null && pattern.Origin is null && this.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
 
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
+            if (pattern.SafeReferent is { } stored && pattern.Origin is null && ReferenceEquals(actual, stored) &&
                 this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
                 var storage = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
@@ -331,7 +330,7 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (!this.CopiesInEveryCase(copied, this.ConstraintScope(conversion)))
+            if (this.ProveCopy(copied, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
             {
                 return this.Fail(conversion, BindingFailure.NonCopyOperand);
             }
@@ -388,7 +387,7 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawRooted(this, conversion.Left))
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && this.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, semantics, operandType);
             }
@@ -441,7 +440,7 @@ public sealed partial class Binding
         var target = this.BindType(conversion.Right, scope);
         if (target is not null)
         {
-            target = this.SubstituteIdentityPremises(target, scope);
+            target = this.ClassForm(target, scope, out _);
             Complete(conversion.Right, target);
         }
 
@@ -502,7 +501,7 @@ public sealed partial class Binding
             return this.BindObjectAdaptation(conversion, scope, source, target);
         }
 
-        if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
+        if (source.IsPointer || target.IsPointer)
         {
             return this.CompletePointerConversion(conversion, source, target);
         }
@@ -589,7 +588,7 @@ public sealed partial class Binding
 
         // SPEC 13.5.3: an owned target never extracts its Core through a safe reference (only the value read of a read Type does,
         // above). Other ownership/borrow adaptations require their own verified paths.
-        var unsupported = !SupportsIdentityAcquisition(target) || (!SupportsIdentityAcquisition(source) && source.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq));
+        var unsupported = !SupportsIdentityAcquisition(target) || (!SupportsIdentityAcquisition(source) && source.SafeReferent is null);
         return this.Fail(conversion, unsupported ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, unsupported);
     }
 }

@@ -93,10 +93,11 @@ public sealed partial class Binding
     // before any request), one per class key; each seed's available arithmetic rows (FirstRows: at every depth, through its identity
     // class) are a pair's first premise (ValidateArithmeticRows). A scope with none examines nothing: its view is its parent's, judged first. The
     // contradiction is reported once, at the first scope where its two premises meet: the validation judges a parent before its members,
-    // and a failed environment is neither read here nor supplies a row, so a member's view never meets its parent's pair.
+    // a contradiction fails its scope's own premises after the step (ValidateConstraintEnvironments, F's C2 ruling 320), and a failed
+    // premise is neither read here nor supplies a row, so a member's view never meets a pair whose derivation reads one.
     private bool ValidateArithmeticDirections(BindingScope scope)
     {
-        if (scope.Constraints is not { Invalid: false, Facts.Count: > 0 })
+        if (scope.Constraints is not { Facts.Count: > 0 })
         {
             return true;
         }
@@ -106,7 +107,7 @@ public sealed partial class Binding
         var query = this.visitedParts.Begin(this.storageVersion);
         for (var stating = scope; stating is not null; stating = stating.Parent)
         {
-            if (stating.Constraints is not { Invalid: false } environment)
+            if (stating.Constraints is not { } environment)
             {
                 continue;
             }
@@ -204,7 +205,7 @@ public sealed partial class Binding
         return found;
     }
 
-    private void ReportArithmeticSelection(Koto use, DiagnosticRequirement requirement, ArithmeticSelectionFailure failure)
+    private void ReportArithmeticSelection(Koto use, DiagnosticCollection? store, DiagnosticRequirement requirement, ArithmeticSelectionFailure failure)
     {
         var related = new (string Role, Koto Node, string? Message)[failure.Plan.Candidates.Count];
         for (var i = 0; i < related.Length; i++)
@@ -222,7 +223,8 @@ public sealed partial class Binding
             ArithmeticSelectionCause.Ambiguous => "Multiple proven conformances fit the counterpart structure",
             _ => throw new UnreachableException(),
         };
-        use.Report(
+        use.ReportIn(
+            store,
             requirement,
             DiagnosticCode.ArithmeticSelection_Kd,
             ArithmeticOperatorText(ArithmeticContractSyntax.Operator(failure.Id)),

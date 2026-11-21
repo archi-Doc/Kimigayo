@@ -145,6 +145,15 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets the mutable member list, creating it on first use.</summary>
     protected List<Koto> KotoList => this.kotoList ??= new(4);
 
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields()
+    {
+        _ = this.GenericArguments;
+        _ = this.TypeConstraints;
+        _ = this.Origins;
+        _ = this.KotoList;
+    }
+
     /// <summary>Gets nested Declaration Containers.</summary>
     public IEnumerable<DeclarationContainerKoto> NestedDeclarationContainers
         => this.NestedContainers;
@@ -727,7 +736,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
 
             reader.Advance();
-            var propertyKoto = Parser.ParseProperty(ref reader, ref token);
+            var propertyKoto = Parser.ParseProperty(ref reader, ref token, this);
             if (propertyKoto is not null)
             {
                 if ((this is ContractKoto) != propertyKoto.IsContractRequirement || this is EnumKoto)

@@ -29,8 +29,8 @@ internal sealed partial class MirBuilder
     // The roots of the Opaque site formed for a node (Opaque). SPEC 23.1.2 (DECISIONS R5-M63): an Error node's kept operands are evaluated
     // first, in syntax order, each as its Place (a value in a temp) and never acquired, and the site names their roots instead of their
     // syntax's, so a moved operand is not used again there; so does a part built already where it is located (Located: an expansion's
-    // operand). An Error node located already had its kept operands evaluated there, once, so a consumer's own derived value of it names
-    // only the located root (DECISIONS R4-M109).
+    // operand, or a derived write's right side, DerivedWrite). An Error node located already had its kept operands evaluated there, once,
+    // so a consumer's own derived value of it names only the located root (DECISIONS R4-M109).
     private void SiteRoots(Koto node)
     {
         var start = this.kept.Count;

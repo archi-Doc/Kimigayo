@@ -128,6 +128,27 @@ public class DiagnosticPrecisionTest
     [InlineData("func f(a: i32) -> string\n    if a == 1 => return \"x\"\nfunc g()\n    let text = \"a\"\n    let first = text@move\n    let second = text@move\npublic func main() => ()", "FunctionFallthrough_Kd,MovedPlace_Kd")]
     [InlineData("func f(a: i32) -> i32\n    let s: string\n    Console.writeLine(s)\n    if a == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UninitializedPlace_Kd")]
     [InlineData("public func main()\n    let g = func (a: i32) -> i32\n        if a == 1 => return 1\n    _ = g", "FunctionFallthrough_Kd")]
+    // SPEC 14.9.3: an exit to an outer target leaves the inner target that receives its own exit, in either order, so the outer loop
+    // completes and the body falls through; with only a continue to it, the outer loop never completes.
+    [InlineData("func f(flag: bool) -> i32\n    label outer: loop\n        label inner: loop\n            if flag => exit to outer\n            exit to inner\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label outer: loop\n        label inner: loop\n            if flag => exit to inner\n            exit to outer\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    let wrong: i32 = true\n    label outer: loop\n        label inner: loop\n            if flag => exit to inner\n            continue to outer\npublic func main() => ()", "TypeMismatch_Kd")]
+    // SPEC 14.1, 14.3, 14.5.2, 14.7, 14.8 (the Front's B6a coverage): an unlabeled exit skips a `do` it is not addressed to; an exit to a
+    // `do` and a yield to a selection pass through a loop; a labeled selection or match receives its own yield; an exit to the outer loop
+    // leaves a selection receiving its own yield (with a continue instead, the loop never completes); three levels close a target two
+    // cells below the chain's head (with a continue to the outermost, it never completes); an unlabeled yield in Discard Context goes to
+    // none. Rows UnlabeledExitSkipsDo, DoThroughLoop, IfYield, MatchYield, YieldThroughLoop, ExitThroughSelection,
+    // ContinueThroughSelection, ThreeLevels, ThreeLevelsContinue, UnlabeledYieldDiscard.
+    [InlineData("func f() -> i32\n    loop\n        do\n            exit\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f() -> i32\n    label d: do\n        loop\n            exit to d\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label s: if flag\n        yield to s\n    else => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(value: Option<i32>) -> i32\n    label m: match value\n        .Some(_) => yield to m\n        .None => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label s: if flag\n        loop\n            yield to s\n    else => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label outer: loop\n        label s: if flag\n            if flag => exit to outer\n            yield to s\n        else => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label outer: loop\n        label s: if flag\n            if flag => continue to outer\n            yield to s\n        else => return 1\npublic func main() => ()", "")]
+    [InlineData("func f(flag: bool) -> i32\n    label a: loop\n        label b: loop\n            label c: loop\n                if flag => exit to c\n                if flag => exit to a\n                exit to b\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label a: loop\n        label b: loop\n            label c: loop\n                if flag => exit to c\n                if flag => continue to a\n                exit to b\npublic func main() => ()", "")]
+    [InlineData("func f(flag: bool) -> i32\n    if flag\n        yield\n    else => return 1\npublic func main() => ()", "UnlabeledYieldTarget_Kd")]
     [InlineData("struct S\n    public var v: i32 = 0\n    public computed w: i32\n        get(self: ref/Self) -> i32\n            if self.v == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
     // A fallthrough that written syntax reaches beside an unresolved condition is direct; one only past an unresolved expression is
     // derived from it (Binding.GuessedCompletion), so the failure alone is published.
@@ -554,7 +575,7 @@ public class DiagnosticPrecisionTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, UnsupportedProbe + library);
+        CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + library));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         c.Bind();
         var records = c.Binding.Issues.Select(x => ReferenceEquals(x.Node.Kotonoha, c.Kotonoha) ? At(source, x.Node.Span.Start, x.Code) : $"{x.Code} elsewhere at {x.Node.Span.Start}");
@@ -573,7 +594,7 @@ public class DiagnosticPrecisionTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n");
+        CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
         Assert.Equal(default, c.Bind());
         Assert.False(c.Check());

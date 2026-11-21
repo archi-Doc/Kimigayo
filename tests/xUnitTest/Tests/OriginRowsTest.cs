@@ -88,7 +88,7 @@ public sealed partial class OriginRowsTest
                 var slice = c.Types.OriginRows(o.Body);
                 var longer = Atom(c, o.Body, o.Longer!, o.Use);
                 var shorter = Atom(c, o.Body, o.Shorter!, o.Use);
-                var count = slice.Rows.Take(slice.LayerStart).Count(x => x.Site == SourceRef.Of(o.Use) && slice.Atoms[x.Longer] == longer &&
+                var count = slice.Rows.Take(slice.LayerStart).Count(x => x.Site == SourceRef.Of(o.Site ?? o.Use) && slice.Atoms[x.Longer] == longer &&
                     slice.Atoms[x.Shorter] == shorter && x.Equality == o.Equality && ReferenceEquals(x.Destination, o.Type));
                 Assert.True(count == (ReferenceEquals(longer.Atom, shorter.Atom) ? 0 : 1), $"{name}: {count} rows at {o.Use}");
             }
@@ -130,13 +130,14 @@ public sealed partial class OriginRowsTest
 
     // DECISIONS R4-M101 E2, E3 and BU-26: rows formed while Binding binds a declaration (an instance Field's or computed Property's declared
     // Type, a requirement's or an override's signature) are formed with no body and consumed by Binding's declaration judge, so no row whose
-    // Use lies in a declaration part remains, and none is in a slice. The second form is PLAN G214's: its header and getter result records.
+    // Use lies in a declaration part remains, and none is in a slice. The second form is PLAN G214's: its header and getter result assume
+    // the getter's result well formed (SPEC 11.4, 11.5, 15.6.1), so it is complete; the first, a Field's nested borrow, is no result.
     // BU-89 (SPEC 15.3.4): a named nested or root function's row naming an enclosing body's Origin, a fixed Origin of it, is the judge's
     // too: an input's (also in a Closure body or naming a document-local) and a nested Function Type's result its inputs entail are its
     // premises, and one they do not entail is Binding's record (dev left each row to the view's InternalInvariant_Kd finding, PLAN G409).
     [Theory]
     [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", false)]
-    [InlineData("struct Pair {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", false)]
+    [InlineData("struct Pair {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", true)]
     [InlineData("contract C\n    func f(x: ref/(ref/i32 during b) during a) -> i32\n", true)]
     [InlineData("open struct Base\n    public init() => ()\n    public virtual func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 0\nstruct Derived : Base\n    public init() : base() => ()\n    override func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 1\n", true)]
     [InlineData(Local + "    func put(slot: uniq/Array<ref/i32 during r>) -> i32 => 0\n    return 0\n", true)]
@@ -332,10 +333,10 @@ public sealed partial class OriginRowsTest
     }
 
     // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a
-    // WellFormed row (published without a destination); the fit of the local's initializer stays a Fit row.
+    // WellFormed row (published without a destination); the fit of the local's initializer stays a Fit row, at the initializer (H11b D5).
     [Theory]
     [InlineData("ref/(ref/i32 during b) during a", "WellFormed")]
-    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "Fit")]
+    [InlineData("slot", "Fit")]
     public void ATypeOccurrencesRelationIsAWellFormedRow(string site, string source)
     {
         const string Program = "func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n" +
@@ -460,6 +461,43 @@ public sealed partial class OriginRowsTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
+    // PLAN G492-a (ii) with (iii) (the owner's O-363 (a), O-375 Q1 (a)): a Callable comparison's row names a `let` region of its body as
+    // the region, an Inferred atom, and the view forms that region's bound beside it, `value outlives region`, at the row's site and
+    // under its case mask; a MIR read of the local at a MIR site resolves to the value's atom, never the region's. r5n: `h`'s clause
+    // leaves `z outlives x` over two `let` regions; r5nq (`let z = x`): both values are `p`, so the row is left (the owner's O-400 (b): a
+    // comparison leaves a row only where its ends' values prove it; r5n, z's value the Borrow of x, is the located limit there).
+    [Fact]
+    public void AComparedLetRegionIsAnAtomBoundedByItsValue()
+    {
+        var (c, outer, slice) = ComparedSlice("r5nq");
+        var (x, z) = (Slot(c, outer, slice, "x"), Slot(c, outer, slice, "z"));
+        Assert.Equal((OriginAtomKind.Inferred, OriginAtomKind.Inferred, OriginAtomKind.Fixed), (slice.Atoms[x.Region].Kind, slice.Atoms[z.Region].Kind, slice.Atoms[x.Value].Kind));
+        var compared = Assert.Single(slice.Rows, r => r.Longer == z.Region && r.Shorter == x.Region);
+        Assert.Contains(slice.Rows, r => r is { Source: OriginRowSource.Fit, Equality: false } && (r.Longer, r.Shorter, r.Site, r.CaseMask) == (x.Value, x.Region, compared.Site, compared.CaseMask));
+        Assert.Contains(slice.Rows, r => r is { Source: OriginRowSource.Fit, Equality: false } && (r.Longer, r.Shorter, r.Site, r.CaseMask) == (z.Value, z.Region, compared.Site, compared.CaseMask));
+        Assert.DoesNotContain(slice.Rows, r => r.Site != compared.Site && (r.Longer == x.Region || r.Shorter == x.Region || r.Longer == z.Region || r.Shorter == z.Region));
+    }
+
+    // SPEC 15.3.6 (PLAN G492-a (ii), design §13.13; TyCtxt.MeetOperand): an operand of a table meet is named as the meet holds it, never
+    // resolved again at the asking site. veqzq (veqz with `let z = x`, whose values prove the row; O-400 (b)): the meet a comparison's
+    // row names holds x's region, and its operand is that region's
+    // atom, the one the value row `p outlives region` bounds, whatever site asks; resolved at a site it was the value's atom, `p`'s, so
+    // the region's bound never reached the meet.
+    [Fact]
+    public void ATableMeetsOperandIsNamedAsTheMeetHoldsIt()
+    {
+        var (c, outer, slice) = ComparedSlice("veqzq");
+        var x = Slot(c, outer, slice, "x");
+        var meet = Assert.Single(Enumerable.Range(0, slice.Atoms.Count), i => slice.Atoms[i].Atom is { Kind: OriginKind.Intersection } atom &&
+            atom.Operands.Any(o => ReferenceEquals(o, slice.Atoms[x.Region].Atom)));
+        var operands = Operands(slice.Rows[0].Site);
+        Assert.Contains(x.Region, operands);
+        Assert.Contains(slice.Rows, r => r.Longer == x.Value && r.Shorter == x.Region);
+        Assert.Equal(operands, Operands(slice.Rows[^1].Site));
+
+        int[] Operands(SourceRef site) => [.. Enumerable.Range(0, slice.Atoms[meet].Atom.Operands.Count).Select(i => c.Types.MeetOperand(outer.Key.Body, meet, i, site))];
+    }
+
     // The census sets as MirCensusTest loads them (R4-M12): the library, the milestones, the goldens and the accepting SPEC variants.
     private static IEnumerable<(string Name, Compilation Compilation, bool Library)> Census()
     {
@@ -495,6 +533,28 @@ public sealed partial class OriginRowsTest
     // An atom's entry in a body's table, read through the view at a syntax site (the view takes MIR's SourceRef and returns the index).
     private static OriginAtomEntry Atom(Compilation c, ExecutableBody body, BoundOrigin origin, Koto site)
         => c.Types.OriginRows(body).Atoms[c.Types.OriginAtom(body, origin, SourceRef.Of(site))];
+
+    // A row of OriginPremiseCatalogTest's ComparisonRegionRows by name: its compilation, `outer`'s MIR body and that body's slice.
+    private static (Compilation Compilation, MirBody Outer, Binding.OriginRowSet Slice) ComparedSlice(string row)
+    {
+        var c = MirBuildTest.Compile(OriginPremiseCatalogTest.ComparisonRegionRows.Single(x => x.Data.Item1 == row).Data.Item2 + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        var outer = Bodies(c).Single(static x => x.Key.Decl?.Name == "outer");
+        return (c, outer, c.Types.OriginRows(outer.Key.Body));
+    }
+
+    // A `let` local's slot in a body's table: its region's own atom, found by identity since no MIR site resolves to it, and the atom its
+    // MIR Type's Origin resolves to at the local's declaration, the value's.
+    private static (int Region, int Value) Slot(Compilation c, MirBody body, Binding.OriginRowSet slice, string name)
+    {
+        var local = body.Locals.ToArray().Single(x => x.Name == name);
+        var value = c.Types.OriginAtom(body.Key.Body, local.Type!.Origin!, body.Subject(local.Source));
+        var region = Enumerable.Range(0, slice.Atoms.Count).Where(i => ReferenceEquals(slice.Atoms[i].Atom, local.Type.Origin)).DefaultIfEmpty(-1).Single();
+        var table = string.Join(" ", slice.Atoms.Select(static (x, i) => $"{i}:{x.Kind}:{x.Atom.Kind}")) + "; " +
+            string.Join(" ", slice.Rows.Select(static x => $"{x.Longer}>{x.Shorter}{(x.Equality ? "=" : string.Empty)}:{x.Source}"));
+        Assert.True(region >= 0 && region != value, $"{name}: region {region}, value {value}; {table}");
+        return (region, value);
+    }
 
     // A row's Site as its syntax's first line (the view publishes a SourceRef).
     private static string Site(Compilation c, OriginRow row) => First(c.SyntaxOf(row.Site));

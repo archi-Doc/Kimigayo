@@ -24,7 +24,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly IndexVisitor indexer;
-    private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
     private TestSyntaxVisitor? testSyntaxVisitor;
 
     // The indexer resets every semantic field of the pass's modules before any header or expression is evaluated: its source trees and
@@ -374,7 +373,11 @@ public sealed partial class Binding
                     this.Scope = binding.GetScope(iteration.Body, this.Scope);
                     for (var i = 0; i < iteration.Bindings.Count; i++)
                     {
+                        // A loop's binding name is a node of the pass as a pattern's binding is: visited (its rows reset, then
+                        // declared), so the summary counts its state and publishes its failure, such as a repeated name's (SPEC 6.1,
+                        // 23.1.2), which no other walk reaches.
                         var name = iteration.Bindings[i];
+                        this.Visit(name);
                         binding.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, this.Scope);
                     }
 
@@ -427,7 +430,7 @@ public sealed partial class Binding
                         if (!binding.symbols.TryGetValue(function, out var closureSymbol))
                         {
                             closureSymbol = new(string.Empty, BindingSymbolKind.Function, function, this.Scope);
-                            binding.symbols.Add(function, closureSymbol);
+                            DeclaredSymbols.Add(function, closureSymbol);
                         }
 
                         closureSymbol.Scope = this.Scope;
@@ -492,12 +495,8 @@ public sealed partial class Binding
                     typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : binding.types.Parameter(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
                     if (parameter.SemanticsParameter is not null)
                     {
-                        if (!binding.pairSymbols.TryGetValue(parameter, out var semanticsSymbol))
-                        {
-                            semanticsSymbol = new(parameter.SemanticsParameter, BindingSymbolKind.SemanticsParameter, node, this.Scope);
-                            binding.pairSymbols.Add(parameter, semanticsSymbol);
-                        }
-
+                        // The Semantics symbol is the kept target symbol's Pair (its listed slot, DECISIONS BU-220), made once.
+                        var semanticsSymbol = typeSymbol.Pair ?? new(parameter.SemanticsParameter, BindingSymbolKind.SemanticsParameter, node, this.Scope);
                         semanticsSymbol.Scope = this.Scope;
                         semanticsSymbol.Pair = typeSymbol;
                         typeSymbol.Pair = semanticsSymbol;

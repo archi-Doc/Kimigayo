@@ -39,14 +39,6 @@ public sealed partial class Binding
     private readonly ImplicitConstructorDecisionRows implicitConstructorDecisions;
     private readonly List<FunctionKoto> judgedConstructors = new();
     private readonly List<FunctionKoto> withdrawnConstructors = new();
-    private Dictionary<FunctionKoto, OmittedBaseSelection>? omittedBaseQueries;
-
-    /// <summary>Gets or sets a value indicating whether each declaration pass records the omitted base query of every explicit
-    /// constructor whose base clause is omitted, for comparison with its bound base call.</summary>
-    internal bool CaptureOmittedBaseQueries { get; set; }
-
-    /// <summary>Gets the omitted base queries of the latest declaration pass when <see cref="CaptureOmittedBaseQueries"/> is set.</summary>
-    internal IReadOnlyDictionary<FunctionKoto, OmittedBaseSelection>? OmittedBaseQueries => this.omittedBaseQueries;
 
     // SPEC 6.3.6: the omitted base clause's ordinary selection over the direct base's constructors with no arguments, made from the
     // derived constructor's scope with the evaluation and classification of a call (Binding.CallSelection), without publishing. The
@@ -61,18 +53,18 @@ public sealed partial class Binding
         }
 
         var candidates = FunctionGroup.Of(group);
+        var evaluated = this.RentCandidates(candidates, call.Method, this.scopes[constructor]);
         var shape = MeasureCandidates(candidates, true);
         var obligationCount = this.obligations.Count;
         var acquisition = this.acquisitionFailure;
         var failedCause = this.failedCause;
         var requirementContract = this.activeRequirementContract;
         var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
-        var frames = this.RentFrames(shape.Count, shape.Generics);
+        var frames = this.RentFrames(shape.Count, shape.Generics, this.scopes[constructor]);
         var mapping = this.indexScratch.Rent(1);
         var used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
         var origins = this.originScratch.Rent(shape.Origins);
         var inputs = this.originScratch.Rent(shape.InputOrigins);
-        var evaluated = this.candidateScratch.Rent(shape.Count);
         var operations = this.argumentOperationScratch.Rent(shape.Count);
         var childSlices = this.indexScratch.Rent(shape.Count * 2); // R3: each candidate's (empty) slice; the call has no argument.
         try
@@ -276,19 +268,6 @@ public sealed partial class Binding
                 (decision.Winner is { } winner && constructor.BaseInitializer is { } initializer && this.CallOf(initializer) is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
             {
                 this.Fail(structure.BaseClause!, BindingFailure.Unsupported);
-            }
-        }
-    }
-
-    // Records the omitted base query of every explicit constructor whose base clause is omitted (CaptureOmittedBaseQueries).
-    private void CaptureOmittedBases()
-    {
-        this.omittedBaseQueries?.Clear();
-        for (var i = 0; i < this.nodes.Count; i++)
-        {
-            if (this.nodes[i] is FunctionKoto { IsConstructor: true, HasOmittedBaseInitializer: true } constructor && this.scopes.ContainsKey(constructor))
-            {
-                (this.omittedBaseQueries ??= new(ReferenceEqualityComparer.Instance))[constructor] = this.SelectOmittedBaseConstructor(constructor);
             }
         }
     }

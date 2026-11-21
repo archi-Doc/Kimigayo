@@ -294,7 +294,7 @@ public sealed class MirInitTest
     {
         var c = MirBuildTest.Compile("func f()\n    var a: [1000000 of string]\n    let taken = a[42]@move\n");
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types));
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         flow.Begin(body);
         moves.Build(body, flow);
         var array = body.Locals.ToArray().ToList().FindIndex(static x => x.Name == "a");
@@ -333,7 +333,7 @@ public sealed class MirInitTest
                 $"let leaf = Leaf.init({string.Join(", ", parameters)})\n");
             Assert.True(c.Analyze().IsVerified, $"{count} parameters");
             var body = c.BuildMir().Bodies.ToArray().Last(static x => x.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(x.Key.Decl));
-            var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types));
+            var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
             flow.Begin(body);
             moves.Build(body, flow);
             Assert.Contains(moves.Paths.ToArray(), static x => (x.Local, x.Kind, x.Arg) == (0, MirProjectionKind.Base, 1));
@@ -357,7 +357,7 @@ public sealed class MirInitTest
         text.Append("func other(flag: bool)\n    var q = Q.init()\n    q.a = 4\n    let t = (q.b.1, flag)\n");
         var c = MirBuildTest.Compile(text.ToString());
         var bodies = c.BuildMir().Bodies.ToArray();
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types));
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         Paths(bodies.Single(static x => x.Key.Decl?.Name == "large"), moves);
         foreach (var name in new[] { "small", "other" })
         {
@@ -1451,9 +1451,9 @@ public sealed class MirInitTest
     public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
     {
         const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    _ = " + Body));
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g = " + Body));
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g: Missing = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    _ = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    let g = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    let g: Missing = " + Body));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
@@ -1486,7 +1486,8 @@ public sealed class MirInitTest
     // parentheses or under a unary operator, has no Type validate now (fail-before: a finding, which stops every analysis, or, for the
     // index, the whole selection derived), such an operand replaced with its parts. A construct, an assignment, a labeled do and a default
     // keep their forms elsewhere (a typed destination keeps the Loan its branch places), an assignment's derived value initializes its
-    // target, and a failed call's operands stay replaced (PLAN G121).
+    // target, and a failed call keeps its operands, which it evaluates on every path (DECISIONS Z16; until Z16 they stayed replaced, PLAN
+    // G121, and the move by `once(s@move)` was lost).
     [Theory]
     [InlineData(Take + "func f(c: bool) -> bool\n    let s = \"x\"\n    return take(s@move, s@move) == 1 and missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + "func f()\n    let s = \"x\"\n    _ = once(s@move) + missing\n    let t = s@move\n", "MovedPlace_Kd s 1")]
@@ -1541,7 +1542,7 @@ public sealed class MirInitTest
     [InlineData(
         Take + "func two(a: i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    let s = \"x\"\n    let v: i32 = two(once(s@move), missing)\n    let t = s@move\n" +
         "    return v\n",
-        "")]
+        "MovedPlace_Kd s 1")]
     public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
@@ -1581,7 +1582,7 @@ public sealed class MirInitTest
             $"    let a = [{length} of fail()]\n    let n = a[3]\n    let b: [{length} of i32] = [{length} of if c => y else => fail()]\n" +
             $"    use(b[3])\n    let t: [{length} of (i32, i32)] = [{length} of (y, if c => y else => fail())]\n");
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types));
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         flow.Begin(body);
         moves.Build(body, flow);
         var locals = body.Locals.ToArray();
@@ -1678,7 +1679,8 @@ public sealed class MirInitTest
                 Assert.Empty(program.Problems.All.ToArray());
                 var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
                 work[i] = body.Blocks.Length + body.Statements.Length;
-                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types), new MirCases(c.Types), new MirProgram());
+                var cases = new MirCases(c.Types);
+                var (flow, moves, sink) = (new MirDataflow(new MirReach(), cases), new MirMoveData(c.Types), new MirProgram());
                 var drops = new MirDrops(c.Types, moves, cases);
                 var init = new MirInit(flow, moves, cases, drops);
                 analyses[i] = (body, flow, moves, sink);

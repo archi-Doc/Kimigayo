@@ -15,11 +15,15 @@ internal static partial class NativeToolchain
     private static readonly string[] InstallationTools =
         ["clang", "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj", "llvm-objdump", "llvm-lib", "llvm-dlltool"];
 
+    // The installation's command, which every setup remedy names: setup installs from the pinned LLVM release archive, extracted. A
+    // property, so that only the remedies that name it read the catalog, never the type's initializer.
+    internal static string SetupCommand => $"src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM {ToolchainIdentity.LlvmVersion} archive, extracted>";
+
     internal static string RequireInstalledFile(string path)
     {
         if (!File.Exists(path))
         {
-            throw new FileNotFoundException($"Toolchain file not found: {path}. Run src/backend/windows-x64/setup.ps1 for the selected toolchain.", path);
+            throw new FileNotFoundException($"Toolchain file not found: {path}. Run {SetupCommand} for the selected toolchain.", path);
         }
 
         return path;
@@ -50,14 +54,16 @@ internal static partial class NativeToolchain
         {
             var installationFile = RequireInstalledFile(Path.Combine(root, "installation.json"));
             using var installation = JsonDocument.Parse(await File.ReadAllBytesAsync(installationFile, cancellationToken));
-            // The record's shape before any tool: schema 1 of this profile, with the tools' and the supporting DLLs' hashes by name.
+            // The record's shape before any tool: schema 1 of this profile, with the tools' and the supporting DLLs' hashes by name and
+            // tatara.dll's hash.
             var installed = installation.RootElement;
             var tools = Member(installed, "tools");
             var supportingDlls = Member(installed, "supportingDlls");
+            var tataraSha256 = Text(Member(Member(installed, "tatara"), "sha256"));
             if (Number(Member(installed, "schemaVersion")) != 1 || Text(Member(installed, "profile")) != WindowsProfile.Name ||
-                tools.ValueKind != JsonValueKind.Object || supportingDlls.ValueKind != JsonValueKind.Object)
+                tools.ValueKind != JsonValueKind.Object || supportingDlls.ValueKind != JsonValueKind.Object || tataraSha256 is null)
             {
-                throw new InvalidDataException("Invalid toolchain installation record. Run setup.ps1 again.");
+                throw new InvalidDataException($"Invalid toolchain installation record. Run {SetupCommand} again.");
             }
 
             foreach (var name in InstallationTools)
@@ -69,7 +75,7 @@ internal static partial class NativeToolchain
                 identities.Add(name, identity);
                 if (name is not ("llvm-lib" or "llvm-dlltool"))
                 {
-                    var banner = await ExecuteTool(path, ["--version"], root, report, cancellationToken, showErrors: false);
+                    var banner = await ToolProcess.Execute(path, ["--version"], root, report, cancellationToken, showErrors: false);
                     var actual = ParseVersion(banner);
                     identity["actualVersion"] = actual;
                     identity["expectedVersion"] = ToolchainIdentity.LlvmVersion;
@@ -86,7 +92,7 @@ internal static partial class NativeToolchain
                 identity["hashMatched"] = hash == expected;
                 if (hash != expected || (name == Kernel32Imports.Generator && hash != Kernel32Imports.DlltoolSha256))
                 {
-                    throw new InvalidDataException($"Tool executable SHA-256 mismatch: {path}. Run setup.ps1 after an intentional update.");
+                    throw new InvalidDataException($"Tool executable SHA-256 mismatch: {path}. Run {SetupCommand} after an intentional update.");
                 }
             }
 
@@ -98,6 +104,20 @@ internal static partial class NativeToolchain
                 {
                     throw new InvalidDataException("Toolchain supporting DLL SHA-256 mismatch: " + dll.Name);
                 }
+            }
+
+            // tatara.dll after the tools: Tatara.Load's checks (found, loaded and bound, its ABI and LLVM version), then its hash.
+            var tatara = Tatara.Load(root);
+            var tataraHash = Hash(tatara.Path);
+            record["tatara"] = new JsonObject
+            {
+                ["path"] = Redact(tatara.Path, Directory.GetCurrentDirectory()), ["sha256"] = tataraHash, ["build"] = tatara.Build,
+                ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion, ["expectedSha256"] = tataraSha256,
+                ["hashMatched"] = tataraHash == tataraSha256,
+            };
+            if (tataraHash != tataraSha256)
+            {
+                throw new InvalidDataException($"tatara.dll SHA-256 mismatch: {tatara.Path}. Run {SetupCommand} again.");
             }
 
             var backend = RequireInstalledFile(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile));
@@ -128,8 +148,9 @@ internal static partial class NativeToolchain
         }
     }
 
-    // The installed kernel32 import library: its recorded generation conditions and hash, its definition, and the DLL, architecture and
-    // symbol set the tools read from it. The record keeps the installation's entry.
+    // The installed kernel32 import library: its recorded generation conditions and hash, the catalog's hash (the compiler's supply's
+    // bytes, which the root's copy stays until B6b), its definition, and the DLL, architecture and symbol set the tools read from it. The
+    // record keeps the installation's entry.
     private static async Task VerifyKernel32(
         string root, string bin, JsonObject record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
@@ -137,15 +158,73 @@ internal static partial class NativeToolchain
         var metadataFile = RequireInstalledFile(Path.ChangeExtension(kernel, ".json"));
         using var metadata = JsonDocument.Parse(await File.ReadAllBytesAsync(metadataFile, cancellationToken));
         var entry = metadata.RootElement;
-        Kernel32Imports.ValidateInstallation(entry, Hash(kernel));
+        var hash = Hash(kernel);
+        Kernel32Imports.ValidateInstallation(entry, hash);
+        if (hash != ToolchainIdentity.Kernel32Sha256)
+        {
+            throw new InvalidDataException("Adopted kernel32 SHA-256 mismatch: " + kernel);
+        }
+
         if (Hash(RequireInstalledFile(Path.ChangeExtension(kernel, ".def"))) != Kernel32Imports.DefinitionSha256)
         {
             throw new InvalidDataException("Installed kernel32 definition SHA-256 mismatch.");
         }
 
-        var importedDll = await ExecuteTool(Path.Combine(bin, "llvm-dlltool.exe"), ["-I", kernel], root, report, cancellationToken);
-        var inspection = await ExecuteTool(Path.Combine(bin, "llvm-readobj.exe"), ["--file-headers", kernel], root, report, cancellationToken);
+        var importedDll = await ToolProcess.Execute(Path.Combine(bin, "llvm-dlltool.exe"), ["-I", kernel], root, report, cancellationToken);
+        var inspection = await ToolProcess.Execute(Path.Combine(bin, "llvm-readobj.exe"), ["--file-headers", kernel], root, report, cancellationToken);
         Kernel32Imports.ValidateLibrary(importedDll, inspection);
         record["kernel32"] = JsonNode.Parse(entry.GetRawText());
+    }
+}
+
+/// <summary>An LLVM tool's one run for toolchain verify, the only reader: file-scoped, so no other file (a native build's above all)
+/// can launch a tool. Its standard output (with its standard error when <c>showErrors</c> is false), a Warning for its standard error
+/// otherwise; a nonzero exit or a run past five minutes is an IOException, the toolchain's failure.</summary>
+file static class ToolProcess
+{
+    internal static async Task<string> Execute(
+        string tool, string[] args, string directory, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken, bool showErrors = true)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var start = new ProcessStartInfo(tool)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = directory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in args)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(5));
+        using var process = Process.Start(start) ?? throw new IOException("Cannot start tool: " + tool);
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await NativeToolchain.Wait(process, timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException("Tool timed out: " + tool);
+        }
+
+        var output = await stdout;
+        var errors = await stderr;
+        if (process.ExitCode != 0)
+        {
+            throw new IOException($"Tool failed: {tool}; exit={process.ExitCode}\n{output}{errors}");
+        }
+
+        if (showErrors && !string.IsNullOrWhiteSpace(errors))
+        {
+            report(DiagnosticSeverity.Warning, errors.Trim());
+        }
+
+        return showErrors ? output : output + errors;
     }
 }

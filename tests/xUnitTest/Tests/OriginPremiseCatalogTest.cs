@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // PLAN G74: every premise rule of the catalog (OriginPremiseRule) is extracted from real source: a program the rule's premise
 // proves, and the same relation where no visible contract supplies that premise.
-public class OriginPremiseCatalogTest
+public partial class OriginPremiseCatalogTest
 {
     private const string Main = "public func main() => ()\n";
 
@@ -95,15 +95,19 @@ public class OriginPremiseCatalogTest
     }
 
     // R5, SPEC 15.6.1, 15.6.5: a borrow of a complete local Place is well-formed, so the Origins stored in the Place outlive the
-    // borrow's Origin. That Origin is body-local, hence finite, so the body proves the relation without any premise.
+    // borrow's Origin. That Origin is body-local, hence finite, so the body proves the relation without any premise: the program is
+    // accepted and forms no premise closure. Changed by decision (PLAN G949 Stage 2 U3, design §8: the library pass leaves the
+    // compilation; B's U3 ruling 43): the row was ABorrowedLocalPlaceSuppliesItsStoredOrigins, whose clause `EdgesOf(LocalPlace) != 0`
+    // held only because the library pass shared the compilation's metrics (its 19 LocalPlace edges; this program forms none). R5's edge
+    // stays pinned by the rows whose programs form it (ANestedBodyKeepsLocalPlaceForItsOwnLocals, AComparisonInTheDeclaringBodyKeepsLocalPlace).
     [Fact]
-    public void ABorrowedLocalPlaceSuppliesItsStoredOrigins()
+    public void ABorrowedLocalPlaceProvesItsRelationWithoutAPremise()
     {
         var source = "enum E<T>\n    Some(T)\n    None\nlet text = \"hello\"\nlet savedText = text@ref\nlet inner = (savedText, 42)\nlet input = inner@ref\n" +
             "let value: E<ref/(ref/string during savedText, i32) during input> = .Some(input)\nmatch value@ref\n    .Some((let saved, _)) => Console.writeLine(saved@follow)\n    .None => $abort(\"none\")\n";
         var (codes, metrics, _) = Check(source);
         Assert.Empty(codes);
-        Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
+        Assert.Equal(0, metrics.Closures);
     }
 
     // SPEC 15.2.2, 15.3.4, 15.6.1 (PLAN G491): R5 is the well-formedness obligation of the body that declares the local, never a premise
@@ -113,11 +117,14 @@ public class OriginPremiseCatalogTest
     // (`ref/(ref/i64 during x) during z`) still gives its condition. A meet whose operand names `z` does not make a comparison's relation
     // between fixed Origins a body's: `(p and z) outlives q` needs `p outlives q` (SPEC 15.3.6, 15.6.1), also where 15.3.6 solves it,
     // as `g5`'s `a := (p and z)` whose well-formedness needs `a outlives q` (r5, the inferred form of r1; SPEC 15.2.2 absorbs no meet
-    // by a body relation). For `p outlives w`, `w = y@ref`, only the Origins stored in `y` outlive `w`: `x`'s, which a required input
-    // names through `z`, take no part, so `p outlives q` remains (x1, and x1m with a meet).
+    // by a body relation). For `p outlives w`, `w = y@ref`, the values give `p outlives q`, Unknown, while the comparison reads w's slot as
+    // its region, which may lie inside its value (the owner's O-363 (a)): only that region reading decides it, so it is the located limit
+    // until the uses of a compared Type read the region (x1, and x1m with a meet; PLAN G492-a (ii), O-400 (b)). Where both operands are
+    // `let` locals over a body local (`(x and z)`, `x = y@ref`; opc5) and `q` is fixed, the region reading is the value reading (a `let`
+    // region outlives nothing its value does not): the Borrow of `y` cannot outlive `q`, the comparison's own record (SPEC 15.6.5).
     [Theory]
-    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
-    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during (q and w)) -> ref/i64 during (q and w) = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during (q and w)) -> ref/i64 during (q and w) = g3\n    return 0\n", nameof(DiagnosticCode.Unsupported_Kd))]
     [InlineData("func g5(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives a\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g5\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during (p and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Converted + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/(ref/i64 during z) during q, ref/i64 during (x and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
@@ -220,49 +227,56 @@ public class OriginPremiseCatalogTest
     // binder admitting no borrow stores no `o`. A Field below a borrow proves the relation as its concrete twin does.
     [Theory]
     [InlineData(PairHolder + "    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n", null)]
-    [InlineData(PairHolder + "    public func get(self: ref/Self, q: ref/i32) -> ref/T during q\n        return self.value@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    // R7-O1 H: two A5 records at the value, as the two published before (Binding's issue list held the first only).
+    [InlineData(PairHolder + "    public func get(self: ref/Self, q: ref/i32) -> ref/T during q\n        return self.value@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "UnprovenOriginRelation_Kd self.value@follow@ref | UnprovenOriginRelation_Kd self.value@follow@ref")]
     [InlineData("struct Holder<s/T>\n    s is ref\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n", null)]
     [InlineData(Box + Peek, null)]
-    [InlineData(Box + "func peek<s/T>(b: ref/Box<s/T>, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return b.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Box + "func peek<s/T>(b: ref/Box<s/T>, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return b.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "UnprovenOriginRelation_Kd b.item@follow@ref | UnprovenOriginRelation_Kd b.item@follow@ref")]
     [InlineData("func peek<s/T>(b: ref/(s/T, i32)) -> ref/T\n    s is ref or uniq\n    return b.0@follow@ref\n", null)]
     [InlineData("func g<s/T>(x: s/T, q: ref/i32) -> ref/T during q\n    s is ref\n    return x@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData("func g<s/T>(x: s/T, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return x@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Box + Peek + "func outer<t/U>(b: ref/Box<t/U>) -> ref/U\n    t is ref or uniq\n    return peek(b)\n", null)]
     [InlineData(Box + Peek + "func outer<t/U>(b: ref/Box<t/U>, q: ref/i32) -> ref/U during q\n    t is ref or uniq\n    return peek(b)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Box + Pick, null)]
-    // Since H5 the Problems that Check reads also hold A5's ComparisonLoanConflict_Kd at `m`'s declaration (`derived`, code and subject):
-    // `m@ref`'s Loan reaches the result only through the call, so it is derived under SPEC 15.6.5 rule W. It is a dependent record,
-    // published under the Unsat's cause and not as an Error (SPEC 23.1.2), counted under DECISIONS Q13 (R6-check H5; H3b T51).
-    [InlineData(Box + Pick + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return f(m@ref, q)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "ComparisonLoanConflict_Kd let m: i32 = 5")]
+    // Since H5 the Problems that Check reads also hold A5's records (`analysis`, each code and subject, exactly). Here, since PLAN G1115,
+    // y's layer's premise over the pair's solution (its Origin the meet of m@ref's and `s`) bounds the call's `c` (SPEC 15.6.4 step 3,
+    // 15.3.6), so the call's result carries m@ref's borrow to the result `during t`: A5's record of the Refuted relation at the returned
+    // value (SPEC 15.6.5; R7-O1 H: Binding's twin at the `return` is gone), and the storage end's ComparisonLoanConflict_Kd at `m`
+    // derived from it under rule W (F-H-9's class: listed, not published as an Error). It was the premise's failure at `q` with the
+    // conflict derived from that one (a dependent record, DECISIONS Q13).
+    [InlineData(Box + Pick + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return f(m@ref, q)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "UnsatisfiedOriginRelation_Kd f(m@ref, q) | ComparisonLoanConflict_Kd let m: i32 = 5")]
     [InlineData(Box + Leak, null)]
     [InlineData(Box + Leak + "func g(q: ref/i32) -> i32\n    let m: i32 = 5\n    let pair = leak(q, m@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
     [InlineData(Box + "struct View<s/T> {a}\n    s is owner\n    public let b: ref/Box<s/T> during a\n", null)]
     [InlineData(Box + "struct View<s/T> {a}\n    s is ref\n    public let b: ref/Box<s/T> during a\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Box + "struct View<s/T> {a}\n    s is owner or ref\n    public let b: ref/Box<s/T> during a\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Box + "struct View<s/T> {a, q}\n    s is ref\n    origin q outlives a\n    public let b: ref/Box<s/T during q> during a\n", null)]
-    public void TheImplicitOuterOriginIsAPremiseBelowABorrowLayer(string body, string? code, string? derived = null)
+    public void TheImplicitOuterOriginIsAPremiseBelowABorrowLayer(string body, string? code, string? analysis = null)
     {
         var source = body + Main;
         var codes = Check(source).Codes;
-        if (derived is null)
+        if (analysis is null)
         {
             Assert.Equal(code is null ? [] : [code], codes);
         }
         else
         {
-            Assert.Equal([code!, derived[..derived.IndexOf(' ', StringComparison.Ordinal)]], codes);
-            Assert.EndsWith(" | " + derived, MinimalEmissionTest.Problems(MinimalEmissionTest.Analyze(source)), StringComparison.Ordinal);
+            // R7-O1 H: Binding judges no body relation, so every record of these programs is A5's: the codes are the analysis's.
+            Assert.Equal(code, codes[0]);
+            Assert.Equal(analysis.Split(" | ").Select(static x => x.Split(' ')[0]), codes);
+            Assert.Equal(analysis, MinimalEmissionTest.Problems(MinimalEmissionTest.Analyze(source)));
         }
     }
 
     // SPEC 11.4, 11.5, 15.6.1 (DECISIONS BU-26): a computed Property's header is its getter's result, so a use in it has the getter's
-    // input premises (R2): a header the receiver covers is well formed (ReceiverShorthandTest's program; two slots; a Property fulfilling
-    // a requirement). A relation the receiver does not cover stays unproven at the header and at the getter's result (PLAN G214).
+    // premises: its inputs' (R2): a header the receiver covers is well formed (ReceiverShorthandTest's program; two slots; a Property
+    // fulfilling a requirement); and its result's (R3, PLAN G214): a relation the receiver does not cover is assumed at the header and at
+    // the getter's written result, and each read proves it (PropertyBindingTest).
     [Theory]
     [InlineData("struct S {source}\n    var item: ref/i32 during source\n        get() -> ref/i32 during self.source => storage\n    computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
     [InlineData("struct S {a, b}\n    var item: ref/i32 during a\n        get() -> ref/i32 during self.a => storage\n    var other: ref/i32 during b\n        get() -> ref/i32 during self.b => storage\n    computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
     [InlineData("contract C\n    property view: ref/Self\n        get() -> ref/Self\nstruct S {source}\n    Self is C\n    var item: ref/i32 during source\n        get() -> ref/i32 during self.source => storage\n    public computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
-    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", 2)]
+    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", 0)]
     public void AComputedHeaderHasItsGettersInputPremises(string body, int unproven)
     {
         Assert.Equal(Enumerable.Repeat(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), unproven), Check(body + Main).Codes);
@@ -302,7 +316,7 @@ public class OriginPremiseCatalogTest
     {
         var c = MirBuildTest.Compile(source + Main);
         var closure = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Body.Definition?.Declaration is FunctionKoto { IsAnonymous: true });
-        var local = closure.Locals[1].Type;
+        var local = closure.Locals[1].Type!;
         var environment = local.Kind == BoundTypeKind.Closure ? local : local.Components[0];
         return (c, closure.Key.Body, c.Binding.ClosureReceiver((FunctionKoto)closure.Key.Body.Definition!.Declaration, environment));
     }

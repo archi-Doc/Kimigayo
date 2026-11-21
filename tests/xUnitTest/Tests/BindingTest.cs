@@ -437,6 +437,7 @@ public class BindingTest
         twin.Bind();
         twin.Binding.ReportDiagnostics();
         var c = CompilationTestHelper.Parse(source);
+        CompilationTestHelper.UseEditedLibrary(c, static _ => { }); // It writes the library layer's part: on a library of its own (x1, X11).
         c.Bind();
         var (issues, derived, obligations) = (c.Binding.Issues.ToArray(), c.Binding.DerivedIssues.ToArray(), c.Binding.Obligations.ToArray());
         Assert.NotEmpty(issues);
@@ -455,7 +456,7 @@ public class BindingTest
             Assert.Equal(obligations, c.Binding.Obligations);
             c.Binding.ReportDiagnostics();
             Assert.Equal(Records(twin), Records(c));
-            Assert.Equal(twin.Binding.TableCounts, c.Binding.TableCounts);
+            Assert.Equal(Nodes(twin), Nodes(c));
             Assert.Equal(OriginRows(twin), OriginRows(c));
         }
         finally
@@ -472,6 +473,10 @@ public class BindingTest
 
         // The Origin rows of each body an obligation names, in the obligations' order.
         static int[] OriginRows(Compilation c) => c.Binding.Obligations.Where(static x => x.Body.IsBody).Select(x => c.Types.OriginRows(x.Body).Rows.Count).ToArray();
+
+        // The nodes of the composed view, which the reports and the candidate clauses walk outside a pass; no member publishes its count,
+        // so it is read as Move reaches the parts.
+        static int Nodes(Compilation c) => ((IReadOnlyCollection<Koto>)typeof(Binding).GetField("nodesView", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!).Count;
     }
 
     // PLAN G949 S1-r1b (s1r1-design 3.3, RC2's recorder): a pass binds the modules of its set, the library's table when it holds the
@@ -528,7 +533,9 @@ public class BindingTest
     // private Fail after a Final Bind, as a check of the program pass would: CheckBound then records it after the program's issues, the
     // Bind's Result counts it once by its recorded state (Resolved - 1 and Invalid + 1 against the Bind's), ReportDiagnostics publishes
     // one record of it, a second CheckBound publishes the one record again, not twice, and a second failure of the node adds no listing,
-    // also after a check cleared its failure (N2: the recorder reads the entry, so a node is listed once per pass).
+    // also after a check cleared its failure (N2: the recorder reads the entry, so a node is listed once per pass). From PLAN G949 Stage 2
+    // U3 (h7b) the node is the shared frozen library's: its record is the reading compilation's (Core's StoreOf), and another compilation
+    // over the same library holds none.
     [Fact]
     public void ALibraryNodeTheProgramPassFailsIsRecordedOnce()
     {
@@ -538,13 +545,13 @@ public class BindingTest
         var program = c.Binding.Issues.Select(static x => x.Node).ToArray();
         Assert.NotEmpty(program);
         Assert.DoesNotContain(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
-        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(static x => x.StateOf() == BindingState.Resolved);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
         var fail = typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!;
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
-        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
         c.Binding.ClearFailure(node); // A check's retry (ClearFailure), then the node failed again in the same pass.
-        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Equal((node, BindingState.Resolved, BindingState.Invalid, BindingFailure.TypeMismatch), Assert.Single(own.ForeignFailures));
@@ -555,8 +562,144 @@ public class BindingTest
             Assert.Equal(program.Append(node), c.Binding.Issues.Select(static x => x.Node));
             c.Binding.ReportDiagnostics();
             Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
-            Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+            Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
         }
+
+        var other = CompilationTestHelper.Parse("let y = 1\n");
+        Assert.True(other.Bind().IsComplete);
+        Assert.Same(c.Library, other.Library);
+        Assert.DoesNotContain(other.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+    }
+
+    // DECISIONS G949 S1 as R7-N5 B4 amends it (the Front's C1, B's ruling 10): the fact a failure carries is stored with the failure, by
+    // the recorder's one decision, so a library node the program pass fails with a fact is the program part's entry and its fact the
+    // part's foreign row, which the family's reader reads; no library column is written, and CheckBound gives the node its issue. No
+    // program fails one today (the census), so each row fails one through the private writer after a Final Bind, as a check of the
+    // program pass would (ALibraryNodeTheProgramPassFailsIsRecordedOnce): a qualification stop's QualificationRequired (B1a's
+    // `qualificationFailures`, written by FailUnselected, the resolver's miss (R7-E2 E2-0), where B1a's HirTables.Of refused the frozen
+    // library table) and FailExplained's per-call Origin fact (MissingOrigin).
+    [Fact]
+    public void AFactALibraryNodesFailureCarriesIsRecordedWithIt()
+    {
+        var c = CompilationTestHelper.Parse("struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n");
+        Assert.False(c.Bind().IsComplete);
+        var stops = (Dictionary<(Koto Use, bool Type), Binding.QualificationFact>)typeof(Binding).GetField("qualificationStops", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var stop = Assert.Single(stops).Value;
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        stops[(node, false)] = stop with { At = node };
+        typeof(Binding).GetMethod("FailUnselected", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, BindingFailure.MissingName]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((node, BindingFailure.QualificationRequired), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
+        var rows = typeof(Binding).GetField("qualificationFailures", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal(stop with { At = node }, rows.GetType().GetProperty("Item", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rows, [node]));
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.QualificationFailures.Used);
+        Assert.Empty(c.Library.Layer.Part.ForeignFailures); // So the library part's ForeignFacts has no row a reader reaches.
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.QualificationRequired);
+    }
+
+    [Fact]
+    public void AFailExplainedFactAtALibraryNodeIsRecordedWithItsFailure()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var library = c.Library.Kotonoha.RootKoto;
+        var call = KotoTree.Walk(library).OfType<InvocationKoto>().First(x => x.StateOf(c) == BindingState.Resolved && x.ArgumentNodes.Count != 0);
+        var selected = KotoTree.Walk(library).OfType<FunctionKoto>().First(static x => x.GenericArguments.Count != 0);
+        FactFamily<Binding.PerCallOriginFact> family = static (ref NodeColumns columns) => ref columns.PerCallOrigins;
+        var explain = typeof(Binding).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(static x => x.Name == "FailExplained" && x.GetParameters()[0].ParameterType is { IsGenericType: true } p && p.GetGenericTypeDefinition() == typeof(FactFamily<>))
+            .MakeGenericMethod(typeof(Binding.PerCallOriginFact));
+        explain.Invoke(c.Binding, [family, call, BindingFailure.MissingOrigin, new Binding.PerCallOriginFact(call.ArgumentNodes[0], selected, 0), false]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((call, BindingFailure.MissingOrigin), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
+        var rows = typeof(Binding).GetField("perCallOrigins", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        object?[] read = [call, null];
+        Assert.True((bool)rows.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(rows, read)!);
+        Assert.Equal(new Binding.PerCallOriginFact(call.ArgumentNodes[0], selected, 0), read[1]);
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.PerCallOrigins.Used);
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.MissingOrigin);
+    }
+
+    // R7-E2 E2-1 (PLAN G1083, D-850): a fact-less family-1 problem a program pass records at a frozen library node goes through Core's one
+    // store decision (Compilation.StoreOf; ReportProblem's Koto.ReportIn), so it is the program's record, published once, and another
+    // compilation over the same library holds none. No program records one today, so the row records one through the recorder after a
+    // Final Bind, as a check of the program pass would (ALibraryNodeTheProgramPassFailsIsRecordedOnce).
+    [Fact]
+    public void ALibraryNodesFactlessProblemIsTheProgramsRecord()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.InvalidInlineLayout, [], 0, false);
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.InvalidInlineLayout && x.Problem >= 0);
+        c.Binding.ReportDiagnostics();
+        Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd));
+        var other = CompilationTestHelper.Parse("let y = 1\n");
+        Assert.True(other.Bind().IsComplete);
+        Assert.DoesNotContain(other.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd));
+    }
+
+    // R7-E2 E2-3a (D-850, Access.cs's ReportProtectedPlacement): a ProtectedPlacement problem at a frozen library declaration is published
+    // through Core's store decision, so it is the program's one record and another compilation over the same library holds none (as
+    // ALibraryNodesFactlessProblemIsTheProgramsRecord).
+    [Fact]
+    public void ALibraryDeclarationsPlacementProblemIsTheProgramsRecord()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().First(x => x.Parent is GroupKoto && x.StateOf(c) == BindingState.Resolved); // A group member: SPEC 9.4 rejects its protected forms.
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.ProtectedPlacement, [], 0, false);
+        AssertTheProgramsOneRecord(c, node, DiagnosticCode.ProtectedPlacement_Kd);
+    }
+
+    // R7-E2 E2-3a (D-850, Diagnostics.cs's ReportArity): an arity problem (its Related declaration and two Count facts) at a frozen
+    // library Type reference is the program's one record, through Core's store decision.
+    [Fact]
+    public void ALibraryReferencesArityProblemIsTheProgramsRecord()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var library = KotoTree.Walk(c.Library.Kotonoha.RootKoto);
+        Koto node = library.OfType<GenericsKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        Koto declaration = library.OfType<StructKoto>().First(static x => x.GenericParameterNodes.Count != 0);
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.InvalidTypeFormation, [new(ProblemFactKind.Related, SourceRef.Of(declaration), 0), new(ProblemFactKind.Count, SourceRef.Of(node), 1), new(ProblemFactKind.Count, SourceRef.Of(node), 2)], 0, false);
+        AssertTheProgramsOneRecord(c, node, DiagnosticCode.InvalidTypeFormation_Kd);
+    }
+
+    // R7-E2 E2-1 (P1 (a); SPEC 23.1.2, rule W): each problem of a failed node is direct or derived by its own requirement (CollectProblem).
+    // A Type's member whose qualifier is missing (`Missing.Inner`) is derived from that unresolved input; a further missing Name there
+    // rests on the same recorded input, so it is a derived issue under its own requirement, suppressed while its cause publishes, and a
+    // further problem that no recorded input explains stays direct. No check records either today, so the row records them through the
+    // recorder after a Final Bind.
+    [Fact]
+    public void ADerivedNodesFurtherProblemFollowsItsOwnRequirement()
+    {
+        var c = CompilationTestHelper.Parse("func f(x: Missing.Inner) -> i32 => 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var node = Assert.Single(c.Binding.DerivedIssues, static x => x.Failure == BindingFailure.MissingType).Node;
+        var unresolved = CompilationTestHelper.BindingErrors(c).Count(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd));
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.MissingName, [], 0, false);
+        record(node, BindingFailure.InvalidInlineLayout, [], 0, false);
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.MissingName && x.Problem >= 0);
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.InvalidInlineLayout && x.Problem >= 0);
+        Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure != BindingFailure.InvalidInlineLayout);
+        var errors = CompilationTestHelper.BindingErrors(c);
+        Assert.Equal(unresolved, errors.Count(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd)));
+        Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd));
     }
 
     // PLAN G949 S1-r1b (v4; s1r1-design 1.3): CheckBound reruns the program pass's Check only, on Binding's own part, and composes the
@@ -629,6 +772,7 @@ public class BindingTest
         // 15.6.5): valid.
         var c = CompilationTestHelper.Parse("let a = 1\nlet b = 2\nvar view = a@ref\nview = b@ref\nvar held = view\nheld = a@ref\n" +
             "require view@follow == 2 and held@follow == 1 else => $abort(\"view\")\n");
+        CompilationTestHelper.UseEditedLibrary(c, static _ => { }); // It writes the library layer's part: on a library of its own (x1, X11).
         c.Bind();
         Assert.True(c.Binding.Result.IsComplete);
         var layer = c.Binding.Library.Layer.Part.Regions;
@@ -654,6 +798,18 @@ public class BindingTest
                 layer.Remove(origin);
             }
         }
+    }
+
+    // A problem the row recorded at a frozen library node: its issue, the program's one record, none in another compilation (D-850).
+    private static void AssertTheProgramsOneRecord(Compilation c, Koto node, DiagnosticCode code)
+    {
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Code == code && x.Problem >= 0);
+        c.Binding.ReportDiagnostics();
+        Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == code.ToString());
+        var other = CompilationTestHelper.Parse("let y = 1\n");
+        Assert.True(other.Bind().IsComplete);
+        Assert.DoesNotContain(other.Diagnostics.Finalize().Diagnostics, x => x.Code == code.ToString());
     }
 
     // Moves a list Binding's pass wrote, its own part's, into the library layer's part.

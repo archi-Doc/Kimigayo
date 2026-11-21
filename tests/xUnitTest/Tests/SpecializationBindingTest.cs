@@ -369,7 +369,6 @@ public class SpecializationBindingTest
     [InlineData("C20 s32", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<(() -> ref/i32) -> i32>(f: (() -> ref/i32) -> i32) -> i32 => 1", "ref/i32")]
     [InlineData("C18 r06", "func o<T>(x: ref/T) -> i32\n    T is Owned\n    return 0\nspecialize func o<Box>(x: ref/Box) -> i32 => 1", "specialize func o<Box>(x: ref/Box) -> i32 => 1")]
     [InlineData("h1 C-331", "func apply<T>(f: T) -> Option<ref/i32> => .None\nspecialize func apply<() -> ref/i32>(f: () -> ref/i32) -> Option<ref/i32> => .Some(f())", "ref/i32")]
-    [InlineData("q1n C-331", "contract Marker\nfunc tr<T>(x: ref/T) -> i32\n    T is Marker\n    return 0\nspecialize func tr<Box>(x: ref/Box) -> i32 => 1", "specialize func tr<Box>(x: ref/Box) -> i32 => 1")]
     [InlineData("G888 X3", "func h<T>(x: T) -> i32 => 0\nspecialize func h<ref/(raw/i32 during static)>(x: ref/(raw/i32 during static)) -> i32 => 1", "ref/(raw/i32 during static)")]
     [InlineData("G888 X8", "func o2<T>(x: ref/i32, y: ref/i32, z: T) -> i32\n    T is Owned\n    return 0\nspecialize func o2<ref/i32 during (x and y)>(x: ref/i32, y: ref/i32, z: ref/i32 during (x and y)) -> i32 => 1", "specialize func o2<ref/i32 during (x and y)>(x: ref/i32, y: ref/i32, z: ref/i32 during (x and y)) -> i32 => 1")]
     [InlineData("G888 X27", "func o2<T>(x: ref/i32, y: ref/i32, z: T) -> i32\n    T is Owned\n    return 0\nspecialize func o2<ref/i32 during x>(x: ref/i32, y: ref/i32, z: ref/i32 during x) -> i32 => 1", "specialize func o2<ref/i32 during x>(x: ref/i32, y: ref/i32, z: ref/i32 during x) -> i32 => 1")]
@@ -385,10 +384,11 @@ public class SpecializationBindingTest
     // raw layer of a Type argument binds nothing, in the argument and the restated input; the header's verdict is C-331 F5's pattern.
     // SPEC 5.7 (G888 T50): a written raw Origin is one atom, so a meet is invalid at each layer that writes it.
     [Theory]
+    [InlineData("q1n C-331", "contract Marker\nfunc tr<T>(x: ref/T) -> i32\n    T is Marker\n    return 0\nspecialize func tr<Box>(x: ref/Box) -> i32 => 1", "UnsatisfiedConstraint_Kd: specialize func tr<Box>(x: ref/Box) -> i32 => 1")] // O-344 (a): Box declares no Marker, Refuted whatever its uncompleted Origins
     [InlineData("C3 i5", "func w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W during static>(d: uniq/W) -> i32 => 1", "IncompatibleContractImplementation_Kd: specialize func w<W during static>(d: uniq/W) -> i32 => 1|InvalidOriginBinding_Kd: W during static|InvalidOriginBinding_Kd: W")]
     [InlineData("C19 i8", "specialize func missing<i32>(x: Option<ref/i32>) -> i32 => 1", "MissingSpecializationTarget_Kd: specialize func missing<i32>(x: Option<ref/i32>) -> i32 => 1|Unsupported_Kd: ref/i32")]
     [InlineData("C20 v18", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<() -> uniq/i32>(f: () -> uniq/i32) -> i32 => 1", "Unsupported_Kd: uniq/i32|MissingOriginBinding_Kd: uniq/i32")]
-    [InlineData("C10 r05", "func make<T>(x: i32) -> Option<T> => .None\nspecialize func make<Box>(x: i32) -> Option<Box>\n    let n: i32 = 1\n    return .Some(Box.init(n@ref))", "UnsatisfiedOriginRelation_Kd: Box.init(n@ref)")]
+    [InlineData("C10 r05", "func make<T>(x: i32) -> Option<T> => .None\nspecialize func make<Box>(x: i32) -> Option<Box>\n    let n: i32 = 1\n    return .Some(Box.init(n@ref))", "ComparisonLoanConflict_Kd: let n: i32 = 1|UnsatisfiedOriginRelation_Kd: Box.init(n@ref)")]
     [InlineData("a2 C-331", "func g<T>(x: T) -> ref/i32 => g(x@move)\nspecialize func g<Box>(x: Box) -> ref/i32 => x.value", "UnprovenOriginRelation_Kd: x.value")]
     [InlineData("a5 C-331", "func g<T>(x: T) -> ref/i32 => g(x@move)\nfunc idg<U>(y: U) -> U => y@move\nspecialize func g<Box>(x: Box) -> ref/i32 => idg(x.value)", "UnprovenOriginRelation_Kd: idg(x.value)")]
     [InlineData("e2 C-331", "func g<T>(x: T) -> ref/i32 => g(x@move)\nspecialize func g<Wrap<Box>>(x: Wrap<Box>) -> ref/i32 => x.inner.value", "UnprovenOriginRelation_Kd: x.inner.value")]
@@ -519,7 +519,8 @@ public class SpecializationBindingTest
     private static void AssertRecords(string row, string specialization, IEnumerable<(string Node, Kimi.DiagnosticCode Code)> records)
     {
         var c = MinimalEmissionTest.Analyze(Box + specialization + "\n()");
-        Assert.False(c.Binding.Result.IsComplete, row);
-        Assert.Equal(records, c.Binding.Issues.OrderBy(x => x.Node.Span.Start).Select(x => (x.Node.ToString(), x.Code)));
+        // R7-O1 H: Binding's and the analysis's verdict and records (MirSide), a body relation being A5's record.
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, row);
+        Assert.Equal(records, MirTargetSide.MirSide(c).OrderBy(static x => x.Node.Span.Start).Select(static x => (x.Node.ToString()!, x.Code)));
     }
 }

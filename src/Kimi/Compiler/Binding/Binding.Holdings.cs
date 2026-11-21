@@ -10,9 +10,20 @@ namespace Kimi.Compiler;
 // Inputs: the Type and, for a stored part, the Type its declaration writes there and the holding instance (the keys a reader's memo holds).
 // Outputs: a run appended to the caller's list, in stack order; false at Binding's Limit (a struct's or enum's storage past its limits),
 // whose entries stay published: a reader with a bound of its own reads them, a fold reads false first.
-// Invariants: total, every form has a row and an unlisted form one Unsupported entry; a function of (type, written, holder) only, so each
-// reader's memo stays sound (R4-M151); O(entries); allocates nothing when warm. A stored raw layer's step is DeclaredStep's, the one
-// function StoredStep's path query reads, so the per-level and per-path answers cannot disagree.
+// Invariants: total over the Types Binding forms (SPEC 3, 8.1.1, 8.2.3): every form has a row, and a Type with none breaks Binding's
+// formation contract and throws (NoRow, InternalInvariant), never an entry, so Holdings never gives HoldStep.Unsupported (PLAN G147
+// D-940); a function of (type, written, holder) only, so each reader's memo stays sound (R4-M151); O(entries); allocates nothing when
+// warm. A stored raw layer's step is DeclaredStep's, the one function StoredStep's path query reads, so the per-level and per-path
+// answers cannot disagree.
+// Formation premise, the facts the throw rests on, each published by its owner: a `Semantics`, Slice, Array or Dictionary kind has the
+// component count its kind fixes, except a library declaration's own unapplied `symbol.Type` (Indexing), which no value has (SPEC 9.7:
+// BindContainerReference and BindConstructedType apply every written position's arity); a `Semantics` layer's Semantics is built in (a
+// pair's Semantics parameter is a Parameter, a SemanticsApplication or a SemanticsAdaptation, rows before the switch); a nominal is an
+// `owner` struct, enum, UniqSlice or Contract, except a group's Type, which only an environment is: a group qualifier's
+// (BindContainerQualifier), a construction qualifier naming a group through a member access (ConstructionTargetType) and a nested
+// declaration's under a group parent (SelfType). None is a value's, a stored part's, a declared signature's or a body view's Type: no Type
+// position admits a group, whose symbol is a Container (Indexing; SPEC 9.2) that BindNamedType rejects, and a written
+// argument list on a group meets BindConstructedType's arity check (SPEC 6.1: no own parameters).
 // Must not: decide a fit, a row, a Loan or a write fact; read a call's argument, a solved Origin, the premise closure or a signature's
 // scope (an output fold steps every raw layer by RawStepAt, the cap of a contract's walk, DECISIONS BU-113);
 // read a raw Origin itself. No reader tests `Semantics`, `Kind`, `IsAbstract` or a layer's Origin to decide a step, a flag or a stater.
@@ -52,7 +63,8 @@ internal enum HoldStep : byte
     /// <summary>What a binding hides (SPEC 8.15.1).</summary>
     Abstract,
 
-    /// <summary>A form with no row: each reader's undecided outcome.</summary>
+    /// <summary>OwnLayers' undecided step: a part Binding did not bind and a `during self` layer read through a U2 path (PLAN D-947);
+    /// Holdings never gives it.</summary>
     Unsupported,
 }
 
@@ -113,7 +125,14 @@ internal enum HoldFlags : byte
 /// <param name="Flags">The entry's marks.</param>
 /// <param name="Written">The Type a declaration writes there.</param>
 /// <param name="Holder">The instance holding the stored part.</param>
-internal readonly record struct Hold(BoundType? Part, HoldStep Step, HoldContent Holds, HoldFlags Flags, BoundType? Written, BoundType? Holder);
+internal readonly record struct Hold(BoundType? Part, HoldStep Step, HoldContent Holds, HoldFlags Flags, BoundType? Written, BoundType? Holder)
+{
+    /// <summary>Gets a value indicating whether a reader of what the value holds reads on through <see cref="Part"/> as a part of the value (SPEC 3.3.4,
+    /// 15.3.5): a part at its address, an own step through no raw layer (an owning handle's payload, a collection's elements) or a Type
+    /// argument. Every other entry is a layer or an erased or abstract part, which each reader decides; the holding walks
+    /// (MirTypes.HoldsLoans, Binding's hold walk) read this one row.</summary>
+    internal bool PassesOn => this.Step is HoldStep.Inline or HoldStep.Loan || (this.Step == HoldStep.Own && (this.Flags & HoldFlags.Raw) == 0);
+}
 
 public sealed partial class Binding
 {
@@ -141,7 +160,7 @@ public sealed partial class Binding
 
         switch (type.Kind)
         {
-            case BoundTypeKind.Semantics when type is { Semantics: SemanticsKind.Raw, Components: [var pointee] }:
+            case BoundTypeKind.Semantics when type is { IsPointer: true, Components: [var pointee] }:
                 this.RawHoldings(type, pointee, written, holder, into);
                 return true;
             case BoundTypeKind.Semantics when type.Components is [var referent]:
@@ -182,10 +201,13 @@ public sealed partial class Binding
             case BoundTypeKind.Nominal or BoundTypeKind.Constructed:
                 return this.NominalHoldings(type, holder, into);
             default:
-                into.Add(new(type, HoldStep.Unsupported, HoldContent.Nothing, HoldFlags.None, written, holder));
-                return true;
+                throw NoRow(type);
         }
     }
+
+    // A Type with no row: a broken formation contract (the header's premise), never an entry.
+    private static InvalidOperationException NoRow(BoundType type)
+        => new($"`{type}` has no Holdings row (InternalInvariant; PLAN G147 D-940).");
 
     // SPEC 8.1.1, 3.3.1: a layer's entry by its Semantics (a pair layer's case by the same table), the reference and view partition.
     // An object view of an abstract or open Target adds the remainder at U5 (G416 §0).
@@ -199,7 +221,7 @@ public sealed partial class Binding
             SemanticsKind.Obj => (HoldStep.Own, HoldFlags.None),
             SemanticsKind.Rc or SemanticsKind.Arc => (HoldStep.Own, HoldFlags.ReadOnly),
             SemanticsKind.Raw => (HoldStep.Exclusive, HoldFlags.Raw), // A pair's raw case, unstepped until U3b: not Holds' Members.
-            _ => (HoldStep.Unsupported, HoldFlags.None),
+            _ => throw new InvalidOperationException($"Semantics {semantics} has no layer row (InternalInvariant; PLAN G147 D-940)."),
         };
         into.Add(new(target, step, HoldContent.Its, marks | flags, null, holder));
     }
@@ -293,8 +315,7 @@ public sealed partial class Binding
             return true;
         }
 
-        into.Add(new(type, HoldStep.Unsupported, HoldContent.Nothing, HoldFlags.None, null, null));
-        return true;
+        throw NoRow(type);
     }
 
     // A struct's or enum's Type arguments, base, Fields and every substituted Case's payloads, in the instance's kept parts, each holding

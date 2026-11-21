@@ -229,7 +229,7 @@ public class ContextualCaptureTest
     // flow, in a loop too) is one record, after the body is bound, at the value whose bound enters the helper borrow into the region graph
     // that reaches the var: an assignment, a meet, a call result, or another var's earlier initializer; the Closure stays a resolved value.
     [Theory]
-    [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = if self.count > 0 => w.buffer@ref else => self.buffer@ref\n        Audit.observe(v)\n", "if self.count > 0 => w.buffer@ref")]
+    [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = if self.count > 0 => w.buffer@ref else => self.buffer@ref\n        Audit.observe(v)\n", "w.buffer@ref else => self.buffer@ref")] // The join's source (R7-O1 H, D5 for a join).
     [InlineData("        let other = Connection.init()\n        var v = other@ref\n        let t = if self.count > 0 => v else => other@ref\n        let f = func [t] () => Audit.inspect(t)\n        f()\n        v = Audit.same(self)\n", "Audit.same(self)\n")]
     [InlineData("        let w = self@ref\n        var u = w.buffer@ref\n        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        v = u\n        Audit.observe(v)\n", "w.buffer@ref\n        var v")]
     [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        var u = self@ref\n        v = u.buffer@ref\n", "self@ref\n        v = u")]
@@ -250,11 +250,13 @@ public class ContextualCaptureTest
 
     // SPEC 16.3.1, 23.1.2 (DECISIONS R4-M152): the helper-capture judgment reads a Closure's definition, so in a drop body a Closure whose
     // erasure to a common Function Type fails (its creation failed) still has its capture judged: a later helper-borrow value of the
-    // captured var is InvalidCaptureBinding_Kd, the independent record its created twin has (BU's zz3_h2 and zz3_h2ok).
+    // captured var is InvalidCaptureBinding_Kd, the independent record its created twin has (BU's zz3_h2 and zz3_h2ok). The erasure's own
+    // record is UnsatisfiedConstraint_Kd: v's region has the drop receiver's `self.buffer@ref` as a recorded source, local to the body, so
+    // SPEC 15.6.5 refutes its Owned (G379 (a) R5, a record move on an invalid program under DECISIONS Q13; UnprovenConstraint_Kd before).
     [Theory]
     [InlineData(
         "        var v = self.buffer@ref\n        Audit.run(func [v] () => Audit.observe(v))\n        let w = self@ref\n        v = w.buffer@ref\n",
-        "UnprovenConstraint_Kd func [v] () => Audit.observe(v); InvalidCaptureBinding_Kd w.buffer@ref")]
+        "UnsatisfiedConstraint_Kd func [v] () => Audit.observe(v); InvalidCaptureBinding_Kd w.buffer@ref")]
     [InlineData(
         "        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = w.buffer@ref\n",
         "InvalidCaptureBinding_Kd w.buffer@ref")]

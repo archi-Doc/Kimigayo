@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly QualificationFailureRows qualificationFailures;
     private Dictionary<(Koto Use, bool Type), QualificationFact>? qualificationStops;
-    private Dictionary<Koto, QualificationFact>? qualificationFailures;
 
     private enum QualificationNamespace : byte
     {
@@ -23,7 +23,7 @@ public sealed partial class Binding
         Case,
     }
 
-    private readonly record struct QualificationFact(
+    internal readonly record struct QualificationFact(
         BindingScope Container,
         BindingScope Scope,
         BindingSymbol Member,
@@ -143,6 +143,20 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 9.5.1, 9.6: the resolver's miss, the one decision of a Name or Type that no lookup selected: a missing one whose lookup
+    // stopped at a declaration requiring qualification (QualificationStop) fails as QualificationRequired, a definite failure that
+    // carries its stop (`qualificationFailures`); any other miss fails unresolved as given.
+    private BoundType? FailUnselected(Koto name, BindingFailure missing)
+    {
+        if (missing is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(name) is { } qualification)
+        {
+            this.qualificationFailures[name] = qualification;
+            return this.Fail(name, BindingFailure.QualificationRequired);
+        }
+
+        return this.Fail(name, missing, true);
+    }
+
     private QualificationFact? InheritedStop(BindingScope container, BindingScope scope, Koto use, string name, LookupRole role, int arity)
     {
         if (role == LookupRole.TypeSemantics || container.Owner is not StructKoto { BaseClause: { } clause } structure)
@@ -182,9 +196,9 @@ public sealed partial class Binding
         return null;
     }
 
-    private void ReportQualification(Koto node, DiagnosticRequirement requirement)
+    private void ReportQualification(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
-        var fact = this.qualificationFailures![node];
+        var fact = this.qualificationFailures[node];
         var container = fact.Container.Owner.BoundSymbol!;
         var instance = false;
         for (var member = fact.Member; member is not null; member = member.Next)
@@ -254,7 +268,8 @@ public sealed partial class Binding
 
         var at = fact.At!;
         var nameSpace = fact.Type ? QualificationNamespace.Type : QualificationNamespace.Value;
-        node.Report(
+        node.ReportIn(
+            store,
             requirement,
             DiagnosticCode.QualificationRequired_Kd,
             fact.Name,
@@ -311,6 +326,21 @@ public sealed partial class Binding
             var verified = selected ? RepairConditionSet.Selection : RepairConditionSet.None;
             var required = (selected ? RepairConditionSet.None : RepairConditionSet.Selection) | (fact.Type ? RepairConditionSet.None : RepairConditionSet.UsageLegality);
             (repairs ??= []).Add(new(RepairKind.Qualify, [fact.Name, prefix], [node.Edit(new(fact.At!.Span.Start, 0), prefix)], verified, required));
+        }
+    }
+
+    /// <summary>The `qualificationFailures` family's one accessor (DECISIONS BU-220): a pass family, the qualification stop a failed
+    /// Name or Type at a node required (FailUnselected), stored with its failure by the recorder (RecordedFact; a present fact always has its
+    /// Container, so the column's default is none). Its members keep the names its readers use.</summary>
+    private readonly struct QualificationFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<QualificationFact, PassCounter> Family(ref NodeColumns columns) => ref columns.QualificationFailures;
+
+        internal QualificationFact this[Koto node]
+        {
+            get => binding.RecordedFact(node, Family) is { Container: not null } fact ? fact : throw new KeyNotFoundException($"`{node}` has no qualification failure in this pass.");
+            set => binding.SetRecordedFact(node, Family, value);
         }
     }
 }

@@ -187,7 +187,7 @@ public class ConstraintBindingTest
     [InlineData(LateAfterItsReaders, "3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateThroughAClosedClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateWithUses, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateAssociated, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAssociated, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the user's record reads S's failed closed clause and rests (SPEC 23.1.2)
     public void ALateFailureStaysAtItsDeclaration(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // PLAN G375: a requirement's call is proven under its reference, not as its declaration, so it neither reads nor writes the kept Proven: `P<i32>`'s
@@ -392,8 +392,8 @@ public class ConstraintBindingTest
     [InlineData(NestedSubjects + "    public init() => ()\ncontract C2\n    W<Self>.Inner is K", "1*InvalidConstraint_Kd")] // a8, Contract-wide
     [InlineData(NestedSubjects + "    W<Z>.Inner is not K\n    public init() => ()", "1*InvalidConstraint_Kd")] // a5: the clause's record alone, none at S
     [InlineData(NestedSubjects + "    W<Z>.Inner is W<i32>.Inner\n    public init() => ()\nfunc use() => S<i64>.init()", "1*InvalidConstraint_Kd")] // s3use: the use rests on the clause
-    [InlineData("contract K\nstruct W<T>\n    Inner is K\n    public struct Inner\n        public init() => ()", "clean")] // v1
-    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "clean")] // v2
+    [InlineData("contract K\nstruct W<T>\n    Inner is K\n    public struct Inner\n        public init() => ()", "2*InvalidConstraint_Kd")] // v1: O-344 (a), Inner declares no K
+    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "3*InvalidConstraint_Kd")] // v2: O-344 (a); the third record repeats a line: a duplicate pinned until its PLAN line (record selection, ruling 130) is fixed
     [InlineData(NestedSubjects + "    N.Inner is K\n    public init() => ()", "clean")] // v3
     [InlineData(NestedSubjects + "    D<i32>.Item is Copy\n    public init() => ()", "clean")] // p5, a projection whose value is known
     [InlineData(NestedSubjects + "    D<W<Z>.Inner>.Item is K\n    public init() => ()", "clean")] // p8
@@ -709,10 +709,10 @@ public class ConstraintBindingTest
     [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).Item>\n    public let p: ref/i32 during w\n", "Unsupported_Kd@(Cursor during w).Item")] // k9
     [InlineData("struct W\n    Self is Sink<Src.Item>\n", "Unsupported_Kd@Src.Item")] // u1
     [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@(Cursor during y).Nope")] // k2
-    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item UnresolvedBinding_Kd@(Cursor during y).Nope")] // k4
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@(Cursor during y).Nope")] // k4 // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the subject's record resting on the unresolved name goes
     [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<Nosuch>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@Nosuch")] // t6
-    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is not Zbox<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n1
-    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Zbox<(Cursor during y).Nope> or Marker\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n2
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is not Zbox<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n1 // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the subject's record resting on the unresolved name goes
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Zbox<(Cursor during y).Nope> or Marker\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n2 // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the subject's record resting on the unresolved name goes
     [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).Nope>\n    public let p: ref/i32 during w\n", "UnresolvedBinding_Kd@(Cursor during w).Nope")] // k9n
     [InlineData("struct W\n    Self is Sink<Src.Nope>\n", "UnresolvedBinding_Kd@Src.Nope")] // u1n
     public void AProjectionInARequirementWaitsUnlessItsClauseDeclaresConformance(string declaration, string expected)
@@ -742,7 +742,7 @@ public class ConstraintBindingTest
     [InlineData("func f<U>(value: U)\n    Box<Nope>.(C).X is Copy\n    U is D\n    ()\n", "UnresolvedBinding_Kd@Nope")]
     [InlineData("struct W<U>\n    Box<Nope>.(C).X is Copy\n    U is D\n    public var item: i32\n", "UnresolvedBinding_Kd@Nope")]
     [InlineData("struct W<U>\n    Box<U>.(C).X is Copy\n    U is D\n    public var item: i32\n", "")]
-    [InlineData("func f<U>(value: U)\n    S.(C).X is U.(C).X\n    ()\n", "InvalidConstraint_Kd@S.(C).X is U.(C).X InvalidConstraint_Kd@U.(C).X")]
+    [InlineData("func f<U>(value: U)\n    S.(C).X is U.(C).X\n    ()\n", "InvalidConstraint_Kd@S.(C).X is U.(C).X UnprovenConstraint_Kd@U.(C).X")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, code): `U.(C).X`'s input `U is C` is unproven, its own record (ruling 255)
     [InlineData("func f<U>(value: U)\n    S.(C).X is Box<U>.(C).X\n    ()\n", "InvalidConstraint_Kd@S.(C).X is Box<U>.(C).X InvalidConstraint_Kd@Box<U>.(C).X")]
     [InlineData("func f<U>(value: U)\n    (U, i32).(C).X is Copy\n    U is D\n    ()\n", "ExpectedSyntax_Kd@i32")] // G507: the expression parser's record (Q13)
     [InlineData("func f<U>(value: U)\n    ().(C).X is Copy\n    U is D\n    ()\n", "UnresolvedBinding_Kd@()")] // G507: Binding forms no Unit-head Type (Q13)

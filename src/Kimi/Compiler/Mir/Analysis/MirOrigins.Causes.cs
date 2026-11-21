@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Diagnostics;
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
@@ -85,7 +84,7 @@ internal sealed partial class MirOrigins
     private int FixedOrigins(BoundType? type, SourceRef site, ulong views)
     {
         var callable = type?.Kind is BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem;
-        if (type is null || type.Semantics == SemanticsKind.Raw || type.IsAbstract || callable)
+        if (type is null || type.IsPointer || type.IsAbstract || callable)
         {
             return -1;
         }

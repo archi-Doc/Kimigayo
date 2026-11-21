@@ -44,6 +44,7 @@ public partial class Compilation
 
     internal bool Prepare(string target, DependencyPartition graph)
     {
+        this.EnsureNoBinding();
         if (this.hasParsedSource)
         {
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");
@@ -60,9 +61,24 @@ public partial class Compilation
         return this.Prepare(target);
     }
 
-    // Whether a module is one of this compilation's: a source module or its library's (one per compilation until PLAN G949 U3), the
-    // module set its Binding binds. Binding.GetDocumentation documents only a declaration of such a module.
-    internal bool HoldsModule(Kotonoha module) => ReferenceEquals(module, this.Library.Kotonoha) || Array.IndexOf(this.SourceModules, module) >= 0;
+    // The module set this compilation binds (PLAN G949 Stage 2 U3-1; the Front's U0b-6 N2), its one owner: the source modules by ordinal,
+    // then its library's module (SyntaxTable.LibraryModule). Binding's readers outside a pass walk it (Binding.Modules), hover reads its
+    // documents, HoldsModule tests it and ModuleOf resolves a reference in it; the program pass binds the source modules alone.
+    internal (Kotonoha[] Sources, Kotonoha Library) BoundModules => (this.SourceModules, this.Library.Kotonoha);
+
+    // The module of the set that a reference names: the library's for SyntaxTable.LibraryModule, else the source module of its ordinal.
+    internal Kotonoha ModuleOf(SourceRef source)
+    {
+        var (sources, library) = this.BoundModules;
+        return source.IsLibrary ? library : sources[source.Module];
+    }
+
+    // Whether a module is in the set. Binding.GetDocumentation documents only a declaration of such a module.
+    internal bool HoldsModule(Kotonoha module)
+    {
+        var (sources, library) = this.BoundModules;
+        return ReferenceEquals(module, library) || Array.IndexOf(sources, module) >= 0;
+    }
 
     internal Kotonoha? FindReference(Kotonoha module, string name)
         => this.moduleReferences?.GetValueOrDefault(module)?.GetValueOrDefault(name);

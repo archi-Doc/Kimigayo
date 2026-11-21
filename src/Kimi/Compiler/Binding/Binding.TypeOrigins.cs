@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases)>? invalidStaticOriginSlots;
+    private readonly InvalidStaticOriginSlotRows invalidStaticOriginSlots;
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
@@ -178,13 +178,13 @@ public sealed partial class Binding
                 // well-formedness (RequireInputPremises), whether its argument is a Borrow formed there or an existing reference.
                 var discharge = context is { Position: TypePosition.Parameter, Direct: true, Owner: FunctionKoto function } &&
                     origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
-                    (ReferenceTypes.IsStruct(type) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
+                    (AdtDef.IsStruct(type.SafeReferent) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
                 // A written Type's own layer at its use, in no comparison (default), as its retention below.
                 var formation = new UseScope(use);
                 this.RetainInnerOutlives(type.Components[0], origin, ref formation, discharge, RequiredCondition(this.PairSlotCondition(type, ref formation, default)));
             }
         }
-        else if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        else if (type is { IsPointer: true })
         {
             // SPEC 5.7: a raw layer states the Origin its `during` writes (WrittenRawOrigin) or none, and forms no borrow Origin.
             if (written)
@@ -471,7 +471,7 @@ public sealed partial class Binding
                         var site = OriginFormationSite(node, type);
                         var slot = schema.Origins[i];
                         var cases = this.FailingCase(slot, type, LoanRequirement.Uniq);
-                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
+                        this.FailExplained(InvalidStaticOriginSlotRows.Family, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
                         if (!ReferenceEquals(site, node))
                         {
                             this.CompleteDependent(node, site);
@@ -516,7 +516,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Semantics == SemanticsKind.Raw || type.Kind == BoundTypeKind.Function)
+        if (type.IsPointer || type.Kind == BoundTypeKind.Function)
         {
             return false;
         }
@@ -561,5 +561,17 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    /// <summary>The `invalidStaticOriginSlots` family's one accessor (DECISIONS BU-220): a pass family, a static Origin bound to a slot
+    /// that requires uniq with its failing cases, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a
+    /// present row always has its Slot). Its members keep the names its readers use.</summary>
+    private readonly struct InvalidStaticOriginSlotRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), PassCounter> Family(ref NodeColumns columns) => ref columns.InvalidStaticOriginSlots;
+
+        internal bool TryGetValue(Koto node, out (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases) invalid)
+            => (invalid = binding.RecordedFact(node, Family)).Slot is not null;
     }
 }

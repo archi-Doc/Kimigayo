@@ -53,21 +53,29 @@ internal sealed partial class MirBuilder
                     !negate || type.IsFloatingPoint || type.IsWrappingInteger),
                     node);
                 break;
-            default:
-                this.Unsupported(node, destination);
+            default: // Binding resolves a PrimitiveOp only as one of these (KindOp, HasFacts).
+                this.Invariant(node, destination);
                 break;
         }
     }
 
     // A built-in binary operator's operands, pushed in order; where the first is pushed. The left operand is pending while the right one is
-    // evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3), and secured where the right one builds code
-    // (SPEC 12.2).
+    // evaluated, so a transfer there ends a comparison's inspection Loan, on its check edge too (SPEC 13.4, 14.10.3: a comparison's left
+    // operand is an inspection while the right one is evaluated), and secured where the right one builds code (SPEC 12.2). A `$expect`
+    // comparison's operands (Recorded) are pushed here too, so its inspection is registered as an operator's is.
     private int Operands(BinaryKoto binary)
     {
         var start = this.arguments.Count;
         var left = this.Operand(binary.Left, expected: null);
         this.arguments.Add(Builds(binary.Right) ? this.Secure(left, binary.Left) : left);
+        var open = this.inspections.Count;
+        if (BinaryOp(binary.Akind) >= MirBinaryOp.Eq)
+        {
+            this.inspections.Add(start);
+        }
+
         this.arguments.Add(this.Operand(binary.Right, expected: null));
+        this.inspections.RemoveRange(open, this.inspections.Count - open);
         return start;
     }
 
@@ -92,7 +100,7 @@ internal sealed partial class MirBuilder
         var form = Binding.FormOf(member);
         if (form == BuiltinForm.None)
         {
-            this.Unsupported(member, destination);
+            this.Invariant(member, destination); // HasFacts' PrimitiveOp row: a member access is published with its BuiltinForm.
             return;
         }
 
@@ -206,7 +214,7 @@ internal sealed partial class MirBuilder
         if (row.Folded is { } wrapped && binding == ConversionBinding.Wrap && type.Width == 0)
         {
             // DECISIONS R7-M14 (G658): a folded wrap to a Type whose instance decides its width holds the exact value modulo 2^128
-            // (Binding, ScalarTypes.Normalize); MIR states the wrap as a Wrap Cast of that i128 constant, which takes each instance's low
+            // (Binding, TyCtxt.Normalize); MIR states the wrap as a Wrap Cast of that i128 constant, which takes each instance's low
             // bits, so a widthless Integer constant stays a generic literal, 0 through 127.
             var wide = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.Primitives["i128"], wrapped))));
             this.Set(destination, MirRvalue.Cast(MirCastKind.Wrap, wide, type) with { Proven = true }, conversion);
@@ -246,7 +254,7 @@ internal sealed partial class MirBuilder
                 { Acquire: HirAcquire.Reborrow, Adaptation: HirAdaptation.None } && TypeOf(conversion.Left).Components is [var payload]
                 ? compilation.Types.Reference(type.Semantics, payload, type.Origin) : null;
             var operand = this.Operand(conversion.Left, borrowed);
-            var source = this.TypeOf(operand) ?? type;
+            var source = this.TypeOf(operand) ?? type; // An unknown operand (derived, PLAN G1073) as the conversion's own: it agrees with any.
             var kind = binding switch
             {
                 ConversionBinding.Wrap => MirCastKind.Wrap,
@@ -300,7 +308,7 @@ internal sealed partial class MirBuilder
             ? this.body.Consts[right.Arg].Bits : (Int128?)null;
         return op switch
         {
-            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
+            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.IsPointer,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
                 op == MirBinaryOp.Rem || !type.IsInteger || !type.IsSigned)),
             MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < type.Width,

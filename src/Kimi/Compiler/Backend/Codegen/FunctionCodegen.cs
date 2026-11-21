@@ -6,7 +6,8 @@
 // form of an accepted program has its row; a form the backend does not generate is the capability table's gap at check (DECISIONS
 // R5-M146). Each concern file (Files) owns its rows, in its header or at its writer: the forms it
 // writes and the DECISIONS entries behind them. This file dispatches each statement, rvalue and terminator to its row, writes the unconditional
-// branch and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead and EndBorrow generate nothing (package C 3.9).
+// branch (a CaseSwitch's: the side the item's view selects) and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead
+// and EndBorrow generate nothing (package C 3.9).
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
 // exactness (A2, R4-M6a, R4-M102: an inexact body reaching Write is a broken contract); the compilation's Layout and runtime location texts;
@@ -16,11 +17,11 @@
 // Invariants (design 2 2.2): I1 deterministic: blocks b<index>, slots %l<local>, values %t<n> numbered per function; I2 one aligned alloca
 // per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored into
 // its local's slot, a pointer-passed argument and the result slot used in place, then one per copy slot (R5-M89) and one per drop flag,
-// cleared (R5-M99); I3 exactly the blocks MirReach.Walk(body, 0, checks: false) reaches, in index order, so code only the checks reach is
-// never generated (SPEC 14.10.3); I4 an operand is read at each use (loaded, or its address when its value is in memory); I5 a check not
-// Proven Aborts at its site's location (SPEC 22.5.1; in a caller-location body the location it received, R5-M93); I7 every Type is
-// Layout.Of(TypeOf(item, t)); I8 a call's target is the collector's at its site, read by one forward cursor; I9 no nsw, nuw or inbounds;
-// I10 no store i1. A warm write allocates nothing.
+// cleared (R5-M99); I3 exactly the blocks MirReach.Walk(body, 0, checks: false) reaches under the item's view, in index order, so code
+// only the checks reach is never generated (SPEC 14.10.3); I4 an operand is read at each use (loaded, or its address when its value is in
+// memory); I5 a check not Proven Aborts at its site's location (SPEC 22.5.1; in a caller-location body the location it received,
+// R5-M93); I7 every Type is Layout.Of(TypeOf(item, t)); I8 a call's target is the collector's at its site, read by one forward cursor; I9
+// no nsw, nuw or inbounds; I10 no store i1. A warm write allocates nothing.
 // Files: the dispatch, the unconditional branch and the records (this file); the operands' and constants' values, the representations
 // and a site's location (FunctionCodegen.Values.cs); the text's spelling (.Spelling.cs); the function's frame: homes, prologue and return
 // (.Frame.cs); parameter passing: its kind's argument order, each argument by its parameter and the copy slots (.Arguments.cs); the place
@@ -112,7 +113,7 @@ internal sealed partial class FunctionCodegen
         _ = this.cases.Select(this.body, this.collector.Set.Items[this.item].View); // X13: the collector's one view of the item's body.
         (this.abi, this.cursor, this.point) = (abi, 0, 0);
         this.reach.Clear(this.body.Blocks.Length);
-        this.reach.Walk(this.body, 0, checks: false);
+        this.reach.Walk(this.body, 0, checks: false, this.cases);
         this.Copies();
         this.StaticSlots();
         this.Prologue();
@@ -210,6 +211,9 @@ internal sealed partial class FunctionCodegen
                 return;
             case MirTerminatorKind.SwitchInt:
                 this.Switch(terminator);
+                return;
+            case MirTerminatorKind.CaseSwitch: // The side the item's view selects (MirCases.Branch): an unconditional branch.
+                this.Branch(MirUses.Successor(this.body, terminator, this.cases.Branch(terminator) ? 0 : 1));
                 return;
             case MirTerminatorKind.Return:
                 this.Return();

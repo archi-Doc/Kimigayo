@@ -166,6 +166,7 @@
   + Name="InvalidTypeFormation_Kd"
     Category="Language"
     Message="The resolved declaration or Semantics target cannot form this type"
+    Evidence="declared:Number,written:Number"
 
   + Name="InvalidConstraint_Kd"
     Category="Language"
@@ -799,7 +800,7 @@
 
   + Name="PremiseClosureLimit_Kd"
     Category="Resource"
-    Message="The identities the premises supply for a Type judged here are not closed within the implementation limit of {0} rounds"
+    Message="The identities the premises supply for a Type judged here are not closed within the implementation limit of {0} rounds (a request's extension rounds, or one associated-Type binding's uses along a chain of completed bindings)"
     Arguments="limit:Number"
 
   + Name="ExpansionLimit_Kd"
@@ -1022,7 +1023,8 @@
   + Name="InvalidVirtualDeclaration_Kd"
     Category="Language"
     Message="This declaration cannot introduce or implement a virtual slot"
-    Evidence="cause:Enumeration"
+    Evidence="cause:Enumeration,rule:Text"
+    Label="{1}"
 
   + Name="MissingOverrideTarget_Kd"
     Category="Language"

@@ -95,13 +95,41 @@ public sealed partial class Binding
     // Self.
     private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
 
-    // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (Checking
-    // answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
+    // R7-C3 (F's C2 rulings 273, 274, 289-290; SPEC 8.2.3, 8.8.2, 23.1.2): a conformance's verification reads the premises it is judged
+    // under, each through the one consult (AvailableConstraintFact), whose read of a failed one is the verification's limit: its
+    // Contract's (the Self requirements every conformer meets: ModuleBindingTest's late witness of `associate Item is Source.(Origin).Item`)
+    // and its conformance scope's, the declaration D and a conditional's own premises P, by one walk of the chain (C3-1b).
+    private PremiseFailure? ConsultsFailedPremise(BindingScope? scope)
+    {
+        PremiseFailure? failed = null;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { FailedPremises.Count: > 0 } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _))
+                {
+                    failed ??= environment.FailedPremise;
+                }
+            }
+        }
+
+        return failed;
+    }
+
+    // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (its open
+    // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
     // its published source state.
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
-        // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance).
-        if (!conformance.Checking)
+        // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance). Stored only on
+        // a change, so a verified frozen path, never Unsupported (FreezeLibrary's UnsettledPath check), is never written (PLAN G949
+        // Stage 2 U3).
+        if (!this.Verifying(conformance) && conformance.Unsupported)
         {
             conformance.Unsupported = false;
         }
@@ -117,8 +145,9 @@ public sealed partial class Binding
         }
 
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid ||
-            conformance.Scope.Parent?.Constraints?.Invalid == true || this.InvalidDeclarationContext(conformance.Contract.Declaration) ||
-            this.InvalidDeclarationContext(conformance.Type.Declaration))
+            (this.scopes.TryGetValue(conformance.Contract.Declaration, out var contractScope) && this.ConsultsFailedPremise(contractScope) is not null) ||
+            this.InvalidDeclarationContext(conformance.Contract.Declaration) || this.InvalidDeclarationContext(conformance.Type.Declaration) ||
+            (!this.ChecksOwnSite(conformance.Use) && this.ConsultsFailedPremise(conformance.Scope.Parent) is not null))
         {
             conformance.IsVerified = false;
             if (conformance.Invalid && (this.partPrerequisites.ContainsKey(conformance.Use) || this.prerequisites.ContainsKey(conformance.Use)))
@@ -128,10 +157,6 @@ public sealed partial class Binding
             else if (conformance.RootPath.Use.BindingFailure != BindingFailure.None)
             {
                 this.failedCause ??= conformance.RootPath; // The evidence: the failed root the proof read (RestsOnRecoveryOrLimit).
-            }
-            else if (conformance.Scope.Parent?.Constraints is { Invalid: true } invalid)
-            {
-                return this.InvalidEnvironment(invalid);
             }
 
             return ConstraintProof.Error;
@@ -148,15 +173,12 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path): the second guard beside the open set
-        // (ResolveConformance), which keys an instance's obligation by (Type, Contract) and so cannot also key a path being verified
-        // without one answer for both; removal: R7-C2e2 e2-5b, when the obligation table keys both (e2-3's Completion carriers).
-        if (conformance.Checking)
+        // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path), keyed by the path in the one table.
+        if (!this.BeginVerification(conformance, out var held))
         {
-            return this.ReentryRead(conformance);
+            return ConstraintProof.Unknown;
         }
 
-        conformance.Checking = true;
         this.conformanceChecks++;
         conformance.WitnessStorage.Clear();
         conformance.WitnessMap.Clear();
@@ -168,7 +190,7 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ConformanceSelf(conformance);
-            var declarationProof = this.ReadSourceState(conformance.Type);
+            var declarationProof = this.ReadSourceState(conformance.Type, out _);
             if (!this.ValidArithmeticConformance(conformance, self))
             {
                 return ConstraintProof.Error;
@@ -291,8 +313,9 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                var clauseScope = this.AssociatedFormationScope(conformance, this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol), scope);
-                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
+                var associated = this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol);
+                var clauseScope = this.AssociatedFormationScope(conformance, associated, scope);
+                proof = CombineProof(proof, this.ProveRequirement(constraint, clauseScope, self), true);
             }
 
             var container = (DeclarationContainerKoto)conformance.Type.Declaration;
@@ -310,7 +333,7 @@ public sealed partial class Binding
                         if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
                         {
                             var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
-                            proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
+                            proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity)), true);
                         }
                     }
                 }
@@ -327,7 +350,7 @@ public sealed partial class Binding
                     }
 
                     var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
-                    proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
+                    proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity)), true);
                 }
             }
 
@@ -395,13 +418,24 @@ public sealed partial class Binding
             }
 
             proof = UnsupportedProof(conformance, proof);
+            // R7-C3 C3-1b (F's C2 rulings 289-290, R1; SPEC 8.2.3, 23.1.2): in the conformance's own check every check ran and its own
+            // Refuted, Error or Unknown verdict keeps its record; a verdict otherwise Proven rests on the conforming scope's Failed
+            // premise: the premise leaves it open, and the consult's read is its limit, so the proof scope ends resting on that premise's
+            // record (EndProof): unverified, and the conformance clause keeps dev's record, a kept dependent (F's C2 ruling 294, DECISIONS
+            // Q13). Every other reader rested at the first branch.
+            if (proof == ConstraintProof.Proven)
+            {
+                this.BeginProof();
+                proof = this.EndProof(this.ConsultsFailedPremise(conformance.Scope.Parent) is null ? ConstraintProof.Proven : ConstraintProof.Unknown);
+            }
+
             conformance.IsVerified = proof == ConstraintProof.Proven;
             completed = true;
             return proof;
         }
         finally
         {
-            this.EndChecking(conformance);
+            this.EndVerification(conformance, held);
             conformance.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
         }
@@ -422,6 +456,44 @@ public sealed partial class Binding
             (this.specificationLinks ??= new()).Add(conformance.Use);
             return Invalid(BindingFailure.InvalidAssociatedType);
         }
+    }
+
+    // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): a requirement's evidence, that the specified Types meet a Contract clause (or a
+    // specification's obligation): one answer holding pending the obligations open when it began (BeginEvidence), so a part of the
+    // specified Types whose route depends on one stays the projection there (HeldPending) and only a judgment reading that part reads it
+    // pending; Unknown when the answer depends on one (it supplies none). The clause is instantiated for the conforming Type inside it.
+    private ConstraintProof ProveRequirement(BoundConstraint written, BindingScope scope, BoundType self)
+    {
+        var mark = this.BeginEvidence();
+        var verdict = ConstraintProof.Unknown;
+        try
+        {
+            verdict = this.ProveConstraint(this.ContractConstraint(written, scope, self), scope);
+        }
+        finally
+        {
+            verdict = this.EndEvidence(mark, verdict);
+        }
+
+        return verdict;
+    }
+
+    // SPEC 8.5.1, 8.6.3: a conforming Type's specification clause, by conjunction elimination (8.3.2). The identity atom the binding is
+    // formed from (`binding`, its first candidate) is the binding itself, a formation read (the Types it names are formed where written,
+    // after the conformance holds); every other conjunct is an obligation of the conformance, a requirement's evidence: a further identity
+    // atom (its consequence, an identity between Types, is checked and never assumed) or any other conjunct. One proof, as the clause's.
+    private ConstraintProof ProveSpecification(BoundConstraint written, BindingScope scope, BoundType self, BoundType? binding)
+    {
+        this.BeginProof();
+        return this.EndProof(Conjunct(written));
+
+        ConstraintProof Conjunct(BoundConstraint conjunct)
+            => conjunct.Kind switch
+            {
+                ConstraintKind.And => CombineProof(Conjunct(conjunct.Left!), Conjunct(conjunct.Right!), true),
+                ConstraintKind.TypeIdentity when ReferenceEquals(conjunct.RequiredType, binding) => this.ProveConstraint(this.ContractConstraint(conjunct, scope, self), scope),
+                _ => this.ProveRequirement(conjunct, scope, self),
+            };
     }
 
     private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
@@ -585,7 +657,7 @@ public sealed partial class Binding
         }
     }
 
-    private void MatchResultOrigins(BoundType pattern, BoundType expected, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    private void MatchResultOrigins(BoundType pattern, BoundType expected, Koto binder, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
     {
         if (!pattern.CarriesOrigin || !expected.CarriesOrigin)
         {
@@ -594,12 +666,12 @@ public sealed partial class Binding
 
         if (pattern.Origin is { } p && expected.Origin is { } a)
         {
-            Match(p, a);
+            Match(p, a, origins, inputs);
         }
 
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, expected.OriginArguments.Count); i++)
         {
-            Match(pattern.OriginArguments[i], expected.OriginArguments[i]);
+            Match(pattern.OriginArguments[i], expected.OriginArguments[i], origins, inputs);
         }
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, expected.Components.Count); i++)
@@ -607,7 +679,8 @@ public sealed partial class Binding
             this.MatchResultOrigins(pattern.Components[i], expected.Components[i], binder, origins, inputs);
         }
 
-        void Match(BoundOrigin parameter, BoundOrigin value)
+        // The spans are parameters: a local function cannot capture a span.
+        void Match(BoundOrigin parameter, BoundOrigin value, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
         {
             if (ReferenceEquals(parameter.Binder, binder) && parameter.Kind is OriginKind.Parameter or OriginKind.Input)
             {
@@ -622,7 +695,7 @@ public sealed partial class Binding
 
     // `known` is the binder of an argument's known call signature (SPEC 10.8): the Origins it quantifies, such as per-call inputs,
     // lie beyond the call and are no evidence for the callee's own Origins.
-    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs, Koto? known = null)
+    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Koto? known = null)
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
         {
@@ -652,7 +725,7 @@ public sealed partial class Binding
         }
     }
 
-    private void MatchInputOrigin(BoundOrigin pattern, BoundOrigin actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs, Koto? known = null)
+    private void MatchInputOrigin(BoundOrigin pattern, BoundOrigin actual, Koto binder, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Koto? known = null)
     {
         if (known is not null && QuantifiedBy(actual, known))
         {

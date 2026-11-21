@@ -99,13 +99,36 @@ public class FunctionItemTest
     [InlineData("x6meet", "func h(anchor0: ref/u8 during a, anchor1: ref/u8 during b) -> i32\n    if true\n        func pk(x: ref/u8 during (a and b)) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("y1fnsig", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk(f: (ref/u8 during a) -> i32) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("y3fnsigT", "func h<T>(x: ref/T) -> i32\n    if true\n        func pk(f: (T) -> i32) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
-    [InlineData("y5local", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("o8eraT", "func h<T>(x: T) -> i32\n    if true\n        func pk(y: T) -> i32 => 0\n        let g: (T) -> i32 = pk\n        return g(x@move)\n    return 0\n", "pk\n        return g")]
     [InlineData("e4hide", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let g: (ref/u8 during static) -> i32 = pk\n        return need(g@move)\n    return 0\n", null)]
     [InlineData("e5hidec", "func h(anchor0: ref/u8 during a) -> i32\n    let g: (ref/u8 during static) -> i32 = func (x: ref/u8 during a) -> i32 => 0\n    return need(g@move)\n", null)]
     [InlineData("x3fnnest", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk<U>(y: U) -> i32 => 0\n        return need(pk<(ref/u8) -> i32>)\n    return 0\n", null)]
     public void AnItemIsOwnedOnlyWhenWhatItsSignatureNamesIs(string id, string body, string? at)
         => AssertOwnedRecord(id, Need + body + "public func main() -> () => ()\n", at);
+
+    // DECISIONS BU-56's interim (until PLAN G230 (A)), for a `let` local as for a `var` one (PLAN G492-a (ii), the owner's O-394 (a)): a
+    // nested function's written Origin naming an enclosing local's Origin (`during r`) is a located Unsupported_Kd there. y5local
+    // (invalid: pk is not Owned, SPEC 15.3.4) keeps its Owned record, at the Item, beside it, as its `var` twin's; y5ok2 (valid, SPEC
+    // 15.3.4, 10.8: r read at the call is its value) has the limit alone. An unannotated local's Origin (D-990, F's G147 ruling 46):
+    // a parameter keeps dev's binding (d990par, d990parv, valid, accepted); a result the header failed is the located Unsupported_Kd
+    // at its written Type, on which the call rests, with no InternalInvariant_Kd (d990let, d990var, d990nocall: valid, SPEC 15.3.4;
+    // d990inv: invalid, p outlives r's Origin unproven in pick, 15.6.1); a non-borrow local keeps its InvalidOriginBinding_Kd in either
+    // slot (d990nbp, d990nbr: SPEC 15.2.1); an Origin the header binds is accepted (d990ctl).
+    [Theory]
+    [InlineData("y5local", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "Unsupported_Kd r; UnprovenConstraint_Kd pk")]
+    [InlineData("y5localv", "func h(anchor0: ref/u8 during a) -> i32\n    var r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "Unsupported_Kd r; UnprovenConstraint_Kd pk")]
+    [InlineData("y5ok2", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    func pk(x: ref/u8 during r) -> i32 => 0\n    return pk(r)\n", "Unsupported_Kd r")]
+    [InlineData("d990let", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n", "Unsupported_Kd ref/i32 during r")]
+    [InlineData("d990var", "func f(p: ref/i32) -> i32\n    var r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n", "Unsupported_Kd ref/i32 during r")]
+    [InlineData("d990nocall", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    return 0\n", "Unsupported_Kd ref/i32 during r")]
+    [InlineData("d990inv", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during p) -> ref/i32 during r => v\n    return 0\n", "Unsupported_Kd ref/i32 during r")]
+    [InlineData("d990par", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    let w = pick(r)\n    return w\n", "")]
+    [InlineData("d990parv", "func f(p: ref/i32) -> i32\n    var r = p\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    let w = pick(r)\n    return w\n", "")]
+    [InlineData("d990ctl", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during p) -> ref/i32 during p => v\n    let w = pick(p)\n    return w@follow\n", "")]
+    [InlineData("d990nbp", "func f(p: ref/i32) -> i32\n    let w = 1\n    func g(x: ref/i32 during w) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd w")]
+    [InlineData("d990nbr", "func f(p: ref/i32) -> i32\n    let w = 1\n    func g(x: ref/i32) -> ref/i32 during w => x\n    return 0\n", "InvalidOriginBinding_Kd w")]
+    public void ALocalsOriginInANestedSignatureIsTheInterimsLimit(string id, string body, string records)
+        => Assert.Equal((id, records), (id, Records(Need + body + "public func main() -> () => ()\n")));
 
     // SPEC 15.2.3, 15.3.4, 7.7.4, 6.1.3, 3.5 (PLAN G826, G811-o revisions 1-2): an Item's Owned parts are its bound arguments, a
     // requirement Contract's inherited Origins included, and the atoms its declared signature inherits from an enclosing body (an

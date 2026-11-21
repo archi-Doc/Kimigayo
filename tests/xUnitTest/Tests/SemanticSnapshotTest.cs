@@ -218,9 +218,14 @@ public sealed class SemanticSnapshotTest
         private readonly Dictionary<object, string> types = new(ReferenceEqualityComparer.Instance);
         private int depth;
         private Koto? generated;
-        private Binding? binding; // The printed compilation's, whose HIR plans a node's row reads; written only by Attach.
+        private Binding? binding; // The printed compilation's, whose facts a node's line and whose HIR plans its row read; written only by Attach.
 
         internal string Hir => this.hir?.ToString() ?? string.Empty;
+
+        // The printed compilation's published facts (PLAN G949 Stage 2 U3, B's U3 ruling 34 (a)): every node's, a library node's included,
+        // is read through the compilation the printer is attached to, never through the node's own compilation (a frozen library node has
+        // none).
+        private SemanticQuery Query => (this.binding ?? throw new InvalidOperationException("A node is printed before Attach.")).Semantics;
 
         public override void Visit(Koto node)
         {
@@ -260,8 +265,8 @@ public sealed class SemanticSnapshotTest
             return builder.ToString();
         }
 
-        // Attaches the compilation whose nodes the printer visits: a HIR row reads that compilation's Binding (its plans). Print attaches
-        // its compilation; a caller visiting nodes directly with HIR attaches first.
+        // Attaches the compilation whose nodes the printer visits: a node's line reads that compilation's published facts (Query) and a
+        // HIR row its Binding's plans. Print attaches its compilation; a caller printing nodes directly attaches first.
         internal void Attach(Compilation compilation) => this.binding = compilation.Binding;
 
         // The tree, the outcome of each phase, the MIR side (MirTargetSide.MirSide: Binding's records without the twins, then the MIR's
@@ -405,6 +410,12 @@ public sealed class SemanticSnapshotTest
                         hir.Append(':').Append(expansion.First?.Target.Name).Append('/').Append(expansion.Second?.Target.Name);
                     }
 
+                    // A selection by case: its index call and its decider (HirTables.IndexCaseDecider).
+                    if (expansion.Shared is { } shared)
+                    {
+                        hir.Append('|').Append(shared.Target.Name).Append('?').Append(this.Type(HirTables.IndexCaseDecider(node)));
+                    }
+
                     hir.Append(expansion.Evaluated >= 0 ? "#" + expansion.Evaluated : string.Empty).Append(expansion.Direct ? "*" : string.Empty);
                 }
 
@@ -413,31 +424,31 @@ public sealed class SemanticSnapshotTest
 
             var text = this.text;
             text.Append(this.depth).Append(' ').Append(CompilationTestHelper.Location(node)).Append('+').Append(node.Span.Length).Append(' ').Append(node.Akind);
-            if (node.StateOf() != BindingState.Unvisited)
+            if (this.Query.StateOf(node) != BindingState.Unvisited)
             {
-                text.Append(' ').Append(node.StateOf());
+                text.Append(' ').Append(this.Query.StateOf(node));
             }
 
-            if (node.FailureOf() != BindingFailure.None)
+            if (this.Query.FailureOf(node) != BindingFailure.None)
             {
-                text.Append('/').Append(node.FailureOf());
+                text.Append('/').Append(this.Query.FailureOf(node));
             }
 
-            if (node.TypeOf() is { } type)
+            if (this.Query.TypeOf(node) is { } type)
             {
                 text.Append(" t=").Append(this.Type(type));
             }
-            else if (node.OriginOf() is { } origin)
+            else if (this.Query.OriginOf(node) is { } origin)
             {
                 text.Append(" o=").Append(Origin(origin));
             }
 
-            if (node.SymbolOf() is { } symbol)
+            if (this.Query.SymbolOf(node) is { } symbol)
             {
                 text.Append(" s=").Append(Symbol(symbol));
             }
 
-            if (node.ErasedTypeOf() is { } erased)
+            if (this.Query.ErasedTypeOf(node) is { } erased)
             {
                 text.Append(" erased=").Append(this.Type(erased));
             }
@@ -465,9 +476,9 @@ public sealed class SemanticSnapshotTest
 
             if (node is ConversionKoto conversion)
             {
-                text.Append(" conversion=").Append(conversion.ConversionOf().Kind);
-                this.Call(" creation", conversion.ConversionOf().Creation);
-                if (conversion.ConversionOf().Folded is { } folded)
+                text.Append(" conversion=").Append(this.Query.ConversionOf(conversion).Kind);
+                this.Call(" creation", this.Query.ConversionOf(conversion).Creation);
+                if (this.Query.ConversionOf(conversion).Folded is { } folded)
                 {
                     text.Append(" folded=").Append(folded.ToString(CultureInfo.InvariantCulture));
                 }
@@ -475,10 +486,10 @@ public sealed class SemanticSnapshotTest
 
             if (node is IsKoto test)
             {
-                text.Append(" constraint=").Append(test.ConstraintOf()?.Kind.ToString() ?? "-");
+                text.Append(" constraint=").Append(this.Query.ConstraintOf(test)?.Kind.ToString() ?? "-");
                 if (test.IsRuntimeTest)
                 {
-                    text.Append(" runtime").Append(test.IsNegated ? "-not" : string.Empty).Append(test.RuntimeTestOf() is null ? string.Empty : "-bound");
+                    text.Append(" runtime").Append(test.IsNegated ? "-not" : string.Empty).Append(this.Query.RuntimeTestOf(test) is null ? string.Empty : "-bound");
                 }
             }
 
@@ -487,7 +498,7 @@ public sealed class SemanticSnapshotTest
                 text.Append(" direct");
             }
 
-            if (node is ForKoto loop && loop.IterationOf().Plan is { } iteration)
+            if (node is ForKoto loop && this.Query.IterationOf(loop).Plan is { } iteration)
             {
                 this.Call(" next", iteration.Next);
             }
@@ -527,7 +538,7 @@ public sealed class SemanticSnapshotTest
             }
 
             var text = this.text;
-            if (invocation.CallOf() is { } call)
+            if (this.Query.CallOf(invocation) is { } call)
             {
                 text.Append(label).Append('=').Append(call.Kind == CalleeKind.Virtual ? call.VirtualIsDirect ? "virtual-direct" : "virtual" : "direct")
                     .Append(' ').Append(Symbol(call.Target)).Append(" -> ").Append(this.Type(call.ReturnType));
@@ -547,7 +558,7 @@ public sealed class SemanticSnapshotTest
                     text.Append(" requirement=").Append(Symbol(requirement.RequirementStorage?.Target)).Append(" implementation=").Append(Symbol(requirement.ImplementationStorage?.Target));
                 }
             }
-            else if (invocation.ValueCallOf() is { } value)
+            else if (this.Query.ValueCallOf(invocation) is { } value)
             {
                 text.Append(label).Append("=value ").Append(this.Type(value.Signature)).Append(" receiver=").Append(value.ReceiverKind);
             }

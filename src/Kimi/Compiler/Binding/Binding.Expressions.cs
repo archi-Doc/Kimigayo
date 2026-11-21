@@ -12,7 +12,7 @@ public sealed partial class Binding
     // grants Read only (SPEC 14.8.3).
     private static BindingFailure? ReferenceBindingAssignment(Koto target)
         => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate } ? BindingFailure.SharedPathAccess
-            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { SafeReferent: not null } type } symbol } &&
                 (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
             ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
 
@@ -123,10 +123,10 @@ public sealed partial class Binding
     {
         if (type.IsFloatingPoint)
         {
-            return ScalarTypes.TryFloatLiteral(literal, type, negative, out _);
+            return TryFloatLiteral(literal, type, negative, out _);
         }
 
-        return literal.TryGetIntegerMagnitude(out var magnitude) && ScalarTypes.TryLiteral(type, magnitude, negative, out _);
+        return literal.TryGetIntegerMagnitude(out var magnitude) && TryLiteral(type, magnitude, negative, out _);
     }
 
     private static BoundType? Complete(Koto node, BoundType? type)
@@ -166,7 +166,7 @@ public sealed partial class Binding
             return FitsGenericInteger(number, negative);
         }
 
-        return ScalarTypes.TryLiteral(type, magnitude, negative, out bits);
+        return TryLiteral(type, magnitude, negative, out bits);
     }
 
     // SPEC 12.3: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
@@ -213,7 +213,7 @@ public sealed partial class Binding
             return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative);
         }
 
-        return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        return node is not NullLiteralKoto || type is { IsPointer: true };
     }
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
@@ -233,9 +233,9 @@ public sealed partial class Binding
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (expected is { ContainsParameter: true })
+        if (expected is not null)
         {
-            expected = this.SubstituteIdentityPremises(expected, scope);
+            expected = this.ClassForm(expected, scope, out _); // SPEC 8.2.3: the binding input's form (a literal at T under `T is i32` is i32)
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
@@ -267,7 +267,7 @@ public sealed partial class Binding
             expected = this.CompleteArrayExpectation(expected, actual);
         }
 
-        if (actual is { ContainsParameter: true } && this.SubstituteIdentityPremises(actual, scope) is var substituted && !ReferenceEquals(substituted, actual))
+        if (actual is not null && this.ClassForm(actual, scope, out _) is var substituted && !ReferenceEquals(substituted, actual))
         {
             // SPEC 8.2: the expression has the one Type that the identity premises of its scope make of its Types.
             if (ReferenceEquals(node.BoundType, actual))
@@ -298,9 +298,13 @@ public sealed partial class Binding
             return expected;
         }
 
-        if (expected is not null && actual is not null && this.FailsFunctionConversion(node, actual, expected))
+        if (expected is not null && actual is not null)
         {
-            return null;
+            actual = this.ConvertFunctionValue(node, actual, expected);
+            if (actual is null)
+            {
+                return null;
+            }
         }
 
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive
@@ -481,7 +485,7 @@ public sealed partial class Binding
 
                 return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
             case NullLiteralKoto:
-                return expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
+                return expected is { IsPointer: true } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
             case BaseReferenceKoto baseReference:
                 return this.BindBaseReference(baseReference, scope);
             case IdentifierNameKoto identifier:
@@ -573,11 +577,6 @@ public sealed partial class Binding
                     resultType = BoundType.Unit;
                 }
 
-                if (resultType is { ContainsParameter: true })
-                {
-                    resultType = this.SubstituteIdentityPremises(resultType, scope); // SPEC 8.2
-                }
-
                 var actual = jump.Expression is { } operand ? this.BindExpected(operand, scope, resultType, (target as FunctionKoto)?.ReturnType) : BoundType.Unit;
                 if (jump.Parent is TryKoto propagation && actual?.Symbol != propagation.Expression.BoundType?.Symbol)
                 {
@@ -622,7 +621,7 @@ public sealed partial class Binding
                 return this.CompleteDependent(array, holeCause);
             case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingExpectationCause(array) is { } arrayCause:
                 return this.CompleteDependent(array, arrayCause);
-            case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0:
+            case ArrayLiteralKoto array when this.TypedByPlaceRule(array, expected):
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
@@ -660,10 +659,23 @@ public sealed partial class Binding
         visitor.Scope = previous;
     }
 
+    // The children of a form bound without its meaning (a recovery or an unsupported form), each on its own; a name the form declares (its
+    // symbol's declaration, such as a recovered loop's binding) is no operand, so it rests on the form, whose record explains it (SPEC
+    // 23.1.2, DIAGNOSTICS 4.3).
     private sealed class ChildBinder(Binding binding) : KotoVisitor
     {
         internal BindingScope Scope { get; set; } = null!;
 
-        public override void Visit(Koto node) => binding.BindNode(node, this.Scope);
+        public override void Visit(Koto node)
+        {
+            if (node is IdentifierNameKoto { BoundSymbol: { } declared } && ReferenceEquals(declared.Declaration, node) && node.Parent is { } form)
+            {
+                binding.CompleteDependent(node, form);
+            }
+            else
+            {
+                binding.BindNode(node, this.Scope);
+            }
+        }
     }
 }

@@ -160,21 +160,21 @@ public sealed partial class Binding
 
     // SPEC 15.3.1: a binding set introduces a new set name and never applies an existing Origin or set. The later set is the location
     // and the first declaration of the name is related.
-    private void ReportDuplicateBindingSet(TypeSemanticsKoto annotation, string name, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportDuplicateBindingSet(TypeSemanticsKoto annotation, DiagnosticCollection? store, string name, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var earlier = this.EarlierBindingName(annotation, name);
         var note = $"A binding set introduces a new set name and never applies an existing Origin or set (SPEC 15.3.1); {name} is already declared in this scope";
         if (earlier is not { } declaration)
         {
-            annotation.Report(requirement, code, note: note, evidence: [name]);
+            annotation.ReportIn(store, requirement, code, note: note, evidence: [name]);
         }
         else if (declaration.Span is { } span)
         {
-            annotation.Report(requirement, code, note: note, evidence: [name], relatedSpans: [("declaration", declaration.At, span, "Origin slot")]);
+            annotation.ReportIn(store, requirement, code, note: note, evidence: [name], relatedSpans: [("declaration", declaration.At, span, "Origin slot")]);
         }
         else
         {
-            annotation.Report(requirement, code, note: note, evidence: [name], related: [("declaration", declaration.At, "first declaration")]);
+            annotation.ReportIn(store, requirement, code, note: note, evidence: [name], related: [("declaration", declaration.At, "first declaration")]);
         }
     }
 
@@ -277,7 +277,7 @@ public sealed partial class Binding
         var inherited = parent?.BoundSymbol?.Schema;
         if (own.Length != declaration.GenericParameterNodes.Count)
         {
-            return this.FailExplained(ref this.arityFailures, syntax, BindingFailure.InvalidTypeFormation, (symbol, declaration.GenericParameterNodes.Count, own.Length, false));
+            return this.RecordArity(syntax, symbol, declaration.GenericParameterNodes.Count, own.Length);
         }
 
         BoundType? environment = this.ImportedEnvironment(syntax);
@@ -340,7 +340,7 @@ public sealed partial class Binding
 
         if (environment is null || environment.Components.Count != inherited.GenericSlots.Count)
         {
-            return this.FailExplained(ref this.arityFailures, syntax, BindingFailure.InvalidTypeFormation, (parent!.BoundSymbol!, inherited.GenericSlots.Count, environment?.Components.Count ?? 0, true));
+            return this.RecordArity(syntax, parent!.BoundSymbol!, inherited.GenericSlots.Count, environment?.Components.Count ?? 0);
         }
 
         var count = own.Length + environment.Components.Count;

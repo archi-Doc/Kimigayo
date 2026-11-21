@@ -29,7 +29,7 @@ public readonly record struct BoundDefaultArgument(Koto Expression, BindingSymbo
 /// <summary>The default of parameter <paramref name="Index"/> of a function (DefaultDecl, plan 5.6.2): one template per declaration and
 /// default, owned by the declaration a call selects statically, never an override or a specialization. It reads each earlier parameter
 /// i as the slot its call prepared (Res PreparedParam) of the declared Type <see cref="Parameter"/>(i) and produces
-/// <see cref="Parameter"/>(<paramref name="Index"/>); at a call each is <c>TyCtxt.Apply(Parameter(i), SubstOf(call))</c>.</summary>
+/// <see cref="Parameter"/>(<paramref name="Index"/>); at a call each is <c>TyCtxt.Apply(Parameter(i), SubstOf(call)).Type</c>.</summary>
 /// <param name="Function">The declaration.</param>
 /// <param name="Index">The parameter's slot.</param>
 internal readonly record struct DefaultDecl(FunctionKoto Function, int Index)
@@ -237,6 +237,29 @@ public sealed class CallPlan
     {
         var declaration = (FunctionKoto)function.Declaration;
         return index < 0 ? binding.SpecialReceiver(declaration) : binding.ParameterSymbol(declaration, index);
+    }
+
+    /// <summary>Gets the number of parameters a function's signature declares, an accessor's <c>self</c> and <c>value</c> included
+    /// (SPEC 7.3): the one count a call's coverage (<see cref="Covers"/>) and a body's parameters read. The function's declaration is a
+    /// <see cref="FunctionKoto"/> (a closure and an accessor's executing function are too); a declaration of another kind is a broken
+    /// contract, whose failure is the cast's <see cref="InvalidCastException"/>.</summary>
+    /// <param name="function">A function, a closure or an accessor's executing function.</param>
+    /// <returns>The count.</returns>
+    internal static int Arity(BindingSymbol function) => ((FunctionKoto)function.Declaration).Parameters.Count;
+
+    /// <summary>Gets the number of parameters the call passes: its function's (<see cref="Arity(BindingSymbol)"/>), or a value call's
+    /// signature's.</summary>
+    /// <returns>The count.</returns>
+    internal int Arity() => this.Kind == CalleeKind.Value ? this.Signature.Components[0].Components.Count : Arity(this.Target);
+
+    /// <summary>Gets whether the call's operations, omitted defaults and receiver cover its parameters (SPEC 7.3), a receiver only where
+    /// its function takes one (a value call has none): the one coverage rule, which HasFacts states for a call the builder builds as it
+    /// is and the builder's call assembly checks.</summary>
+    /// <returns>Whether they cover them.</returns>
+    internal bool Covers()
+    {
+        var receiver = this.Kind != CalleeKind.Value && this.Receiver is not null;
+        return this.ArgumentOperations.Length + this.DefaultArguments.Length + (receiver ? 1 : 0) == this.Arity() && (!receiver || this.Target.ReceiverIndex >= 0);
     }
 
     internal void SetReceiverProjection(BoundArgumentOperation operation, BoundMemberPath path)

@@ -1,12 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<MemberAccessKoto, RequirementGroup> requirementGroups = new(ReferenceEqualityComparer.Instance);
+    private readonly RequirementGroupRows requirementGroups;
+    private readonly List<RequirementGroup> requirementPool = new();
+    private int requirementCursor; // The pool's next free group in this pass (ResetContracts rewinds it).
 
     // SPEC 8.4.1, 8.6.4: the bound Contract reference whose requirement is the candidate under evaluation or the selected
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
@@ -21,11 +24,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (!this.requirementGroups.TryGetValue(member, out var group))
-        {
-            this.requirementGroups.Add(member, group = new());
-        }
-
+        var group = this.requirementGroups.Ref(member) ??= this.RentRequirementGroup(); // One group per member access per pass.
         group.Members.Clear();
         group.Contracts.Clear();
         group.Seen.Clear();
@@ -107,7 +106,7 @@ public sealed partial class Binding
         }
 
         // SPEC 7.4, 9.6: nor may they acquire corresponding parameters of overlapping Types in different modes.
-        if (this.CheckGatheredParameterShapes(member, this.GroupOf(member, null), aliasStage: false))
+        if (this.CheckGatheredParameterShapes(member, this.GroupOf(member, null)))
         {
             group.Active = false;
             return null;
@@ -142,7 +141,7 @@ public sealed partial class Binding
                 // is one candidate per reference; a refinement reaches the same reference as its ancestor.
                 var identity = members[i];
                 var requirement = identity.Symbol;
-                if (requirement.Declaration is FunctionKoto && group.Seen.Add(identity))
+                if (requirement.Declaration is FunctionKoto && group.Seen.Add(identity) && !Identified(group.Members, group.Contracts, identity))
                 {
                     group.Members.Add(requirement);
                     group.Contracts.Add(identity.Contract);
@@ -150,13 +149,29 @@ public sealed partial class Binding
                 else if (requirement.Kind == BindingSymbolKind.Property)
                 {
                     group.PropertyRequirement = true;
-                    if (group.Seen.Add(identity))
+                    if (group.Seen.Add(identity) && !Identified(group.Properties, group.PropertyContracts, identity))
                     {
                         group.Properties.Add(requirement);
                         group.PropertyContracts.Add(identity.Contract);
                     }
                 }
             }
+        }
+
+        // R7-C3 (C-f3a; SPEC 8.2.3, 8.6.1): a requirement reached through two references the judge identifies in the use's view
+        // (`P<U.(HasItem).Item>` and `P<i32>` under `U.(HasItem).Item is i32`) is one candidate.
+        bool Identified(List<BindingSymbol> requirements, List<BindingSymbol> contracts, BoundRequirement identity)
+        {
+            for (var j = 0; j < requirements.Count; j++)
+            {
+                if (ReferenceEquals(requirements[j], identity.Symbol) && contracts[j].Type is { } kept && identity.Contract.Type is { } reached &&
+                    this.IdentityProven(kept, reached, scope))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
@@ -166,8 +181,8 @@ public sealed partial class Binding
         ReadOnlySpan<BoundType?> arguments,
         BindingScope scope,
         BoundType? self,
-        BoundOrigin[] origins,
-        BoundOrigin[] inputs,
+        Span<BoundOrigin> origins,
+        Span<BoundOrigin> inputs,
         BoundType? declaringType = null,
         ReadOnlySpan<BoundLength?> lengths = default)
     {
@@ -193,7 +208,33 @@ public sealed partial class Binding
         return result is null ? null : this.ContractType(result, scope, self);
     }
 
-    private sealed class RequirementGroup
+    // Rents a group from the pass-local pool: the first lookup of a member access in a pass takes the next one, each later lookup of it
+    // in the pass its row's; a warm pass allocates none.
+    private RequirementGroup RentRequirementGroup()
+    {
+        if (this.requirementCursor == this.requirementPool.Count)
+        {
+            this.requirementPool.Add(new());
+        }
+
+        return this.requirementPool[this.requirementCursor++];
+    }
+
+    /// <summary>The `requirementGroups` family's one accessor (DECISIONS BU-220): a working-state family, the group a member access's
+    /// lookup through requirements fills in its pass (RequirementMember) and the pass's later readers take (FunctionGroups,
+    /// MissingFailure, BindPropertyCall), kept in the member access's module's NodeColumns at its SyntaxId (null for none): a row of an
+    /// earlier pass reads none, so an edit that leaves a member access unlooked-up leaves it no group (PLAN D-942), and the library's
+    /// rows are released at its freeze (NodeColumns.Freeze). The groups are the Binding's pool's (requirementPool), which each pass
+    /// rewinds. Its members keep the names its readers use.</summary>
+    private readonly struct RequirementGroupRows(Binding binding)
+    {
+        internal ref RequirementGroup? Ref(MemberAccessKoto member) => ref HirTables.Of(member).Families.RequirementGroups.Ref(member.SyntaxId, binding);
+
+        internal bool TryGetValue(MemberAccessKoto member, [NotNullWhen(true)] out RequirementGroup? group)
+            => (group = member.SyntaxOwner is { } table ? table.Hir.Families.RequirementGroups.Get(member.SyntaxId, binding) : null) is not null;
+    }
+
+    internal sealed class RequirementGroup
     {
         internal List<BindingSymbol> Members { get; } = new();
 

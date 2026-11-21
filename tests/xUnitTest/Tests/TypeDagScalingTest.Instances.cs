@@ -64,6 +64,42 @@ public partial class TypeDagScalingTest
         Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gg.SymbolOf()));
     }
 
+    // PLAN G935 (blocker 1; DECISIONS Q20 B1): Writes' walk (WrittenThrough, its reach set by WriteReach) over a handed writer's parameter,
+    // a diamond chain `N_i { a: N_(i+1), b: N_(i+1) }` of 2^30 paths within StorageBound, past an exclusive layer (reach Exclusive) and
+    // past an owning handle (reach Own, FreshBelow); the kept Type T (abstract in both functions, so y's Loan may reach its storage and
+    // Filled asks whether `set` writes T) lies nowhere in it, so the walk reads every part, each (part, reach) once at its shallowest depth
+    // (retentionReaches). Without the memo the row does not finish (a probe with Enters' test disabled ran past 150 s).
+    [Theory]
+    [InlineData("uniq/N0", 30)]
+    [InlineData("uniq/(rc/N0)", 30)]
+    public void AHandedWritersParameterIsWalkedOncePerPartAndReach(string slot, int size)
+    {
+        var chain = string.Concat(Enumerable.Range(0, size).Select(static i => $"struct N{i}\n    public var a: N{i + 1}\n    public var b: N{i + 1}\n"));
+        var c = MirBuildTest.Compile(chain + $"struct N{size}\n    public var v: i32\npublic func main() => ()\n" +
+            $"func fw<T, E>(x: uniq/T, y: E, ku: ref/i32 during u, set: ({slot} during u, E) -> ()) -> ()\n    return\n" +
+            $"func gw<T>(x: uniq/T, y: uniq/i32 during o, ku: ref/i32 during u, set: ({slot} during u, uniq/i32 during o) -> ()) => fw<T, uniq/i32 during o>(x, y, ku, set@move)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var gw = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gw");
+        var call = KotoTree.Walk(gw).OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gw.SymbolOf()));
+    }
+
+    // D-933 (DECISIONS Q20 B1): the raw-source walk of a struct's stored parts (Binding.StoredRawSources) over a diamond chain `N_i { a:
+    // N_(i+1), b: N_(i+1) }` of 2^30 paths within StorageBound, whose leaf holds a raw Field, reached past the input's exclusive layer:
+    // each part once per position (retentionStored), so the contract finishes. Without the memo the walk reads every path.
+    [Fact]
+    public void AStoredDagIsWalkedOncePerPartForItsRawSources()
+    {
+        const int Size = 30;
+        var chain = string.Concat(Enumerable.Range(0, Size).Select(static i => $"struct N{i}\n    public var a: N{i + 1}\n    public var b: N{i + 1}\n"));
+        var c = MirBuildTest.Compile(chain + $"struct N{Size}\n    public var q: raw/u8\npublic func main() => ()\n" +
+            "func keepN(s: raw/u8, v: uniq/N0) => ()\nfunc gn(v: uniq/N0) => keepN(null, v)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var gn = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gn");
+        var call = KotoTree.Walk(gn).OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gn.SymbolOf()));
+    }
+
     // SPEC 8.2: a projection chain over a Type parameter, `Dup<…Dup<T>.Item…>.Item`, normalizes to a Tuple DAG of T in a generic body: each
     // level's specification is rewritten in a nested query (ContractType's guard), each distinct part once (DECISIONS BU-64). `rd` reads
     // `h.x` through `ref/` as a Copy (`T is Copy`): a bare non-Copy read is SPEC 3.5's error, and a borrowed referent offers no Take (15.1.5).
@@ -127,6 +163,32 @@ public partial class TypeDagScalingTest
         var c = MirBuildTest.Compile(text.ToString());
         var diagnosed = c.Binding.Issues.Where(static x => x.Code == Kimi.DiagnosticCode.InvalidInlineLayout_Kd).Select(static x => ((DeclarationContainerKoto)x.Node).Name);
         Assert.Equal(Enumerable.Range(1, size).Select(static i => $"D{i}").Order(StringComparer.Ordinal), diagnosed.Order(StringComparer.Ordinal));
+    }
+
+    // DECISIONS BU-12 (R7-T1, C-406's C2): the storage verdict (Binding.PrepareTypeStorage, the one storage query) decides each distinct Type of a
+    // storage once per pass, so an inline Box and a fixed array nested N deep cost linear in N: Prepared within the height bound (64),
+    // Limit past it, and the pass's memo gives the same verdict again; a walk that stalls fails at the deadline, never hangs.
+    [Theory]
+    [InlineData(30, "Prepared")]
+    [InlineData(60, "Prepared")]
+    [InlineData(120, "Limit")]
+    public async Task AStorageVerdictIsLinearInItsNesting(int depth, string expected)
+    {
+        var boxes = string.Concat(Enumerable.Repeat("Box<", depth)) + "i32" + new string('>', depth);
+        var arrays = string.Concat(Enumerable.Repeat("[1 of ", depth)) + "i32" + new string(']', depth);
+        var source = $"struct Box<T>\n    public var value: T\nfunc f(b: {boxes}, a: {arrays}) -> ()\n    return\npublic func main() => ()\n";
+        var cancel = TestContext.Current.CancellationToken;
+        var run = Task.Run(
+            () =>
+            {
+                var c = MirBuildTest.Compile(source);
+                var types = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters
+                    .Select(static x => x.Type.TypeOf()!).ToArray();
+                return types.Select(c.Binding.PrepareTypeStorage).Concat(types.Select(c.Binding.PrepareTypeStorage)).ToArray();
+            },
+            cancel);
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+        Assert.Equal(Enumerable.Repeat(expected, 4), (await run).Select(static x => x.ToString()));
     }
 
     // D1 to Dn (structs, or enums whose Case A holds the part), each storing the next at its Type argument doubled (a Tuple, or a Tuple of

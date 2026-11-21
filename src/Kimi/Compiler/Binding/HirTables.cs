@@ -36,7 +36,7 @@ internal struct HirTables
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
     internal List<DefaultDecl>? Defaults; // The parameter defaults the latest publish evaluated, in walk order: the MIR's default templates.
-    internal List<Koto>? Broken; // The nodes Binding resolved that the latest publish found without the facts their Op guarantees, published Error.
+    internal List<Koto>? Broken; // The failure facts the latest publish found without their causes (Binding.FailureFact, RestingCauses): a broken contract.
     internal NodeColumns Families; // Binding's private node families, read and written only by their accessors (DECISIONS BU-220).
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>
@@ -98,7 +98,7 @@ internal struct HirTables
     internal static HirRes ResOf(Koto node) => Symbol(node) is not { } symbol ? HirRes.None : symbol.Kind switch
     {
         BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate => HirRes.Local,
-        BindingSymbolKind.Parameter => DefaultParameters.InLaterDefault(node, symbol) ? HirRes.PreparedParam : HirRes.Param,
+        BindingSymbolKind.Parameter => Binding.InLaterDefault(node, symbol) ? HirRes.PreparedParam : HirRes.Param,
         BindingSymbolKind.Capture => HirRes.Capture,
         BindingSymbolKind.Storage => HirRes.Field,
         BindingSymbolKind.Property => Binding.IsStatic(symbol) ? HirRes.Static : HirRes.Field,
@@ -120,12 +120,30 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
+    /// <summary>Gets the decider of a published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23):
+    /// its plan row's Mode 2, which the HIR publisher writes where the element's use needs exclusive capability only in the admitted cases
+    /// where a standing take Reborrows and <c>indexUniq</c> is bound, with the Type of the Place whose take is by case (the element's, or a
+    /// Field's or Tuple element's below it) in the row's Plan. In each admitted case the selection is <c>indexUniq</c> where that Type's
+    /// case Type is an exclusive reference or object view (the case in which the take Reborrows) and <c>index</c> otherwise; the index's
+    /// ExpansionPlan names both calls, and both calls' inputs are published, a receiver's two takes in its two rows (DECISIONS R4-M145).
+    /// Null for a selection that is one call in every case (Mode 0 <c>index</c>, Mode 1 <c>indexUniq</c>) and for any other node; no
+    /// reader reads Mode 2 or the decider otherwise.</summary>
+    /// <param name="index">The index expression.</param>
+    /// <returns>The decider, or null.</returns>
+    internal static BoundType? IndexCaseDecider(Koto index) => index is IndexKoto && PlanOf(index) is { Mode: 2, Plan: BoundType decider } ? decider : null;
+
     /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
-    /// operand is a Transfer whose Take OffersTake allowed through its raw branch (ElementAccess.IsRawPlace; Binding.DestroysInPlace),
+    /// operand is a Transfer whose Take OffersTake allowed through its raw branch (Binding.IsRawPlace; Binding.DestroysInPlace),
     /// the discard's plan row Flag.</summary>
     /// <param name="discard">The explicit discard.</param>
     /// <returns>Whether it destroys in place, transferring nothing.</returns>
     internal static bool DestroysInPlace(DiscardKoto discard) => PlanOf(discard).Flag;
+
+    /// <summary>Gets whether the form of the Error a kept operand belongs to reads the operand's whole Place (DECISIONS D-986;
+    /// <see cref="PlanRow.KeptRead"/>): read only at a kept operand, whose Adjust column is <c>(None, None)</c> under an Error.</summary>
+    /// <param name="kept">A kept operand of an Error.</param>
+    /// <returns>Whether the Error's form reads its whole Place.</returns>
+    internal static bool KeptRead(Koto kept) => PlanOf(kept).KeptRead;
 
     /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of the source modules from the latest completed Binding pass,
     /// once per pass; the library module's are published by the library pass (<see cref="LibraryVersion"/>).</summary>
@@ -133,8 +151,8 @@ internal struct HirTables
     /// <returns>The pass the columns describe, 0 before the first.</returns>
     internal static ulong Publish(Compilation compilation) => compilation.Binding.PublishHir();
 
-    /// <summary>Gets the library module's publication version (C-379 F1; PLAN G949 S1-r1b's RB1 and S1-1): the run whose library pass
-    /// published it and froze the library, 0 before; per compilation (its own Binding's run counter) and constant from the freeze.</summary>
+    /// <summary>Gets the library module's publication version (C-379 F1; PLAN G949 S1-r1b's RB1, S1-1 and Stage 2 U3): Binding.Frozen
+    /// once the compilation's library is frozen, the same in every compilation of the process; 0 for a library not frozen.</summary>
     /// <param name="compilation">The compilation.</param>
     /// <returns>The version.</returns>
     internal static ulong LibraryVersion(Compilation compilation) => compilation.Binding.LibraryVersion;
@@ -257,6 +275,13 @@ internal struct HirTables
     }
 }
 
+/// <summary>A pass family's column in a <see cref="NodeColumns"/>: a fact family's accessor names its column so the recorder can choose
+/// the columns that hold the fact (Binding.RecordedFact, Binding.SetRecordedFact; DECISIONS G949 S1 as R7-N5 B4 amends it).</summary>
+/// <typeparam name="T">The family's row.</typeparam>
+/// <param name="columns">The columns.</param>
+/// <returns>The family's column.</returns>
+internal delegate ref StampedColumn<T, Binding.PassCounter> FactFamily<T>(ref NodeColumns columns);
+
 /// <summary>
 /// Binding's private node families of one module (DECISIONS BU-220): one column per family, indexed by the SyntaxId of the node that keys
 /// it. A kept family's <see cref="PagedColumn{T}"/> keeps its rows across passes, and a renumbering moves each row with its node
@@ -305,6 +330,43 @@ internal struct NodeColumns
     internal PagedColumn<InvocationKoto?> ResolvedKeys; // Kept: a selection key's synthesized `resolved` call (Binding.Ranges.cs).
     internal PagedColumn<BoundMatch?> MatchPlans; // Kept: the plan object a match keeps across rebinds (Binding.Patterns.cs).
     internal PagedColumn<Binding.Refusal?> Refusals; // Kept: the refusal a refused analysis's site holds (Binding.ConstraintValidation.Proofs.cs).
+    internal PagedColumn<Binding.TypeRoleCause> FormationCauses; // Kept: a pair occurrence's Language formation causes, emptied at each Final check (Binding.ConstraintValidation.cs).
+    internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
+    internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
+    internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
+    internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
+    internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
+    internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
+    internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
+    internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
+    internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
+    internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
+    internal StampedColumn<BoundArgumentOperation, Binding.PassCounter> ReceiverOperations; // Work: the receiver or storage operation selected for a call or member access, released at the freeze (Binding.ArgumentOperations.cs).
+    internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
+    internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
+    internal StampedColumn<Binding.CallInferenceFailure, Binding.PassCounter> CallInferenceFailures; // Pass: the selection a construction's or shape contract's later check rejected (Binding.ConstructorValidation.cs).
+    internal StampedColumn<(bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other), Binding.PassCounter> CallableSelectionFailures; // Pass: a failed Callable value call's candidates and shape position (Binding.CallableSelection.cs).
+    internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
+    internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
+    internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
+    internal StampedColumn<Binding.ArithmeticConformanceFailure, Binding.PassCounter> ArithmeticConformanceFailures; // Pass: the eligibility condition a declared arithmetic conformance fails (Binding.ArithmeticContracts.cs).
+    internal StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), Binding.PassCounter> AssociatedAmbiguities; // Pass: the two candidates an ambiguous associated Type use found (Binding.AssociatedTypes.cs).
+    internal StampedColumn<(BoundRequirement Identity, Binding.AssociatedBinding Binding), Binding.PassCounter> InferenceFailures; // Pass: the identity and binding a conformance's inference hole failed with (Binding.AssociatedInference.cs).
+    internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
+    internal StampedColumn<Binding.ReferenceConstraintFailure, Binding.PassCounter> ClauseConstraints; // Pass: a node's clause record (Binding.ConstraintValidation.Records.cs).
+    internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
+    internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
+    internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
+    internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> ResultCompletions; // Work: Binding's result, conversion and fallthrough checks' (Binding.ResultStructure) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, a memo of a final fact of its syntax valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next ResetPass), released at the freeze (Binding.ElementAccess.cs).
+    internal StampedColumn<uint, Binding.PassCounter> FormReads; // Work: the HIR publisher's (Binding.Hir.cs) publication in which its Error's form read a node's whole Place, a row of another publication absent, released at the freeze (Binding.Hir.Adjust.cs; DECISIONS D-986).
+    internal PagedColumn<Binding.Specialization?> SpecializationStorage; // Kept: a specialization's entry, its slot arrays reused by every pass (Binding.Specializations.cs).
+    internal StampedColumn<Binding.EarlyRead, Binding.PassCounter> EarlyReads; // Pass: a use's lookup that saw a base clause not ready, read again by VerifyEarlyReads (Binding.BaseLayers.cs).
+    internal PagedColumn<BoundType?> KnownBases; // Kept: a struct's base clause's final Type from a first run, emptied by a Bind not started from it, before each fill and by an edit (Binding.BaseLayers.cs).
+    internal StampedColumn<bool, Binding.PassCounter> ResolvedSlices; // Work: whether a selection applies one ResolvedRange value, the running pass's working state, released at the freeze (Binding.Ranges.cs).
 
     internal void Resize(int length)
     {
@@ -346,10 +408,49 @@ internal struct NodeColumns
         this.ResolvedKeys.Grow(length);
         this.MatchPlans.Grow(length);
         this.Refusals.Grow(length);
+        this.FormationCauses.Grow(length);
+        this.AliasTargets.Grow(length);
+        this.ImportedContainers.Grow(length);
+        this.QualificationFailures.Grow(length);
+        this.PerCallOrigins.Grow(length);
+        this.PairFollows.Grow(length);
+        this.ImplicitPairFollows.Grow(length);
+        this.PhantomRawOrigins.Grow(length);
+        this.InvalidStaticOriginSlots.Grow(length);
+        this.CallablePremiseFailures.Grow(length);
+        this.EffectBoundRejections.Grow(length);
+        this.ReceiverOperations.Grow(length);
+        this.InferredArrayLengths.Grow(length);
+        this.ArrayInferenceShapes.Grow(length);
+        this.CallInferenceFailures.Grow(length);
+        this.CallableSelectionFailures.Grow(length);
+        this.BaseCallFailures.Grow(length);
+        this.ObjectErasureFailures.Grow(length);
+        this.ResultContexts.Grow(length);
+        this.ArithmeticConformanceFailures.Grow(length);
+        this.AssociatedAmbiguities.Grow(length);
+        this.InferenceFailures.Grow(length);
+        this.CallableConstraints.Grow(length);
+        this.ClauseConstraints.Grow(length);
+        this.UnboundSlots.Grow(length);
+        this.UniqIndexing.Grow(length);
+        this.RequirementGroups.Grow(length);
+        this.ResultCompletions.Grow(length);
+        this.GuessedCompletions.Grow(length);
+        this.PublishedCompletions.Grow(length);
+        this.LintCompletions.Grow(length);
+        this.ReachedThroughBorrow.Grow(length);
+        this.FormReads.Grow(length);
+        this.SpecializationStorage.Grow(length);
+        this.KnownBases.Grow(length);
+        this.EarlyReads.Grow(length);
+        this.ResolvedSlices.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
-    // which would leave the library's edit family stale with no later library pass to rewrite it).
+    // which would leave the library's edit family stale with no later library pass to rewrite it), one row each: Freeze for a fact
+    // family, whose library rows a later pass reads; Release for a working-state family ("Work:"), whose rows no reader reads after the
+    // pass that wrote them, so the library keeps none (DECISIONS BU-220 as R7-N5 B2a-2 amends it).
     internal void Freeze(Binding binding)
     {
         this.VirtualOverrides.Freeze(binding);
@@ -363,34 +464,40 @@ internal struct NodeColumns
         this.Matches.Freeze(binding);
         this.Adaptations.Freeze(binding);
         this.ShapeContractHeads.Freeze(binding);
-    }
-
-    // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
-    internal void Reserve(KimiLibrarySize.Tables stated)
-    {
-        this.Symbols.Reserve(stated.Declarations);
-        this.Parameters.Reserve(stated.Parameters);
-        this.Receivers.Reserve(stated.Receivers);
-        this.EnumConstructions.Reserve(stated.EnumConstructions);
-        this.CopyDeclarations.Reserve(stated.CopyDeclarations);
-        this.CopyByType.Reserve(stated.CopyByType);
-        this.InheritedOriginTypes.Reserve(stated.InheritedOriginTypes);
-        this.DeferredConstraints.Reserve(stated.DeferredConstraints);
-        this.Matches.Reserve(stated.Matches);
-        this.Adaptations.Reserve(stated.Adaptations);
-        this.Specializations.Reserve(stated.Specializations);
-        this.SpecializationsByOriginal.Reserve(stated.SpecializationsByOriginal);
-        this.Scopes.Reserve(stated.Scopes);
-        this.OriginAtoms.Reserve(stated.OriginAtoms);
-        this.OpenOrigins.Reserve(stated.OpenOrigins);
-        this.AssociatedOrigins.Reserve(stated.AssociatedOrigins);
-        this.OriginDeclarations.Reserve(stated.OriginDeclarations);
-        this.DiscoveredOrigins.Reserve(stated.DiscoveredOrigins);
-        this.OriginRequirementNodes.Reserve(stated.OriginRequirementNodes);
-        this.PropertyCalls.Reserve(stated.PropertyCalls);
-        this.RangeCalls.Reserve(stated.RangeCalls);
-        this.ResolvedKeys.Reserve(stated.ResolvedKeys);
-        this.MatchPlans.Reserve(stated.MatchPlans);
+        this.AliasTargets.Freeze(binding);
+        this.ImportedContainers.Freeze(binding);
+        this.QualificationFailures.Freeze(binding);
+        this.PerCallOrigins.Freeze(binding);
+        this.PairFollows.Freeze(binding);
+        this.ImplicitPairFollows.Freeze(binding);
+        this.PhantomRawOrigins.Freeze(binding);
+        this.InvalidStaticOriginSlots.Freeze(binding);
+        this.CallablePremiseFailures.Freeze(binding);
+        this.EffectBoundRejections.Freeze(binding);
+        this.ReceiverOperations.Release();
+        this.InferredArrayLengths.Freeze(binding);
+        this.ArrayInferenceShapes.Freeze(binding);
+        this.CallInferenceFailures.Freeze(binding);
+        this.CallableSelectionFailures.Freeze(binding);
+        this.BaseCallFailures.Freeze(binding);
+        this.ObjectErasureFailures.Freeze(binding);
+        this.ResultContexts.Release();
+        this.ArithmeticConformanceFailures.Freeze(binding);
+        this.AssociatedAmbiguities.Freeze(binding);
+        this.InferenceFailures.Freeze(binding);
+        this.CallableConstraints.Freeze(binding);
+        this.ClauseConstraints.Freeze(binding);
+        this.UnboundSlots.Freeze(binding);
+        this.UniqIndexing.Freeze(binding);
+        this.RequirementGroups.Release();
+        this.ResultCompletions.Release();
+        this.GuessedCompletions.Release();
+        this.PublishedCompletions.Release();
+        this.LintCompletions.Release();
+        this.ReachedThroughBorrow.Release();
+        this.FormReads.Release();
+        this.EarlyReads.Freeze(binding);
+        this.ResolvedSlices.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -437,6 +544,43 @@ internal struct NodeColumns
             ResolvedKeys = this.ResolvedKeys.Renumbered(length),
             MatchPlans = this.MatchPlans.Renumbered(length),
             Refusals = this.Refusals.Renumbered(length),
+            FormationCauses = this.FormationCauses.Renumbered(length),
+            AliasTargets = this.AliasTargets.Renumbered(length),
+            ImportedContainers = this.ImportedContainers.Renumbered(length),
+            QualificationFailures = this.QualificationFailures.Renumbered(length),
+            PerCallOrigins = this.PerCallOrigins.Renumbered(length),
+            PairFollows = this.PairFollows.Renumbered(length),
+            ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
+            PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
+            InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
+            CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
+            EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
+            ReceiverOperations = this.ReceiverOperations.Renumbered(length),
+            InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
+            ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
+            CallInferenceFailures = this.CallInferenceFailures.Renumbered(length),
+            CallableSelectionFailures = this.CallableSelectionFailures.Renumbered(length),
+            BaseCallFailures = this.BaseCallFailures.Renumbered(length),
+            ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
+            ResultContexts = this.ResultContexts.Renumbered(length),
+            ArithmeticConformanceFailures = this.ArithmeticConformanceFailures.Renumbered(length),
+            AssociatedAmbiguities = this.AssociatedAmbiguities.Renumbered(length),
+            InferenceFailures = this.InferenceFailures.Renumbered(length),
+            CallableConstraints = this.CallableConstraints.Renumbered(length),
+            ClauseConstraints = this.ClauseConstraints.Renumbered(length),
+            UnboundSlots = this.UnboundSlots.Renumbered(length),
+            UniqIndexing = this.UniqIndexing.Renumbered(length),
+            RequirementGroups = this.RequirementGroups.Renumbered(length),
+            ResultCompletions = this.ResultCompletions.Renumbered(length),
+            GuessedCompletions = this.GuessedCompletions.Renumbered(length),
+            PublishedCompletions = this.PublishedCompletions.Renumbered(length),
+            LintCompletions = this.LintCompletions.Renumbered(length),
+            ReachedThroughBorrow = this.ReachedThroughBorrow.Renumbered(length),
+            FormReads = this.FormReads.Renumbered(length),
+            SpecializationStorage = this.SpecializationStorage.Renumbered(length),
+            KnownBases = this.KnownBases.Renumbered(length),
+            EarlyReads = this.EarlyReads.Renumbered(length),
+            ResolvedSlices = this.ResolvedSlices.Renumbered(length),
         };
         return columns;
     }
@@ -472,6 +616,9 @@ internal struct NodeColumns
         this.ResolvedKeys.Retire();
         this.MatchPlans.Retire();
         this.Refusals.Retire();
+        this.FormationCauses.Retire();
+        this.SpecializationStorage.Retire();
+        this.KnownBases.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -504,6 +651,9 @@ internal struct NodeColumns
         this.ResolvedKeys.MoveTo(ref target.ResolvedKeys, from, to);
         this.MatchPlans.MoveTo(ref target.MatchPlans, from, to);
         this.Refusals.MoveTo(ref target.Refusals, from, to);
+        this.FormationCauses.MoveTo(ref target.FormationCauses, from, to);
+        this.SpecializationStorage.MoveTo(ref target.SpecializationStorage, from, to);
+        this.KnownBases.MoveTo(ref target.KnownBases, from, to);
     }
 }
 
@@ -536,13 +686,26 @@ internal struct PlanRow
     /// and for a discarded Place Binding did not resolve, so a row never keeps an earlier pass's Type, also after an in-place edit.</summary>
     internal BoundType? DiscardedType;
 
-    // An Int128 would align the row to 16 bytes; two halves keep it at 56.
+    /// <summary>Whether the form of the Error a kept operand belongs to reads the operand's whole Place in a use not in place (DECISIONS
+    /// D-986; SPEC 13.4, 15.1.5, 15.1.6): the Adjust rule (<c>Binding.AdjustChildren</c>) for the Error's form (its <c>KindOp</c>) takes
+    /// it by an acquisition or a shared borrow (<see cref="HirAdjust.Reads"/>), as it takes a valid node's child of the same form, an
+    /// argument of an application Binding did not resolve by a stand-in, its evaluation as a value, which every candidate's operation
+    /// reads as (DECISIONS G1178; SPEC 7.4, 10.1, 10.2).
+    /// False for a kept operand the form uses in place (a projection's receiver or base, a follow's, borrow's, runtime test's or case
+    /// adaptation's operand, a group's operand), borrows exclusively, reads through a reference or whose acquisition failed, and for
+    /// every other node. Written at each kept operand
+    /// of each publish, whose column stays the kept mark <c>(None, None)</c> (DECISIONS R5-M63): a kept operand is evaluated as its Place
+    /// and never acquired, so no claim reads this (R7-M8). A publish clears every row's first.</summary>
+    internal bool KeptRead;
+
+    // An Int128 would align the row to 16 bytes; two halves keep it at 56, KeptRead beside the byte fields (Unsafe.SizeOf, D-986).
     private bool folded;
     private ulong foldedHigh;
     private ulong foldedLow;
 
-    /// <summary>Gets or sets the folded constant of a conversion, a number literal's value, a ConstIndex position or a Tuple element's
-    /// position.</summary>
+    /// <summary>Gets or sets the folded constant of a conversion, a number literal's value, a fixed-array element's constant index (SPEC
+    /// 15.1.3, on a ConstIndex or an Index Place, however the array is reached, in range or not: Binding.ConstantIndex) or a Tuple
+    /// element's position.</summary>
     internal Int128? Folded
     {
         readonly get => this.folded ? new Int128(this.foldedHigh, this.foldedLow) : null;

@@ -9,13 +9,16 @@ namespace Kimi.Compiler;
 //   (FunctionFits), two at an invariant position, one each way (SPEC 3.8, 15.3.5), whose implementation conditions it judges at every
 //   nesting when it has a Binding.
 // - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
-//   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads (none: the
-//   relation as written), and which Origin bindings count (OriginPart).
+//   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads, and in
+//   whose view the root's two sides are formed (ClassForm, R7-C2c2 c2-4b's J3; none: the relation as written), which Origin bindings
+//   count (OriginPart), and the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its root comparisons
+//   take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
 //   (FitPart, in walk order), which CheckTypeUse decomposes instead of walking each part again (it walks again only an invariant part
-//   that this walk meets reversed, under a contravariant one).
+//   that this walk meets reversed, under a contravariant one). A walk with a row sink appends to it each region conjunct its
+//   comparisons left as rows (LeavesBodyRows); the reader that set the sink forms or drops them, so "holds" there is conditional on them.
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
 //   inputs, its result, then the implementation's own well-formedness. A Callable comparison stops at its first failure, which is its
 //   one fact (SPEC 15.6.1); outside every comparison a recording root's walk goes on past an Origin position's or a Function
@@ -27,6 +30,10 @@ public sealed partial class Binding
     // The facts of the last recording root's walk (FitsTypeAt, CheckTypeUse's walks), one per failing position, which the root clears
     // when it starts (warm 0 B); RecordMismatch reads them when their first is the failure it records.
     private readonly List<ComparisonFailure> comparisonFacts = new();
+
+    // The pair those facts' walk walked, as its intake formed it (RelationWalk.Root): published by the first recording walk after the
+    // reader that opens the facts clears both, so its parts and facts are parts and facts of this pair (F's C2 ruling 315).
+    private (BoundType? Actual, BoundType? Expected) comparisonRoot;
 
     // What failed where a relation does not hold (SPEC 10.7, 15.6.1); the closed rows of ComparisonFailure.Kind.
     internal enum ComparisonFailureKind : byte
@@ -54,7 +61,10 @@ public sealed partial class Binding
 
         // A member's Origin position whose relation only an inferred or body-local region decides (the judge proves it through the
         // region's sources, or finds it Unrepresentable; SPEC 15.6.5): the located limit until region-inference edges exist, recorded as
-        // the plain position's search records it (design-r2 Amendment 1, A1), never in a whole-contract comparison (OriginPart.Contract).
+        // the plain position's search records it (design-r2 Amendment 1, A1); in a whole-contract comparison (OriginPart.Contract) only
+        // an implementation's per-call Origin no bound of which reached a fixed Origin when SolveOriginInference took the
+        // representatives: none at all (SPEC 15.3.6), or one only through another variable without a principal solution, until PLAN
+        // G960 gives every variable its value inside the fixpoint.
         Limit,
     }
 
@@ -94,9 +104,17 @@ public sealed partial class Binding
     // SPEC 15.6.1, 23.1.2: one part of CheckTypeUse's walk outside every Callable comparison, as a walk rooted at it would answer it: the
     // pair as walked, whether the relation holds there, whether a position in it held by resting (fitRested), its first failure, whether
     // its own shape held (Shaped: the walk did not end at the pair itself), its facts' range in comparisonFacts and the index after its
-    // own parts. A part that identity discharges has none.
+    // own parts. A part that identity discharges has none. A pair of composite parts the walk entered before in the same invariance is
+    // entered once (PLAN G492-a (ii)): a later meeting is a part that names the earlier one (Same, its index + 1), with its answers and no
+    // parts of its own. Fails is CheckTypeUse's: its decomposition of the part failed (CheckTypeUseCore writes it when it reads the part).
     internal readonly record struct FitPart(
-        BoundType Actual, BoundType Expected, bool Holds, bool Rested, bool Shaped, ComparisonFailure Failure, int FactStart, int FactEnd, int End);
+        BoundType Actual, BoundType Expected, bool Holds, bool Rested, bool Shaped, ComparisonFailure Failure, int FactStart, int FactEnd, int End,
+        int Same = 0, bool Fails = false);
+
+    // The composite parts CheckTypeUse's current root walk entered, by pair and invariance: the part's index in its FitPart list. A
+    // meeting of the same two interned Types in the same invariance within one walk relates them as the first did, reading the same
+    // premises and Origins, so its verdict, resting and facts are the first's (DECISIONS BU-19's table, one query per root walk; warm 0 B).
+    private readonly TypeMemo<(BoundType Actual, BoundType Expected, bool Invariant), int> enteredParts = new();
 
     // Which Origin bindings a relation walk compares: every one (Judged), every one as a whole-contract comparison's Origin part, from the
     // premises alone, so a member that only an inferred or body-local region decides is no limit (Contract, SPEC 15.6.1, 15.3.7: a
@@ -118,11 +136,14 @@ public sealed partial class Binding
         private readonly Koto? use;
         private readonly List<ComparisonFailure>? facts;
         private readonly List<FitPart>? parts;
+        private readonly uint partQuery;
         private readonly int start;
         private OriginPart part;
         private ComparisonFailure failure;
         private bool ended;
         private int endedAt;
+        private bool formed; // whether the root's pair was formed (J3: only the root forms; its parts are parts of formed Types)
+        private (BoundType Actual, BoundType Expected) root; // the pair formed at the intake, which the walk walked
 
         internal RelationWalk(Binding owner, Binding? binding, Koto? use, OriginPart part)
         {
@@ -146,20 +167,45 @@ public sealed partial class Binding
             : this(owner, binding, use, facts)
         {
             this.parts = parts;
+            this.partQuery = binding.enteredParts.Begin(binding.storageVersion);
         }
 
         // The first failure of the walk's last false answer.
         internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
 
-        // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
-        // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
-        // that already fixed it; `instance` is the Callable comparison whose per-call Origins the parts are compared under.
+        // The pair the walk walked (Intake), whose parts its recorded parts and facts are: every reader of them reads this pair.
+        internal readonly (BoundType Actual, BoundType Expected) Root => this.root;
+
+        // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
+        internal List<BindingObligation>? Rows { get; init; }
+
+        // SPEC 3.8: the relation; Never relates only to itself. A Function Type's own syntax binds its per-call inputs (SPEC 8.10).
+        // `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the Callable comparison whose
+        // per-call Origins the parts are compared under.
         internal bool Fits(
-            BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null)
+            BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default)
         {
+            if (!this.formed)
+            {
+                (actual, expected) = this.Intake(actual, expected);
+            }
+
             if (this.parts is not { } parts || instance.Expected is not null || this.Discharged(actual, expected))
             {
-                return this.Relate(actual, expected, invariant, skipOrigin, instance, own);
+                return this.Relate(actual, expected, invariant, skipOrigin, instance);
+            }
+
+            // A pair of composite parts entered before in this invariance answers as it did there (FitPart.Same); the comparison of a
+            // Function part, an instantiated outer Origin and a root's own inputs are walked where they occur.
+            var key = (actual, expected, invariant);
+            var once = !skipOrigin && actual.Components.Count != 0 && actual.Kind is not (BoundTypeKind.Function or BoundTypeKind.FunctionItem);
+            if (once && this.binding!.enteredParts.TryGet(key, this.partQuery, out var earlier))
+            {
+                var first = parts[earlier];
+                this.binding.fitRested |= first.Rested;
+                this.failure = first.Holds ? this.failure : first.Failure;
+                parts.Add(first with { End = parts.Count + 1, Same = earlier + 1 });
+                return first.Holds;
             }
 
             // A part's resting is its own (FitOrigin sets fitRested), and the enclosing part's includes it.
@@ -168,9 +214,14 @@ public sealed partial class Binding
             var outerRested = this.binding!.fitRested;
             parts.Add(default);
             this.binding.fitRested = false;
-            var holds = this.Relate(actual, expected, invariant, skipOrigin, instance, own);
-            var first = holds ? default : this.facts.Count > factStart ? this.facts[factStart] : this.failure;
-            parts[entry] = new(actual, expected, holds, this.binding.fitRested, this.endedAt != entry, first, factStart, this.facts.Count, parts.Count);
+            var holds = this.Relate(actual, expected, invariant, skipOrigin, instance);
+            var failed = holds ? default : this.facts.Count > factStart ? this.facts[factStart] : this.failure;
+            parts[entry] = new(actual, expected, holds, this.binding.fitRested, this.endedAt != entry, failed, factStart, this.facts.Count, parts.Count);
+            if (once)
+            {
+                this.binding.enteredParts.Set(key, this.partQuery, entry);
+            }
+
             this.binding.fitRested |= outerRested;
             return holds;
         }
@@ -186,7 +237,33 @@ public sealed partial class Binding
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }
 
-        private bool Relate(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance, Koto? own)
+        // R7-C2c2 c2-4b (design R4.12b, J3), F's C2 ruling 315: the relation's one intake, the one formation of the root's pair: at a use,
+        // its two sides in their class's form in the use's view (SPEC 8.2.3: all Type checking in the scope treats identical Types as one
+        // Type), the Completion unthreaded (ClassForm's contract; R7-C3: the judge decides its domain); nested parts are parts of formed
+        // Types. Without a use (SameStructure, IsSubtype) the walk reads no premise and compares as written. The walk publishes the pair
+        // (Root), and the first recording walk after its reader opened the facts publishes it with them (comparisonRoot), so no reader of
+        // the parts or facts forms a pair of its own.
+        private (BoundType Actual, BoundType Expected) Intake(BoundType actual, BoundType expected)
+        {
+            this.formed = true;
+            this.root = (actual, expected);
+            if (this.binding is { } judge && this.use is { } at && (actual.HasAbstractPart || expected.HasAbstractPart))
+            {
+                // The judge decides its domain (R7-C3, C-b: SPEC 8.2.3's abstract Types) before it reads the use's scope, once for the
+                // pair (F's C2 ruling 317 (4)).
+                var view = judge.ConstraintScope(at);
+                this.root = (judge.ClassForm(actual, view, out _), judge.ClassForm(expected, view, out _));
+            }
+
+            if (this.facts is not null && this.owner.comparisonRoot.Actual is null)
+            {
+                this.owner.comparisonRoot = this.root;
+            }
+
+            return this.root;
+        }
+
+        private bool Relate(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance)
         {
             if (this.Discharged(actual, expected))
             {
@@ -252,13 +329,17 @@ public sealed partial class Binding
                 // position the two Function Types relate both ways (SPEC 3.8, 15.3.5): a Callable comparison is oriented (it instantiates
                 // only the implementation's per-call inputs and judges only its well-formedness, SPEC 10.7), so the comparison as written
                 // is followed by the one with the sides exchanged, whose members relate one way since the first related them both ways.
-                var comparison = Comparison(actual, own, expected, instance);
+                // A comparison that fails keeps none of the region conjuncts it left as rows: its failure is its one fact (SPEC 15.6.1,
+                // 23.1.2); one that holds keeps them for the reader, also when another part of the walk fails.
+                var comparison = Comparison(actual, expected, instance, InComparison(instance) ? instance.Rows : this.Rows);
+                var rows = comparison.Rows?.Count ?? 0;
                 if (this.FunctionFits(actual, expected, invariant, comparison) &&
                     (!invariant || ReferenceEquals(actual, expected) || this.FunctionFits(expected, actual, false, comparison.Exchanged)))
                 {
                     return holds;
                 }
 
+                comparison.Rows?.RemoveRange(rows, comparison.Rows.Count - rows);
                 _ = !this.ended && this.Keep(this.failure, instance);
                 return false;
             }
@@ -304,13 +385,15 @@ public sealed partial class Binding
 
         // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one. A member's that the
         // relation judge does not refute or leave Unknown from the premises alone (it holds, or is Unrepresentable, only through an
-        // inferred or body-local region) is the located limit, except in a whole-contract comparison (Contract), which no region decides.
+        // inferred or body-local region) is the located limit, except in a whole-contract comparison (Contract), which no region decides
+        // but a `let` region the comparison reads as the region (ComparedRegionLimit, O-400 (b)).
         private readonly ComparisonFailure OriginFailure(BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance)
         {
             var kind = instance.Expected is null ? ComparisonFailureKind.Position : ComparisonFailureKind.Origin;
             var (a, b) = instance.Actual is null ? (longer, shorter) : (instance.Instantiate(longer), instance.Instantiate(shorter));
-            if (kind == ComparisonFailureKind.Origin && this.part != OriginPart.Contract && this.binding is { } judge && this.use is { } at &&
-                judge.JudgeOriginRelation(a, b, at, judge.formingBody) is not (OriginJudgment.Refuted or OriginJudgment.Unknown))
+            if (kind == ComparisonFailureKind.Origin && this.binding is { } judge && this.use is { } at &&
+                ((this.part != OriginPart.Contract && judge.JudgeOriginRelation(a, b, at, judge.formingBody) is not (OriginJudgment.Refuted or OriginJudgment.Unknown)) ||
+                judge.ComparedRegionLimit(a, b, equality, at)))
             {
                 kind = ComparisonFailureKind.Limit;
             }

@@ -4,8 +4,11 @@ namespace Kimi.Compiler.Mir;
 
 // A body's tables and the Places that index them (plan 5.4).
 // - Responsibility: the locals (local 0 the Return local, the Arg locals directly after it, each of a known kind and typed, a Result
-//   local a Temp of local 0's Type), the MustNotComplete rows, the scopes, the Opaque sites and the projection table, each in range and
-//   each projection step admitted by the Type of the step it extends (Tables, Admits); each Place a location names (Names): in range
+//   local a Temp of local 0's Type; of no Type only Binding's failed slot: _0 and an Arg exactly where the signature's slot is, a Var or
+//   Temp by the builder's contract, each accessed only whole as Bounded allows, PLAN G1073), the MustNotComplete rows, the scopes, the
+//   Opaque sites and the projection table, each in range and
+//   each projection step admitted by the Type of the step it extends, a constant index only on an Index of a fixed array (Tables,
+//   Admits); each Place a location names (Names): in range
 //   (IsValid) and its first step admitted by its root's Type, each Place MirUses reports (Place) and a diverging Call's destination,
 //   which it does not (MirValidator.Calls); and a Result local read only by the whole Move that delivers it into _0 (DECISIONS R4-M132).
 // - Inputs: the body's tables; each location's Places with their access, and a diverging Call's destination without one. Outputs:
@@ -28,6 +31,12 @@ internal sealed partial class MirValidator
             }
 
             this.Accessed(place, access);
+            if (place.Projection == 0 && (place.Root >= 0 ? body.Locals[place.Root].Type : body.Statics[~place.Root].Type) is null &&
+                !this.Bounded(place, access))
+            {
+                this.Report(MirViolation.Local); // PLAN G1073: a slot of no Type is accessed only where no reader judges its Type.
+            }
+
             if (place.Root >= 0 && body.Locals[place.Root].Role == MirLocalRole.Result &&
                 (access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse)) != 0 &&
                 !(this.delivering && place.Projection == 0 && (access & MirAccess.Moves) != 0))
@@ -52,12 +61,15 @@ internal sealed partial class MirValidator
             // The receiver (BU-48, amended by G283): a constructor's _0, and a destructor's self _1, the body MIR names by its Type's destructor.
             var receiver = body.Key.Kind != MirBodyKind.Fn ? -1 : AdtDef.IsConstructor(body.Key.Decl) ? 0
                 : body.Key.Decl is { } decl && locals is [_, { Type: { } self }, ..] && ReferenceEquals(AdtDef.DestructorSymbol(self), decl) ? 1 : -1;
+            var first = this.FirstParameter();
             for (var i = 0; i < locals.Length; i++)
             {
                 ref readonly var local = ref locals[i];
                 this.At(local.Source);
                 arguments &= i == 0 || local.Kind == MirLocalKind.Arg;
-                var typed = local.Type is { } type && !TyCtxt.StatesUnstated(type, parts); // Unstated marks kept parts only (DECISIONS BU-46).
+                var failed = local.Kind is MirLocalKind.Return or MirLocalKind.Arg && i != receiver && this.SlotFailed(i, first);
+                var typed = local.Type is { } type // Unstated marks kept parts only (DECISIONS BU-46).
+                    ? !failed && !TyCtxt.StatesUnstated(type, parts) : failed || local.Kind is MirLocalKind.Var or MirLocalKind.Temp;
                 var placed = (local.Kind == MirLocalKind.Return) == (i == 0) && (local.Kind != MirLocalKind.Arg || arguments);
                 var roled = (local.Role == MirLocalRole.Receiver) == (i == receiver) && // A Result is a temp of _0's Type (MirLocalRole).
                     (local.Role != MirLocalRole.Result || (local.Kind == MirLocalKind.Temp && ReferenceEquals(local.Type, locals[0].Type))) &&
@@ -156,12 +168,65 @@ internal sealed partial class MirValidator
             return true;
         }
 
+        // PLAN G1073 (SPEC 23.1.2, rule W): the accesses of a whole slot of no Type (Binding's failed slot, MirLocal) that judge nothing of
+        // its Type: a write and its Kills (its storage's beginning or end, an EndBorrow), the Return's Move of _0, the delivery into _0 (a
+        // Result local's included, R4-M132), an Opaque site's root (MirDescriptors.IsOpaqueRoot) and a read of a temp the Unknown mask names
+        // by an rvalue that takes its Type from its operands (Propagates, the mask's rule); a read, borrow, drop or case-dependent access
+        // other than these, which a case reader would judge (MirCases.TypeOf), is not one. MirCases.KnownType names the case readers of each
+        // access admitted here.
+        private readonly bool Bounded(MirPlace place, MirAccess access)
+            => (access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse | MirAccess.CaseDependent)) == 0 ||
+                MirDescriptors.IsOpaqueRoot(access) || (access == MirAccess.Moves && ((this.returning && place.Root == 0) || this.delivering)) ||
+                (this.propagating && (access & ~(MirAccess.Reads | MirAccess.Moves)) == 0 && place.Root >= 0 && unknown[place.Root]);
+
+        // The first Arg local a parameter is: past a receiver no signature slot names (a Closure's environment, a destructor's self), the
+        // Arg locals beyond the signature's parameters (types.Signature); a default template's p_i are its parameters from local 1.
+        private readonly int FirstParameter()
+        {
+            if (body.Key is not { Decl.Declaration: Parsing.FunctionKoto, Kind: not (MirBodyKind.DefaultTemplate or MirBodyKind.StaticInit) } key)
+            {
+                return 1;
+            }
+
+            _ = types.Signature(key.Decl, null, -1, out var count);
+            var arguments = 0;
+            while (arguments + 1 < body.Locals.Length && body.Locals[arguments + 1].Kind == MirLocalKind.Arg)
+            {
+                arguments++;
+            }
+
+            return 1 + Math.Max(arguments - count, 0);
+        }
+
+        // PLAN G1073 (SPEC 23.1.2): whether Binding failed the signature slot of _0 or an Arg local, which is then of no Type, and only then:
+        // _0's the body's Result (the top-level statements, without a declaration, give Unit), a default template's p_i parameter i's (its
+        // ref/P_i), another Arg's its parameter's by its position past the receiver (MirCallee.Slot): the slot Binding publishes
+        // (types.Signature) and the builder reads.
+        private readonly bool SlotFailed(int local, int first)
+        {
+            if (body.Key.Decl is not { } decl)
+            {
+                return false;
+            }
+
+            if (local == 0)
+            {
+                return this.Result(body.Key) is null;
+            }
+
+            var template = body.Key.Kind == MirBodyKind.DefaultTemplate;
+            var position = local - (template ? 1 : first);
+            return position >= 0 && decl.Declaration is Parsing.FunctionKoto &&
+                types.Signature(decl, null, template ? position : MirCallee.Slot(decl, position), out _) is null;
+        }
+
         private readonly bool IsValid(MirPlace place)
             => (place.Root >= 0 ? place.Root < body.Locals.Length : ~place.Root < body.Statics.Length) &&
                 (uint)place.Projection < (uint)body.Projections.Length;
 
         private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(
             row.Type,
-            body.ProjectedType(types, type, row.Kind, row.Arg));
+            body.ProjectedType(types, type, row.Kind, row.Arg)) &&
+            (row.Position == -1 || (row.Position >= 0 && row.Kind == MirProjectionKind.Index && type?.Kind == BoundTypeKind.FixedArray));
     }
 }

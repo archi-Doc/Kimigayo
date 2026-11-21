@@ -281,19 +281,19 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void EnumPayloadsParticipateInStaticStorageValidation()
     {
-        var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Value(T)\ngroup Globals\n    var value: E<ref/i32 during static>");
+        var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Value(T)\ngroup Globals\n    var value: E<ref/i32 during static> = make()\n    func make() -> E<ref/i32 during static> => $abort(\"unused\")");
         Assert.False(c.Bind().IsComplete);
         // Owned is a language capability; retained static-borrow initialization remains an implementation boundary.
         c.Binding.ReportDiagnostics();
         var record = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("Unsupported_Kd", record.Code);
-        Assert.Equal("var value: E<ref/i32 during static>", record.Text);
+        Assert.Equal("var value: E<ref/i32 during static> = make()", record.Text);
     }
 
     [Fact]
     public void OwnedDoesNotPermitStoredStaticBorrowsInGlobalStorage()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct View {source}\n    let value: ref/i32 during source\nfunc inspect(x: View)\n    origin x.source == static\n    ()\ngroup Globals\n    var value: View{v}\n        origin v.source == static");
+        var c = CompilationTestHelper.ParseSuccess("struct View {source}\n    let value: ref/i32 during source\nfunc inspect(x: View)\n    origin x.source == static\n    ()\ngroup Globals\n    var value: View{v} = make()\n        origin v.source == static\n    func make() -> View during static => $abort(\"unused\")");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
@@ -308,14 +308,20 @@ public class IntrinsicCapabilityTest
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
+    // s22b (PLAN G949 Stage 2 U3, B4; changed by decision, B's U3 ruling 30): a compilation's library is fixed when its Binding is made,
+    // so Prepare after a read of the core identities is the internal-invariant form, in both overloads, and leaves the compilation as it
+    // was. Stage 1's row read them before Prepare and kept them across it, which B4 removes.
     [Fact]
-    public void CoreIdentityCanBeReadBeforePreparation()
+    public void PrepareAfterTheCoreIdentitiesAreReadIsRefused()
     {
         var c = Compilation.CreateForTest();
-        var copy = c.Library.Copy;
-        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
+        var library = c.Library;
+        var copy = library.Copy;
+        Assert.Contains("(InternalInvariant; PLAN G949 Stage 2 U3)", Assert.Throws<InvalidOperationException>(() => c.Prepare("x86_64-pc-windows-msvc")).Message);
+        Assert.Contains("(InternalInvariant; PLAN G949 Stage 2 U3)", Assert.Throws<InvalidOperationException>(() => c.Prepare("x86_64-pc-windows-msvc", new DependencyPartition([]))).Message);
+        Assert.Equal(Kimi.Compiler.Target.TargetTriple.Invalid, c.TargetTriple);
+        Assert.Same(library, c.Library);
         Assert.Same(copy, c.Library.Copy);
-        Assert.Same(c.Library.Kotonoha, copy.Declaration.CodeContext.Kotonoha);
     }
 
     [Fact]

@@ -3,11 +3,12 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, addresses, its holders' slots (Holders), endings,
-// touches and the copies' entries, then holder liveness backward and carrying forward over the dataflow's chains, each holder's set joined
-// by node union, then the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are carried in order, each planned
-// on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place the Loans it ends are then
-// removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target), and before a Call that moves
-// pending slots their inspection Loans (R-a, MirBorrows.Endings); in the replay, a copy's Entry(B) is gathered before its entry's plan.
+// touches, the copies' entries and the passed fact (MirBorrows.Passes), then holder liveness backward and carrying forward over the dataflow's
+// chains, each holder's set joined by node union, then the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are
+// carried in order, each planned on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place
+// the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target), and
+// before a Call that moves pending slots their inspection Loans (R-a, MirBorrows.Endings); in the replay, a copy's Entry(B) is gathered
+// before its entry's plan.
 internal sealed partial class MirBorrows
 {
     private int chainHead = -1; // The checks replay's chain: its head and first block.
@@ -26,6 +27,7 @@ internal sealed partial class MirBorrows
 
         var all = MirCases.Every(body);
         (this.program, this.body, this.view, this.views, this.held) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all, false);
+        this.mixedKnown = false;
         this.sets.Clear();
         (this.loanBase, this.writableSet) = (Markers + body.Locals.Length, this.sets.Add(0, Writable));
         this.escapedSet = this.sets.Add(this.writableSet, Escaped);
@@ -50,6 +52,11 @@ internal sealed partial class MirBorrows
         this.Endings();
         this.Touches();
         this.Entries();
+        if (!this.Passes(all))
+        {
+            return; // The passed fact's arena over the byte limit (MirBorrows.Passes, R4-M15a).
+        }
+
         var words = (this.holderCount + 63) >> 6;
         var state = flow.Prepare((this.flowCount + 63) >> 6, this.flowCount, Math.Max(words, this.holderCount), out var arena);
         if (state is null)

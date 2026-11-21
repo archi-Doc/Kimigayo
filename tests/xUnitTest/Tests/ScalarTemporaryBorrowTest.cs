@@ -111,8 +111,8 @@ public class ScalarTemporaryBorrowTest
     // temporary's Place Origin, nested or through a function value: the temporary cannot outlive `b`. Through a function value the Loan
     // check also reports the stored temporary, as dev does for a nested typed element (`g(((n, 1), 2), w)`).
     [Theory]
-    [InlineData("fe", Invariant + "    return fe((1, 2), w)\n", "UnsatisfiedOriginRelation_Kd: return fe((1, 2), w)")]
-    [InlineData("fi", Invariant + "    return fi(((n, 1), 2), w)\n", "UnsatisfiedOriginRelation_Kd: return fi(((n, 1), 2), w)")]
+    [InlineData("fe", Invariant + "    return fe((1, 2), w)\n", "UnsatisfiedOriginRelation_Kd: return fe((1, 2), w) | ComparisonLoanConflict_Kd: return fe((1, 2), w)")]
+    [InlineData("fi", Invariant + "    return fi(((n, 1), 2), w)\n", "UnsatisfiedOriginRelation_Kd: return fi(((n, 1), 2), w) | ComparisonLoanConflict_Kd: return fi(((n, 1), 2), w)")]
     [InlineData("fe-value", Invariant + "    let g = fe\n    return g((1, 2), w)\n", "UnsatisfiedOriginRelation_Kd: return g((1, 2), w) | ComparisonLoanConflict_Kd: return g((1, 2), w)")]
     [InlineData("fe-n", Invariant + "    return fe((n, 2), w)\n", "")]
     public void JudgesATemporaryAgainstAnInvariantOrigin(string form, string program, string records)

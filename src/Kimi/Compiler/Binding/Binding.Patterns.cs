@@ -379,8 +379,8 @@ public sealed partial class Binding
                     // SPEC 14.8.3: a guard candidate is a shared reference to its Place, the one the body binding takes, whatever the mode
                     // and Copy capability.
                     var candidateOrigin = this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot);
-                    candidate.Type = parent < 0 && matched is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-                        ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
+                    candidate.Type = parent < 0 && matched?.SafeReferent is { } matchedReferent
+                        ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matchedReferent], origin: matched.Origin ?? candidateOrigin)
                         : this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: candidateOrigin);
                     position = position with { CandidateSymbol = candidate };
                 }
@@ -600,9 +600,7 @@ public sealed partial class Binding
         var position = plan.PositionStorage[index];
         var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
         var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-            : proof == ConstraintProof.Proven ||
-                    (proof == ConstraintProof.Unknown && this.CopiesInEveryCase(position.MatchedType, this.ConstraintScope(position.Source)))
-                ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
+            : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
             : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
         plan.PositionStorage[index] = position with { Acquisition = acquisition };
     }
@@ -619,9 +617,9 @@ public sealed partial class Binding
         // The structural positions selected every safe reference layer and qualifying pair layer (SPEC 14.8.1).
         while (true)
         {
-            if (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            if (subject.SafeReferent is { } referent)
             {
-                subject = subject.Components[0];
+                subject = referent;
             }
             else if (TryPairLayer(subject, out _, out var target))
             {

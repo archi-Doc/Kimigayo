@@ -33,7 +33,7 @@ public sealed partial class Binding
         // A Left premise publishes numeric eligibility without enumerating concrete numeric Types.
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
@@ -93,7 +93,7 @@ public sealed partial class Binding
             rightCore is not null && (UserArithmeticProvider(rightCore) || this.HasArithmeticPremise(rightCore, ArithmeticContract(operation, true), scope));
         if (!ordinary && !reverse)
         {
-            if (leftCore is not null && rightCore is not null && UserArithmeticProvider(rightCore) && !ReferenceTypes.EndsInString(leftCore) && !ReferenceTypes.IsPointer(leftCore))
+            if (leftCore is not null && rightCore is not null && UserArithmeticProvider(rightCore) && !ReferenceEquals(ComparisonReferent(leftCore), BoundType.String) && !leftCore.IsPointer)
             {
                 var rejected = binary.ArithmeticStorage ??= new();
                 rejected.Candidates.Clear();
@@ -196,7 +196,7 @@ public sealed partial class Binding
         plan.Sources.Clear();
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }

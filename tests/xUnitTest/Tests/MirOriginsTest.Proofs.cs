@@ -9,7 +9,7 @@ namespace XunitTest;
 public sealed partial class MirOriginsTest
 {
     // SPEC 15.3.4-15.3.7, 15.6.1, 15.6.5: on the MIR side a relation the visible premises prove is accepted and one they do not is one
-    // UnprovenOriginRelation_Kd, Binding's record where it judges the relation and A5's where the body judges it (`atomic`).
+    // UnprovenOriginRelation_Kd per unproven conjunct, A5's (R7-O1 H: Binding judges no body relation).
     [Theory]
     [MemberData(nameof(OriginProofScalingTest.Families), MemberType = typeof(OriginProofScalingTest))]
     public void OriginProofFamiliesHaveTheirOutcomeOnTheMir(string family, string? code)
@@ -17,7 +17,7 @@ public sealed partial class MirOriginsTest
         foreach (var size in new[] { 1, 2, 8 })
         {
             var c = MinimalEmissionTest.Analyze(Verification.OriginProofWorkloads.Create(family, size));
-            Assert.Equal(code is null ? [] : [code], MirTargetSide.MirSide(c).Select(static x => x.Code.ToString()));
+            Assert.Equal(code?.Split(' ') ?? [], MirTargetSide.MirSide(c).Select(static x => x.Code.ToString()));
         }
     }
 }

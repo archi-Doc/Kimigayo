@@ -33,7 +33,7 @@ public sealed partial class Binding
                 // failure (Unresolved), such as an operator's anonymous function whose omitted header rests on its call, is completed by
                 // the call and stays FitTyped's (C19's reason, kept; PLAN G924, ruling 115).
                 var erases = node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && type.Kind == BoundTypeKind.Function;
-                operation = new(part, node.BoundType, type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
+                operation = new(part, this.ArgumentTypeAt(node), type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
                 return CandidateApplicability.Applicable;
             case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
@@ -81,7 +81,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            var first = this.positionClasses.Count;
+            var first = this.positionOperations.Count;
             for (var i = 0; i < array.Elements.Count; i++)
             {
                 var result = this.FitElement(array.Elements[i], ExpectedChild(array, i, expected)!, scope);
@@ -93,7 +93,7 @@ public sealed partial class Binding
 
             if (array.FillLength is not null)
             {
-                this.positionClasses.RemoveRange(first, this.positionClasses.Count - first); // SPEC 10.4: a fill stays one argument.
+                this.positionOperations.RemoveRange(first, this.positionOperations.Count - first); // SPEC 10.4: a fill stays one argument.
             }
 
             return CandidateApplicability.Applicable;
@@ -141,15 +141,15 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1, 10.4 step 1: a Tuple or array literal argument's element at its position, fitted as an argument (FitArgument), its
-    // adaptation class appended to the positions the candidate is ranked by (positionClasses) after a nested literal's own positions:
-    // a nested literal's own class is its own fit's (FitComposite), Literal by value or a borrowed temporary at ref/(...). A waiting one
-    // is checked by the selected candidate (Applicable here).
+    // operation appended to the positions the candidate is ranked by and step 5 reads (positionOperations) after a nested literal's own
+    // positions: a nested literal's own class is its own fit's (FitComposite), Literal by value or a borrowed temporary at ref/(...). A
+    // waiting one is checked by the selected candidate (Applicable here).
     private CandidateApplicability FitElement(Koto part, BoundType type, BindingScope scope)
     {
         var fit = this.FitArgument(part, type, scope, part, out var operation);
         if (fit is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
-            this.positionClasses.Add(operation.Adaptation);
+            this.positionOperations.Add(operation);
         }
 
         return fit == CandidateApplicability.Waiting ? CandidateApplicability.Applicable : fit;
@@ -232,8 +232,11 @@ public sealed partial class Binding
             // SPEC 10.4 step 1, 10.2.2: one class per typed position of a join formed part by part (a row iff the position is Typed with
             // a common Type), its common Type's at the position's Type: Exact where no operation is needed (Exact concerns Types);
             // otherwise a supplying part's (FitsTypedPart); with no supplying part every part was value-read into a read Type, whose
-            // owner temporary is borrowed (10.2 row 2).
-            this.positionClasses.Add(this.SameStructure(common, type) ? ArgumentAdaptation.Exact : positionClass ?? ArgumentAdaptation.CrossSemanticsBorrow);
+            // owner temporary is borrowed (10.2 row 2). The position's operation has no source: its parts are the sources of one
+            // control-flow argument, each adapted after selection (an erased part's environment judged there, at its value), so step 5
+            // (ErasedArgumentsEnvironment) sees none of the parts' erasures: the limit of SPEC 10.5.1's last paragraph.
+            var adaptation = this.SameStructure(common, type) ? ArgumentAdaptation.Exact : positionClass ?? ArgumentAdaptation.CrossSemanticsBorrow;
+            this.positionOperations.Add(new(null, common, type, ArgumentOperationKind.Value, adaptation));
         }
 
         var children = kind == PartKind.Aggregate && this.PartsShape(start, end) is not DictionaryLiteralKoto ? this.ChildPositions(start, end) : 0;
@@ -283,11 +286,11 @@ public sealed partial class Binding
     {
         var temporary = this.Materialization(node, type, scope);
         var valueType = temporary ?? type;
-        var first = this.positionClasses.Count;
+        var first = this.positionOperations.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
         if (result != CandidateApplicability.Applicable)
         {
-            this.positionClasses.RemoveRange(first, this.positionClasses.Count - first);
+            this.positionOperations.RemoveRange(first, this.positionOperations.Count - first);
         }
 
         operation = result != CandidateApplicability.Applicable ? default : new(
@@ -296,7 +299,7 @@ public sealed partial class Binding
             type,
             temporary is not null ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
             ExpectedTypeClass(temporary),
-            Positions: first..this.positionClasses.Count);
+            Positions: first..this.positionOperations.Count);
         return result;
     }
 
@@ -325,7 +328,7 @@ public sealed partial class Binding
     private CandidateApplicability FitTyped(Koto part, Koto node, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
     {
         operation = default;
-        if (node.BoundType is not { } actual)
+        if (this.ArgumentTypeAt(node) is not { } actual)
         {
             return CandidateApplicability.Pending;
         }
@@ -336,10 +339,14 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
-        if (this.ErasureSignatureFits(actual, type, node, out _))
+        var rows = this.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
+        var erases = this.ErasureSignatureFits(actual, type, node, this.comparisonRows, out _);
+        this.DropComparisonRows(rows);
+        if (erases)
         {
-            // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an initialization; its receiver
-            // and Owned conditions are judged once the call is selected (SPEC 10.5).
+            // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an initialization; its Owned
+            // environment is a Constraint of the candidate (ErasedArgumentsEnvironment, SPEC 10.1 step 5), its rest judged once the call is
+            // selected (SPEC 10.5).
             operation = new(part, actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
             return CandidateApplicability.Applicable;
         }

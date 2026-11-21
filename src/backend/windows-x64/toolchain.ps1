@@ -6,13 +6,26 @@ function Resolve-KimiToolchainRoot([string] $ToolchainRoot = '') {
     return [IO.Path]::GetFullPath($ToolchainRoot, (Get-Location).ProviderPath)
 }
 
-function Resolve-KimiBackendLibrary($Entry, [string] $ToolchainRoot, [string] $ManifestDirectory) {
-    if ($Entry.PSObject.Properties['resolution']) {
-        if ($Entry.resolution -cne 'toolchain' -or $Entry.PSObject.Properties['input']) { throw 'Invalid backend toolchain resolution: an input path is not permitted.' }
-        return Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
+# Whether a destination already holds the source's bytes (SHA-256). Setup and the backend builder never write such a destination, so
+# an unchanged rerun writes nothing a running process holds.
+function Test-KimiSameFile([string] $Source, [string] $Destination) {
+    return (Test-Path -LiteralPath $Destination -PathType Leaf) -and
+        (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash
+}
+
+# Replaces a destination by a file with one move (MoveFileEx: the destination is never absent). Windows briefly holds a just-written
+# file (on-access scanning, indexing), so a denial or sharing violation is retried with a doubling wait below one second in total, as
+# ArtifactFiles.Replace does; any other failure, or one that outlasts the retries, is thrown.
+function Move-KimiFile([string] $Source, [string] $Destination) {
+    for ($delay = 1; ; $delay *= 2) {
+        try { [IO.File]::Move($Source, $Destination, $true); return }
+        catch {
+            $failure = $_.Exception.GetBaseException()
+            $transient = $failure -is [UnauthorizedAccessException] -or ($failure -is [IO.IOException] -and ($failure.HResult -band 0xFFFF) -in 32, 33)
+            if ($delay -gt 512 -or -not $transient -or (Test-Path -LiteralPath $Destination -PathType Container)) { throw }
+            Start-Sleep -Milliseconds $delay
+        }
     }
-    if ([string]::IsNullOrWhiteSpace($Entry.input) -or $Entry.input -match '[\x00\r\n"]' -or $Entry.input.StartsWith('-')) { throw 'Invalid backend input path' }
-    return [IO.Path]::GetFullPath($Entry.input, $ManifestDirectory)
 }
 
 function Read-KimiWindowsProfile {

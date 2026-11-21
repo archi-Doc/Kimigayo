@@ -34,12 +34,12 @@ public sealed partial class Binding
     private static OperatorApplicability ArithmeticPairApplicability(
         BoundType? left, BoundType? leftCore, BoundType? right, BoundType? rightCore)
     {
-        if (ReferenceTypes.EndsInString(leftCore))
+        if (ReferenceEquals(ComparisonReferent(leftCore), BoundType.String))
         {
             return new(null, null, BindingFailure.NonNumericOperand, null, null, left, leftCore);
         }
 
-        return ReferenceTypes.EndsInString(rightCore)
+        return ReferenceEquals(ComparisonReferent(rightCore), BoundType.String)
             ? new(null, null, BindingFailure.NonNumericOperand, null, null, right, rightCore) : default;
     }
 
@@ -79,7 +79,7 @@ public sealed partial class Binding
             }
 
             // SPEC 13.3.4, 5.3: the raw-pointer row takes the operand's own Type; a raw pointer reached through a layer has no provider.
-            if (kind is KotoKind.Plus or KotoKind.Minus && ReferenceTypes.IsPointer(leftCore) && !ReferenceEquals(leftCore, operand))
+            if (kind is KotoKind.Plus or KotoKind.Minus && leftCore is { IsPointer: true } && !ReferenceEquals(leftCore, operand))
             {
                 return new(null, null, BindingFailure.OperatorNotDefined, null, null, operand, leftCore);
             }
@@ -132,7 +132,7 @@ public sealed partial class Binding
                 expected = null;
             }
         }
-        else if (ReferenceTypes.IsPointer(left) && kind is KotoKind.Plus or KotoKind.Minus)
+        else if (left.IsPointer && kind is KotoKind.Plus or KotoKind.Minus)
         {
             expected = BoundType.ISize;
         }
@@ -202,7 +202,7 @@ public sealed partial class Binding
                     => this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand),
                 KotoKind.PrefixMinus => this.NegationApplicability(type, scope),
                 KotoKind.PrefixPlus => type.IsNumeric ? default : this.IntegerApplicability(type, scope, BindingFailure.OperatorNotDefined),
-                KotoKind.Plus or KotoKind.Minus when ReferenceTypes.IsPointer(type) => default,
+                KotoKind.Plus or KotoKind.Minus when type.IsPointer => default,
                 KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash => this.NumericApplicability(type, scope),
                 _ => default,
             };
@@ -252,7 +252,7 @@ public sealed partial class Binding
             return new(null, null, BindingFailure.NonNumericOperand, null, null, type, type);
         }
 
-        if (ReferenceTypes.IsPointer(type))
+        if (type.IsPointer)
         {
             return new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
         }
@@ -290,13 +290,13 @@ public sealed partial class Binding
     private OperatorApplicability ComparisonApplicability(BoundType type, KotoKind kind, BindingScope scope)
     {
         var equality = kind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
-        var ordered = type.IsNumeric || ReferenceEquals(type, BoundType.Char) || ReferenceTypes.EndsInString(type);
+        var ordered = type.IsNumeric || ReferenceEquals(type, BoundType.Char) || ReferenceEquals(ComparisonReferent(type), BoundType.String);
         if (ReferenceEquals(type, BoundType.Never) || ordered)
         {
             return default;
         }
 
-        if (type.Kind == BoundTypeKind.Primitive || ReferenceTypes.IsPointer(type))
+        if (type.Kind == BoundTypeKind.Primitive || type.IsPointer)
         {
             return equality ? default : new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
         }
@@ -308,7 +308,7 @@ public sealed partial class Binding
         }
 
         var contract = this.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-        if (!ComparisonTypes.IsComposite(type))
+        if (!TyCtxt.IsComposite(type))
         {
             return this.OperatorRequirement(type, contract, scope, BindingFailure.UnsatisfiedConstraint);
         }

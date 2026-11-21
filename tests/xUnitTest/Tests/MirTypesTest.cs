@@ -438,7 +438,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
             foreach (var local in body.Locals.ToArray())
             {
                 var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, [], [], out _);
-                var raw = local.Type.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
+                var raw = local.Type!.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
                 Assert.True(holds || !(raw || MirTypes.IsReference(local.Type)), $"{body.Key.Decl?.Name}: {local.Name}");
                 var observation = MirTypes.Observation(local.Type, c.Types, body.Key.Decl, entered);
                 Assert.False(observation.IsDeep);
@@ -494,7 +494,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
 
     // The Arg locals after the return local, in parameter order.
     private static IEnumerable<(string Name, BoundType Type)> Parameters(MirBody body)
-        => body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).Select(static x => (x.Name!, x.Type));
+        => body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).Select(static x => (x.Name!, x.Type!));
 
     // A walk that reports nothing and counts the Types it meets, each a First call.
     private struct Walk(HashSet<BoundType> seen) : IMirDestruction
