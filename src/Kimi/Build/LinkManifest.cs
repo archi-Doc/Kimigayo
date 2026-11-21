@@ -43,9 +43,9 @@ internal static class LinkManifest
         ("backendSupport.packageId", ToolchainIdentity.BackendPackageId),
         ("backendSupport.abiVersion", ToolchainIdentity.BackendAbiVersion),
         ("backendSupport.packageVersion", ToolchainIdentity.BackendVersion),
-        ("backendSupport.library", WindowsProfile.BackendLibrary),
+        ("backendSupport.library", ToolchainIdentity.Backend.Name),
         ("backendSupport.artifactSha256", ToolchainIdentity.BackendSha256),
-        ("backendSupport.providedSymbols", WindowsProfile.ProvidedSymbols),
+        ("backendSupport.providedSymbols", ToolchainIdentity.Backend.Symbols),
     ];
 
     // The root members this compiler no longer accepts, each with its text, checked after the fixed fields. A later removal adds a row.
@@ -147,8 +147,8 @@ internal static class LinkManifest
     internal static void WriteCompilerSupply(Utf8JsonWriter json, CompilerSupply supply)
     {
         json.WriteStartObject();
-        json.WriteString("name", supply.Name);
-        json.WriteString("kind", supply.Kind);
+        json.WriteString("name", supply.Supply.Name);
+        json.WriteString("kind", supply.Supply.Kind);
         foreach (var (name, value) in supply.Entry)
         {
             json.WriteString(name, value);
@@ -164,10 +164,10 @@ internal static class LinkManifest
     /// <exception cref="InvalidDataException">The entry is not this compiler's.</exception>
     internal static void CheckCompilerSupply(JsonElement entry, CompilerSupply supply)
     {
-        if (!ArtifactFiles.States(entry, ("kind", supply.Kind)) || !ArtifactFiles.States(entry, supply.Entry) ||
+        if (!ArtifactFiles.States(entry, ("kind", supply.Supply.Kind)) || !ArtifactFiles.States(entry, supply.Entry) ||
             ArtifactFiles.Member(entry, "input").ValueKind != JsonValueKind.Undefined)
         {
-            throw new InvalidDataException($"The link manifest's 'libraries' entry '{supply.Name}' is not this compiler's. Re-emit the manifest.");
+            throw new InvalidDataException($"The link manifest's 'libraries' entry '{supply.Supply.Name}' is not this compiler's. Re-emit the manifest.");
         }
     }
 

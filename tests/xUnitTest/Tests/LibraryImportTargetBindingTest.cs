@@ -384,6 +384,7 @@ public class LibraryImportTargetBindingTest
     [InlineData("kernel32", "SetHandleInformation", "(handle: raw/u8, mask: u32, flags: u32)", "u32", null, false)]
     [InlineData("kernel32", "SetHandleInformation", "(handle: raw/u8, mask: u32, flags: u32)", "i64", null, true)]
     [InlineData("kernel32", "VirtualAlloc", "()", "raw/u8", null, false)]
+    [InlineData("kimi_backend", "GetLastError", "()", "i32", null, true)]
     [InlineData("codec", "GetLastError", "()", "i32", "codec", true)]
     [InlineData("codec", "symbol", "()", "i32", "codec", false)]
     public void RuntimeDeclarationsAreSharedOnlyByAgreeingImports(string library, string symbol, string parameters, string result, string? requirement, bool conflict)
@@ -420,18 +421,20 @@ public class LibraryImportTargetBindingTest
             DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
     }
 
-    [Fact]
-    public void ReservedSupplyKindsParticipateInSymbolAgreement()
+    [Theory]
+    [InlineData("kernel32", "VirtualAlloc", "static")]
+    [InlineData("kimi_backend", "kimi_helper", "import")]
+    public void ReservedSupplyKindsParticipateInSymbolAgreement(string library, string symbol, string requirement)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = requirement } };
         Assert.True(c.Prepare(WindowsProfile.Target));
-        var source = "group A\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> raw/u8\n" +
-            "group B\n    #LibraryImport(\"codec\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> raw/u8";
+        var source = "group A\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func reserve(size: u64) -> raw/u8\n" +
+            "group B\n    #LibraryImport(\"codec\", \"" + symbol + "\")\n    public unsafe func reserve(size: u64) -> raw/u8";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
 
-        // The generated kernel32 import library is an import supply; the static requirement disagrees.
+        // A reserved supply's kind is fixed (IMPL 20.4: kernel32 an import supply, kimi_backend a static one); the requirement's disagrees.
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.ConflictingImportSignature_Kd or
             DiagnosticCode.ConflictingRuntimeSymbol_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
@@ -484,7 +487,7 @@ public class LibraryImportTargetBindingTest
     }
 
     // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (DECISIONS BU-92),
-    // so its import of a library other than kernel32 is the located Unsupported_Kd at the #LibraryImport, after the import's own checks:
+    // so its import of a library other than a reserved supply is the located Unsupported_Kd at the #LibraryImport, after the import's own checks:
     // a missing requirement stays the Language error alone. Either way the import is no LibraryImports entry publication would link.
     [Theory]
     [InlineData(false, true, false)]
@@ -521,6 +524,20 @@ public class LibraryImportTargetBindingTest
         var c = ModuleBindingTest.Create("func main() => ()", "group Native\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func imported() -> i32");
         Assert.True(c.Bind().IsComplete);
         Assert.Contains(c.Binding.LibraryImports, x => x.Symbol == "VirtualAlloc" && x.Decl.Declaration.CodeContext.Kotonoha != c.Kotonoha);
+    }
+
+    // IMPL 20.4: the compiler links its reserved supplies for every module, so a dependency module's kimi_backend import has the
+    // root's records alone (DECISIONS BU-92): a catalog symbol is a reserved name (IMPL 21.2), any other one unavailable (IMPL 21.4.7).
+    [Theory]
+    [InlineData(false, "memcpy", DiagnosticCode.InvalidLibraryImport_Kd)]
+    [InlineData(true, "memcpy", DiagnosticCode.InvalidLibraryImport_Kd)]
+    [InlineData(true, "kimi_helper", DiagnosticCode.UnavailableReservedImport_Kd)]
+    public void AModuleImportsTheBackendSupplyAsTheRootDoes(bool dependency, string symbol, DiagnosticCode code)
+    {
+        var import = "group Native\n    #LibraryImport(\"kimi_backend\", \"" + symbol + "\")\n    public unsafe func imported() -> i32";
+        var c = ModuleBindingTest.Create(dependency ? "func main() => ()" : "func main() => ()\n" + import, dependency ? import : string.Empty);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal([code], c.Binding.Issues.Select(x => x.Code));
     }
 
     [Theory]

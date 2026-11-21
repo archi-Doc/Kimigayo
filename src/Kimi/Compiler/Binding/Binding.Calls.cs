@@ -91,7 +91,7 @@ public sealed partial class Binding
 
         if (group?.EnumCase is not null)
         {
-            return generic is null && callee is MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.InferredCase }
+            return ConstructsCase(call, group) // Then the callee is the call's Method: it is no generic name.
                 ? this.BindEnumConstruction(call, callee, this.PublishedTarget(callee, group, expected), call, scope, expected)
                 : this.Fail(call, BindingFailure.NotCallable);
         }
