@@ -344,7 +344,6 @@ internal struct NodeColumns
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
     internal StampedColumn<Binding.ArithmeticConformanceFailure, Binding.PassCounter> ArithmeticConformanceFailures; // Pass: the eligibility condition a declared arithmetic conformance fails (Binding.ArithmeticContracts.cs).
     internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
-    internal StampedColumn<Binding.ReferenceConstraintFailure, Binding.PassCounter> ClauseConstraints; // Pass: a node's clause record (Binding.ConstraintValidation.Records.cs).
     internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
@@ -413,7 +412,6 @@ internal struct NodeColumns
         this.ResultContexts.Grow(length);
         this.ArithmeticConformanceFailures.Grow(length);
         this.CallableConstraints.Grow(length);
-        this.ClauseConstraints.Grow(length);
         this.UnboundSlots.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
@@ -459,7 +457,6 @@ internal struct NodeColumns
         this.ResultContexts.Release();
         this.ArithmeticConformanceFailures.Freeze(binding);
         this.CallableConstraints.Freeze(binding);
-        this.ClauseConstraints.Freeze(binding);
         this.UnboundSlots.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
@@ -533,7 +530,6 @@ internal struct NodeColumns
             ResultContexts = this.ResultContexts.Renumbered(length),
             ArithmeticConformanceFailures = this.ArithmeticConformanceFailures.Renumbered(length),
             CallableConstraints = this.CallableConstraints.Renumbered(length),
-            ClauseConstraints = this.ClauseConstraints.Renumbered(length),
             UnboundSlots = this.UnboundSlots.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),

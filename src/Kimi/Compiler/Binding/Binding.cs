@@ -108,7 +108,6 @@ public sealed partial class Binding
         this.resultContexts = new(this);
         this.arithmeticConformanceFailures = new(this);
         this.callableConstraints = new(this);
-        this.clauseConstraints = new(this);
         this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);

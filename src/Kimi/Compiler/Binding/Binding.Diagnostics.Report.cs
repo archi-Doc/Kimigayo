@@ -386,10 +386,6 @@ public sealed partial class Binding
             var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch);
             issue.Node.ReportIn(store, requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints.TryGetValue(issue.Node, out var reference))
-        {
-            this.ReportClauseConstraint(issue.Node, store, reference, requirement, issue.Code);
-        }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures.TryGetValue(issue.Node, out var erasure))
         {
             var subject = DiagnosticTypeName(erasure.Source);

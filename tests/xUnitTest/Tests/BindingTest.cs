@@ -686,6 +686,7 @@ public class BindingTest
     [InlineData("mappings", (byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // two instances' mappings
     [InlineData("inference", (byte)BindingFailure.AssociatedInference, DiagnosticCode.AssociatedTypeInferenceFailed_Kd)] // its reason, the associated Type and its instance
     [InlineData("premise", (byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // the bounded clause, the requirement
+    [InlineData("clause", (byte)BindingFailure.UnsatisfiedConstraint, DiagnosticCode.UnsatisfiedConstraint_Kd)] // the clause, its proposition, a called declaration
     public void ALibraryNodesFactRecordIsTheProgramsRecord(string family, byte failure, DiagnosticCode code)
     {
         var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
@@ -704,6 +705,7 @@ public class BindingTest
             "mappings" => [Related(contract), Instance(contract, BoundType.Boolean), Related(contract), Instance(contract, BoundType.Unit)],
             "inference" => [new(ProblemFactKind.Reason, SourceRef.Of(associated[0]), (long)Binding.InferenceProblem.Shape), Related(associated[0]), Instance(associated[0], BoundType.Boolean)],
             "premise" => [Related(clause), Related(function, 1)],
+            "clause" => [Related(clause), new(ProblemFactKind.Constraint, SourceRef.Of(clause), report.Keep(c.Semantics.ConstraintOf((IsKoto)clause)!)), Related(contract, 1)], // a declaration no function
             _ => throw new ArgumentOutOfRangeException(nameof(family)),
         };
         var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!

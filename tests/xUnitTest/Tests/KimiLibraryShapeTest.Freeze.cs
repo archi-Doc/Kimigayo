@@ -75,7 +75,6 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ResultContexts"] = "released at the freeze: the library pass's result contexts, its working state, no reader reads after it (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.ArithmeticConformanceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.CallableConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.ClauseConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UnboundSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UniqIndexing"] = "never written: the library indexes no user Indexable and no view",
         ["NodeColumns.RequirementGroups"] = "released at the freeze: the library pass's requirement groups, its member lookups' working state, no reader reads after it (R7-N5 B3-2; TheFreezeReleasesTheLibrarysWorkingState)",

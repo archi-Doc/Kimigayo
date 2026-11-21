@@ -307,6 +307,9 @@ public sealed partial class Binding
             case BindingFailure.AssociatedInference when this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportAssociatedInference(node, store, index, problem);
                 break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is not null && this.FactOf(index, ProblemFactKind.Constraint) is not null:
+                this.ReportClauseConstraint(node, store, index, problem);
+                break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
                 break;
