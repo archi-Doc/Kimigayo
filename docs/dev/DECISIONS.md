@@ -28251,7 +28251,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     after the kill (they take no token); on the cancellation path it awaits them without observing their outcome and rethrows: after a
     cancellation the outcome is the cancellation (130), never a copy's failure. Limit: a descendant that escaped the kill's walk (its
     parent exited first) and holds the program's output keeps a cancelled run waiting until it exits or a second Ctrl+C ends the
-    process (PLAN G1188).
+    process (PLAN G1188). Removed by G1188 (T-M12): the program runs in a kill-on-close job.
   - Amended by T-M9 (unit B6b1, 2026-11-21): the carry list's "Tatara's loaded DLL per path" is Tatara's one instance per
     process (`Tatara.Instance`).
 - **T-M6 The single-shot switch: the build calls Tatara** (Tatara, 2026-11-21; the plan's unit A4, Q-604, D-981; Major; design
@@ -28474,3 +28474,41 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: verify keeping kernel32's content inspection (a tool, or an ABI change, for a property of adopted bytes); a second
     PowerShell copy of the inspection; `check-toolchain.ps1` loading `tatara.dll` (T's ruling: no change under `src/Tatara`); a
     `-Report` for `check-toolchain.ps1` (no reader: `verify.ps1` keeps its log).
+- **T-M12 `run`'s program in a kill-on-close job: `JobProcess`** (Tatara, 2026-11-22; PLAN G1188, Q-637, D-1045; Major; design
+  `artifacts\handoff\tatara\units\G1188\design.md`; the Middle's review C-442, review 2 ACCEPT WITH CONDITIONS; the Front's and the
+  Back's consent C-446). Amends T-M5's SP1 limit; closes PLAN G1188.
+  - `JobProcess` (`src/Kimi/Misc/JobProcess.cs`, namespace `Kimi`) is Kimi's launcher for the programs it runs: a child created
+    inside a job of its own before its first instruction (`PROC_THREAD_ATTRIBUTE_JOB_LIST`; `KILL_ON_JOB_CLOSE`,
+    `DIE_ON_UNHANDLED_EXCEPTION`, no breakaway), inheriting exactly its standard handles and the listed ones (`HANDLE_LIST`), with a
+    hidden console. Two launchers outside Kimi keep their own contracts (C-442 N3; AGENTS, Share by meaning): Benchmark's A1b root
+    (`BuildChainMeasurements.Job.cs`: file-backed streams, waits for the whole job and reads its accounting) and the backend's
+    `VerificationJob` (invoke-verification's `Add-Type` helper, `AssignProcessToJobObject` after `Process.Start`).
+  - It is `TestProcess`'s launcher moved out of Testing (commit 1/2, behaviour-preserving), since Build must not read Testing nor
+    Testing Build; `Misc` holds types every layer reads. Its readers are `TestProcess` (a `JobProcess` with the case's environment,
+    closed input and result channel) and `NativeToolchain.RunExecutable` (commit 2/2); Build's dependency row gains it (N1). When
+    the tree ends is the reader's: `TestWorker` after every outcome; `run` after the program's exit and at the cancellation; the
+    second Ctrl+C closes the job's only handle when Kimi's process ends.
+  - One host rule for both readers (N2): a Windows x64 host, as `WindowsProfile`'s target, checked in `JobProcess`
+    (`PlatformNotSupportedException` "Running a program requires Windows x64.": a toolchain failure for `run`, a case error for
+    `test`); its planned later owner is B7b8's `TargetProfile.Host` (design B7b), where the check moves.
+  - `RunExecutable` passes Kimi's standard input, awaits the exit on a thread of its own, kills the job after the exit and at the
+    cancellation, then drains the copies. `Process.Start` and `Kill(entireProcessTree)` leave `run`, and `NativeToolchain.Wait`
+    with them: its last reader went, and this unit's merge after B6b3 removes it (T-M6 as T-M11 amends it).
+  - "No input" (commits 3/4 and 4/4; C-446 N1, T's rulings; C-442 review 2 R2-N2): only run's `NativeToolchain.StandardInput` decides
+    that Kimi has none (no handle, or no open handle of the process). `JobProcess` duplicates the input it is given (inheritable) or
+    fails the start, and gives a child with no input a closed one, the one form of "a child with no input": the read end of an
+    anonymous pipe whose write end closes before the start, so the child reads end of input at once, never its hidden console's input
+    (which a child with no input handle got, so a read blocked). `TestProcess` passes none. So design §5 (6)'s "gives the program
+    none" holds: "none" is a closed input.
+  - Stated changes: a descendant the program leaves ends when `run` returns (as a test case's); the program inherits only its standard
+    handles; no error dialog on an unhandled exception; a breakaway fails; a failure names its call and a start's the executable
+    (N6); `run` refuses a non-x64 Windows host; a program `run` starts while Kimi has no standard input reads end of input.
+  - Known test-environment exposure (N8): between its pipes' creation and the end of its constructor, `JobProcess` holds inheritable
+    write ends and an inheritable input duplicate; a concurrent `Process.Start` in the same process (which inherits every inheritable
+    handle) would take them and hold a run's output open. Product Kimi has no concurrent launcher since B6b3 deleted `ToolProcess`
+    (T-M11); xUnit does (parallel tests start processes while `run` and `test` rows run in process). Recorded, not changed; a flake
+    gets a PLAN row.
+  - Rejected: `Process.Start` then `AssignProcessToJobObject` (the program's first instructions, and a process they create through
+    FFI, run outside the job; a second form of the concept); Kimi in a job of its own; the launcher in Build or Testing with the
+    other reading it (the dependency rules); a 10 ms poll of the exit (latency on every run); checking only Windows and a 64-bit
+    process (N2: one host rule instead).

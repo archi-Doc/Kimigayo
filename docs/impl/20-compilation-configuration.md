@@ -88,7 +88,7 @@ group Log
 - Option names are case-sensitive and spelled as this chapter writes them (`--Format`, never `--format`). `--Format` takes `text`, the default, or `json`. Boolean options take `true` or `false`; `--no-build` alone means true.
 - `--Target` selects a configured target for `check`, `emit`, `build`, `run` and `pack`, and for `test` in every selected Project; without it, each Project's sole target is used, and several are an error. Release is the default mode; `--Debug true` selects Debug, independently of `Optimization`.
 - `check` returns 0 when the whole command is accepted ([§23.2.3](../spec/23-compiler-services.md#2323-check-commands)) and 1 otherwise; other commands return 0 on success and 1 on failure. `run` returns the program's exit code, or 1 for a failure before launch, reported on standard error. `test` uses [§20.6.4](#2064-results-and-exit-codes). Cancellation returns 130. A second Ctrl+C while a command is being cancelled ends the process at once with 130, except during a publication [§23.2.3](../spec/23-compiler-services.md#2323-check-commands) protects.
-- `run` forwards standard streams and runs in the project directory (a direct `.exe`: the caller's).
+- `run` forwards standard streams and runs in the project directory (a direct `.exe`: the caller's). It runs a program on a Windows x64 host only, as `test` runs tests ([§20.6.1](#2061-selection-and-preparation)). A program `run` starts while Kimi has no standard input reads end of input. The program's processes end with `run`: any still running when the program exits, when `run` is cancelled, or when its process ends.
 
 ### 20.3.1. Input resolution and implicit projects
 
