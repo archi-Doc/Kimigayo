@@ -124,7 +124,7 @@ For `OutputPath` `Name.ll`, `emit` writes `Name.ll` and `Name.link.json`. An App
 
 - `emit` reports success only after both outputs are published; a partial publication is a failure.
 - A build first invalidates the latest successful build record. It publishes success only after the required checks and artifacts complete; an Application publishes its executable only on success. Except as the next sentence states, failure or cancellation leaves no successful record for that attempt, and `run` never runs an older executable left by a failed build. If the record cannot be written, or the process ends between a build's success record and its executable's move, the record keeps the last state written (the earlier success when the first invalidation fails; this attempt's success when the process ends, or the move and the record's rewrite both fail, after that success was written), and `run --no-build` runs only an executable at its path whose hash the record names.
-- Two builds that write one build record (one `OutputPath` at either optimization, or `build --Manifest` of its `.link.json`) never run at once: the later one waits until the earlier one ends, and Ctrl+C cancels the wait (`test` builds in a directory of its own).
+- Two builds that write one build record (one `OutputPath` at either optimization, or `build --Manifest` of its `.link.json`) never run at once: the later one waits until the earlier one ends, and Ctrl+C cancels the wait; `test` builds in a directory of its own.
 - Reuse of earlier results follows [§A.2](appendices/A-compiler-requirements.md#a2-reuse-of-earlier-work).
 - An Unsupported operation produces no placeholder binary.
 
