@@ -112,9 +112,6 @@ public sealed partial class Binding
     // adaptations column's setter). An address is none (SPEC 5.4). The census reads none of them: it reads the publication itself
     // (ruling 28; Published*).
 
-    // A match's or a for loop's Pattern plan; null for any other node.
-    private BoundMatch? MatchPlan(Koto node) => node switch { MatchKoto match => BoundMatch.Of(this, match), ForKoto loop => BoundMatch.Of(this, loop), _ => null };
-
     // The adaptation recorded at a node, any but a referent read.
     private void AdaptationBorrow(in BoundAdaptation recorded, Dictionary<BoundOrigin, BorrowList> rows)
     {
@@ -270,37 +267,53 @@ public sealed partial class Binding
     // node Binding resolved is a broken contract the publisher records itself, Hir.Broken), a Borrow node's Type or a Slice view's (a
     // slicing index has no Borrow node; an address's Op is no Borrow, SPEC 5.4), an object upcast's view borrow (ViewBorrow), a Closure's
     // capture entries whose Adjust borrows or Reborrows, a match's Subject borrow and the Pattern bindings whose published Adjust borrows;
-    // and its claim mark.
+    // and its claim mark. The forms after the Borrow node's are disjoint, so one dispatch on the node's form reads each (the publisher's
+    // visit runs this at every node: the sealed forms first, then MatchKoto, the one with a subclass, TryKoto, whose test is the dearest).
     private void PublishedNode(Koto node, HirOp op)
     {
         this.publishedFailure |= op == HirOp.Error || node.BindingState is BindingState.Unresolved or BindingState.Invalid;
-        if (op == HirOp.Borrow || this.IsSlicing(node))
+        if (op == HirOp.Borrow)
         {
             this.RecordBorrow(this.publishedBorrows, node.BoundType);
         }
 
-        if (ViewBorrow(node) != HirAdaptation.None && node is ConversionKoto { BoundType: { Origin: { } origin } view, Left.BoundType.Components: [var payload, ..] })
+        switch (node)
         {
-            this.RecordEntry(this.publishedBorrows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
-        }
-
-        if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })
-        {
-            for (var i = 0; i < closure.Captures.Count; i++)
-            {
-                if (closure.Captures[i] is var capture && capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
+            case IndexKoto when this.IsSlicing(node):
+                this.RecordBorrow(this.publishedBorrows, node.BoundType);
+                break;
+            case ConversionKoto conversion:
+                if (ViewBorrow(conversion) != HirAdaptation.None && conversion is { BoundType: { Origin: { } origin } view, Left.BoundType.Components: [var payload, ..] })
                 {
-                    this.RecordBorrow(this.publishedBorrows, capture.Environment.Type);
+                    this.RecordEntry(this.publishedBorrows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
                 }
-            }
-        }
 
-        var plan = this.MatchPlan(node);
-        if (node is MatchKoto)
-        {
-            this.RecordBorrow(this.publishedBorrows, plan?.SubjectBorrow);
-        }
+                this.MarkClaim(conversion);
+                break;
+            case FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure }:
+                for (var i = 0; i < closure.Captures.Count; i++)
+                {
+                    if (closure.Captures[i] is var capture && capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
+                    {
+                        this.RecordBorrow(this.publishedBorrows, capture.Environment.Type);
+                    }
+                }
 
+                break;
+            case ForKoto loop:
+                this.PublishedBindings(BoundMatch.Of(this, loop));
+                break;
+            case MatchKoto match:
+                var plan = BoundMatch.Of(this, match);
+                this.RecordBorrow(this.publishedBorrows, plan?.SubjectBorrow);
+                this.PublishedBindings(plan);
+                break;
+        }
+    }
+
+    // The census's input at a match's or for's plan: the Pattern bindings whose published Adjust borrows.
+    private void PublishedBindings(BoundMatch? plan)
+    {
         for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
         {
             if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, BodySymbol.Type: { } bound } position &&
@@ -309,8 +322,6 @@ public sealed partial class Binding
                 this.RecordBorrow(this.publishedBorrows, bound);
             }
         }
-
-        this.MarkClaim(node);
     }
 
     // The census's input at the publisher's record of the uses (RowUses.Use): a call input, receiver, payload or writer whose operation HIR
