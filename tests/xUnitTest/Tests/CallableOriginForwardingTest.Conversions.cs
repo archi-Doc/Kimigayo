@@ -708,8 +708,8 @@ public partial class CallableOriginForwardingTest
     // result that keeps the receiver (e-dep-*) leave `run<F>` selected; alone no candidate applies (the lone rows: SPEC 10.1's record at
     // the call, Q13 record moves from the argument's Constraint record). Refuted wins over a part decided only once the body is bound
     // (finref-q, x2-fr). A `var` region with no refuting bound recorded before the call is decided only once the body is bound: the
-    // located limit at the argument (O-406 (a): v-late-q, valid, a false AmbiguousBinding_Kd before; v-nolate-*, e-owul, fin1-q,
-    // invalid). Parameters alone stay Unknown, so ambiguous (n-ps-q, t-ss-q, sym-g; inh-* an inherited Type argument); a relation a
+    // located limit at the argument (O-406 (a): v-late-q, valid, a false AmbiguousBinding_Kd before; e-owul, valid by the region's
+    // candidate `static`, the owner's O-481 (b); v-nolate-*, fin1-q, invalid). Parameters alone stay Unknown, so ambiguous (n-ps-q, t-ss-q, sym-g; inh-* an inherited Type argument); a relation a
     // premise decides is its own record (e-dep-ok-*, pj-rp-q); an annotated `let` was accepted already (l-owr-*). A pair layer is judged
     // once over every admitted case (SPEC 8.15.2, the owner's O-417 (a); SymbolicCapability): a case borrowing a body local or an owner
     // parameter's own slot refutes it (sa-*, sax-*, sau2-*); every case Owned proves it (sarc2-*, sao2-*: ambiguous beside `run<F>`, an
@@ -843,8 +843,8 @@ public partial class CallableOriginForwardingTest
     // argument (e-owr, e-owr0): a Closure holding a borrow of a body local is not Owned and run<T> is selected, with an Origin difference
     // (n-tup-p, n-arr-p, n-tup2-p; dev accepted them, cdb04ab61 gave AmbiguousBinding_Kd) or without (n-tup-q, n-arr-q, n-tup2-q; dev and
     // cdb04ab61 gave AmbiguousBinding_Kd); a `var` region with no refuting bound is the located limit at the element (n-tupF-q, O-406
-    // (a); was AmbiguousBinding_Kd), also with a lone candidate (c-ntup, the Middle's s2c at an element; was the conversion's Constraint
-    // record there, UnprovenConstraint_Kd), and alone a refuted element leaves no candidate applicable (n-tup-lone; was the conversion's
+    // (a); was AmbiguousBinding_Kd), also with a lone candidate (c-ntup, the Middle's s2c at an element, valid by the region's candidate
+    // `static`, the owner's O-481 (b); was the conversion's Constraint record there, UnprovenConstraint_Kd), and alone a refuted element leaves no candidate applicable (n-tup-lone; was the conversion's
     // Constraint record at the element).
     [InlineData("n-tup-p", RunTuple + OwnK + OwnCp + "    return run(q, (c@move, q))\n", "")]
     [InlineData("n-arr-p", RunArray + OwnK + OwnCp + "    return run(q, [c@move])\n", "")]
