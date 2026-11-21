@@ -215,7 +215,6 @@ public sealed partial class Binding
         {
             // The Binding partition holds only this pass's records (BeginBind discarded the semantic ones), so it is the refusal.
             this.ReportFailures(this.issues, this.derivedIssues);
-            this.ReportDuplicateDeclarations();
             this.ReportNonFailingRecords();
             var records = diagnostics.TakeLocated(DiagnosticPartition.Binding);
             this.Library.Layer.Refusal = new(records, diagnostics.FirstSyntaxRecord(this.Library.Kotonoha) ?? records[0]);

@@ -36,6 +36,40 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));
     }
 
+    // SPEC 6.1, 9.1, 23.1.2 (R7-E2 E2-3b): a group joined by two pairwise checks (Signatures' and the scope's) is recorded once, after the
+    // last: each later declaration's record (the first derived), as dev; a repeated loop binding is its own record (DiagnosticPrecisionTest).
+    [Fact]
+    public void AGroupJoinedByTwoChecksIsRecordedOnce()
+        => Assert.Equal(
+            "1*DeclarationOrderWarning_Kd 2*DuplicateBinding_Kd",
+            DiagnosticCorpus.RecordProfile("group G\n    func f() => ()\n    func f() => ()\n    let f: i32 = 1\npublic func main() => ()\n", "Application"));
+
+    // SPEC 6.1, 9.1, 23.1.2 (R7-E2 E2-3b, the Front's d4): the repeated Name is judged from the two declarations alone, so the later's
+    // initializer's syntax error, which its own binding consulted, does not derive it (IsDerived's JudgedByDeclaredNames row): both are
+    // reported, as dev's group walk did; the twin with another name reports the syntax error alone.
+    [Theory]
+    [InlineData("x", "1*DuplicateBinding_Kd 1*ExpectedSyntax_Kd")]
+    [InlineData("y", "1*ExpectedSyntax_Kd")]
+    public void ARepeatedNameIsReportedBesideItsInitializersSyntaxError(string name, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("group G\n    let x: i32 = 1\n    let " + name + ": i32 = (1 +)\npublic func main() => ()\n", "Application"));
+
+    // SPEC 9.1, F.3.3, 23.1.2 (R7-E2 E2-3b, the Front's k2): the repeated Signature is judged from the two Signatures alone (`unsafe` never
+    // distinguishes them), so the later header's own recovery (a second modifier) does not derive it: both are reported, as dev's group
+    // walk did; the twin without the second modifier reports the repeat alone.
+    [Theory]
+    [InlineData("unsafe virtual", "1*DuplicateBinding_Kd 1*MisplacedSyntax_Kd")]
+    [InlineData("unsafe", "1*DuplicateBinding_Kd")]
+    public void ARepeatedSignatureIsReportedBesideItsHeadersRecovery(string modifiers, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("group G\n    func f() => ()\n    " + modifiers + " func f() => ()\npublic func main() => ()\n", "Application"));
+
+    // SPEC 6.1, 9.3, 23.1.2 (R7-E2 E2-3b, the Front's k4): a Name bound twice by one loop is judged from the names alone, so the loop's
+    // recovery (a nested slot list) does not derive it: both are reported; the twin with another name reports the syntax error alone.
+    [Theory]
+    [InlineData("a", "1*DuplicateBinding_Kd 1*ExpectedSyntax_Kd")]
+    [InlineData("b", "1*ExpectedSyntax_Kd")]
+    public void ARepeatedLoopNameIsReportedBesideItsLoopsRecovery(string name, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("public func main()\n    for ((p, q), a, " + name + ") in [((1, 2), 3, 4)]\n        ()\n", "Application"));
+
     [Fact]
     public void TheFirstDeclarationFollowsConsumedSourceOrder()
     {
