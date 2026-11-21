@@ -1431,6 +1431,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 103 (2026-11-19, plan §14; the Back's R7-P2 design review ruling 10 and P2's commit 1, Q-544): §5.0's P3 row, §5.1's
   P2 row and §6 name the code's `CallEvaluation` and `EvaluatedCandidate`; P2's row records commit 1 (DECISIONS R7-M52).
   Nothing frozen.
+- Revision 104 (2026-11-22, plan §14; the Front's Q-632, with R7-V2c): V2's row records V2c's landing in W-306 (DECISIONS R7-M74,
+  `ImplTable.Builtin`, the built-in conformance rows keyed on the Type and the Contract declaration's identity); C9's row names the
+  Composed row's proof and the primitive refutation as Prove's and SPEC 8.7.4's supplies as one statement with it (PLAN G1235).
+  Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

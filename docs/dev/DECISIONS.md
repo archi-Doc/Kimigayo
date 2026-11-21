@@ -14180,7 +14180,8 @@ resumed by R4-M86 (2026-10-20).
     its generic Indexable use and written `index` and `indexUniq` calls.
   - Remaining under PLAN G715: Slice's conformance in source is a following unit (PLAN G777's cause, implementation matching
     refusing its `during source` result, is fixed for function requirements); a fixed array has no declaration, so its conformance
-    is a Builtin row (part b, after R7-V2c, keyed by the bound reference).
+    is a Builtin row (part b, after R7-V2c, keyed by the bound reference, as R7-M74 keys it: the Type and the declaration's identity,
+    the fixed `isize` argument a row column `BuiltinConformance` judges).
   - Rejected: Slice's `index` with `during self` (narrower than SPEC 4.7.1's table); compiler-provided Array conformance rows (the
     library can state it); an interim `Unsupported_Kd` gate for the fixed array (a second copy of the row's fact, which would also
     answer the invalid `Indexable<i32>`).
@@ -24602,6 +24603,38 @@ R8-M* and R9-M* by the stage of the recording unit.
     caller-steered rule kept).
   - **Open:** the function reference's limit and BU-241's residue (PLAN G1128); c-fr1's `UnprovenConstraint_Kd`, pre-existing
     (PLAN G1222); the DAG's other walks (PLAN G1152).
+- **R7-M74 The built-in conformance rows** (Front, 2026-11-21; R7-V2c, the R7 plan §5.1 V2, Q-632; Major, behaviour-preserving; design
+  `front\notes\V2\design-v2c.md`, its independent review ACCEPT WITH CONDITIONS, V2c ruling 2; the implementation review ACCEPT WITH
+  CONDITIONS, its D2, V2c ruling 3) SPEC 13.3.3, 13.4.1, 4.6.1, 8.7.5, 22.1, 22.10.2.
+  - **Rule.** `ImplTable.Builtin(self, contract)` is the closed static table of the conformances no declaration states, one row per
+    Type and Contract: **Target** (the Contract's built-in target runs: a numeric Type's arithmetic, the operator table's
+    comparisons), **Library** (the witness table's group), **Composed** (a Tuple's or safe `ref` layer's comparison, proven by its
+    parts), **Entailed** (a PrimitiveInteger subject's arithmetic, proven by the subject's PrimitiveInteger), **Absent** (a scalar's
+    or Unit's Comparable: Refuted). The rows compose their owners' facts (`ArithmeticContracts.Supports`, `ComparisonKindOf`,
+    `OperatorTableRuns`, `WitnessGroup`) and restate none; they are disjoint, so one lookup equals the old chain in any order. A new
+    built-in conformance adds a row, never an arm at a reader. `BuiltinKind` is the plan's Builtin kind, not an ARCH closed vocabulary
+    (the planning session's decision, V2c ruling 2 OQ1).
+  - **Keying.** A row is a function of the Type and the Contract declaration's identity (its `#Lang` id), never of a bound reference's
+    arguments, so the solver (a bound reference) and the witness core (the requirement's own Contract) read one row. Where SPEC fixes
+    the reference's argument (13.3.3's `C<Self>` today), `Binding.BuiltinConformance` judges it before the row is read, once; PLAN
+    G715 (b)'s `Indexable<isize>` adds its argument there as a row column, not a second arm.
+  - **Readers.** `ResolveConformance` reads it once (`BuiltinConformance`: the reference's argument, an Entailed row's
+    PrimitiveInteger, a Composed row's `ComparisonProof`); `ResolveRequirementWitness` and `CompilerRequirementTarget` read the row of
+    the requirement's own Contract (`BuiltinTarget`, the group); `BuiltinArithmeticOutput` reads Target or Entailed (13.3.3's Output
+    rule).
+  - **Deleted.** `BuiltinArithmeticConformance`, the solver's four built-in branches, the witness core's and
+    `CompilerRequirementTarget`'s two arms, the reference symbol's `LibraryDeclaration` as the built-in rows' key. Its four other
+    readers keep that read by design, equal to the declaration's identity by the same construction (lines at f9ea0bf09):
+    `Binding.Contracts.cs:440-441` (8.7.4's premise supply), `Binding.FixedArrays.cs:19`, `Binding.Sequences.cs:332` and
+    `TyCtxt.Comparison.cs:89` (the design's §2, "Not moved").
+  - **Rejected.** A Binding partial owner (the plan names `ImplTable`; the targets and proofs are the solver's and the pass driver's);
+    stored rows (built-in Types are not symbols; a closed function needs no storage, stamp or pool); the composite kept apart (two
+    reads at the witness core); the Entailed rows as premises beside `PrimitiveIntegerSupplies` (not behaviour-preserving:
+    `ResolveConformance`'s direct readers would answer an abstract T differently); judging the arithmetic reference only where a row
+    exists (a skipped TypeIdentity proof can change an enclosing answer's dependence).
+  - **Staged.** The Composed row's proof and the primitive refutation move to Prove with R7-C9; SPEC 8.7.4's supplies, stated five
+    times, become one statement with R7-C9 or C2 (PLAN G1235). Outside the table stay the intrinsic Contracts (SPEC 8.7.1,
+    `IntrinsicContract`).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
