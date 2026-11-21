@@ -291,7 +291,9 @@ public sealed partial class Binding
     // Reach (its Reads, closed transitively).
     private void CountInferenceRead(BindingSymbol readType)
     {
-        if (this.collectingAssociated is not { Component: >= 0 } reader || ReferenceEquals(reader.Type, readType) ||
+        // The collecting run is its batch's (InferenceRun): Reach is the batch's.
+        if (this.collectingAssociated is not { Component: >= 0 } run || ReferenceEquals(run.Type, readType) ||
+            !this.associatedInference.TryGetValue(run.Type, out var reader) ||
             !this.associatedInference.TryGetValue(readType, out var read) || this.Reaches(reader, read))
         {
             return;
