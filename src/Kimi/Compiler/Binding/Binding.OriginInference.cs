@@ -327,12 +327,12 @@ public sealed partial class Binding
             var incomparable = false;
             foreach (var bound in inference.Bounds)
             {
-                if (bound.Condition == 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Resolve(bound.Longer, bound.LongerVariable, origins, inputs, slotValues) is { } limit)
+                if (bound.Condition == 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Bounding(bound.Longer, bound.LongerVariable, origins, inputs, slotValues) is { } limit)
                 {
                     upper = upper is null ? limit : this.Meet(upper, limit);
                 }
 
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor)
+                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Bounding(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor)
                 {
                     if (lower is null || this.ProvesOriginOutlives(floor, lower, use, inference.Comparison))
                     {
@@ -362,7 +362,7 @@ public sealed partial class Binding
             for (var i = 0; inference.Conditional && i < inference.Bounds.Count; i++)
             {
                 var bound = inference.Bounds[i];
-                if (bound.Condition != 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Resolve(bound.Longer, bound.LongerVariable, origins, inputs, slotValues) is { } limit &&
+                if (bound.Condition != 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Bounding(bound.Longer, bound.LongerVariable, origins, inputs, slotValues) is { } limit &&
                     (unconditional is null || !this.ProvesOriginOutlives(limit, unconditional, use, inference.Comparison, bound.Condition)))
                 {
                     upper = upper is null ? limit : this.Meet(upper, limit);
@@ -376,7 +376,7 @@ public sealed partial class Binding
             // its other bounds are then checked against.
             for (var i = 0; (upper is not null || inference.PremiseSolved.Contains(variable)) && shortens && i < inference.WellFormed.Count; i++)
             {
-                if (ReferenceEquals(inference.WellFormed[i].Shorter, variable) && Resolve(inference.WellFormed[i].Longer, true, origins, inputs, slotValues) is { } stored &&
+                if (ReferenceEquals(inference.WellFormed[i].Shorter, variable) && Bounding(inference.WellFormed[i].Longer, true, origins, inputs, slotValues) is { } stored &&
                     (upper is null || !this.ProvesOriginOutlives(stored, upper, use, inference.Comparison)))
                 {
                     upper = upper is null ? stored : this.Meet(upper, stored);
@@ -391,7 +391,7 @@ public sealed partial class Binding
         {
             foreach (var bound in inference.Bounds)
             {
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor &&
+                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Bounding(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor &&
                     OutlivesEveryFloor(variable, floor, origins, inputs, slotValues))
                 {
                     return floor;
@@ -405,7 +405,7 @@ public sealed partial class Binding
         {
             foreach (var bound in inference.Bounds)
             {
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor &&
+                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Bounding(bound.Shorter, bound.ShorterVariable, origins, inputs, slotValues) is { } floor &&
                     !this.ProvesOriginOutlives(candidate, floor, use, inference.Comparison))
                 {
                     return false;
@@ -601,6 +601,12 @@ public sealed partial class Binding
                 values[origin.Slot] = value!;
             }
         }
+
+        // A bound's other end as a bound of a variable: none when it reads a marked variable (G1128 R1.3 (i), G147 ruling 43 (4)): a
+        // marked variable's held value is a stand-in that no check reads, so it bounds no other variable either (rule W inside the
+        // solve), and a variable bounded through it takes its candidate from its other bounds.
+        BoundOrigin? Bounding(BoundOrigin end, bool substitute, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
+            => inference.ReadsMarked(end) ? null : Resolve(end, substitute, origins, inputs, slotValues);
 
         BoundOrigin? Resolve(BoundOrigin expression, bool substitute, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues)
         {
