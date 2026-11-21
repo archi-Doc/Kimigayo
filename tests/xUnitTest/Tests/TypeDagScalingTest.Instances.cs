@@ -84,6 +84,22 @@ public partial class TypeDagScalingTest
         Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gw.SymbolOf()));
     }
 
+    // D-933 (DECISIONS Q20 B1): the raw-source walk of a struct's stored parts (Binding.StoredRawSources) over a diamond chain `N_i { a:
+    // N_(i+1), b: N_(i+1) }` of 2^30 paths within StorageBound, whose leaf holds a raw Field, reached past the input's exclusive layer:
+    // each part once per position (retentionStored), so the contract finishes. Without the memo the walk reads every path.
+    [Fact]
+    public void AStoredDagIsWalkedOncePerPartForItsRawSources()
+    {
+        const int Size = 30;
+        var chain = string.Concat(Enumerable.Range(0, Size).Select(static i => $"struct N{i}\n    public var a: N{i + 1}\n    public var b: N{i + 1}\n"));
+        var c = MirBuildTest.Compile(chain + $"struct N{Size}\n    public var q: raw/u8\npublic func main() => ()\n" +
+            "func keepN(s: raw/u8, v: uniq/N0) => ()\nfunc gn(v: uniq/N0) => keepN(null, v)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var gn = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gn");
+        var call = KotoTree.Walk(gn).OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gn.SymbolOf()));
+    }
+
     // SPEC 8.2: a projection chain over a Type parameter, `Dup<…Dup<T>.Item…>.Item`, normalizes to a Tuple DAG of T in a generic body: each
     // level's specification is rewritten in a nested query (ContractType's guard), each distinct part once (DECISIONS BU-64). `rd` reads
     // `h.x` through `ref/` as a Copy (`T is Copy`): a bare non-Copy read is SPEC 3.5's error, and a borrowed referent offers no Take (15.1.5).

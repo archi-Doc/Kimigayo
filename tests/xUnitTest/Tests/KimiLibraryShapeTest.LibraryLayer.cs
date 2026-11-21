@@ -428,6 +428,7 @@ public partial class KimiLibraryShapeTest
             ["Binding.retentionScope"] = Rule.Program, // BeginRetention's walk and its erased signatures'.
             ["Binding.retentionErasedScope"] = Rule.Program,
             ["Binding.retentionPositions"] = Rule.Program,
+            ["Binding.retentionStored"] = Rule.Program, // StoredRawSources' visits (D-933), cleared with retentionPositions.
             ["Binding.retentionSources"] = Rule.Program, // The retention sources' walk.
             ["Binding.retentionWalked"] = Rule.Program,
             ["Binding.retentionMet"] = Rule.Program, // The retention rows' walk.

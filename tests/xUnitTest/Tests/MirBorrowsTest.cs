@@ -4037,6 +4037,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal MirOrigins Origins => this.origins;
 
+        internal int Walked => this.effects.Walked; // A4's excluded queries' nodes since its last run (V16).
+
         internal bool ViewDependent => this.moves.ViewDependent; // False: MirBorrows' one run of the body covers every view.
 
         internal void Run(MirProgram program)

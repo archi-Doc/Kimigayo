@@ -87,6 +87,8 @@ public sealed partial class Binding
             scope.Reset();
         }
 
+        this.premiseFailures = 0; // The Failed state's census, with the environments it counts (ConstraintEnvironment's contract).
+
         foreach (var symbol in this.symbols.Values.In(this.pass))
         {
             if (symbol.Property is { } property)

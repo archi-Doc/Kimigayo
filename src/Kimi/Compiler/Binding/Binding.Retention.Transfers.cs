@@ -45,13 +45,9 @@ public sealed partial class Binding
 
     // Whether a transfer operation writes `output` there: a 4.9 operation's row is its complete published effect (SPEC 4.9.6), which
     // writes its result and its receiver's element storage (ReceiverStorage), never through another argument (`append`'s added
-    // `raw/(raw/u8)`), and `exchange` writes its result and its target, never through `with` (15.7); rule A forms no row at another output.
-    private static bool TransferWrites(Transfer transfer, BindingSymbol? callee, int output) => output == CallRetention.ResultOutput || transfer switch
-    {
-        Transfer.Elements => ReceiverStorage(callee!, output),
-        Transfer.Exchange => output == ExchangeTarget,
-        _ => true,
-    };
+    // `raw/(raw/u8)`); rule A forms no row at another output. (`exchange`'s `with` is no output: KimiLibraryCatalog.NoStore, 15.7.)
+    private static bool TransferWrites(Transfer transfer, BindingSymbol? callee, int output)
+        => output == CallRetention.ResultOutput || transfer != Transfer.Elements || ReceiverStorage(callee!, output);
 
     // Whether `output` is the store at the callee's receiver (an input's writable storage, never the result), the one receiver predicate
     // TransferWrites, TransferKept and ReferentStores read: a 4.9 operation's receiver's element storage, and for any operation of SPEC 4.6

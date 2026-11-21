@@ -334,6 +334,262 @@ public sealed partial class MirBorrowsTest
                     .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown))}"));
     }
 
+    // SPEC 15.6.4, 22.4.3 (Z7, Z7b; G224: a `match` Subject borrows a static Shared, so its Loan reaches A5 from source): the row with the
+    // initializations of the statics every path passes a Borrow of left out decides a conflict. f1's Subject Borrow of ox dominates the
+    // call, so ox is proved and nothing conflicts, as at f1c, whose Loan has ended (the Borrow, not its Loan, proves); f1e's Borrow is on
+    // one path only, so makeOx's write is the error. A direct write beside a proved initializer's (f1b, f1f) and an initializer no Borrow
+    // proves beside an immutable static's Borrow (f1d) are errors. Moved by SPEC 15.6.4's revision (af6410d81, O-456 (a)): fail-before
+    // 3b692162b, f1 and f1e the located Unsupported_Kd, f1c EffectWrite.
+    [Fact]
+    public void ASubjectLoanOnAStaticMeetsTheInitializationRule()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public let ox: Option<i32> = State.makeOx()
+                public var olog: Option<i32> = .Some(0)
+                public let oe3: Option<i32> = State.makeOe3()
+                public let olim: Option<i32> = State.makeOlim()
+                public func makeOx() -> Option<i32>
+                    olog = .Some(1)
+                    return .Some(2)
+                public func makeOe3() -> Option<i32>
+                    olog = .Some(3)
+                    return .Some(4)
+                public func makeOlim() -> Option<i32>
+                    olog = .Some(5)
+                    return .Some(6)
+                public func useOx() -> i32
+                    match State.ox
+                        .Some(let w) => return w@follow
+                        .None => return 0
+                public func useOxW() -> i32
+                    olog = .Some(7)
+                    return State.useOx()
+                public func useOxWG(g: () -> ()) -> i32
+                    olog = .Some(8)
+                    g()
+                    return State.useOx()
+                public func useOe3() -> i32
+                    match State.oe3
+                        .Some(let w) => return w@follow
+                        .None => return 0
+                public func f1() -> i32
+                    match State.ox
+                        .Some(let w)
+                            match State.olog
+                                .Some(let v)
+                                    let n = State.useOx()
+                                    return w@follow + v@follow + n
+                                .None => return 0
+                        .None => return 0
+                public func f1b() -> i32
+                    match State.ox
+                        .Some(let w)
+                            match State.olog
+                                .Some(let v)
+                                    let n = State.useOxW()
+                                    return w@follow + v@follow + n
+                                .None => return 0
+                        .None => return 0
+                public func f1c() -> i32
+                    var a = 0
+                    match State.ox
+                        .Some(let w) => a = w@follow
+                        .None => a = 1
+                    match State.olog
+                        .Some(let v)
+                            let n = State.useOx()
+                            return a + v@follow + n
+                        .None => return 0
+                public func f1d() -> i32
+                    match State.olim
+                        .Some(let m)
+                            match State.olog
+                                .Some(let v)
+                                    let n = State.useOe3()
+                                    return m@follow + v@follow + n
+                                .None => return 0
+                        .None => return 0
+                public func f1e(k: bool) -> i32
+                    var o = 1
+                    var r: ref/i32 = o@ref
+                    if k
+                        match State.ox
+                            .Some(let w) => r = w
+                            .None => ()
+                    match State.olog
+                        .Some(let v)
+                            let n = State.useOx()
+                            return r@follow + v@follow + n
+                        .None => return 0
+                public func f1f(g: () -> ()) -> i32
+                    match State.ox
+                        .Some(let w)
+                            match State.olog
+                                .Some(let v)
+                                    let n = State.useOxWG(g@move)
+                                    return w@follow + v@follow + n
+                                .None => return 0
+                        .None => return 0
+
+            """);
+        var program = AnalyzeUnsupported(c, []);
+        Assert.Equal(
+            [
+                "f1b: State.useOxW() EffectWrite", "f1d: State.useOe3() EffectWrite", "f1e: State.useOx() EffectWrite",
+                "f1f: State.useOxWG(g@move) EffectWrite",
+            ],
+            program.Problems.All.ToArray().Select((x, i) => (x, i))
+                .Where(static x => !x.x.IsRecord && x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
+                .Select(x => $"{Function(c.SyntaxOf(x.x.Subject))}: {Line(c, x.x.Subject)} {Decider(x.i, x.x.Code)}"));
+
+        // A limit record's code, a Loan problem's effect fact.
+        string Decider(int problem, DiagnosticCode code) => code == DiagnosticCode.Unsupported_Kd ? $"{code}" : string.Join(
+            ",",
+            program.Problems.Facts(problem).ToArray().Select(static f => f.Kind)
+                .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown));
+    }
+
+    // SPEC 15.6.2, 15.6.4 (Z7, the code review's R1): a Loan on a static with several slots (Cache<T>.S.log) is in Q, but A4 cannot leave
+    // its initialization out of a row (an edge until P42's key, R4-M103), so only a conflict its initializer may make rests on it. A write
+    // that every reading reports, the call's own under the live Subject Loan, stays ComparisonLoanConflict_Kd (g1, and g1b, whose callee
+    // matches log too), as for the static with one slot (g2). Fail-before (6a24256fe): g1 and g1b the located Unsupported_Kd.
+    [Fact]
+    public void ASeveralSlotStaticsLoanKeepsADirectWritesError()
+    {
+        const string Probe = """
+                struct Cache<T>
+                    public group S
+                        public var log: Option<i32> = .Some(0)
+                        public func writeLog() -> i32
+                            log = .Some(1)
+                            return 1
+                        public func writeLog2() -> i32
+                            var a = 0
+                            match S.log
+                                .Some(let w) => a = w@follow
+                                .None => a = 1
+                            log = .Some(a)
+                            return a
+                        public func g1() -> i32
+                            match S.log
+                                .Some(let v)
+                                    let n = S.writeLog()
+                                    return v@follow + n
+                                .None => return 0
+                        public func g1b() -> i32
+                            match S.log
+                                .Some(let v)
+                                    let n = S.writeLog2()
+                                    return v@follow + n
+                                .None => return 0
+                group G
+                    public var log: Option<i32> = .Some(0)
+                    public func writeLog() -> i32
+                        log = .Some(1)
+                        return 1
+                    public func g2() -> i32
+                        match G.log
+                            .Some(let v)
+                                let n = G.writeLog()
+                                return v@follow + n
+                            .None => return 0
+
+                """;
+        Assert.Equal(["g1: S.writeLog()", "g1b: S.writeLog2()", "g2: G.writeLog()"], Effects(string.Empty, [], Probe));
+    }
+
+    // SPEC 15.6.2, 15.6.4 (Z7 Revision 4; the review's D1, the owner's O-458 (a)): the row with the initializations of the statics a live
+    // Loan is on left out holds every body the call runs, however its callee reaches it: a destructor (h1, the owner's example), a
+    // Function Item (hItem), the witness its callee's inline default copy runs (hWitness: a requirement call on a closed Self, SPEC 7.2.3;
+    // the requirement has no default body), as a call edge (h3); an erased Closure is unknown (h2). Every reading rejects each call: it writes hlog while v, which carries the `match` Subject Loan
+    // on hlog, is used after it, and hlog's initializer writes nothing. Fail-before (090b599bb): h1, hItem and hWitness the located
+    // Unsupported_Kd.
+    [Fact]
+    public void AnExcludedRowHoldsWhatTheCallRuns()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public var hlog: Option<i32> = .Some(0)
+                public func dropsW() -> i32
+                    let w = HW.init()
+                    return 1
+                public func writesLog() -> i32
+                    hlog = .Some(2)
+                    return 2
+                public func callsItem() -> i32
+                    let f = State.writesLog
+                    return f()
+                public func callsClosure() -> i32
+                    let f: () -> () = func [] () => State.hlog = .Some(8)
+                    f()
+                    return 1
+                public func pingAll<C>(c: ref/C, seen: bool = c.ping()) -> i32
+                    C is HPinged
+                    return 1
+                public func pings() -> i32
+                    let n = HNoisy.init()
+                    return State.pingAll(n@ref)
+                public func h1() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.dropsW()
+                            return v@follow + n
+                        .None => return 0
+                public func hItem() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.callsItem()
+                            return v@follow + n
+                        .None => return 0
+                public func hWitness() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.pings()
+                            return v@follow + n
+                        .None => return 0
+                public func h2() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.callsClosure()
+                            return v@follow + n
+                        .None => return 0
+                public func h3() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.writesLog()
+                            return v@follow + n
+                        .None => return 0
+            struct HW
+                public var n: i32 = 0
+                public init() => ()
+                drop => State.hlog = .Some(9)
+            contract HPinged
+                func ping(self: ref/Self) -> bool
+            struct HNoisy
+                Self is HPinged
+                public var n: i32 = 0
+                public init() => ()
+                public func ping(self: ref/Self) -> bool
+                    State.hlog = .Some(5)
+                    return true
+
+            """);
+        var program = AnalyzeUnsupported(c, []);
+        Assert.Equal(
+            [
+                "h1: State.dropsW() EffectWrite", "hItem: State.callsItem() EffectWrite", "hWitness: State.pings() EffectWrite",
+                "h2: State.callsClosure() EffectUnknown", "h3: State.writesLog() EffectWrite",
+            ],
+            program.Problems.All.ToArray().Select((x, i) => (x, i))
+                .Where(static x => !x.x.IsRecord && x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
+                .Select(x => $"{Function(c.SyntaxOf(x.x.Subject))}: {Line(c, x.x.Subject)} {Decider(x.i, x.x.Code)}"));
+
+        // A limit record's code, a Loan problem's effect fact.
+        string Decider(int problem, DiagnosticCode code) => code == DiagnosticCode.Unsupported_Kd ? $"{code}" : string.Join(
+            ",",
+            program.Problems.Facts(problem).ToArray().Select(static f => f.Kind)
+                .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown));
+    }
+
     // SPEC 15.6.2, 15.6.4 (R4-M92; DECISIONS BU-18, BU-21): an explicit Borrow of a qualified static's part is a Place's Borrow, never a
     // Temporary Value's, so Binding reports it as the located Unsupported_Kd (P42) in a writer's function (qp1) and a reader's (qp1r)
     // alike, and no effect rule meets it (2b-D §1.5's premise). Fail-before bu15: both (they bound, and 2b-3's effect rule judged qp1).
