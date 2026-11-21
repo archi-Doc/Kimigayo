@@ -139,11 +139,18 @@ internal struct HirTables
     /// <returns>Whether it destroys in place, transferring nothing.</returns>
     internal static bool DestroysInPlace(DiscardKoto discard) => PlanOf(discard).Flag;
 
-    /// <summary>Gets whether the form of the Error a kept operand belongs to reads the operand's whole Place (DECISIONS D-986;
-    /// <see cref="PlanRow.KeptRead"/>): read only at a kept operand, whose Adjust column is <c>(None, None)</c> under an Error.</summary>
+    /// <summary>Gets the take by which the form of the Error a kept operand belongs to reads the operand's whole Place, default where it
+    /// does not (DECISIONS D-986; <see cref="PlanRow.KeptAdjust"/>): its <see cref="HirAdjust.Reads"/> is whether the form reads it. Read
+    /// only at a kept operand, whose Adjust column is <c>(None, None)</c> under an Error.</summary>
     /// <param name="kept">A kept operand of an Error.</param>
-    /// <returns>Whether the Error's form reads its whole Place.</returns>
-    internal static bool KeptRead(Koto kept) => PlanOf(kept).KeptRead;
+    /// <returns>The form's take of its whole Place, or default.</returns>
+    internal static HirAdjust KeptAdjust(Koto kept) => PlanOf(kept).KeptAdjust;
+
+    /// <summary>Gets whether the form of the Error a kept operand belongs to takes the operand as an invocation's receiver or argument
+    /// (SPEC 15.6.7; <see cref="PlanRow.KeptInput"/>), whether or not it reads it.</summary>
+    /// <param name="kept">A kept operand of an Error.</param>
+    /// <returns>Whether the Error's form takes it as an invocation's input.</returns>
+    internal static bool KeptInput(Koto kept) => PlanOf(kept).KeptInput;
 
     /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of the source modules from the latest completed Binding pass,
     /// once per pass; the library module's are published by the library pass (<see cref="LibraryVersion"/>).</summary>
@@ -358,7 +365,7 @@ internal struct NodeColumns
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, a memo of a final fact of its syntax valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next ResetPass), released at the freeze (Binding.ElementAccess.cs).
-    internal StampedColumn<uint, Binding.PassCounter> FormReads; // Work: the HIR publisher's (Binding.Hir.cs) publication in which its Error's form read a node's whole Place, a row of another publication absent, released at the freeze (Binding.Hir.Adjust.cs; DECISIONS D-986).
+    internal StampedColumn<(uint Publication, HirAdjust Take, bool Input), Binding.PassCounter> FormReads; // Work: the HIR publisher's (Binding.Hir.cs) publication in which its Error's form took a node, the take that read its whole Place (else default) and whether it was an invocation's input, a row of another publication absent, released at the freeze (Binding.Hir.Adjust.cs; DECISIONS D-986).
     internal PagedColumn<Binding.Specialization?> SpecializationStorage; // Kept: a specialization's entry, its slot arrays reused by every pass (Binding.Specializations.cs).
     internal StampedColumn<Binding.EarlyRead, Binding.PassCounter> EarlyReads; // Pass: a use's lookup that saw a base clause not ready, read again by VerifyEarlyReads (Binding.BaseLayers.cs).
     internal PagedColumn<BoundType?> KnownBases; // Kept: a struct's base clause's final Type from a first run, emptied by a Bind not started from it, before each fill and by an edit (Binding.BaseLayers.cs).
@@ -670,19 +677,27 @@ internal struct PlanRow
     /// and for a discarded Place Binding did not resolve, so a row never keeps an earlier pass's Type, also after an in-place edit.</summary>
     internal BoundType? DiscardedType;
 
-    /// <summary>Whether the form of the Error a kept operand belongs to reads the operand's whole Place in a use not in place (DECISIONS
-    /// D-986; SPEC 13.4, 15.1.5, 15.1.6): the Adjust rule (<c>Binding.AdjustChildren</c>) for the Error's form (its <c>KindOp</c>) takes
-    /// it by an acquisition or a shared borrow (<see cref="HirAdjust.Reads"/>), as it takes a valid node's child of the same form, an
-    /// argument of an application Binding did not resolve by a stand-in, its evaluation as a value, which every candidate's operation
-    /// reads as (DECISIONS G1178; SPEC 7.4, 10.1, 10.2).
-    /// False for a kept operand the form uses in place (a projection's receiver or base, a follow's, borrow's, runtime test's or case
+    /// <summary>The take by which the form of the Error a kept operand belongs to reads the operand's whole Place in a use not in place
+    /// (DECISIONS D-986; SPEC 13.4, 15.1.5, 15.1.6), default where it does not, so its <see cref="HirAdjust.Reads"/> is whether the form
+    /// reads it: the Adjust rule's (<c>Binding.AdjustChildren</c>) take for the Error's form (its <c>KindOp</c>), an acquisition or a
+    /// shared borrow, as it takes a valid node's child of the same form, an argument of an application Binding did not resolve by a
+    /// stand-in, its evaluation as a value, which every candidate's operation reads as (DECISIONS G1178; SPEC 7.4, 10.1, 10.2); of two
+    /// takes of one operand (a user index's calls by case), the later that reads, as the column keeps the later take (R4-M145).
+    /// Default for a kept operand the form uses in place (a projection's receiver or base, a follow's, borrow's, runtime test's or case
     /// adaptation's operand, a group's operand), borrows exclusively, reads through a reference or whose acquisition failed, and for
-    /// every other node. Written at each kept operand
-    /// of each publish, whose column stays the kept mark <c>(None, None)</c> (DECISIONS R5-M63): a kept operand is evaluated as its Place
-    /// and never acquired, so no claim reads this (R7-M8). A publish clears every row's first.</summary>
-    internal bool KeptRead;
+    /// every other node. Written with <see cref="KeptInput"/> at each kept operand of each publish, whose column stays the kept mark
+    /// <c>(None, None)</c> (DECISIONS R5-M63): a kept operand is evaluated as its Place and never acquired, so no claim reads this
+    /// (R7-M8). A publish clears every row's first.</summary>
+    internal HirAdjust KeptAdjust;
 
-    // An Int128 would align the row to 16 bytes; two halves keep it at 56, KeptRead beside the byte fields (Unsafe.SizeOf, D-986).
+    /// <summary>Whether the form of the Error a kept operand belongs to takes the operand as an invocation's receiver or argument (SPEC
+    /// 15.6.7), read or not: the Adjust rule gives it as an input of one of the form's calls (<c>Binding.IHirUses.Call</c>), an argument of
+    /// an application Binding did not resolve under the form Call (its one call, which has no plan) included. False for a Case payload,
+    /// an aggregate's element, an operator's operand, a conversion's or a Subject, and for every other node; written and cleared with
+    /// <see cref="KeptAdjust"/>.</summary>
+    internal bool KeptInput;
+
+    // An Int128 would align the row to 16 bytes; two halves keep it at 64 (56 before the kept operand's take: Unsafe.SizeOf, D-986).
     private bool folded;
     private ulong foldedHigh;
     private ulong foldedLow;

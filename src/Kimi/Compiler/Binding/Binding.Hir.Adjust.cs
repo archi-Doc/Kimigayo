@@ -21,10 +21,12 @@
 //   (HirFormsTest.APartBelowAStoredReferenceIsAPlace). Every record takes an operation's use by ChildAdjust(child, in operation). A use
 //   in place forms no reference and states no mode: its consumer's use decides its capability.
 // - Outputs: each child's use, to an IHirUses; the HIR publisher writes them as the Adjust column and the plan rows, a discarded
-//   Place's as its plan row's (PlanRow.Adjust), and, for an Error's form, only which kept operands it reads whole (FormReads,
-//   PlanRow.KeptRead; DECISIONS D-986); ClosureEffects finds one capture use's (Binding.ClosureReceivers).
-// - Invariants: a consumer's uses come in evaluation order, its calls' inputs last and in CallPlan.Of's order; the rule reads no other
-//   walk state.
+//   Place's as its plan row's (PlanRow.Adjust), and, for an Error's form, only the take by which it reads a kept operand whole and
+//   whether it takes one as an invocation's input (FormReads, PlanRow.KeptAdjust and KeptInput; DECISIONS D-986); ClosureEffects finds
+//   one capture use's (Binding.ClosureReceivers).
+// - Invariants: a consumer's uses come in evaluation order, its calls' inputs last and in CallPlan.Of's order, each call's after its
+//   Call (an application Binding did not resolve under the form Call: its arguments after Call(0), its one call, which has no plan);
+//   the rule reads no other walk state.
 // - Prohibitions: the rule writes nothing; no record keeps a second copy of a use's Adjust.
 // The publisher's record of the uses (RowUses) writes the rows (DECISIONS R4-M142). A take's claim is read from the rows alone, before
 // NeedOf's read of the node: its consumer's (the column), an earlier call's or its container's discard (the plan row; PLAN G426).
@@ -59,7 +61,8 @@ public sealed partial class Binding
     // ClosureEffects' record (TakeRecord), which keeps every child's once per consumer and selection.
     private interface IHirUses
     {
-        // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal; -1 after the last.
+        // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal (an application Binding did not resolve: 0, its one
+        // call, which has no plan); -1 after the last. Its inputs are the call's receiver and arguments (SPEC 15.6.7).
         void Call(int ordinal);
 
         // A child the consumer's operation adapts, acquired, used in place or inspected, completed by its own facts (ChildAdjust).
@@ -213,7 +216,14 @@ public sealed partial class Binding
                 // argument's whole Place, so each argument is taken by a stand-in, its evaluation as a value (its recorded adaptation or bare
                 // acquisition), which only FormReads reads, and only as HirAdjust.Reads: it never stands as an operation. RowUses never
                 // meets this row (a published call or construction is resolved, HasFacts), and ClosureEffects, which needs the operation,
-                // gives a failed consumer's argument no take for that reason (R4-M145 C2: no IsBareAcquisitionPosition).
+                // gives a failed consumer's argument no take for that reason (R4-M145 C2: no IsBareAcquisitionPosition). Under the form Call
+                // the arguments are its one call's inputs (SPEC 15.6.7: whatever the invocation resolves to); a Case construction's
+                // (Aggregate, KindOp's EnumCase arm) are payloads, which no call takes.
+                if (op == HirOp.Call)
+                {
+                    uses.Call(0);
+                }
+
                 for (var i = 0; i < application.ArgumentNodes.Count; i++)
                 {
                     uses.Use(application.ArgumentNodes[i]);
@@ -429,38 +439,43 @@ public sealed partial class Binding
     }
 
     // The HIR publisher's record of an Error's form (DECISIONS D-986): the children the rule's takes for the form the Error has (KindOp)
-    // read whole in a use not in place (HirAdjust.Reads), each take as RowUses completes it for a valid node of that form, with no
-    // earlier claim (a kept operand's rows are this publish's, written after). A use in place is no read of the whole Place even where
-    // the rule takes it as a Temporary (a value base) or Binding recorded a synthesized shared read of a selection's receiver (SPEC 3.4.3,
-    // 15.1.4), so it is left out. It writes no plan row, so the Error's own rule (Keeps, R4-M109) stands, and the publisher marks only
-    // the kept ones (PlanRow.KeptRead). It is the FormReads family's one accessor (DECISIONS BU-220 as R7-N5 B6b amends it): a
-    // working-state family whose row, a read child's in its module's NodeColumns at its SyntaxId, carries the publication that wrote it
-    // (the publisher's number), a row of another publication absent, since Check publishes again in its pass after H1's failures and
-    // CheckBound reruns it. The library's is released at its freeze (NodeColumns.Freeze); the library pass records no failure (one
-    // refuses it: FreezeLibrary), so it writes none.
-    private readonly struct FormReads(Binding binding, uint publication) : IHirUses
+    // read whole in a use not in place (HirAdjust.Reads), each with that take as RowUses completes it for a valid node of that form, with
+    // no earlier claim (a kept operand's rows are this publish's, written after), of two takes the later that reads; and the children it
+    // gives as a call's inputs (after Call(ordinal >= 0)), read or not. A use in place is no read of the whole Place even where the rule
+    // takes it as a Temporary (a value base) or Binding recorded a synthesized shared read of a selection's receiver (SPEC 3.4.3, 15.1.4),
+    // so it is left out. It writes no plan row, so the Error's own rule (Keeps, R4-M109) stands, and the publisher moves only the kept
+    // ones' rows to their plan rows (PlanRow.KeptAdjust, KeptInput). It is the FormReads family's one accessor (DECISIONS BU-220 as R7-N5
+    // B6b amends it): a working-state family whose row, a child's in its module's NodeColumns at its SyntaxId, carries the publication
+    // that wrote it (the publisher's number), a row of another publication absent, since Check publishes again in its pass after H1's
+    // failures and CheckBound reruns it. The library's is released at its freeze (NodeColumns.Freeze); the library pass records no
+    // failure (one refuses it: FreezeLibrary), so it writes none.
+    private struct FormReads(Binding binding, uint publication) : IHirUses
     {
-        public void Call(int ordinal)
-        {
-        }
+        private bool input; // Whether the uses that follow are a call's inputs (Call).
 
-        public void Use(Koto? child, in BoundArgumentOperation operation)
+        public void Call(int ordinal) => this.input = ordinal >= 0;
+
+        public readonly void Use(Koto? child, in BoundArgumentOperation operation)
             => this.Add(child, child is null ? default : binding.ChildAdjust(child, operation, PlaceUse.Shared));
 
-        public void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
+        public readonly void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
             => this.Add(child, child is null || kind == UseKind.InPlace ? default : binding.ChildAdjust(child, adaptation, kind, PlaceUse.Shared));
 
-        public void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place) => this.Add(child, adjust);
+        public readonly void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place) => this.Add(child, adjust);
 
-        // Whether the form of the Error a node belongs to read its whole Place in a publication.
-        internal static bool Of(Binding binding, Koto node, uint publication)
-            => node.SyntaxOwner is { } table && table.Hir.Families.FormReads.Get(node.SyntaxId, binding) == publication;
+        // The take by which the form of the Error a node belongs to read its whole Place in a publication (else default), and whether it
+        // took the node as a call's input.
+        internal static (HirAdjust Take, bool Input) Of(Binding binding, Koto node, uint publication)
+            => node.SyntaxOwner is { } table && table.Hir.Families.FormReads.Get(node.SyntaxId, binding) is var row && row.Publication == publication
+                ? (row.Take, row.Input) : default;
 
-        private void Add(Koto? child, HirAdjust adjust)
+        private readonly void Add(Koto? child, HirAdjust adjust)
         {
-            if (child is not null && adjust.Reads)
+            if (child is not null && (adjust.Reads || this.input))
             {
-                HirTables.Of(child).Families.FormReads.Ref(child.SyntaxId, binding) = publication;
+                ref var row = ref HirTables.Of(child).Families.FormReads.Ref(child.SyntaxId, binding);
+                var earlier = row.Publication == publication ? row : default; // A row of another publication is absent.
+                row = (publication, adjust.Reads ? adjust : earlier.Take, this.input || earlier.Input);
             }
         }
     }

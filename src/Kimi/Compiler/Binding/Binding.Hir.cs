@@ -2,8 +2,9 @@
 
 // Owns publication of HIR facts from the Binding pass: a Final pass's Check publishes between its failure producers and its counting.
 // Input: that pass's decisions and syntax slots. Output: Op, Completion, Adjust and Place columns (the jump binding writes the jump
-// target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace), and which
-// kept operands their Error's form reads whole (KeptRead: the Adjust rule run for the Error's form, DECISIONS D-986).
+// target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace), and
+// the take by which a kept operand's Error's form reads it whole and whether it takes it as an invocation's input (KeptAdjust and
+// KeptInput: the Adjust rule run for the Error's form, DECISIONS D-986).
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
 // The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs
 // with a by-case need's decider) and passes those to the rows' rules, which read no walk state.
@@ -101,10 +102,10 @@ public sealed partial class Binding
             if (parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
                 this.uses.FixAdjust(node, new(HirAcquire.None, HirAdaptation.None), default); // A kept operand of an Error (Keeps), used in place.
-                if (FormReads.Of(binding, node, this.publication))
-                {
-                    HirTables.PlanFor(node, written: true).KeptRead = true; // Its Error's form reads its whole Place (DECISIONS D-986).
-                }
+                // Its Error's form's take of its whole Place and whether the form takes it as an invocation's input (DECISIONS D-986).
+                var (take, input) = FormReads.Of(binding, node, this.publication);
+                ref var kept = ref HirTables.PlanFor(node, take != default || input);
+                (kept.KeptAdjust, kept.KeptInput) = (take, input);
             }
             else if (op == HirOp.Error)
             {
@@ -201,10 +202,10 @@ public sealed partial class Binding
             }
 
             // A plan row's Adjust is a take of this publish, as the column's is, so a claim (Claimed) reads no earlier pass's row; a kept
-            // operand's whole-Place read by its Error's form (KeptRead) is this publish's too.
+            // operand's take and input by its Error's form (KeptAdjust, KeptInput) are this publish's too.
             for (var i = 1; i <= hir.PlanCount; i++)
             {
-                (hir.Plans[i].Adjust, hir.Plans[i].KeptRead) = (default, false);
+                (hir.Plans[i].Adjust, hir.Plans[i].KeptAdjust, hir.Plans[i].KeptInput) = (default, default, false);
             }
 
             (hir.Defaults ??= []).Clear();
