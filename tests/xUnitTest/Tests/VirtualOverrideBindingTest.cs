@@ -37,7 +37,8 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == "MissingOverrideTarget_Kd");
         Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "NoBase"), Assert.Single(record.Reason!));
         Assert.Equal(Source.IndexOf("override", StringComparison.Ordinal), record.Span!.Value.Start);
-        Assert.Contains("no base", record.Note!, StringComparison.Ordinal);
+        Assert.Empty(record.Related ?? []); // D3, Q13 M3: no base declaration to relate; the cause NoBase is the fact the removed Note stated
+        Assert.Null(record.Note);
     }
 
     [Fact]

@@ -28,8 +28,8 @@
 // its mode, the other mode and the matching key, a byte each), and a Key fact the conflicting
 // parameter and as its Value an index in BindingReport's kept sides, the Type at which two parameter shapes' matching keys overlap (SPEC
 // 7.4), neither side of a mismatch (R7-E2); a kind that names
-// no value has -1; a problem has at most one fact of each kind but its witness's, its causes, which come last, and its Related and Count
-// facts, in their row's order.
+// no value has -1; a problem has at most one fact of each kind but its witness's, its causes, which come last, its Related facts, each
+// read by its role (its Value) and shown in the order its site records them, and its Count facts, in their row's order.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
@@ -62,7 +62,7 @@ internal enum ProblemFactKind : byte
     Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value, -1 Binding's); facts' tail.
     Actual, // Binding: the syntax that shows a mismatch, the side found (Value, an index in BindingReport's kept sides, a Type or length; SPEC 23.3).
     Expected, // Binding: the syntax that shows a mismatch, the side required (Value, the same).
-    Span, // Binding: the subject of a located record, its part (Value, start << 32 | length; SPEC 23.1.1).
+    Span, // Binding: the part of its subject the record is located at (Value, start << 32 | length; SPEC 23.1.1).
     ActualForm, // Binding: as Actual, for a side with no kept value, a form (Value, a MismatchForm row and its count).
     ExpectedForm, // Binding: as Expected, the same.
     Operand, // Binding: the syntax an operator failed at, its operand's Type (Value, an index in BindingReport's kept sides; SPEC 13).

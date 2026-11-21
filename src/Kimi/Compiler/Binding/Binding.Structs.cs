@@ -316,7 +316,7 @@ public sealed partial class Binding
     {
         if (member.Parent is not InvocationKoto invocation || !ReferenceEquals(invocation.Method, member))
         {
-            this.Fail(member, BindingFailure.NotCallable);
+            this.Record(member, BindingFailure.NotCallable, []);
             return null;
         }
 
