@@ -335,8 +335,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             var c = this.Create();
             c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
 
-            Assert.False(project.PublishArtifacts(c, null, null, out var path));
-            Assert.Null(path);
+            Assert.False(project.PublishArtifacts(c, null, null));
         }
         else
         {
@@ -361,10 +360,10 @@ public sealed class EmissionArtifactsTest : IDisposable
         var console = new DiagnosticContractTest.DiagnosticConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
         var c = this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
-        Assert.True(project.PublishArtifacts(c, null, null, out var path), console.Text);
+        Assert.True(project.PublishArtifacts(c, null, null), console.Text);
         Assert.Equal("He\\u{0}llo.kimi:3:24", c.Locations.Text(SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MacroKoto>().Single())));
         Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Text, StringComparison.Ordinal);
-        Assert.True(File.Exists(path));
+        Assert.True(File.Exists(ArtifactPaths.Create(c.Project).Ir));
     }
 
     [Fact]

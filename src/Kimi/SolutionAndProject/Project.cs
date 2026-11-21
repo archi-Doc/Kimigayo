@@ -317,15 +317,13 @@ public partial class Project
     /// <param name="compilation">The accepted compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="context">The check context, or null for a command.</param>
-    /// <param name="irPath">The published IR path on success.</param>
     /// <returns>Whether the artifacts were published.</returns>
-    internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context, out string? irPath)
+    internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context)
     {
-        irPath = null;
         Exception? fault = null;
         try
         {
-            if (EmissionArtifacts.Publish(compilation, paths, out irPath))
+            if (EmissionArtifacts.Publish(compilation, paths, out _))
             {
                 return true;
             }
@@ -648,12 +646,13 @@ public partial class Project
 
     private bool Emit(Compilation compilation, ArtifactPaths? paths, CheckContext? context)
     {
-        if (!this.PublishArtifacts(compilation, paths, context, out var pathIr))
+        if (!this.PublishArtifacts(compilation, paths, context))
         {
             return false;
         }
 
-        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {pathIr} and {Path.ChangeExtension(pathIr, ".link.json")}; native build has not yet been performed.");
+        paths ??= ArtifactPaths.Create(this);
+        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {paths.Ir} and {paths.Manifest}; native build has not yet been performed.");
         return true;
     }
 
