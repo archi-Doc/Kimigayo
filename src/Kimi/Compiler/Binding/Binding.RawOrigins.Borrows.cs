@@ -74,7 +74,7 @@ public sealed partial class Binding
     // Origin; that Origin, null for any other node. The one classification of a claim (the publication's marks read it).
     internal static BoundOrigin? ClaimedOrigin(Koto node)
         => node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType: { } target } conversion &&
-            ReferenceTypes.IsPointer(target) && target.RawOrigin is { } stated && KotoHelper.IsUnsafeContext(conversion) ? stated : null;
+            target.IsPointer && target.RawOrigin is { } stated && KotoHelper.IsUnsafeContext(conversion) ? stated : null;
 
     // The Borrows of `atom`, appended to `members`, and its Claimed mark; false where the atom has no entry (its reader's limit, never a
     // default).
@@ -140,7 +140,7 @@ public sealed partial class Binding
     private void OwnBorrows(Koto node, Dictionary<BoundOrigin, BorrowList> rows)
     {
         // A written Borrow (`@ref`, `@uniq`, `@objref`, `@objuniq`, a raw Place's) and a Slice view (a slicing index): the node's own Type.
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } || (node is IndexKoto && ElementAccess.IsSlicing(this, node)))
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } || this.IsSlicing(node))
         {
             this.RecordBorrow(rows, node.BoundType);
         }
@@ -274,7 +274,7 @@ public sealed partial class Binding
     private void PublishedNode(Koto node, HirOp op)
     {
         this.publishedFailure |= op == HirOp.Error || node.BindingState is BindingState.Unresolved or BindingState.Invalid;
-        if (op == HirOp.Borrow || (node is IndexKoto && ElementAccess.IsSlicing(this, node)))
+        if (op == HirOp.Borrow || this.IsSlicing(node))
         {
             this.RecordBorrow(this.publishedBorrows, node.BoundType);
         }
