@@ -16,8 +16,9 @@ namespace Kimi.Compiler;
 // - Outputs: a row (LibraryWitnessGroup); the witness, the group's one function named as the requirement, explicit specializations aside;
 //   the receiver a group's functions state (WitnessReceiver); the requirement call at the witness (InstantiateLibraryWitness); the
 //   arguments TyCtxt.LibraryInstance interns.
-// - Invariants: a row's Contract declares one function requirement of its own, which the group names. A row proves its conformance
-//   (ResolveConformance) and selects its requirements (ResolveRequirementWitness) whatever the group holds; a missing witness is None.
+// - Invariants: a row's Contract declares one function requirement of its own, which the group names. A row is a Library built-in row
+//   (ImplTable.Builtin, R7-V2c), which proves its conformance (ResolveConformance) and selects its requirements
+//   (ResolveRequirementWitness) whatever the group holds; a missing witness is None.
 // - Prohibitions: no second statement of which Contract a built-in Type conforms to through a group; a receiver's Type (WitnessReceiver) and
 //   the fixed array's member lookup are other facts. A new built-in Type's conformance adds a row, never a witness kind, a proof arm or a
 //   name switch: a WitnessMembers value, a WitnessGroup arm, a WitnessReceiver arm, a KimiLibrary.Members arm and the group's property,

@@ -8,14 +8,17 @@ using Kimi.Compiler.Parsing;
 //   declaration and root Contract; the pass's paths, identities and each Type's identities in registration order; the lookups by key;
 //   the store decision: an identity or path is held by its Type symbol's module (SPEC 8.6.1: a conformance is declared only in its
 //   Type's own declaration), a library Type's in the base store (LibraryLayer.Impls), any other in the compilation's overlay, which is
-//   the one composition point; the pass stamps that replace the reset; the overlay's end-of-Bind sweep and pool.
+//   the one composition point; the pass stamps that replace the reset; the overlay's end-of-Bind sweep and pool; the built-in rows
+//   (Builtin, R7-V2c), the closed table of the conformances no declaration states, which ResolveConformance proves and
+//   ResolveRequirementWitness selects.
 // - Inputs: Register's Type, Contract, root, declaration, scope and premises, from the two registrars (Self clauses and conditional
 //   blocks, Binding.Contracts.Registration; inherited paths, Binding.InheritedConformances); Begin's pass counter and the pass's modules
 //   (Binding.ResetContracts);
 //   Sweep at the end of a Bind (Binding.Bind).
 // - Outputs: Paths, Identities and ByType (LayerList: the overlay's part, then the base's), InPass (the same lists of the running
 //   pass's stores only, PLAN G949 S1-r2), OfType(type), Find(type, contract),
-//   Path(key) and TryPath(key); PathsOf(identity), the one read of an identity's paths inside a pass.
+//   Path(key) and TryPath(key); PathsOf(identity), the one read of an identity's paths inside a pass; Builtin(type, contract), a
+//   built-in row (static: no store, pass or scope).
 // - Invariants: the overlay never holds a library Type, by construction: StoreOf routes each key by its Type's module; from the library's
 //   freeze (Freeze, PLAN G949 S1-1) the base is never begun or registered into again: its Begin and a Register routed to it throw the
 //   internal-invariant form (EnsureWritable, InternalInvariant_Kd); an identity or path carries the pass of its last reset (Stamp) and
@@ -27,7 +30,11 @@ using Kimi.Compiler.Parsing;
 //   pass first names them; Register names the root path and the root's own call registers it; each key keeps one object while each pass
 //   registers it, with the facts other components keep by a path and a second key (its satellite lists); at the end of each Bind the
 //   overlay drops every identity and path the pass did not register into its pool (Sweep), from which Named takes, emptied, before
-//   allocating. The lists are the table's own: no reader adds to or removes from them.
+//   allocating. The lists are the table's own: no reader adds to or removes from them. A built-in row is a function of the Type and the
+//   Contract declaration's identity (its `#Lang` id), never of a bound reference's arguments, so the solver (a bound reference) and the
+//   witness core (the requirement's own Contract) read one row; where SPEC fixes the reference's argument (13.3.3's `C<Self>` today),
+//   Binding.BuiltinConformance judges it before the row is read, once; a row whose Contract fixes another argument (PLAN G715 (b), the
+//   fixed array's `Indexable<isize>`) adds that argument there as a row column, not a second arm.
 // - Rule (a) (PLAN G949 S1-r1b; DECISIONS BU-220 as amended by BU-219): a pass that does not bind the library reads a base row as
 //   registered only from its own registrar step that registers it: a path and its identity from the Self-clause registrar
 //   (AdmissionPoint.SelfClauses) or the conditional registrar (ConditionalClauses), a path's associated bindings from
@@ -42,7 +49,13 @@ using Kimi.Compiler.Parsing;
 //   with a base (KimiLibraryShapeTest.TheLibraryDeclaresNoStructWithABase, the tripwire; the unit that declares one builds per-point
 //   prefixes).
 // - Prohibitions: no verification (Binding.ContractMatching, Binding.InheritedConformances), availability at a use
-//   (Binding.ResolveConformance), Self-clause rule or diagnostic here; no reader composes the two stores.
+//   (Binding.ResolveConformance), Self-clause rule or diagnostic here; no reader composes the two stores. A built-in row proves
+//   nothing (a Composed row's parts, an Entailed row's subject and an arithmetic reference's argument are ResolveConformance's,
+//   Binding.BuiltinConformance) and names no target symbol (Binding.BuiltinTarget, PrepareBuiltinTargets'); ResolveConformance and
+//   ResolveRequirementWitness read no other statement of a built-in conformance. Outside the table stay the intrinsic Contracts (SPEC
+//   8.7.1: Copy, Owned, Callable, Sealed, ObjectPayload and PrimitiveInteger; IntrinsicContract.Of and the capability engine), SPEC
+//   8.7.4's premise supplies to an abstract Type (ProveConformance's PrimitiveIntegerSupplies, member lookup's) and the primitive
+//   refutation (R7-C9's).
 namespace Kimi.Compiler;
 
 /// <summary>The conformance declaration table: one identity per Type and Contract and one path per declaring clause and root.</summary>
@@ -115,6 +128,31 @@ internal sealed class ImplTable
         AssociatedBindings,
     }
 
+    /// <summary>How a built-in row holds and what its Contract's requirement runs on the Type (<see cref="Builtin"/>).</summary>
+    internal enum BuiltinKind : byte
+    {
+        /// <summary>No built-in row: the declared rows decide.</summary>
+        None,
+
+        /// <summary>The table states it, and the requirement runs the Contract's built-in target (SPEC 13.3.3's numeric Types, 13.4.1's
+        /// operator table).</summary>
+        Target,
+
+        /// <summary>The table states it, and the requirement runs the library group's function (SPEC 22.1's witness table).</summary>
+        Library,
+
+        /// <summary>A Tuple's or safe `ref` layer's comparison (SPEC 13.4.1): it holds by its parts, and the requirement runs the built-in
+        /// target.</summary>
+        Composed,
+
+        /// <summary>A PrimitiveInteger subject's arithmetic (SPEC 13.3.3, 8.7.4): it holds when the row's subject is proven
+        /// PrimitiveInteger; an instance runs its own row.</summary>
+        Entailed,
+
+        /// <summary>The table states it does not hold: a scalar's or Unit's Comparable (SPEC 13.4.1).</summary>
+        Absent,
+    }
+
     /// <summary>Gets the pass this store is current for (Begin).</summary>
     internal ulong Pass { get; private set; }
 
@@ -134,6 +172,46 @@ internal sealed class ImplTable
     /// <summary>Gets the running pass's view (PLAN G949 S1-r2): the paths, identities and Type lists of the stores of the pass's modules
     /// (Begin), each the overlay's then the base's, in registration order; a store outside the pass lists nothing.</summary>
     internal PassView InPass => new(this.passOverlay!.Fresh(), this.passBase!.Fresh());
+
+    // SPEC 13.3.3, 13.4.1, 4.6.1, 8.7.5, 22.1, 22.10.2 (R7-V2c): the built-in rows, a closed table over a Type and a Contract
+    // declaration's identity (the keying invariant in the contract above): a conformance no declaration states, one row per Type and
+    // Contract. Arithmetic: each numeric Type to each arithmetic Contract it supports (ArithmeticContracts.Supports), whose bound
+    // reference is `C<Self>` (no Left row); a Type parameter's or projection's five binary ones and a `Wrapping<T>`'s six over such a T,
+    // entailed by the subject's PrimitiveInteger. Comparison: by the one composition rule (Binding.ComparisonKindOf), the operator
+    // table's Types and the composed Tuple and safe `ref` layer, Absent under Comparable where only Equatable runs. Library: the witness
+    // table (Binding.WitnessGroup). The rows are disjoint. A new built-in conformance adds a row here, never an arm at a reader.
+    internal static BuiltinRow Builtin(BoundType? self, BindingSymbol? contract)
+    {
+        if (self is null || contract?.Declaration.BoundSymbol?.LibraryDeclaration is not { } id)
+        {
+            return default;
+        }
+
+        if (ArithmeticContracts.IsArithmetic(id))
+        {
+            return ArithmeticContracts.Supports(self, id) ? new(BuiltinKind.Target, id)
+                : ArithmeticContracts.IsLeft(id) ? default
+                : self is { Kind: BoundTypeKind.Constructed, Components: [{ IsProofDecided: true } argument], Symbol.LibraryDeclaration: KimiDeclarationId.Wrapping }
+                    ? new(BuiltinKind.Entailed, id, default, argument)
+                : self.IsProofDecided && id != KimiDeclarationId.Negatable ? new(BuiltinKind.Entailed, id, default, self) : default;
+        }
+
+        if (id is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable)
+        {
+            var comparison = Binding.ComparisonKindOf(self, id, operators: false);
+            if (comparison is ComparisonKind.Builtin or ComparisonKind.Composite)
+            {
+                return new(comparison == ComparisonKind.Builtin ? BuiltinKind.Target : BuiltinKind.Composed, id);
+            }
+
+            if (TyCtxt.OperatorTableRuns(self, KimiDeclarationId.Equatable))
+            {
+                return new(BuiltinKind.Absent, id);
+            }
+        }
+
+        return Binding.WitnessGroup(self, id) is { } group ? new(BuiltinKind.Library, id, group) : default;
+    }
 
     /// <summary>Starts a pass: every identity, path and list of both stores becomes stale, and the pass view holds the stores of the
     /// pass's modules by the store rule (StoreOf: the base for the library module, the overlay for a source module).</summary>
@@ -512,4 +590,8 @@ internal sealed class ImplTable
         /// <summary>Gets each Type's identities the pass registered, in registration order.</summary>
         internal LayerList<List<BoundConformance>> ByType => new(overlay.typeLists, layer.typeLists);
     }
+
+    /// <summary>A built-in row (<see cref="Builtin"/>): its kind, its Contract's identity, a Library row's group and an Entailed row's
+    /// PrimitiveInteger subject.</summary>
+    internal readonly record struct BuiltinRow(BuiltinKind Kind, KimiDeclarationId Contract, Binding.LibraryWitnessGroup Group = default, BoundType? Subject = null);
 }
