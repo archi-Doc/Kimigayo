@@ -13,11 +13,13 @@ namespace Kimi.Compiler;
 // - Invariants: a node keeps its own Type, and a recorded read only states how the node is read in place: one shared reference to the
 //   Type declaring the member, never a layer. A compared operand's read is written once, by CompareInPlace (its layers' read over its
 //   element read). A receiver's read has two writers: ReceiverElement at its selection (ReceiverThroughLayers hands it its reference,
-//   G147 ruling 50), and CompareInPlace again (InspectedRead) where the receiver lies on a compared operand's path below a borrowed
-//   receiver, is a runtime fixed element or is a user index with a Non-Copy element. They agree, writing one read from the same
-//   inputs, where the receiver is an element Place that ReceiverElement reads by its element (a shared element, an Array element
-//   storing a reference or handle, a user index whose element is no object case). Elsewhere the comparison's shared element read
-//   replaces the selection's through-layers read, until each use decides a selection's read (PLAN open issue, G147 ruling 60).
+//   G147 ruling 50), and CompareInPlace again (InspectedRead) where the receiver lies on a compared operand's path, with no owned
+//   static path or getter above it, and its element read exists: a Non-Copy element of a user index, of a selection below a borrowed
+//   receiver or of a runtime fixed element. The two agree in value where the receiver is an element Place that ReceiverElement reads
+//   by its element (a shared element, an Array element storing a reference or handle, a user index whose element is no object case);
+//   on the tuple selector's path they read different inputs (ReceiverElement the through-layers reference, InspectedRead the stored
+//   element). Elsewhere the comparison's read replaces the selection's (its through-layers read; for an object-case user index, its
+//   element read), until each use decides a selection's read (PLAN open issue, G147 rulings 60, 64).
 // - Prohibitions: nothing here reports a diagnostic, selects a candidate or changes a Type.
 public sealed partial class Binding
 {
