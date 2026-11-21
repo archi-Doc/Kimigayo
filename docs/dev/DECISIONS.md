@@ -17832,8 +17832,6 @@ structure is recorded here by the unit that first implements it.
     receiver and published it (`Published`); its `Signature` is null exactly at a failed parameter or result slot, so "`Signature`
     set" no longer gates the definition.
   - Amended by R7-M65 (Z16): (2)'s kept operands are a case of the one `Keeps` rule; its compound-Place form list goes.
-  - Amended by R7-M67 (D-986): the kept mark `(None, None)` stays the one representation of "kept"; the form's read is the bit
-    `PlanRow.KeptRead` beside it, never the column.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19; plan K6b, R5-M30; under
   R5-M18, R5-M61, R5-M67 and R5-M68; DEC Q6 form 1) What a compiler function, a requirement's function item or a shim runs on a user
   Type is `TyCtxt.Witness` of the requirement there, acted on by R5-M67's kind table, one function (`InstanceCollector.Requirement`,
@@ -23783,8 +23781,6 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Records (Q13): the kept parts' own checks run; A1's locations move to the kept part's site; no acceptance move.
   - Rejected: (α), a Cause on each problem; a `Keeps` row per form; recomputing the Copy proof at the use to find its clause (a second
     copy of the proof, and a check re-running a proof to explain a failure).
-  - Amended by R7-M67 (D-986): a kept operand also carries whether its Error's form reads its whole Place (`PlanRow.KeptRead`);
-    `Keeps` is unchanged.
 - **R7-M66 A body's Origin relations are judged by A5 alone; Binding forms their rows** (Middle, 2026-11-21; R7-O1 H, H1 and H2 as
   one unit, Q-588, D-944; Major, an acceptance mover by record class; R7-M51 extended from call positions to every body relation; the
   owner's H11b §11 approval with R5-M192's amendment, R7 plan revision 99) SPEC 15.6.1, 15.6.4, 15.6.5, 23.1.2, 8.13.2.
@@ -23830,32 +23826,6 @@ R8-M* and R9-M* by the stage of the recording unit.
     `X outlives (X and ...)` (a symptom fix that leaves the hole).
   - **Open:** P8's `BodyLocalIn` Anchor arm leaves out a raw Place's Borrow that SPEC 5.2.2 fits to its destination, so a use of such
     a Closure (r01, valid) is A5's located `Unsupported_Kd` (the Front's).
-- **R7-M67 A kept operand's whole-Place read by its Error's form: `PlanRow.KeptRead`** (Front, 2026-11-21; D-986, Q-606, for
-  Z17's commit 3 (R7 plan stream Z, PLAN G396 (4)); Major, behaviour-preserving alone; F's G147 rulings 40-42; the Middle's C4
-  agreement and RP17 consent on D-986) SPEC 3.4.3, 3.5, 12, 13.4, 15.1.4, 15.1.5, 15.1.6, 15.6.2, 23.1.2. Amends R7-M65 and R5-M63.
-  - **The fact.** `PlanRow.KeptRead`, read through `HirTables.KeptRead`: the form of the Error a kept operand belongs to reads the
-    operand's whole Place in a use not in place. The HIR publisher runs the Adjust rule (`AdjustChildren`) for each Error's form
-    (`KindOp`, not Unset or Syntax; an Error Binding visited, so not a parser recovery) into `Binding.FormReads`. That record writes
-    no row and leaves out every use in place. Each kept operand's visit then marks its row where the record holds it. A publish
-    clears the bit with each row's `Adjust`.
-  - **The predicate.** `HirAdjust.Reads` is the one predicate of a read take: an acquisition (Copy, Move, Reborrow, ByCase,
-    Temporary, any adaptation) or a shared borrow `(None, SharedBorrow)`. A shared borrow covers a Place match Subject (15.1.6) and a
-    non-Copy operand inspected through a shared Loan (13.4). Z17's located parts read it at the Adjust column, and the kept record
-    reads it at a form's take; neither keeps a copy. A use in place can give the same pair (a selection's receiver with Binding's
-    synthesized shared read, 3.4.3) or a Temporary (a value base), and neither is a whole-Place read. The record filters such uses by
-    kind. A column reader cannot, so it relies on its sources being taken not in place.
-  - **The column is unchanged.** It keeps R5-M63's kept mark `(None, None)`, so a kept operand is still evaluated as its Place and
-    never acquired. `MirBuilder.Kept` stays the column test, and Z17's commit 3 reads `HirTables.KeptRead(part) ? Reads : undecided`
-    beside it: a departure from Z17 Revision 2 §3.4's one accessor, which the Middle agreed to (D-986's C4) and amends §3.4 to.
-  - **Not read:** a use in place (a projection's receiver or base, the operand of a follow, a borrow, a runtime test or a case
-    adaptation, a group's operand); an exclusive borrow, a reference read, a failed acquisition; an argument of a call Binding did
-    not resolve: `CallPlan.Of` reads only a Resolved call's plan, so such an argument has no take (PLAN G1178).
-  - **No take.** The record yields no take, so claims, needs, selections, ClosureEffects (R4-M145) and Broken are unchanged. No
-    reader exists until Z17's commit 3, so the unit moves no record and no IR.
-  - **Rejected:** a `HirAcquire` member (a vocabulary entry; R5-M63); the form's take in the column (it would move the kept
-    operand's evaluation); the form's take in `PlanRow.Adjust` (a take that stands: R7-M8; claims and `FailureFact` read it); `Flag`
-    or `Mode` (class-typed slots); a Broken clause (it could not fire); "acquired" alone (Revision 0: it splits the shared-borrow
-    take between Z17's located and kept parts).
 - **R7-M68 A Place's path is folded once from its root: `PathFold` and `LendFold`** (Back, 2026-11-21; D-941, Q-596, PLAN G1154,
   and G1161 (D-950) with it; Major, behaviour-preserving below 64 steps; design `d941-design.md` revision 3 with B's rulings 1-4;
   the Front's review on C-402 (B1) and its delta read; the Middle's RP17 consent on the 64+ outcomes) SPEC 3.4, 15.1.5, 15.6.2;
