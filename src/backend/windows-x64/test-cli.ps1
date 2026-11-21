@@ -68,8 +68,8 @@ if (-not $output.Contains('Hello, world!')) { throw "A native build read the too
 $output = Invoke-Kimi @('build', '--Manifest', (Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.link.json'), '--ToolchainRoot', $missingRoot)
 $output = Invoke-Kimi @('run', $project, '--no-build')
 if (-not $output.Contains('Hello, world!')) { throw "A manifest build read the toolchain root: $output" }
-# kimi test's arguments keep the quotes of a path with spaces (a separate open limit), so its project and root have none.
-$testDirectory = Join-Path (Split-Path $work) 'test-project'
+# kimi test takes a path with spaces as every command does (PLAN G1214): its project has spaces, beside the work folder.
+$testDirectory = Join-Path (Split-Path $work) 'test project'
 New-Item -ItemType Directory -Path $testDirectory | Out-Null
 @'
 #Test
