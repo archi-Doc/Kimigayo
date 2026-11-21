@@ -14,6 +14,14 @@ public partial record class ProjectFile
     private const int RequirementsMap = 4;
     private const int SuppliesMap = 5;
 
+    // The removed settings, each with the note its load fails with, whatever its value (IMPL 20.2): ValidateMapNames reads it for every
+    // name it does not inspect, and the file is then discarded. A later removal adds a row.
+    private static readonly (byte[] Name, string Note)[] Removed =
+    [
+        ("NativeBindings"u8.ToArray(), NativeConfiguration.SupersededBindings),
+        ("LlvmBin"u8.ToArray(), "LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting."),
+    ];
+
     /// <summary>Gets or sets whether startup is selected for an Application or excluded for a Library.</summary>
     [IgnoreMember]
     public OutputKind OutputKind { get; set; }
@@ -59,9 +67,6 @@ public partial record class ProjectFile
 
     /// <summary>Gets or sets O0 or O2 for native code generation.</summary>
     public string Optimization { get; set; } = "O2";
-
-    /// <summary>Gets or sets a legacy project-relative LLVM tool override; null uses the compiler toolchain.</summary>
-    public string? LlvmBin { get; set; }
 
     /// <summary>Gets or sets per-target definition-side native requirements keyed by this module's logical name.</summary>
     public Dictionary<string, Dictionary<string, NativeRequirement>> NativeRequirements { get; set; } = new(StringComparer.Ordinal);
@@ -154,13 +159,6 @@ public partial record class ProjectFile
                 continue;
             }
 
-            if (key.SequenceEqual("NativeBindings"u8))
-            {
-                (failures ??= []).Add(NativeConfiguration.SupersededBindings);
-                reader.Skip();
-                continue;
-            }
-
             if (key.SequenceEqual("NativeRequirements"u8) || key.SequenceEqual("NativeLibraries"u8))
             {
                 // A repeated key would replace the whole earlier map, even when its targets differ.
@@ -185,6 +183,14 @@ public partial record class ProjectFile
             var map = key.SequenceEqual("CompileTimeSettings"u8) ? 1 : key.SequenceEqual("Dependencies"u8) ? 2 : key.SequenceEqual("TestDependencies"u8) ? 3 : 0;
             if (map == 0)
             {
+                foreach (var (name, note) in Removed)
+                {
+                    if (key.SequenceEqual(name))
+                    {
+                        (failures ??= []).Add(note);
+                    }
+                }
+
                 reader.Skip();
                 continue;
             }

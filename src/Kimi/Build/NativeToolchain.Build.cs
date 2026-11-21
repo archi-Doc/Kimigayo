@@ -14,8 +14,8 @@ internal static partial class NativeToolchain
     // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
-    // A project's native build. A build reads no LlvmBin: the command line's names the tools toolchain verify checks, and a project's is
-    // accepted and not read (Tatara design A4 §2.1; removed in B6).
+    // A project's native build. A build reads no LlvmBin: the command line's names only the tools toolchain verify checks (Tatara design
+    // A4 §2.1; the option is removed in B6b4).
     internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
@@ -25,8 +25,8 @@ internal static partial class NativeToolchain
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
-    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. Its toolchain.llvmBin is
-    // accepted and not read, as a project's LlvmBin. It holds its record's lock (Begin) from its first write to its end.
+    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. It holds its record's
+    // lock (Begin) from its first write to its end.
     internal static async Task BuildManifest(string path, string? toolchainRoot, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         path = Path.GetFullPath(path);
