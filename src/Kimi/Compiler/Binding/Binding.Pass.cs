@@ -57,7 +57,6 @@ public sealed partial class Binding
         this.libraryImports.Clear();
         this.environmentsJudged = -1;
         this.ResetPrerequisites();
-        this.objectPayloadCauses?.Clear();
         this.ResetMatches();
         this.argumentParts.Clear();
         this.dependentChecks.Clear();

@@ -122,11 +122,20 @@ public sealed partial class Binding
 
     // SPEC 7.7.4, 10.5: a Closure or Function Item part completed at a common Function Type is converted to it; its signature, Shared
     // receiver and Owned environment are judged here, after selection, and a failure is the part's own record, an environment that is
-    // not Owned the Constraint record and a receiver that is not Shared a Type mismatch with its Note (SPEC 23.1.2).
+    // not Owned the Constraint record and a receiver that is not Shared a Type mismatch (SPEC 23.1.2).
     private bool ErasePart(Koto part, BoundType actual, BoundType erased)
     {
         if (!this.ErasesToFunction(part, actual, erased))
         {
+            // Transitional, R7-E5 (D-924; B's E3a-2 ruling): the erasure recorded its failed Origin condition, Owned part or limit at the
+            // part (ErasesToFunction), so a mismatch here is that conversion's second record; the part keeps its first failure, as a Fail
+            // does, until R7-E5's per-problem inputs (CallableOriginForwardingTest's erasure rows; probes g1-g3).
+            if (this.RecordedFailure(part) != BindingFailure.None)
+            {
+                this.Fail(part, BindingFailure.TypeMismatch);
+                return false;
+            }
+
             this.RecordMismatch(part, part, actual, erased, default);
             return false;
         }
