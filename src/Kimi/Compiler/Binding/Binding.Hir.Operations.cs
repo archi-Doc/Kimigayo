@@ -142,7 +142,9 @@ public sealed partial class Binding
         IsKoto { IsRuntimeTest: true } => HirOp.RuntimeTypeTest,
         IndexKoto index => (this.IndexerCall(index, false) ?? this.IndexerCall(index, true) ?? this.ViewRangeCall(index)) is null ? HirOp.Index : HirOp.Call,
         RangeKoto or FromEndIndexKoto => CallPlan.Of(this, node) is null ? HirOp.Range : HirOp.Call,
-        InvocationKoto => CallPlan.Of(this, node) is null && node.BoundSymbol?.Kind == BindingSymbolKind.EnumCase ? HirOp.Aggregate : HirOp.Call,
+        // A Case construction is an application Binding takes as one (ConstructsCase, over the Case it selected at the callee, which a
+        // construction that failed keeps too; SPEC 6.5.1, 6.5.2); an application of any other callee, a construction's value included, is a call.
+        InvocationKoto invocation => CallPlan.Of(this, node) is null && ConstructsCase(invocation, invocation.Method.BoundSymbol) ? HirOp.Aggregate : HirOp.Call,
         MemberAccessKoto { Right: NumberLiteralKoto } => HirOp.Field,
         MemberAccessKoto or IdentifierNameKoto or GenericsKoto or SyntaxFormKoto => this.NameOp(node),
         UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } or
