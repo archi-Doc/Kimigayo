@@ -16723,6 +16723,37 @@ resumed by R4-M86 (2026-10-20).
     contextual Case's lookup without writes; `InferredCase` publishes it), `PayloadTypeAt` (a payload's Type in the constructed
     Type) and `FormReference` (a container reference's one formation from its own arguments and its environment, pure;
     `BindContainerReference` keeps the walk and the writes).
+- **BU-246 A kept operand's take and input by its Error's form: `PlanRow.KeptAdjust` and `PlanRow.KeptInput`** (Front,
+  2026-11-22; Binding; Z17c-F, Q-638, D-1047, for stream Z's Z17c (C-448, the Middle's design Revision 1, K4); Major,
+  behaviour-preserving alone; F's ruling on the design check `front\notes\Z17c\design-facts.md`; the code review ACCEPT WITH
+  CONDITIONS, F's Z17c ruling 1) SPEC 15.6.7, 7.3, 7.3.4, 7.4, 10.1, 10.2, 12.2, 15.1.5, 15.1.6, 13.4, 3.2, 6.5.1, 6.5.2, 23.1.2.
+  Amends R7-M67 and R7-M71.
+  - **KeptAdjust.** FormReads already computes the take by which the Error's form reads a kept operand's whole Place (the Adjust
+    rule run for the form, `ChildAdjust`); `PlanRow.KeptAdjust` now publishes it, default where the form does not read the operand.
+    Of two takes it keeps the later one that reads, unlike the column, which keeps the later take (R4-M145), so `KeptAdjust.Reads`
+    is R7-M67's bit, and `KeptRead` goes. Z17c-M (the Middle's MIR rule) reads it as the take of a kept operand, whose column stays
+    the kept mark.
+  - **KeptInput.** Whether the form takes the kept operand as an invocation's receiver or argument, read or not. The owner is the
+    Adjust rule's record protocol: an input is a child given between `IHirUses.Call(ordinal >= 0)` and `Call(-1)`. R7-M71's row for
+    an application Binding did not resolve opens `Call(0)` under the form Call (its one call, which has no plan). A Case
+    construction's payloads, an aggregate's elements, an operator's operands, a Subject, an Iterable and a conversion's operand are
+    none. Its one reader is Z17c-M (the Middle's MIR rule, stream Z, PLAN G396 2g), which lands after this unit: until then it has
+    no reader (PLAN G396).
+  - **Representation.** The `FormReads` family row is `(uint Publication, HirAdjust Take, bool Input)`, 8 bytes. The publisher's
+    kept-operand visit moves the running publication's row into the plan row, and each publish clears both fields with `Adjust`.
+    `PlanRow` grows from 56 to 64 bytes (its measured cost in the unit's commit).
+  - **KindOp and ConstructsCase.** An application is a Case construction (Aggregate) exactly where Binding takes it as one:
+    `Binding.ConstructsCase(call, selected)` holds when the callee's selection is a Case and the callee is a qualified or leading-dot
+    Case name written without generic arguments. It is the one test of BindCallCore's construction branch and of KindOp's arm, which
+    passes the Case Binding selected at the callee (a failed construction keeps it). KindOp used to read the invocation's own symbol,
+    which Binding sets only on success. A resolved and a failed construction, written `.Case` or in full, classify alike, and their
+    payloads are no inputs (the Middle's Z17c design review B6: `.Some(y@uniq, g(y))` keeps base's independent conflict at `g(y)`,
+    since no reservation passes through aggregate storage). An application of any other callee is a call, and its arguments are
+    inputs: a leading-dot name with no such Case (`.Nope(...)`, P9) and a construction's value (`Option.Some(1)(...)`, the code
+    review's C1). Only FormReads reads the form of an Error application, so only KeptInput moves.
+  - **Rejected:** the prototype's stand-ins (`KindOp(parent) == Call`; a thread-static map); the take in `PlanRow.Adjust`, `Flag` or
+    `Mode` (R7-M67); a two-byte take without `ExclusiveMode` to keep 56 bytes (a second representation of a take); Input only for
+    read operands; the Case read at the callee by the Adjust rule (a second copy of KindOp's classification).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -24410,6 +24441,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     publication in place of the publication's number (the column lives for the pass; ruling 53 keeps the publication's lifetime).
   - Amended by R4-M232 (Z17, Q-621): commit 3 left Z17 as the unit Z17c (D-1003), so "Z17's commit 3 reads
     `HirTables.KeptRead(part) ? Reads : undecided`" and "No reader exists until Z17's commit 3" are Z17c's.
+  - Amended by BU-246 (C-448, Z17c's facts): the bit is the take. `PlanRow.KeptAdjust` (a `HirAdjust`) replaces `KeptRead`, and
+    `KeptAdjust.Reads` is the bit. `PlanRow.KeptInput` is added. The `FormReads` family row is `(Publication, Take, Input)`.
 - **R7-M71 An argument of an application Binding did not resolve is read** (Front, 2026-11-21; G1178, Q-608, stream Z's G396
   rows, an R7 exit condition; Major, behaviour-preserving alone; F's G147 rulings 45 and 48; the Middle's RP17 consent) SPEC 7.3.4,
   7.4, 10.1, 10.1.1, 10.2, 10.5.4, 12.2, 15.1.5, 23.1.2. Amends R7-M67 and R4-M142's rule; closes PLAN G1178.
@@ -24440,6 +24473,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** reading the call's stored plan or a candidate's parameters (a plan Binding did not commit; SPEC 10.1); a case per
     failure or per callee kind; "every kept operand is read" (D-986's rejected (c)); a second bit for this fact; marking the
     arguments outside the rule.
+  - Amended by BU-246 (Z17c's facts): `KeptRead` is `PlanRow.KeptAdjust`'s `Reads`, and under the form Call the row opens
+    `Call(0)`, so the application's written arguments are its inputs (`PlanRow.KeptInput`); a Case construction's are payloads.
 - **R7-M72 The through-layers row has both modes** (Front, 2026-11-21; PLAN G147 (2) (c), R7 plan Z22, Q-615, an R7 exit row; Major, an
   acceptance mover; design and code reviews ACCEPT WITH CONDITIONS, F's G147 rulings 56, 57 and 63; the Middle's RP17 consent) SPEC
   7.3.3, 3.4.3, 10.2, 15.6.2, 15.1.5. Amends BU-212's temporary structure.
