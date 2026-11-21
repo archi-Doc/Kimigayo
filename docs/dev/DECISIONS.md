@@ -8701,7 +8701,8 @@ resumed by R4-M86 (2026-10-20).
     judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge (`IsDerived` owns
     derivation). Open: A's `IsDerived` widening for an associated specification's record.
 - **BU-24** (superseded in part by BU-30, BU-34, BU-39, BU-41, BU-46, BU-113 (G160-2b's rejected binder cap), BU-166
-  (`BorrowRawPlace`'s declared-result fit deleted; `RawAnchor`); amended by R5-M164)
+  (`BorrowRawPlace`'s declared-result fit deleted; `RawAnchor`), BU-242 (G212: a Move of an enclosing Place is a read;
+  `JudgeHolderAccess`); amended by R5-M164)
   (2026-10-22; designs A′ and B′, design-final
   §14 "B′+"; unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one
   slot whose role the Semantics decides (0 B; B′'s +8 B field is not taken). `Origin` never reads a raw layer's; `RawOrigin` only a raw
@@ -15801,6 +15802,29 @@ resumed by R4-M86 (2026-10-20).
     23.1.2 (no record moves); the B2a-2 line above (`Freeze` for a never-written family, `Release` for working state) and the B6b
     line (a premise stated with its tripwire), BU-219, R7-M9. Ratchet ("Node-keyed table members in Binding") 39 -> 34, the
     count (33 merged with R7-E2 E2-5a, which deletes `overrideFailures`: the second of the two to land sets the limit).
+  - **R7-N5 E** (the Back's batch, Q-619, D-1014; design `e-design.md`, B's rulings 1-8; the Front's review `review-e.md`, C1,
+    C6, C7, D1, N1, N4): the dependence store's `prerequisites` and `partPrerequisites` become the Work pass families
+    `Prerequisites` (a node's consultation range in the pass's prerequisite store, Count 0 absent) and `PartPrerequisites` (the
+    part a declaration-level check read outside a frame, null absent), released at the freeze; the walks' visited set becomes the
+    Work family `PrerequisiteVisits`, whose row carries the walk's number (the B6b line's validity unit narrower than the pass, in
+    D-986's form; the walk's Clear is NextQuery's advance, O(1)); and the pairwise checks' group store becomes the pass family
+    `DuplicateDeclarations` (never written by the library: Freeze with a "never written" NotStamps row) with `duplicateOrder`,
+    the pass's working order of groups beside it, which RecordDuplicateGroups walks (dev's insertion order, the foreign rows
+    included; reset at ResetPrerequisites with its capacity kept; listed iff its row is present, written at one site; it goes with
+    the column if RecordDuplicateGroups stops walking groups, R7-E5). All four are stored by the recorder's decision
+    (`RecordedFact`, `SetRecordedFact`), which the B4 line gave the fact a failure carries and E widens to a node's dependence rows
+    (also written at a node that rests with no failure: CompleteDependent, EndConsultation) and a walk's visit marks: a node of a
+    module the pass does not bind keeps its rows in the pass's foreign columns at its entry (`RecordedSlot` returns the slot, so a
+    visit mark is one decision, as one hash lookup was); a library node without the pass's entry reads its released column, none,
+    which is dev's answer. The other 16 tables of the Diagnostics files are explanation stores their E unit deletes (R7-E3: 7,
+    `referenceSlotFacts` included; R7-E4: 9), not converted; FailExplained's Dictionary form goes with the last of them. Whichever
+    of this line and the Q-594 + Q-598 joint head lands second adds `PrerequisiteVisitRows.Remove` (writing 0 only over a row
+    carrying the live walk's number), renames the head's `prerequisiteVisited` lines and adds a regression row that fails without
+    it (C4). Rejected (D1): a walk-local HashSet for the visits, a list scan, the mark kept in the Prerequisites row,
+    `Values.In(pass)` for the duplicate groups (it would lose a library clause's row and reorder the records), and converting the
+    16 explanation stores now (work E3 and E4 delete). Readings: SPEC 23.1.2 (the same records and `DerivedFrom` keys), 6.1 and
+    9.1 (duplicate declarations), DIAGNOSTICS 4.3; the B2a-2, B4 and B6b lines above, D-986's FormReads form, G949 S1. Ratchet
+    ("Node-keyed table members in Binding"): this batch removes four; the limit is set to the merged tree's count when it lands.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
@@ -16591,6 +16615,71 @@ resumed by R4-M86 (2026-10-20).
     failed equality as a Binding failure of the call (it moves the owner of R7-O1 b1's record); a comparison failing with the solve's
     failed equality (ruling 43 (4): its Unit rejected 17 valid LocalOriginClauseTest rows, the solve's equality test lacking the use
     site's facts the walk reads).
+- **BU-242 A Move of a Tuple or fixed-array Place enclosing a `during self` layer is a read** (Front, 2026-11-21; PLAN G212's
+  Binding half, R7 plan Z5 (an R7 exit row), Q-622; Major; the Middle's RP17 consent) SPEC 5.7, 13.5.3, 15.1.2; DECISIONS R4-M117
+  item 6. Supersedes in part BU-24's G212 paragraph.
+  - **Rule.** A Move of a Tuple or fixed-array Place enclosing a `during self` layer is a read (SPEC 5.7, R4-M117 item 6), so
+    Binding's allowlist judges writes, updates and exclusive borrows only, and the Move takes the Place's read Type (`ReadHolder`),
+    element by element. A1 marks the whole Place Moved, the layer's element included (SPEC 13.5.3, 15.1.2; the design's reading R1,
+    not disputed by its review), so only a whole write restores it.
+  - **Structure.** With the Move arm gone no verdict of the allowlist fails its node (R7-O1 B4 left every other one Resolved), so
+    it records only: `HolderPlaceFailure` and `HolderWriteFailure` became the void `JudgeHolderPlace` and `JudgeHolderAccess`.
+  - **Supersedes in part** BU-24's G212 paragraph (unit bu26): "a Move of an enclosing Place (`b.pair@move`) stays the located
+    `Unsupported_Kd`, since SPEC does not say what it gives" and "One verdict table in `HolderWriteFailure`": its reason, SPEC's
+    silence, ended with R4-M117 item 6.
+  - **Open:** A5's half (PQ-10 at the Place; the review's C1, `HolderAccess`, and C2, the w4 variant with `b.pair@move`) is the
+    Middle's Z5-M1 (PLAN G212).
+  - **Rejected:** an admitting `HolderAccess.Move` (a mode that decides nothing); a Binding column of layer positions for A5 (a
+    second copy of `TyCtxt.StoredStep`'s walk); an element-wise HIR lowering of the Move (a new form for one feature).
+- **BU-243 The borrows a body's Borrow atom belongs to: Binding's per-atom borrow publication** (Front, 2026-11-21; PLAN G148 (1),
+  R7 plan Z6's first commit, Q-630; Major, a new representation and a key field, no verdict moved; F's G147 rulings 18, 19, 25, 28,
+  36, 37, 50, 55, 58, 60, 65; the owner's O-476 (a)) SPEC 5.7 Origins, Fits and claims; 15.6.5; 15.1.6; 7.7.4; 5.4. Reads BU-27's HIR
+  contract.
+  - **Representation.** `Binding.RawOrigins.Borrows` (`PassPart.Borrows`): for each Projection or Anchor atom, the Borrows Binding
+    commits with it as their outer Origin, each a `RawMember` (Input -1, referent and mode by `BorrowReferent`, equal referents joining
+    their modes), and the `Claimed` mark of each atom a published claim's Type states (`ClaimedOrigin`, `MarkClaim`). The rows only
+    grow within a pass, each new entry or mode moving the borrows' version; a library body's rows are the library pass's part. An
+    address `P@raw` is no Borrow (SPEC 5.4: it leaves no Loan), so no writer forms it. Its verdict reader is Z6's; until then only the
+    census and tests read it.
+  - **Formation by writer.** Each writer forms its part once, outside candidate trials and collected fits: BindNode's end
+    (`OwnBorrows`: the node's written Borrow, Slice view or object view, its receiver operation, its calls' operations from their
+    plans, a synthesized call's at its consumer, and its capture entries); `BindMatch` (the Subject borrow, before the arms);
+    `AcquireReferenceBindings` (a match's or a user iteration's by-reference bindings, acquired where their Patterns bind, before the
+    guards and bodies: their access alone decides the acquisition, and Check acquires them again); `CompleteArguments` (a source
+    call's selected operations, before an awaiting argument binds, SPEC 10.5.1); `CompletePayloads` (each payload's operation at its
+    write, before the payloads after it; the operation now carries its AdaptedType); `BindConcreteClosure` (the written capture
+    entries, before the body); the adaptations column's setter (`AdaptationBorrow`). A writer that publishes a fact before a sub-node
+    binds forms it there, so a reader inside that sub-node finds it in the atom's row. BU-27's naming sites name Origins and form
+    nothing.
+  - **Mid-binding.** A reader while bodies bind reads the entries so far, incomplete but not wrong, except two facts not yet written
+    while a part stating their atom binds: a call's operations while its waiting Closure parts bind (`CompleteWaiting`: the part's
+    inferred return is never outer evidence, SPEC 10.5.4, so the call fails and its operations are never formed) and a payload's
+    operation while an awaiting payload before it binds (source order). Every program reaching them is invalid (SPEC 7.7.4); what
+    Z6's reader answers there is Z6's.
+  - **Census.** At the HIR publication, `CheckBorrows` compares the rows with the borrows the publisher itself writes
+    (`HirPublisher.Visit`'s `PublishedNode`, `RowUses.Use`, `FixAdjust`, `DiscardRow`, `IHirUses.Unselected`), not with a second list
+    of facts: exact both ways, misses always, extras and modes where the publication met no failed node; a difference is
+    `InternalInvariant_Kd`. The rows may hold a recorded adaptation the publisher's Adjust replaces, an over-approximation the
+    census does not see.
+  - **RetentionState** replaces RegionVersion as the key field of TyCtxt's retention memo: the region and borrow versions while the
+    pass's borrow writers run, a fixed Complete value once the pass's Check has run (`borrowsComplete`; no borrow writer runs after
+    it), so no answer computed while the rows grow is read as complete. RegionVersion keeps its meaning.
+  - **In-place reads.** A compared operand's in-place read is decided once, by `CompareInPlace` (its layers' read over its element
+    read). A receiver's read has two writers, `ReceiverElement` at its selection (`ReceiverThroughLayers` hands it its reference)
+    and `CompareInPlace` on a compared operand's path, which agree where the receiver is an element Place `ReceiverElement` reads by
+    its element (`Binding.InPlaceReads`' contract). The use deciding a selection's read is PLAN G1221.
+  - **Cost** (the owner's O-476 (a)): it lands with the cost unit's two commits (`PublishedNode` reads a visited node's rows by one
+    dispatch on its form; `JoinBorrow` finds a write's row once); the remaining Bind cost against dev (warm matches256 +3.5%,
+    Milestone24 +1.5%, Milestone10 within dev's band; cold matches256 +5.8%) is the owner's accepted cost.
+  - **Rejected:** a build at the publication only (G2's nested erasure would turn a Language record into the limit); `FormBorrow`
+    at the naming sites (they run in trials and for readers that form nothing, and know neither mode nor referent); a census join at
+    the publication (ruling 19); forming a call's operations at `BindCall`'s selection or at the plans' setters (they also bind
+    synthesized calls no plan takes); forming inside `AcquireBinding` per position (quadratic); reading the access mode in formation
+    without the acquisition (a consumer deciding what its owner publishes); a pair-layer clause for a by-reference binding (one
+    form); fitting every payload before any awaiting one binds (CompletePayloads keeps the source order); a column of `OriginRows`'
+    table; moving RegionVersion; a `HoldFlags` entry; entries for the formatting plan's synthesized borrows; forming the receiver
+    column's final value (it reopens ruling 19's writer rule); the selection owning every receiver, or the comparison's condition at
+    the selection (valid `t.0.mutate()` and `arr[i].mutate()` rejected).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -28011,6 +28100,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M9 (unit B6b1, 2026-11-21): `NativeBuild` and `toolchain verify` take the compiler's Tatara (`Tatara.Instance`),
     not the root's `tatara.dll` (`Tatara.Load` is removed); `tools.tatara` has no `path`, and verify hashes the root's `tatara.dll`
     as a file.
+  - Amended by T-M10 (unit B6b5, 2026-11-21): the project setting `LlvmBin` and the manifest's `toolchain` member are
+    removed (errors); the command line's option goes with B6b4.
 - **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
@@ -28109,3 +28200,24 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `KimiToolchain` property (a second way to name a root, R1); the copy checked at Kimi's build (a second copy of the installation
     rule); the copy required (it fails CI's Ubuntu job and fresh clones) or warned about (it fails `-warnaserror`);
     `CopyToOutputDirectory="Always"` (a 68.6 MB copy per build).
+- **T-M10 `LlvmBin` removed from projects and manifests** (Tatara, 2026-11-21; the plan's unit B6b5, Q-627, D-1022; Major;
+  design `artifacts\handoff\tatara\units\B6\design-b6b.md` §6; design review C-437; implementation review C-443, ACCEPT;
+  the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line.
+  - **The removed settings:** `ProjectFile.Removed`, one table of removed project settings, each a name and its note:
+    `NativeBindings` (`NativeConfiguration.SupersededBindings`, unchanged) and `LlvmBin` ("LlvmBin was removed: Kimi carries
+    its toolchain. Remove the LlvmBin setting."). `ValidateMapNames` reads it for every name it does not inspect; each hit is
+    one note (SPEC 23.1.2: a file with both settings has both notes) and the file is discarded (`ProjectConfigurationException`),
+    whatever the value, in a root project and in a dependency's project file (`DependencyResolver`'s load,
+    `InvalidConfiguration`). It replaces `ValidateMapNames`' `NativeBindings` clause; a later removal adds a row.
+  - **The manifest's removed member:** `LinkManifest.Removed`, a removed-members table of the same form (`toolchain`: "The
+    link manifest's 'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest."), read once by
+    `CheckFixed` after the fixed fields, whatever the member's content; no row kind that `WriteFixed` skips (C-437 N5-2). The
+    two tables stay apart: they serve two contracts, a project file's load and a manifest's fixed fields (C-443). `emit`
+    writes no `toolchain` member, so an emit of a project without `LlvmBin` is byte-equal to the base's; schema 4 is unchanged.
+  - **Deleted:** `ProjectFile.LlvmBin`; `EmissionArtifacts`' path check, relative path and `toolchain` write; the "accepted and
+    not read" sentences (`LinkManifest`, `NativeToolchain.Build`).
+  - **Interim:** the command line's `--LlvmBin` is accepted and read by no build until B6b4, which also removes
+    `toolchain verify`'s reading (PLAN G1173).
+  - Rejected: deleting the property alone (the setting would be accepted silently, design B6b fact 3); a clause per removed
+    name; a `LinkManifest.Rows` row that `WriteFixed` must skip; the general unknown-setting rule in this unit (pre-existing,
+    a PLAN open issue with B6b4's docs).

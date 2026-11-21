@@ -486,7 +486,7 @@ public sealed partial class Binding
 
     // FailExplained's form for a pass family's column (R7-N5, DECISIONS BU-220): the same rule, the fact stored with the failure by the
     // recorder (SetRecordedFact: the node's module's column, or the pass's foreign entry's row). The Dictionary form above goes with the
-    // last family converted (batch E's), its staged removal.
+    // last explanation store that uses it, its staged removal: R7-E3's and R7-E4's, which delete them (R7-N5 E converts none).
     private BoundType? FailExplained<T>(FactFamily<T> facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
         if (this.RecordedFailure(node) == BindingFailure.None)
@@ -651,9 +651,7 @@ public sealed partial class Binding
         this.rejectedRows.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
-        this.duplicateDeclarations?.Clear();
-        this.prerequisites.Clear();
-        this.partPrerequisites.Clear();
+        this.duplicateOrder.Clear();
         this.specificationLinks?.Clear();
         this.derivedUses?.Clear();
         this.prerequisiteStore.Clear();

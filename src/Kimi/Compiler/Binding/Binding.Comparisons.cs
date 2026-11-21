@@ -67,10 +67,8 @@ public sealed partial class Binding
         if ((ReferenceEquals(ComparisonReferent(left), BoundType.String) || ReferenceEquals(left, BoundType.Never)) &&
             (ReferenceEquals(ComparisonReferent(right), BoundType.String) || ReferenceEquals(right, BoundType.Never)))
         {
-            this.CompareInPlace(binary.Left);
-            this.CompareInPlace(binary.Right);
-            this.StringThroughLayers(binary.Left, left);
-            this.StringThroughLayers(binary.Right, right);
+            this.CompareInPlace(binary.Left, this.StringThroughLayers(binary.Left, left));
+            this.CompareInPlace(binary.Right, this.StringThroughLayers(binary.Right, right));
             return Complete(binary, BoundType.Boolean);
         }
 

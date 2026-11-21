@@ -65,6 +65,9 @@ public sealed partial class Binding
         // call, which has no plan); -1 after the last. Its inputs are the call's receiver and arguments (SPEC 15.6.7).
         void Call(int ordinal);
 
+        // A call of the consumer Binding committed whose inputs the selection does not take (a user index's other call, SelectionMode).
+        void Unselected(CallPlan call);
+
         // A child the consumer's operation adapts, acquired, used in place or inspected, completed by its own facts (ChildAdjust).
         void Use(Koto? child, HirAdaptation adaptation = HirAdaptation.None, UseKind kind = UseKind.Acquisition);
 
@@ -255,6 +258,7 @@ public sealed partial class Binding
             uses.Call(i);
             if (ReferenceEquals(call, unselected))
             {
+                uses.Unselected(call);
                 continue;
             }
 
@@ -387,12 +391,20 @@ public sealed partial class Binding
 
         public void Call(int ordinal) => this.callOrdinal = ordinal;
 
-        // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it.
+        // Its inputs are the census's too: Binding committed the call (Binding.RawOrigins.Borrows).
+        public readonly void Unselected(CallPlan call) => binding.PublishedCall(call);
+
+        // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it;
+        // a borrowing operation is the census's input (Binding.RawOrigins.Borrows).
         public readonly void Use(Koto? child, in BoundArgumentOperation operation)
         {
             if (child is not null)
             {
                 this.FixAdjust(child, binding.ChildAdjust(child, operation, this.Claimed(child)), default);
+                if (this.Owns(child))
+                {
+                    binding.PublishedOperation(operation);
+                }
             }
         }
 
@@ -406,11 +418,13 @@ public sealed partial class Binding
         }
 
         // Only the nodes of the module being published. At a call input the earlier call's Adjust (EarlierAdjust) is the input's plan-row
-        // Adjust, the column keeping the later; at any other call input the row states none.
+        // Adjust, the column keeping the later; at any other call input the row states none. The child's recorded adaptation, which
+        // ChildAdjust reads first, is the census's input (Binding.RawOrigins.Borrows).
         public readonly void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place)
         {
             if (this.Owns(child))
             {
+                binding.PublishedAdaptation(child!);
                 ref var column = ref table.Hir.Adjusts![child!.SyntaxId];
                 if (this.callOrdinal >= 0)
                 {
@@ -454,6 +468,11 @@ public sealed partial class Binding
         private bool input; // Whether the uses that follow are a call's inputs (Call).
 
         public void Call(int ordinal) => this.input = ordinal >= 0;
+
+        // A call the selection does not take reads none of its inputs (SelectionMode), so the form reads nothing of them.
+        public readonly void Unselected(CallPlan call)
+        {
+        }
 
         public readonly void Use(Koto? child, in BoundArgumentOperation operation)
             => this.Add(child, child is null ? default : binding.ChildAdjust(child, operation, PlaceUse.Shared));
