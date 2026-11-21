@@ -11,13 +11,11 @@ namespace Kimi.Build;
 internal static partial class NativeToolchain
 {
     // toolchain verify (IMPL 20.3; Tatara decision 20 Q3 (a)): a self-check of what the compiler carries, which reads no directory and
-    // runs no tool. Three steps: its Tatara (Tatara.Instance: loaded, bound, its start check); each supply's embedded bytes against the
-    // catalog's SHA-256 (VerifySupply); kernel32's embedded definition, whose comparison with the catalog is Kernel32Imports' type
-    // initializer's. A load or start-check failure and a supply's mismatch are the toolchain's InvalidDataException; the definition's
-    // mismatch is the initializer's fault (TypeInitializationException), as every embedded catalog read's is (the catalog row test owns
-    // both invariants; a mismatch means a defective build of Kimi). Each statement is reported as an Information line. The report
-    // (--Report) is written first as incomplete; at the end it is passed, or failed with the error for the toolchain's failure or a
-    // cancellation, and a fault leaves it incomplete.
+    // runs no tool. Two steps: its Tatara (Tatara.Instance: loaded, bound, its start check); each supply's embedded bytes against the
+    // catalog's SHA-256 (VerifySupply). A load or start-check failure and a supply's mismatch are the toolchain's InvalidDataException
+    // (the catalog row test owns the supplies' invariant; a mismatch means a defective build of Kimi). Each statement is reported as an
+    // Information line. The report (--Report) is written first as incomplete; at the end it is passed, or failed with the error for the
+    // toolchain's failure or a cancellation, and a fault leaves it incomplete.
     internal static void Verify(string? reportPath, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         var timer = Stopwatch.StartNew();
@@ -45,8 +43,6 @@ internal static partial class NativeToolchain
                 report(DiagnosticSeverity.Information, $"{supply.Name}: {VerifySupply(supply, supplies)} (the catalog's)");
             }
 
-            // Read for its type initializer, which compares the embedded definition with the catalog.
-            _ = Kernel32Imports.DefinitionSha256;
             record["status"] = "passed";
         }
         catch (Exception ex) when (IsToolchainFailure(ex) || ex is OperationCanceledException)

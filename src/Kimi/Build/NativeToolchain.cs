@@ -44,9 +44,8 @@
 // remedy; a failed call (return 1, or 2 after which every later call in the process fails naming the first cause) an IOException
 // "Tatara failed: <operation>" with LLVM's or LLD's text, as a tool's failure is.
 // The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
-// toolchain verify states the catalog's invariants (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256 is the
-// toolchain's InvalidDataException; an embedded kernel32 definition that differs from the catalog's is Kernel32Imports' initializer's
-// fault.
+// toolchain verify states the catalog's invariant (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256 is the
+// toolchain's InvalidDataException.
 
 using System.ComponentModel;
 using System.Diagnostics;
