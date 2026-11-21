@@ -56,10 +56,15 @@ foreach ($file in @($names | ForEach-Object { Join-Path $source "$_.exe" }) + $d
 & (Join-Path $PSScriptRoot 'build.ps1') -ToolchainRoot $ToolchainRoot
 $installed = Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
 $candidate = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../../artifacts/backend/windows-x64/verification.json') -Raw | ConvertFrom-Json
+# Both libraries are the adopted bytes (profile.json), which the compiler carries: the candidate's kernel32 first, since build.ps1 then
+# installs neither library, and the installed one after the backend.
+$kernelFailure = 'Toolchain setup did not reproduce the adopted kernel32 import library. Review the candidate report.'
+if ($candidate.kernel32.sha256 -cne $profile.kernel32.sha256) { throw $kernelFailure }
 if ($candidate.status -cne 'tested-candidate' -or $candidate.unverifiedToolchain -or $candidate.artifactSha256 -cne $profile.artifactSha256 -or
     (Get-Sha256 $installed) -cne $profile.artifactSha256) {
     throw 'Toolchain setup did not produce the adopted backend. Review the candidate report.'
 }
+if ((Get-Sha256 (Join-Path $ToolchainRoot 'windows_x64/kernel32.lib')) -cne $profile.kernel32.sha256) { throw $kernelFailure }
 # The backend builder publishes the already-tested shared imports and generation conditions.
 $identities = [ordered]@{}
 foreach ($name in $names) {

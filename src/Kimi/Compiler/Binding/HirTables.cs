@@ -363,6 +363,10 @@ internal struct NodeColumns
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, a memo of a final fact of its syntax valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next ResetPass), released at the freeze (Binding.ElementAccess.cs).
     internal StampedColumn<uint, Binding.PassCounter> FormReads; // Work: the HIR publisher's (Binding.Hir.cs) publication in which its Error's form read a node's whole Place, a row of another publication absent, released at the freeze (Binding.Hir.Adjust.cs; DECISIONS D-986).
+    internal PagedColumn<Binding.Specialization?> SpecializationStorage; // Kept: a specialization's entry, its slot arrays reused by every pass (Binding.Specializations.cs).
+    internal StampedColumn<Binding.EarlyRead, Binding.PassCounter> EarlyReads; // Pass: a use's lookup that saw a base clause not ready, read again by VerifyEarlyReads (Binding.BaseLayers.cs).
+    internal PagedColumn<BoundType?> KnownBases; // Kept: a struct's base clause's final Type from a first run, emptied by a Bind not started from it, before each fill and by an edit (Binding.BaseLayers.cs).
+    internal StampedColumn<bool, Binding.PassCounter> ResolvedSlices; // Work: whether a selection applies one ResolvedRange value, the running pass's working state, released at the freeze (Binding.Ranges.cs).
 
     internal void Resize(int length)
     {
@@ -437,6 +441,10 @@ internal struct NodeColumns
         this.LintCompletions.Grow(length);
         this.ReachedThroughBorrow.Grow(length);
         this.FormReads.Grow(length);
+        this.SpecializationStorage.Grow(length);
+        this.KnownBases.Grow(length);
+        this.EarlyReads.Grow(length);
+        this.ResolvedSlices.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -488,6 +496,8 @@ internal struct NodeColumns
         this.LintCompletions.Release();
         this.ReachedThroughBorrow.Release();
         this.FormReads.Release();
+        this.EarlyReads.Freeze(binding);
+        this.ResolvedSlices.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -567,6 +577,10 @@ internal struct NodeColumns
             LintCompletions = this.LintCompletions.Renumbered(length),
             ReachedThroughBorrow = this.ReachedThroughBorrow.Renumbered(length),
             FormReads = this.FormReads.Renumbered(length),
+            SpecializationStorage = this.SpecializationStorage.Renumbered(length),
+            KnownBases = this.KnownBases.Renumbered(length),
+            EarlyReads = this.EarlyReads.Renumbered(length),
+            ResolvedSlices = this.ResolvedSlices.Renumbered(length),
         };
         return columns;
     }
@@ -603,6 +617,8 @@ internal struct NodeColumns
         this.MatchPlans.Retire();
         this.Refusals.Retire();
         this.FormationCauses.Retire();
+        this.SpecializationStorage.Retire();
+        this.KnownBases.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -636,6 +652,8 @@ internal struct NodeColumns
         this.MatchPlans.MoveTo(ref target.MatchPlans, from, to);
         this.Refusals.MoveTo(ref target.Refusals, from, to);
         this.FormationCauses.MoveTo(ref target.FormationCauses, from, to);
+        this.SpecializationStorage.MoveTo(ref target.SpecializationStorage, from, to);
+        this.KnownBases.MoveTo(ref target.KnownBases, from, to);
     }
 }
 

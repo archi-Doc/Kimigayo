@@ -231,7 +231,8 @@ A new LLVM version is one unit. The rules below hold from stage A.
 5. Run the native fixtures and a Session. Expectation changes from changed generated code follow the existing adoption procedure (the
    backend's `ADOPTION.md`, VERIFICATION).
 
-After B6 embeds the material, it still comes from the same catalog, so the procedure does not change.
+After B6a the compiler carries the link material: an update also adopts the reproduced `kernel32.lib`'s hash (`kernel32.sha256`)
+beside the backend's `artifactSha256` and commits both reproduced `.lib` files under `src/backend/windows-x64/`.
 
 ## 7. Stage B units (outline)
 
