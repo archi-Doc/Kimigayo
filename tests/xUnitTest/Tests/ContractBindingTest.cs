@@ -631,6 +631,27 @@ public class ContractBindingTest
         Assert.Equal(0, allocated);
     }
 
+    // PLAN D-942 (R7-N5 B3-2; SPEC 9.6, 23.1.2; DIAGNOSTICS rule 3): a member access's requirement group is its pass's working state.
+    // An edit that replaces only `x`'s Type node (`ref/T` under `T is Reader` -> `ref/i32`) leaves `x.size` unlooked-up through
+    // requirements; the edited Bind reports what a fresh compilation of the edited text reports: the missed Name, not the Property
+    // requirement's limit an earlier pass's group would answer.
+    [Fact]
+    public void AnEditedReceiverReadsNoEarlierPasssRequirementGroup()
+    {
+        const string Reader = "contract Reader\n    property size: i32 has get\n";
+        var c = CompilationTestHelper.Parse(Reader + "func f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.size\n", "Hello.kimi");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var donor = KotoTree.Walk(CompilationTestHelper.ParseSuccess("func g(x: ref/i32) -> i32 => 1").Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g").Parameters[0].Type;
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(f, f.Parameters[0].Type, donor));
+        Assert.False(c.Bind().IsComplete);
+        var fresh = CompilationTestHelper.Parse(Reader + "func f<T>(x: ref/i32) -> i32\n    T is Reader\n    return x.size\n", "Hello.kimi");
+        Assert.False(fresh.Bind().IsComplete);
+        Assert.Equal([(DiagnosticCode.UnresolvedBinding_Kd, "x.size")], fresh.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.Equal(fresh.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())), c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+    }
+
     [Fact]
     public void RebindingChecksNewMembersInsteadOfReusingAVerifiedMapping()
     {

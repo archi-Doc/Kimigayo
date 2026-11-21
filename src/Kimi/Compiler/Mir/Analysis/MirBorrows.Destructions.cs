@@ -87,8 +87,9 @@ internal sealed partial class MirBorrows
     {
         var (start, count) = this.DropRows(type);
         MirDataflow.Grow(ref this.argValues, 1);
+        MirDataflow.Grow(ref this.argReferents, 1);
         MirDataflow.Grow(ref this.slotPositions, 1);
-        (this.argValues[0], this.slotPositions[0], this.referentCount) = (receiver, 0, 0);
+        (this.argValues[0], this.argReferents[0], this.slotPositions[0], this.referentCount) = (receiver, Unread, 0, 0);
         for (var i = start; i < start + count; i++)
         {
             var retention = this.dropRows[i];

@@ -10,7 +10,7 @@ public sealed partial class Binding
 {
     // The causes of each pair occurrence that a final check failed with a Language cause, for its evidence and for the separate record
     // of an unproven target role (Check).
-    private Dictionary<Koto, TypeRoleCause>? formationCauses;
+    private readonly FormationCauseRows formationCauses;
 
     // Conformance verifications and agreements in progress: a limit context, not an obligation (the obligation table holds the paths
     // being verified), read by ResolveConformance alone: inside them a conformance limited by OCC-X stays Unknown.
@@ -25,7 +25,7 @@ public sealed partial class Binding
 
     // The independent causes of an unproven Type role or pair formation (TypeRoleCauses).
     [Flags]
-    private enum TypeRoleCause : byte
+    internal enum TypeRoleCause : byte
     {
         None = 0,
 
@@ -587,7 +587,7 @@ public sealed partial class Binding
         this.Fail(obligation.Use, failure);
         if (failure != BindingFailure.UnprovenConstraint)
         {
-            (this.formationCauses ??= new(ReferenceEqualityComparer.Instance))[obligation.Use] = causes;
+            this.formationCauses[obligation.Use] = causes;
             if ((causes & TypeRoleCause.Role) != 0)
             {
                 this.Record(obligation.Use, BindingFailure.UnprovenConstraint, []);
@@ -599,11 +599,7 @@ public sealed partial class Binding
     // the Field's Type, completed only at the Definition deadline, is what the read could not use. Returns that occurrence.
     private Koto? UnformedFieldRead(Koto node)
     {
-        if (this.formationCauses is not { Count: > 0 } causes)
-        {
-            return null;
-        }
-
+        var causes = this.formationCauses.Values.In(this.pass);
         if (node is InvocationKoto call)
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -620,15 +616,16 @@ public sealed partial class Binding
         return FieldOccurrence(node, causes);
 
         // The failed occurrence whose nearest enclosing declaration is the Field or property that the member read selects.
-        static Koto? FieldOccurrence(Koto read, Dictionary<Koto, TypeRoleCause> causes)
+        static Koto? FieldOccurrence(Koto read, FamilyRows<TypeRoleCause> causes)
         {
             if (KotoHelper.UnwrapParentheses(read) is not MemberAccessKoto { BoundSymbol.Declaration: { } member })
             {
                 return null;
             }
 
-            foreach (var cause in causes.Keys)
+            while (causes.MoveNext())
             {
+                var cause = causes.Node;
                 for (var at = cause.Parent; at is not null; at = at.Parent)
                 {
                     if (ReferenceEquals(at, member))
@@ -650,7 +647,7 @@ public sealed partial class Binding
     // SPEC 8.1.2: the evidence of a pair occurrence failed with a Language cause.
     private bool ReportFormationCause(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        if (this.formationCauses?.TryGetValue(node, out var causes) != true || node is not TypeSemanticsKoto { BoundSymbol.Pair: { } pair } application ||
+        if (!this.formationCauses.TryGetValue(node, out var causes) || node is not TypeSemanticsKoto { BoundSymbol.Pair: { } pair } application ||
             pair.WholeType is not { } whole)
         {
             return false;
@@ -747,7 +744,7 @@ public sealed partial class Binding
 
         var at = this.CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
         var record = new CallableConstraintFact(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, use));
-        return this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, record, unresolved);
+        return this.FailExplained(CallableConstraintRows.Family, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }
 
     // A proof of a proposition, settled where it is no longer combined (EndProof).
@@ -899,5 +896,35 @@ public sealed partial class Binding
     {
         var admitted = this.AdmittedSemantics(whole, scope);
         return admitted != SemanticsMask.None && (admitted & ~allowed) == 0;
+    }
+
+    /// <summary>The `formationCauses` family's one accessor (DECISIONS BU-220): a kept family, the Language causes a pair occurrence's
+    /// Definition obligation failed with (FailTypeRole), kept in the occurrence's module's NodeColumns at its SyntaxId (None for none)
+    /// and emptied at each Final check's start over the running pass's modules (ProduceFailures; a re-check, CheckBound, recomputes the
+    /// causes in the same pass, so a pass stamp cannot stand for the step). Its members keep the names its readers use; Values is d8's
+    /// order (ascending id), which UnformedFieldRead's walk reads.</summary>
+    private readonly struct FormationCauseRows(Binding binding)
+    {
+        internal FamilyRows<TypeRoleCause> Values => new(binding, static (table, _) => table.Hir.Families.FormationCauses.Enumerate());
+
+        internal TypeRoleCause this[Koto use]
+        {
+            get => this.TryGetValue(use, out var causes) ? causes : throw new KeyNotFoundException($"`{use}` has no formation cause in this pass.");
+            set => HirTables.Of(use).Families.FormationCauses.Ref(use.SyntaxId) = value;
+        }
+
+        internal bool ContainsKey(Koto use) => this.TryGetValue(use, out _);
+
+        internal bool TryGetValue(Koto use, out TypeRoleCause causes)
+            => (causes = use.SyntaxOwner is { } table ? table.Hir.Families.FormationCauses.Get(use.SyntaxId) : TypeRoleCause.None) != TypeRoleCause.None;
+
+        // The Final check's step: the running pass's modules lose every row (a pass judges its own obligations only).
+        internal void Empty()
+        {
+            for (var i = 0; i < binding.pass.Count; i++)
+            {
+                binding.pass[i].Syntax.Hir.Families.FormationCauses.Empty();
+            }
+        }
     }
 }
