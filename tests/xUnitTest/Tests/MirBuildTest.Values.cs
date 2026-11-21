@@ -55,6 +55,31 @@ public sealed partial class MirBuildTest
         Assert.Equal(["missing", "let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
     }
 
+    // DECISIONS Z17: an Opaque site names only what it does not decide, and a part its consumer reads is read at its own node, as the dump
+    // prints them: a derived write's located right side its consumer acquires is read by a FakeRead of its Place (p.n, _1.1) and is no use,
+    // a failed call's kept part stays undecided at its Place, a failed jump's operand is located and read (x at each exit its defer body is
+    // built at), a constant operand gives no read and no use (N8), a part of no Type, a failed slot's, is undecided, and a right side that
+    // is a Temporary (the failed slot's name, an Error's derived value) is its built value, no use. Each site's uses, in order, then the
+    // reads.
+    [Theory]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing = p.n\n", " / FakeRead(_1.1)")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing(p.n)\n", "_1.1 / ")]
+    [InlineData("func f() -> i32\n    var x: i32\n    defer => return x\n    return 1\n", " |  / FakeRead(_1) FakeRead(_1)")]
+    [InlineData("func f()\n    defer => return 1\n", " / ")]
+    [InlineData("func f()\n    var q = missing2\n    missing = q\n", " | _2 |  |  / ")]
+    public void AnOpaqueSiteNamesOnlyWhatItDoesNotDecide(string source, string expected)
+    {
+        var program = Compile("struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n" +
+            "        self.n = n\n" + source).BuildMir();
+        Assert.Empty(program.Findings);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
+        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?:(.*)$").Select(static x => x.Groups[1].Value.Trim());
+        var reads = Regex.Matches(dump, @"FakeRead\([^)]*\)").Select(static x => x.Value);
+        Assert.Equal(expected, $"{string.Join(" | ", sites)} / {string.Join(" ", reads)}");
+    }
+
     // SPEC 23.1.2 (DECISIONS R4-M70): where Binding or control flow published that it formed no value, the MIR forms none from facts
     // that do not exist and records nothing, so each body validates: a Field Binding formed no stored Type for (one naming a missing Type,
     // or inferred from a call it rejected) has no Place, so a constructor places no initializer there, nor a base subobject whose base
@@ -620,7 +645,8 @@ public sealed partial class MirBuildTest
     // rejects after selection, here a static Place's Borrow (the located limit until P42, DECISIONS BU-25), is its consumer's derived
     // value, an Opaque of the Type the consumer takes, moved into it, with no Ref of a temp of the node's own Type; an update locates an
     // Error receiver once (the index call it keeps evaluated once), and its setter's reservation, made there (SPEC 13.7.2), and its getter
-    // each take their own derived value, whose site names the located root; the setter takes that reservation.
+    // each take their own derived value, whose site names no use: the located receiver holds the Error's derived value, a Temporary part
+    // (DECISIONS Z17; before Z17, the located root); the setter takes that reservation.
     [Fact]
     public void ARejectedInputIsItsConsumersDerivedValue()
     {
@@ -650,7 +676,7 @@ public sealed partial class MirBuildTest
         var opaques = Opaques(update);
         Assert.Equal(["Tally", "uniq/Tally", "ref/Tally"], opaques.Select(static x => x.Type));
         var located = opaques[0].Root;
-        Assert.All(opaques.Skip(1), x => Assert.Equal([located], x.Roots));
+        Assert.All(opaques.Skip(1), static x => Assert.Empty(x.Roots));
         Assert.DoesNotContain(update.Statements.ToArray(), x => x.Rvalue.Kind == MirRvalueKind.Ref && x.Rvalue.Place.Root == located);
         Assert.Single(update.Blocks.ToArray(), x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "item.Set" } &&
             update.Operands[x.Terminator.Start] == MirOperand.Move(new MirPlace(opaques[1].Root)));

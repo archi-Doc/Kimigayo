@@ -24,6 +24,10 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     private const string Registry = "group Registry\n    public let total: i32 = 5\n";
     private const string Branches = "func use(c: bool) -> i32 => if c => Registry.total else => Registry.total\n";
 
+    // A struct of a moved and a Copy Field (AnUndecidedUseThroughASharedLayerIsJudgedAtItsRoot).
+    private const string StructP = "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n" +
+        "        self.s = s@move\n        self.n = n\n";
+
     private static readonly SourceInfo At = default;
 
     // The source of what a rule's body changes.
@@ -2090,6 +2094,43 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.True(counter.Places > 0);
     }
 
+    // DECISIONS Z17 (B3): an Opaque site's undecided use at a projected Place through a shared layer (a failed call's kept part through a
+    // ref parameter's or a ref self's Deref, a Slice's Index or an rc payload) is judged at its root by every rule but A1's
+    // (MirDescriptors.Judged), so SharedPath reads no write through the layer: no finding and no InternalInvariant_Kd beside Binding's
+    // records, also beside a limit on a valid program (downgrade). A group let's static kept is undecided at its Place, and one located is
+    // read by a FakeRead after its ensure (rule (2)), no use.
+    [Theory]
+    [InlineData(StructP + "func g(n: i32, m: i32) -> i32 => n\nfunc f(p: ref/P) -> i32\n    return g(p.n, missing)\n", "UnresolvedBinding_Kd", true)]
+    [InlineData("func f(r: ref/i32)\n    missing(r@follow)\n", "UnresolvedBinding_Kd", true)]
+    [InlineData(
+        "func g(n: i32, m: i32) -> i32 => n\nstruct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+        "    public func m(self: ref/Self) -> i32 => g(self.n, missing)\n",
+        "UnresolvedBinding_Kd UnresolvedBinding_Kd",
+        true)]
+    [InlineData(
+        "struct Item\n    public var id: i32\n    public init(id: i32) => self.id = id\nstruct Holder\n    public var item: rc/Item\n" +
+        "    public init(item: rc/Item) => self.item = item@move\nfunc f(h: ref/Holder)\n    let w = Kimi.Intrinsics.downgrade(h.item)\n",
+        "Unsupported_Kd",
+        true)]
+    [InlineData("func f(s: Slice<i32>, i: isize)\n    missing(s[i])\n", "UnresolvedBinding_Kd", true)]
+    [InlineData(
+        "struct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc g(n: i32, m: i32) -> i32 => n\nfunc f(h: rc/Q) -> i32\n" +
+        "    return g(h.n, missing)\n",
+        "UnresolvedBinding_Kd",
+        true)]
+    [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing(G.s)\n", "UnresolvedBinding_Kd", false)]
+    [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing = G.s\n", "UnresolvedBinding_Kd", false)]
+    public void AnUndecidedUseThroughASharedLayerIsJudgedAtItsRoot(string source, string binding, bool projected)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Equal(binding, string.Join(" ", c.Binding.Issues.Select(static x => x.Code)));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == Kimi.DiagnosticCode.InternalInvariant_Kd);
+        var uses = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueUses.ToArray());
+        Assert.Equal(projected, uses.Any(static x => x.Projection != 0));
+    }
+
     // The Type tier's body: each form it checks in a valid use, or the named form broken at Broken.
     internal static MirBody Typed(string? broken)
     {
@@ -2235,7 +2276,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
-        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root)])));
+        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root), x]))); // Z17: an undecided use at a Place.
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
         Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));

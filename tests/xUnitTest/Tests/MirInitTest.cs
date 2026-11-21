@@ -20,6 +20,8 @@ public sealed class MirInitTest
 
     private const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
     private const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
+    private const string Parts = "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n" +
+        "        self.n = n\n"; // A struct of a moved and a Copy Field (AnOpaqueSitesPartIsCheckedAtItsPlace).
 
     // Receivers of each aggregate kind, nested ones included, and two returns of an incomplete Array, valid on the assumed path.
     private const string Components = "func fail() -> Never => $abort(\"no\")\nfunc takeA(a: Array<i32>) => ()\nfunc takeF(a: [2 of i32]) => ()\n" +
@@ -1565,6 +1567,36 @@ public sealed class MirInitTest
         "MovedPlace_Kd s 1")]
     public void ARejectedWriteKeepsItsWrite(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
+
+    // SPEC 15.1.3, 15.1.4, 23.1.2 (DECISIONS Z17; PLAN G105 (2), G1058's second form): an Opaque site's kept or located part is checked at
+    // its own Place, so a part of a partly moved root is no use of the moved part: a derived write's located right side (`missing = p.n`),
+    // a failed call's kept argument (`g(p.n, missing)`, also r2-oq's last form) and a failed call's only one (`missing(p.n)`) report
+    // nothing beside Binding's record (fail-before: MovedPlace_Kd at the site, the root read whole), while the moved part itself and an
+    // uninitialized local stay reported; a kept part through a runtime Index is checked at its selection, where the moved receiver is
+    // reported once (fail-before: also at the site), as its resolved twin's is (R4-M56). A part a rejected form reads (a derived write's
+    // right side, a rejected jump's operand) is read at its own node, so its record lies there, as its resolved twin's does: an element or
+    // a local uninitialized or moved, a field of a constructor's receiver before its initialization (fail-before: at the site), and a
+    // moved receiver through a runtime Index once, at the element (fail-before: also at the site).
+    [Theory]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    missing = p.n\n", "")]
+    [InlineData("func g(n: i32, m: i32) -> i32 => n\nfunc f() -> i32\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    return g(p.n, missing)\n", "")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    missing(p.n)\n", "")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    missing(p.s)\n", "MovedPlace_Kd missing(p.s) 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    missing(x)\n    return 1\n", "UninitializedPlace_Kd missing(x) 1")]
+    [InlineData("func f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    let t = a[0]@move\n    missing(a[i])\n", "MovedPlace_Kd a[i] 1")]
+    [InlineData("func inspect(v: ref/string) => ()\nfunc f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    let t = a[0]@move\n    inspect(a[i])\n", "MovedPlace_Kd a[i] 1")]
+    [InlineData("func f()\n    var a: [2 of i32]\n    missing = a[0]\n", "UninitializedPlace_Kd a[0] 1")]
+    [InlineData("func f()\n    var a: [2 of i32]\n    var m = 0\n    m = a[0]\n", "UninitializedPlace_Kd a[0] 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    defer => return x\n    return 1\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    return x\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func f()\n    var x = 1\n    let t = x@move\n    missing = x\n", "MovedPlace_Kd x 1")]
+    [InlineData("func f()\n    var x = 1\n    let t = x@move\n    let m = x\n", "MovedPlace_Kd x 1")]
+    [InlineData("func f(i: isize)\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    missing = a[i]\n", "MovedPlace_Kd a[i] 1")]
+    [InlineData("func f(i: isize)\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    let m = a[i]\n", "MovedPlace_Kd a[i] 1")]
+    [InlineData("struct S\n    var value: i32\n    public init(flag: bool)\n        missing = self.value\n        self.value = 1\n", "UninitializedPlace_Kd self.value 1")]
+    [InlineData("struct S\n    var value: i32\n    public init(flag: bool)\n        let m = self.value\n        self.value = 1\n", "UninitializedPlace_Kd self.value 1")]
+    public void AnOpaqueSitesPartIsCheckedAtItsPlace(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Parts + source));
 
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)

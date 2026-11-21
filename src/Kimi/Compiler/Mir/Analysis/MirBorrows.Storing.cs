@@ -165,7 +165,7 @@ internal sealed partial class MirBorrows
     {
         MirDataflow.Grow(ref this.redirected, this.body.Locals.Length);
         Array.Fill(this.redirected, int.MaxValue, 0, this.body.Locals.Length);
-        var all = !this.body.OpaqueUses.IsEmpty;
+        var all = this.body.HasOpaque; // An Opaque site rests on an error, whatever it names: a part it reads reaches its form (DECISIONS Z17).
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
             ref readonly var data = ref this.body.Blocks[block];

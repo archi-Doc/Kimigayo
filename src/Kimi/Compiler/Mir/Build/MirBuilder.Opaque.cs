@@ -105,11 +105,11 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2: an assignment or update whose target designates a Place Binding rejected (through its
     // groups, SPEC 3.4: Designated) is derived from that error, after its right side is evaluated, as Operand evaluates it (its value
-    // where its published Acquire is Temporary, else its Place located), so its own failures are checked; the site names the result as a
-    // part located already (SiteUses) and the target's roots. The write's own taking, securing the value at the destination Type (its
-    // acquisition and adaptation), rests on the failure (rule W) and is not built: the failed target gives no Type, and Binding decides no
-    // taking for a consumer with failure causes but a bare one (DECISIONS R4-M145 C2, BU-27), so a Closure's receiver counts none of a
-    // capture's.
+    // where its published Acquire is Temporary, else its Place located), so its own failures are checked; the site takes the result as a
+    // part located already (SiteUses: read at its own node where its Adjust acquires it, DECISIONS Z17) and names the target's roots. The
+    // write's own taking, securing the value at the destination Type (its acquisition and adaptation), rests on the failure (rule W) and
+    // is not built: the failed target gives no Type, and Binding decides no taking for a consumer with failure causes but a bare one
+    // (DECISIONS R4-M145 C2, BU-27), so a Closure's receiver counts none of a capture's.
     private void DerivedWrite(Koto node, MirPlace destination)
     {
         var mark = this.located.Count;

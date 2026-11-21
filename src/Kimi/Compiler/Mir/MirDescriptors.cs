@@ -370,6 +370,9 @@ internal static class MirUses
             case MirRvalueKind.Opaque:
                 Effect(row.Effects, rvalue.Arg, ref visitor);
                 var site = body.OpaqueSites[rvalue.Arg];
+                // Each use at its own Place, undecided (DECISIONS Z17); a projected Place's index locals are reported with the Index row's
+                // Reads, outside MirDescriptors.Judged, and a PairLayer step adds CaseDependent, so MirMoveData marks the body
+                // view-dependent, as for any Place.
                 foreach (var use in body.OpaqueUses.Slice(site.Start, site.Count))
                 {
                     Place(body, use, row.Access, default, ref visitor);
