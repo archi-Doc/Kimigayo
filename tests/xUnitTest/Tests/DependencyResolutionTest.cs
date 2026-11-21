@@ -223,6 +223,17 @@ public sealed class DependencyResolutionTest : IDisposable
         Assert.Equal("InvalidConfiguration", Failure(Resolve(root).Product).Code);
     }
 
+    // ProjectFile's removed settings (Tatara B6b5): a dependency's project file naming one fails its load, the note at its file.
+    [Fact]
+    public void ADependencysRemovedSettingFailsItsLoad()
+    {
+        var leaf = this.Write("Leaf", "leaf", settings: "LlvmBin=\"C:/llvm/bin\"");
+        var failure = Failure(Resolve(this.Write("Root", "root", Edge("Leaf", "Leaf", "leaf"))).Product);
+        Assert.Equal(
+            ("InvalidConfiguration", $"Invalid project configuration '{leaf}': LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting."),
+            (failure.Code, failure.Message));
+    }
+
     private static ResolutionFailure Failure(DependencyPartition partition)
         => Assert.Single(partition.Failures ?? []);
 
