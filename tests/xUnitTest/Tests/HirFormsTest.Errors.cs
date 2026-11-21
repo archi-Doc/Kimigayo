@@ -451,7 +451,9 @@ public sealed partial class HirFormsTest
     // missing)`, `E.A(x, missing)`, and the Z17c design review's cr-opt-excess rows `.Some(y@uniq, g(y))` and `Option.Some(y@uniq,
     // g(y))`, B6: the payload stores the exclusive borrow, a live Loan while `g(y)` reads `y`): the form is Aggregate by the Case Binding
     // selected at the callee, which a failed construction keeps (KindOp; its resolved twin AResolvedCaseConstructionIsAnAggregate;
-    // fail-before: each read as inputs), an aggregate's elements (c-tuple-later's `(y@uniq, g(y), missing)`: no reservation passes through aggregate storage), an operator's operands, a Subject, an
+    // fail-before: each read as inputs). A leading-dot application naming no Case (`.Nope(y@uniq, g(y))`, Z17c-M's P9; F's ruling) is
+    // no Case construction, since no member was found: it is G1178's unresolved application under the form Call, so its arguments are
+    // inputs (its conflict at `g(y)` rests on the member's failure either way); an aggregate's elements (c-tuple-later's `(y@uniq, g(y), missing)`: no reservation passes through aggregate storage), an operator's operands, a Subject, an
     // Iterable or a conversion's operand. Only a kept operand carries either fact. Each row lists the kept operands that carry one: the
     // take, then "input" or "-". Fail-before: no kept operand carried a take (D-986's rows) or was an input (the facts unpublished).
     [Theory]
@@ -469,6 +471,7 @@ public sealed partial class HirFormsTest
     [InlineData("enum E\n    A(i32, i32)\nfunc f() -> i32\n    var x: i32\n    let e = E.A(x, missing)\n    return 1\n", "E.A(x, missing)", "x Copy/None -; missing Temporary/None -")]
     [InlineData(OptionExcess + "    let e: Option<uniq/i32> = .Some(y@uniq, g(y))\n", ".Some(y@uniq, g(y))", "y@uniq Temporary/None -; g(y) Temporary/None -")]
     [InlineData(OptionExcess + "    let e: Option<uniq/i32> = Option.Some(y@uniq, g(y))\n", "Option.Some(y@uniq, g(y))", "y@uniq Temporary/None -; g(y) Temporary/None -")]
+    [InlineData(OptionExcess + "    let e: Option<uniq/i32> = .Nope(y@uniq, g(y))\n", ".Nope(y@uniq, g(y))", "y@uniq Temporary/None input; g(y) Temporary/None input")]
     [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing(p.a)\n", "p.missing(p.a)", "p.a Copy/None input")]
     [InlineData(WeakSiblingArgument, "g(u@move, n.x)", "u@move Temporary/None input; n.x Copy/None input")]
     [InlineData("func f()\n    var s = \"a\"\n    let o = s@rc/Missing\n", "s@rc/Missing", "s Move/None -")]
