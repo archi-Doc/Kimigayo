@@ -375,7 +375,8 @@ public class GenericFunctionReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        Assert.Equal([nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code).Distinct());
+        // R7-O1 H: the temporary's Loan conflict, which the failed node hid, beside the relation (a counted dependent, Q13).
+        Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code).Distinct());
     }
 
     // SPEC 10.6: the record's cause is its own; an independent error stays visible and a use of the annotated binding adds none.

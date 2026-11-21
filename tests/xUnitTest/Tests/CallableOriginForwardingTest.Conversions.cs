@@ -408,8 +408,9 @@ public partial class CallableOriginForwardingTest
     // (each record's text occurs once in its program, so it is the exact span); U-O3 (BU's R7-O3) moves the Language record to Binding at
     // the same site and re-points these rows back.
     [Theory]
-    [InlineData("rv1", ClosureR3 + "    return 0\n", "UnprovenOriginRelation_Kd let x: ref/i32 during r = q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
-    [InlineData("rv1_call", ClosureR3 + "    let o = c()\n    return 0\n", "UnprovenOriginRelation_Kd let x: ref/i32 during r = q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    // rv1's local annotation fit is at its initializer (H11b D5, R7-O1 H).
+    [InlineData("rv1", ClosureR3 + "    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("rv1_call", ClosureR3 + "    let o = c()\n    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("t1c", ChainHead + "i32\n    origin b outlives c\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "")]
     [InlineData("t1c_n", ChainHead + "i32\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("t1d", ChainHead + "i32\n    origin b outlives c\n    func use(g: " + ChainTarget + ") -> i32 => 0\n    return use(f@move)\n", "")]
@@ -1037,7 +1038,9 @@ public partial class CallableOriginForwardingTest
     [InlineData("c_closure", CaseE + NestedHost + "    let e = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5")]
     [InlineData("c_first", CaseE + NestedHost + "    let e = E.D(func [] (g) => 5, s)\n    return 0\n\n", "UnprovenConstraint_Kd E.D(func [] (g) => 5, s); UnprovenOriginContract_Kd func [] (g) => 5")]
     [InlineData("c_constraint2", CaseW + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let w = W.C(\"text\", t, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnsatisfiedConstraint_Kd W.C(\"text\", t, func [] (g) => 5)")]
-    [InlineData("r4", CaseE + CaseRHost + "    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd s")]
+    // R7-O1 H (Q13 rule 3, the Middle's (iii)): the closure's contract record (T's well-formedness, `r outlives static`), as c_closure has
+    // it, which the failed annotation fit's node hid.
+    [InlineData("r4", CaseE + CaseRHost + "    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd s")]
     [InlineData("r4v", CaseE + "func host(s: ref/i32, r: ref/i32, h: (() -> Option<T during r>) -> i32) -> i32\n    let e: E during r = E.C(s, h@move)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, h@move); UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd Option<T during r>; UnprovenOriginRelation_Kd s")]
     [InlineData("r4n", CaseE + CaseRHost + "    let e: E during r = E.N\n    return 0\n\n", "UnprovenConstraint_Kd E.N; UnprovenOriginRelation_Kd E during r")]
     [InlineData("r4b", CaseE + "func host(s: ref/i32, r: ref/i32 during static) -> i32\n    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginRelation_Kd s")]

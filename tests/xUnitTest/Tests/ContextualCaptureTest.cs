@@ -229,7 +229,7 @@ public class ContextualCaptureTest
     // flow, in a loop too) is one record, after the body is bound, at the value whose bound enters the helper borrow into the region graph
     // that reaches the var: an assignment, a meet, a call result, or another var's earlier initializer; the Closure stays a resolved value.
     [Theory]
-    [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = if self.count > 0 => w.buffer@ref else => self.buffer@ref\n        Audit.observe(v)\n", "if self.count > 0 => w.buffer@ref")]
+    [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = if self.count > 0 => w.buffer@ref else => self.buffer@ref\n        Audit.observe(v)\n", "w.buffer@ref else => self.buffer@ref")] // The join's source (R7-O1 H, D5 for a join).
     [InlineData("        let other = Connection.init()\n        var v = other@ref\n        let t = if self.count > 0 => v else => other@ref\n        let f = func [t] () => Audit.inspect(t)\n        f()\n        v = Audit.same(self)\n", "Audit.same(self)\n")]
     [InlineData("        let w = self@ref\n        var u = w.buffer@ref\n        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        v = u\n        Audit.observe(v)\n", "w.buffer@ref\n        var v")]
     [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        var u = self@ref\n        v = u.buffer@ref\n", "self@ref\n        v = u")]

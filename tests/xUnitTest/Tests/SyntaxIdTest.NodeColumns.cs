@@ -189,14 +189,16 @@ public partial class SyntaxIdTest
     // implicit adaptations; VirtualOverrides: that program's override; AliasTargets and ImportedContainers: an unnamed alias of a
     // generic container's group whose struct a parameter names; QualificationFailures: a member read without its `self.`, a failure
     // family's program, which reports its failure at each Bind; R7-N5's: PerCallOrigins, a call only an argument's own per-call Origin
-    // would satisfy; OriginTwins, a body-local borrow's failed local clause, A5's twin; PairFollows, a `@follow` of a pair layer;
+    // would satisfy; PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
     // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; CallablePremiseFailures, an implementation's Callable
     // bound its requirement lacks; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
     // under a holed annotation; CallInferenceFailures, ConstructorInferenceDiagnosticTest's changed constructor selection;
     // CallableSelectionFailures, a Callable value call no bound applies to; BaseCallFailures, a `base` reference that calls nothing;
     // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
-    // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result).
+    // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B6b's query memos written in a
+    // Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s result; the guess rule's is
+    // written only after a Bind, by the lint report and MIR: CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -216,7 +218,6 @@ public partial class SyntaxIdTest
     [InlineData("ImportedContainers", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
     [InlineData("QualificationFailures", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
     [InlineData("PerCallOrigins", "func pick(n: ref/i32) -> ref/i32 => n\nfunc make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(pick)\n", DiagnosticCode.MissingOriginBinding_Kd)]
-    [InlineData("OriginTwins", "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n", DiagnosticCode.UnsatisfiedOriginRelation_Kd)]
     [InlineData("PairFollows", "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc view<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is value or valueborrow\n    return box.item@follow@ref\n")]
     [InlineData("ImplicitPairFollows", "milestone:Milestone28")]
     [InlineData("PhantomRawOrigins", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\n    let p: raw/i32 during a\n", DiagnosticCode.InvalidOriginBinding_Kd)]
@@ -231,6 +232,9 @@ public partial class SyntaxIdTest
     [InlineData("BaseCallFailures", "open struct Base\n    public let value: i32 = 7\n    public func read(self: ref/Self) -> i32 => 1\nstruct Derived : Base\n    func f(self: ref/Self) -> i32 => base()\n()", DiagnosticCode.InvalidBaseCall_Kd)]
     [InlineData("ObjectErasureFailures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return other.ordinary()\n()", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
+    [InlineData("ResultCompletions", "func f(n: i32) -> i32\n    var s = 0\n    while s < n => s = s + 1\n    return s\n")]
+    [InlineData("PublishedCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
+    [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

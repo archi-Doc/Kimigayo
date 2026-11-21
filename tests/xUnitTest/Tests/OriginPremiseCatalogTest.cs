@@ -227,10 +227,11 @@ public partial class OriginPremiseCatalogTest
     // binder admitting no borrow stores no `o`. A Field below a borrow proves the relation as its concrete twin does.
     [Theory]
     [InlineData(PairHolder + "    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n", null)]
-    [InlineData(PairHolder + "    public func get(self: ref/Self, q: ref/i32) -> ref/T during q\n        return self.value@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    // R7-O1 H: two A5 records at the value, as the two published before (Binding's issue list held the first only).
+    [InlineData(PairHolder + "    public func get(self: ref/Self, q: ref/i32) -> ref/T during q\n        return self.value@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "UnprovenOriginRelation_Kd self.value@follow@ref | UnprovenOriginRelation_Kd self.value@follow@ref")]
     [InlineData("struct Holder<s/T>\n    s is ref\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n", null)]
     [InlineData(Box + Peek, null)]
-    [InlineData(Box + "func peek<s/T>(b: ref/Box<s/T>, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return b.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Box + "func peek<s/T>(b: ref/Box<s/T>, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return b.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "UnprovenOriginRelation_Kd b.item@follow@ref | UnprovenOriginRelation_Kd b.item@follow@ref")]
     [InlineData("func peek<s/T>(b: ref/(s/T, i32)) -> ref/T\n    s is ref or uniq\n    return b.0@follow@ref\n", null)]
     [InlineData("func g<s/T>(x: s/T, q: ref/i32) -> ref/T during q\n    s is ref\n    return x@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData("func g<s/T>(x: s/T, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return x@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
@@ -239,10 +240,11 @@ public partial class OriginPremiseCatalogTest
     [InlineData(Box + Pick, null)]
     // Since H5 the Problems that Check reads also hold A5's records (`analysis`, each code and subject, exactly). Here, since PLAN G1115,
     // y's layer's premise over the pair's solution (its Origin the meet of m@ref's and `s`) bounds the call's `c` (SPEC 15.6.4 step 3,
-    // 15.3.6), so the call's result carries m@ref's borrow to the result `during t`: Binding's record at the call and A5's twin at the
-    // return, the Refuted relation at the returned value (SPEC 15.6.5; CallOriginRelationTest's `twin`). It was the premise's failure at
-    // `q` with A5's ComparisonLoanConflict_Kd at `m`, derived under rule W, which no longer forms (a dependent record, DECISIONS Q13).
-    [InlineData(Box + Pick + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return f(m@ref, q)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "UnsatisfiedOriginRelation_Kd return f(m@ref, q)")]
+    // 15.3.6), so the call's result carries m@ref's borrow to the result `during t`: A5's record of the Refuted relation at the returned
+    // value (SPEC 15.6.5; R7-O1 H: Binding's twin at the `return` is gone), and the storage end's ComparisonLoanConflict_Kd at `m`
+    // derived from it under rule W (F-H-9's class: listed, not published as an Error). It was the premise's failure at `q` with the
+    // conflict derived from that one (a dependent record, DECISIONS Q13).
+    [InlineData(Box + Pick + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return f(m@ref, q)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "UnsatisfiedOriginRelation_Kd f(m@ref, q) | ComparisonLoanConflict_Kd let m: i32 = 5")]
     [InlineData(Box + Leak, null)]
     [InlineData(Box + Leak + "func g(q: ref/i32) -> i32\n    let m: i32 = 5\n    let pair = leak(q, m@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
     [InlineData(Box + "struct View<s/T> {a}\n    s is owner\n    public let b: ref/Box<s/T> during a\n", null)]
@@ -259,7 +261,9 @@ public partial class OriginPremiseCatalogTest
         }
         else
         {
-            Assert.Equal([code!, analysis[..analysis.IndexOf(' ', StringComparison.Ordinal)]], codes);
+            // R7-O1 H: Binding judges no body relation, so every record of these programs is A5's: the codes are the analysis's.
+            Assert.Equal(code, codes[0]);
+            Assert.Equal(analysis.Split(" | ").Select(static x => x.Split(' ')[0]), codes);
             Assert.Equal(analysis, MinimalEmissionTest.Problems(MinimalEmissionTest.Analyze(source)));
         }
     }

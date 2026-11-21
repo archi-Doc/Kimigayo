@@ -223,8 +223,8 @@ public sealed partial class Binding
 
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
     // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
-    // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is first the
-    // allowlist's Origin relation failure (HolderPlaceFailure; SPEC 5.7, DECISIONS R4-M110), its fit then judged no further.
+    // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
+    // Origin relation problem (HolderPlaceFailure; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];

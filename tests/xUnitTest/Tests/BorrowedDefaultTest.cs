@@ -39,14 +39,16 @@ public class BorrowedDefaultTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
-    // Binding's record and A5's twin at the same span: A5's records at Binding's twin rows stay until R7 (R6-check H0b §5.4,
-    // DECISIONS R4-M108; H3b T50, class 4).
+    // SPEC 7.2.3, 23.1.2: two failed requirements at `x@ref`: the result keeps a new Borrow of a preceding parameter (the prepared Loan,
+    // as NewPreparedLoansAreRejectedAtTheirDeclaration's) and the fit `ref/i32 during a` (the Borrow outlives a: Refuted). R7-O1 H: the
+    // fit is A5's one record (Binding's twin went, R4-M108's until R7); A5's DefaultArgumentBorrow_Kd, which the failed default's Opaque
+    // node hid, is shown (Q13 rule 3, the Middle's (iii)).
     [Fact]
     public void APreparedSlotsBorrowCannotFitAnExternalOrigin()
     {
         const string Source = "func f(x: i32, y: ref/i32 during a = x@ref) => ()\npublic func main() => ()";
         Assert.Equal(
-            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref")],
+            [(nameof(DiagnosticCode.DefaultArgumentBorrow_Kd), "x@ref"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref")],
             DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 

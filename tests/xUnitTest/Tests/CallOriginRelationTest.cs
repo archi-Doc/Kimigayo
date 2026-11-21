@@ -233,10 +233,12 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(OneOf + "uniq/T during w\n    T is uniq/Meter during a\n    return iu(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
     // R7-C3 (F's C2 ruling 307 (2); SPEC 8.2.3, 15.6.1): Type identity decides the structure, the Origin relation the Origins. Under the
     // identity premise the result's Type is T's, so an Origin difference stays the relation's record (`during a`: `(one and a)` needs
-    // `one outlives a`), it holds under `origin a outlives one`, and only a structure that differs is a Type mismatch.
+    // `one outlives a`), it holds under `origin a outlives one`, and only a structure that differs is a Type mismatch. R7-O1 H: the
+    // mismatch's outer layer is a position of its own, `(one and a)` into `one`, which A5 judges at the value (SPEC 23.1.2: its own
+    // failure; a record added on a rejected program, DECISIONS Q13).
     [InlineData(OneOf + "ref/T during a\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(OneOf + "ref/T during one\n    T is uniq/Meter during a\n    origin a outlives one\n    return ir(one, 0)\n", "clean")]
-    [InlineData(OneOf + "ref/i32 during one\n    T is uniq/Meter during a\n    let r = ir(one, 0)\n    return r\n", "1*TypeMismatch_Kd")]
+    [InlineData(OneOf + "ref/i32 during one\n    T is uniq/Meter during a\n    let r = ir(one, 0)\n    return r\n", "1*TypeMismatch_Kd 1*UnprovenOriginRelation_Kd")]
     // R7-C3 (F's C2 ruling 315; SPEC 8.2.3, 15.6.1): the walk's root pair is formed once, at its intake, and published with its parts,
     // so CheckTypeUse's decomposition reads the pair the walk walked: a Closure's input under the identity premise fits the argument's
     // structure and keeps only the Origin relation's record (fail-before: CheckFaulted_Kd; dev a585b50a5 adds NoApplicableOverload_Kd at
@@ -251,8 +253,8 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // SPEC 15.6.1: a contextual payload that fits its expected payload Type only structurally is an Origin relation at the payload,
-    // whether the expected enum comes from a selected parameter or an annotation, never a Type mismatch. Beside Binding's record at the
-    // borrowed payload, A5 publishes its twin at the same span until R7 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // whether the expected enum comes from a selected parameter or an annotation, never a Type mismatch: A5's one record at the borrowed
+    // payload (R7-O1 H; its twin at the same span, R6-check H5, R4-M108, H3b T50, went with Binding's record).
     [Theory]
     [InlineData("func needs(o: Option<ref/i32 during static>) -> i32 => 1\nfunc caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    return needs(.Some(local@ref)) + needs(.Some(p))\n")]
     [InlineData("func caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    let o: Option<ref/i32 during static> = .Some(local@ref)\n    let q: Option<ref/i32 during static> = .Some(p)\n    return 1\n")]
@@ -262,7 +264,7 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         var borrow = (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives static, which is false");
         Assert.Equal(
-            [borrow, borrow, (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven")],
+            [borrow, (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven")],
             errors.Select(x => (x.Code, Text(source, x.Span), x.Label)));
         Assert.All(errors, static x => Assert.Equal(("fit", "ref/i32 during static"), (x.Reason![3].Value, x.Reason[4].Value)));
     }
@@ -435,40 +437,39 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // SPEC 10.3, 15.6.1: an expected result never filters by Origins; the result's relation is one record at its destination, and a
     // meet at its longer end names the failing operand (SPEC 15.3.6). A constructor call whose local's clause fixes its slot is that
     // record at the call (it was NoApplicableOverload_Kd at the call, and a fact-less UnprovenConstraint_Kd before local slots were
-    // judged by variance). Since H5 the MIR judges a local annotation's fit at its declaration (H3b T45), and beside Binding's record at
-    // a returned call A5's twin at the return statement precedes it until R7 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // judged by variance). A local annotation's fit is A5's at its initializer (H11b D5, R7-O1 H), and a returned call's record is A5's
+    // one at the call (its twin at the return statement, H0b §5.4, R4-M108, H3b T50, went with Binding's record there).
     [Theory]
-    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\nfunc f(a: ref/i32, b: ref/i32) -> i32\n    let h: H{x} = H.init(a)\n        origin x.s == b\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let h: H{x} = H.init(a)", "requires a outlives b, which is not proven", null)]
-    [InlineData("func take(x: ref/i32) -> ref/i32 during x => x\nfunc f(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 5\n    return take(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "take(local)", "requires the borrow local outlives x, which is false", "local", "return take(local)")]
+    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\nfunc f(a: ref/i32, b: ref/i32) -> i32\n    let h: H{x} = H.init(a)\n        origin x.s == b\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "H.init(a)", "requires a outlives b, which is not proven", null)]
+    [InlineData("func take(x: ref/i32) -> ref/i32 during x => x\nfunc f(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 5\n    return take(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "take(local)", "requires the borrow local outlives x, which is false", "local")]
     [InlineData("func two(a: ref/i32, b: ref/i32) -> ref/i32 during b\n    origin a outlives b\n    return a\nfunc caller(p: ref/i32, q: ref/i32) -> ref/i32 during q => two(p, q)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "two(p, q)", "requires p outlives q, which is not proven", null)]
     [InlineData("func first<T>(a: T, b: T) -> T => a@move\nfunc caller(p: ref/i32, q: ref/i32) -> ref/i32 during p => first(p, q)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "first(p, q)", "requires q outlives p, which is not proven", null)]
-    [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc caller(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let r: ref/i32 during p = id(q)\n    return r\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let r: ref/i32 during p = id(q)", "requires q outlives p, which is not proven", null)]
-    [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc caller(p: ref/i32, q: ref/i32, c: bool) -> ref/i32 during p\n    return if c => p else => id(q)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "if c => p else => id(q)", "requires q outlives p, which is not proven", null)]
+    [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc caller(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let r: ref/i32 during p = id(q)\n    return r\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "id(q)", "requires q outlives p, which is not proven", null)]
+    // A join's fit is recorded at the source that supplies its longer end (R7-O1 H, D5's Site for a join).
+    [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc caller(p: ref/i32, q: ref/i32, c: bool) -> ref/i32 during p\n    return if c => p else => id(q)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "id(q)", "requires q outlives p, which is not proven", null)]
     [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc keep(x: ref/i32 during static) -> i32 => 1\nfunc caller(q: ref/i32) -> i32 => keep(id(q))\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "id(q)", "requires q outlives static, which is not proven", null)]
-    [InlineData("func pick2(a: ref/i32, b: ref/i32) -> ref/i32 during b => b\nfunc f(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return pick2($abort(\"x\"), short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "pick2($abort(\"x\"), short@ref)", "requires the borrow short@ref outlives p, which is false", "short@ref", "return pick2($abort(\"x\"), short@ref)")]
-    [InlineData(OwnBodyCall + "    let p: (i32, ref/i32 during k) = f<i32>(1, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (i32, ref/i32 during k) = f<i32>(1, z, z)", "requires j outlives k, which is not proven", null)]
-    [InlineData(OwnBodyValue + "    let g = h\n    let p: ref/i32 during k = g(z, z)\n    return y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: ref/i32 during k = g(z, z)", "requires j outlives k, which is not proven", null)]
+    [InlineData("func pick2(a: ref/i32, b: ref/i32) -> ref/i32 during b => b\nfunc f(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return pick2($abort(\"x\"), short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "pick2($abort(\"x\"), short@ref)", "requires the borrow short@ref outlives p, which is false", "short@ref")]
+    [InlineData(OwnBodyCall + "    let p: (i32, ref/i32 during k) = f<i32>(1, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "f<i32>(1, z, z)", "requires j outlives k, which is not proven", null)]
+    [InlineData(OwnBodyValue + "    let g = h\n    let p: ref/i32 during k = g(z, z)\n    return y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "g(z, z)", "requires j outlives k, which is not proven", null)]
     [InlineData(OwnBodyValue + "    let e: (ref/i32 during j, ref/i32 during j) -> ref/i32 during k = h\n    return y\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "h", "the result requires j outlives k, which is not proven", null)]
     [InlineData(OwnBodyCall + "    let e: (i32, ref/i32 during j, ref/i32 during j) -> (i32, ref/i32 during k) = f<i32>\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "f<i32>", "the result requires j outlives k, which is not proven", null)]
-    [InlineData(OwnBodyGetter + "            let v: ref/i32 during static = self.view\n            return self.n@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let v: ref/i32 during static = self.view", "requires self outlives static, which is not proven", null)]
+    [InlineData(OwnBodyGetter + "            let v: ref/i32 during static = self.view\n            return self.n@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "self.view", "requires self outlives static, which is not proven", null)]
     [InlineData("enum Holder {at}\n    Some(ref/i32 during at)\n    Empty\n    public func remake(self: ref/Self, v: ref/i32) -> Holder during at => .Some(v)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "v", "requires v outlives self.at, which is not proven", null)]
-    [InlineData(OwnBodyCall + "    let p: (ref/i32 during j, ref/i32 during j) = f<ref/i32 during k>(y, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = f<ref/i32 during k>(y, z, z)", "requires k outlives j, which is not proven", null)]
-    [InlineData(OwnBodyConstructor + "        let b: Box<ref/i32 during j> = Box<ref/i32 during k>.init(y, z, z)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let b: Box<ref/i32 during j> = Box<ref/i32 during k>.init(y, z, z)", "requires k outlives j, which is not proven", null)]
-    [InlineData(OwnBodyCall + "    let p: (ref/i32 during j, ref/i32 during j) = f(y, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = f(y, z, z)", "requires k outlives j, which is not proven", null)]
-    [InlineData(OwnBodyMethod + "        let p: (ref/i32 during j, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)\n        return (u@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)", "requires k outlives j, which is not proven", null)]
-    [InlineData(OwnBodyInput + "    let p: (ref/i32 during j, ref/i32 during j) = h<ref/i32 during y>(y, z, z)\n    return (t@move, z)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = h<ref/i32 during y>(y, z, z)", "requires y outlives j, which is not proven", null)]
-    public void TheResultRelationIsJudgedAtItsDestination(string body, string code, string text, string label, string? origin, string? twin = null)
+    [InlineData(OwnBodyCall + "    let p: (ref/i32 during j, ref/i32 during j) = f<ref/i32 during k>(y, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "f<ref/i32 during k>(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyConstructor + "        let b: Box<ref/i32 during j> = Box<ref/i32 during k>.init(y, z, z)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Box<ref/i32 during k>.init(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyCall + "    let p: (ref/i32 during j, ref/i32 during j) = f(y, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "f(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyMethod + "        let p: (ref/i32 during j, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)\n        return (u@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "self.m<ref/i32 during k>(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyInput + "    let p: (ref/i32 during j, ref/i32 during j) = h<ref/i32 during y>(y, z, z)\n    return (t@move, z)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h<ref/i32 during y>(y, z, z)", "requires y outlives j, which is not proven", null)]
+    public void TheResultRelationIsJudgedAtItsDestination(string body, string code, string text, string label, string? origin)
     {
         var source = body + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        (string, string, string?)[] expected = twin is null ? [(code, text, label)] : [(code, twin, label), (code, text, label)];
-        Assert.Equal(expected, errors.Select(x => (x.Code, Text(source, x.Span), x.Label)));
+        Assert.Equal([(code, text, label)], errors.Select(x => (x.Code, Text(source, x.Span), x.Label)));
         if (origin is not null)
         {
-            // One origin each; a record whose Borrow is the operand of the node Binding failed relates that borrow too (DECISIONS Z16, G147
-            // ruling 5), at the origin's text.
-            Assert.All(errors, x => Assert.Equal(origin, Text(source, Assert.Single(x.Related!, static r => r.Role == "origin").Span)));
-            Assert.All(errors, x => Assert.All(x.Related!, r => Assert.Equal(origin, Text(source, r.Span))));
+            // A5's record relates the borrow that created the Loan, where it finds one, beside the origin (DIAGNOSTICS; R7-O1 H).
+            (string, string)[] related = code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? [("borrow", origin), ("origin", origin)] : [("origin", origin)];
+            Assert.All(errors, x => Assert.Equal(related, x.Related!.Select(y => (y.Role, Text(source, y.Span)))));
         }
     }
 
@@ -592,8 +593,8 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     }
 
     // SPEC 15.6.4 step 3: an Origin shared with an input's inner position bounds the call's solution, so the result over it is shortened
-    // to the borrow and fails at its destination (PLAN G85: these programs read a dead local before). Beside Binding's record at the call,
-    // A5's twin at the return statement precedes it until R7 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // to the borrow and fails at its destination (PLAN G85: these programs read a dead local before): A5's one record at the call (R7-O1
+    // H; its twin at the return statement, R6-check H5, R4-M108, H3b T50, went with Binding's record there).
     [Theory]
     [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "", "f(m@ref, q)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "    let h = f\n", "h(m@ref, q)")]
@@ -604,7 +605,7 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         const string Label = "requires the borrow m@ref outlives t, which is false";
         Assert.Equal(
-            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "return " + call, Label), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), call, Label)],
+            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), call, Label)],
             errors.Select(x => (x.Code, Text(source, x.Span), x.Label)));
         Assert.All(errors, static x => Assert.Equal("fit", x.Reason![3].Value));
     }
@@ -640,24 +641,23 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // fixed ends Unproven, a result the premise shortens fails its own fit at its destination, and local ends are a Loan conflict where
     // the borrowed local is destroyed. Each was accepted before (PLAN G277 (1)). z2's `a`, which only the default and the result name,
     // is solved by the default's premise (DECISIONS BU-99, superseding BU-51's region for it), so its record is the result's fit, as
-    // z5's, and the return statement re-records it (a dependent record, PLAN G430).
+    // z5's, A5's one record at the call (R7-O1 H; the return statement's re-record, a dependent twin, PLAN G430, R4-M108, went with
+    // Binding's record).
     [Theory]
     [InlineData(Put2 + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    let sr = short@ref\n    put2(p, sr)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "put2(p, sr)", "wellFormed")]
     [InlineData(Put2 + "func bad(p: uniq/(ref/i32 during q), sr: ref/i32 during r) -> i32\n    put2(p, sr)\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "put2(p, sr)", "wellFormed")]
     [InlineData(GenericPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    g(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "g(p, short@ref)", "wellFormed")]
     [InlineData(MethodPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let s = S.init()\n    let short = 2\n    s.put(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "s.put(p, short@ref)", "wellFormed")]
     [InlineData(ConstructorPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    let h = H.init(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "H.init(p, short@ref)", "wellFormed")]
-    [InlineData(ResultOnly + "func bad(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return z2(short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z2(short@ref)", "fit", "return z2(short@ref)")]
-    [InlineData(SharedInput + "func bad(p: ref/i32 during q) -> ref/i32 during q\n    let short = 2\n    return z5(p, short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z5(p, short@ref)", "fit", "return z5(p, short@ref)")]
+    [InlineData(ResultOnly + "func bad(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return z2(short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z2(short@ref)", "fit")]
+    [InlineData(SharedInput + "func bad(p: ref/i32 during q) -> ref/i32 during q\n    let short = 2\n    return z5(p, short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z5(p, short@ref)", "fit")]
     [InlineData(Put2 + "func outer() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        put2(keep@uniq, short@ref)\n    return keep@follow\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let short = 2", null)]
-    public void ADefaultedInputsWellFormednessIsJudgedAtTheCall(string body, string code, string text, string? source, string? twin = null)
+    public void ADefaultedInputsWellFormednessIsJudgedAtTheCall(string body, string code, string text, string? source)
     {
-        // Since H5 A5 records the Loan conflict at the destroyed local's declaration (H3b T44), and beside Binding's record at a returned
-        // call its twin at the return statement precedes it until R7 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
+        // Since H5 A5 records the Loan conflict at the destroyed local's declaration (H3b T44).
         var program = body + Main;
         var errors = DiagnosticCorpus.Check(program).Diagnostics;
-        (string, string)[] expected = twin is null ? [(code, text)] : [(code, twin), (code, text)];
-        Assert.Equal(expected, errors.Select(x => (x.Code, Text(program, x.Span))));
+        Assert.Equal([(code, text)], errors.Select(x => (x.Code, Text(program, x.Span))));
         if (source is not null)
         {
             Assert.All(errors, x => Assert.Equal(source, x.Reason![3].Value));
@@ -790,7 +790,7 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
                 "deep" => (string.Empty, "    return x\n", "x"),
                 "call" => ($"func first(x: {c}, y: {d}) -> {c}\n    return x\n", "    return first(x, y)\n", "first(x, y)"),
                 "id" => ("func id<T>(v: T) -> T\n    return v@move\n", "    return id(x)\n", "id(x)"),
-                _ => (string.Empty, $"    let v: {result} = x\n    return v\n", $"let v: {result} = x"),
+                _ => (string.Empty, $"    let v: {result} = x\n    return v\n", "x"), // At the initializer (H11b D5, R7-O1 H).
             };
             var source = declarations + $"func f(x: {c}, y: {d}) -> {result}\n" + body + Main;
             var records = DiagnosticCorpus.Check(source).Diagnostics;
