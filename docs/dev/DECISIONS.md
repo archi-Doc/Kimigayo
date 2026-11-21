@@ -7529,9 +7529,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     were this cause (the old value's erased destruction through a writeback reservation, `value += value` on an abstract T; through
     `indexUniq`'s reference, `owned[key] = value@move`) and run again (fixture UserArithmeticUpdateGeneric; the allocation audit
     DictionaryIndexGeneric); G416's other members stay.
-  - **Not covered.** `replace(r@follow@uniq, ...)`, whose record is Binding's `replace` row (PLAN G1147, D-933), and two exclusive
-    Derefs (`rr@follow@follow = v` and its call `rr@follow.flush()`: Retained's chain re-adds the input's own Loans from the
-    intermediate reference's holder, shared by calls and drops; PLAN G1151, D-935).
+  - **Not covered.** `replace(r@follow@uniq, ...)`, whose record is Binding's `replace` row (PLAN G1147, D-933). Two exclusive Derefs
+    (`rr@follow@follow = v` and its call `rr@follow.flush()`): superseded by R4-M229 (D-935).
   - **Rejected.** Excluding the reference's Loans from `Chain` in `Calls.Retained` (a second copy of rule A for one caller); forming an
     address of the destroyed Place past a Deref (a non-direct entry names no holder, so it reads nothing and only adds an entry).
   - **Cost.** One step walk per Drop past a Deref per pass; no allocation (`Issued` uses the walk buffer and the set pool).
@@ -7587,6 +7586,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Rejected:** a `Step()` after a nested read (a repair after the fact that re-reads the walk's earlier parts); computing the covered
     storage before the walk (the holders are found only by the walk); W's `Read` in `nodeParts` with reserved keys (a hash lookup on W's
     hottest step); an `int` counter for an ordered level (it wraps).
+- **R4-M229 A retention kind without Value keeps none of the input's own value that only the borrow's route gives back (D-935, Q-597;
+  D-918's review C2; stream Z's F8, G396 (1); PLAN G1151; follows R4-M226 and replaces its "Not covered" two-Deref clause by a pointer
+  here)** (2026-11-21; Middle, A5; Major, design `middle\notes\d935-design.md` Revision 1 after its review's REJECT and the Middle's
+  rulings, the re-check ACCEPT WITH CONDITIONS, C1-C3 taken) SPEC 15.6.4 (the per-argument read; rule A's, the own-value sentence's and
+  the transfer rule's exclusion of the own value), 15.6.3 (parent Loans; `takeFirst`), 15.6 (Holders, reach).
+  `MirBorrows.Calls.Retained`, for a kind without Value, keeps what the kind's reads carry less the input's own Loans and addresses
+  that the read at the borrow's last Deref does not carry. That read is the **referent** of a borrow input,
+  `MirBorrows.Values.Referent`: the value its last borrow or raw Deref goes through (`PointerOf` over the one step walk), by a Place
+  operand's own steps (a Drop's destroyed Place) or by the Places the Loans of its local's referring stores lend (`Referring`,
+  `loanAt`, the Loans' steps); none where the input passes no Deref or a store into it is no borrow, and then nothing is removed. Calls
+  keeps it per position beside `argValues` (`argReferents`, formed at a Call's or Drop's first Value-less read). The last borrow or raw
+  Deref of a walk is one predicate, `MirBorrows.LastDeref` (Places), which `Through`, `Address`, `Formation` and `WriteTargets`
+  (Store's and the pun rule's, D-914-1) also read. Past one Deref the value's parent naming the intermediate reference's holder read
+  that holder's state, its own parents again (L_x through r): those go; what the referent's read carries stays, a dependency 15.6
+  Holders also makes a parent included (`h = (c@uniq, v)` with `c.v = v`: g keeps v's Loan). Calls, drops (over D-918's receiver, so a
+  drop equals its call at every depth) and destroying calls share it. Records: rejected -> accepted `rr@follow.flush()`,
+  `rr@follow@follow = v`, three Derefs, a Field between, a raw pointer over the reference, a stored Reborrow `c@follow.flush()`, a
+  Content result `rr@follow.get()`, `swap(x@uniq, rr@follow@follow@uniq)`; the invalid twins keep their Language records; the overlap
+  pins (adGm, adXm, adX2m, adG2m, adX2v) and the replaced-route pins (stXm, stGm, mvXm) keep theirs. **Not covered (open issue, PLAN
+  G1179):** a Reborrow formed through the route and stored, then used through one more Deref (`let c = rr@follow.0@follow@uniq` then
+  `c@follow.flush()` or `flushWith(c, 0)`): c's value is the referent and carries the route's parents, so x's storage end keeps a
+  record of no failure; a later cover must not read c's stored route on the call's state (stXm, stGm are the pins). Rejected:
+  subtracting the whole own value (Revision 0: unsound where an intermediate holder holds what the referent's read carries, adGm, adXm,
+  adX2m); the referents of every Loan in the value (a stored Reborrow's earlier child names the intermediate holder, rrcm; a Drop's
+  receiver has no Loan); a per-Loan referent table formed at the Loan's issue (a side table read across the fixed point); a second
+  reach walk inside Content or Chain; subtracting markers; a Binding change. Cost: one step walk per borrow input at its first
+  Value-less read, two memoized `Remove`s and a memoized `Range` per retention; warm 0 B. No vocabulary entry.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
