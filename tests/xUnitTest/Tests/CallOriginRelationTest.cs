@@ -120,6 +120,18 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     private const string AppV = "func app<T>(g: (T) -> i32, v: T) -> T => $abort(\"no\")\nfunc app2v<T>(v: T, g: (T) -> i32) -> T => $abort(\"no\")\n" +
         "func u(w: ref/i32 during a, g: (ref/i32 during a) -> i32, v: ref/i32 during b) -> ";
 
+    // G1128's review twins: `T` covariant through two Function layers (appf's gg) beside a contravariant binding (h), and a slot bound
+    // to a Function Type at two arguments (pickv).
+    private const string AppF = "func appf<T>(g: ((T) -> i32) -> i32, h: (T) -> i32) -> T => $abort(\"no\")\n" +
+        "func u(w: ref/i32 during a, x: ref/i32 during b, gg: ((ref/i32 during a) -> i32) -> i32, h: (ref/i32 during b) -> i32) -> ref/i32 during a\n";
+
+    private const string PickF = "func pickv<T>(x: T, y: T) -> T => $abort(\"no\")\n" +
+        "func u(w: ref/i32 during a, w2: ref/i32 during b, g: (ref/i32 during a) -> i32, h: (ref/i32 during b) -> i32) -> ";
+
+    // A slot `T` bound invariantly by `a` and `b` (partners x and y) and covariantly by `r`, whose pattern also bounds it by `o`.
+    private const string SlotPko = "func pko<T>(a: uniq/T, b: uniq/T, r: ref/T during o) -> () => ()\n" +
+        "func caller(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), r: ref/(ref/i32 during x) during w) -> ()\n";
+
     // A construction: the enum's `a` is invariant at both payloads, beside its clause `k outlives a`.
     private const string EnumTwo = "enum E {a, u, k}\n    origin k outlives a\n    origin a outlives u\n    Two(uniq/(ref/i32 during a) during u, uniq/(ref/i32 during a) during u, ref/i32 during k)\n\n" +
         "func caller(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y)) -> i32\n    origin w outlives y\n";
@@ -357,10 +369,54 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     public void ASlotsOriginsAreVariablesOfTheCallsSolve(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
+    // SPEC 10.8 (as revised), 15.3.5, 15.3.6 (G1128's review twins and guards, labelled before any run): a slot bound covariantly
+    // through two Function layers beside a contravariant binding is invariant with the covariant candidate `a` (r-f2b), two
+    // contravariant payloads of a construction take the lower bound that outlives the other (r-con2), and a slot bound to a Function
+    // Type is solved whatever the argument order (r-fs-sw); their invalid twins report the one relation their labels name, never a meet.
+    // The guards keep dev's acceptance: a written Origin (c1k-ret-a), a contravariant and a covariant binding returned at the lower
+    // one (e9-ret-a), one contravariant binding (p1-one) and an Origin-free slot (p4-int).
+    [Theory]
+    [InlineData(AppF + "    origin a outlives b\n    return appf(gg@move, h@move)\n", null)]
+    [InlineData(AppF + "    origin b outlives a\n    return appf(gg@move, h@move)\n", "requires a outlives b")]
+    [InlineData(
+        "enum Sk2<T>\n    Two((T) -> i32, (T) -> i32)\n\nfunc u(w: ref/i32 during a, x: ref/i32 during b, g: (ref/i32 during a) -> i32, " +
+        "h: (ref/i32 during b) -> i32) -> i32\n    origin a outlives b\n    let e = Sk2.Two(g@move, h@move)\n    return 0\n",
+        null)]
+    [InlineData(PickF + "i32\n    origin a outlives b\n    let r = pickv(h@move, g@move)\n    return 0\n", null)]
+    [InlineData(PickF + "(ref/i32 during b) -> i32\n    origin a outlives b\n    return pickv(h@move, g@move)\n", "requires b outlives a")]
+    [InlineData(
+        "func app2k(g: (ref/i32 during k) -> i32, h: (ref/i32 during k) -> i32) -> ref/i32 during k => $abort(\"no\")\n" +
+        "func u(w: ref/i32 during a, x: ref/i32 during b, g: (ref/i32 during a) -> i32, h: (ref/i32 during b) -> i32) -> ref/i32 during a\n" +
+        "    origin a outlives b\n    return app2k(g@move, h@move)\n",
+        null)]
+    [InlineData(AppV + "ref/i32 during a\n    origin b outlives a\n    return app(g@move, v)\n", null)]
+    [InlineData(
+        "func app1<T>(g: (T) -> i32) -> T => $abort(\"no\")\nfunc u(w: ref/i32 during a, g: (ref/i32 during a) -> i32) -> ref/i32 during a\n" +
+        "    return app1(g@move)\n",
+        null)]
+    [InlineData(
+        "func app1<T>(g: (T) -> i32) -> T => $abort(\"no\")\nfunc takeInt(n: i32) -> i32 => n\nfunc u() -> i32\n    let r = app1(takeInt)\n" +
+        "    return 0\n",
+        null)]
+    public void ASlotsBindingsMeetAtTheirOwnPolarities(string source, string? relation)
+    {
+        var records = DiagnosticCorpus.Check(source, "Library").Diagnostics;
+        if (relation is null)
+        {
+            Assert.Empty(records);
+            return;
+        }
+
+        var record = Assert.Single(records);
+        Assert.Equal(nameof(DiagnosticCode.UnprovenOriginContract_Kd), record.Code);
+        Assert.Contains(relation, record.Label);
+    }
+
     // SPEC 15.6.1, 23.1.2 (G1128 R1.3 (i); G147 ruling 29; PLAN: a dependent record of a failed equality outside the solve's readers):
     // the result's fit at its destination, over `o` or over a per-call Origin the solve formed from `o`, and a construction Type's clause
-    // proof read the substituted value, not the solve's published failure, so whether their dependent record is reported depends on the
-    // argument order. Each order reports the independent `==`; the count is not pinned until that issue is decided.
+    // proof read the substituted value, not the solve's published failure, as does an argument's covariant fit over a slot's invariant
+    // Origin (pko's `r` beside `T`'s two invariant partners), so whether their dependent record is reported depends on the argument
+    // order. Each order reports the independent `==`; the count is not pinned until that issue is decided.
     [Theory]
     [InlineData(PairO + "ref/i32 during y\n    return pairo(p, q)\n")]
     [InlineData(PairO + "ref/i32 during y\n    return pairo2(q, p)\n")]
@@ -368,6 +424,8 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(PairO + "ref/i32 during q\n    return pairr2(q, p)\n")]
     [InlineData(EnumTwo + "    let e = E.Two(p, q, w)\n    return 0\n")]
     [InlineData(EnumTwo + "    let e = E.Two(q, p, w)\n    return 0\n")]
+    [InlineData(SlotPko + "    pko(p, q, r)\n")]
+    [InlineData(SlotPko + "    pko(q, p, r)\n")]
     public void AFailedEqualityIsReportedInEitherOrder(string source)
     {
         var equality = Assert.Single(DiagnosticCorpus.Check(source + Main).Diagnostics, static x => x.Reason is [{ Value: "==" }, ..]);

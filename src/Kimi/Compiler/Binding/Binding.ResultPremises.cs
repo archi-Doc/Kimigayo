@@ -332,12 +332,23 @@ public sealed partial class Binding
 
         foreach (var premise in new WellFormedPremises(this, pattern, instantiated, null, WellFormedSubject.Input, null, use, default))
         {
+            // G1128 R1.3 (b), theorem (2): over a slot's skeleton a premise shortens only its own node's Origin (a layer's premise its
+            // layer's, by the enumeration; a clause relates Origin arguments of its own Type, since no SPEC form names a component's
+            // Origin in a clause), so the variables one key shares have one solution (Release check).
+            if (premise.Clause is not null && (Foreign(inference, premise.Type, premise.Longer) || Foreign(inference, premise.Type, premise.Outer)))
+            {
+                throw new InvalidOperationException("A clause over a slot's skeleton relates only its own Type's Origins (InternalInvariant).");
+            }
+
             BoundOrigins(inference, premise.Longer, premise.Outer, result: false);
             if (premise.Equality)
             {
                 BoundOrigins(inference, premise.Outer, premise.Longer, result: false);
             }
         }
+
+        static bool Foreign(OriginInference inference, BoundType type, BoundOrigin end)
+            => inference.SolvesSlotVariable(end) && Array.IndexOf((BoundOrigin[])type.OriginArguments, end) < 0;
     }
 
     // SPEC 15.3.7, 15.6.4 step 3: the selected call's obligations for the instantiated parameter Type of a slot it fills (SPEC 10.1 step 2),

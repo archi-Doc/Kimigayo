@@ -20,8 +20,9 @@ namespace Kimi.Compiler;
 //   SlotSolution, a Case construction's, a function reference's or a Callable proof's), with the evidence flags.
 // - Outputs: the bindings in those arrays (null while unbound) and whether the actual matches the pattern structurally; a FixedSlots
 //   (owner, each slot's fixed binding, lengths, whether every own slot is fixed); a FixedPattern for AdaptInput.
-// - Invariants: a slot's earlier binding is kept unless the flags say how two bindings meet (SPEC 10.8): an invariant binding over
-//   covariant ones, covariant ones by their common Type; under `relateLater` an Origin never fails a structurally equal binding. An open
+// - Invariants: a slot's frame keeps its first binding's Type, and each evidence binding is recorded with its composed polarity
+//   (SlotBinding; G1128), whose Origins the late solve values (SPEC 10.8 as revised); under `relateLater` or `evidence` an Origin never
+//   fails a structurally equal binding, and a function reference's met bindings stay its Origin conflict or limit. An open
 //   slot in FixedSlots has one encoding, its own parameter, and only an inferred construction (a structure's `.init` or a Case's
 //   qualifier with its own list omitted, SPEC 9.7) leaves one beside fixed slots; none fixed is no Types. An argument's adaptation is
 //   planned only at a FixedPattern made by Of (a pattern under a solution's FixedSlots, an open slot staying a slot) or Open (a
@@ -528,6 +529,8 @@ public sealed partial class Binding
             return known;
         }
 
+        this.slotWalks++;
+
         var origin = type.Origin is { } outer && BecomesSlotVariable(outer) ? this.NewSlotVariable(call, inference) : type.Origin;
         var origins = this.originScratch.Rent(type.OriginArguments.Count);
         var components = this.RentTypes(type.Components.Count);
@@ -564,7 +567,11 @@ public sealed partial class Binding
         }
     }
 
-    private BoundOrigin NewSlotVariable(Koto call, OriginInference inference) => this.SlotVariable(call, inference.SlotVariableCount++);
+    private BoundOrigin NewSlotVariable(Koto call, OriginInference inference)
+    {
+        this.slotVariables++;
+        return this.SlotVariable(call, inference.SlotVariableCount++);
+    }
 
     // The skeleton with each of the call's slot variables replaced by its value; one without a value stays the call's region (15.3.6).
     private BoundType SubstituteSlotVariables(BoundType type, OriginInference inference, ReadOnlySpan<BoundOrigin> slotValues)
@@ -590,6 +597,8 @@ public sealed partial class Binding
         {
             return done;
         }
+
+        this.slotWalks++;
 
         var origin = type.Origin is { } outer ? this.SlotValue(outer, inference, slotValues) : null;
         var origins = this.originScratch.Rent(type.OriginArguments.Count);

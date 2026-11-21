@@ -5,15 +5,15 @@ using System.Diagnostics;
 namespace Kimi.Compiler;
 
 // InferCtxt (SPEC 10.8; DECISIONS R7-I2): the owner of every solve's slot frames, with an undo log and snapshots.
-// - Responsibility: the slot frames (a solve's Type slots, length slots, invariant marks and environment judgments: a call
+// - Responsibility: the slot frames (a solve's Type slots, length slots, slot bindings and environment judgments: a call
 //   candidate's, one per candidate, a Case construction's, a fixed construction's re-check, an implicit constructor's, a function
 //   reference's), held privately; their writes, each logged while a snapshot is open; Snapshot and Rollback. A frame lives as long as
-//   its solve, so its marks and judgments are that solve's alone.
+//   its solve, so its bindings and judgments are that solve's alone.
 // - Inputs: Rent, with the scope of the use the solve judges (no default: each Rent site gives its own), and Return from the solve
-//   that owns a frame; writes through a SlotFrame (SetType, SetLength, SetInvariant, SetEnvironmentJudgment, ClearTypes, ClearLengths,
+//   that owns a frame; writes through a SlotFrame (SetType, SetLength, AddBinding, SetEnvironmentJudgment, ClearTypes, ClearLengths,
 //   CopyTypes) from the unifier (Infer, InferLength, InferArrayLength), a solve's seeding and clearing, a trial's write-back and an open
 //   Origin's instantiation.
-// - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.IsInvariant, SlotFrame.EnvironmentJudgment), which
+// - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.Bindings, SlotFrame.EnvironmentJudgment), which
 //   SlotSolution and the other solves read; SlotFrame.View, the frame's scope as given, which only the unifier reads (R7-C2c2 c2-4b,
 //   design R4.12c: J4 forms a slot's bindings in that view).
 // - Invariants: no array or mutable span of a frame leaves this file, so the compiler admits no unlogged write but the environment
@@ -42,7 +42,7 @@ public sealed partial class Binding
         internal SlotBinding? Next { get; set; }
     }
 
-    // One solve's slot frame: its Type slots, length slots, invariant marks and environment judgments, read through read-only views and
+    // One solve's slot frame: its Type slots, length slots, slot bindings and environment judgments, read through read-only views and
     // written only through its operations (logged but the judgments', which are written with no snapshot open).
     private readonly struct SlotFrame
     {
@@ -251,7 +251,7 @@ public sealed partial class Binding
             frame[slot] = value;
         }
 
-        // A solve's Type slots are cleared with their invariant marks: a mark describes the binding it clears.
+        // A solve's Type slots are cleared with their bindings (the marks column's heads): a binding describes the slot it clears.
         internal void ClearTypes(int id, int count)
         {
             this.Clear(this.types[id], count);

@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 // lookup, ranking and final call publication remain with their existing owners.
 public sealed partial class Binding
 {
-    // A candidate's environment judgments (DECISIONS BU-86) and invariant marks are its own frame's (SlotFrame.EnvironmentJudgment,
-    // IsInvariant), so a nested call bound while it is evaluated keeps its own. `unsolved` holds the required structural slots that no
+    // A candidate's environment judgments (DECISIONS BU-86) and slot bindings are its own frame's (SlotFrame.EnvironmentJudgment,
+    // Bindings), so a nested call bound while it is evaluated keeps its own. `unsolved` holds the required structural slots that no
     // evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such slots stays rankable, and its selection is the
     // inference-boundary record (FailUnboundSlots).
     private CandidateApplicability TryCandidate(
