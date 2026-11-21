@@ -272,10 +272,11 @@ For a permanent setting, open Windows **Environment Variables**, edit your user
 
 ## Development and verification
 
-To publish a Windows x64 NativeAOT Release build, run `./scripts/build-kimi.ps1`.
-It requires the .NET SDK and Windows NativeAOT build prerequisites, and writes to
-`artifacts/packages/kimi/win-x64/` with debug symbols and XML documentation disabled; `kimi.exe` needs the
-`tatara.dll` the publish copies beside it.
+To publish the Windows x64 NativeAOT Release `kimi.exe`, run
+`./scripts/build-kimi.ps1 -LlvmRoot 'C:/path/to/clang+llvm-22.1.8-x86_64-pc-windows-msvc'` (the extracted archive setup uses).
+It requires the .NET SDK, Visual Studio's C++ x64 tools and the DIA SDK, and writes to `artifacts/packages/kimi/win-x64/`
+with debug symbols and XML documentation disabled. The published folder is `Kimi.exe` alone: it links Tatara on the static
+UCRT, and the script checks that product (one file, no UCRT DLL import, `kimi toolchain verify` reporting this checkout's Tatara).
 Both build scripts resolve paths from their own location and stop on command failures.
 
 Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout or a project change. During edits, use an incremental test-project build and selected methods for feedback. Use the verification script at Unit completion; a direct `dotnet build` is not completion evidence. Unit builds Kimi + tests, while Session builds the whole solution. See [the verification workflow](docs/dev/VERIFICATION.md) for commands and the three test purposes.
