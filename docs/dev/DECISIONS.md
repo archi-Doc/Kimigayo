@@ -16681,6 +16681,29 @@ resumed by R4-M86 (2026-10-20).
     table; moving RegionVersion; a `HoldFlags` entry; entries for the formatting plan's synthesized borrows; forming the receiver
     column's final value (it reopens ruling 19's writer rule); the selection owning every receiver, or the comparison's condition at
     the selection (valid `t.0.mutate()` and `arr[i].mutate()` rejected).
+- **BU-244 One selection entry and one place for its scratch; the Case construction's target (PLAN G924 AF-3a)** (Front,
+  2026-11-22; Binding; Major, behaviour-preserving, a new representation (Q-633); design `front\notes\ArgFlow\design-af3.md`
+  Revision 2 (R1.3) and `ArgFlow\af3\design-casepath.md` Revision 1 (its review ACCEPT WITH CONDITIONS, F's ArgFlow rulings
+  64-69); the independent code review ACCEPT WITH CONDITIONS, F's ArgFlow ruling 120, this entry its N5) SPEC 6.5.2, 9.7, 9.7.1,
+  10.1-10.4.
+  - **`SelectAt` (`Binding.CallSelection`) is a call's selection's one entry,** for a call that publishes (`BindCallCore`) and a
+    query that must not (`SelectOmittedBaseConstructor` now, AF-3b's dependent-part query next): it clears the deferred acquisition
+    and the failed cause, evaluates every candidate (`EvaluateCallCandidates`) and classifies (`ClassifySelection`). It neither
+    fails, completes nor records a node, except a broken contract's `Fail(Source, Internal)` in `BetterCandidate`; the caller acts
+    on the outcome. `BindCallCore` runs `CheckCallShapeContracts` after it (the classification reads nothing the check writes).
+    Its scratch is rented and returned in one place, `RentEvaluation` / `ReturnEvaluation` (each pool in its old LIFO order;
+    `ReturnEvaluation` also ends the evaluation's retained rows and element positions), replacing `BindCallCore`'s inline rents and
+    `SelectOmittedBaseConstructor`'s copy of them. A query's save and restore of the selection's other state (obligations,
+    `acquisitionFailure`, `failedCause`, `activeRequirementContract`, the counters) stays with its caller until AF-3b gives both
+    queries one owner of that set (ruling 120 N2), never a second copy.
+  - **`ConstructionTarget(Case, Owner)` (`Binding.Enums`) is a new representation:** the Case a reference names and the enum Type
+    that its qualifier or the expected Type fixes (the member selection's declaring Type for a qualified reference; for a contextual
+    one the expected Type, U at an expected `ref/U` through `ExpectedTypeOf`). Its producer is `PublishedTarget`, read by
+    `BindEnumConstruction`'s three callers; AF-3b's query adds the second producer and consumer. The inferred-construction flag
+    stays out of it: `BindEnumConstruction` reads `inferredConstructionTargets` as before (PLAN G1239 (1)). With it, `CaseAt` (the
+    contextual Case's lookup without writes; `InferredCase` publishes it), `PayloadTypeAt` (a payload's Type in the constructed
+    Type) and `FormReference` (a container reference's one formation from its own arguments and its environment, pure;
+    `BindContainerReference` keeps the walk and the writes).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
