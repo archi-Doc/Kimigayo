@@ -144,6 +144,17 @@ public class BindingTest
     [InlineData("func useB() -> i32\n    let x = Values.b\n    return x\ngroup Values\n    public let a = b\n    public let b = a", "CyclicBinding_Kd let a = b", "let x = Values.b|public let b = a")]
     [InlineData("group Values\n    var a: i32 = b\n    var b = a", "", "")]
     [InlineData("group Values\n    var a: i32 = b\n    var b = c\n    var c = a", "", "")]
+
+    // G812 ruling 173 (SPEC 11.6 with 9.6): a Name left of both readings whose value path needs the Property's own Type is a cycle, though
+    // the Type path forms that Type; an annotation breaks it (the value path then fails over i32 and the Type path is the sole success).
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = T.b", "CyclicBinding_Kd let T = T.b", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    var T = T.b", "CyclicBinding_Kd var T = T.b", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = U\n    let U = T.b", "CyclicBinding_Kd let T = U", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    var T = U\n    var U = T.b", "CyclicBinding_Kd var T = U", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T: i32 = T.b", "", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    var T: i32 = T.b", "", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = U\n    let U: i32 = T.b", "", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let c = 2\n    let T = c\n    let d = T.b", "", "")]
     public void APropertyCycleIsRecordedOnceAtItsFirstHeaderInEveryPass(string source, string records, string derived)
     {
         var compilation = CompilationTestHelper.ParseSuccess(source);

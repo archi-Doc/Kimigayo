@@ -34,7 +34,14 @@ public sealed partial class Binding
 
         if (symbol.Property is not null)
         {
+            // SPEC 11.6, 23.1.2 (DECISIONS BU-105; G812 ruling 173): a header whose query failed (Error, its re-entry's cycle) is final in
+            // the pass, even where the computation the re-entry interrupted formed its Type: the declaration rests at that record.
             this.BindHeader(symbol);
+            if (this.QueryRecord(symbol, DeclQueryKind.Signature) is not null)
+            {
+                return null;
+            }
+
             this.CheckCaseBound(variable);
         }
 

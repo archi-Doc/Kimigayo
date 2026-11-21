@@ -27,9 +27,9 @@ namespace Kimi.Compiler;
 //   row's "Frozen" clause.
 // - Kinds (one row each): Signature. Re-entry: a Property's whose Type is not yet formed is CyclicBinding_Kd at the declaration and
 //   Error (BindHeader's ReenterHeader, SPEC 11.6, 9); another header's reads no evidence and records nothing. Error's readers: a use of
-//   the Property rests on the declaration's record (BindReference); the declaration's own variable binding records nothing more
-//   (BindVariableCore); a member step's declared value Type (DeclaredValueType, SPEC 9.6) and the conformance proof
-//   (VerifyPropertyRequirement) read the Type only, not yet the record. Not ready: a header
+//   the Property rests on the declaration's record (BindReference), and so does the declaration's own variable binding, which records
+//   nothing more, even where the interrupted computation formed the Type (BindVariableCore); DeclaredValueType (SPEC 9.6) and the
+//   conformance proof (VerifyPropertyRequirement) read the Type only, not yet the record. Not ready: a header
 //   waiting on an associated Type is abandoned. Frozen: Done (the freeze verifies every library header Done). SignatureVerdict
 //   (Binding.ConstraintValidation.Formation): output, the state itself: Done means Proven in this pass. Re-entry: Unknown, no evidence
 //   (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances (contractHeadersReady), is abandoned
