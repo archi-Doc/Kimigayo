@@ -19,7 +19,7 @@ namespace Kimi.Compiler;
 //   the solve's binder (SolveBinder: its declaration and slot owner) and one solution's slot and length arrays (a candidate's
 //   SlotSolution, a Case construction's, a function reference's or a Callable proof's), with the evidence flags.
 // - Outputs: the bindings in those arrays (null while unbound) and whether the actual matches the pattern structurally; a FixedSlots
-//   (owner, each slot's fixed binding, lengths, whether every own slot is fixed); a FixedPattern for AdaptInput.
+//   (owner, each slot's fixed binding, lengths); a FixedPattern for AdaptInput.
 // - Invariants: a slot's frame keeps its first binding's Type, and each evidence binding is recorded with its composed polarity
 //   (SlotBinding; G1128), whose Origins the late solve values (SPEC 10.8 as revised); under `relateLater` or `evidence` an Origin never
 //   fails a structurally equal binding, and a function reference's met bindings stay its Origin conflict or limit: Infer meets
@@ -60,16 +60,8 @@ public sealed partial class Binding
 
     // SPEC 10.8.1: the slots a constructor's declaring Type fixes: its components, an open own slot as its own parameter; also read before
     // its candidate's frame is seeded (ConstructorType).
-    private static FixedSlots ConstructionSlots(FunctionKoto constructor, BoundType declaringType, bool inferred)
-    {
-        var owner = (DeclarationContainerKoto)CallSlotOwner(constructor);
-        var ownFixed = true;
-        for (var i = 0; i < owner.GenericParameterNodes.Count; i++)
-        {
-            ownFixed &= !OpenConstructionSlot(owner, declaringType, inferred, i);
-        }
-
-        return new(owner, (BoundType[])declaringType.Components, default, ownFixed);
+    private static FixedSlots ConstructionSlots(FunctionKoto constructor, BoundType declaringType)
+        => new(CallSlotOwner(constructor), (BoundType[])declaringType.Components, default);
     }
 
     // An inferred construction (a structure's or an enum Case's, SPEC 9.7) leaves open each own slot that its constructed Type gives as its
@@ -128,7 +120,7 @@ public sealed partial class Binding
                 }
             }
 
-            return new(function, explicitTypes, explicitLengths, !explicitTypes.IsEmpty);
+            return new(function, explicitTypes, explicitLengths);
         }
 
         if (declaringType is null)
@@ -146,7 +138,7 @@ public sealed partial class Binding
             }
         }
 
-        return ConstructionSlots(function, declaringType, inferred);
+        return ConstructionSlots(function, declaringType);
     }
 
     // Whether a constructor call infers its construction's Type (SPEC 10.8.1): its qualifier names the Type without its arguments.
@@ -323,13 +315,12 @@ public sealed partial class Binding
                 }
 
                 // G1128 (design R1.3 (h), R1.4; the code review's C1, G147 ruling 59): Infer's one merge of Origins outside a call's
-                // solve. It is reached only at function references (InferReferenceSlots with commonOrigins; SPEC 10.5.3, no late solve;
-                // counted over the whole suite, every hit a reference): it meets their bindings that differ in covariant Origins and
-                // records each. The met Type is read by the reference's Constraint proof (ReferenceArgumentProof), SPEC 10.6's per-call
+                // solve. Only function references pass `commonOrigins` (InferReferenceSlots and the result's solve; SPEC 10.5.3, no
+                // late solve; G147 ruling 62: a call passes none), so only they reach it: it meets their bindings that differ in covariant
+                // Origins and records each. The met Type is read by the reference's Constraint proof (ReferenceArgumentProof), SPEC 10.6's per-call
                 // rule (PerCallReferenceSlot) and the limit's fixed-Origin test (VariableReferenceSlot's InputOrigins), and the recorded
-                // bindings make a slot that would need variables the located limit. A call records its bindings above, and none reached
-                // it over the suite. It goes when a reference's solve owns its bindings and gives those three readers its values (PLAN's
-                // R1.3 (h) line).
+                // bindings make a slot that would need variables the located limit. A call records its bindings above. It goes when a
+                // reference's solve owns its bindings and gives those three readers its values (PLAN's R1.3 (h) line).
                 if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
                 {
                     if (reference)
@@ -419,18 +410,15 @@ public sealed partial class Binding
     // owner's slots (FixCallSlots for a candidate, ConstructionSlots for a construction Type, a Case construction's seeding): each slot's
     // binding, an open slot as its own parameter (only an inferred construction, a structure's or a Case's, leaves one beside fixed ones),
     // and the lengths, null where none is fixed; no Types when no slot is fixed. The adaptation reads it through FixedPattern; whether a
-    // pattern is complete under it is read from the frame before any evidence instead (the contract above). Own tells whether every own
-    // slot is fixed (Infer's commonOrigins off: no Origin merge, which only a function reference's slot reaches, C1). Its
-    // spans live as long as the call's explicit Types, the declaring Type or the Case's scratch.
-    private readonly ref struct FixedSlots(Koto owner, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, bool own)
+    // pattern is complete under it is read from the frame before any evidence instead (the contract above). Its spans live as long as
+    // the call's explicit Types, the declaring Type or the Case's scratch.
+    private readonly ref struct FixedSlots(Koto owner, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths)
     {
         internal Koto? Owner { get; } = owner;
 
         internal ReadOnlySpan<BoundType?> Types { get; } = types;
 
         internal ReadOnlySpan<BoundLength?> Lengths { get; } = lengths;
-
-        internal bool Own { get; } = own;
     }
 
     // SPEC 10.2.2 step 1, 10.8, 6.5.2 step 2: the only input of the adaptation entry (AdaptInput): a pattern under the slot bindings fixed

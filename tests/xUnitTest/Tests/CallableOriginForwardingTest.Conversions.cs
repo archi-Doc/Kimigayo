@@ -1057,10 +1057,10 @@ public partial class CallableOriginForwardingTest
 
     // G1128 (SPEC 10.8 as revised: traversal order never chooses a solution; 10.5.4; G147 ruling 59): a known signature's binding of a
     // slot, an anonymous function's written header (hr, dn, dq: its result, or a parameter of its parameter at +1) or the signature an
-    // `F` slot's Callable Constraint gives it (cf), bounds the slot whether it is the slot's first binding or a later one. T meets the
-    // header's `a` and s's `b`, `ref/i32 during (a and b)`, in both orders (before ruling 59 a later known-signature binding was dropped,
-    // so T was s's Type alone and the -sw forms were rejected: dev rejected them too, as NoApplicableOverload_Kd). dn and dn-t take the
-    // binding two reversals deep (ruling 52's composition: ba2365da9 rejected dn). The invalid twins return T `during a`, which needs
+    // `F` slot's Callable Constraint gives an anonymous function or a typed value there (cf-anon, cf-t: InferCallableSignatures), bounds
+    // the slot whether it is the slot's first binding or a later one. T meets the header's `a` and s's `b`, `ref/i32 during (a and b)`,
+    // in both orders (before ruling 59 a later known-signature binding was dropped, so T was s's Type alone and the -sw forms and cf-t
+    // were rejected: dev rejected them too, as NoApplicableOverload_Kd). dn and dn-t take the binding two reversals deep (ruling 52's composition: ba2365da9 rejected dn). The invalid twins return T `during a`, which needs
     // `b outlives a` (hr-ret-n, cf-ret-n, each order); under `uniq/T` T's Origin is b's, checked against the header's `a` (dq, dq-sw), and
     // `origin a outlives b` proves it (dq-c, dq-c-sw).
     [Theory]
@@ -1080,6 +1080,8 @@ public partial class CallableOriginForwardingTest
     [InlineData("dq-c-sw", DeepUniqSecond + UniqPairHead + "    origin a outlives b\n    return qd(q, " + DeepHeader + ")\n", "", null)]
     [InlineData("cf-anon", CallableFirst + CallableHead + "    return cf(" + CallableResult + ", b)\n", "", null)]
     [InlineData("cf-anon-sw", CallableSecond + CallableHead + "    return fc(b, " + CallableResult + ")\n", "", null)]
+    [InlineData("cf-t", CallableFirst + CallableHead + "    return cf(x@move, b)\n", "", null)]
+    [InlineData("cf-t-sw", CallableSecond + CallableHead + "    return fc(b, x@move)\n", "", null)]
     [InlineData("cf-ret-n", CallableFirstT + AHead + "    return cfr(" + CallableResult + ", b)\n", "UnprovenOriginRelation_Kd cfr(" + CallableResult + ", b)", RequiresBOutlivesA)]
     [InlineData("cf-ret-n-sw", CallableSecondT + AHead + "    return fcr(b, " + CallableResult + ")\n", "UnprovenOriginRelation_Kd fcr(b, " + CallableResult + ")", RequiresBOutlivesA)]
     public void AKnownSignaturesBindingBoundsTheSlotInEveryOrder(string form, string body, string records, string? label)

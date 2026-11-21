@@ -249,16 +249,14 @@ public sealed partial class Binding
             // otherwise the qualifier and the expected Type each supply every slot (SPEC 8.1.3); none fixed is no Types.
             frame.Lengths[..slots].CopyTo(fixedLengths);
             var anyFixed = false;
-            var ownFixed = true;
             for (var i = 0; i < slots; i++)
             {
                 fixedTypes[i] = frame.Types[i] ?? (inferred ? owner!.Components[i] : null);
                 anyFixed |= frame.Types[i] is not null;
-                ownFixed &= frame.Types[i] is not null || i >= declaration.GenericParameterNodes.Count;
             }
 
             var solution = this.Solution(call, declaration, scope, frame, origins);
-            solution.Fixed = new(declaration, anyFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots), ownFixed);
+            solution.Fixed = new(declaration, anyFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots));
             solution.Rows = rows.AsSpan(0, count);
             solution.ChildSlice = ResetSlice(childSlice);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
