@@ -503,7 +503,7 @@ public sealed partial class Binding
         return known!;
     }
 
-    // Whether input i is a raw pointer or holds a raw layer by value (a hold-walk source, retentionRawSources).
+    // Whether input i is a raw pointer or holds a raw layer stating no Origin by value (a hold-walk source, retentionRawSources; RawSource).
     private bool RawInput(int input)
     {
         foreach (var (raw, _) in this.retentionRawSources)
@@ -1173,10 +1173,11 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4 "with an Origin, as the borrow that Origin belongs to would", 5.7 Fits and claims (the owner's O-329 (a); C-352): at each
-    // raw layer stating an Origin the hold walk met (retentionStated), in its storage, each raw source but `output` (a pointer is never part
-    // of its own pointee) by its kind where one of its layers states an Origin that the stated one's premise closure reaches, whatever the
-    // pointee Types (a conversion between raw pointer Types keeps the Origin, SPEC 5.4; DECISIONS BU-66's P2): a source fits there. A layer
-    // stating none (retentionRawStated has no entry) fits a stated layer only by a claim, which promises that storage.
+    // raw layer stating an Origin the hold walk met (retentionStated), in its storage, each input but `output` (a pointer is never part of
+    // its own pointee) by the kind it holds its raw layers by where one of them states an Origin that the stated one's premise closure
+    // reaches, whatever the pointee Types (a conversion between raw pointer Types keeps the Origin, SPEC 5.4; DECISIONS BU-66's P2): it
+    // fits there, a raw argument by its own value, else by its entry's joined kind (DECISIONS BU-66, A2). A layer stating none
+    // (retentionRawStated has no entry) fits a stated layer only by a claim, which promises that storage.
     private void StatedFits(OriginPremiseEnvironment environment, int output)
     {
         foreach (var (storage, origin) in this.retentionStated)
@@ -1190,22 +1191,13 @@ public sealed partial class Binding
                 marks[reached] = stamp;
             }
 
-            foreach (var (input, stated) in this.retentionRawStated)
+            foreach (var (input, stated, kind) in this.retentionRawStated)
             {
                 if (input != output && this.PremiseNode(environment, stated) is var node && node < marks.Length && marks[node] == stamp)
                 {
-                    this.KeepRaw(storage, input);
+                    this.retentionKept[storage][input] |= kind ?? RetentionKind.Value;
                 }
             }
-        }
-    }
-
-    // A raw source's kinds in a storage's kept rows: the input's own value at its own layer, else its entry's kind (DECISIONS BU-66, A2).
-    private void KeepRaw(int storage, int input)
-    {
-        foreach (var (source, kind) in this.retentionRawSources)
-        {
-            this.retentionKept[storage][input] |= source == input ? kind ?? RetentionKind.Value : RetentionKind.None;
         }
     }
 
@@ -1287,9 +1279,9 @@ public sealed partial class Binding
 
         var stated = stepped && type is { IsPointer: true } &&
             OwnedOrigin(type) is { Kind: not OriginKind.Unstated } origin ? origin : null;
-        if (stated is not null && this.retentionRawSources.Count > 0)
+        if (stated is not null && this.retentionRawStated.Count > 0)
         {
-            this.retentionStated.Add((storage, stated)); // StatedFits keeps the raw sources that fit it.
+            this.retentionStated.Add((storage, stated)); // StatedFits keeps the inputs whose stated raw layers fit it.
         }
 
         var holds = stepped && stated is null;

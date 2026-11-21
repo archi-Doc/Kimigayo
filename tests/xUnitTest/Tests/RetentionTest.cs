@@ -160,6 +160,22 @@ public sealed partial class RetentionTest
     private const string RawIt = "struct RawIt\n    Self is Iterator\n    associate Iterator.Item is raw/u8\n    var items: Array<raw/u8>\n" +
         "    public init(items: Array<raw/u8>) => self.items = items@move\n    public func next(self: uniq/Self) -> Option<raw/u8> => self.items.pop()\n";
 
+    // G147 ruling 39's rows: a user Iterator's header and `next` with i32 items, or with items lent from its `source` (a raw layer's slot
+    // is no use, SPEC 5.7, so `keep` holds `source`), its generic Field, and a generic caller that reaches `next` through `I is Iterator`.
+    private const string IntIterator = "    Self is Iterator\n    associate Iterator.Item is i32\n";
+
+    private const string IntNext = "    public func next(self: uniq/Self) -> Option<i32> => .None\n";
+
+    private const string LentIterator = "    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    var keep: ref/i32 during source\n";
+
+    private const string LentNext = "    public func next(self: uniq/Self) -> Option<ref/i32 during source> => .None\n";
+
+    private const string PField = "    var p: P\n    public init(p: P) => self.p = p@move\n";
+
+    private const string NextOf = "func nextOf<I>(it: uniq/I) -> Option<I.(Iterator).Item>\n    I is Iterator\n    return it.next()\n";
+
+    private const string LentUse = "func use(w: ref/i32, it: uniq/(It during w)) -> Option<ref/i32 during w> => nextOf(it)\n";
+
     private const string RawLend = "struct RawLend\n    Self is LendingIterator\n    associate LendingIterator.LentItem(step) is raw/u8\n    var items: Array<raw/u8>\n" +
         "    public init(items: Array<raw/u8>) => self.items = items@move\n    public func next(self: uniq/Self during step) -> Option<raw/u8> => self.items.pop()\n";
 
@@ -971,6 +987,23 @@ public sealed partial class RetentionTest
         Assert.Equal(["result {0 Content}, store 0: own {0 Content}, reached {}"], Calls(c, "nextOf"));
         Assert.Equal(["result {0 Content}, store 0: own {0 Content}, reached {0 Content}", "result {0 Content}, store 0: own {0 Content}, reached {}"], Calls(c, "next"));
     }
+
+    // SPEC 15.6.4, 5.7 ("A raw layer retains as §5.7 states: with an Origin, as the borrow that Origin belongs to would"; G147 ruling 39):
+    // a raw layer an input holds stating an Origin retains as its borrow twin (`ref/i32` for `raw/i32`) does, never by its raw kind; one
+    // stating none by what a chain of reads through the input carries. nextOf's handed `next` may fill its abstract `I.Item` (Iterator's
+    // `associate LendingIterator.LentItem(step) is Item`, a proven identity), so a raw layer `it` holds in a Field or a Type argument is
+    // kept there by that classification (labels F\G147\d933\labels-r39.tsv): the stated Field and Type argument as their borrow twins (the
+    // Type argument was `result {0 Chain}` on dev c17bd1792: the component path's stated raw source), the unstated Field (D-933's Field
+    // raw source) and Type argument by the chain.
+    [Theory]
+    [InlineData("struct It {source}\n" + LentIterator + "    var p: raw/i32 during source\n    public init(keep: ref/i32 during source, p: raw/i32 during source)\n        self.keep = keep\n        self.p = p\n" + LentNext + NextOf + LentUse, "result {0 Content}, store 0: own {0 Content}, reached {}")]
+    [InlineData("struct It {source}\n" + LentIterator + "    var p: ref/i32 during source\n    public init(keep: ref/i32 during source, p: ref/i32 during source)\n        self.keep = keep\n        self.p = p\n" + LentNext + NextOf + LentUse, "result {0 Content}, store 0: own {0 Content}, reached {}")]
+    [InlineData("struct It\n" + IntIterator + "    var p: raw/i32\n    public init(p: raw/i32) => self.p = p\n" + IntNext + NextOf + "func use(it: uniq/It) -> Option<i32> => nextOf(it)\n", "result {0 Chain}")]
+    [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(w: ref/i32, it: uniq/It<raw/i32 during w>) -> Option<i32> => nextOf(it)\n", "store 0: own {0 Content}, reached {}")]
+    [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(w: ref/i32, it: uniq/It<ref/i32 during w>) -> Option<i32> => nextOf(it)\n", "store 0: own {0 Content}, reached {}")]
+    [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(it: uniq/It<raw/i32>) -> Option<i32> => nextOf(it)\n", "result {0 Chain}")]
+    public void ARawLayerWithAnOriginRetainsThroughItsOrigin(string source, string expected)
+        => Assert.Equal([expected], Calls(Bind(source), "nextOf"));
 
     // DECISIONS R4-M154 (rule 1's All): All joins every entry with its pairs, the Abstract one's too. A `during self` layer whose holder has
     // an Origin argument the Subst brings (`H during o`) lets the call write any value at that Origin, a position in the root's storage and
