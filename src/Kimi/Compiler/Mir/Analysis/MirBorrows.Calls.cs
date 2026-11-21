@@ -37,9 +37,12 @@ namespace Kimi.Compiler.Mir;
 // Place's case Type the view's) or an Origin relation (MirOrigins').
 internal sealed partial class MirBorrows
 {
+    private const int Unread = -2; // argReferents: no Value-less row has read the input at this Call or Drop yet.
+
     private readonly Dictionary<(OutputRetention Written, BoundType Type, long View), StorageRetention?> reachedEntries = new();
     private readonly Dictionary<(StorageRetention Record, MirBody Body, long View, SourceRef Site), (ulong Proven, ulong Undecided)> solved = new();
     private int[] argValues = []; // A Call's operand values by position (Input), the callee operand's at call.Count.
+    private int[] argReferents = []; // Beside argValues: each input's referent (MirBorrows.Values' Referent), formed at its first Value-less read, or Unread.
     private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147, or a pun, MirBorrows.Puns), read and reset by Check.
     private bool deep; // Whether that store is undecided past a walk's bound (R4-M153), read and reset by Check.
     private ulong reachedVersion; // The program version whose case Types the entry memo answers.
@@ -71,6 +74,8 @@ internal sealed partial class MirBorrows
     private void Call(ulong[] state, in MirTerminator call, bool checks)
     {
         MirDataflow.Grow(ref this.argValues, call.Count + 1);
+        MirDataflow.Grow(ref this.argReferents, call.Count + 1);
+        Array.Fill(this.argReferents, Unread, 0, call.Count + 1);
         for (var i = 0; i < call.Count; i++)
         {
             this.argValues[i] = this.Operand(state, call.Start + i);
@@ -337,14 +342,32 @@ internal sealed partial class MirBorrows
 
     // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
     // a read through it only; Chain, what any chain of reads through it carries (SPEC 15.6.4; DECISIONS BU-40, R4-M138), its closure; the
-    // union of each kind a record gives.
+    // union of each kind a record gives. Only Value keeps the input's own value, its Loans and addresses (SPEC 15.6.4: retained only by
+    // storage that can hold it; rule A's "but not" and the transfer rule's "never"); past a Deref the value carries the parent Loans
+    // (15.6.3), and a read through one names the intermediate reference's holder, whose state gives them back. So a kind without Value
+    // keeps what its reads carry less the own elements that the read at the input's referent (MirBorrows.Values' Referent, its last
+    // Deref) does not carry, which stay as a read; with no referent nothing goes; markers are no part of the own value (D-935).
     private int Retained(ulong[] state, in MirOperand operand, int position, RetentionKind kind)
     {
         var value = this.argValues[position];
         var retained = (kind & RetentionKind.Chain) != 0 ? this.Chain(state, value) : 0;
         retained = (kind & RetentionKind.Content) != 0 || ((kind & RetentionKind.Value) != 0 && Borrows(cases.TypeOf(operand)))
             ? this.sets.Union(retained, this.Content(state, value)) : retained;
-        return (kind & RetentionKind.Value) != 0 ? this.sets.Union(retained, value) : retained;
+        if ((kind & RetentionKind.Value) != 0)
+        {
+            return this.sets.Union(retained, value);
+        }
+
+        ref var referent = ref this.argReferents[position];
+        referent = referent == Unread ? this.Referent(state, operand) : referent;
+        if (referent < 0)
+        {
+            return retained;
+        }
+
+        var kept = (kind & RetentionKind.Chain) != 0 ? this.Chain(state, referent) : 0;
+        kept = (kind & RetentionKind.Content) != 0 ? this.sets.Union(kept, this.Content(state, referent)) : kept;
+        return this.sets.Remove(retained, this.sets.Remove(this.sets.Remove(value, this.sets.Range(0, this.loanBase)), kept));
     }
 
     // The operand at a position of a Call's contract, whose value argValues holds at that position: argument i at i, the callee operand at

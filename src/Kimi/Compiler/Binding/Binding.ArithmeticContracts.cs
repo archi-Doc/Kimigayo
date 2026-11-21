@@ -6,18 +6,18 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, ArithmeticConformanceFailure>? arithmeticConformanceFailures;
+    private readonly ArithmeticConformanceFailureRows arithmeticConformanceFailures;
 
     // SPEC 13.3.3's eligibility conditions of an explicitly declared conformance, in check order; the adapter explains each (DECISIONS
     // BU-111).
-    private enum ArithmeticConformanceCause : byte
+    internal enum ArithmeticConformanceCause : byte
     {
         NotUserProvider,
         LhsNotNumeric,
         RhsNotOwner,
     }
 
-    private readonly record struct ArithmeticConformanceFailure(BoundType Type, BindingSymbol Contract, ArithmeticConformanceCause Cause);
+    internal readonly record struct ArithmeticConformanceFailure(BoundType Type, BindingSymbol Contract, ArithmeticConformanceCause Cause);
 
     // Outer owner is independent of Owned: an ordinary user struct may retain external borrows.
     private static bool UserArithmeticProvider(BoundType type)
@@ -55,7 +55,7 @@ public sealed partial class Binding
 
         bool Fail(BoundType type, ArithmeticConformanceCause cause)
         {
-            this.FailExplained(ref this.arithmeticConformanceFailures, path.Use, BindingFailure.ArithmeticConformance, new(type, path.Contract, cause));
+            this.FailExplained(ArithmeticConformanceFailureRows.Family, path.Use, BindingFailure.ArithmeticConformance, new(type, path.Contract, cause));
             return false;
         }
     }
@@ -83,5 +83,16 @@ public sealed partial class Binding
             this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.Semantics, counterpart, mask: SemanticsMask.Owner)), source);
             this.AddConstraintFact(environment, this.NotStringConstraint(counterpart), source);
         }
+    }
+
+    /// <summary>The `arithmeticConformanceFailures` family's one accessor (DECISIONS BU-220): a pass family, the eligibility condition an explicitly
+    /// declared arithmetic conformance fails (SPEC 13.3.3), stored with its failure by the recorder (RecordedFact) and written by FailExplained
+    /// (a present row always has its Type). Its members keep the names its readers use.</summary>
+    private readonly struct ArithmeticConformanceFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<ArithmeticConformanceFailure, PassCounter> Family(ref NodeColumns columns) => ref columns.ArithmeticConformanceFailures;
+
+        internal bool TryGetValue(Koto use, out ArithmeticConformanceFailure failure) => (failure = binding.RecordedFact(use, Family)).Type is not null;
     }
 }

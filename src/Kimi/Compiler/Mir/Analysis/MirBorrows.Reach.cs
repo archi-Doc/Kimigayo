@@ -307,18 +307,14 @@ internal sealed partial class MirBorrows
     }
 
     // The holders a write through a Place writes (A3 5's assign through k Derefs, P10), the one computation of them: over the Place's step
-    // walk (the walk buffer, Count steps), its last Deref (Last; -1 for none, a write of the root's own storage, which fills no refs), the
-    // value that Deref goes through (Pointer: PointerOf on the walk's prefix to it, Prefix), and that value's refs (Refs), each with its
-    // mode for the reader's filter. Callable inside a W walk: its reads mark only the reads' mark (MirBorrows.States' steppedBy), and refs
-    // and the walk buffer are its outputs, which its caller reads before the next Refs or walk.
+    // walk (the walk buffer, Count steps), its last Deref (Last, MirBorrows.Places' LastDeref; -1 for none, a write of the root's own
+    // storage, which fills no refs), the value that Deref goes through (Pointer: PointerOf on the walk's prefix to it, Prefix), and that
+    // value's refs (Refs), each with its mode for the reader's filter. Callable inside a W walk: its reads mark only the reads' mark
+    // (MirBorrows.States' steppedBy), and refs and the walk buffer are its outputs, which its caller reads before the next Refs or walk.
     private (int Count, int Last, int Pointer) WriteTargets(ulong[] state, MirPlace place)
     {
-        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
-        for (var i = 0; i < count; i++)
-        {
-            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
-        }
-
+        var count = this.placeSteps.Walk(place, reborrow: false, ref this.walk);
+        var last = this.LastDeref(count);
         if (last < 0)
         {
             return (count, last, 0);

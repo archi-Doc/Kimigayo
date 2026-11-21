@@ -1136,13 +1136,56 @@ public sealed partial class MirBorrowsTest
     // or iterated raw item, an exchanged raw pointer's old contents and a user Iterator's item keep no Loan of their receiver or target,
     // while a swapped pointer keeps what a read through the other argument carries (`y`'s Loan through `w`), and an Array constructed from
     // a raw value, alone or in a Tuple, or from a pointer to a replaced one keeps that value and what a read through it carries
-    // (`repeating`, the input construction adds, SPEC 4.9.6).
+    // (`repeating`, the input construction adds, SPEC 4.9.6). Through two or more Derefs (D-935; SPEC 15.6.4's rule A, 15.6.3's parent
+    // Loans): the receiver of `rr@follow.flush()` carries r's Loan and x's, and a read through r's Loan finds x's again in r, which is
+    // only the own value given back, so Writer's raw slot keeps neither: rr2m, rr3m (three), rr2fm (a Field between), rawo (a raw pointer
+    // over the reference), rrcm (a stored Reborrow) and sw2 (`swap`'s second target) are valid, as the one-Deref x8m is, and rawi (a raw
+    // intermediate) and sh2m (a shared one, which writes nothing) stay valid. What the read at the last Deref carries stays: rr2tm keeps
+    // y's Loan read through h.1's address of w (`y@follow = 5`), adXm and adX2m keep v's Loan, which x.r holds, though h.1 holds it too
+    // (`y = 5`; adXm0 without h.1's), stXm keeps it after rr is replaced (the route is never read on the call's state) and mvXm beside
+    // the move of c's prefix rr; and rrAi passes the outer reference itself, which passes no Deref, so r's value stays (`var x` and
+    // `x@ref`). `var z` is the twins' own record on dev too; stXm's and mvXm's `var x` (a stored Reborrow used through one more Deref)
+    // is the open issue D-935 names.
     [Fact]
     public void AChainRowIsAReadThroughTheArgument()
         => Assert.Equal(
-            ["swapRawBad: y = 5", "swapRawOwnBad: y = 5", "repRawBad: y = 5", "repTupBad: y = 5", "repTupRepl: y = 5"],
+            ["swapRawBad: y = 5", "swapRawOwnBad: y = 5", "repRawBad: y = 5", "repTupBad: y = 5", "repTupRepl: y = 5",
+                "rr2tm: y@follow = 5", "rrAi: x@ref", "rrAi: var x = Writer.init(q: null)", "adXm: y = 5", "adXm: var z: i32 = 0",
+                "adXm0: y = 5", "adXm0: var z: i32 = 0", "adX2m: y = 5", "adX2m: var z: i32 = 0", "stXm: y = 5",
+                "stXm: var x = RW.init(r: v)", "stXm: var z: i32 = 0", "mvXm: rr", "mvXm: y = 5", "mvXm: var h = (x@uniq, v)",
+                "mvXm: var x = RW.init(r: v)", "mvXm: var z: i32 = 0"],
             Problems("""
                 func usep<T>(p: raw/T) => ()
+                struct Writer
+                    public var p: raw/(raw/u8)
+                    public var q: raw/u8
+                    public init(q: raw/u8)
+                        self.p = null
+                        self.q = q
+                    public func flush(self: uniq/Self)
+                        unsafe => *self.p = self.q
+                    drop
+                        unsafe => *self.p = self.q
+                struct Shown
+                    public var p: raw/(raw/u8)
+                    public var q: raw/u8
+                    public init(q: raw/u8)
+                        self.p = null
+                        self.q = q
+                    public func peek(self: ref/Self)
+                        unsafe => *self.p = self.q
+                struct RW {a}
+                    public var p: raw/(ref/i32 during a)
+                    public var r: ref/i32 during a
+                    public init(r: ref/i32 during a)
+                        self.p = null
+                        self.r = r
+                    public func flush(self: uniq/Self)
+                        unsafe => *self.p = self.r
+                func flushWith<T>(a: uniq/RW, b: T)
+                    a.flush()
+                func deepFlush(a: uniq/(uniq/Writer during w))
+                    unsafe => *a@follow@follow.p = a@follow@follow.q
                 struct RawIter
                     Self is Iterator
                     associate Iterator.Item is raw/u8
@@ -1221,6 +1264,154 @@ public sealed partial class MirBorrowsTest
                     h = null
                     y = 5
                     inspect(a)
+                func x8m()
+                    var x = Writer.init(q: null)
+                    let r = x@uniq
+                    r.flush()
+                    inspect(x@ref)
+                func rr2m()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    let rr = r@uniq
+                    rr@follow.flush()
+                    inspect(x@ref)
+                func rr3m()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    var rr = r@uniq
+                    let r3 = rr@uniq
+                    r3@follow@follow.flush()
+                    inspect(x@ref)
+                func rr2fm()
+                    var x = Writer.init(q: null)
+                    var h = (x@uniq, 0)
+                    let rr = h@uniq
+                    rr@follow.0@follow.flush()
+                    inspect(x@ref)
+                func rr2tm(y: uniq/i32)
+                    let w = y@follow@ref
+                    var slot: raw/u8 = null
+                    var x = Writer.init(q: null)
+                    x.p = slot@raw
+                    var h = (x@uniq, w@raw@raw/u8)
+                    let rr = h@uniq
+                    rr@follow.0@follow.flush()
+                    y@follow = 5
+                    usep(slot)
+                    inspect(x@ref)
+                func rrAi()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    deepFlush(r@uniq)
+                    inspect(x@ref)
+                func rawo()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    let pr = r@raw
+                    unsafe => (*pr)@follow.flush()
+                    inspect(x@ref)
+                func rawi()
+                    var x = Writer.init(q: null)
+                    var p = x@raw
+                    let rr = p@uniq
+                    unsafe => (*rr@follow).flush()
+                    inspect(x@ref)
+                func sh2m()
+                    var x = Shown.init(q: null)
+                    var r = x@uniq
+                    let rr = r@ref
+                    rr@follow.peek()
+                    inspect(x@ref)
+                func sw1()
+                    var x = Writer.init(q: null)
+                    var z = Writer.init(q: null)
+                    var r = z@uniq
+                    Kimi.Intrinsics.swap(x@uniq, r@follow@uniq)
+                    inspect(z@ref)
+                    inspect(x@ref)
+                func sw2()
+                    var x = Writer.init(q: null)
+                    var z = Writer.init(q: null)
+                    var r = z@uniq
+                    let rr = r@uniq
+                    Kimi.Intrinsics.swap(x@uniq, rr@follow@follow@uniq)
+                    inspect(z@ref)
+                    inspect(x@ref)
+                func rrcm()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    var rr = r@uniq
+                    let c = rr@follow@uniq
+                    c@follow.flush()
+                    inspect(x@ref)
+                func adXm()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var h = (x@uniq, v)
+                    h.0@follow.flush()
+                    y = 5
+                    inspect(slot@ref)
+                func adXm0()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var h = (x@uniq, 0)
+                    h.0@follow.flush()
+                    y = 5
+                    inspect(slot@ref)
+                func adX2m()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var h = (x@uniq, v)
+                    let rr = h@uniq
+                    rr@follow.0@follow.flush()
+                    y = 5
+                    inspect(slot@ref)
+                func stXm()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var q: i32 = 3
+                    let u = q@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var x2 = RW.init(r: u)
+                    var h = (x@uniq, v)
+                    var h2 = (x2@uniq, u)
+                    var rr = h@uniq
+                    let c = rr@follow.0@follow@uniq
+                    rr = h2@uniq
+                    c@follow.flush()
+                    y = 5
+                    inspect(slot@ref)
+                func mvXm()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var q: i32 = 3
+                    let u = q@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var x2 = RW.init(r: u)
+                    var h = (x@uniq, v)
+                    var rr = h@uniq
+                    let c = rr@follow.0@follow@uniq
+                    flushWith(c, rr@move)
+                    y = 5
+                    inspect(slot@ref)
                 """));
 
     // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple or fixed-array Place
@@ -1648,12 +1839,21 @@ public sealed partial class MirBorrowsTest
 
     // Content rows stay one read (SPEC 15.6.4's premises; R4-M138 keys the closure on the row's kind only): an Array iterator's `next`
     // (its premise result row), a Dictionary `remove`'s key borrow and a Utf8Writer `write<T>` (a store untied only by `static`) keep what
-    // one read carries, valid where the borrowed values are not used after `y = 5`; the twins use them after it.
+    // one read carries, valid where the borrowed values are not used after `y = 5`; the twins use them after it. A Content result through
+    // two Derefs (D-935; SPEC 15.6.3's `takeFirst`, 15.6.4): Cell's `get` keeps what a read through its receiver carries (x.v's Loan on
+    // y), not the receiver's parent Loans r's read gives back, so rr2c is valid as rr1c is, and rr2ci errs at `y = 2` alone; the Loan
+    // the read at the last Deref carries stays where the intermediate holds it too (adGm, adG2m; adGm0 without h.1's) and after the
+    // route is replaced (stGm).
     [Fact]
     public void AContentRowStaysOneRead()
         => Assert.Equal(
-            ["iterLate: y = 5", "emitLate: y = 5"],
+            ["iterLate: y = 5", "emitLate: y = 5", "rr2ci: y = 2", "adGm: y = 2", "adGm0: y = 2", "adG2m: y = 2", "stGm: y = 2"],
             Problems(RawShapes + """
+                struct Cell {a}
+                    public var v: ref/i32 during a
+                    public init(v: ref/i32 during a) => self.v = v
+                    public func get(self: uniq/Self) -> ref/i32 during a
+                        return self.v
                 func iterOk()
                     var y: i32 = 1
                     var w: ref/i32 = y@ref
@@ -1691,6 +1891,70 @@ public sealed partial class MirBorrowsTest
                     _ = writer.write(w@follow)
                     y = 5
                     inspect(w)
+                func rr1c()
+                    let y: i32 = 1
+                    var x = Cell.init(v: y@ref)
+                    var r = x@uniq
+                    let g = r@follow.get()
+                    inspect(x@ref)
+                    inspect(g)
+                func rr2c()
+                    let y: i32 = 1
+                    var x = Cell.init(v: y@ref)
+                    var r = x@uniq
+                    let rr = r@uniq
+                    let g = rr@follow.get()
+                    inspect(x@ref)
+                    inspect(g)
+                func rr2ci()
+                    var y: i32 = 1
+                    var x = Cell.init(v: y@ref)
+                    var r = x@uniq
+                    let rr = r@uniq
+                    let g = rr@follow.get()
+                    inspect(x@ref)
+                    y = 2
+                    inspect(g)
+                func adGm()
+                    var y: i32 = 1
+                    let v = y@ref
+                    var c = Cell.init(v: v)
+                    var h = (c@uniq, v)
+                    let g = h.0@follow.get()
+                    y = 2
+                    inspect(g@ref)
+                func adGm0()
+                    var y: i32 = 1
+                    let v = y@ref
+                    var c = Cell.init(v: v)
+                    var h = (c@uniq, 0)
+                    let g = h.0@follow.get()
+                    y = 2
+                    inspect(g@ref)
+                func adG2m()
+                    var y: i32 = 1
+                    let v = y@ref
+                    var c = Cell.init(v: v)
+                    var h = (c@uniq, v)
+                    let rr = h@uniq
+                    let g = rr@follow.0@follow.get()
+                    y = 2
+                    inspect(g@ref)
+                func stGm()
+                    var y: i32 = 1
+                    let v = y@ref
+                    var q: i32 = 3
+                    let u = q@ref
+                    var c1 = Cell.init(v: v)
+                    var c2 = Cell.init(v: u)
+                    var h = (c1@uniq, v)
+                    var h2 = (c2@uniq, u)
+                    var rr = h@uniq
+                    let c = rr@follow.0@follow@uniq
+                    rr = h2@uniq
+                    let g = c@follow.get()
+                    y = 2
+                    inspect(g@ref)
                 """));
 
     // V16 (R4-M138): a closure queues each holder once and joins what it read in one n-ary union (MirLoanSets.Union), so the Work its Chain
