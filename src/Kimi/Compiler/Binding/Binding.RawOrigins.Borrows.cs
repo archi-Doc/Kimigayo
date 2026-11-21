@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 //   and for any atom a published claim's Type states, its Claimed mark (5.7 Fits and claims).
 // - Inputs: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each formed once by its writer, outside
 //   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36, 37): the node's own facts at BindNode's end
-//   (OwnBorrows: its written Borrow, Slice view or object view, its receiver operation, its calls' operations, its capture entries);
+//   (OwnBorrows: its written Borrow, Slice view or object view, its receiver operation, its calls' operations);
 //   where a writer binds sub-nodes that can state a fact's atom after writing it, that writer before them: a match's Subject borrow by
 //   BindMatch (before the arms), a match's or a user iteration's by-reference bindings where their Patterns bind
 //   (AcquireReferenceBindings, before the guards and bodies), a source call's selected operations by CompleteArguments (before an
@@ -164,16 +164,11 @@ public sealed partial class Binding
         {
             this.CallBorrows(rows, call.ReceiverOperation, call.ArgumentOperations);
         }
-
-        // A Closure's capture entries, an omitted list's included (captured by their uses in the body).
-        if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })
-        {
-            this.CaptureBorrows(closure, rows);
-        }
     }
 
     // A Closure's capture entries that borrow or Reborrow (their Adjust): formed by BindConcreteClosure once its written entries are formed,
-    // before its body binds (the body states their atoms), and at the Closure's node.
+    // before its body binds (the body states their atoms). Only a written entry borrows or Reborrows: an omitted list captures each binding
+    // only by Copy (SPEC 7.7.2; JudgeOmittedCaptures), so the Closure's node has no capture fact of its own.
     private void CaptureBorrows(BoundClosure closure, Dictionary<BoundOrigin, BorrowList> rows)
     {
         for (var i = 0; i < closure.Captures.Count; i++)
