@@ -424,8 +424,8 @@ public sealed partial class Binding
 
     // SPEC 11.6, 3.2.1, 7.7.1, 7.7.2, 10.5.4 (G812 rulings 174, 176): typing a Property's initializer needs a literal's Type, not its body,
     // where the header fixes that Type and the call receiver checks in the header read without the body: its signature (a written or
-    // expected result, no input a split leaves open) and an empty environment (a written empty list, or no runtime binding between it
-    // and the Property it can capture), whose receiver is Shared whatever the body does (SPEC 7.7.3). A capturing literal keeps its body
+    // expected result, no input a split leaves open) and an empty environment (a written empty list, or no runtime binding visible at it
+    // between it and the Property, CanCapture), whose receiver is Shared whatever the body does (SPEC 7.7.3). A capturing literal keeps its body
     // in the frame: its receiver comes from the body (G812 ruling 179). While that Property's header is computed or failed
     // (HeaderRunningOrFailed), such a literal of its initializer is published with its Type and no body (BoundProperty.LeftBodies): the
     // Property, or null.
@@ -441,26 +441,13 @@ public sealed partial class Binding
         var declaration = this.DeclarationScope(property);
         for (var enclosing = scope.Parent; function.Captures is null && !ReferenceEquals(enclosing, declaration); enclosing = enclosing.Parent)
         {
-            if (enclosing is null || CanCapture(enclosing))
+            if (enclosing is null || this.CanCapture(enclosing, function))
             {
                 return null;
             }
         }
 
         return bound;
-
-        static bool CanCapture(BindingScope scope)
-        {
-            foreach (var value in scope.Values.Values)
-            {
-                if (IsRuntimeBinding(value))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 
     // SPEC 10.5.4, 23.1.2 (G812 ruling 174): the bodies of the literals a Property's header left (TypedByHeader), bound by its variable

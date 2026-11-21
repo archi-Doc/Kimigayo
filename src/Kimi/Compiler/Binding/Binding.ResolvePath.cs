@@ -995,8 +995,7 @@ public sealed partial class Binding
         var head = current.Values.GetValueOrDefault(name);
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
-            if ((candidate.Kind == BindingSymbolKind.Local && candidate.Declaration.Span.End > use.Span.Start) ||
-                !this.ParameterVisible(candidate) || !this.Accessible(candidate, scope))
+            if (!this.VisibleAt(candidate, use) || !this.Accessible(candidate, scope))
             {
                 continue;
             }
@@ -1011,6 +1010,12 @@ public sealed partial class Binding
 
         return new(PathEnd.Unresolved, null, use);
     }
+
+    // SPEC 9.3, 7.2.3: whether a value binding is visible at `use`: a local only after its declaration (its initializer sees the outer
+    // scope), a parameter as ParameterVisible says, any other binding of the scope always. The one visibility rule of a value lookup
+    // (ValueStage) and of a literal's capture test (CanCapture, Binding.Captures).
+    private bool VisibleAt(BindingSymbol candidate, Koto use)
+        => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && this.ParameterVisible(candidate);
 
     // An alias target's segment and a default alias's segment: one unfiltered selection with its ambiguity reported (part e folds both walks).
     private BindingSymbol? SelectQualifier(BindingSymbol? head, BindingScope scope, Koto use)

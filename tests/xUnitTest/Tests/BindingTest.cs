@@ -168,7 +168,9 @@ public class BindingTest
 
     // G812 ruling 174 (SPEC 7.7.1, 10.5.4, 11.6): typing an initializer needs an anonymous function's Type, which its header gives (a
     // written result, or the expected signature's), not its body, which the variable binding checks with the Property's parts; so a use
-    // of the Property in that body is no cycle in either pass. A Closure in static storage and its call stay located limits.
+    // of the Property in that body is no cycle in either pass. A Closure in static storage and its call stay located limits. Its
+    // environment is empty: a written `[]`, or no runtime binding visible at the literal (SPEC 9.3: a local only after its declaration,
+    // so neither the local whose initializer holds the literal nor a later one; G812 ruling 182).
     [Theory]
     [InlineData("group V\n    let f = func () -> i32 => V.a\n    let a = f()")]
     [InlineData("group V\n    let a = f()\n    let f = func () -> i32 => V.a")]
@@ -176,6 +178,10 @@ public class BindingTest
     [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = func () -> i32 => T.b")]
     [InlineData("group V\n    let f = func () -> i32 => V.g()\n    let g = f")]
     [InlineData("group V\n    let a = run(func () => V.b)\n    let b = a\n    func run(f: () -> i32) -> i32 => f()")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func [] () -> i32 => V.b)()\n        .None => 0\n    let b = a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => x\n        .None\n            let r = (func () -> i32 => V.b)()\n            yield r\n    let b = a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => x\n        .None\n            _ = (func () -> i32 => V.b)()\n            let z = 1\n            yield z\n    let b = a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => x\n        .None\n            yield (func () -> i32 => V.b)()\n    let b = a")]
     public void AnAnonymousHeaderTypesItsPropertyWithoutItsBody(string source)
     {
         var compilation = CompilationTestHelper.ParseSuccess(source);
@@ -203,16 +209,50 @@ public class BindingTest
         }
     }
 
-    // G812 ruling 177 (SPEC 7.7.3, 7.7.4): a written list that leaves the receiver to the body (`var y`) keeps the literal's body in the
-    // header frame, so the erasure check at `() -> ()` reads the classified receiver: an Exclusive Closure is not erased.
-    [Fact]
-    public void AWrittenListThatLeavesTheReceiverToTheBodyKeepsTheErasureRecord()
+    // G812 rulings 178, 181 (the owner's O-472 (a), widened by O-475 (a); a Q13 rule 2 exception): a capturing closure literal of an
+    // inferred Property's initializer (a written capture list, or none and a runtime binding visible at it) keeps its body in the header
+    // frame, since its receiver is its body's (ruling 179), so a re-entry through that body is the interim CyclicBinding_Kd at the first
+    // header, on programs valid by SPEC 11.6 that dev rejects too. These rows go with the exception: when D-1007 (PLAN G1217) publishes
+    // the literal's captures and receiver mode without binding its body, they expect acceptance.
+    [Theory]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func () -> i32 => x + V.b)()\n        .None => 0\n    let b = a", "let a")]
+    [InlineData("group V\n    let b = a\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func () -> i32 => x + V.b)()\n        .None => 0", "let b")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func [x] () -> i32 => x + V.b)()\n        .None => 0\n    let b = a", "let a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func [var x] () -> i32 => x + V.b)()\n        .None => 0\n    let b = a", "let a")]
+    [InlineData("group V\n    let a = (func (y: i32) => (func () -> i32 => V.b)())(1)\n    let b = a", "let a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => x\n        .None\n            let z = 1\n            let r = (func () -> i32 => V.b)()\n            yield r + z\n    let b = a", "let a")]
+    public void ACapturingLiteralKeepsTheInterimCycleUntilItsCapturesArePublished(string source, string declaration)
     {
-        var compilation = CompilationTestHelper.ParseSuccess("group V\n    let a = (func (y: i32) => run(func [var y] () -> () => y += 1))(1)\n    func run(f: () -> ()) => f()");
+        var compilation = CompilationTestHelper.ParseSuccess(source);
         for (var pass = 0; pass < 2; pass++)
         {
             compilation.Bind();
-            Assert.Contains(CompilationTestHelper.BindingErrors(compilation), static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+            var cycle = Assert.Single(CompilationTestHelper.BindingErrors(compilation), static x => x.Code == nameof(DiagnosticCode.CyclicBinding_Kd));
+            Assert.StartsWith(declaration, cycle.Text, StringComparison.Ordinal);
+        }
+    }
+
+    // G812 ruling 179 (SPEC 7.7.3, 7.7.4): a literal with a written non-empty capture list keeps its body in the header frame, as every
+    // capturing literal does (a body moving a capture makes the call Consuming), so the checks the header runs read the classified
+    // receiver: an Exclusive Closure (`var y`) is not erased to `() -> ()`, and a Consuming call of a Copy Closure is accepted.
+    [Theory]
+    [InlineData("group V\n    let a = (func (y: i32) => run(func [var y] () -> () => y += 1))(1)\n    func run(f: () -> ()) => f()", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("group V\n    let a = (func (y: i32) => (func [y] () -> i32 => y@move)())(1)", null)]
+    public void AWrittenCaptureListKeepsTheReceiverItsBodyGives(string source, DiagnosticCode? code)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            compilation.Bind();
+            var errors = CompilationTestHelper.BindingErrors(compilation);
+            if (code is { } expected)
+            {
+                Assert.Contains(errors, x => x.Code == expected.ToString());
+            }
+            else
+            {
+                Assert.Empty(errors);
+            }
         }
     }
 

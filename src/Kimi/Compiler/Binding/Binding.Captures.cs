@@ -30,9 +30,35 @@ public sealed partial class Binding
 
     // SPEC 7.7.2: a binding a Closure body can capture: an outer runtime local or parameter (a pattern's, a loop's, an environment's, an
     // accessor's storage among them); Types, Containers, static storage and named functions are never captures. The one kind rule of an
-    // outer use (BindReference) and of an environment no body forms (TypedByHeader).
+    // outer use (BindReference) and of an environment no body forms (CanCapture).
     private static bool IsRuntimeBinding(BindingSymbol symbol)
         => symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture;
+
+    // SPEC 7.7.2 with 9.3 (G812 ruling 182): whether a body at `literal` can capture a binding of `scope`: a name whose first binding
+    // visible at the literal (VisibleAt, the lookup's rule) is a runtime binding. It answers for every use in the body: a binding visible
+    // at the literal's start is visible at each of them, and one not visible there at none. Read by TypedByHeader.
+    private bool CanCapture(BindingScope scope, FunctionKoto literal)
+    {
+        foreach (var head in scope.Values.Values)
+        {
+            for (var candidate = head; candidate is not null; candidate = candidate.Next)
+            {
+                if (!this.VisibleAt(candidate, literal))
+                {
+                    continue;
+                }
+
+                if (IsRuntimeBinding(candidate))
+                {
+                    return true;
+                }
+
+                break;
+            }
+        }
+
+        return false;
+    }
 
     // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats, as a range of captureRepeatRows;
     // empty for a valid list.
