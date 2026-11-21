@@ -74,6 +74,7 @@ public sealed partial class Binding
         private HirOp parentOp;
         private HirPosition position;
         private UseNeed need;
+        private bool? rooted; // Whether the parent is rooted at a raw Place (IsRawRooted); null until asked, passed down a rooted step (D-932).
 
         // Binding's structural completion with its Never evidence, one per body.
         private StructuralCompletion? completion;
@@ -88,7 +89,7 @@ public sealed partial class Binding
 
         public override void Visit(Koto node)
         {
-            var (parent, parentOp, outer, need) = (this.parent, this.parentOp, this.position, this.need);
+            var (parent, parentOp, outer, need, rooted) = (this.parent, this.parentOp, this.position, this.need, this.rooted);
             var position = this.PositionOf(node, parent, parentOp, outer);
             var op = this.OpOf(node, position);
             var parts = this.Parts(node, op, position);
@@ -140,7 +141,8 @@ public sealed partial class Binding
             }
 
             // Every take of the node has written its row: its consumer's, then its container's discard row (DECISIONS BU-8).
-            this.need = this.NeedOf(node, parent, parentOp, claimed, need);
+            this.need = this.NeedOf(node, parent, parentOp, claimed, need, ref rooted);
+            this.rooted = parent is ParenthesizedKoto || (parent is BinaryKoto step && ReferenceEquals(step.Left, node) && !IsRawRoot(step) && binding.IsRootedStep(step)) ? rooted : null;
             this.Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
                 (parts != HirOp.Syntax || (node is FunctionKoto function && binding.PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
@@ -164,7 +166,7 @@ public sealed partial class Binding
                 this.Visit(iteration.Receiver); // The step's receiver, the iterator local the loop declares (SPEC 14.6.2).
             }
 
-            (this.parent, this.parentOp, this.position, this.need) = (parent, parentOp, outer, need);
+            (this.parent, this.parentOp, this.position, this.need, this.rooted) = (parent, parentOp, outer, need, rooted);
         }
 
         internal void Publish(SyntaxTable table, Koto root)
@@ -193,7 +195,7 @@ public sealed partial class Binding
             (hir.Broken ??= []).Clear();
             (this.table, this.uses) = (table, new(binding, table));
             this.completion?.Clear();
-            (this.parent, this.position, this.need) = (null, HirPosition.None, default);
+            (this.parent, this.position, this.need, this.rooted) = (null, HirPosition.None, default, null);
             this.Visit(root);
         }
 

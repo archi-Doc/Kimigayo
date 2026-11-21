@@ -115,6 +115,27 @@ public class InheritedStorageTest
         Assert.Empty(DiagnosticCorpus.Check(Source).Diagnostics);
     }
 
+    // SPEC 6.3.4, IMPL A.4 (D-932): a constructor's own Field is found at every depth below `self` (OwnedPathRoot has no bound of its
+    // own: SyntaxNesting's): a Take k steps below `self` is InvalidAssignment_Kd (no Non-Copy value is moved out of them) and an
+    // exclusive borrow the located Unsupported_Kd of PLAN G166; a 64-step bound let the Take through Binding at k = 65, refused only by
+    // MIR's MovedPlace_Kd at `init` (class 4), and refused the borrow with a Language error (class 3). A generic struct (Layout's
+    // 64-level window).
+    [Theory]
+    [InlineData(63, "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData(64, "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData(65, "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData(63, "@uniq", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(64, "@uniq", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(65, "@uniq", nameof(DiagnosticCode.Unsupported_Kd))]
+    public void AConstructorsDeepFieldIsItsOwnAtEveryDepth(int k, string acquisition, string code)
+    {
+        var type = new string('(', k - 1) + "Array<i32>" + string.Concat(Enumerable.Repeat(", i32)", k - 1));
+        var source = $"struct C<T>\n    internal var t: {type}\n    public init(t: {type})\n        self.t = t@move\n" +
+            $"        let a = self.t{string.Concat(Enumerable.Repeat(".0", k - 1))}{acquisition}\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, source.IndexOf("let a = ", StringComparison.Ordinal) + 8), (error.Code, error.Span!.Value.Start));
+    }
+
     // SPEC 6.3.4, 15.1.5: a constructor's writable Fields are lent exclusively, but no analysis models those Loans yet ("Field borrows end
     // before completion"; PLAN G166), so each exclusive borrow is one located Unsupported_Kd and the body reaches no analysis: no
     // conflict is accepted, no read of `start` is a conflict and no check faults (DECISIONS BU-15). The rows are a write, a second

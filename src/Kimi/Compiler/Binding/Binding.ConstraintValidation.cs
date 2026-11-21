@@ -372,6 +372,7 @@ public sealed partial class Binding
         if (proof == ConstraintProof.Unknown)
         {
             environment.NameUnprovenInput(use.Type, use.Contract, declaration);
+            this.premiseFailures++; // The Failed state's census (ConstraintEnvironment's contract).
             return false;
         }
 

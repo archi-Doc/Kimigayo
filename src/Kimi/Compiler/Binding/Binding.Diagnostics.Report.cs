@@ -13,7 +13,8 @@ namespace Kimi.Compiler;
 //   Core publishes. Outputs: the Binding partition's records. The library's freeze reports a refused library pass's records through
 //   the same per-record steps (ReportFailures, ReportNonFailingRecords) while its tables stand.
 // - Invariants: invoked after final analysis, not between Mods; each call replaces the partition's records. R7-E5 deletes ReportIssue's chain.
-// - Prohibitions: no failure is decided and no node's binding state is written here.
+// - Prohibitions: no failure is decided and no node's binding state is written here; a query's memo of a final fact
+//   (ReachedThroughBorrow) may be filled.
 public sealed partial class Binding
 {
     /// <summary>Records Binding's facts, replacing any it recorded before. Invoke after final analysis, not between Mods.</summary>
