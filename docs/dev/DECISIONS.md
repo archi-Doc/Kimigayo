@@ -15534,6 +15534,22 @@ resumed by R4-M86 (2026-10-20).
     queries); a Binding-owned store keyed by `(module, SyntaxId)` (the B2a-2 line's rejection); the memo kept reference-keyed as an
     owner exception (COMPILER_ARCHITECTURE migrates Binding's uses by R7's exit). Ratchet ("Node-keyed table members in Binding") -1;
     its limit is the count, 52.
+  - **R7-N5 B2b-1** (the Back's batch, Q-591, D-958; design `b2b-design.md` §1-§5, B's rulings 1-8; the Front's C-403, C1 (a) and
+    C2-C6): `unboundSlots` (a failure fact, B4's form: `FailExplained`'s column form, stored by `SetRecordedFact`) and `uniqIndexing`
+    (a pass fact whose default reads as absent) become pass families of `NodeColumns` (`StampedColumn<T, Binding.PassCounter>`), one
+    accessor each, their Clears deleted; the library pass writes neither (`NotStamps`), and `HasExclusiveIndexer` keeps
+    `EnsurePassNode` for a never-written family, as B2a-2's line states. **A call's scratch keyed by node is no node family: the
+    call's own span answers it.** `shapeCallCandidates`, which mapped each accessible candidate's declaration (library functions
+    included) to its position in the call's candidate span, goes: `CandidateOf` scans the span for the last accessible candidate a
+    shape contract's left function declares. Rejected: a column (it would write the frozen library's rows at a program call), a
+    scratch keyed by the candidate's symbol (a renaming), a per-candidate index stored on the contract (the span's order is the
+    call's, not the declaration's). **`omittedBaseQueries` is deleted with its switch `CaptureOmittedBaseQueries`:** a test capture
+    steering a declaration step (G80-K2's differential instrument; its one reader was `ImplicitBaseCallTest`), whose one Clear was
+    its own step, off ResetPass's path, so it kept an earlier pass's rows. The test asserts the query after the pass and each row's
+    implicit twin instead: the declaration pass decides a synthesized constructor by the same query
+    (`CompleteImplicitConstructor`), and `RevalidateImplicitConstructors` judges it again after the bodies, failing closed at the
+    base clause. Rejected: converting it to a column (the test switch would move into the canonical table, its `NotStamps` reason
+    and the shared d10 theory). Ratchet ("Node-keyed table members in Binding") 52 -> 46, the count.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
