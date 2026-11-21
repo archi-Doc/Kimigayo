@@ -42,7 +42,9 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
             Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "OriginBinders"), Assert.Single(record.Reason!));
             Assert.Null(record.Label);
             Assert.Equal("override", Assert.Single(TestDiagnostics.Of(c), x => x.Code == record.Code).Text);
-            Assert.Contains("Origin binder names", record.Note!, StringComparison.Ordinal);
+            // D3, Q13 M3: the removed Note restated the cause OriginBinders; the record still relates the original slot whose binders it names.
+            Assert.Equal(("declaration", "original virtual slot"), (Assert.Single(record.Related!).Role, record.Related![0].Label));
+            Assert.Null(record.Note);
         }
     }
 

@@ -97,7 +97,6 @@ public sealed partial class Binding
         this.implicitPairFollows = new(this);
         this.phantomRawOrigins = new(this);
         this.invalidStaticOriginSlots = new(this);
-        this.callablePremiseFailures = new(this);
         this.effectBoundRejections = new(this);
         this.receiverOperations = new(this);
         this.reachedThroughBorrow = new(this);
@@ -109,10 +108,7 @@ public sealed partial class Binding
         this.objectErasureFailures = new(this);
         this.resultContexts = new(this);
         this.arithmeticConformanceFailures = new(this);
-        this.associatedAmbiguities = new(this);
-        this.inferenceFailures = new(this);
         this.callableConstraints = new(this);
-        this.clauseConstraints = new(this);
         this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);
@@ -121,6 +117,10 @@ public sealed partial class Binding
         this.earlyReads = new(this);
         this.resolvedSlices = new(this);
         this.matchPlans = new(this);
+        this.prerequisites = new(this);
+        this.partPrerequisites = new(this);
+        this.prerequisiteVisits = new(this);
+        this.duplicateDeclarations = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
         this.issuesView = new(own.Issues, layer.Issues);

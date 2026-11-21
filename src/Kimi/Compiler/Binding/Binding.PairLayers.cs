@@ -181,7 +181,8 @@ public sealed partial class Binding
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
     // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability. SPEC 9.6.1: a receiver whose member a base
     // declares (`projection`, the base, as for a receiver through a reference layer: AdaptInput) is the layer's target, where member
-    // selection found that base (a receiver below further layers is ReceiverThroughLayers' recorded read), and lends the base
+    // selection found that base (a receiver below further layers is read through ReceiverThroughLayers' reference, which ReceiverElement
+    // records), and lends the base
     // subobject (PLAN G1122).
     private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundType? projection, out BoundType adapted, out ArgumentOperationKind kind, bool record)
     {

@@ -73,18 +73,25 @@ public class DependencyConfigurationTest
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
         => Assert.True(Record.Exception(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))) is TinyhandException or ProjectConfigurationException);
 
-    // IMPL 20.4 (Tatara B6a, decision 20): kernel32 and kimi_backend are the compiler's supplies, so a project's entry for either, its own
-    // or for a package, under any target key, fails at the load with one note naming it (NativeConfiguration; publication does not
-    // repeat the check, DECISIONS R5-M165).
+    // IMPL 20.4 (Tatara B6a and G1211, decision 20): kernel32 and kimi_backend are the compiler's supplies, so a project's entry for
+    // either, a requirement or a supply, its own or for a package, under any target key, fails at the load with one note naming it and
+    // its record, each entry its own (SPEC 23.1.2; NativeConfiguration; publication does not repeat the check, DECISIONS R5-M165).
+    // Each expected entry is "<record>.<name>".
     [Theory]
-    [InlineData("kernel32", "NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}")]
-    [InlineData("kimi_backend", "NativeLibraries={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\" Input=\"vendor/kimi_backend.lib\"}}}")]
-    [InlineData("kimi_backend", "NativeLibraries={\"x86_64-unknown-linux-gnu\"={kimi_backend={Kind=\"static\" Input=\"a.lib\"}}}")]
-    [InlineData("kimi_backend", "NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kimi_backend\" Input=\"a.lib\"}}}")]
-    public void AReservedSupplysEntryFailsAtTheLoad(string name, string source)
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}", "NativeLibraries.kernel32")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\" Input=\"vendor/kimi_backend.lib\"}}}", "NativeLibraries.kimi_backend")]
+    [InlineData("NativeLibraries={\"x86_64-unknown-linux-gnu\"={kimi_backend={Kind=\"static\" Input=\"a.lib\"}}}", "NativeLibraries.kimi_backend")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kimi_backend\" Input=\"a.lib\"}}}", "NativeLibraries.kimi_backend")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\"}}}", "NativeRequirements.kernel32")]
+    [InlineData("NativeRequirements={\"x86_64-unknown-linux-gnu\"={kimi_backend={Kind=\"static\"}}}", "NativeRequirements.kimi_backend")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\"} kernel32={Kind=\"import\"}}}", "NativeRequirements.kimi_backend", "NativeRequirements.kernel32")]
+    [InlineData("NativeRequirements={t={kernel32={Kind=\"import\"}}} NativeLibraries={t={kernel32={Input=\"k.lib\"}}}", "NativeRequirements.kernel32", "NativeLibraries.kernel32")]
+    [InlineData("NativeRequirements={t={kimi_backend={Kind=\"static\"}}} NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kimi_backend\" Input=\"a.lib\"}}}", "NativeRequirements.kimi_backend", "NativeLibraries.kimi_backend")]
+    public void AReservedSupplysEntryFailsAtTheLoad(string source, params string[] entries)
     {
         var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures;
-        Assert.Equal($"{name} is supplied by the compiler. Remove the {name} entry from NativeLibraries.", Assert.Single(failures));
+        var expected = entries.Select(static x => x.Split('.')).Select(static x => $"{x[1]} is supplied by the compiler. Remove the {x[1]} entry from {x[0]}.");
+        Assert.Equal(expected.Order(StringComparer.Ordinal), failures.Order(StringComparer.Ordinal));
     }
 
     // ProjectFile's removed settings (Tatara B6b5, decision 20): each, whatever its value, fails the load with its own note, one per
@@ -414,8 +421,8 @@ public class DependencyConfigurationTest
     [InlineData("NativeLibraries={t={}}")]
     [InlineData("NativeLibraries={t={{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"a\" Input=\"a.lib\"} {Package={PackageId=\"p\" PackageVersion=\"2\"} Name=\"codec\" ContractId=\"b\" Input=\"b.lib\"} {Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" Input=\"c.lib\"}}}")]
 
-    // The boundary of the reserved names' check (Tatara B6a, N1 (c)): a requirement naming one is accepted and unused (an open issue).
-    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\"} kernel32={Kind=\"import\"}}}")]
+    // The boundary of the reserved names' check (IMPL 20.4: names compare case-sensitively): another spelling is not reserved.
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={Kimi_backend={Kind=\"static\"} Kernel32={Kind=\"import\"}}}")]
     public void ConfigurationRoundTripsWithoutReadingSources(string source)
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes(source));

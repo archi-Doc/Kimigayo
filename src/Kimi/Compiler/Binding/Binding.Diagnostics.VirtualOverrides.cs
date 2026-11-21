@@ -1,9 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Converts retained SPEC 6.4 failures (declaration eligibility, overrides, direct base calls) to diagnostic facts and explanations.
-// Inputs are the recorded causes, comparisons and locations (a declaration's eligibility cause is its problem's Reason fact, published
-// with the rule it breaks); outputs retain the original requirement, code and primary span. Never select a slot or repeat an eligibility,
-// signature or premise check.
+// Inputs are the recorded causes, comparisons and locations (a declaration's eligibility cause, and an override's cause, related
+// declarations and compared Types, are its problem's facts; the eligibility cause is published with the rule it breaks);
+// outputs retain the original requirement, code and primary span. Never select a slot or repeat an eligibility, signature or premise check.
 
 using System.Diagnostics;
 using Kimi.Compiler.Parsing;
@@ -31,41 +31,76 @@ public sealed partial class Binding
         function.ReportIn(store, problem.Requirement, problem.Code, span: function.DispatchModifierSpan, evidence: [cause, rule], related: related);
     }
 
-    private void ReportOverrideFailure(FunctionKoto function, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
+    // SPEC 6.4.2-6.4.4: an override problem from its facts (OverrideFacts): the cause and a condition's proof, the original or first
+    // candidate and a conflicting declaration, the record's own location, a renamed external name (whose parameter's two names the adapter
+    // reads from the two declarations at that position) and a result's two Types.
+    private void ReportOverrideFailure(FunctionKoto function, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        var failure = this.overrideFailures![function];
-        var related = failure.First is null ? null : failure.Second is null
-            ? new (string, Koto, string?)[] { ("declaration", failure.First, failure.First.IsVirtual ? "original virtual slot" : "inherited function") }
-            : [("declaration", failure.First, "original virtual slot"), ("declaration", failure.Second, "conflicting declaration")];
-        (object[]? Evidence, string? Note) report = failure.Cause switch
+        var (cause, proof) = (OverrideFailureCause.NoBase, ConstraintProof.Proven);
+        (Koto? At, FunctionKoto? First, FunctionKoto? Second, SourceSpan? Span) facts = default;
+        (BoundType? Expected, BoundType? Actual) types = default;
+        foreach (ref readonly var fact in this.report.Facts(index))
         {
-            OverrideFailureCause.NoBase => ([failure.Cause], "this struct has no base from which to inherit a virtual slot"),
-            OverrideFailureCause.NoInheritedGroup => ([failure.Cause], "no accessible inherited function group has this Name"),
-            OverrideFailureCause.NoMatchingInputs => ([failure.Cause],
-                "the first accessible inherited group contains no virtual slot with the same receiver position, mode and input Types"),
-            OverrideFailureCause.AmbiguousInputs => ([failure.Cause],
-                "multiple distinct virtual declarations have matching inputs after base binding; results, labels and effects do not disambiguate them"),
-            OverrideFailureCause.DuplicateSlot => ([failure.Cause], "this derived Type already supplies an implementation of the same bound slot"),
-            OverrideFailureCause.ExternalName => ([failure.ExpectedName!, failure.ActualName!, failure.Cause, failure.Parameter],
-                "external parameter names must match the original slot; only internal names may change"),
-            OverrideFailureCause.ResultType => ([DiagnosticTypeName(failure.ExpectedType!), DiagnosticTypeName(failure.ActualType!), failure.Cause],
-                "the result Type must match the original slot; result covariance is not allowed"),
-            OverrideFailureCause.OriginBinders => ([failure.Cause],
-                "Origin binder names must belong to the original slot; omitted annotations inherit that contract"),
-            OverrideFailureCause.Condition when failure.Proof == ConstraintProof.Unknown => ([failure.At!, failure.Cause, failure.Proof],
-                $"{failure.At} is not implied by the original slot and derived Type"),
-            OverrideFailureCause.Condition when failure.Proof == ConstraintProof.Refuted => ([failure.At!, failure.Cause, failure.Proof],
-                $"{failure.At} is refuted by the original slot and derived Type"),
-            _ => (null, null),
+            switch (fact.Kind)
+            {
+                case ProblemFactKind.Reason:
+                    (cause, proof) = ((OverrideFailureCause)(byte)fact.Value, (ConstraintProof)(byte)(fact.Value >> 8));
+                    break;
+                case ProblemFactKind.Related when fact.Value == 0:
+                    facts.At = this.compilation.SyntaxOf(fact.Site);
+                    break;
+                case ProblemFactKind.Related when fact.Value == 1:
+                    facts.First = (FunctionKoto)this.compilation.SyntaxOf(fact.Site);
+                    break;
+                case ProblemFactKind.Related:
+                    facts.Second = (FunctionKoto)this.compilation.SyntaxOf(fact.Site);
+                    break;
+                case ProblemFactKind.Span:
+                    facts.Span = new((int)(fact.Value >> 32), (int)fact.Value);
+                    break;
+                case ProblemFactKind.Expected:
+                    types.Expected = this.report.Value(fact);
+                    break;
+                case ProblemFactKind.Actual:
+                    types.Actual = this.report.Value(fact);
+                    break;
+            }
+        }
+
+        var related = facts.First is null ? null : facts.Second is null
+            ? new (string, Koto, string?)[] { ("declaration", facts.First, facts.First.IsVirtual ? "original virtual slot" : "inherited function") }
+            : [("declaration", facts.First, "original virtual slot"), ("declaration", facts.Second, "conflicting declaration")];
+        var parameter = cause == OverrideFailureCause.ExternalName ? NamedParameter(function, facts.Span!.Value) : -1;
+        object[]? evidence = cause switch
+        {
+            OverrideFailureCause.ExternalName => [facts.First!.Parameters[parameter].ExternalName!, function.Parameters[parameter].ExternalName!, cause, parameter],
+            OverrideFailureCause.ResultType => [DiagnosticTypeName(types.Expected!), DiagnosticTypeName(types.Actual!), cause],
+            OverrideFailureCause.Condition when proof is ConstraintProof.Unknown or ConstraintProof.Refuted => [facts.At!, cause, proof],
+            OverrideFailureCause.Condition => null,
+            _ => [cause],
         };
-        var span = failure.Span ?? (failure.At is null ? function.DispatchModifierSpan : null);
-        if (report.Evidence is null)
+        var span = facts.Span ?? (facts.At is null ? function.DispatchModifierSpan : null);
+        if (evidence is null)
         {
-            function.ReportIn(store, requirement, DiagnosticCode.InternalInvariant_Kd, at: failure.At, span: span);
+            function.ReportIn(store, problem.Requirement, DiagnosticCode.InternalInvariant_Kd, at: facts.At, span: span);
             return;
         }
 
-        function.ReportIn(store, requirement, code, at: failure.At, span: span, note: report.Note, evidence: report.Evidence, related: related);
+        function.ReportIn(store, problem.Requirement, problem.Code, at: facts.At, span: span, evidence: evidence, related: related, condition: problem.Condition);
+
+        // The parameter whose external name the check recorded (its Span fact): a read of the recorded location, not the comparison again.
+        static int NamedParameter(FunctionKoto function, SourceSpan span)
+        {
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (function.Parameters[i].ExternalNameSpan == span)
+                {
+                    return i;
+                }
+            }
+
+            throw new UnreachableException();
+        }
     }
 
     private void ReportBaseCallFailure(BaseReferenceKoto reference, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
