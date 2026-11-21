@@ -300,7 +300,7 @@ public sealed partial class Binding
     // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a delivering form's operand; a
     // result target by its published outcome (JoinOutcome.Conflict or Dependent) or its own failure; a Tuple, array, fill or dictionary
     // literal by its own failure only, its parts being judged at their positions; any other part unbound, not a part waiting for its
-    // call (IsWaitingPart), with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part
+    // call (IsCheckedCall), with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part
     // bound with a Type that failed with its own BindingFailure, recorded or derived (Invalid), is failed.
     private bool PartFailed(Koto part)
     {
@@ -319,7 +319,7 @@ public sealed partial class Binding
             return part.BindingFailure != BindingFailure.None || IsRecovery(part, out _);
         }
 
-        return part.BoundType is null ? !this.IsWaitingPart(part) && this.HasFailureCauses(part) : part.BindingState == BindingState.Invalid;
+        return part.BoundType is null ? !this.IsCheckedCall(part) && this.HasFailureCauses(part) : part.BindingState == BindingState.Invalid;
     }
 
     // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its

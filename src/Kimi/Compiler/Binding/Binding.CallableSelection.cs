@@ -118,7 +118,7 @@ public sealed partial class Binding
                 {
                     var map = MapValueCallArguments(call, candidates[i].Signature);
                     var state = map.Valid ? this.ProbeValueCall(call, scope, candidates[i].Signature, expected, operations.AsSpan(i * stride, stride)) : CandidateApplicability.Inapplicable;
-                    _ = this.TakeTrialChecked(call); // SPEC 10.5.1: a row's failed check is taken with the row (R2.4); its record names the rows.
+                    candidates[i] = candidates[i] with { CheckedPart = this.TakeTrialChecked(call) }; // SPEC 10.5.1: the row's reason (R2.4).
                     evaluated[i] = new(null, state, null, 0, ArgumentMap: map);
                     if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                     {
@@ -222,7 +222,8 @@ public sealed partial class Binding
                 }
             }
 
-            related[i] = ("candidate", at, $"Callable<{candidate.Receiver.ToString().ToLowerInvariant()}, {DiagnosticTypeName(candidate.Signature)}>");
+            var label = $"Callable<{candidate.Receiver.ToString().ToLowerInvariant()}, {DiagnosticTypeName(candidate.Signature)}>";
+            related[i] = ("candidate", at, candidate.CheckedPart is { } checkedPart ? $"{label}: {CheckedPartText(checkedPart)}" : label);
         }
 
         if (code == DiagnosticCode.ParameterShapeMismatch_Kd)
@@ -266,5 +267,6 @@ public sealed partial class Binding
             => (failure = binding.RecordedFact(call, Family)).Failed;
     }
 
-    private readonly record struct CallableCandidate(BoundType Signature, SemanticsKind Receiver, BoundConstraint Fact, Koto Context);
+    // CheckedPart: SPEC 10.5.1, the argument checked against the row's parameter Type whose own resolution there failed (FitChecked).
+    private readonly record struct CallableCandidate(BoundType Signature, SemanticsKind Receiver, BoundConstraint Fact, Koto Context, CheckedPartFailure? CheckedPart = null);
 }

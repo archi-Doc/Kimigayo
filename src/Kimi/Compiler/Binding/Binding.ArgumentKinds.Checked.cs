@@ -108,8 +108,10 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1: the outcome of a part's check against an expected Type: Failure, the part's own resolution there has no applicable
-    // candidate or is ambiguous (NoneApplicable, Ambiguous), or null with the class its resolution gives (SPEC 10.4 step 1).
-    private readonly record struct CheckedVerdict(CallSelection? Failure, ArgumentAdaptation Class);
+    // candidate or is ambiguous (NoneApplicable, Ambiguous), or null with the class its resolution gives (SPEC 10.4 step 1); for a
+    // qualified Case construction, the enum Type its qualifier fixes there (Owner), which its publisher must reach too
+    // (BindEnumConstruction).
+    private readonly record struct CheckedVerdict(CallSelection? Failure, ArgumentAdaptation Class, BoundType? Owner = null);
 
     // SPEC 10.5.1 (design-af3 R1.5): the part checked against its expected Type that made a candidate inapplicable, that Type and its own
     // resolution's outcome there (NoneApplicable or Ambiguous), diagnostic payload only (RejectedCandidate.CheckedPart).

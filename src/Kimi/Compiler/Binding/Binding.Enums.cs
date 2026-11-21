@@ -344,7 +344,8 @@ public sealed partial class Binding
         try
         {
             var fits = target is { } found && this.CaseTakes(reference, found.Case, call) && this.FitsConstructionAt(found, call, result, scope, node);
-            return fits ? new(null, this.CheckedClass(expected, ownerResult: true)) : new(CallSelection.NoneApplicable, default);
+            return fits ? new(null, this.CheckedClass(expected, ownerResult: true), reference is MemberAccessKoto ? target!.Value.Owner : null)
+                : new(CallSelection.NoneApplicable, default);
         }
         finally
         {
@@ -376,8 +377,8 @@ public sealed partial class Binding
             for (var i = 0; i < enumeration.Payload.Length; i++)
             {
                 var source = call!.ArgumentNodes[i];
-                if (this.FitArgument(source, this.PayloadTypeAt(enumeration.Payload[i], formed, scope, out _), scope, source, out _) is
-                    CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
+                // Only a misfit fails the check (Rd1); a payload whose Type is not yet known (Pending) keeps it, as at a call argument.
+                if (this.FitArgument(source, this.PayloadTypeAt(enumeration.Payload[i], formed, scope, out _), scope, source, out _) == CandidateApplicability.Inapplicable)
                 {
                     return false;
                 }
@@ -396,6 +397,14 @@ public sealed partial class Binding
     {
         var symbol = target.Case;
         var enumeration = symbol.EnumCase!;
+        if (reference is MemberAccessKoto && expected is not null && this.dependentChecks.TryGetValue((SourceRef.Written(use), expected), out var queried) &&
+            queried.Owner is { } queriedOwner && !ReferenceEquals(queriedOwner, target.Owner))
+        {
+            // design-casepath B4: the query of this qualified construction at this expected Type fixed another enum Type than its
+            // publisher reaches: a broken contract between the two, never a second answer.
+            return this.Fail(use, BindingFailure.Internal);
+        }
+
         expected = this.ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: a Case construction is an owner value; its expected result at `ref/U` is U.
         var declaration = (EnumKoto)enumeration.Owner.Declaration;
         var payload = enumeration.Payload;

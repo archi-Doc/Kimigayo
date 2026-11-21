@@ -338,7 +338,7 @@ public sealed partial class Binding
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
-            if (this.IsWaitingPart(argument))
+            if (this.IsCheckedCall(argument))
             {
                 this.CompleteDependent(argument, call);
             }

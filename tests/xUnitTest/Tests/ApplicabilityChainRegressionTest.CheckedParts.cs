@@ -111,4 +111,22 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("vc1i", "func t<F>(c: bool, f: ref/F) -> i32\n    F is Callable<(i64) -> ()>\n    F is Callable<(bool) -> ()>\n    f(idf(1.5))\n    return 0\npublic func main() => ()\n", "NoApplicableOverload_Kd: f(idf(1.5))")]
     public void APartAwaitingItsCallIsCheckedAtEachCandidatesType(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, CheckedPrelude + program, records);
+
+    // SPEC 10.5.1 (design-af3 W4): a warm rebind checks its parts again through a memo that keeps its capacity and queries that rent their
+    // scratch from the pools, so it allocates nothing: a nested call per candidate (r4), inner overloads at two Types (n3w, twice in one
+    // pass), a failed check's reasons (n4), a contextual Case with a payload (c3) and a join of waiting calls (j1).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("r4", "func fo3(x: ref/[2 of i64]) -> i32 => 0\nfunc fo3(x: bool) -> i32 => 1\nfunc t(c: bool) -> i32\n    return fo3(idf([2 of 1]))\n", true)]
+    [InlineData("n3w", "func fb(x: i64) -> i32 => 0\nfunc fb(x: bool) -> i32 => 1\nfunc t(c: bool) -> i32\n    let a = fb(pick2(1))\n    let b = fb(pick2(1))\n    return a + b\n", true)]
+    [InlineData("n4", "func fq(x: i64) -> i32 => 0\nfunc fq(x: bool) -> i32 => 1\nfunc t(c: bool) -> i32\n    return fq(pick3(1))\n", false)]
+    [InlineData("c3", "func kc(x: Option<i64>) -> i32 => 0\nfunc kc(x: i32) -> i32 => 1\nfunc t(c: bool) -> i32\n    return kc(.Some(idf(1)))\n", true)]
+    [InlineData("j1", "func fo3(x: ref/[2 of i64]) -> i32 => 0\nfunc fo3(x: bool) -> i32 => 1\nfunc t(c: bool) -> i32\n    return fo3(if c => idf([2 of 1]) else => idf([2 of 2]))\n", true)]
+    public void WarmCheckedPartsAllocateNothing(string form, string program, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(CheckedPrelude + program + "public func main() => ()\n");
+        var complete = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
+        Assert.True(complete == valid, $"{form}: {MinimalEmissionTest.Describe(c)}");
+    }
 }

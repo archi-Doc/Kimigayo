@@ -66,6 +66,12 @@ public sealed partial class Binding
     private static string PermittedCallsText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
 
+    // SPEC 10.5.1 (PLAN G924 AF-3b): a rejected candidate's or Callable row's reason, a part checked against its expected Type: the Type,
+    // the part and its own resolution's outcome there.
+    private static string CheckedPartText(in CheckedPartFailure failure)
+        => $"at {DiagnosticText.Bound(DiagnosticTypeName(failure.Expected), 48).Text}, {DiagnosticText.Bound(failure.Part.ToString(), 48).Text} " +
+            (failure.Outcome == CallSelection.Ambiguous ? "is ambiguous" : "has no applicable candidate");
+
     // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row.
     private static long? ImplementationLimit(BindingFailure failure)
         => failure switch
@@ -276,9 +282,7 @@ public sealed partial class Binding
 
                 if (candidate.CheckedPart is { } checkedPart)
                 {
-                    // SPEC 10.5.1: the argument checked against the candidate's expected Type, and its own resolution there.
-                    var outcome = checkedPart.Outcome == CallSelection.Ambiguous ? "is ambiguous" : "has no applicable candidate";
-                    label = $"{candidate.Function.Name}: at {DiagnosticText.Bound(DiagnosticTypeName(checkedPart.Expected), 48).Text}, {DiagnosticText.Bound(checkedPart.Part.ToString(), 48).Text} {outcome}";
+                    label = $"{candidate.Function.Name}: {CheckedPartText(checkedPart)}";
                 }
 
                 if (candidate.ConstraintFailure is { } condition)

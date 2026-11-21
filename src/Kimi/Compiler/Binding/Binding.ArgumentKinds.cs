@@ -93,9 +93,10 @@ public sealed partial class Binding
 
     // SPEC 10.5.1: whether a recorded part awaits its call, whose selected candidate completes it: its record holds Awaits (a Join, Case,
     // Reference, Function or Call; no Typed, Literal or Aggregate part waits) while its core is unbound and has no failure of its own. A
-    // join's step 3 may bind it first (SPEC 14.9.2), so a bound part is not one its call completed. Of these, all but a Join are SPEC
-    // 10.5.1's waiting parts (the SPEC word, which CompleteWaiting, TakeWaiting and IsWaitingPart keep); a Join keeps its own rows
-    // (FitArgument, CompleteWaiting).
+    // join's step 3 may bind it first (SPEC 14.9.2), so a bound part is not one its call completed. Of these, all but a Join are the
+    // waiting parts, which the selected candidate completes (CompleteWaiting, TakeWaiting): a Call or Case is SPEC 10.5.1's part checked
+    // against the expected Type, checked at each candidate's Type first (FitChecked; IsCheckedCall), and a Function or Reference one
+    // that 10.5.4 checks by its header or at S; a Join keeps its own rows (FitArgument, CompleteWaiting).
     private static bool Awaits(Koto core, ArgumentPart record)
         => (record.Relation & CallRelation.Awaits) != 0 && core.BoundType is null && core.BindingFailure == BindingFailure.None;
 
@@ -267,8 +268,9 @@ public sealed partial class Binding
     private ArgumentPart RecordedPart(Koto node)
         => this.argumentParts.TryGetValue(SourceRef.Written(PartCore(node)), out var part) ? part : default;
 
-    // Whether the part still waits for its call as a deferred Call: not yet completed and with no failure of its own (KindOf).
-    private bool IsWaitingPart(Koto node) => this.KindOf(node) == PartKind.Call;
+    // SPEC 10.5.1: whether the part is a nested call or construction checked against the expected Type that still awaits its call, a
+    // deferred Call not yet completed and with no failure of its own (KindOf).
+    private bool IsCheckedCall(Koto node) => this.KindOf(node) == PartKind.Call;
 
     // SPEC 10.5.1, 14.9.2: whether the part is the argument probe's, or a result source of a control-flow expression that is: nested
     // results propagate the same way.
@@ -417,7 +419,7 @@ public sealed partial class Binding
         }
 
         if ((this.KindOf(part) == PartKind.Literal && part.CodeContext.RecoveryCause(part) is null) ||
-            this.BindIndependentArgument(part, scope) is not null || this.IsWaitingPart(part) || this.KindOf(part) is PartKind.Aggregate or PartKind.Join)
+            this.BindIndependentArgument(part, scope) is not null || this.IsCheckedCall(part) || this.KindOf(part) is PartKind.Aggregate or PartKind.Join)
         {
             return true;
         }
@@ -498,6 +500,7 @@ public sealed partial class Binding
         if (ClassifyPart(operand) is var kind && kind is PartKind.Function or PartKind.Case)
         {
             this.RecordPart(operand, kind);
+            _ = kind == PartKind.Case && this.PreparePayloads(operand, scope); // As at an argument (P1): its check reads prepared payloads.
         }
 
         var previous = this.nestedOperandProbe;
