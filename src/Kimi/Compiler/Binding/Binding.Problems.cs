@@ -149,6 +149,11 @@ public sealed partial class Binding
         return null;
     }
 
+    // A problem its check may find again at the node with other facts (one requirement failing twice): numbered by the report's one rule
+    // (BindingReport.Condition), so a further problem takes its own key and an equal one its first's.
+    private BoundType? RecordNumbered(Koto node, BindingFailure failure, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
+        => this.Record(node, failure, facts, this.report.Condition(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), 0), facts), unresolved);
+
     // SPEC 23.3: the sides a mismatch compared and the syntax that shows them. Until E3 records the family's conditions, a node keeps its
     // first failure, as a Fail does.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
@@ -290,8 +295,33 @@ public sealed partial class Binding
             case BindingFailure.InvalidEffectBound when node is EffectBoundKoto effect && this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportEffectRejection(effect, store, index, problem);
                 break;
+            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Instance) is not null:
+                this.ReportAssociatedAmbiguity(node, store, index, problem);
+                break;
+            case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
+                this.ReportDisagreement(node, store, index, problem);
+                break;
+            case BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Related) is not null:
+                this.ReportCallablePremise(node, store, index, problem);
+                break;
+            case BindingFailure.AssociatedInference when this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportAssociatedInference(node, store, index, problem);
+                break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is not null && this.FactOf(index, ProblemFactKind.Constraint) is not null:
+                this.ReportClauseConstraint(node, store, index, problem); // No clause record carries an Instance, and no absence a Constraint.
+                break;
+            case BindingFailure.MissingName or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Instance) is not null:
+                this.ReportConstructorAbsence(node, store, index, problem);
+                break;
+            case BindingFailure.MissingOverrideTarget or BindingFailure.AmbiguousOverrideTarget or BindingFailure.OverrideContractMismatch or BindingFailure.DuplicateOverride or BindingFailure.UnprovenOverrideCondition
+                when node is FunctionKoto function && this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportOverrideFailure(function, store, index, problem);
+                break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
+                break;
+            case BindingFailure.Access when this.FactOf(index, ProblemFactKind.Related) is not null:
+                this.ReportInaccessible(node, store, index, problem);
                 break;
             case BindingFailure.AccessorReceiverShape when node is PropertyAccessorKoto { ReceiverType: { } written } accessor:
                 this.ReportAccessorReceiverShape(accessor, store, written, problem.Requirement);

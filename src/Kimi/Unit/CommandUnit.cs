@@ -114,22 +114,14 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 SuppressConsoleOutput = Program.SuppressConsoleOutput,
             };
 
-            // Main
-            var arguments = SimpleParserHelper.SplitArguments(commandLine, default);
-            if (arguments.Length != 0 && arguments[0] == "test")
+            // Every command, test included, receives its arguments from this parser: split, and a quoted one unwrapped (PLAN G1214).
+            var parser = this.Context.CreateSimpleParser(parserOptions);
+            if (!parser.Parse(KimiOptions.ExpandFlags(commandLine)))
             {
-                await serviceProvider.GetRequiredService<TestCommand>().Execute(arguments[1..], cancellationToken);
+                Environment.ExitCode = 1;
             }
-            else
-            {
-                var parser = this.Context.CreateSimpleParser(parserOptions);
-                if (!parser.Parse(KimiOptions.ExpandFlags(commandLine)))
-                {
-                    Environment.ExitCode = 1;
-                }
 
-                await parser.Execute(cancellationToken);
-            }
+            await parser.Execute(cancellationToken);
         }
     }
 

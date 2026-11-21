@@ -99,6 +99,8 @@ public sealed partial class Binding
             => this.Pattern(pattern) is { } member && this.InferAdapted(member, actual, source, path, receiver);
 
         // SPEC 10.5.4: the parameter and result Types an anonymous function's header writes are evidence for the slots of its signature.
+        // SPEC 10.8, 15.3.5 (G147 ruling 52): each is a binding at its position's polarity in the signature, as matching the signature
+        // whole composes it (ComponentPolarity): a written parameter Type at the parameters' (-1, a lower bound), the result at 1.
         internal readonly bool InferClosureHeader(BoundType signature, FunctionKoto literal)
         {
             var binding = this.Binding;
@@ -122,7 +124,14 @@ public sealed partial class Binding
                 if (written is not SyntaxFormKoto { Akind: KotoKind.InferredType } &&
                     (binding.BindType(written, headerScope) is not { } actual ||
                     !binding.Infer(
-                        parameterTypes.Components[i], actual, this.Solve, this.Frame, lengths: true, structural: true, evidence: header)))
+                        parameterTypes.Components[i],
+                        actual,
+                        this.Solve,
+                        this.Frame,
+                        lengths: true,
+                        structural: true,
+                        evidence: header,
+                        polarity: binding.ComponentPolarity(memberSignature, 0, 1, default))))
                 {
                     return false;
                 }
@@ -361,7 +370,6 @@ public sealed partial class Binding
                 this.Frame,
                 inferOrigins: true,
                 lengths: true,
-                commonOrigins: !this.Fixed.Own, // SPEC 10.8: a fixed binding is kept; open slots' covariant bindings meet.
                 structural: structural,
                 evidence: known,
                 relateLater: true);

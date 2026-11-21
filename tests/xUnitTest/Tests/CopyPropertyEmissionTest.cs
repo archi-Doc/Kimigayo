@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -93,14 +94,19 @@ public class CopyPropertyEmissionTest
     public void UnusedGetterBorrowDoesNotExtendTheTemporaryLifetime()
         => ScalarEmissionTest.EmitFixture("CopyPropertyUnusedBorrow", Meter + "let m = Meter.init()\nlet unused = m.level@ref", "get\n");
 
+    // SPEC 11.2: one record at the transfer, InaccessibleBinding_Kd for a private setter and InvalidAssignment_Kd for a custom one
+    // (Binding.Conversions CompleteTransfer).
     [Theory]
-    [InlineData("private set", "@move")]
-    [InlineData("set(value: i32) -> () => storage = value", "@move")]
-    public void StorageTransferRequiresAnAccessibleStandardSetter(string setter, string transfer)
+    [InlineData("private set", "@move", nameof(DiagnosticCode.InaccessibleBinding_Kd))]
+    [InlineData("set(value: i32) -> () => storage = value", "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    public void StorageTransferRequiresAnAccessibleStandardSetter(string setter, string transfer, string code)
     {
-        var c = MinimalEmissionTest.Analyze("struct S\n    public var item: i32 = 1\n        " + setter + "\nlet s = S.init()\nlet taken = s.item" + transfer);
+        var source = "struct S\n    public var item: i32 = 1\n        " + setter + "\nlet s = S.init()\nlet taken = s.item" + transfer;
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         Assert.False(c.Generate(TextWriter.Null));
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, "s.item" + transfer), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
     }
 
     [Fact]
@@ -113,13 +119,17 @@ public class CopyPropertyEmissionTest
     public void StorageTransferDoesNotRequireAWritableRoot(string kind)
         => ScalarEmissionTest.EmitFixture("CopyPropertyMove" + kind, "struct S\n    public " + kind + " item: i32 = 1\nlet s = S.init()\nlet taken = s.item@move\nrequire taken == 1 else => $abort(\"value\")", string.Empty);
 
+    // SPEC 11.2: the enclosing owned projection's setter, one record at the transfer.
     [Theory]
-    [InlineData("private set")]
-    [InlineData("set(value: Point) -> () => storage = value")]
-    public void ChildTransferCannotBypassTheParentSetter(string setter)
+    [InlineData("private set", nameof(DiagnosticCode.InaccessibleBinding_Kd))]
+    [InlineData("set(value: Point) -> () => storage = value", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    public void ChildTransferCannotBypassTheParentSetter(string setter, string code)
     {
-        var c = MinimalEmissionTest.Analyze("struct Point\n    Self is Copy\n    public var x: i32 = 1\nstruct S\n    public var point: Point = Point.init()\n        " + setter + "\nlet s = S.init()\nlet taken = s.point.x@move");
+        var source = "struct Point\n    Self is Copy\n    public var x: i32 = 1\nstruct S\n    public var point: Point = Point.init()\n        " + setter + "\nlet s = S.init()\nlet taken = s.point.x@move";
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, "s.point.x@move"), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
     }
 
     [Theory]

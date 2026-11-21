@@ -479,6 +479,18 @@ public class AssociatedInferenceTest
         }));
     }
 
+    // R7-E2 E2-5b: an inference hole's problem keeps its facts in the report's storage and one kept list (InferenceFacts), so a warm
+    // rebind of a failing hole allocates nothing either.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AFailingInferenceHoleRebindsWithoutAllocation()
+    {
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item\n    func read<T>(value: T) -> Self.Item\nstruct S\n    Self is C\n    public func read<U>(value: U) -> U => value@move\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
     // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
     [Theory]

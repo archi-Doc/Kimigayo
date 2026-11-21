@@ -254,9 +254,9 @@ searches `PATH`; adding LLVM to `PATH` is only for direct tool use.
 A native build selects no root: it runs Tatara (LLVM and LLD in one library), which the published
 `kimi.exe` carries linked in and a development `Kimi.dll` loads from the `tatara.dll` beside it, never one
 on `PATH`; it checks Tatara's ABI and LLVM version before generating and starts no LLVM executable.
-A build accepts `--ToolchainRoot`, `--LlvmBin`, a project's
-`LlvmBin` setting and a link manifest's `toolchain.llvmBin` and does not read them (until Tatara B6b4 and
-B6b5); `kimi toolchain verify` takes neither option.
+A build accepts `--ToolchainRoot` and `--LlvmBin` and does not read them (until Tatara
+B6b4); `kimi toolchain verify` takes neither option. A project's `LlvmBin` setting and a link manifest's
+`toolchain.llvmBin` are errors (Kimi carries its toolchain): remove the setting, and re-emit such a manifest.
 The reserved libraries are the compiler's: a build stages them under `<output>.native/<sha256>.lib`
 and records their hashes; a link manifest whose backend entry names an input asks for a re-emit.
 

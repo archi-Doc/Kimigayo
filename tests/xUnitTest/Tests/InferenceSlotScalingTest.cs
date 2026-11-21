@@ -96,6 +96,8 @@ public class InferenceSlotScalingTest
     [InlineData("references", 512)]
     [InlineData("parts", 32)]
     [InlineData("parts", 512)]
+    [InlineData("slots", 32)]
+    [InlineData("slots", 512)]
     [Trait("Purpose", "Allocation")]
     public void AWarmRebindOfCallsAllocatesNothing(string workload, int calls)
     {
@@ -112,6 +114,38 @@ public class InferenceSlotScalingTest
     // around its joins only. A unit other than guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and
     // removes the marker. P3 owns "prepare arguments once": dev's PrepareCallArguments probes a Call part again at each completion, so its count
     // at depth d is 734 + 4d + d^2 (id) and 734 + 8d + 3d^2 (ov).
+    // G1128 (Q20; design R1.7, F's ruling 38): a slot's skeleton, its bindings' collection and the values' substitution decide each
+    // distinct (bindings' sub-Types, polarity) query once (SlotWalkWork), so their work grows linearly in the depth of a DAG-shaped
+    // binding, and its slot variables do not grow: two distinct bindings `x = (d, p)` and `y = (d, q)` share the dup chain's DAG `d` of 2^n
+    // leaves (n distinct parts). The count is exact at any depth; the depths stay small because Binding's other walks over two
+    // distinct bindings of a DAG still take time exponential in it (PLAN G1152, outside G1128). Two identical bindings `pick2(d, d)`
+    // take no variables: one Type solves to itself (R1.3 (e)'s shortcut theorem). The rows bind only (the 2^n-leaf local is the
+    // layout's limit).
+    [Fact]
+    public void ASlotsDagBindingIsWalkedOncePerDistinctPart()
+    {
+        var (w4, v4) = Work(4, "pick2(x, y)");
+        var (w8, v8) = Work(8, "pick2(x, y)");
+        var (w12, v12) = Work(12, "pick2(x, y)");
+        Assert.True(w4 > 0 && v4 > 0, $"{w4} {v4}");
+        Assert.Equal(w8 - w4, w12 - w8);
+        Assert.Equal((v4, v4), (v8, v12));
+        Assert.Equal((0, 0), Work(32, "pick2(d, d)"));
+
+        static (int Walks, int Variables) Work(int depth, string call)
+        {
+            var chain = "p";
+            for (var i = 0; i < depth; i++)
+            {
+                chain = $"dup({chain})";
+            }
+
+            var c = CompilationTestHelper.BindSuccess("func dup<T>(x: T) -> (T, T) => $abort(\"no\")\nfunc pick2<T>(x: T, y: T) -> T => $abort(\"no\")\n" +
+                $"func u(p: ref/i32 during a, q: ref/i32 during b) -> i32\n    let d = {chain}\n    let x = (d, p)\n    let y = (d, q)\n    let r = {call}\n    return 0\n");
+            return (c.Binding.SlotWalkWork, c.Binding.SlotVariableWork);
+        }
+    }
+
     [Theory]
     [InlineData("P3", "id", Explicit = true)]
     [InlineData("P3", "ov", Explicit = true)]
@@ -146,7 +180,8 @@ public class InferenceSlotScalingTest
     private static string CallWorkload(string workload, int calls)
     {
         var source = new System.Text.StringBuilder("func identity<T>(value: T) -> T => value@move\nfunc take(value: i64) -> i32 => 0\n" +
-            "func see(target: ref/i32, by: i32) -> i32 => by\nlet c = true\nlet x: i64 = 2\nlet a: i32 = 1\nlet b: i32 = 2\n");
+            "func see(target: ref/i32, by: i32) -> i32 => by\nlet c = true\nlet x: i64 = 2\nlet a: i32 = 1\nlet b: i32 = 2\n" +
+            (workload == "slots" ? "func pick2<T>(x: T, y: T) -> T => x@move\n" : string.Empty));
         for (var i = 0; i < calls; i++)
         {
             source.Append($"let r{i} = ").Append(workload switch
@@ -155,6 +190,7 @@ public class InferenceSlotScalingTest
                 "waiting" => $"take(identity({i}))",
                 "joins" => $"identity(if c => x else => {i})",
                 "references" => $"see(if c => a@ref else => b@ref, {i})",
+                "slots" => "pick2(a@ref, b@ref)",
                 _ => $"identity(if c => (x, {i}) else => ({i}, x))",
             }).Append('\n');
         }

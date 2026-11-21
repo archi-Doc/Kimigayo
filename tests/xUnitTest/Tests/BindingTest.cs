@@ -623,6 +623,78 @@ public class BindingTest
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.MissingOrigin);
     }
 
+    // R7-N5 E (B4's precedent, AFactALibraryNodesFailureCarriesIsRecordedWithIt): a node's dependence row is stored by the recorder's
+    // decision, so a library node the program pass rests (CompleteDependent's foreign branch: the rest is the node's entry) keeps its
+    // consultation range in the part's foreign row, which the family's reader reads; no library column is written (HirTables.Of refuses
+    // the frozen table, where dev's Dictionary took the row). No program rests one today, so the row rests one through the private writer
+    // after a Final Bind, on the program's failed Type name, and the publication's walk reads the range through the entry: the node's one
+    // cause is that name's record.
+    [Fact]
+    public void ALibraryNodeTheProgramPassRestsKeepsItsRangeInItsEntry()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var cause = c.Binding.Issues.Select(static x => x.Node).First(x => x.FailureOf(c) != BindingFailure.None);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        typeof(Binding).GetMethod("CompleteDependent", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, cause]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var entry = Assert.Single(own.ForeignFailures);
+        Assert.Equal((node, BindingState.Resolved, BindingFailure.None), (entry.Node, entry.Before, entry.Failure));
+        Assert.NotEqual(BindingState.Resolved, entry.State);
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
+        var rows = typeof(Binding).GetField("prerequisites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        object?[] read = [node, null];
+        Assert.True((bool)rows.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(rows, read)!);
+        var range = ((int Start, int Count))read[1]!;
+        var store = (List<Koto>)typeof(Binding).GetField("prerequisiteStore", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal(1, range.Count);
+        Assert.Same(cause, store[range.Start]);
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.Prerequisites.Used);
+        Assert.Empty(c.Library.Layer.Part.ForeignFailures);
+        Assert.Same(cause, Assert.Single(c.Binding.FailureCauses(node)!).Subject);
+    }
+
+    // R7-N5 E (C5's foreign row; B4's precedent): a declaration's duplicate group row is stored by the recorder's decision and listed in
+    // the pass's working order of groups, so a library declaration a pairwise check pairs with a program one (RegisterConformanceDeclaration's
+    // library clause) keeps its row in the program part's entry, which its Duplicate failure made; no library column is written, and
+    // RecordDuplicateGroups walks it in the order it joined, recording both declarations. No program pairs one today (a conformance is
+    // declared in its Type), so the row takes FailDuplicate's steps after a Final Bind through the private writers: both failures, both
+    // joins, and the group's rows with the library declaration first. (FailDuplicate itself would order the two by CompareDeclarations,
+    // whose KeyOf refuses a frozen library node: dev's code, which this unit leaves as it is.)
+    [Fact]
+    public void ALibraryDeclarationAPairwiseCheckPairsKeepsItsGroupRowInItsEntry()
+    {
+        var c = CompilationTestHelper.Parse("let x = 1\n");
+        Assert.True(c.Bind().IsComplete);
+        Koto declaration = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single();
+        Koto library = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var fail = typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fail.Invoke(c.Binding, [library, BindingFailure.Duplicate, false]);
+        fail.Invoke(c.Binding, [declaration, BindingFailure.Duplicate, false]);
+        var rows = typeof(Binding).GetField("duplicateDeclarations", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var join = rows.GetType().GetMethod("Join", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        join.Invoke(rows, [library]);
+        join.Invoke(rows, [declaration]);
+        var row = rows.GetType().GetProperty("Item", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        row.SetValue(rows, ((Koto?)library, (Koto?)declaration), [library]);
+        row.SetValue(rows, ((Koto?)library, (Koto?)null), [declaration]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((library, BindingFailure.Duplicate), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (library.StateOf(c), library.FailureOf(c)));
+        Assert.Equal(((Koto?)library, (Koto?)declaration), ((Koto?, Koto?))row.GetValue(rows, [library])!);
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.DuplicateDeclarations.Used);
+        var order = (List<Koto>)typeof(Binding).GetField("duplicateOrder", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Collection(order, x => Assert.Same(library, x), x => Assert.Same(declaration, x));
+        join.Invoke(rows, [library]); // A declaration already in a group keeps its row and its one listing.
+        Assert.Equal(2, order.Count);
+        Assert.Same(library, typeof(Binding).GetMethod("FirstDuplicateDeclaration", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [declaration]));
+        typeof(Binding).GetMethod("RecordDuplicateGroups", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, []);
+        c.Binding.CheckBound();
+        var issues = c.Binding.Issues.Concat(c.Binding.DerivedIssues).ToArray();
+        Assert.Contains(issues, x => ReferenceEquals(x.Node, library) && x.Failure == BindingFailure.Duplicate);
+        Assert.Contains(issues, x => ReferenceEquals(x.Node, declaration) && x.Failure == BindingFailure.Duplicate);
+    }
+
     // R7-E2 E2-1 (PLAN G1083, D-850): a fact-less family-1 problem a program pass records at a frozen library node goes through Core's one
     // store decision (Compilation.StoreOf; ReportProblem's Koto.ReportIn), so it is the program's record, published once, and another
     // compilation over the same library holds none. No program records one today, so the row records one through the recorder after a
@@ -675,6 +747,87 @@ public class BindingTest
             .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
         record(node, BindingFailure.InvalidTypeFormation, [new(ProblemFactKind.Related, SourceRef.Of(declaration), 0), new(ProblemFactKind.Count, SourceRef.Of(node), 1), new(ProblemFactKind.Count, SourceRef.Of(node), 2)], 0, false);
         AssertTheProgramsOneRecord(c, node, DiagnosticCode.InvalidTypeFormation_Kd);
+    }
+
+    // R7-E2 E2-5b (D-850): a problem whose facts are its whole record, as each converted family's ReportProblem row reads them, at a frozen
+    // library node is the program's one record, through Core's store decision (Koto.ReportIn). No library node records one, so the row
+    // records it through the recorder after a Final Bind, with facts at library declarations of the kinds the row reads.
+    // ConstructorAbsence.NoConstructor is 18, a private row.
+    [Theory]
+    [InlineData("ambiguity", (byte)BindingFailure.Ambiguous, DiagnosticCode.AmbiguousBinding_Kd)] // two candidates, their instances, a count
+    [InlineData("agreement", (byte)BindingFailure.InvalidAssociatedType, DiagnosticCode.InvalidAssociatedType_Kd)] // two instances, each binding the associated Type
+    [InlineData("mappings", (byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // two instances' mappings
+    [InlineData("inference", (byte)BindingFailure.AssociatedInference, DiagnosticCode.AssociatedTypeInferenceFailed_Kd)] // its reason, the associated Type and its instance
+    [InlineData("premise", (byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // the bounded clause, the requirement
+    [InlineData("clause", (byte)BindingFailure.UnsatisfiedConstraint, DiagnosticCode.UnsatisfiedConstraint_Kd)] // the clause, its proposition, a called declaration
+    [InlineData("absence", (byte)BindingFailure.MissingName, DiagnosticCode.UnresolvedBinding_Kd)] // its reason, the construction and its constructed Type
+    [InlineData("access", (byte)BindingFailure.Access, DiagnosticCode.InaccessibleBinding_Kd)] // the inaccessible declaration, the part that shows it (E2-4a)
+    [InlineData("access-use", (byte)BindingFailure.Access, DiagnosticCode.InaccessibleBinding_Kd)] // the inaccessible declaration alone (E2-4a)
+    public void ALibraryNodesFactRecordIsTheProgramsRecord(string family, byte failure, DiagnosticCode code)
+    {
+        var c = CompilationTestHelper.Parse("let x: i32 = true\n"); // A failed Bind whose own record shares no row's code.
+        Assert.False(c.Bind().IsComplete);
+        var library = KotoTree.Walk(c.Library.Kotonoha.RootKoto).Where(x => x.StateOf(c) == BindingState.Resolved).ToArray();
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var associated = library.OfType<SyntaxFormKoto>().Where(static x => x.Akind == KotoKind.AssociatedType).Take(2).ToArray();
+        Koto node = library.OfType<GenericsKoto>().First();
+        Koto contract = library.OfType<ContractKoto>().First();
+        Koto clause = library.OfType<IsKoto>().First();
+        Koto function = library.OfType<FunctionKoto>().First();
+        ProblemFact[] facts = family switch
+        {
+            "ambiguity" => [Related(associated[0]), Instance(associated[0], BoundType.Boolean), Related(associated[1]), Instance(associated[1], BoundType.Unit), new(ProblemFactKind.Count, SourceRef.Of(node), 2)],
+            "agreement" => [Related(contract), Instance(contract, BoundType.Boolean), Instance(associated[0], BoundType.Unit), Related(contract), Instance(contract, BoundType.Unit), Instance(associated[0], BoundType.Boolean)],
+            "mappings" => [Related(contract), Instance(contract, BoundType.Boolean), Related(contract), Instance(contract, BoundType.Unit)],
+            "inference" => [new(ProblemFactKind.Reason, SourceRef.Of(associated[0]), (long)Binding.InferenceProblem.Shape), Related(associated[0]), Instance(associated[0], BoundType.Boolean)],
+            "premise" => [Related(clause), Related(function, 1)],
+            "clause" => [Related(clause), new(ProblemFactKind.Constraint, SourceRef.Of(clause), report.Keep(c.Semantics.ConstraintOf((IsKoto)clause)!)), Related(contract, 1)], // a declaration no function
+            "absence" => [new(ProblemFactKind.Reason, SourceRef.Of(node), 18), Related(node), Instance(node, BoundType.Boolean)],
+            "access" => [Related(contract), Related(node, 1)],
+            "access-use" => [Related(contract)],
+            _ => throw new ArgumentOutOfRangeException(nameof(family)),
+        };
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, (BindingFailure)failure, facts, 0, false);
+        AssertTheProgramsOneRecord(c, node, code);
+
+        static ProblemFact Related(Koto at, long role = 0) => new(ProblemFactKind.Related, SourceRef.Of(at), role);
+
+        ProblemFact Instance(Koto at, BoundType type) => new(ProblemFactKind.Instance, SourceRef.Of(at), report.Keep(type));
+    }
+
+    // R7-E2 E2-5a (D-850, Diagnostics.cs's ReportConstraint): a fact-less InvalidConstraint problem, as the Contract and conformance sites
+    // record, at a frozen library clause is the program's one record, through Core's store decision.
+    [Fact]
+    public void ALibraryClausesConstraintProblemIsTheProgramsRecord()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<IsKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.InvalidConstraint, [], 0, false);
+        AssertTheProgramsOneRecord(c, node, DiagnosticCode.InvalidConstraint_Kd);
+    }
+
+    // R7-E2 E2-5a (D-850, Diagnostics.VirtualOverrides.cs's ReportOverrideFailure): an override problem (a Condition cause with its
+    // Unknown proof, the original and the clause as Related facts) at a frozen library function is the program's one record, through Core's
+    // store decision. No library function overrides, so the row records one through the recorder after a Final Bind.
+    [Fact]
+    public void ALibraryFunctionsOverrideProblemIsTheProgramsRecord()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var library = KotoTree.Walk(c.Library.Kotonoha.RootKoto);
+        var functions = library.OfType<FunctionKoto>().Where(x => x.StateOf(c) == BindingState.Resolved).Take(2).ToArray();
+        Koto node = functions[0];
+        Koto clause = library.OfType<IsKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var condition = 8L; // OverrideFailureCause.Condition
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.UnprovenOverrideCondition, [new(ProblemFactKind.Reason, SourceRef.Of(node), condition | ((long)ConstraintProof.Unknown << 8)), new(ProblemFactKind.Related, SourceRef.Of(functions[1]), 1), new(ProblemFactKind.Related, SourceRef.Of(clause), 0)], 0, false);
+        AssertTheProgramsOneRecord(c, node, DiagnosticCode.UnprovenOverrideCondition_Kd);
     }
 
     // R7-E2 E2-1 (P1 (a); SPEC 23.1.2, rule W): each problem of a failed node is direct or derived by its own requirement (CollectProblem).

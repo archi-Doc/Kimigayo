@@ -81,7 +81,7 @@ public sealed class VirtualHoverTest
 
     // GR-1a (H0b §2.1; DECISIONS R5-M183): a body in which a construction record lies is not judged without a problem. The virtual
     // function's body holds the builder's located Unsupported_Kd, a Field of a Place whose Type an identity premise makes a struct
-    // (MirBuildTest.AnUnsupportedFieldsSiteNamesItsReceiversRoot), the analysis's one row, so its line is pending (fail-before:
+    // (MirBuildTest.AnUnsupportedFieldsSiteNamesItsReceiver), the analysis's one row, so its line is pending (fail-before:
     // completed, since a record's body is its class, never an ordinal).
     [Fact]
     public void OwnershipChecksArePendingForABodyHoldingAConstructionRecord()
