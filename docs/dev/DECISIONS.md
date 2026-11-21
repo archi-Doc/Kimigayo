@@ -23931,6 +23931,51 @@ R8-M* and R9-M* by the stage of the recording unit.
       closed Contract and ObjectPayload keeps both records; an override of a slot whose substituted condition is Refuted (6.4.3)
       keeps the record of the slot's contract it breaks (external name, result Type, Origin binders: OverrideContractMismatch_Kd
       beside O-370's InvalidConstraint_Kd). Corpus: as Q-613 states.
+  - **E2-5b (Q-616; B's E2-5 rulings O1, O3, O8, the E2-5b rulings O3/O-f, O-a, O-b and the review rulings C1-C8).** The clause
+    record, contract agreement, associated ambiguity and inference, constructor absence and ContractMatching's `Invalid` record their
+    problems as typed facts (SPEC 6.3.6, 8.3, 8.4.3, 8.5.2, 8.6, 8.6.4, 8.9.2, 8.11.4, 15.6.1, 22.1).
+    - **`Instance`, a fifth Binding kind (B's O1 (a)).** Its Value is a kept side's index, a Type its location does not determine,
+      read by its site: at the preceding `Related` fact's own site, the instance that party is (the declaring Contract instance of a
+      related associated declaration, a related Contract's instance, a construction's constructed Type); at a member declaration of
+      that party, the Type that instance binds the member to (the agreement's associated Type). A problem's Count and Instance facts
+      are in their row's order; a MIR record carrying one is `InternalInvariant_Kd`, as `Key`. No related location's own recorded
+      Type serves (C6 (3)): an ambiguity's two candidates share one declaration, whose Type is the generic one; an inference hole's
+      identity is the conformance's substituted instance; an agreement's two instances share one Contract declaration, and an
+      associated Type is bound per instance; a failed construction has no Type recorded at its location.
+    - **The families' facts.** Associated ambiguity: two `Related` (role 0), each with its `Instance`, and `Count`. Contract
+      agreement, one problem per disagreeing pair: per instance `Related` (role 0) and `Instance`, and for an associated Type a second
+      `Instance` at its declaration; no `Reason`, the code tells the two forms. Associated inference: `Reason` (an InferenceProblem
+      row), `Related` roles 0-3, `Instance`; its kept list starts empty for each hole. The clause record: `Related` role 0 (the
+      clause), `Constraint`, and for a selected call role 1 (the called declaration, its name read from the declaration's symbol for
+      any declaration a call selects, C5 (a)). Constructor absence: `Reason` (a ConstructorAbsence row; its first four rows are
+      OmittedBaseOutcome's by value), `Related` role 0 with `Instance`, role 1 (an unproven premise), role 2 (the omitted base clause
+      or the Field without an initializer). An undeclared Callable bound (O-b, C1): `Related` role 0 (the implementation's bounded
+      clause) and role 1 (the requirement); `CompatibleRequirement` returns the bound as a value with its Refuted verdict, so no kept
+      list carries it. Each family's text is one ReportProblem row.
+    - **One numbering rule.** `RecordNumbered` numbers a problem its check may find again at the node through
+      `BindingReport.Condition`: ParameterShapes, the agreement, ContractMatching's `Invalid` (an ancestor path's and the child's
+      requirement checks meet at one use) and the override family (`RecordOverride`, C4). Condition counts every earlier problem of
+      the subject, so a conformance problem at a use that already holds another requirement's record takes a condition above 0; the
+      records and their text are unchanged (PLAN G1141).
+    - **Notes.** The absence's and the clause record's Notes stay, rendered by the adapter from the facts (B's O3/O-f (c): CLI and
+      LSP rows pin them; PLAN G1223). Those of associated ambiguity, the agreement (both codes) and the undeclared Callable bound go
+      (D3).
+    - **Exposure (C5 (b), C7).** A selected call's clause record shows its `declaration` in CLI text and `kimi.check/3`'s related
+      array, and in the LSP message's related information, which reads the same array (not run); for a library callee it is a
+      library location, as a library clause's related `constraint` already is (the Front's k5: `func show<T>(x: ref/T) -> string` /
+      `return Text.toString(x)`).
+    - **Deleted.** `contractAgreementFailures` with its record struct, `constructorAbsences` (its record struct replaced by the
+      ConstructorAbsence enumeration), R7-N5 B3-1's `AssociatedAmbiguities`, `InferenceFailures` and `ClauseConstraints` columns and
+      R7-N5 B5b's `CallablePremiseFailures` with their accessors, and the six ReportIssue arms. Ratchet ("Node-keyed table members in
+      Binding") 34 -> 31. ContractMatching's Access pair (`Fail(clause, Access)`, `Fail(premises.Parent, Access)`: a part and its
+      owner) is E2-4's.
+    - **Rejected.** `Related` with a second Value part (O1 (b)); `Actual`/`Expected` for a party (D6); the adapter re-deriving an
+      instance; a `Reason` row for the agreement's form; reading the call's bound symbol at publication for the clause record's
+      declaration (a pending candidate's call is unbound, O-a); a kept list for the undeclared bound (a non-recording return would
+      leave it filled, C1); a cast of the called declaration to a function (C5 (a)).
+    - **Moves (Q13).** M3: the Notes that go. M4: a selected call's clause record relates `declaration` at the called declaration
+      (a library location for a library callee). M1: a second disagreeing associated Type of one intersection (g1m, SPEC 8.9.2); an
+      ancestor's and the child's requirement each adding an undeclared Callable bound (p2, SPEC 8.11.4). Corpus: as Q-616 states.
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
