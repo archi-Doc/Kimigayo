@@ -11,11 +11,12 @@ using Xunit;
 
 namespace XunitTest;
 
-// Tatara, the native build's LLVM and LLD (Tatara designs A2 §4.5 and A4 §2.6), on the resolved toolchain root's tatara.dll and tools.
-// A row that loads tatara.dll or runs a tool skips off Windows; on Windows a missing tatara.dll fails it. KIMI_TATARA_CORPUS names a
-// corpus directory whose fixtures/*.ll (bare IR) replace the fixed rows of the tool control comparison, at O0 and O2; each row's
-// outcome is appended to <corpus>/results.tsv (tests/scripts/run-tatara-corpus.ps1 prepares the corpus and runs this class). A fatal
-// row leaves Tatara refusing every later call for the rest of its process, so each runs in a child test process of its own (Fatal).
+// Tatara, the native build's LLVM and LLD (Tatara designs A2 §4.5, A4 §2.6 and B6b1 §2), on the compiler's Tatara (the tatara.dll the
+// build copies beside the test output's Kimi.dll) and the resolved toolchain root's tools. A row that loads tatara.dll or runs a tool
+// skips off Windows; on Windows a missing tatara.dll fails it. KIMI_TATARA_CORPUS names a corpus directory whose fixtures/*.ll (bare
+// IR) replace the fixed rows of the tool control comparison, at O0 and O2; each row's outcome is appended to <corpus>/results.tsv
+// (tests/scripts/run-tatara-corpus.ps1 prepares the corpus and runs this class). A fatal row leaves Tatara refusing every later call for
+// the rest of its process, so each runs in a child test process of its own (Fatal).
 public sealed class TataraExecutorTest : IDisposable
 {
     private const string Triple = WindowsProfile.Target;
@@ -51,18 +52,18 @@ public sealed class TataraExecutorTest : IDisposable
     public void Dispose() => Directory.Delete(this.directory, true);
 
     // The start check's comparison (no DLL): the expected ABI is the SHA-256 of src/Tatara/tatara.h, and a DLL of another ABI or LLVM
-    // version is refused with both values and the remedy.
+    // version is refused with both values and the remedy, which names no root (Tatara B6b1).
     [Fact]
     public void StartCheckComparesTheAbiAndTheLlvmVersion()
     {
         var header = Path.Combine(Repository.Root, "src", "Tatara", "tatara.h");
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(header))), Tatara.ExpectedAbi);
-        Tatara.CheckStart("tatara.dll", Tatara.ExpectedAbi, ToolchainIdentity.LlvmVersion);
-        var abi = Assert.Throws<InvalidDataException>(() => Tatara.CheckStart("tatara.dll", "0123", ToolchainIdentity.LlvmVersion));
+        Tatara.CheckStart(Tatara.ExpectedAbi, ToolchainIdentity.LlvmVersion);
+        var abi = Assert.Throws<InvalidDataException>(() => Tatara.CheckStart("0123", ToolchainIdentity.LlvmVersion));
         Assert.Contains("0123", abi.Message, StringComparison.Ordinal);
         Assert.Contains(Tatara.ExpectedAbi, abi.Message, StringComparison.Ordinal);
-        Assert.Contains(NativeToolchain.SetupCommand + " -ToolchainRoot <a new directory>", abi.Message, StringComparison.Ordinal);
-        var version = Assert.Throws<InvalidDataException>(() => Tatara.CheckStart("tatara.dll", Tatara.ExpectedAbi, "1.0.0"));
+        Assert.Contains("build Kimi again after setup of this checkout's toolchain", abi.Message, StringComparison.Ordinal);
+        var version = Assert.Throws<InvalidDataException>(() => Tatara.CheckStart(Tatara.ExpectedAbi, "1.0.0"));
         Assert.Contains("1.0.0", version.Message, StringComparison.Ordinal);
         Assert.Contains(ToolchainIdentity.LlvmVersion, version.Message, StringComparison.Ordinal);
         Assert.True(NativeToolchain.IsToolchainFailure(abi));
@@ -117,7 +118,7 @@ public sealed class TataraExecutorTest : IDisposable
         for (var i = 0; i < 20; i++)
         {
             var manifest = Manifest(rows[i % 2]);
-            await NativeToolchain.BuildManifest(manifest, null, (_, _) => { }, TestContext.Current.CancellationToken);
+            await NativeToolchain.BuildManifest(manifest, (_, _) => { }, TestContext.Current.CancellationToken);
             var products = Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".obj") + Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".exe");
             first[i % 2] ??= products;
             Assert.Equal(first[i % 2], products);
@@ -133,7 +134,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
         var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
-        var tatara = Tatara.Load(Root);
+        var tatara = Tatara.Instance;
         var invalid = Path.Combine(this.directory, "invalid.ll");
         File.WriteAllText(invalid, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f( {\n");
         var error = Assert.Throws<IOException>(() => tatara.Emit(Context, invalid, Path.Combine(this.directory, "invalid.obj"), 0));
@@ -163,7 +164,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
         var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
-        var tatara = Tatara.Load(Root);
+        var tatara = Tatara.Instance;
         var before = FilterOwner();
         tatara.Optimize(Context, ir, Path.Combine(this.directory, "hello.O2.ll"));
         var obj = Path.Combine(this.directory, "hello.obj");
@@ -173,21 +174,21 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Throws<IOException>(() => tatara.Emit(Context, asm, Path.Combine(this.directory, "asmerror.obj"), 0));
         tatara.Inspect(Context, obj);
         tatara.Link(Context, LinkArguments(obj, Path.Combine(this.directory, "hello.exe")));
-        var module = NativeLibrary.Load(tatara.Path);
+        var module = NativeLibrary.Load("tatara", typeof(Tatara).Assembly, DllImportSearchPath.AssemblyDirectory);
         NativeLibrary.Free(module);
         Assert.Equal(before, FilterOwner());
         Assert.NotEqual(module, before);
     }
 
-    // Each fatal row in a child test process of its own, its folder this row's (Fatal); the child resolves this process's root, as
-    // FreshProcess passes it no KIMI_ variable of its own.
+    // Each fatal row in a child test process of its own, its folder this row's (Fatal); the child loads the tatara.dll beside its
+    // Kimi.dll, as this process does.
     [Theory]
     [InlineData(nameof(Fatal.LinkerFatalRefusesEveryLaterCall))]
     [InlineData(nameof(Fatal.FatalErrorRefusesEveryLaterCall))]
     public async Task AFatalErrorRefusesEveryLaterCallOfItsProcess(string row)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        await FreshProcess.RunExplicit(typeof(Fatal), row, (Fatal.Folder, this.directory), ("KIMI_TOOLCHAIN_ROOT", Root));
+        await FreshProcess.RunExplicit(typeof(Fatal), row, (Fatal.Folder, this.directory));
     }
 
     // The module that owns the process's unhandled-exception filter (IntPtr.Zero: none), through kernel32's exports.
@@ -398,7 +399,7 @@ public sealed class TataraExecutorTest : IDisposable
         Directory.CreateDirectory(tatara);
         var inspected = new string[2];
         (string Step, string Text) toolFailure = (string.Empty, string.Empty), tataraFailure = (string.Empty, string.Empty);
-        foreach (var (step, run, call) in Steps(ir, level, tools, tatara, Tatara.Load(Root), inspected))
+        foreach (var (step, run, call) in Steps(ir, level, tools, tatara, Tatara.Instance, inspected))
         {
             toolFailure = toolFailure.Step.Length == 0 && await run() is { Length: > 0 } failed ? (step, FailureText(failed, tools)) : toolFailure;
             try
@@ -556,7 +557,7 @@ public sealed class TataraExecutorTest : IDisposable
             var directory = Environment.GetEnvironmentVariable(Folder)!;
             File.WriteAllText(Path.Combine(directory, "f.ll"), "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine void @f() {\n  ret void\n}\n");
             File.WriteAllText(Path.Combine(directory, "malformed.lib"), "!<arch>\nnot a library member\n");
-            var tatara = Tatara.Load(Root);
+            var tatara = Tatara.Instance;
             var obj = Path.Combine(directory, "f.obj");
             tatara.Emit(Context, Path.Combine(directory, "f.ll"), obj, 0);
             var error = Assert.Throws<IOException>(() => tatara.Link(Context, [obj, Path.Combine(directory, "malformed.lib"), "/entry:f", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(directory, "f.exe")]));
@@ -587,7 +588,7 @@ public sealed class TataraExecutorTest : IDisposable
 
                 """;
             File.WriteAllText(fatal, ir);
-            var tatara = Tatara.Load(Root);
+            var tatara = Tatara.Instance;
             var error = Assert.Throws<IOException>(() => tatara.Emit(Context, fatal, Path.Combine(directory, "fatal.obj"), 2));
             Assert.StartsWith("Tatara failed: emit\n", error.Message, StringComparison.Ordinal);
             Assert.Contains("Cannot select", error.Message, StringComparison.Ordinal);

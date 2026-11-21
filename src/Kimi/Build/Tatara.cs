@@ -7,49 +7,35 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Build;
 
-/// <summary>tatara.dll (src/Tatara, its contract in tatara.h): loaded once per path and kept mapped until the process ends, checked at
-/// its load (its ABI is the SHA-256 of the tatara.h embedded in this assembly, its LLVM version the catalog's), its calls serialized
-/// by one lock. A missing file, a load or bind failure and a mismatch are each an InvalidDataException naming the path, the values and
-/// the remedy; a call's return of 1 or 2 is an IOException naming the operation with Tatara's message; both are the toolchain's
-/// failure (IsToolchainFailure). NativeBuild is its caller (and toolchain verify its loader). A call checks its token before the lock and
-/// again inside it, so a call that waited for the lock does not start after cancellation; inside the lock it pins its inputs, copies the
-/// result's texts and releases the result.</summary>
-internal sealed unsafe class Tatara
+/// <summary>The compiler's Tatara (src/Tatara, its contract in tatara.h): linked into kimi.exe, or tatara.dll beside Kimi.dll, which the
+/// build of Kimi copies from the checkout's toolchain (Tatara B6b1). Its nine exports are this type's LibraryImport declarations, which
+/// in the managed form search only the assembly's directory and System32, never PATH. One instance per process (<see cref="Instance"/>),
+/// created at its first use and checked then (its ABI is the SHA-256 of the tatara.h embedded in this assembly, its LLVM version the
+/// catalog's); a failed load or check keeps no instance, so the next use tries again. Its calls are serialized by one lock. A load
+/// failure and a mismatch are each an InvalidDataException naming the values and the remedy; a call's return of 1 or 2 is an
+/// IOException naming the operation with Tatara's message; both are the toolchain's failure (IsToolchainFailure). NativeBuild is its
+/// caller (and toolchain verify reports it). A call checks its token before the lock and again inside it, so a call that waited for
+/// the lock does not start after cancellation; inside the lock it pins its inputs, copies the result's texts and releases the
+/// result.</summary>
+internal sealed unsafe partial class Tatara
 {
-    // A missing or unloadable DLL: setup for the selected toolchain. Another ABI or LLVM version: never setup on that root (it may be
-    // the shared one), but a compiler of its revision or a root of the checkout's own.
-    private static readonly string Remedy = $"Run {NativeToolchain.SetupCommand} for the selected toolchain.";
-
+    // A mismatch: never setup on the checkout's toolchain (it may be the shared one), but Kimi rebuilt from the toolchain of its revision.
     private static readonly string StartRemedy =
-        "This compiler's tatara.h or LLVM version differs from the toolchain's tatara.dll: use a compiler of the toolchain's revision, " +
-        $"or a root of this checkout's own ({NativeToolchain.SetupCommand} -ToolchainRoot <a new directory>, then --ToolchainRoot or KIMI_TOOLCHAIN_ROOT).";
+        "This compiler's tatara.h or LLVM version differs from the tatara.dll it was built with: build Kimi again after setup of this " +
+        "checkout's toolchain (VERIFICATION: a unit that changes src/Tatara uses a toolchain of its own).";
 
     private static readonly Lock Gate = new();
-    private static readonly Dictionary<string, Tatara> Loaded = new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly delegate* unmanaged[Cdecl]<Text*, Text, Text, nint*, int> optimize;
-    private readonly delegate* unmanaged[Cdecl]<Text*, Text, Text, int, nint*, int> emit;
-    private readonly delegate* unmanaged[Cdecl]<Text, nint*, int> inspect;
-    private readonly delegate* unmanaged[Cdecl]<Text*, nuint, nint*, int> link;
-    private readonly delegate* unmanaged[Cdecl]<nint, int, Text> text;
-    private readonly delegate* unmanaged[Cdecl]<nint, int, int> flag;
-    private readonly delegate* unmanaged[Cdecl]<nint, void> release;
+    private static Tatara? instance;
 
-    private Tatara(string path, nint library)
+    // The frozen bootstrap (tatara.h): the first call loads the library in the managed form.
+    private Tatara()
     {
-        this.Path = path;
-        this.optimize = (delegate* unmanaged[Cdecl]<Text*, Text, Text, nint*, int>)NativeLibrary.GetExport(library, "tatara_optimize");
-        this.emit = (delegate* unmanaged[Cdecl]<Text*, Text, Text, int, nint*, int>)NativeLibrary.GetExport(library, "tatara_emit");
-        this.inspect = (delegate* unmanaged[Cdecl]<Text, nint*, int>)NativeLibrary.GetExport(library, "tatara_inspect");
-        this.link = (delegate* unmanaged[Cdecl]<Text*, nuint, nint*, int>)NativeLibrary.GetExport(library, "tatara_link");
-        this.text = (delegate* unmanaged[Cdecl]<nint, int, Text>)NativeLibrary.GetExport(library, "tatara_text");
-        this.flag = (delegate* unmanaged[Cdecl]<nint, int, int>)NativeLibrary.GetExport(library, "tatara_flag");
-        this.release = (delegate* unmanaged[Cdecl]<nint, void>)NativeLibrary.GetExport(library, "tatara_release");
         var identity = stackalloc nint[2];
-        ((delegate* unmanaged[Cdecl]<nint*, void>)NativeLibrary.GetExport(library, "tatara_identity"))(identity);
+        NativeIdentity(identity);
         this.Build = Marshal.PtrToStringUTF8(identity[0]);
         this.LlvmVersion = Marshal.PtrToStringUTF8(identity[1]);
-        this.Abi = Marshal.PtrToStringUTF8(((delegate* unmanaged[Cdecl]<nint>)NativeLibrary.GetExport(library, "tatara_abi"))());
+        this.Abi = Marshal.PtrToStringUTF8(NativeAbi());
     }
 
     private delegate int Invocation(Text* texts, nint* result);
@@ -57,7 +43,36 @@ internal sealed unsafe class Tatara
     // The SHA-256 (lower-case hex) of the tatara.h this compiler was built with: the ABI a DLL must report.
     internal static string ExpectedAbi { get; } = HashHeader();
 
-    internal string Path { get; }
+    // The process's one Tatara, loaded and checked at its first use.
+    internal static Tatara Instance
+    {
+        get
+        {
+            lock (Gate)
+            {
+                if (instance is null)
+                {
+                    Tatara tatara;
+                    try
+                    {
+                        tatara = new Tatara();
+                    }
+                    catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
+                    {
+                        throw new InvalidDataException(
+                            $"Tatara cannot be loaded: tatara.dll beside the compiler ({AppContext.BaseDirectory}): {ex.Message} " +
+                            $"Run {NativeToolchain.SetupCommand}, then build Kimi again.",
+                            ex);
+                    }
+
+                    CheckStart(tatara.Abi, tatara.LlvmVersion);
+                    instance = tatara;
+                }
+
+                return instance;
+            }
+        }
+    }
 
     internal string? Build { get; }
 
@@ -68,72 +83,40 @@ internal sealed unsafe class Tatara
     // The first cause of a call's return of 2 (tatara.h: the instance refuses every later call), or null while none returned 2.
     internal string? Refusal { get; private set; }
 
-    // <root>/tatara.dll, loaded and checked once per path.
-    internal static Tatara Load(string root)
-    {
-        var path = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, "tatara.dll"));
-        lock (Gate)
-        {
-            if (Loaded.TryGetValue(path, out var loaded))
-            {
-                return loaded;
-            }
-
-            if (!File.Exists(path))
-            {
-                throw new InvalidDataException($"Tatara not found: {path}. {Remedy}");
-            }
-
-            Tatara tatara;
-            try
-            {
-                tatara = new Tatara(path, NativeLibrary.Load(path));
-            }
-            catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
-            {
-                throw new InvalidDataException($"Tatara cannot be loaded: {path}: {ex.Message} {Remedy}", ex);
-            }
-
-            CheckStart(path, tatara.Abi, tatara.LlvmVersion);
-            Loaded.Add(path, tatara);
-            return tatara;
-        }
-    }
-
-    // The first refusal among the loaded instances (a session ends on it, Tatara design A3 §2.4), or null.
+    // The instance's refusal (a session ends on it, Tatara design A3 §2.4), or null, also while none is loaded.
     internal static string? FirstRefusal()
     {
         lock (Gate)
         {
-            return Loaded.Values.Select(static x => x.Refusal).FirstOrDefault(static x => x is not null);
+            return instance?.Refusal;
         }
     }
 
-    // The start check: the DLL's ABI and LLVM version against this compiler's.
-    internal static void CheckStart(string path, string? abi, string? llvmVersion)
+    // The start check: the library's ABI and LLVM version against this compiler's.
+    internal static void CheckStart(string? abi, string? llvmVersion)
     {
         if (abi != ExpectedAbi || llvmVersion != ToolchainIdentity.LlvmVersion)
         {
             throw new InvalidDataException(
-                $"Tatara does not match this compiler: {path}; abi {abi ?? "(none)"}, expected {ExpectedAbi}; " +
+                $"Tatara does not match this compiler: abi {abi ?? "(none)"}, expected {ExpectedAbi}; " +
                 $"llvmVersion {llvmVersion ?? "(none)"}, expected {ToolchainIdentity.LlvmVersion}. {StartRemedy}");
         }
     }
 
     // Verifies ir, optimizes it at default<O2> and writes the text to optimizedIr as opt -S does.
     internal void Optimize(TataraContext context, string ir, string optimizedIr)
-        => this.Call("optimize", context, [.. Target(context), ir, optimizedIr], (texts, result) => this.optimize(texts, texts[5], texts[6], result));
+        => this.Call("optimize", context, [.. Target(context), ir, optimizedIr], (texts, result) => NativeOptimize(texts, texts[5], texts[6], result));
 
     // Verifies ir, then writes the object as llc -O0 or -O2 does (the level's digit).
     internal void Emit(TataraContext context, string ir, string obj, int optimizationLevel)
-        => this.Call("emit", context, [.. Target(context), ir, obj], (texts, result) => this.emit(texts, texts[5], texts[6], optimizationLevel, result));
+        => this.Call("emit", context, [.. Target(context), ir, obj], (texts, result) => NativeEmit(texts, texts[5], texts[6], optimizationLevel, result));
 
     internal ObjectFacts Inspect(TataraContext context, string obj)
-        => this.Call("inspect", context, [obj], (texts, result) => this.inspect(texts[0], result));
+        => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result));
 
     // Links with the linker's arguments, as NativeBuild builds them.
     internal void Link(TataraContext context, IReadOnlyList<string> arguments)
-        => this.Call("link", context, [.. arguments], (texts, result) => this.link(texts, (nuint)arguments.Count, result));
+        => this.Call("link", context, [.. arguments], (texts, result) => NativeLink(texts, (nuint)arguments.Count, result));
 
     private static string HashHeader()
     {
@@ -156,6 +139,44 @@ internal sealed unsafe class Tatara
 
         return symbols;
     }
+
+    // tatara.h's nine functions. The search (the managed form's; kimi.exe's link binds them without one): the assembly's directory
+    // (Kimi.dll's copy) and System32, so a tatara.dll on PATH is never loaded in its place.
+    [LibraryImport("tatara", EntryPoint = "tatara_identity")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial void NativeIdentity(nint* identity);
+
+    [LibraryImport("tatara", EntryPoint = "tatara_abi")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial nint NativeAbi();
+
+    [LibraryImport("tatara", EntryPoint = "tatara_optimize")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial int NativeOptimize(Text* target, Text ir, Text optimizedIr, nint* result);
+
+    [LibraryImport("tatara", EntryPoint = "tatara_emit")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial int NativeEmit(Text* target, Text ir, Text obj, int optimizationLevel, nint* result);
+
+    [LibraryImport("tatara", EntryPoint = "tatara_inspect")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial int NativeInspect(Text obj, nint* result);
+
+    [LibraryImport("tatara", EntryPoint = "tatara_link")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial int NativeLink(Text* arguments, nuint count, nint* result);
+
+    [LibraryImport("tatara", EntryPoint = "tatara_text")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial Text NativeText(nint result, int kind);
+
+    [LibraryImport("tatara", EntryPoint = "tatara_flag")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial int NativeFlag(nint result, int kind);
+
+    [LibraryImport("tatara", EntryPoint = "tatara_release")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial void NativeRelease(nint result);
 
     // One call: its inputs encoded into one buffer and pinned, the result's texts copied and the result released, all inside the lock.
     // A return of 1 or 2 throws with Tatara's message; a message on success is a Warning, as a tool's standard error is.
@@ -189,11 +210,11 @@ internal sealed unsafe class Tatara
                     code = invocation(texts, &result);
                 }
 
-                message = this.text(result, 0).Read();
-                undefined = this.text(result, 1).Read();
-                defined = this.text(result, 2).Read();
-                hasUnwind = this.flag(result, 0) == 1;
-                hasDefaultLibrary = this.flag(result, 1) == 1;
+                message = NativeText(result, 0).Read();
+                undefined = NativeText(result, 1).Read();
+                defined = NativeText(result, 2).Read();
+                hasUnwind = NativeFlag(result, 0) == 1;
+                hasDefaultLibrary = NativeFlag(result, 1) == 1;
                 if (code == 2)
                 {
                     this.Refusal ??= message;
@@ -203,7 +224,7 @@ internal sealed unsafe class Tatara
             {
                 if (result != 0)
                 {
-                    this.release(result);
+                    NativeRelease(result);
                 }
             }
         }

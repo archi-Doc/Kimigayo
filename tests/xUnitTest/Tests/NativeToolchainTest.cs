@@ -82,7 +82,7 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(paths.Executable, "previous executable");
         File.WriteAllText(paths.Record, "{\"status\":\"linked\"}");
         File.AppendAllText(paths.Ir, "; changed");
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("IR/manifest SHA-256", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -121,7 +121,7 @@ public sealed class NativeToolchainTest : IDisposable
         }
 
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains(failure, error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -166,26 +166,6 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(record.RootElement.GetProperty("unverifiedToolchain").GetBoolean());
         Assert.Contains("setup.ps1", record.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
         Assert.False(Directory.Exists(Path.Combine(this.directory, "windows_x64")));
-    }
-
-    // A root without tatara.dll: emit does not need it, and the build fails before any step, leaving the previous executable and no
-    // successful record.
-    [Fact]
-    public async Task EmitDoesNotRequireTataraButBuildDoesAndInvalidatesPreviousSuccess()
-    {
-        var project = this.Create();
-        project.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "toolchain");
-        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
-        var paths = ArtifactPaths.Create(project);
-        Assert.True(File.Exists(paths.Ir));
-        Assert.False(File.Exists(paths.Record));
-        File.WriteAllText(paths.Executable, "previous executable");
-        File.WriteAllText(paths.Record, "{\"status\":\"linked\"}");
-        Assert.False(await project.Build(TestContext.Current.CancellationToken));
-        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
-        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
-        Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
-        await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
     }
 
     [Fact]
@@ -238,7 +218,7 @@ public sealed class NativeToolchainTest : IDisposable
         project.ProjectFile.OutputKind = OutputKind.Library;
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("Application", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -435,7 +415,7 @@ public sealed class NativeToolchainTest : IDisposable
         this.console.LineAction = ("Waiting for another build: " + lockPath, release);
         project.ProjectFile.Optimization = build == "O0" ? "O0" : "O2";
         var built = build == "manifest"
-            ? NativeToolchain.BuildManifest(paths.Manifest, null, (_, message) => this.console.WriteLine(message), cancellation.Token)
+            ? NativeToolchain.BuildManifest(paths.Manifest, (_, message) => this.console.WriteLine(message), cancellation.Token)
             : project.Build(cancellation.Token);
         if (action == "cancel")
         {
@@ -528,7 +508,7 @@ public sealed class NativeToolchainTest : IDisposable
         var entry = manifest["libraries"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == name)!;
         entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Name == name)!.Sha256 : new string('0', 64);
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
-        var build = NativeToolchain.BuildManifest(paths.Manifest, null, (_, _) => { }, TestContext.Current.CancellationToken);
+        var build = NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken);
         if (adopted)
         {
             await build;
@@ -578,22 +558,23 @@ public sealed class NativeToolchainTest : IDisposable
     //   toolchain failure).
     // - CheckFaulted_Kd, the build's own result (Build's outer catch): "toolchain's message", the host's console throwing at the line that
     //   renders a toolchain failure, outside the toolchain's call (it escaped the build).
-    // - The toolchain's message and no code: a root without tatara.dll (the remedy names setup with -LlvmRoot), a tatara.dll that does not
-    //   load (not a DLL, so the host maps nothing), a configuration value the artifact paths read.
-    // No production seam: the console is the host's, and the project file's values are the caller's.
+    // - The toolchain's message and no code: a program's supply whose input does not exist (the native build's staging fails), a
+    //   configuration value the artifact paths read.
+    // The supply's two rows skip off Windows, where the native build's platform check comes first (PLAN G1174); Tatara's load failure is
+    // test-cli.ps1's row (a test host holds its one instance). No production seam: the console is the host's, and the project file's
+    // values are the caller's.
     [Theory]
     [InlineData("project checks", null, null)]
     [InlineData("report", "Generated LLVM inputs", null)]
-    [InlineData("toolchain's message", "Tatara not found", null)]
-    [InlineData("toolchain", null, "tatara.dll. Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM")]
-    [InlineData("tatara load", null, "Tatara cannot be loaded")]
+    [InlineData("toolchain's message", "Could not find file", null)]
+    [InlineData("toolchain", null, "Could not find file")]
     [InlineData("configuration", null, "Optimization must be O0 or O2.")]
     public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
     {
+        var supply = origin is "toolchain's message" or "toolchain";
+        Assert.SkipUnless(OperatingSystem.IsWindows() || !supply, Windows);
         this.console.LineAction = failingLine is null ? null : (failingLine, DiagnosticContractTest.DiagnosticConsole.Fail);
         var project = this.Hello("Hello");
-        var root = Path.Combine(this.directory, "toolchain");
-        project.KimiOptions.ToolchainRoot = root;
         if (origin == "project checks")
         {
             project.ProjectFile.Targets = null!;
@@ -602,10 +583,10 @@ public sealed class NativeToolchainTest : IDisposable
         {
             project.ProjectFile.Optimization = "O3";
         }
-        else if (origin == "tatara load")
+        else if (supply)
         {
-            Directory.CreateDirectory(root);
-            File.WriteAllText(Path.Combine(root, "tatara.dll"), "not a DLL");
+            File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "group Native\n    #LibraryImport(\"codec\", \"f\")\n    public unsafe func f() -> i32\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.f()\n");
+            project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["codec"] = new() { Kind = "static", Input = "native/missing.lib" } };
         }
 
         Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);

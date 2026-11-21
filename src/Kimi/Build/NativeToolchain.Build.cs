@@ -14,20 +14,20 @@ internal static partial class NativeToolchain
     // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
-    // A project's native build. A build reads no LlvmBin: the command line's names the tools toolchain verify checks, and a project's is
-    // accepted and not read (Tatara design A4 §2.1; removed in B6).
+    // A project's native build. A build reads no toolchain root and no LlvmBin: --ToolchainRoot, KIMI_TOOLCHAIN_ROOT and the command
+    // line's LlvmBin name the root toolchain verify checks, and they and a project's LlvmBin are accepted and not read here (Tatara
+    // designs A4 §2.1, B6b1; removed in B6b).
     internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
         ValidateManifest(document.RootElement);
-        var build = new NativeBuild(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken);
-        await build.Run(project.KimiOptions.ToolchainRoot);
+        await new NativeBuild(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken).Run();
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
     // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. Its toolchain.llvmBin is
     // accepted and not read, as a project's LlvmBin. It holds its record's lock (Begin) from its first write to its end.
-    internal static async Task BuildManifest(string path, string? toolchainRoot, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
+    internal static async Task BuildManifest(string path, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         path = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(path)!;
@@ -39,7 +39,7 @@ internal static partial class NativeToolchain
         var ir = ResolvePath(LinkManifest.Text(manifest, "irFile"), directory);
         var optimization = LinkManifest.Text(manifest, "optimization");
         var paths = new ArtifactPaths(ir, path, record, Path.Combine(directory, Path.GetFileNameWithoutExtension(ir) + "." + optimization));
-        await new NativeBuild(null, paths, manifest, directory, optimization, report, cancellationToken).Run(toolchainRoot);
+        await new NativeBuild(null, paths, manifest, directory, optimization, report, cancellationToken).Run();
     }
 
     // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
@@ -131,12 +131,11 @@ internal static partial class NativeToolchain
     /// <summary>One native build of a checked IR/manifest pair: its inputs, its record and its LLVM and LLD work, which Tatara's calls do in
     /// process (no tool is launched). The constructor takes the build's fixed inputs: the project whose supplies it checks (none for a
     /// standalone manifest), the pair, the root its records redact, the optimization and the host's report and cancellation, which Tatara's
-    /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> takes the toolchain root's selection, which it
-    /// resolves after the pair's check, and runs the steps once, in order: the pair's identity, Tatara (the root's tatara.dll, loaded and
-    /// checked, identified in the record's tools), the libraries (each staged: the compiler's supplies from its resources, a program's
-    /// from its input), the object, its inspection, the link to a private file, the report and the commit; the steps fill the record and
-    /// <see cref="Run"/> writes each of its states. The commit, after the report and the last
-    /// cancellation point, writes the success record, which names the private file's hash, and then moves the file to the executable's
+    /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> runs the steps once, in order: the pair's
+    /// identity, Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
+    /// version), the libraries (each staged: the compiler's supplies from its resources, a program's from its input), the object, its
+    /// inspection, the link to a private file, the report and the commit; the steps fill the record and <see cref="Run"/> writes each of
+    /// its states. The commit, after the report and the last cancellation point, writes the success record, which names the private file's hash, and then moves the file to the executable's
     /// path, so an Application publishes its executable only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the
     /// commit, the report included, throws and leaves the previous executable and the record at the last incomplete state written, and a
     /// failed move writes the invalidation again and rethrows the move's failure. The private file is deleted on every outcome. IMPL
@@ -174,20 +173,16 @@ internal static partial class NativeToolchain
                 report, cancellationToken, WindowsProfile.Target, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel);
         }
 
-        internal async Task Run(string? configuredRoot)
+        internal async Task Run()
         {
             var irHash = this.CheckPair();
-            var toolchainRoot = ToolchainResolver.ResolveRoot(configuredRoot);
             var tools = new JsonObject();
             this.record["tools"] = tools;
             this.record["irSha256"] = irHash;
             this.record["optimization"] = this.optimization;
             WriteRecord(this.paths.Record, this.record);
-            var tatara = Tatara.Load(toolchainRoot);
-            tools.Add("tatara", new JsonObject
-            {
-                ["path"] = Redact(tatara.Path, this.directory), ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion,
-            });
+            var tatara = Tatara.Instance;
+            tools.Add("tatara", new JsonObject { ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion });
             var libraries = this.ResolveLibraries();
             WriteRecord(this.paths.Record, this.record);
             var obj = await this.Compile(tatara);

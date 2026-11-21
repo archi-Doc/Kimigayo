@@ -2,7 +2,9 @@
 
 `tatara.dll`: a C ABI (`tatara.h`) over the pinned LLVM and LLD static libraries, so Kimi can run LLVM's and LLD's work in
 process. Setup (`src/backend/windows-x64/setup.ps1 -LlvmRoot <the extracted archive>`) builds it with `build.ps1` and installs it into
-the toolchain root, `installation.json` records its SHA-256 and `kimi toolchain verify` checks it (unit A4).
+the toolchain root, `installation.json` records its SHA-256 and `kimi toolchain verify` checks it (unit A4). A build of Kimi copies the
+checkout's `toolchain/tatara.dll` beside `Kimi.dll`, the one file the compiler loads (unit B6b1), so build Kimi again after setup
+changes it; a unit that changes `src/Tatara` gives its worktree a `toolchain` of its own.
 
 ## Operations
 
