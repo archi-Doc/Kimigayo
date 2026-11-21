@@ -7,8 +7,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // Only failed declarations need this storage. Each collision group retains its first declaration and its earliest
-    // later declaration, independently of the order in which pairwise checks find collisions.
+    // SPEC 6.1, 9.1, 23.1.2: the pairwise checks (FailDuplicate: scopes, aliases, conformance registration, signatures, specializations)
+    // fail both declarations and join their groups; only failed declarations need this storage. Each group retains its first declaration
+    // and its earliest later one, independently of the order in which the pairwise checks find collisions, and RecordDuplicateGroups,
+    // which owns the group's records, records them once the pass's last pairwise check has run.
     private Dictionary<Koto, (Koto Parent, Koto? Next)>? duplicateDeclarations;
 
     private static int CompareDeclarations(Koto left, Koto right)
@@ -27,6 +29,18 @@ public sealed partial class Binding
         FunctionKoto function when function.SignatureSpan.Length != 0 => function.SignatureSpan,
         _ => node.Span,
     };
+
+    // A later declaration's record: its name, at its declaring syntax, related to the group's first.
+    private static void ReportDuplicate(Koto node, DiagnosticCollection? store, in BindingProblem problem, Koto first)
+    {
+        var name = node switch
+        {
+            AliasKoto alias => alias.Name!,
+            IsKoto conformance => conformance.Right.ToString(),
+            _ => node.BoundSymbol?.Name ?? (node as FunctionKoto)?.Name ?? "declaration",
+        };
+        node.ReportIn(store, problem.Requirement, problem.Code, evidence: [name], condition: problem.Condition, span: DuplicateSpan(node), relatedSpans: [("declaration", first, DuplicateSpan(first), "first declaration")]);
+    }
 
     private void FailDuplicate(Koto first, Koto second, bool unresolved = false)
     {
@@ -67,39 +81,28 @@ public sealed partial class Binding
         return node;
     }
 
-    private void ReportDuplicateDeclarations()
+    // SPEC 23.1.2: the step after the pass's last pairwise check (BindDeclarations' PrepareSpecializations; Index declared every scope, and
+    // a try's deferred arms hold no written declaration), when each group is whole: one problem per later declaration, relating the group's
+    // first (Related); the first rests on its earliest later (Cause), so it is derived from that record. Both declarations stay failed, as
+    // the pairwise check left them. A pass reaches the step once: VerifyEarlyReads' rerun, asked before the step, is a new pass (RunPass)
+    // whose start empties the report, so a group is recorded once it is whole, never beside an earlier record of its key.
+    private void RecordDuplicateGroups()
     {
-        if (this.duplicateDeclarations is not { } groups)
+        if (this.duplicateDeclarations is not { Count: > 0 } groups)
         {
             return;
         }
 
-        var requirement = DiagnosticRequirement.Binding(BindingFailure.Duplicate);
         foreach (var (node, group) in groups)
         {
             var first = this.FirstDuplicateDeclaration(node);
-            if (ReferenceEquals(node, first))
+            if (!ReferenceEquals(node, first))
             {
-                // Analysis still invalidates both declarations. Consumers of the first declaration depend on the
-                // actual duplicate check, whose later subject publishes the direct Error; this is not positional suppression.
-                if (group.Next is { } later)
-                {
-                    node.ReportDerived(requirement, [later.KeyOf(requirement)]);
-                }
-
-                continue;
+                this.Record(node, BindingFailure.Duplicate, [new(ProblemFactKind.Related, this.FactSite(first), 0)]);
             }
-
-            var name = node switch
+            else if (group.Next is { } later)
             {
-                AliasKoto alias => alias.Name!,
-                IsKoto conformance => conformance.Right.ToString(),
-                _ => node.BoundSymbol?.Name ?? (node as FunctionKoto)?.Name ?? "declaration",
-            };
-            if (node.DiagnosticCollection is { } target)
-            {
-                var related = target.Relate("declaration", DuplicateSpan(first), first.CodeContext.SourceDocument, "first declaration");
-                target.Report(requirement.Partition, node.KeyOf(requirement), DuplicateSpan(node), DiagnosticCode.DuplicateBinding_Kd, null, null, null, null, node.CodeContext.SourceDocument, [name], [related]);
+                this.Record(node, BindingFailure.Duplicate, [new(ProblemFactKind.Cause, this.FactSite(later), -1)]);
             }
         }
     }

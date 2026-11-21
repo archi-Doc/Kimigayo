@@ -34,11 +34,6 @@ public partial class ClosureResultOriginTest
 
     private const string Captured = "let n = 7\nlet values: [1 of ref/i32] = [n@ref]\nlet f = func [values] () => values[0]\n";
 
-    // Where A5's twin of a failed returned literal's record starts (H5, R4-M108): the literal itself, or its block form's `return`.
-    private const string AtLiteral = "";
-
-    private const string AtReturn = "return ";
-
     [Theory]
     [InlineData("Array", Captured + "let first = f()\nlet second = f()\nrequire first == 7 and second == 7 else => $abort(\"result\")")]
     [InlineData("BorrowedClosure", Captured + "let borrowed = f@ref\nlet result = borrowed()\nrequire result == 7 else => $abort(\"result\")")]
@@ -103,76 +98,75 @@ public partial class ClosureResultOriginTest
     // returned Closure literal that P8 fails, a maker's expression body at any nesting, keeps its definition: its record is at the literal,
     // as the block form's `return` places it, and the returned value stays callable, with no derived NotCallable_Kd or UnresolvedBinding_Kd
     // (review 2's B1: v2, a08, f03 = G273's p8_param_bad, f04, f07; each with its block-form twin). A reader reaching a closure through its
-    // Type reads its definition (BoundClosure.Of), whatever its literal's creation outcome. The call's result rests on that record (P9's
-    // image of the call result atom is an Unbound end), so Binding's record is the program's one; dev adds F1's located Unsupported_Kd at
-    // the call. Question: does G280 (or G206 (6)) give an Unbound end its cause, so that the call records nothing? Since the MIR decides
-    // (H5, R5-M182), A5's twin of Binding's record is published beside it until R7 (H0b §5.4, R4-M108): at the literal, or at the block
-    // form's `return` (`twin`, the twin's text before the literal).
+    // Type reads its definition (BoundClosure.Of), whatever its literal's creation outcome. The record is A5's one, at the literal in either
+    // form (R7-O1 H; its twin at the literal or the block form's `return`, H5, R4-M108, went with Binding's). P8's relation is A5's
+    // record, so Binding is complete and P9 publishes the Closure's call result atom as it is (the Middle's ruling on Phase 9's class 3;
+    // P9's Unbound image went): a value read in place or called after its `let` names no row with it, and a direct call of the returned
+    // value relates it in the calling body, where it is another body's root (the view's row 9): A5's located limit at the call
+    // `outer(3)()` (a record added on a rejected program, Q13).
     [Theory]
-    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x", AtLiteral)]
-    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x", AtReturn)]
-    [InlineData(Inspect + "let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x", AtLiteral)]
-    [InlineData(Inspect + "let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x", AtReturn)]
-    [InlineData("let outer = func (x: i32) => func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()", "func [y@ref] () => y", AtLiteral)]
+    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x")]
+    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x")]
+    [InlineData(Inspect + "let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x")]
+    [InlineData(Inspect + "let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\ninspect(a())", "func [x@ref] () => x")]
+    [InlineData("let outer = func (x: i32) => func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()", "func [y@ref] () => y")]
     [InlineData(
         "let outer = func (x: i32)\n    return func (y: i32) => func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()",
-        "func [y@ref] () => y",
-        AtLiteral)]
+        "func [y@ref] () => y")]
     [InlineData(
         "let outer = func (x: i32)\n    return func (y: i32)\n        return func [y@ref] () => y\nlet m = outer(3)\nlet a = m(4)\nlet r = a()",
-        "func [y@ref] () => y",
-        AtReturn)]
-    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", AtLiteral)]
-    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", AtReturn)]
-    public void AFailedReturnedLiteralKeepsItsDefinitionPendingG280(string source, string literal, string twin)
-        => Assert.Equal($"{Unsatisfied} {twin}{literal}; {Unsatisfied} {literal}", Records(source));
+        "func [y@ref] () => y")]
+    [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", "Unsupported_Kd outer(3)()")]
+    [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet r = outer(3)()", "func [x@ref] () => x", "Unsupported_Kd outer(3)()")]
+    public void AFailedReturnedLiteralKeepsItsDefinitionPendingG280(string source, string literal, string? use = null)
+        => Assert.Equal($"{Unsatisfied} {literal}" + (use is null ? string.Empty : $"; {use}"), Records(source));
 
     // DECISIONS R4-M152 (round 3, BU's re-check 2): a returned value P8 failed whose result is `ref/i32`, passed to a generic
     // `F is Callable<() -> i32>`, keeps beside the record at the literal an independent NoApplicableOverload_Kd, since a valid Closure of
-    // that signature gets it too (dev had a derived NotCallable_Kd); A5's twin of the literal's record is at its `return` (H5, R4-M108).
+    // that signature gets it too (dev had a derived NotCallable_Kd); the literal's record is A5's one (R7-O1 H; its twin at the `return`,
+    // H5, R4-M108, went with Binding's).
     [Fact]
     public void AFailedReturnedLiteralsCallableUseKeepsItsIndependentRecord()
         => Assert.Equal(
-            "UnsatisfiedOriginRelation_Kd return func [x@ref] () => x; UnsatisfiedOriginRelation_Kd func [x@ref] () => x; " +
-                "NoApplicableOverload_Kd apply(a@ref)",
+            "UnsatisfiedOriginRelation_Kd func [x@ref] () => x; NoApplicableOverload_Kd apply(a@ref)",
             Records("func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return 0\nlet outer = func (x: i32)\n    return func [x@ref] () => x\n" +
                 "let a = outer(3)\nlet r = apply(a@ref)"));
 
     // SPEC 7.7.4, 8.11, 23.1.2 (DECISIONS R4-M152, R5-M63 (1)): a use that reaches a returned literal P8 failed through its Type reads the
     // closure's definition, so the bare expression body gives its parenthesized and block twins' records: no TransferRequired_Kd with an
     // inapplicable Repair at a `() -> i32` parameter (review 3's h1, BU's d3), no InvalidConstraint_Kd from the failed-context walk, where
-    // the literal keeps its signature (h4, d4, and eff1, whose MIR keeps its independent UnsatisfiedEffectBound_Kd). The Owned proof's
-    // UnprovenConstraint_Kd at `a`, in every twin alike, is a cascade of the P8 record: the environment's Borrow has P9's image of the
-    // call result atom, an Unbound end resting on that record (PLAN G280). Since the MIR decides (H5, R5-M182), A5's twin of the literal's
-    // record is published beside it until R7 (H0b §5.4, R4-M108), at the literal or at the block form's `return` (`twin`), and eff1's
-    // UnsatisfiedEffectBound_Kd is published at `f@move` (R5-M184).
+    // the literal keeps its signature (h4, d4, and eff1, whose MIR keeps its independent UnsatisfiedEffectBound_Kd). The literal's record
+    // is A5's one (R7-O1 H; its twin at the literal or the block form's `return`, H0b §5.4, R4-M108, went with Binding's), and eff1's
+    // UnsatisfiedEffectBound_Kd is published at `f@move` (R5-M184). R7-O1 H (the Middle's ruling on Phase 9's class 3): Binding is
+    // complete there, so P9 publishes the Closure's call result atom in the environment's Borrow, not an Unbound end resting on no
+    // Binding failure (R4-M118), and `use` is the record the use gives (Q13, records on rejected programs): `apply(a)`'s Owned proof reads
+    // a borrowed environment, NoApplicableOverload_Kd at the call (G280's UnprovenConstraint_Kd cascade at `a` gone); `applyG(a@ref)`'s
+    // premise bound relates the atom at `a@ref`, another body's root there (the view's row 9): A5's located limit.
     [Theory]
-    [InlineData(Apply + Use + "    let outer = func (x: i32) => func [x@ref] () -> i32 => x@follow\n" + ApplyA, "func [x@ref] () -> i32 => x@follow", AtLiteral, "a", null)]
-    [InlineData(Apply + Use + "    let outer = func (x: i32) => (func [x@ref] () -> i32 => x@follow)\n" + ApplyA, "(func [x@ref] () -> i32 => x@follow)", AtLiteral, "a", null)]
-    [InlineData(Apply + Use + "    let outer = func (x: i32)\n        return func [x@ref] () -> i32 => x@follow\n" + ApplyA, "func [x@ref] () -> i32 => x@follow", AtReturn, "a", null)]
-    [InlineData(Apply + Use + "    let outer = func (x: i32) => func [x@ref] () => x@follow\n" + ApplyA, "func [x@ref] () => x@follow", AtLiteral, "a", null)]
-    [InlineData(Apply + Use + "    let outer = func (x: i32)\n        return func [x@ref] () => x@follow\n" + ApplyA, "func [x@ref] () => x@follow", AtReturn, "a", null)]
-    [InlineData(Generic + Use + "    let outer = func (x: i32) => func [x@ref] () -> i32 => x@follow\n" + GenericA, "func [x@ref] () -> i32 => x@follow", AtLiteral, null, null)]
-    [InlineData(Generic + Use + "    let outer = func (x: i32) => (func [x@ref] () -> i32 => x@follow)\n" + GenericA, "(func [x@ref] () -> i32 => x@follow)", AtLiteral, null, null)]
-    [InlineData(Generic + Use + "    let outer = func (x: i32)\n        return func [x@ref] () -> i32 => x@follow\n" + GenericA, "func [x@ref] () -> i32 => x@follow", AtReturn, null, null)]
-    [InlineData(Generic + Use + "    let outer = func (x: i32) => func [x@ref] () => x@follow\n" + GenericA, "func [x@ref] () => x@follow", AtLiteral, null, null)]
-    [InlineData(Generic + Use + "    let outer = func (x: i32)\n        return func [x@ref] () => x@follow\n" + GenericA, "func [x@ref] () => x@follow", AtReturn, null, null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32) => func [x@ref] () -> i32 => x@follow\n" + ApplyA, "func [x@ref] () -> i32 => x@follow", "NoApplicableOverload_Kd apply(a)", null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32) => (func [x@ref] () -> i32 => x@follow)\n" + ApplyA, "(func [x@ref] () -> i32 => x@follow)", "NoApplicableOverload_Kd apply(a)", null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32)\n        return func [x@ref] () -> i32 => x@follow\n" + ApplyA, "func [x@ref] () -> i32 => x@follow", "NoApplicableOverload_Kd apply(a)", null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32) => func [x@ref] () => x@follow\n" + ApplyA, "func [x@ref] () => x@follow", "NoApplicableOverload_Kd apply(a)", null)]
+    [InlineData(Apply + Use + "    let outer = func (x: i32)\n        return func [x@ref] () => x@follow\n" + ApplyA, "func [x@ref] () => x@follow", "NoApplicableOverload_Kd apply(a)", null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32) => func [x@ref] () -> i32 => x@follow\n" + GenericA, "func [x@ref] () -> i32 => x@follow", "Unsupported_Kd a@ref", null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32) => (func [x@ref] () -> i32 => x@follow)\n" + GenericA, "(func [x@ref] () -> i32 => x@follow)", "Unsupported_Kd a@ref", null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32)\n        return func [x@ref] () -> i32 => x@follow\n" + GenericA, "func [x@ref] () -> i32 => x@follow", "Unsupported_Kd a@ref", null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32) => func [x@ref] () => x@follow\n" + GenericA, "func [x@ref] () => x@follow", "Unsupported_Kd a@ref", null)]
+    [InlineData(Generic + Use + "    let outer = func (x: i32)\n        return func [x@ref] () => x@follow\n" + GenericA, "func [x@ref] () => x@follow", "Unsupported_Kd a@ref", null)]
     [InlineData(
         Confined + "    let outer = func (x: i32, item: Item) => func [item@move, x@ref] () -> i32 => item.value\n" + ConfinedF,
         "func [item@move, x@ref] () -> i32 => item.value",
-        AtLiteral,
         null,
         "f@move")]
     [InlineData(
         Confined + "    let outer = func (x: i32, item: Item)\n        return func [item@move, x@ref] () -> i32 => item.value\n" + ConfinedF,
         "func [item@move, x@ref] () -> i32 => item.value",
-        AtReturn,
         null,
         "f@move")]
-    public void AUseOfAFailedReturnedLiteralReadsItsDefinition(string source, string literal, string twin, string? owned, string? effect)
+    public void AUseOfAFailedReturnedLiteralReadsItsDefinition(string source, string literal, string? use, string? effect)
     {
-        var expected = $"{Unsatisfied} {twin}{literal}; {Unsatisfied} {literal}" +
-            (owned is null ? string.Empty : $"; {nameof(DiagnosticCode.UnprovenConstraint_Kd)} {owned}") +
+        var expected = $"{Unsatisfied} {literal}" +
+            (use is null ? string.Empty : $"; {use}") +
             (effect is null ? string.Empty : $"; {nameof(DiagnosticCode.UnsatisfiedEffectBound_Kd)} {effect}");
         Assert.Equal(expected, Records(source));
 
@@ -181,6 +175,18 @@ public partial class ClosureResultOriginTest
         var effects = MirTargetSide.MirSide(c).Where(static x => x.Requirement?.Partition != DiagnosticPartition.Binding && x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd);
         Assert.Equal(effect is null ? [] : [effect], effects.Select(x => source.Substring(x.Node.Span.Start, x.Node.Span.Length)));
     }
+
+    // SPEC 5.2.2, 15.8.2 (R7-O1 H; the Front's review C1): a raw Place's Borrow `(*q)@ref` captured by a returned literal is valid (its
+    // Origin is fitted to its destination and may be static), but P8's BodyLocalIn leaves an Anchor out (the Front's open issue), so the
+    // published result names the Closure's call result atom, which the use `applyG(a@ref)` relates in the calling body: A5's located
+    // limit at `a@ref` (the view's row 9). Fail-before: the joint head f7857dce1 and 19947817b throw BU-102's broken view contract
+    // (CheckFaulted_Kd, an InternalInvariant on a valid program). Removal: when P8 keeps the raw Place's Borrow, the program is accepted.
+    [Fact]
+    public void ARawPlaceBorrowInAReturnedEnvironmentIsTheLocatedLimitAtItsUse()
+        => Assert.Equal(
+            "Unsupported_Kd a@ref",
+            Records(Generic + "func use(p: raw/i32)\n    let outer = func (q: raw/i32)\n        unsafe\n            let r = (*q)@ref\n" +
+                "            return func [r] () -> i32 => r@follow\n    let a = outer(p)\n    let r = applyG(a@ref)\npublic func main() => ()\n"));
 
     // SPEC 7.7.3, 23.1.2 (DECISIONS R4-M152): the receiver classification reads a nested Closure's definition, so a nested literal whose
     // erasure fails (its creation failed) still makes its maker Exclusive through its `n@uniq` capture: `c()` through a `let` is
@@ -244,7 +250,9 @@ public partial class ClosureResultOriginTest
     public void AReturnedViewCannotOutliveItsExternalOwner()
     {
         var c = MinimalEmissionTest.Analyze("func bad() -> ref/i32 during static\n    let n = 7\n    let values: [1 of ref/i32] = [n@ref]\n    let f = func [values] () => values[0]\n    return f()\nbad()");
-        Assert.False(c.Binding.Result.IsComplete);
+        // Binding judges no body relation, so it is complete (R7-O1 H, F-H1-5); A5's record rejects the program and nothing is generated.
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Failure == BindingFailure.Unsupported);
         Assert.False(c.Generate(TextWriter.Null));
     }

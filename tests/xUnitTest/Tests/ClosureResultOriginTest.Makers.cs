@@ -212,8 +212,8 @@ public partial class ClosureResultOriginTest
     [InlineData(
         "i1_f1in_bad",
         ReturnH + "    let local: i32 = 1\n" + InputOuter + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
-        Unsatisfied + " return a()",
-        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " return a()",
+        Unsatisfied + " a()")]
     [InlineData("i2_f1inok", Inspect + MainBody + InputMaker + "    let a = outer(local@ref)\n    let r = a()\n" + InspectR + "    local = 2\n", "", null)]
     [InlineData("i2_f1inbad", Inspect + MainBody + InputMaker + "    let a = outer(local@ref)\n    let r = a()\n    local = 2\n" + InspectR, Conflict + " local = 2", null)]
     [InlineData("i3_once_ok", Inspect + MainBody + InputMaker + "    let r = outer(local@ref)()\n" + InspectR + "    local = 2\n", "", null)]
@@ -223,8 +223,8 @@ public partial class ClosureResultOriginTest
     [InlineData(
         "i5_literal_outer_bad",
         ReturnH + "    let local: i32 = 1\n    return (func (x: ref/i32) => func [x] () => x)(local@ref)()\n" + MainUnit,
-        Unsatisfied + " return (func (x: ref/i32) => func [x] () => x)(local@ref)()",
-        Unsatisfied + " return (func (x: ref/i32) => func [x] () => x)(local@ref)(); " + Unsatisfied + " (func (x: ref/i32) => func [x] () => x)(local@ref)()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " return (func (x: ref/i32) => func [x] () => x)(local@ref)()",
+        Unsatisfied + " (func (x: ref/i32) => func [x] () => x)(local@ref)()")]
     [InlineData("i6_maker_body", MakerBody, "", null)]
     [InlineData("i7_mid_in_outer", MidInOuter, "", null)]
     [InlineData("i8_mixed", Inspect + MainBody + Mixed + "    inspect(r.0)\n    inspect(r.1)\n    local = 2\n", "", null)]
@@ -370,8 +370,8 @@ public partial class ClosureResultOriginTest
     // default side), and a10, its Closure part last, is the control.
     [Theory]
     [InlineData("a1", "func f(a: ref/i32 during static, b: ref/i32) -> i32\n" + TwoParts + "    let mk = outer(a, b)\n    return need(mk().1)\n", UnprovenOwned + " return need(mk().1)", UnprovenOwned + " need(mk().1)")]
-    [InlineData("a2", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + TwoParts + "    let mk = outer(a, x@ref)\n    return mk().1()\n", Unsatisfied + " return mk().1()", Unsatisfied + " return mk().1(); " + Unsatisfied + " mk().1()")]
-    [InlineData("a3", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + RefPart + "    let mk = outer(a, x@ref)\n    return mk().1\n", Unsatisfied + " return mk().1", Unsatisfied + " return mk().1; " + Unsatisfied + " mk().1")]
+    [InlineData("a2", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + TwoParts + "    let mk = outer(a, x@ref)\n    return mk().1()\n", Conflict + " let x = 5; " + Unsatisfied + " return mk().1()", Conflict + " let x = 5; " + Unsatisfied + " mk().1()")]
+    [InlineData("a3", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + RefPart + "    let mk = outer(a, x@ref)\n    return mk().1\n", Conflict + " let x = 5; " + Unsatisfied + " return mk().1", Conflict + " let x = 5; " + Unsatisfied + " mk().1")]
     [InlineData("a5", "func f(a: ref/i32 during static) -> ref/i32 during static\n" + TwoParts + "    let mk = outer(a, a)\n    return mk().1()\n", "", null)]
     [InlineData("a6", "func f(a: ref/i32, b: ref/i32) -> i32\n" + TwoParts + "    let mk = outer(a, b)\n    let p = mk()\n    return 1\n", "", null)]
     [InlineData("a8", "func f(a: ref/i32 during static) -> ref/i32 during static\n" + RefPart + "    let mk = outer(a, a)\n    return mk().1\n", "", null)]
@@ -383,8 +383,11 @@ public partial class ClosureResultOriginTest
     // A program's MIR side after Binding and the analysis, each program parse-clean: the MIR side (MirTargetSide.MirSide), Binding's
     // records and the MIR's, is exactly `mir`: each Error record as its code and the trimmed source line its subject starts on, in source
     // order. A verdict Binding owns, an Origin relation at a returned or stored value or a Callable or erasure constraint, is published
-    // as well: the published records are exactly `published`, code and span (since the MIR decides, H5, an Origin relation's record beside
-    // A5's twin at its statement until R7: H0b §5.4, R4-M108).
+    // as well: the published records are exactly `published`, code and span (an Origin relation's record is A5's one at the value, R7-O1
+    // H; its twin at the statement, H0b §5.4, R4-M108, went with Binding's record). A returned or stored image of a local's Borrow also
+    // shows the Loan conflict at that storage's end (F-H1-1's aggregate class: SPEC 15.6.5's `store` comment derives it; rule W shows
+    // an arrival through the Closure's environment, R4-M132), on the MIR side alone where the call's input image carries it (i1, i5:
+    // F-H-9's class, the derived conflict listed on the MIR side and one published record).
     private static void AssertSides(string form, string source, string mir, string? published)
     {
         var c = VerifiedSpecExampleTest.Bind(source);

@@ -159,6 +159,15 @@ public class ApiAccessBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == "InaccessibleBinding_Kd" && source.AsSpan(0, x.Node.Span.Start).Count('\n') == 5);
     }
 
+    // SPEC 9.4.4, 8.3, 23.1.2 (R7-E2 E2-3b, the Front's y2): a struct's inaccessible constraint clause and its contradicting clauses are two
+    // independent failed requirements, both reported; the owner keeps its own failure beside the clause's record until R7-E5 (no
+    // RestOnPart at an owner with a failure of its own). The twin without the inaccessible clause reports the contradiction alone.
+    [Theory]
+    [InlineData("internal contract Hidden\npublic struct Box<T>\n    T is Hidden\n    T is i32\n    T is not i32\n", "1*InaccessibleBinding_Kd 1*InvalidConstraint_Kd")]
+    [InlineData("public struct Box<T>\n    T is i32\n    T is not i32\n", "1*InvalidConstraint_Kd")]
+    public void AnOwnersOwnFailureStaysBesideItsInaccessibleClause(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmApiAccessChecksAllocateNothing()

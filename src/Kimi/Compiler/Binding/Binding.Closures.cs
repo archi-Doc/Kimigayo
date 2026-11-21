@@ -256,7 +256,6 @@ public sealed partial class Binding
             previous.Signature = null;
             previous.Published = false; // BoundClosure.Of is this binding's definition, set once it is published.
             previous.Classified = false; // And its receiver facts this binding's, once it has classified them.
-            this.LeavePendingRelations(function); // The pending relations of an earlier binding leave with it (R4-M126 §2.5 (d)).
         }
 
         if (expected is not null && !this.ClosureSignatureFits(function, expected, open))
@@ -318,7 +317,6 @@ public sealed partial class Binding
             this.Fail(use, BindingFailure.Unsupported);
         }
 
-        this.JudgePendingRelations(function);
         return this.PublishClosure(function, plan, expected, open);
     }
 
