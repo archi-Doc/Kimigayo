@@ -88,7 +88,10 @@ public sealed partial class Binding
 
     private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false, Koto? known = null)
     {
-        if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
+        // SPEC 8.1.2 (PLAN G758): the evidence's pair layer's slot is its OuterOrigin, the original's implicit `o` included, an Origin
+        // fixed in the evidence's body (G147 ruling 43: a slot's bound like any other); the pattern's own `o` is bound by its Type
+        // argument (SPEC 8.1.1), so the pattern's Origins are read as written.
+        if (!pattern.CarriesOrigin || !(actual.CarriesOrigin || actual.ContainsPairLayer))
         {
             return;
         }
@@ -105,7 +108,7 @@ public sealed partial class Binding
             this.slotWalks++;
         }
 
-        if (pattern.Origin is { } p && actual.Origin is { } a && !this.InactiveOuterOrigin(pattern, this, null, inference.Comparison))
+        if (pattern.Origin is { } p && this.OuterOrigin(actual) is { } a && !this.InactiveOuterOrigin(pattern, this, null, inference.Comparison))
         {
             // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, as the walk's (SlotCondition).
             Add(p, a, polarity, SlotCondition(actual, this, inference.Use, inference.Comparison));

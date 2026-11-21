@@ -470,10 +470,24 @@ public sealed partial class Binding
     // G1128 (B2): a skeleton's substitution table (BU-55), pooled.
     private readonly Dictionary<BoundType, BoundType> slotSubstituted = new(ReferenceEqualityComparer.Instance);
 
-    // Whether a binding's Origin becomes a slot variable: an Origin the evidence fixed (OpensAsSlotRegion), but no nested Function Type's
-    // per-call input (bound by that Type, SPEC 15.3.4) and no pair's outer Origin (bound by its Type argument, SPEC 8.1.1).
-    private static bool BecomesSlotVariable(BoundOrigin origin)
-        => OpensAsSlotRegion(origin) && origin is not { Kind: OriginKind.Input, Binder: FunctionTypeKoto } && origin is not { Kind: OriginKind.Parameter, Slot: < 0 };
+    // Whether a skeleton's Origin position, the Types' own Origin (`index` -1) or Origin argument `index`, is a slot variable (SPEC 10.8
+    // as revised: each Origin of the solution is a variable bounded by every binding's Origin at its position): some binding has an
+    // Origin the evidence fixed there (OpensAsSlotRegion), the caller's pair outer Origin `o` included, which is fixed in its body (G147
+    // ruling 43), other than a nested Function Type's per-call input, which that Type binds (SPEC 15.3.4) and which bounds no variable
+    // (CollectOriginInference's quantifiers). So no binding's order decides whether a position is solved.
+    private static bool BecomesSlotVariable(ReadOnlySpan<BoundType> parts, int index)
+    {
+        foreach (var part in parts)
+        {
+            if ((index < 0 ? part.Origin : index < part.OriginArguments.Count ? part.OriginArguments[index] : null) is { } origin &&
+                OpensAsSlotRegion(origin) && origin is not { Kind: OriginKind.Input, Binder: FunctionTypeKoto })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // G1128 (SPEC 10.8 as revised, 15.3.6): the skeleton of a slot's bindings: the structure they agree in, with each Origin
     // position a slot variable of the call, one per distinct (bindings' sub-Types, polarity) query (B2), so a DAG-shaped binding gives
@@ -507,8 +521,16 @@ public sealed partial class Binding
 
     private BoundType SkeletonOf(Span<BoundType> parts, int polarity, Koto call, OriginInference inference)
     {
+        // The bindings agree in structure; a pair layer's Origin may be written in one and the original's implicit `o` in another (SPEC
+        // 8.1.2), so a node carries Origins when any binding's does, and its Origin position is then written with its variable.
         var type = parts[0];
-        if (!type.CarriesOrigin)
+        var carries = false;
+        foreach (var part in parts)
+        {
+            carries |= part.CarriesOrigin;
+        }
+
+        if (!carries)
         {
             return type;
         }
@@ -531,7 +553,7 @@ public sealed partial class Binding
 
         this.slotWalks++;
 
-        var origin = type.Origin is { } outer && BecomesSlotVariable(outer) ? this.NewSlotVariable(call, inference) : type.Origin;
+        var origin = BecomesSlotVariable(parts, -1) ? this.NewSlotVariable(call, inference) : type.Origin;
         var origins = this.originScratch.Rent(type.OriginArguments.Count);
         var components = this.RentTypes(type.Components.Count);
         var below = this.RentTypes(parts.Length);
@@ -540,7 +562,7 @@ public sealed partial class Binding
             var changed = !ReferenceEquals(origin, type.Origin);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                origins[i] = BecomesSlotVariable(type.OriginArguments[i]) ? this.NewSlotVariable(call, inference) : type.OriginArguments[i];
+                origins[i] = BecomesSlotVariable(parts, i) ? this.NewSlotVariable(call, inference) : type.OriginArguments[i];
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 

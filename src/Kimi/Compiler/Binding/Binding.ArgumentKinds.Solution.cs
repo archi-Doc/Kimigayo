@@ -234,7 +234,7 @@ public sealed partial class Binding
             for (var g = 0; g < Math.Min(CallSlotCount(this.Binder), this.Types.Length); g++)
             {
                 if (this.FixedSlot(g) || !this.Frame.BindsDistinctTypes(g) || this.Frame.Bindings(g) is not { } head ||
-                    this.Types[g] is not { CarriesOrigin: true } first)
+                    this.Types[g] is not { } first)
                 {
                     continue;
                 }
