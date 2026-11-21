@@ -761,8 +761,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
   `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded by R4-M69 (the Move code is A1's) and R4-M72 (the
-  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90 (for A5 by R4-M97; A1 and A2
-  at 2g-6).
+  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90 (for A5 by R4-M97; amended for
+  A1 and A2 by R4-M233).
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. R4-M71 keys `MirReport` by (code, subject, body) and places the merge across
   bodies at publication.
@@ -931,7 +931,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   one sweep; views above one are rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second
   or third block walk beside `MirReach`.
 - **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69, its clause "a
-  compiler temporary is never a Place of the program" by R4-M188; its clause "except through a raw pointer: an untracked Take" by BU-146: a Move through a raw pointer's
+  compiler temporary is never a Place of the program" by R4-M188; its clause "Opaque-root and Inlined rules stay MirReport's" for the Inlined rule by R4-M233; its clause "except through a raw pointer: an untracked Take" by BU-146: a Move through a raw pointer's
   Deref is untracked only into `TyCtxt.RawPart`'s parts, elsewhere it has no Move Path) Move paths and
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
@@ -1826,8 +1826,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   on 38j). Conditions for 2f (superseded by R4-M106: no Φ_c remains): a Φ_c met at a receiver's formation is located at its later call
   (DIAGNOSTICS); a shared-receiver Φ_c takes the receiver's mode, or 2f reruns this rule's prototype variant with that case.
 - **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75; unit 1c-6; its Inlined rule superseded for A5 by R4-M97 under
-  R4-M90; A1/A2 at
-  2g-6, D15 staged) It supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's
+  R4-M90, for A1 and A2 by
+  R4-M233) It supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's
   rejection of "DefaultArgumentMove decided in A1", whose reason, R4-M10's placement in A6, no longer holds: R5-M23 has each recording
   rule name its requirement, and `MirReport` has no Place and must not derive a requirement from a code.
   - A1's mapping: A1 codes a Move of a PreparedInput slot (`MirLocalRole.PreparedInput`) or of its owned contents
@@ -2512,7 +2512,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     split is due before 2e-4 (the package), Solve.cs's before its next change (superseded by DEC Q9).
 - **R4-M97 A5-F9's copy disposition: a failure in an inline default copy is its template's only within one evaluation** (2026-10-21;
   under R4-M90; supersedes R4-M69's Inlined rule and R4-M10's Inlined sentence for A5, R4-M73's sub-bullet "R4-M69 governs inline
-  default copies" and R4-M92's G171 interim; closes PLAN G171's defect)
+  default copies" and R4-M92's G171 interim; closes PLAN G171's defect; its "Two ownership forms until 2g-6" superseded by
+  R4-M233)
   - Rule (D11; SPEC 7.2.3, 15.6): a failure found in an inline default copy is its template's when every event taking part lies in one
     evaluation of one copy. `MirBorrows.Covered(scope, loan, reservation)`: B, the innermost Inlined scope holding the operation's scope
     and the issue scopes of its Loan and reservation (`MirBody.Common`), moves outward (`Inlining(Outer(B))`) while the Loan or the
@@ -2715,7 +2716,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     root lists; per-Field initializer slices (a second copy of `Construct`); per-constructor premises for layer rows; F1's `Definition`
     deadline in R4 (G210 is BU's); `ResultFit` windows now.
 - **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b; its PD21 due states superseded by DEC
-  Q9)
+  Q9; the mark's recorder amended by R4-M233)
   - Adopted: `MirDropTable.Incomplete(body) → (DiagnosticCode Code, SourceRef Subject)?`, first-wins per body, stored with the body's
     ends at `Close` beside `ViewsOf` (pooled, a warm rebuild 0 B). R4-M6a makes A2's verdicts exact only for a body A1 accepts, so a
     consumer reads which body's table is inexact, and with what.
@@ -7769,6 +7770,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
     site, a second conflict at r-loc-index's site); a decided use with its own source node (A5's subject rule for one rvalue kind); a
     new statement kind for the read (`FakeRead` has the meaning); a per-site "has parts" bit for the landing fact (a side table for one
     reader); telling a kept part's position from syntax, or building a rejected target from syntax.
+- **R4-M233 A1 and A2 omit a copy's Language problems; one path for a problem no body describes** (Middle, 2026-11-22; Major; R7 plan
+  Z20, 2g-6, PLAN G126; Q-636; design `middle\notes\z20-design.md` Revision 1 and its two reviews) Supersedes R4-M97's "Two ownership
+  forms until 2g-6" (D15 staged) and R4-M69's Inlined fact for A1 and A2; amends R4-M10's Inlined sentence and R4-M102 (the mark's
+  recorder); supersedes R4-M21's placement clause "Opaque-root and Inlined rules stay MirReport's (R4-M10, U11)" for the Inlined rule:
+  the producers' one recorder omits a copy's problem, so no Inlined fact reaches MirReport, whose Opaque-root rule is unchanged.
+  - A1 and A2 record their Language problems through `MirDrops.Problem`, which marks the body and adds the problem to MirReport unless
+    its location lies in an inline default copy: that is its template's check, which the template reports at its declaration (SPEC
+    7.2.3), met in an instantiation and grouped with the template's record (SPEC 23.1.2's grouping clause), not a derived record, so
+    MirReport stays the one home of the derived-problem rules. A broken A1 contract is recorded wherever it lies. Deleted:
+    `ProblemFactKind.Inlined`, `MirReport.Add`'s Inlined drop, the publisher's arm. Rejected: a test per analysis (a second copy of the
+    rule); a `MirBody` ownership fact (A5's disposition differs); relocation with `Evaluated` (no A1 or A2 event of a copy lies outside
+    its evaluation).
+  - A problem no body describes is formed only by `MirProblem.WithoutBody`, with `NoBodyViews` (every bit), or by MirReport from such a
+    problem (Defect, the merge, a held round, Keep and Replay); a record gets `NoBodyViews` from `MirProgram.Report`. A4's owing body no
+    longer gives its view bits, and MirReport's merge defect no longer forms views 0. Rejected: 0; normalizing in MirReport; a constant
+    without the path.
+  - Staged: audit finding 7 (A4's readers recorded once per Run, the design's stamp) waits for its RP8 measurement under PLAN G349.
+  - Moves: none at publication (42 test expectations of internal NoBody view values).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
