@@ -17,18 +17,7 @@ public sealed partial class Binding
     // path of their operand and their identifier), so its record belongs there and not at the path (SPEC 23.1.2).
     private static bool StoppedAtQualifier(Koto use, Koto syntax)
     {
-        var path = UnwrapTypeSyntax(syntax);
-        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
-        {
-            path = UnwrapTypeSyntax(root.Operands[0]);
-        }
-
-        if (path is GenericsKoto generic)
-        {
-            path = UnwrapTypeSyntax(generic.Identifier!);
-        }
-
-        for (var left = (UseNode(path) as MemberAccessKoto)?.Left; left is not null; left = (UseNode(left) as MemberAccessKoto)?.Left)
+        for (var left = (UseNode(ContainerPath(syntax)) as MemberAccessKoto)?.Left; left is not null; left = (UseNode(left) as MemberAccessKoto)?.Left)
         {
             if (ReferenceEquals(UseNode(left), use))
             {

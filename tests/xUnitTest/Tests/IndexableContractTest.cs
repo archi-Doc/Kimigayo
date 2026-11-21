@@ -300,13 +300,17 @@ public class IndexableContractTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
+    // SPEC 4.7.1: an unfitted literal key could fit both keys, and a string key fits neither: one AmbiguousBinding_Kd at the index
+    // (Binding.Indexers TryBindIndexer).
     [Theory]
-    [InlineData("let table = Table.init(3, 4)\nlet a: i32 = table[0]")]
-    [InlineData("let table = Table.init(3, 4)\nlet s: string = \"x\"\nlet a: i32 = table[s]")]
-    public void AKeyThatSelectsNoSingleConformanceIsRejected(string use)
+    [InlineData("let table = Table.init(3, 4)\nlet a: i32 = table[0]", "table[0]")]
+    [InlineData("let table = Table.init(3, 4)\nlet s: string = \"x\"\nlet a: i32 = table[s]", "table[s]")]
+    public void AKeyThatSelectsNoSingleConformanceIsRejected(string use, string at)
     {
         var c = MinimalEmissionTest.Analyze(TwoKeys + use);
         Assert.False(c.Binding.Result.IsComplete);
+        var record = Assert.Single(DiagnosticCorpus.Check(TwoKeys + use).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (record.Code, (TwoKeys + use).Substring(record.Span!.Value.Start, record.Span.Value.Length)));
     }
 
     [Fact]

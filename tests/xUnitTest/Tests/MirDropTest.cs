@@ -18,6 +18,16 @@ public sealed partial class MirDropTest
     internal const string Indices = "func probe(n: i32 = label w: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n" +
         "    for i in a.indices => ()\n    exit to w 1\n) -> i32 => n\nfunc f() -> i32 => probe()\n";
 
+    // A default whose layer with its own drop is incomplete at its destruction (SPEC 16.3.2, 15.1.3; ledger row c-layer's form), inline in f.
+    internal const string CopiedLayer = Box + "func probe(n: i32 = label w: do\n    var box = Box.init(make())\n    consume(box.value@move)\n" +
+        "    exit to w 1\n) -> i32 => n\nfunc f() -> i32 => probe()\n";
+
+    // A layer with its own drop left incomplete, the line that refills it, and a default's callers: two calls in f, one in g's two views
+    // (ACopysLayerProblemIsItsTemplatesCheck).
+    private const string Layer = "    var box = Box.init(make())\n    consume(box.value@move)\n";
+    private const string Refill = "    box.value = make()\n";
+    private const string Callers = "func f() -> i32 => probe() + probe()\nfunc g<s/T>(v: s/T) -> i32\n    s is ref or uniq\n    return probe()\n";
+
     private const string Resource = "struct Resource\n    var name: string\n    public init(name: string) => self.name = name@move\n" +
         "func make() -> Resource => Resource.init(\"r\")\nfunc consume(r: Resource) => ()\n";
 
@@ -241,24 +251,53 @@ public sealed partial class MirDropTest
         Assert.Equal(codes, string.Join(' ', Problems(source).Select(static x => x.Split(' ')[0])));
     }
 
-    // DECISIONS R4-M102 (SPEC 7.2.3, R4-M69): MirReport drops a problem found in an inline default copy as its template's, but the copy's
-    // body is marked too, with the problem's own subject, the template's, so the caller's refusal shares its template's code and subject;
-    // the template's mark is its problem in the report, the copy's none there, as the report dropped it (R4-M69).
-    [Fact]
-    public void ACopysProblemMarksItsCallerWithItsTemplatesSubject()
+    // DECISIONS R4-M102 (SPEC 7.2.3, R4-M69, Z20): a Language problem A1 or A2 finds in an inline default copy is its template's check, which
+    // MirDrops.Problem does not add to MirReport, but the copy's body is marked too, with the problem's own subject, the template's, so the
+    // caller's refusal shares its template's code and subject; the template's mark is its problem in the report, the copy's none there:
+    // A1's whole use of a partly moved array (Indices) and A2's incomplete layer with its own drop (CopiedLayer).
+    [Theory]
+    [InlineData(Indices, "a.indices")]
+    [InlineData(CopiedLayer, "var box = Box.init(make())")]
+    public void ACopysProblemMarksItsCallerWithItsTemplatesSubject(string source, string subject)
     {
-        var c = MirBuildTest.Compile(Indices);
+        var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         var all = program.Problems.All.ToArray();
         var problem = Assert.Single(all, static x => x.Subject.Module == 0);
         var bodies = program.Bodies.ToArray();
         var f = bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
-        Assert.Equal((MirBodyKind.DefaultTemplate, "a.indices"), (program.Body(problem.Body).Key.Kind, c.SyntaxOf(problem.Subject).ToString()));
+        Assert.Equal(
+            (MirBodyKind.DefaultTemplate, subject),
+            (program.Body(problem.Body).Key.Kind, c.SyntaxOf(problem.Subject).ToString().Split('\n')[0].Trim()));
         Assert.Equal((problem.Code, problem.Subject), Mark(program, problem.Body));
         Assert.Equal((problem.Code, problem.Subject), Mark(program, f.Ordinal));
         Assert.Equal(["own", "copy"], [Owner(program, (problem.Code, problem.Subject, problem.Body)), Owner(program, (problem.Code, problem.Subject, f.Ordinal))]);
     }
+
+    // SPEC 16.3.2, 15.1.3, 7.2.3 (DECISIONS R4-M69, Z20): A2's MovedPlace_Kd at a layer with its own drop incomplete at its destruction in a
+    // default is its template's check, recorded once at the default whatever copies evaluate it (two calls and a two-view caller, or a copy
+    // inside a copy); outside a copy it is its body's own, in a plain function and in a caller's own layer beside a copy. Each valid twin
+    // refills the layer before its destruction.
+    [Theory]
+    [InlineData(Box + "func probe(n: i32 = label w: do\n" + Layer + "    exit to w 1\n) -> i32 => n\n" + Callers, "MovedPlace_Kd var box = Box.init(make()) 1")]
+    [InlineData(Box + "func probe(n: i32 = label w: do\n" + Layer + Refill + "    exit to w 1\n) -> i32 => n\n" + Callers, "")]
+    [InlineData(Box + "func plain() -> i32\n" + Layer + "    return 1\nfunc f() -> i32 => plain() + plain()\n", "MovedPlace_Kd var box = Box.init(make()) 1")]
+    [InlineData(Box + "func plain() -> i32\n" + Layer + Refill + "    return 1\nfunc f() -> i32 => plain() + plain()\n", "")]
+    [InlineData(
+        Box + "func probe(n: i32 = label w: do\n" + Layer + "    exit to w 1\n) -> i32 => n\nfunc f() -> i32\n" + Layer + "    return probe()\n",
+        "MovedPlace_Kd var box = Box.init(make()) 1 | MovedPlace_Kd var box = Box.init(make()) 1")]
+    [InlineData(Box + "func probe(n: i32 = label w: do\n" + Layer + Refill + "    exit to w 1\n) -> i32 => n\nfunc f() -> i32\n" + Layer + Refill + "    return probe()\n", "")]
+    [InlineData(
+        Box + "func inner(m: i32 = label w: do\n" + Layer + "    exit to w 1\n) -> i32 => m\nfunc outer(n: i32 = inner()) -> i32 => n\n" +
+        "func f() -> i32 => outer() + outer()\n",
+        "MovedPlace_Kd var box = Box.init(make()) 1")]
+    [InlineData(
+        Box + "func inner(m: i32 = label w: do\n" + Layer + Refill + "    exit to w 1\n) -> i32 => m\nfunc outer(n: i32 = inner()) -> i32 => n\n" +
+        "func f() -> i32 => outer() + outer()\n",
+        "")]
+    public void ACopysLayerProblemIsItsTemplatesCheck(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
     // DECISIONS R4-M102, R4-M15a: a body whose A1 arena exceeds the limit judges no view and is marked OwnershipStorageLimit_Kd at its source
     // (N locals live across N branches, MirInitTest's form); A5's own limit (N reference locals, MirAnalysisTest's) leaves it exact.
@@ -598,7 +637,7 @@ public sealed partial class MirDropTest
     }
 
     // The first A1 or A2 problem of each body named name (DECISIONS R4-M102), by kind: "Kind Code subject own" where the report has that
-    // problem in the body, "Kind Code subject copy" where it has only its template's (an inline copy's, which the report drops, R4-M69), or
+    // problem in the body, "Kind Code subject copy" where it has only its template's (an inline copy's, which MirDrops.Problem does not add, R4-M69), or
     // "Kind" for an exact body; the source has no Binding issue.
     private static string[] Incomplete(string source, string name)
     {

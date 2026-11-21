@@ -145,6 +145,7 @@ public sealed partial class Binding
 
         foreach (var (use, target) in forms)
         {
+            // Transitional, R7-E5 (B's E3 ruling 4, O6 (a)): a form that already failed keeps its first failure, as a Fail does.
             if (use.BindingFailure == BindingFailure.None)
             {
                 this.RenouncedObjectTarget(use, target);

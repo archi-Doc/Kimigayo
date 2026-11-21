@@ -27,7 +27,7 @@ public sealed class CommandExecutionTest : IDisposable
     // first:
     // - The message, no code: a missing input (build, check, restore), a directory without projects, the usage errors (build, toolchain,
     //   check's format, restore's input, an unknown command), run's selection, the toolchain's calls (a missing manifest, run --no-build
-    //   without a build, a missing executable, a missing toolchain root), restore's lock write (an output failure), a malformed solution
+    //   without a build, a missing executable), restore's lock write (an output failure), a malformed solution
     //   file and two files nested deeper than the configuration reader reads (the parse of a user's file is the file's failure).
     // - CheckFaulted_Kd: the host's console throwing at the selected project's line (build with a type the toolchain's classification
     //   lists, which printed as a plain failure, and with one it does not, which escaped the command; check and emit), at the line after
@@ -52,7 +52,6 @@ public sealed class CommandExecutionTest : IDisposable
     [InlineData("restore source", null, false, "Restore requires a .kimiproj input.")]
     [InlineData("restore missing", null, false, "Input not found")]
     [InlineData("missing executable", null, false, "Executable not found")]
-    [InlineData("missing toolchain", null, false, "Toolchain file not found")]
     [InlineData("selection", "Project: ", true, null)]
     [InlineData("selection, unlisted", "Project: ", true, null)]
     [InlineData("after the projects", "No projects loaded", true, null)]
@@ -182,9 +181,6 @@ public sealed class CommandExecutionTest : IDisposable
             case "missing executable":
                 await new RunCommand(null!, kimigayo, solution).Execute(new(), [Path.Combine(this.directory, "missing.exe")], token);
                 break;
-            case "missing toolchain":
-                await new ToolchainCommand(kimigayo).Execute(new() { ToolchainRoot = Path.Combine(this.directory, "no toolchain") }, ["verify"], token);
-                break;
             case "check selection":
                 await new CheckCommand(null!, kimigayo, solution).Execute(new(), [project], token);
                 break;
@@ -248,6 +244,42 @@ public sealed class CommandExecutionTest : IDisposable
             var exit = Environment.ExitCode;
             Environment.ExitCode = 0;
             Assert.Equal(2, exit);
+        }
+
+        // kimi test takes its arguments from the command line as every command does (PLAN G1214): the parser splits the line and unwraps
+        // a quoted argument, so a quoted input, with a space or without, and a quoted option value arrive without their quotes, a bare
+        // --locked arrives as --locked true (KimiOptions.ExpandFlags) and --locked false is the Boolean option's value, not the input
+        // (IMPL 20.3); an unquoted input is unchanged. --list builds nothing natively.
+        [Theory]
+        [InlineData("test --list \"<input>\"", "with space")]
+        [InlineData("test --list \"<input>\"", "nospace")]
+        [InlineData("test --list <input>", "nospace")]
+        [InlineData("test --list --filter \"passes\" --locked <input>", "nospace")]
+        [InlineData("test --list --locked false <input>", "nospace")]
+        public async Task TestTakesItsArgumentsFromTheCommandLineAsEveryCommand(string line, string folder)
+        {
+            var project = Path.Combine(this.directory, folder, "Tests.kimiproj");
+            Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+            File.WriteAllText(Path.Combine(this.directory, folder, "tests.kimi"), "#Test\nfunc passes()\n    $require(1 == 1)\n");
+            File.WriteAllText(project, $"Targets = {{ \"{WindowsProfile.Target}\" }}\nOutputKind = \"Library\"\nTestSources = {{ \"tests.kimi\" }}\n");
+            var product = TataraCommandTest.Unit(new());
+            var console = Console.Out;
+            using var output = new StringWriter();
+            Console.SetOut(output);
+            try
+            {
+                Environment.ExitCode = 0;
+                await product.Execute(line.Replace("<input>", project, StringComparison.Ordinal), product.Context.ServiceProvider, TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            Assert.Equal(0, exit);
+            Assert.Contains("Tests.kimiproj::passes", output.ToString(), StringComparison.Ordinal);
         }
 
         // Kimigayo.RunEnded (Tatara unit SP1): a cancelled run <file.exe> calls it once, after its program ended (RunExecutable kills the

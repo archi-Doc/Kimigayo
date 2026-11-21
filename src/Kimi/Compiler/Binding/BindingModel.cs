@@ -994,10 +994,10 @@ internal enum OriginJudgment : byte
     Unrepresentable,
 }
 
-// SPEC 10.5: why a single generic function reference's slots did not bind from its fixed expected call signature, for the Note of its
-// TypeMismatch_Kd: no binding fits structurally, a bound argument fails its Constraints, the bindings of one slot differ only in their
-// Origins, or a bound argument would hold an input Origin that is bound at each call; or (SlotVariables, any candidate) a slot's distinct
-// bindings would take slot variables, which a reference does not solve: the located Unsupported_Kd, which no Note reads (G1128).
+// SPEC 10.5: why a single generic function reference's slots did not bind from its fixed expected call signature (its TypeMismatch_Kd
+// reads the declaration's own signature then): no binding fits structurally, a bound argument fails its Constraints, the bindings of one
+// slot differ only in their Origins, or a bound argument would hold an input Origin that is bound at each call; or (SlotVariables, any
+// candidate) a slot's distinct bindings would take slot variables, which a reference does not solve: the located Unsupported_Kd (G1128).
 internal enum ReferenceSlotFailure : byte
 {
     None,

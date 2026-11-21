@@ -114,7 +114,7 @@ public sealed partial class Binding
         var name = equality ? "equals" : "compare";
         if (contract.Contract is not { } shape || !shape.MembersByName.TryGetValue(name, out var members) || members.Count != 1)
         {
-            return this.Fail(binary, BindingFailure.InvalidConstraint);
+            return this.Record(binary, BindingFailure.InvalidConstraint, []);
         }
 
         var call = this.BindSelectedRequirement(binary, binary.ComparisonStorage, [binary.Left, binary.Right], self, members[0].Contract, members[0].Symbol, scope, tupleOperator);

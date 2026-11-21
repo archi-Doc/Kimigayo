@@ -295,7 +295,7 @@ internal sealed class MirProgram
     /// <param name="recordClass">The record's class, its body value.</param>
     /// <param name="facts">Its facts: a collection record's typed fact where it fails (the collector's height limit, R7-T1), or none.</param>
     internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd, MirRecordClass recordClass = MirRecordClass.Construction, ReadOnlySpan<ProblemFact> facts = default)
-        => this.Problems.Add(new(code, DiagnosticRequirement.ControlFlow, site, (int)recordClass, ulong.MaxValue), facts);
+        => this.Problems.Add(new(code, DiagnosticRequirement.ControlFlow, site, (int)recordClass, MirProblem.NoBodyViews), facts);
 
     /// <summary>Gets the rows of a record class in the order they were first recorded, the one path to them: the construction records, an
     /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2), the expansion limit's <c>ExpansionLimit_Kd</c> (Resource) and a

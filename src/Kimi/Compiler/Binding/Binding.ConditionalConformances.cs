@@ -341,28 +341,14 @@ public sealed partial class Binding
     private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, out BoundConformancePath? evidence)
     {
         evidence = null;
-        if (this.contractHeadersReady && this.BuiltinArithmeticConformance(type, contract, scope))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
-        }
 
-        // SPEC 4.6.1, 8.7, 22.1: a conformance the library witness table records for a built-in Type.
-        if (this.contractHeadersReady && WitnessGroup(type, contract.LibraryDeclaration) is not null)
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
-        }
-
-        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable &&
-            TyCtxt.OperatorTableRuns(type, KimiDeclarationId.Equatable))
+        // SPEC 13.3.3, 13.4.1, 4.6.1, 8.7, 22.1: the built-in row of the Type and the reference's Contract (BuiltinConformance); a
+        // composed comparison holds by its parts (R7-C9's Prove).
+        if (this.contractHeadersReady && this.BuiltinConformance(type, contract, scope) is { Kind: not ImplTable.BuiltinKind.None } builtin)
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
-                : TyCtxt.OperatorTableRuns(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
-        }
-
-        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && TyCtxt.IsComposite(type))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid
-                ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false, out _);
+                : builtin.Kind == ImplTable.BuiltinKind.Absent ? ConstraintProof.Refuted
+                : builtin.Kind == ImplTable.BuiltinKind.Composed ? this.ComparisonProof(type, contract, scope, false, out _) : ConstraintProof.Proven;
         }
 
         // SPEC 8.3: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
@@ -465,6 +451,22 @@ public sealed partial class Binding
         {
             this.openObligations.Remove(key);
         }
+    }
+
+    // SPEC 13.3.3, 8.7.4, 8.2.3 (R7-V2c): the built-in row (ImplTable.Builtin, keyed on the reference's Contract declaration) of a Type
+    // in `scope` and a bound Contract reference, None where none applies: the reference's argument SPEC fixes is judged first, once: an
+    // arithmetic reference's is Self (`C<Self>`), one Type with it in `scope` (SameConformanceType), as a projection naming it is
+    // (`i32 is Addable<U.(HasItem).Item>` with SrcI for U); an Entailed row applies when its subject is proven PrimitiveInteger.
+    private ImplTable.BuiltinRow BuiltinConformance(BoundType type, BindingSymbol contract, BindingScope scope)
+    {
+        if (ArithmeticContractSyntax.Identity(contract) is { } id && !ArithmeticContracts.IsLeft(id) && id != KimiDeclarationId.Negatable &&
+            (contract.Type is not { Components: [var counterpart] } || !this.SameConformanceType(counterpart, type, scope)))
+        {
+            return default;
+        }
+
+        var row = ImplTable.Builtin(type, contract);
+        return row.Kind != ImplTable.BuiltinKind.Entailed || this.IsGenericInteger(row.Subject, scope) ? row : default;
     }
 
     // The start of an answer whose dependence a reader asks: the depth now and the dependence of the answers enclosing it.
