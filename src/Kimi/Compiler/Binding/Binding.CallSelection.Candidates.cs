@@ -388,9 +388,12 @@ public sealed partial class Binding
                                 // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
                                 // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
                                 // A part checked against its expected Type ranks as its fit there ranks it (ExpectedTypeClass; PLAN G924,
-                                // G916): the open position's whole literal or join is the same operation as at a closed one.
+                                // G916): the open position's whole literal or join, nested call, construction or Case is the same operation
+                                // as at a closed one (SPEC 10.5.1: ranked by the Expected-Type fitting row; a call's or Case's result is
+                                // unknown here, so no borrow class).
                                 var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure
-                                    : this.KindOf(argument) is PartKind.Aggregate or PartKind.Join ? ExpectedTypeClass(this.Materialization(argument, pattern, scope)) : ArgumentAdaptation.Exact;
+                                    : this.KindOf(argument) is PartKind.Aggregate or PartKind.Join or PartKind.Call or PartKind.Case
+                                    ? ExpectedTypeClass(this.Materialization(argument, pattern, scope)) : ArgumentAdaptation.Exact;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
                                 {

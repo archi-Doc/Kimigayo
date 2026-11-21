@@ -391,7 +391,10 @@ public sealed partial class Binding
     {
         if (this.RecordsWaitingForm(part))
         {
-            return ClassifyPart(part) != PartKind.Case || this.PreparePayloads(part, scope);
+            // A contextual Case's payloads are prepared at its record; a failed payload is its own record, not the Case's (the Case stays
+            // recorded and unbound, so a slot only it reaches is still the call's inference boundary, U1.6h-5).
+            _ = ClassifyPart(part) == PartKind.Case && this.PreparePayloads(part, scope);
+            return true;
         }
 
         var kind = ClassifyPart(part);
@@ -459,7 +462,8 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 6.5.2 (PLAN G924 AF-3b; design-casepath 2.3, B5): a contextual Case's payload arguments, prepared where its part is
     // recorded, once per pass, with no expectation and outside any trial, as a named call's arguments are (PrepareCallArguments), so its
-    // check against an expected Type reads prepared parts only (FitConstructionAt); false when one failed.
+    // check against an expected Type reads prepared parts only (FitConstructionAt); false when one failed (its own record; the Case is
+    // no failed part).
     private bool PreparePayloads(Koto part, BindingScope scope)
     {
         if (KotoHelper.UnwrapParentheses(part) is not InvocationKoto { Method: SyntaxFormKoto { Akind: KotoKind.InferredCase } } construction)
