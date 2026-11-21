@@ -22,7 +22,9 @@ namespace Kimi.Compiler;
 //   (owner, each slot's fixed binding, lengths, whether every own slot is fixed); a FixedPattern for AdaptInput.
 // - Invariants: a slot's frame keeps its first binding's Type, and each evidence binding is recorded with its composed polarity
 //   (SlotBinding; G1128), whose Origins the late solve values (SPEC 10.8 as revised); under `relateLater` or `evidence` an Origin never
-//   fails a structurally equal binding, and a function reference's met bindings stay its Origin conflict or limit. An open
+//   fails a structurally equal binding, and a function reference's met bindings stay its Origin conflict or limit: Infer meets
+//   Origins (CommonOriginType) only at a function reference's slot, which no late solve values (SPEC 10.5.3), until a reference's
+//   solve owns its bindings (PLAN's R1.3 (h) line). An open
 //   slot in FixedSlots has one encoding, its own parameter, and only an inferred construction (a structure's `.init` or a Case's
 //   qualifier with its own list omitted, SPEC 9.7) leaves one beside fixed slots; none fixed is no Types. An argument's adaptation is
 //   planned only at a FixedPattern made by Of (a pattern under a solution's FixedSlots, an open slot staying a slot) or Open (a
@@ -322,6 +324,12 @@ public sealed partial class Binding
                     return true;
                 }
 
+                // G1128 (design R1.3 (h), R1.4; the code review's C1): Infer's one merge of Origins outside a call's solve. Its only
+                // readers are function references (InferReferenceSlots with commonOrigins; SPEC 10.5.3, no late solve; counted over the
+                // whole suite, every hit a reference): it meets their bindings that differ in covariant Origins and records each, so a
+                // slot that would need variables becomes the reference's located limit (VariableReferenceSlot). A call records its
+                // bindings above, and none reached it over the suite. It goes when a reference's solve owns its bindings (PLAN's R1.3 (h)
+                // line).
                 if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
                 {
                     if (reference)
