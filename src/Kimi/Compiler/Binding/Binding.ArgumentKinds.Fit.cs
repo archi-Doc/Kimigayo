@@ -58,7 +58,7 @@ public sealed partial class Binding
             case PartKind.Literal:
                 return this.FitLiteral(part, node, type, scope, out operation);
             case PartKind.Case or PartKind.Call when this.AwaitsCall(node):
-                return this.FitChecked(part, node, kind, type, out operation);
+                return this.FitChecked(part, node, kind, type, scope, out operation);
             default:
                 return this.FitTyped(part, node, type, scope, use, out operation);
         }

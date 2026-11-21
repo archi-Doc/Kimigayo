@@ -42,9 +42,9 @@ public sealed partial class Binding
 
     // FitArgument's row for a part that awaits its call as a Call or Case: Inapplicable with the failed check as the trial's fact, else
     // Waiting with its class at the position.
-    private CandidateApplicability FitChecked(Koto part, Koto node, PartKind kind, BoundType type, out BoundArgumentOperation operation)
+    private CandidateApplicability FitChecked(Koto part, Koto node, PartKind kind, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
-        var verdict = this.CheckedAt(node, kind, type);
+        var verdict = this.CheckedAt(node, kind, type, scope);
         if (verdict.Failure is { } failure)
         {
             operation = default;
@@ -58,8 +58,9 @@ public sealed partial class Binding
 
     // The memo: the part's verdict at `type`, queried on a miss as a selection's evaluation (candidateTrials: its fits bound no omitted
     // Origin and a refusal it reads is held), counted toward its resolution's limit. A contextual Case and a call whose probe published
-    // a Case are constructions (FitConstructionAt); every other call is selected (SelectCallAt).
-    private CheckedVerdict CheckedAt(Koto part, PartKind kind, BoundType type)
+    // a Case are constructions (FitConstructionAt); every other call is selected (SelectCallAt). `scope` is the scope its call's
+    // arguments are bound in, the one its probe bound the part in.
+    private CheckedVerdict CheckedAt(Koto part, PartKind kind, BoundType type, BindingScope scope)
     {
         var node = PartCore(part);
         var key = (SourceRef.Of(node), type);
@@ -81,7 +82,6 @@ public sealed partial class Binding
         }
 
         CheckedVerdict verdict;
-        var scope = this.ConstraintScope(node);
         this.candidateTrials++;
         try
         {

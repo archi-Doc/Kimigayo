@@ -248,18 +248,25 @@ public sealed partial class Binding
     private void CloseHeldParts(int start) => this.heldParts.RemoveRange(start, this.heldParts.Count - start);
 
     // SPEC 10.5.1 (DECISIONS BU-43): whether a join's results hold a part that awaits its call (AwaitsCall).
-    private bool HoldsPartAwaitingCall(Koto join)
+    private bool HoldsPartAwaitingCall(Koto join) => this.AwaitedKinds(join) != 0;
+
+    // SPEC 10.5.1, 14.9.2 step 1 (ArgFlow ruling 63): whether a join's results hold a part checked against the expected Type at each
+    // candidate's Type, a nested call, construction or Case awaiting its call.
+    private bool HoldsCheckedPart(Koto join) => (this.AwaitedKinds(join) & ((1 << (int)PartKind.Call) | (1 << (int)PartKind.Case))) != 0;
+
+    // The kinds of the parts of a join's results that await their call (AwaitedKind), one bit each.
+    private int AwaitedKinds(Koto join)
     {
         var start = this.positionParts.Count;
         this.AddResults(join);
-        var holds = false;
-        for (var i = start; !holds && i < this.positionParts.Count; i++)
+        var kinds = 0;
+        for (var i = start; i < this.positionParts.Count; i++)
         {
-            holds = this.AwaitsCall(this.positionParts[i]);
+            kinds |= this.AwaitedKind(this.positionParts[i]) is { } kind ? 1 << (int)kind : 0;
         }
 
         this.ClosePosition(start);
-        return holds;
+        return kinds;
     }
 
     // The first aggregate part of [start, end), which stands for the position's shape; null when there is none.
