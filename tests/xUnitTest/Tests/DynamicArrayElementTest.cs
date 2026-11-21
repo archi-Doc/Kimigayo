@@ -96,6 +96,41 @@ public class DynamicArrayElementTest
         Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use} {inline}: work {string.Join(", ", work)}");
     }
 
+    // D-932 (SPEC 3.4.3, 4.7, 15.6.3, IMPL A.4; the Front's fu-32/33/34 on Q-596): ElementChain's exclusive borrow with fixed arrays,
+    // `r.0[0]...[0].0` through k exclusive references each stored in a fixed array (T_j = ([2 of uniq/T_(j-1) during a], i32)), 2k - 1
+    // path steps. ContainedOrigin meets every layer up to r's own at every depth (it has no bound of its own: SyntaxNesting's); a
+    // 64-step bound left r's layer unmet at k = 33 (65 steps), a false UnprovenOriginRelation_Kd "requires r outlives a".
+    [Theory]
+    [InlineData(32)]
+    [InlineData(33)]
+    [InlineData(34)]
+    public void AFixedArrayStoredReferenceChainIsBorrowedExclusivelyAtEveryDepth(int k)
+    {
+        var type = "(i32, i32)";
+        for (var j = 2; j <= k; j++)
+        {
+            type = $"([2 of uniq/{type} during a], i32)";
+        }
+
+        var source = $"func put(r: uniq/{type})\n    let u = r{string.Concat(Enumerable.Repeat(".0[0]", k - 1))}.0@uniq\npublic func main() => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
+    // D-932 (the Front's B1 and B1b on Q-603; SPEC 4.8.2, 4.7.1): whether each selection of a chain over an owned root reaches its Place
+    // through a borrow (ReachesThroughBorrow) is read from its receiver's answer, the fold's prefix in Writes and the selection's stored
+    // answer while Binding binds the chain, so a write `q.x[0]...x[0] = 9` through `var q`, a read `s.x[0]...x[0]` of an owned parameter
+    // (Sj holds an Array<S(j-1)> x) and the read with keys `t.b[0].v`, whose queries interleave the chain's, take walk steps linear in
+    // n; each selection's walk to the root took them quadratic, and a single carried answer the keyed read.
+    [Theory]
+    [InlineData("write")]
+    [InlineData("read")]
+    [InlineData("keyed")]
+    public void AnOwnedRootsElementChainTakesReachWorkLinearInItsDepth(string use)
+    {
+        long[] work = [.. new[] { 125, 250, 500 }.Select(n => Bound(OwnedChain(use, n)).Binding.ReachWalkWork)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use}: work {string.Join(", ", work)}");
+    }
+
     // D-941 (SPEC 15.1.5, 3.4.3, 15.6.2; the Front's C2): the nested Array rows' invalid twins at depth. Through a `let` root a write and
     // an exclusive borrow are refused (InvalidAssignment_Kd: a let root grants no Write and no exclusive borrow); through `p:
     // ref/Array^k` they reach a shared layer (SharedPathAccess_Kd). One record each at k = 30, 60 and 120, in path steps linear in k.
@@ -194,6 +229,21 @@ public class DynamicArrayElementTest
 
         var place = "r" + string.Concat(Enumerable.Repeat(".0", k));
         return $"func put(r: uniq/{type})\n    " + (use == "write" ? place + " = 9" : "let u = " + place + "@uniq") + "\n";
+    }
+
+    // `q.x[0]...x[0] = 9` through `var q = s@move` (write), `s.x[0]...x[0]` returned (read) or `s.x[t.b[0].v]...x[t.b[0].v]` (keyed),
+    // s: S_n with S_1 holding an Array<i32> x and S_j an Array<S_(j-1)> x, t: K holding an Array<V> b, V an i32 v.
+    private static string OwnedChain(string use, int n)
+    {
+        var types = "struct S1\n    internal var x: Array<i32>\n" + string.Concat(Enumerable.Range(2, n - 1).Select(static j => $"struct S{j}\n    internal var x: Array<S{j - 1}>\n")) +
+            "struct V\n    internal var v: i32\nstruct K\n    internal var b: Array<V>\n";
+        var path = string.Concat(Enumerable.Repeat(use == "keyed" ? ".x[t.b[0].v]" : ".x[0]", n));
+        return types + use switch
+        {
+            "write" => $"func f<T>(s: S{n})\n    var q = s@move\n    q{path} = 9\n",
+            "read" => $"func f<T>(s: S{n}) -> i32 => s{path}\n",
+            _ => $"func f<T>(s: S{n}, t: K) -> i32 => s{path}\n",
+        };
     }
 
     // `r.0[0]...[0].0` written or borrowed exclusively, r: uniq/T_k with T_1 = (i32, i32) and T_j = (Array<uniq/T_(j-1) during a>, i32);

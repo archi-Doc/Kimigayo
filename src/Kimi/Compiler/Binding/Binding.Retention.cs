@@ -70,6 +70,7 @@ public sealed partial class Binding
     private readonly List<BoundType> retentionErasedScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
     private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
+    private readonly HashSet<(BoundType Type, RetentionAtom At)> retentionStored = new(); // StoredRawSources' visits, once per Type and position.
     private List<BoundType> retentionScope = new();
     private int retentionInputs;
 
@@ -328,6 +329,7 @@ public sealed partial class Binding
 
         this.retentionRawVisits.Clear();
         this.retentionPositions.Clear();
+        this.retentionStored.Clear();
         this.retentionLimit = false;
         for (var i = 0; i < inputs.Length; i++)
         {
@@ -537,6 +539,7 @@ public sealed partial class Binding
 
         this.retentionRawVisits.Clear();
         this.retentionPositions.Clear();
+        this.retentionStored.Clear();
         for (var i = 0; !ReferenceEquals(inputs, BoundType.Unit) && i < inputs.Components.Count; i++)
         {
             this.RetentionInput(inputs.Components[i], i, declared: null);

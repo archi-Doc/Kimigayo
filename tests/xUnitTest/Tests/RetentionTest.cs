@@ -150,12 +150,37 @@ public sealed partial class RetentionTest
     // A struct whose Field states no Origin for a raw-of-raw pointer (the N2 review's getSR).
     private const string Pp = "struct Pp\n    public var p: raw/(raw/u8)\n    public init(p: raw/(raw/u8)) => self.p = p\n";
 
+    // A struct holding a raw Field by value (D-933's C1 twins: held through an rc, an arc or a Field, `let n` a null pointer).
+    private const string Iq = "struct Iq\n    public var q: raw/u8\n    public init(q: raw/u8) => self.q = q\nlet n: raw/u8 = null\n";
+
     // A user stack of raw items, a user Iterator over them and a LendingIterator-only twin (the N2 designs' userPop, userIter and userLend).
     private const string RawStack = "struct RawStack\n    var items: Array<raw/u8>\n    public init(items: Array<raw/u8>) => self.items = items@move\n" +
         "    public func pop(self: uniq/Self) -> Option<raw/u8> => self.items.pop()\n";
 
     private const string RawIt = "struct RawIt\n    Self is Iterator\n    associate Iterator.Item is raw/u8\n    var items: Array<raw/u8>\n" +
         "    public init(items: Array<raw/u8>) => self.items = items@move\n    public func next(self: uniq/Self) -> Option<raw/u8> => self.items.pop()\n";
+
+    // G147 ruling 39's rows: a user Iterator's header and `next` with i32 items, or with items lent from its `source` (a raw layer's slot
+    // is no use, SPEC 5.7, so `keep` holds `source`), its generic Field, and a generic caller that reaches `next` through `I is Iterator`.
+    private const string IntIterator = "    Self is Iterator\n    associate Iterator.Item is i32\n";
+
+    private const string IntNext = "    public func next(self: uniq/Self) -> Option<i32> => .None\n";
+
+    private const string LentIterator = "    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    var keep: ref/i32 during source\n";
+
+    private const string LentNext = "    public func next(self: uniq/Self) -> Option<ref/i32 during source> => .None\n";
+
+    private const string PField = "    var p: P\n    public init(p: P) => self.p = p@move\n";
+
+    private const string KeepIn = "    var keepIn: ref/i32 during inner\n";
+
+    private const string KeepNull = "    public init(keepIn: ref/i32 during inner)\n        self.keepIn = keepIn\n        self.p = null\n";
+
+    private const string UseInner = "func use(it: uniq/(It during w), w: ref/i32) -> Option<i32> => nextOf(it)\n";
+
+    private const string NextOf = "func nextOf<I>(it: uniq/I) -> Option<I.(Iterator).Item>\n    I is Iterator\n    return it.next()\n";
+
+    private const string LentUse = "func use(w: ref/i32, it: uniq/(It during w)) -> Option<ref/i32 during w> => nextOf(it)\n";
 
     private const string RawLend = "struct RawLend\n    Self is LendingIterator\n    associate LendingIterator.LentItem(step) is raw/u8\n    var items: Array<raw/u8>\n" +
         "    public init(items: Array<raw/u8>) => self.items = items@move\n    public func next(self: uniq/Self during step) -> Option<raw/u8> => self.items.pop()\n";
@@ -427,7 +452,9 @@ public sealed partial class RetentionTest
             "    put(h@uniq, null, x@ref)\n    x = 3\n    let k = h@ref\n";
         Assert.Equal("ComparisonLoanConflict_Kd x = 3", MirBorrowsTest.Records(CappedRaw + Init + Form + "public func main() => ()\n"));
         var result = Bind(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) -> HS => $abort(\"x\")\n");
-        Assert.StartsWith("result {0 Value, 1 Value Chain, 2 Content}", Declared(result, "f"), StringComparison.Ordinal);
+        // D-933: h's referent's raw Field b is a raw source by its chain (SPEC 15.6.4 "a Field"), which the result's b, stating the same s,
+        // keeps (BU-66's stated fit; before `0 Value`).
+        Assert.StartsWith("result {0 Value Chain, 1 Value Chain, 2 Content}", Declared(result, "f"), StringComparison.Ordinal);
     }
 
     // SPEC 15.3.5, 15.2.3, 15.6.4 (G416 D'): a Field-less generic stores no T, its Type argument a dependency that implies no Loan, so a
@@ -967,6 +994,29 @@ public sealed partial class RetentionTest
         Assert.Equal(["result {0 Content}, store 0: own {0 Content}, reached {0 Content}", "result {0 Content}, store 0: own {0 Content}, reached {}"], Calls(c, "next"));
     }
 
+    // SPEC 15.6.4, 5.7 ("A raw layer retains as §5.7 states: with an Origin, as the borrow that Origin belongs to would"; G147 ruling 39):
+    // a raw layer an input holds stating an Origin retains as its borrow twin (`ref/i32` for `raw/i32`) does, never by its raw kind; one
+    // stating none by what a chain of reads through the input carries. nextOf's handed `next` may fill its abstract `I.Item` (Iterator's
+    // `associate LendingIterator.LentItem(step) is Item`, a proven identity), so a raw layer `it` holds in a Field or a Type argument is
+    // kept there by that classification (labels F\G147\d933\labels-r39.tsv): the stated Field and Type argument as their borrow twins (the
+    // Type argument was `result {0 Chain}` on dev c17bd1792: the component path's stated raw source), the unstated Field (D-933's Field
+    // raw source) and Type argument by the chain. A `during self` Field layer past `it`'s borrow reads with that borrow's Origin (SPEC 5.7,
+    // "Reading a Field"; G147 rulings 44 and 47): stated, it gives no result row, as its holder without the layer does, while its unstated
+    // twin keeps `result {0 Chain}` (fail-before: e0a190260 gave the `during self` row `result {0 Chain}` too; labels-r44.tsv). Both keep
+    // `reached {0 Content}`: the call may store through the layer (the delta read's O1, a pre-existing loan-conflict cause, rests on it).
+    [Theory]
+    [InlineData("struct It {source}\n" + LentIterator + "    var p: raw/i32 during source\n    public init(keep: ref/i32 during source, p: raw/i32 during source)\n        self.keep = keep\n        self.p = p\n" + LentNext + NextOf + LentUse, "result {0 Content}, store 0: own {0 Content}, reached {}")]
+    [InlineData("struct It {source}\n" + LentIterator + "    var p: ref/i32 during source\n    public init(keep: ref/i32 during source, p: ref/i32 during source)\n        self.keep = keep\n        self.p = p\n" + LentNext + NextOf + LentUse, "result {0 Content}, store 0: own {0 Content}, reached {}")]
+    [InlineData("struct It\n" + IntIterator + "    var p: raw/i32\n    public init(p: raw/i32) => self.p = p\n" + IntNext + NextOf + "func use(it: uniq/It) -> Option<i32> => nextOf(it)\n", "result {0 Chain}")]
+    [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(w: ref/i32, it: uniq/It<raw/i32 during w>) -> Option<i32> => nextOf(it)\n", "store 0: own {0 Content}, reached {}")]
+    [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(w: ref/i32, it: uniq/It<ref/i32 during w>) -> Option<i32> => nextOf(it)\n", "store 0: own {0 Content}, reached {}")]
+    [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(it: uniq/It<raw/i32>) -> Option<i32> => nextOf(it)\n", "result {0 Chain}")]
+    [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    var p: raw/(ref/i32 during inner) during self\n" + KeepNull + IntNext + NextOf + UseInner, "store 0: own {0 Content}, reached {0 Content}")]
+    [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    var p: raw/(ref/i32 during inner)\n" + KeepNull + IntNext + NextOf + UseInner, "result {0 Chain}, store 0: own {0 Content}, reached {0 Content}")]
+    [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    public init(keepIn: ref/i32 during inner) => self.keepIn = keepIn\n" + IntNext + NextOf + UseInner, "store 0: own {0 Content}, reached {}")]
+    public void ARawLayerWithAnOriginRetainsThroughItsOrigin(string source, string expected)
+        => Assert.Equal([expected], Calls(Bind(source), "nextOf"));
+
     // DECISIONS R4-M154 (rule 1's All): All joins every entry with its pairs, the Abstract one's too. A `during self` layer whose holder has
     // an Origin argument the Subst brings (`H during o`) lets the call write any value at that Origin, a position in the root's storage and
     // in the Abstract one, so a source whose fit relates two Subst Origins (`p > o`) lists its pair in both, and in All.
@@ -1288,7 +1338,8 @@ public sealed partial class RetentionTest
     // into an unstated layer, which unties the storage (R-B2), and the storage a read through it (SPEC 15.6.4 as DECISIONS R4-M116
     // revised it: a pointer is never part of its own pointee);
     // Text.writer, a body since R8-W2 b2-1 whose summary is derived, its destination, its Utf8Writer untied by the unstated raw Fields
-    // Utf8Writer.init stores; Raw.slice's result, a fresh anchor, is untied unless its pointee's Origins tie it, and lies within its
+    // Utf8Writer.init stores, with the chain read through the destination's raw Field (HeapBuffer's, a raw source since D-933: SPEC
+    // 15.6.4 "a Field"; before, `result {0 Value}, untied`); Raw.slice's result, a fresh anchor, is untied unless its pointee's Origins tie it, and lies within its
     // storage, which it retains (D14, R4-M116 item 4) with a read through it; Raw.allocate's, a raw pointer without an Origin, retains
     // every argument with its chain and is untied (SPEC 15.6.4's rule A, DECISIONS BU-40). Raw.initialize<T>(storage: raw/T, value: T)
     // is read in its own terms (PLAN G935, the owner's O-360 (a)): `*storage` is storage of its own T, which holds `value` (Value: the
@@ -1298,7 +1349,11 @@ public sealed partial class RetentionTest
     // parameter; Raw.initialize is on 15.6.4's list of operations whose writes do not compose). A raw input's pointee is its own
     // writable storage, which retains it as a read through it, except where the operation contract stores no value through the input
     // (SPEC 5.2 Placement, 5.6; KimiLibraryCatalog.NoStore, PLAN G780), e.g. Raw.slice's storage: no writable storage there, an unstated
-    // layer included (fail-before: rule A's untied store 0 and store 1).
+    // layer included (fail-before: rule A's untied store 0 and store 1). D-933 (SPEC 15.7, 15.6.4): `replace` and `exchange` write only
+    // their target and place `with`'s value there, so `with` is no output: its raw Field `p` is no layer the call writes, and rule A
+    // keeps no target's own value there (fail-before for `replace`: `store 1: own {0 Value Chain, 1 Chain}, ...` with the target's Loans
+    // stored through `with`'s raw layer); the target, storage of `replace`'s own T read in its own terms as Raw.initialize's (O-360 (a)),
+    // holds the placed value (store 0: Value, the Field raw source of D-933's c1).
     [Theory]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "result {0 Value}")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "result {0 Value}")]
@@ -1310,10 +1365,21 @@ public sealed partial class RetentionTest
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}")]
     [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Chain}, untied")]
     [InlineData("let slot: raw/(raw/(raw/i32)) = Raw.allocate(1)\nlet p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {1 Value}, reached {}")]
-    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value}, untied")]
+    [InlineData(Pp + "let s: raw/Pp = Raw.allocate(1)\nunsafe => Raw.initialize(s, Pp.init(p: null))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933: a Field's raw layer is a raw source (SPEC 15.6.4 "a Field"; fail-before: no row).
+    [InlineData("enum Ep\n    A(raw/u8)\n    B\nlet s: raw/Ep = Raw.allocate(1)\nunsafe => Raw.initialize(s, .A(null))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933: a Case payload's (fail-before: no row).
+    [InlineData(Iq + "struct Vh\n    public var f: Iq\n    public init(f: Iq) => self.f = f@move\nlet s: raw/Vh = Raw.allocate(1)\nunsafe => Raw.initialize(s, Vh.init(f: Iq.init(q: n)))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: a Field's Field held by value is a raw source.
+    [InlineData(Iq + "struct Rh\n    public var f: rc/Iq\n    public init(f: rc/Iq) => self.f = f@move\nlet s: raw/Rh = Raw.allocate(1)\nunsafe => Raw.initialize(s, Rh.init(f: Kimi.Intrinsics.makeRc(Iq.init(q: n))))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: past an rc, a shared layer (SPEC 15.6), none.
+    [InlineData(Iq + "let s: raw/(rc/Iq, i32) = Raw.allocate(1)\nunsafe => Raw.initialize(s, (Kimi.Intrinsics.makeRc(Iq.init(q: n)), 1))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: the Tuple twin.
+    [InlineData(Iq + "struct Ah\n    public var f: arc/Iq\n    public init(f: arc/Iq) => self.f = f@move\nlet s: raw/Ah = Raw.allocate(1)\nunsafe => Raw.initialize(s, Ah.init(f: Kimi.Intrinsics.makeArc(Iq.init(q: n))))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: past an arc.
+    [InlineData(Iq + "let s: raw/(arc/Iq, i32) = Raw.allocate(1)\nunsafe => Raw.initialize(s, (Kimi.Intrinsics.makeArc(Iq.init(q: n)), 1))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: the Tuple twin.
+    [InlineData(Iq + "struct Bx<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\nstruct Gr<T>\n    public var f: rc/Bx<T>\n    public init(f: rc/Bx<T>) => self.f = f@move\nstruct Og\n    public var g: Gr<raw/u8>\n    public init(g: Gr<raw/u8>) => self.g = g@move\nlet s: raw/Og = Raw.allocate(1)\nunsafe => Raw.initialize(s, Og.init(g: Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: n)))))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: a Field's Type argument held past an rc.
+    [InlineData(Iq + "struct Bx<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\nstruct Gr<T>\n    public var f: rc/Bx<T>\n    public init(f: rc/Bx<T>) => self.f = f@move\nlet s: raw/(Gr<raw/u8>, i32) = Raw.allocate(1)\nunsafe => Raw.initialize(s, (Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: n))), 1))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: the Tuple twin.
+    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
     [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
+    [InlineData(Pp + "var x = Pp.init(p: null)\nKimi.Intrinsics.replace(x@uniq, with: Pp.init(p: null))\n", "replace", "store 0: own {1 Value}, reached {}")]
+    [InlineData(Pp + "var x = Pp.init(p: null)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: Pp.init(p: null))\n", "exchange", "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
@@ -1804,10 +1870,11 @@ public sealed partial class RetentionTest
     // `appendAll`'s Array, `appendCopies`' Slice by its chain), no index, key or predicate; construction has no receiver storage, so its
     // result keeps every argument, `repeating` and `count`, by its own value and its chain (fail-before: only `untied`). The keys are
     // declaring identities: a LendingIterator-only `next`, a user `pop` and a user `swap` keep every argument (A's cost, R4-M131 Open), and
-    // `exchange` over a borrow keeps its rows. A 4.9 operation and `exchange` form no row and untie nothing at an output they do not write
-    // (SPEC 4.9.6's complete published effect; PLAN G255's C4; DECISIONS BU-52): an added `raw/(raw/u8)`'s pointee, a struct's Field and
-    // an enum's payload added by value (`append`, `insertOrReplace`), `exchange`'s `with` (fail-before: `store 1: own {}, reached {}
-    // untied`, an untied pointer for what the added value addresses; before C4, `0 Chain store 1`).
+    // `exchange` over a borrow keeps its rows. A 4.9 operation forms no row and unties nothing at an output it does not write (SPEC
+    // 4.9.6's complete published effect; PLAN G255's C4; DECISIONS BU-52): an added `raw/(raw/u8)`'s pointee, a struct's Field and an
+    // enum's payload added by value (`append`, `insertOrReplace`) (fail-before: `store 1: own {}, reached {} untied`, an untied pointer for
+    // what the added value addresses; before C4, `0 Chain store 1`); `exchange`'s `with` is no output at all (KimiLibraryCatalog.NoStore,
+    // SPEC 15.7; IntrinsicsRetainAsTheirDeclarationsSay).
     // A 4.9 operation writes its receiver's store only in the storage the receiver refers to (`referent store 0`, DECISIONS BU-42);
     // construction, `exchange`, `swap`, an Iterator's `next` and a user `trade` or `pop` have no such store. `trade<T>(a: uniq/T, b:
     // uniq/T)`, a user twin of `swap`, follows its declared signature (PLAN G935, the owner's O-360 (a); SPEC states rows only for the

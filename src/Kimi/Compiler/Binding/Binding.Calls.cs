@@ -479,9 +479,10 @@ public sealed partial class Binding
             }
 
             // SPEC 8.2.3 (F's C2 ruling 268): the call publishes its instantiated result in its one form in the call's view, the form its
-            // Type takes there (BindAndAdaptNode), through the normalizer a value call's signature takes (TryCallable).
+            // Type takes there (BindAndAdaptNode), through the normalizer a value call's signature takes (TryCallable). A result with no
+            // abstract part is its own form (F's C2 ruling 317 (2): over the whole suite no such result's form differed from it).
             var result = winner.Type is { } returnType && this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) is { } instantiated
-                ? this.CallableContractType(instantiated, scope) : null;
+                ? (instantiated.HasAbstractPart ? this.CallableContractType(instantiated, scope) : instantiated) : null;
             if (result is null)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);

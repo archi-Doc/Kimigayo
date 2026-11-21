@@ -12,17 +12,19 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 15.6.4 (DECISIONS R4-M116, BU-40, BU-66): the raw sources of the contract and of each erased signature being walked, each input
-    // once, in walk order: an input whose Type holds a raw layer by value without passing a shared layer (RetentionParts), with what the
-    // hold walk keeps of it there (DECISIONS BU-66, A2): null at its own layer (a raw argument, RetentionInput: its own value, and R′'s),
-    // Value where it holds the layer by value (a Tuple element, a Type argument), Chain past an exclusive borrow (what a chain of reads
-    // through the input carries, never the borrow's own Loans), the input's sources joined; reused.
+    // once, in walk order: a raw argument (RetentionInput: null, its own value, and R′'s) and an input whose Type holds a raw layer stating
+    // no Origin as it is read, by value without passing a shared layer (RawSource; a layer stating one is a stated layer only, G147 rulings
+    // 39 and 44), with what the hold walk keeps of it there (DECISIONS BU-66, A2): Value where it holds the layer by value (a Tuple
+    // element, a Field, a Type argument), Chain past an exclusive borrow (what a chain of reads through the input carries, never the
+    // borrow's own Loans), the input's sources joined; reused.
     private readonly List<(int Input, RetentionKind? Kind)> retentionRawSources = new();
 
-    // The Origins the raw sources' layers state (SPEC 5.7 Fits and claims; DECISIONS BU-66 as amended by C-352): per raw layer of an input
-    // in retentionRawSources that states an Origin other than `self` (OwnedOrigin), that Origin, and for one past an exclusive borrow the
-    // borrow's outer Origin, whose storage it lies in (a layer stating that Origin retains as that borrow would, its chain included); a
-    // layer stating none is no further entry, since it fits no layer stating one but by a claim. The hold walk's stated arm reads them (Binding.Retention.Rows.cs, StatedFits); reused.
-    private readonly List<(int Input, BoundOrigin Origin)> retentionRawStated = new();
+    // The Origins the raw layers of the inputs state (SPEC 5.7 Fits and claims; DECISIONS BU-66 as amended by C-352), each with the kind the
+    // input holds its raw layers by, joined per input (RetentionInput; null for a raw argument): per raw layer that states an Origin as it
+    // is read (ReadOrigin), that Origin, and for one past an exclusive borrow the borrow's outer Origin, whose storage it lies in (a layer stating
+    // that Origin retains as that borrow would, its chain included); a layer stating none is no further entry, since it fits no layer
+    // stating one but by a claim. The hold walk's stated arm reads them (Binding.Retention.Rows.cs, StatedFits); reused.
+    private readonly List<(int Input, BoundOrigin Origin, RetentionKind? Kind)> retentionRawStated = new();
 
     // Where an atom lies below its input's layers (RetentionAtom.Place, RetentionWalk): past a shared layer or a raw layer whose step is
     // Shared (Shared); in a Closure's environment, whose bindings' Types its body's captures wrote, not the walked signature (Captured,
@@ -122,7 +124,7 @@ public sealed partial class Binding
     // retentionRawSources, as the value of any input whose walk meets a raw layer it holds by value).
     private void RetentionInput(BoundType input, int index, BoundType? declared)
     {
-        var sources = this.retentionRawSources.Count;
+        var (sources, stated) = (this.retentionRawSources.Count, this.retentionRawStated.Count);
         if (this.BorrowReferent(input, out var outer, out var exclusive) is { } referent)
         {
             this.AddRetentionAtom(new(index, RetentionKind.Value, Writable: false, outer, null, null), callable: false);
@@ -148,7 +150,7 @@ public sealed partial class Binding
         else if (input is { IsPointer: true })
         {
             this.retentionRawSources.Add((index, null));
-            this.RawStated(input, index);
+            this.RecordStatedOrigin(OwnedOrigin(input), index, null);
             this.AddRetentionAtom(new(index, Kind: null, Writable: false, OwnedOrigin(input), null, null), callable: false);
             var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, null, Signature: declared, HiddenWritable: true);
             this.RetentionParts(input, content, OriginVariance.Covariant, callable: false);
@@ -168,6 +170,19 @@ public sealed partial class Binding
         if (list.Count > sources + 1)
         {
             list.RemoveRange(sources + 1, list.Count - sources - 1);
+        }
+
+        // StatedFits keeps the input by the kind it holds its raw layers by, joined over all of them (a raw argument's own layer, null,
+        // stays alone), as it did when every raw layer was a raw source.
+        var (states, kind) = (this.retentionRawStated, list.Count > sources ? list[sources].Kind : RetentionKind.None);
+        for (var i = stated; i < states.Count; i++)
+        {
+            kind |= states[i].Kind;
+        }
+
+        for (var i = stated; i < states.Count; i++)
+        {
+            states[i] = (index, states[i].Origin, kind);
         }
     }
 
@@ -234,8 +249,8 @@ public sealed partial class Binding
     // layer's step as RetentionWalk states, and the content a raw layer's Origin lets the call write (RawContent); a Closure's components
     // are its environment as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148; one that does not substitute is the
     // contract's Limit). A raw input's walk starts here, past its own layer's atom (RetentionInput). A raw layer of an input not past a
-    // shared layer is one of its raw sources (retentionRawSources; SPEC 15.6.4 at the raw source, DECISIONS BU-66; a call writes through
-    // none past one, 5.2.1).
+    // shared layer is classified by RawSource (a raw source, retentionRawSources, or stated, retentionRawStated; SPEC 15.6.4 at the raw source, DECISIONS
+    // BU-66; a call writes through none past one, 5.2.1), and so is one a struct or enum there holds as a part of its value (StoredRawSources).
     private void RetentionParts(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
         at = type.Kind == BoundTypeKind.Closure ? at with { Place = at.Place | RetentionPlace.Captured, Signature = Below(at.Signature, null) } : at;
@@ -247,12 +262,7 @@ public sealed partial class Binding
         var raw = type is { IsPointer: true };
         if (raw && !inside && !at.Shared && at.Input >= 0)
         {
-            this.retentionRawSources.Add((at.Input, at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain));
-            this.RawStated(type, at.Input);
-            if (at.Kind != RetentionKind.Value && at.Layer is { } borrow)
-            {
-                this.retentionRawStated.Add((at.Input, borrow)); // Past a borrow, in its referent: a layer stating that Origin addresses it.
-            }
+            this.RawSource(type, at);
         }
 
         var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature) : HoldStep.Address;
@@ -273,15 +283,85 @@ public sealed partial class Binding
             var component = below with { Signature = Below(at.Signature, DeclaredComponent(at.Signature, type, i)) };
             this.RetentionWalk(type.Components[i], component, ComposeVariance(variance, ComponentVariance(type, i, this)), inside);
         }
+
+        if (!inside && !past && at.Input >= 0 && (AdtDef.IsStruct(type) || AdtDef.IsEnum(type)))
+        {
+            this.StoredRawSources(type, null, null, below);
+        }
     }
 
-    // A raw source's layer `type` of input `index`: its stated Origin, where it states one other than `self` (retentionRawStated).
-    private void RawStated(BoundType type, int index)
+    // A raw layer input `at.Input` holds at a position past no shared layer, the one classification every reader of the raw sources reads
+    // (G147 rulings 39 and 44): held by its own value where the input holds the position by value, else by its chain. A layer stating an
+    // Origin as it is read there (ReadOrigin) retains as the borrow that Origin belongs to would (SPEC 15.6.4, 5.7), which the walk's
+    // atoms name: it is a stated layer only (retentionRawStated), never a raw source. A layer stating none is one of the input's raw
+    // sources (SPEC 15.6.4 at the raw source, DECISIONS BU-66). Past a borrow, either is stated by that borrow's Origin too.
+    private void RawSource(BoundType layer, in RetentionAtom at)
     {
-        if (OwnedOrigin(type) is { Kind: not OriginKind.Unstated } origin)
+        var kind = at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain;
+        if (!this.RecordStatedOrigin(this.ReadOrigin(layer, at), at.Input, kind))
         {
-            this.retentionRawStated.Add((index, origin));
+            this.retentionRawSources.Add((at.Input, kind));
         }
+
+        if (at.Kind != RetentionKind.Value && at.Layer is { } borrow)
+        {
+            this.retentionRawStated.Add((at.Input, borrow, kind)); // Past a borrow, in its referent: a layer stating that Origin addresses it.
+        }
+    }
+
+    // SPEC 15.6.4 ("A raw layer that an argument holds by value through no shared layer, a Tuple element, an Option payload, a Field or a
+    // Type argument included, is retained as a raw pointer argument is"; D-933): the raw layers a struct or enum holds as parts of its
+    // value, read by the one by-value criterion the storage walk reads for the same phrase (ByValue: its Fields, Case payloads and base,
+    // the Tuples and fixed arrays within them, an owning handle's payload, a collection's elements; never past an rc or arc payload, a
+    // shared layer, SPEC 15.6, as the atom walk stops at SharedLayer), are classified as its components' are (RawSource),
+    // each Type once per position (retentionStored, which also ends a recursive Type's walk, e.g. `Tree { kids: Array<Tree> }`, so the walk
+    // is linear in the distinct parts). Their Origins are the instance's Origin arguments, which the walk's atoms name already, so it adds
+    // no atom; at Binding's Limit the contract is the Limit, as the hold walk's.
+    private void StoredRawSources(BoundType type, BoundType? written, BoundType? holder, in RetentionAtom at)
+    {
+        if (!this.retentionStored.Add((type, at)))
+        {
+            return;
+        }
+
+        var run = this.HeldRun(type, written, holder, out var complete);
+        this.retentionLimit |= !complete;
+        for (var i = run.Start; i < run.End; i++)
+        {
+            if (this.retentionHeld[i] is { Part: { } part } entry && this.ByValue(type, entry))
+            {
+                if (part is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+                {
+                    this.RawSource(part, at);
+                }
+                else
+                {
+                    this.StoredRawSources(part, entry.Written, entry.Holder, at);
+                }
+            }
+        }
+
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
+    }
+
+    // SPEC 5.7 ("Reading a Field"): the Origin a raw layer of an input states as it is read at its position: a `during self` layer
+    // (HoldsHolder: for a raw layer, the layer itself) the holder's, which past a dereference is the Origin of the nearest borrow above it
+    // (`at.Layer`) and by value none; any other layer the Origin it states (OwnedOrigin; Unstated for one its declaration writes without
+    // `during`).
+    private BoundOrigin? ReadOrigin(BoundType layer, in RetentionAtom at)
+        => this.HoldsHolder(layer) ? (at.Kind == RetentionKind.Value ? null : at.Layer) : OwnedOrigin(layer);
+
+    // A raw layer of input `index`, held with `kind`, as it is read (`origin`): recorded in retentionRawStated where it states an Origin;
+    // whether it does.
+    private bool RecordStatedOrigin(BoundOrigin? origin, int index, RetentionKind? kind)
+    {
+        if (origin is { Kind: not OriginKind.Unstated })
+        {
+            this.retentionRawStated.Add((index, origin, kind));
+            return true;
+        }
+
+        return false;
     }
 
     // A Closure part of a contract input as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148): its environment, read at every
