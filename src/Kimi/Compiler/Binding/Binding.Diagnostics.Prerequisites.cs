@@ -11,8 +11,8 @@ namespace Kimi.Compiler;
 // and RestingCauses, the one cause query of a node a later phase derives a value or a check from (DECISIONS Z16).
 // Checks record the parts they read; publication follows those records without binding or proving them again.
 // A node's consultation range and part (PrerequisiteRows, PartPrerequisiteRows: Work pass families, DECISIONS BU-220) hold the running
-// pass's rows by the pass stamp; the other storage is reused between passes and cleared by ResetPrerequisites with the other Binding
-// facts.
+// pass's rows by the pass stamp, and a walk's visit marks (PrerequisiteVisitRows) its walk's number too; the other storage is reused
+// between passes and cleared by ResetPrerequisites with the other Binding facts.
 // A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
 // BindType: BeginConsultation, EndConsultation); a judgment frame (BeginConsultation(use) before a validation check's proof,
 // RequireConstraintInFrame after it; its reads become the outcome's prerequisites only when the outcome is the use's record); a site
@@ -31,8 +31,11 @@ public sealed partial class Binding
     private readonly PrerequisiteRows prerequisites;
     private readonly PartPrerequisiteRows partPrerequisites;
     private readonly List<DiagnosticKey> prerequisiteKeys = [];
-    private readonly HashSet<Koto> prerequisiteVisited = new(ReferenceEqualityComparer.Instance);
+    private readonly PrerequisiteVisitRows prerequisiteVisits;
     private readonly Stack<Koto> prerequisitePending = new();
+
+    // The running walk's number (PrerequisiteVisitRows): a row carrying it is a node this walk visited, any other row one it did not.
+    private uint prerequisiteWalk = FirstQuery;
     private int consultationStart = -1;
     private Koto? consultationNode;
 
@@ -234,14 +237,14 @@ public sealed partial class Binding
     }
 
     // A node's pass fact, stored by the recorder's one decision (DECISIONS G949 S1 as R7-N5 B4 and E amend it): the fact a failure
-    // carries (a failure-fact family's row, such as `qualificationFailures`' stop) and a node's dependence rows (PrerequisiteRows' range
-    // and PartPrerequisiteRows' part, which a rest with no failure carries too). A node of a module the running pass binds keeps it in its module's column at its
-    // SyntaxId, any other node in the part's foreign columns at its entry's index (PassPart.ForeignFacts), the row its entry names; its
-    // readers read it as RecordedFailure reads the failure, so no caller chooses a store. A node of another module without the pass's
-    // entry reads its own module's column: a frozen library's Work column is released (NodeColumns.Freeze), so it reads none, which is
-    // the answer the program pass gave before the columns. No EnsurePassNode refuses it, since these readers are asked of library nodes
-    // (ContractMatching's HasFailureCauses of a library declaration, Stated's TypeSource of a library symbol, a library cause a walk
-    // reaches).
+    // carries (a failure-fact family's row, such as `qualificationFailures`' stop), a node's dependence rows (PrerequisiteRows' range
+    // and PartPrerequisiteRows' part, which a rest with no failure carries too) and a walk's visit mark (PrerequisiteVisitRows). A node
+    // of a module the running pass binds keeps it in its module's column at its SyntaxId, any other node in the part's foreign columns at
+    // its entry's index (PassPart.ForeignFacts), the row its entry names; its readers read it as RecordedFailure reads the failure, so
+    // no caller chooses a store. A node of another module without the pass's entry reads its own module's column: a frozen library's
+    // Work column is released (NodeColumns.Freeze), so it reads none, which is the answer the program pass gave before the columns. No
+    // EnsurePassNode refuses it, since these readers are asked of library nodes (ContractMatching's HasFailureCauses of a library
+    // declaration, Stated's TypeSource of a library symbol, a library cause a walk reaches).
     private T RecordedFact<T>(Koto node, FactFamily<T> family)
         => this.IndexOfForeign(node) is var i and >= 0 ? family(ref this.pass.Part.ForeignFacts).Get(i, this)
             : node.SyntaxOwner is { } table ? family(ref table.Hir.Families).Get(node.SyntaxId, this) : default!;
@@ -523,15 +526,15 @@ public sealed partial class Binding
             return false;
         }
 
-        var visited = this.prerequisiteVisited;
+        var visits = this.prerequisiteVisits;
         var pending = this.prerequisitePending;
-        visited.Add(node);
+        visits.Add(node);
         this.PushPrerequisites(node, pending);
         var found = false;
         var limit = !this.ResourceFailed(node);
         while (pending.TryPop(out var cause))
         {
-            if (!visited.Add(cause))
+            if (!visits.Add(cause))
             {
                 continue;
             }
@@ -546,7 +549,7 @@ public sealed partial class Binding
             this.PushPrerequisites(cause, pending);
         }
 
-        visited.Clear();
+        visits.Clear();
         return found;
     }
 
@@ -655,13 +658,13 @@ public sealed partial class Binding
     private List<DiagnosticKey> AddPrerequisiteKeys(Koto node)
     {
         var keys = this.prerequisiteKeys;
-        var visited = this.prerequisiteVisited;
+        var visits = this.prerequisiteVisits;
         var pending = this.prerequisitePending;
-        visited.Add(node);
+        visits.Add(node);
         this.PushPrerequisites(node, pending);
         while (pending.TryPop(out var cause))
         {
-            if (!visited.Add(cause))
+            if (!visits.Add(cause))
             {
                 continue;
             }
@@ -676,7 +679,7 @@ public sealed partial class Binding
             }
         }
 
-        visited.Clear();
+        visits.Clear();
         return keys;
     }
 
@@ -769,5 +772,33 @@ public sealed partial class Binding
                 throw new InvalidOperationException($"`{node}` already has a part prerequisite in this pass (InternalInvariant; R7-N5 E).");
             }
         }
+    }
+
+    // R7-N5 E: the PrerequisiteVisits family's one accessor, the two publication walks' visited set (RestsOnRecoveryOrLimit,
+    // AddPrerequisiteKeys), a walk's scratch: written and read only inside one walk, empty again at its end. Work (DECISIONS BU-220 as
+    // R7-N5 B6b and D-986 amend it): a row carries the walk's number (prerequisiteWalk), a row of another walk absent, so Clear is the
+    // number's advance (NextQuery), never a walk over the rows; released at the freeze. Stored by the recorder's decision, as
+    // PrerequisiteRows. Premise: a walk meets a node of a module the pass does not bind only where the pass made its entry (a cause it
+    // failed or rested), so a mark is that entry's row; the whole suite counts no mark that made an entry (R7-N5 E's probe, C2). A mark
+    // at such a node without an entry would make its entry with the node's own state and failure, which CountStates counts with
+    // Before equal to State and CollectIssue skips (no failure): count-neutral, and every read through it the node's own.
+    private readonly struct PrerequisiteVisitRows(Binding binding)
+    {
+        internal static ref StampedColumn<uint, PassCounter> Family(ref NodeColumns columns) => ref columns.PrerequisiteVisits;
+
+        // HashSet.Add's answer: false when this walk visited the node already.
+        internal bool Add(Koto node)
+        {
+            if (binding.RecordedFact(node, Family) == binding.prerequisiteWalk)
+            {
+                return false;
+            }
+
+            binding.SetRecordedFact(node, Family, binding.prerequisiteWalk);
+            return true;
+        }
+
+        // Ends the walk: the next walk's number makes every row this one wrote absent.
+        internal void Clear() => binding.prerequisiteWalk = NextQuery(binding.prerequisiteWalk);
     }
 }

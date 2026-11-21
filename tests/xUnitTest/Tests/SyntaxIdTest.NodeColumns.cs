@@ -213,7 +213,8 @@ public partial class SyntaxIdTest
     // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes; D-932's
     // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;
     // B2b-2's ResolvedSlices, a slice selected by a range value; R7-N5 E's Prerequisites, the consultation range of `s == missing`,
-    // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute).
+    // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute; PrerequisiteVisits, the walk of a
+    // clause whose subject failed, which IsDerived takes in the Bind).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -259,6 +260,7 @@ public partial class SyntaxIdTest
     [InlineData("FormReads", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("Prerequisites", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("PartPrerequisites", "#Layout(\"bad\")\nstruct S\n", DiagnosticCode.InvalidLayoutAttribute_Kd)]
+    [InlineData("PrerequisiteVisits", "func f<U>(value: U)\n    value is D\n    U is Copy\n    ()\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("ResultCompletions", "func f(n: i32) -> i32\n    var s = 0\n    while s < n => s = s + 1\n    return s\n")]
     [InlineData("PublishedCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
