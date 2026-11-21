@@ -66,29 +66,6 @@ public sealed partial class Binding
         return premises;
     }
 
-    // SPEC 9.4: whether the accessibility of every Type a Type names covers a and b, each distinct part judged once per call (DECISIONS
-    // BU-55, BU-58): a part met again was covered, or the walk has ended.
-    private bool TypeAccessCovers(BoundType type, BindingSymbol a, BindingSymbol b)
-        => this.AccessPart(type, a, b, this.visitedParts.Begin(this.storageVersion));
-
-    private bool AccessPart(BoundType type, BindingSymbol a, BindingSymbol b, uint query)
-    {
-        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !this.AccessCovers(symbol, a, b))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.FirstVisit(type.Components[i], query) && !this.AccessPart(type.Components[i], a, b, query))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     // SPEC 8.8.2: a path's conforming Type in its conformance scope, normalized there as both sides of each requirement are (the scope's
     // identity premises included). Every reading of a path's Self (its verification, inherited or declared, its requirement
     // identification and its associated bindings) is this one, so what the path keeps by a requirement (its RequirementMatches) has one

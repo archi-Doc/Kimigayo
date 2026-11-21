@@ -200,6 +200,43 @@ public sealed partial class Binding
         return this.DerivedIncluded(own, owner, access, target);
     }
 
+    // SPEC 9.4: whether the accessibility of every Type a Type names covers a and b, each distinct part judged once per call (DECISIONS
+    // BU-55, BU-58): a part met again was covered, or the walk has ended.
+    private bool TypeAccessCovers(BoundType type, BindingSymbol a, BindingSymbol b)
+        => this.AccessPart(type, a, b, this.visitedParts.Begin(this.storageVersion));
+
+    private bool AccessPart(BoundType type, BindingSymbol a, BindingSymbol b, uint query)
+    {
+        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !this.AccessCovers(symbol, a, b))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && !this.AccessPart(type.Components[i], a, b, query))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
+    {
+        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
+        {
+            return this.ConstraintAccessCovers(constraint.Left!, contract, intersection) &&
+                (constraint.Right is null || this.ConstraintAccessCovers(constraint.Right, contract, intersection));
+        }
+
+        return (constraint.Contract is null ||
+            (this.AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
+             (constraint.Contract.Type is not { } reference || this.TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
+            (constraint.RequiredType is null || this.TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
+    }
+
     private bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
         => this.TypeAccessCovers(qualifier, domain, intersection ?? domain) && this.AccessCovers(contract, domain, intersection ?? domain) &&
             (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || this.AccessCovers(requirement, domain, intersection ?? domain));

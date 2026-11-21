@@ -78,20 +78,6 @@ public sealed partial class Binding
             _ => false,
         };
 
-    private bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
-    {
-        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
-        {
-            return this.ConstraintAccessCovers(constraint.Left!, contract, intersection) &&
-                (constraint.Right is null || this.ConstraintAccessCovers(constraint.Right, contract, intersection));
-        }
-
-        return (constraint.Contract is null ||
-            (this.AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
-             (constraint.Contract.Type is not { } reference || this.TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
-            (constraint.RequiredType is null || this.TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
-    }
-
     /// <summary>
     /// SPEC 8.6, 8.6.1: the registered conformance of a Type declaration to a Contract, whether registered under the
     /// Contract declaration itself or under one bound reference of it. Several bound references of one declaration are
