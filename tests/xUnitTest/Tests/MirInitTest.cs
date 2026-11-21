@@ -1576,7 +1576,9 @@ public sealed class MirInitTest
     // reported once (fail-before: also at the site), as its resolved twin's is (R4-M56). A part a rejected form reads (a derived write's
     // right side, a rejected jump's operand) is read at its own node, so its record lies there, as its resolved twin's does: an element or
     // a local uninitialized or moved, a field of a constructor's receiver before its initialization (fail-before: at the site), and a
-    // moved receiver through a runtime Index once, at the element (fail-before: also at the site).
+    // moved receiver through a runtime Index once, at the element (fail-before: also at the site). A located part through a constant
+    // Index or a Field is its own Move Path, so the sibling of a moved element read by a derived write or a rejected jump reports nothing
+    // (fail-before: MovedPlace_Kd at the site), and the moved element itself is reported at its node (fail-before: at the site).
     [Theory]
     [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    missing = p.n\n", "")]
     [InlineData("func g(n: i32, m: i32) -> i32 => n\nfunc f() -> i32\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    return g(p.n, missing)\n", "")]
@@ -1595,6 +1597,10 @@ public sealed class MirInitTest
     [InlineData("func f(i: isize)\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    let m = a[i]\n", "MovedPlace_Kd a[i] 1")]
     [InlineData("struct S\n    var value: i32\n    public init(flag: bool)\n        missing = self.value\n        self.value = 1\n", "UninitializedPlace_Kd self.value 1")]
     [InlineData("struct S\n    var value: i32\n    public init(flag: bool)\n        let m = self.value\n        self.value = 1\n", "UninitializedPlace_Kd self.value 1")]
+    [InlineData("func f()\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    missing = a[1]\n", "")]
+    [InlineData("func f()\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    missing = a[0]\n", "MovedPlace_Kd a[0] 1")]
+    [InlineData("func f() -> i32\n    var p = (1, 2)\n    let t = p.0@move\n    defer => return p.1\n    return 1\n", "")]
+    [InlineData("func f() -> i32\n    var p = (1, 2)\n    let t = p.0@move\n    defer => return p.0\n    return 1\n", "MovedPlace_Kd p.0 1")]
     public void AnOpaqueSitesPartIsCheckedAtItsPlace(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Parts + source));
 
