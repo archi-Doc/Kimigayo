@@ -298,7 +298,7 @@ public sealed partial class Binding
             }
 
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : declaration!.BoundSymbol!;
-            if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, domain) is not null)
             {
                 this.Fail(declaration!, BindingFailure.Access);
             }
