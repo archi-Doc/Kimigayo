@@ -13186,6 +13186,7 @@ resumed by R4-M86 (2026-10-20).
     own members in `Binding.PlaceAuthority.Raw.cs` (the raw part of the Place classification, beside `PathOrigin`); `ElementAccess`
     keeps the element-access predicates. The rule is unchanged. R4-M194's, BU-146's and BU-193's mentions of
     `ElementAccess.IsRawPlace` and `IsRawRooted` are history this line covers.
+  - Amended by R7-M68 (D-941): `IsPointerPath` and its bound are gone; a path's raw step is the path fold's `Raw` (`PathPrefix`).
 - **BU-155 Every Contract reference written in source is formed by one path, `BindContractReference` (PLAN G705)** (2026-11-11;
   Front, Binding; Major; the owner's O-145 (a) and O-151 (a) with its conditions; design review 3 ACCEPT with conditions 1-10,
   implementation review ACCEPT) SPEC 8.4.3, 8.5.1, 8.5.2, 8.11.1, 9.7, 9.7.1.
@@ -23836,6 +23837,32 @@ R8-M* and R9-M* by the stage of the recording unit.
     operand's evaluation); the form's take in `PlanRow.Adjust` (a take that stands: R7-M8; claims and `FailureFact` read it); `Flag`
     or `Mode` (class-typed slots); a Broken clause (it could not fire); "acquired" alone (Revision 0: it splits the shared-borrow
     take between Z17's located and kept parts).
+- **R7-M68 A Place's path is folded once from its root: `PathFold` and `LendFold`** (Back, 2026-11-21; D-941, Q-596, PLAN G1154,
+  and G1161 (D-950) with it; Major, behaviour-preserving below 64 steps; design `d941-design.md` revision 3 with B's rulings 1-4;
+  the Front's review on C-402 (B1) and its delta read; the Middle's RP17 consent on the 64+ outcomes) SPEC 3.4, 15.1.5, 15.6.2;
+  IMPL A.4. Amends BU-166 (`IsPointerPath`).
+  - **Cause.** Binding's Place authority re-decided the receiver prefixes of a path: `PathAuthority` and `Writable` re-entered each
+    other through `AcquirableByBinding`; `Writable`'s inline-part, Field and payload rules decided the owner prefix again;
+    `LendsPlace` asked each level's path again; an exclusive `AccessType` folded its receiver again (2^k raw, F(2k+2) owned, k^2/2
+    lending steps, 2^k through exclusive references stored in Array elements).
+  - **Rule.** A Place's path is folded once from its root: `PathFold` (each prefix's `PathPrefix`: its `PathGrant` (Authority,
+    Denied, Layers), Access, Raw, Writable) for writes and Moves, and `LendFold` (each prefix's `PathLend`: Path, Exclusive, Lends,
+    StaticRoot) for a borrow in a mode from a scope. Each prefix's grant, writability and lending is decided from its owner prefix's,
+    never by a new query on the path; a receiver outside the path (past a getter result or a view range) is its own fold. Every
+    write, Move and borrow query is k + 1 fold steps (`PathFoldWork`).
+  - **The exclusive reading.** `AccessType`'s former `bool exclusive` is gone: the exclusive reading of a receiver's access Type,
+    `ExclusiveAccessType(node, referent)`, takes the receiver's ReferentAuthority from the fold (the owner prefix's access through
+    the receiver's own layers; for a borrowed base, the node's own access), so no rule queries a path again (PLAN G1161 closes).
+  - **Removed.** `PathAuthority`'s own walk and its 64-step bound (the query reads the fold), `IsPointerPath` and its bound (the
+    fold's `Raw`), the re-entries (`AcquirableByBinding`, `WritableOwner` and `WritablePlace` take the fold) and `PairCapability`'s
+    null-scope branch.
+  - **Moves.** None below 64 steps (diagnostic and semantic HIR+MIR snapshots unchanged). At 64 steps and more a path is no longer
+    cut at its 64th step: Array writes and `@uniq` bind, and a 64-deep owned Array local reaches A5's reported
+    `OwnershipDepthLimit_Kd` (PLAN G1146).
+  - **Rejected.** A memo of `Writable` per node (a side table beside the walk); a demand flag (a steering parameter); lazy owner
+    folds (exponential on alternating paths); a re-fold of the receiver in the exclusive reading (exponential on exclusive
+    references stored in Array elements, the Front's B1); one recursion skeleton for both folds (it would take the reading as a
+    delegate or a mode parameter).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
