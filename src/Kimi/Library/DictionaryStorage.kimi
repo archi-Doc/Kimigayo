@@ -156,23 +156,9 @@ group DictionaryStorage
             if capacity >= minimum
                 return
             // Every entry has links, even when K and V have zero size: stride is positive.
-            let maximumSize: isize = 9223372036854775807
-            let maximum = maximumSize / stride
-            if minimum > maximum
-                Storage.allocationSizeExceeded()
-            // Optional geometric rounding must never reject a representable minimum.
-            var target = maximum
-            if capacity <= maximum / 2
-                // The guard bounds the product.
-                target = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
-            if target < 4
-                target = 4
-            if target < minimum
-                target = minimum
-            if target > maximum
-                target = maximum
+            let target = Storage.growthTarget(capacity, stride, minimum)
             // The allocator aligns every block to 16 bytes (SPEC 21.4.3), which covers the entry layout.
-            // `target <= maximum` bounds the new size, and `used <= capacity < target` the bytes transferred.
+            // `Storage.growthTarget` bounds the new size, and `used <= capacity < target` the bytes transferred.
             let memory = Raw.allocate<u8>((target@Wrapping<isize> * stride@Wrapping<isize>)@isize)
             let buffer = (*handle).buffer
             let used = (*handle).used
