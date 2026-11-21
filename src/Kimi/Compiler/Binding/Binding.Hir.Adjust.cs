@@ -458,6 +458,11 @@ public sealed partial class Binding
         {
         }
 
+        // A call the selection does not take reads none of its inputs (SelectionMode), so the form reads nothing of them.
+        public void Unselected(CallPlan call)
+        {
+        }
+
         public void Use(Koto? child, in BoundArgumentOperation operation)
             => this.Add(child, child is null ? default : binding.ChildAdjust(child, operation, PlaceUse.Shared));
 
