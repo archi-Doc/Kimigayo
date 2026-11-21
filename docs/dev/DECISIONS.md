@@ -24139,6 +24139,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Moves (Q13).** M3: the Notes that go. M4: a selected call's clause record relates `declaration` at the called declaration
       (a library location for a library callee). M1: a second disagreeing associated Type of one intersection (g1m, SPEC 8.9.2); an
       ancestor's and the child's requirement each adding an undeclared Callable bound (p2, SPEC 8.11.4). Corpus: as Q-616 states.
+  - **E2-4a (Q-626; the delta `back\notes\r7-e2\e2-4-delta.md` with B's rulings 1-9 and round 2's O-r2-1..4; the Front's reviews,
+    round 1 REVISE B1-B3, C1-C7 and round 2 ACCEPT WITH CONDITIONS, R2-N1).** The Access family outside the resolver records its
+    problems through one recorder, `RecordAccess` (Binding.Access.cs, through `RecordNumbered`) (SPEC 9.4, 9.4.4, 9.4.6, 11.3.2,
+    23.1.2, 23.3).
+    - **Facts.** `Related` role 0: the declaration whose accessibility does not cover the use, as returned by the Access query that
+      judged it (`InaccessibleType`, `InaccessibleConstraint`, `InaccessibleProjection`, now in the Access component's file; the bool
+      predicate `TypeAccessCovers` reads `InaccessibleType`; `ConstraintAccessCovers`, uncalled after c2, is deleted). `Related` role
+      1: a part **inside the subject's own syntax** that shows it (a result, parameter, receiver or accessor component Type, a
+      constraint clause, a projection use whose signature owner is the subject). A part outside it (a conditional block's premise,
+      shared by its members) is never the location, and a part record (a clause, base clause or enum case) and a use are their own
+      location; a Contract stays every ancestor's location, relating it (its base references are read only where BuildContract binds
+      them, R7-N2a). No new fact kind.
+    - **Invariant.** Two records at one location belong to one subject and differ in their part or declaration, or to a declaration
+      and a part nested in its syntax and differ in depth, so the published order is total (DIAGNOSTICS 4.1) and no Access record
+      makes a check Faulted.
+    - **Grouping (SPEC 23.1.2).** One problem per declaration and part: a declaration exposing one T at two parts records two, and one
+      requirement found by two checks (a function's constraint check and its projection clause's own check) publishes both; a part
+      naming two uncovered Types relates the first its query met (first only).
+    - **Sites.** Contracts' ancestor, requirement result, parameter and constraint checks and the Contract clause; ContractMatching's
+      premise clause and an associated binding (the conformance use located, the declaration related); Access.cs's function, signature
+      projection and conditional-member sites and c8's six part records; Properties' signature projection, Type and accessor
+      components (one problem per component); Storage's enum payload. Each pair's owner keeps its `Fail` until R7-E5 (ruling 16 B1
+      (a)). Fact-less with their reasons: Properties' accessor access word (SPEC 11.3.2: no declaration fails to cover a use; the
+      Property bounds the word) and ContractMatching's conformance use beside its premise's record (an owner over its failed part,
+      until R7-E5); the Ambiguous `Invalid` sites keep E2-5b's form (their candidates are not kept at the site). Structs'
+      written-`self` Duplicate keeps the slot's `Fail` until R7-E5: the function may also be a Signature group's first or later,
+      recorded after Index under the same key.
+    - **Rejected.** `Span` for the part (a part with a node is a related location); a fact-less Access record beside a related one
+      (two forms at one node publish two records for one failure); a premise or another member-shared part as role 1 (two members'
+      equal records faulted the check: round 1's B2); a fact-less record of the receiver's Duplicate at Index (it met the group's
+      record of the same key with other facts: `InternalInvariant_Kd`, round 1's B1); a direct base's reference as role 1 (a
+      `contract.Bases` read in the Access check trips R7-N2a's row, and a published base part is a new shape column; O-r2-1); relating
+      every uncovered declaration of one part (several role-0 facts and a second walk; C3).
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
