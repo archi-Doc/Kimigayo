@@ -18,7 +18,8 @@ namespace Kimi.Compiler;
 //   into the spare arena, so a kept column's two arenas alternate and allocate again only when the module grew, and clears the retired
 //   one once its moves end (Retire), so no removed row stays reachable.
 // - Prohibitions: no hashing; no store decision or key rule (a family's one accessor decides both); no read or write at or past Grow's
-//   count; a reference Ref returns is used before the column's next Ref, since a carve can replace the arena.
+//   count; a reference Ref returns is used before the column's next Ref, and an enumeration Enumerate returns is read to its end before
+//   a Ref that carves a page, since a carve can replace the arena either holds (an enumerator holds the directory and arena it began with).
 internal struct PagedColumn<T>
 {
     /// <summary>The slots of a page: the least bytes of the measured page sizes for the node families with library rows (G949 D2b-d §3,

@@ -133,10 +133,11 @@ public partial class SyntaxIdTest
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
-    // its container's list; OverrideEntries: a Type's implementations by original; Refusals: the refusal a losing candidate's request
-    // past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by reflection, since the families'
-    // rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each Final check's start empties them,
-    // so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
+    // its container's list; OverrideEntries: a Type's implementations by original; SpecializationStorage: Milestone11's specialization
+    // entries, reused by every Bind; KnownBases: j4's known base, which the Binds after its first start from; Refusals: the refusal a
+    // losing candidate's request past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by
+    // reflection, since the families' rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each
+    // Final check's start empties them, so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
     // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -147,6 +148,8 @@ public partial class SyntaxIdTest
     [InlineData("CopyByType", CopyPoint)]
     [InlineData("OverrideEntries", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
     [InlineData("SpecializationsByOriginal", "milestone:Milestone11")]
+    [InlineData("SpecializationStorage", "milestone:Milestone11")]
+    [InlineData("KnownBases", BaseInputFormationBindingTest.J4)]
     [InlineData("OriginDeclarations", "milestone:Milestone13")]
     [InlineData("DiscoveredOrigins", "milestone:Milestone13")]
     [InlineData("OriginRequirementNodes", "milestone:Milestone10")]
@@ -203,11 +206,13 @@ public partial class SyntaxIdTest
     // reached by two paths (AssociatedIdentityTest); InferenceFailures, an inference hole no implementation fills; CallableConstraints,
     // a callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); ClauseConstraints, a Function Item
     // reference whose Type argument's clause is refuted (ConstraintBindingTest); B2b-1's UnboundSlots, a call whose slot nothing binds,
-    // and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter; B6b's query
+    // and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter; D-986's
+    // FormReads, the kept operands `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query
     // memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
     // result; the guess rule's is written only after a Bind, by the lint report and MIR:
     // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes; D-932's
-    // ReachedThroughBorrow, a member read below an owned Array's element).
+    // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;
+    // B2b-2's ResolvedSlices, a slice selected by a range value).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -250,9 +255,12 @@ public partial class SyntaxIdTest
     [InlineData("UnboundSlots", "func make<T>() -> i32 => 1\nlet x = make()\n", DiagnosticCode.UnboundTypeArgument_Kd)]
     [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
     [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
+    [InlineData("FormReads", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("ResultCompletions", "func f(n: i32) -> i32\n    var s = 0\n    while s < n => s = s + 1\n    return s\n")]
     [InlineData("PublishedCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
+    [InlineData("EarlyReads", BaseInputFormationBindingTest.J4)]
+    [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

@@ -213,13 +213,16 @@ public sealed partial class MirBorrowsTest
 
                 """));
 
-    // AnEnsureWhoseProofWouldDecideIsUnsupported's rows on rooted bodies (SPEC 15.6.4, 22.4.3; R4-M92, OQ-F5-6, Z7): a staticEnsure's
-    // initializer meets the live Loans (e10b) unless a live Loan on the ensured static would prove it initialized, a may-property (e10f, and
-    // e10j, whose Loan the holder loses on one path), a key being its Field (e10d); each such conflict is the located Unsupported_Kd (e10a,
-    // e10d, e10e, e10f, e10j) until O-456's answer, nothing to meet nothing (e10c); a Loan that is no longer live proves nothing under
-    // SPEC's letter, so its conflict is the error (e10g).
+    // A staticEnsure's initializer meets the live Loans (SPEC 15.6.4, 22.4.3, 22.4.4; R4-M92, Z7, Z7b; the owner's O-456 (a)) unless every
+    // path to it passes a Borrow of the static's slot, whatever is live there: e10a, e10g (the Borrow's Loan has ended), e10h (its holder
+    // reassigned), e10i (a Borrow on each arm) and e10j (the Borrow precedes the `if`) are proved, so nothing; e10b (no Borrow) and e10f (a
+    // Borrow on one path only) are the error, nothing to meet nothing (e10c). Moved by SPEC 15.6.4's revision (af6410d81, O-456 (a)):
+    // fail-before 3b692162b, e10a, e10f, e10i and e10j the located Unsupported_Kd, e10g and e10h the error. A static with several slots
+    // keeps Z7's reading until P42's per-access key (R4-M103, the Middle's ruling (ii)): a live Loan on cx, whose key MIR cannot tell apart,
+    // is the located Unsupported_Kd (e10e, e10d, e10fc), and a Borrow whose Loan has ended proves nothing (e10gc's false error, a PLAN open
+    // issue; e10dd's own error, another key).
     [Fact]
-    public void AnEnsureWhoseProofWouldDecideIsUnsupportedRooted()
+    public void TheInitializationProofIsEveryPathsBorrowRooted()
     {
         const string Cache = """
                 struct Cache<T>
@@ -246,12 +249,38 @@ public sealed partial class MirBorrowsTest
                             let v = Cache<string>.S.cx.n
                             inspect(lx)
                             inspect(ll)
+                        public func e10fc(k: bool)
+                            var sx = Root.cx()
+                            var sg = Root.clog()
+                            var o = 1
+                            var lx = o@ref
+                            if k => lx = sx.view()
+                            let ll = sg.view()
+                            let v = cx.n
+                            inspect(lx)
+                            inspect(ll)
+                        public func e10gc()
+                            var sx = Root.cx()
+                            var sg = Root.clog()
+                            let lx = sx.view()
+                            inspect(lx)
+                            let ll = sg.view()
+                            let v = cx.n
+                            inspect(ll)
+                        public func e10dd()
+                            var sx = Root.cx()
+                            var sg = Root.clog()
+                            let lx = sx.view()
+                            inspect(lx)
+                            let ll = sg.view()
+                            let v = Cache<string>.S.cx.n
+                            inspect(ll)
 
                 """;
         Assert.Equal(
             [
-                "e10a: x Unsupported_Kd", "e10b: x", "e10f: x Unsupported_Kd", "e10g: x", "e10j: x Unsupported_Kd", "e10e: cx Unsupported_Kd",
-                "e10d: Cache<string>.S.cx Unsupported_Kd",
+                "e10b: x", "e10f: x", "e10e: cx Unsupported_Kd", "e10d: Cache<string>.S.cx Unsupported_Kd", "e10fc: cx Unsupported_Kd", "e10gc: cx",
+                "e10dd: Cache<string>.S.cx",
             ],
             RootedEffects(
                 """
@@ -301,21 +330,349 @@ public sealed partial class MirBorrowsTest
                         let v = x.n
                         inspect(lx)
                         inspect(ll)
+                    public func e10h()
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        var o = 1
+                        var lx = sx.view()
+                        lx = o@ref
+                        let ll = sg.view()
+                        let v = x.n
+                        inspect(lx)
+                        inspect(ll)
+                    public func e10i(p: Option<i32>)
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        var o = 1
+                        var lx = o@ref
+                        match p
+                            .Some(_) => lx = sx.view()
+                            .None => lx = sx.view()
+                        let ll = sg.view()
+                        let v = x.n
+                        inspect(lx)
+                        inspect(ll)
 
                 """,
                 Cache));
     }
 
-    // AnInitializationProofDecidesWhereverAnInitializerComposes's rows on rooted bodies (SPEC 15.6.4, 22.4.3; R4-M92): the proof applies
-    // wherever a conflict's deciding effect lies in the initializer of a static a live Loan is on and the site may first-access it: a call that
-    // reads x (pA), the ensure of x2, whose initializer reads d (pB), a call that reads the immutable lim2 (pQ), a destructor that reads x
-    // (early); without the proof Loan each is the error (pA2, pB2), as is a site that never reaches d (direct).
+    // "Every path" is the view's paths with SPEC 14.10.3's phases (Readings R3, R4; Z7b): a Borrow before a loop proves each iteration
+    // (loopA), one at the end of the body not the first (loopB, the error), one in each iteration before its access proves it (loopC); a
+    // Borrow before a `match` proves each arm (matchA), one on one arm not the site after it (matchB); a Borrow after the access proves
+    // nothing (after); an assumed continuation continues from its Never form's state (p2A proved; p2B's path into the Never form passes no
+    // Borrow). Fail-before 3b692162b: loopA, loopB, loopC, matchA, matchB and p2A the located Unsupported_Kd.
+    [Fact]
+    public void AProofFollowsTheBodysPathsRooted()
+        => Assert.Equal(
+            ["loopB: x", "matchB: x", "after: x", "p2B: x"],
+            RootedEffects("""
+                    public func loopA(k: bool)
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let lx = sx.view()
+                        let ll = sg.view()
+                        while k
+                            _ = x.n
+                        inspect(lx)
+                        inspect(ll)
+                    public func loopB(k: bool)
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        var o = 1
+                        var lx = o@ref
+                        let ll = sg.view()
+                        while k
+                            let v = x.n
+                            inspect(lx)
+                            lx = sx.view()
+                        inspect(ll)
+                    public func loopC(k: bool)
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let ll = sg.view()
+                        while k
+                            let lx = sx.view()
+                            let v = x.n
+                            inspect(lx)
+                        inspect(ll)
+                    public func matchA(p: Option<i32>)
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let lx = sx.view()
+                        let ll = sg.view()
+                        match p
+                            .Some(_) => _ = x.n
+                            .None => ()
+                        inspect(lx)
+                        inspect(ll)
+                    public func matchB(p: Option<i32>)
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        var o = 1
+                        var lx = o@ref
+                        match p
+                            .Some(_) => lx = sx.view()
+                            .None => ()
+                        let ll = sg.view()
+                        let v = x.n
+                        inspect(lx)
+                        inspect(ll)
+                    public func after()
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let ll = sg.view()
+                        let v = x.n
+                        let lx = sx.view()
+                        inspect(lx)
+                        inspect(ll)
+                    public func p2A()
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let lx = sx.view()
+                        let ll = sg.view()
+                        $abort("stop")
+                        let v = x.n
+                        inspect(lx)
+                        inspect(ll)
+                    public func p2B(k: bool)
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let ll = sg.view()
+                        if k
+                            let lx = sx.view()
+                            inspect(lx)
+                            return
+                        $abort("stop")
+                        let v = x.n
+                        inspect(ll)
+
+                """));
+
+    // "A Borrow of that slot" is the body's own Borrow of the slot's storage, a part of it or the payload it owns (Readings R1, R2, R3, R6;
+    // Z7b): a Field of x (part), a payload Field through the owning handle xo holds (ownEdge, an own step), a call's receiver reservation
+    // before its argument (resv) and a default evaluated at the call (dfA) prove it, so nothing; an address (addr: `@raw` forms no Loan,
+    // SPEC 5.4), a default not evaluated (dfB) and a Closure body's Borrow (clA: another body's, though safe at run time) prove nothing, so
+    // the error; a Closure's call after the body's Borrow is proved (clB). Fail-before 3b692162b: part, ownEdge, resv and clB the located
+    // Unsupported_Kd, dfA the error.
+    [Fact]
+    public void AProofIsTheBodysBorrowOfTheSlotRooted()
+        => Assert.Equal(
+            ["dfB: x", "addr: x", "clA: x"],
+            RootedEffects(
+                """
+                    public var xo: obj/Cell = State.makeXo()
+                    public func makeXo() -> obj/Cell
+                        log = Counter.init()
+                        return Kimi.Intrinsics.makeObj<Cell>(Cell.init())
+                    public func useXo() -> i32 => State.xo@follow.x
+                    public func peekX(c: ref/Counter) -> i32 => 1
+                    public func withX(k: i32 = State.peekX(Root.x()@ref)) => ()
+                    public func part()
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let ln = sx.n@ref
+                        let ll = sg.view()
+                        let v = x.n
+                        inspect(ln)
+                        inspect(ll)
+                    public func ownEdge()
+                        var so = Root.xo()
+                        var sg = Root.log()
+                        let lo = so@follow.x@ref
+                        let ll = sg.view()
+                        _ = useXo()
+                        inspect(lo)
+                        inspect(ll)
+                    public func resv()
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let ll = sg.view()
+                        sx.add(useX())
+                        inspect(ll)
+                    public func dfA()
+                        var sg = Root.log()
+                        State.withX()
+                        let ll = sg.view()
+                        let v = x.n
+                        inspect(ll)
+                    public func dfB()
+                        var sg = Root.log()
+                        State.withX(k: 1)
+                        let ll = sg.view()
+                        let v = x.n
+                        inspect(ll)
+                    public func addr()
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let p = sx@raw
+                        let ll = sg.view()
+                        let v = x.n
+                        inspect(ll)
+                    public func clA()
+                        var sg = Root.log()
+                        let f = func [] () => State.inspect(Root.x().view())
+                        f()
+                        let ll = sg.view()
+                        let v = x.n
+                        inspect(ll)
+                    public func clB()
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let lx = sx.view()
+                        let ll = sg.view()
+                        let f = func [] () => State.useX()
+                        _ = f()
+                        inspect(lx)
+                        inspect(ll)
+
+                """,
+                "    public func xo() -> obj/Cell => Kimi.Intrinsics.makeObj<Cell>(Cell.init())\nstruct Cell\n    public var x: i32 = 0\n    public init() => ()\n"));
+
+    // A proved initializer leaves the row (SPEC 15.6.4's revision, af6410d81; the owner's O-456 (a); Z7b): what remains decides. Its
+    // Deep alone (pDeep, xd's initializer) gives nothing; without the proof it is the depth limit (pDeep2, valid: the limit is A4's record).
+    // A Language error whose only deciding fact is a proved initializer becomes the located limit record of what remains (B1): the
+    // located Unsupported_Kd where the rest rests on Q, cy's initializer's Unknown (mixV, valid; mixI, invalid, as Q alone gives, onlyQ),
+    // the depth limit where it is A4's Deep (mixD, valid). Fail-before 3b692162b: pDeep the depth limit; mixV and mixI
+    // ComparisonLoanConflict_Kd, makeX's write; mixD the error.
+    [Fact]
+    public void AProvedInitializerLeavesTheRowRooted()
+    {
+        Assert.Equal(
+            ["pDeep2: useXd() OwnershipDepthLimit_Kd", "mixD: useXLim() OwnershipDepthLimit_Kd"],
+            RootedEffects(
+                """
+                    public var xd: Counter = State.makeXd()
+                    public func makeXd() -> Counter
+                        Lim.run()
+                        return Counter.init()
+                    public func useXd() -> i32 => State.xd.n
+                    public func pDeep()
+                        var sd = Root.xd()
+                        var sc = Root.counter()
+                        let ld = sd.view()
+                        let lc = sc.view()
+                        _ = useXd()
+                        inspect(ld)
+                        inspect(lc)
+                    public func pDeep2()
+                        var sc = Root.counter()
+                        let lc = sc.view()
+                        _ = useXd()
+                        inspect(lc)
+                    public func useXLim() -> i32
+                        Lim.run()
+                        return State.x.n
+                    public func mixD()
+                        var sx = Root.x()
+                        var sg = Root.log()
+                        let lx = sx.view()
+                        inspect(lx)
+                        let ll = sg.view()
+                        _ = useXLim()
+                        inspect(ll)
+
+                """,
+                "    public func xd() -> Counter => Counter.init()\n"));
+        const string Mixed = """
+                    public func cy() -> Counter => Counter.init()
+                struct Cache<T>
+                    public group S
+                        public let cy: Counter = S.makeY()
+                        public func makeY() -> Counter => State.makeY5()
+                        public func inspect<U>(value: ref/U) => ()
+                        public func bothV() -> i32 => State.x.n + cy.n
+                        public func bothI() -> i32 => State.x.n + Cache<string>.S.cy.n
+                        public func onlyI() -> i32 => Cache<string>.S.cy.n
+                        public func mixV()
+                            var sx = Root.x()
+                            var sy = Root.cy()
+                            var sg = Root.log()
+                            let lx = sx.view()
+                            inspect(lx)
+                            let ly = sy.view()
+                            let ll = sg.view()
+                            let v = S.bothV()
+                            inspect(ly)
+                            inspect(ll)
+                        public func mixI()
+                            var sx = Root.x()
+                            var sy = Root.cy()
+                            var sg = Root.log()
+                            let lx = sx.view()
+                            inspect(lx)
+                            let ly = sy.view()
+                            let ll = sg.view()
+                            let v = S.bothI()
+                            inspect(ly)
+                            inspect(ll)
+                        public func onlyQ()
+                            var sy = Root.cy()
+                            var sg = Root.log()
+                            let ly = sy.view()
+                            let ll = sg.view()
+                            let v = S.onlyI()
+                            inspect(ly)
+                            inspect(ll)
+
+                """;
+        Assert.Equal(
+            ["mixV: S.bothV() Unsupported_Kd", "mixI: S.bothI() Unsupported_Kd", "onlyQ: S.onlyI() Unsupported_Kd"], RootedEffects(string.Empty, Mixed));
+    }
+
+    // Where a proved initializer's kind decided and another conflicting kind outside Q remains, the error stays and its fact changes
+    // (Z7b, the fact-change class; SPEC 15.6.4's revision, af6410d81): at fcA x is passed though its Loan has ended, so g's unknown effects
+    // decide (fail-before 3b692162b: EffectWrite, makeX's write); at fcB x's Loan is live on one path only, so x is not proved and makeX's
+    // write decides first (fail-before: EffectUnknown).
+    [Fact]
+    public void AnEffectFactIsTheRowWithoutProvedInitializersRooted()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public func useXG(g: () -> ()) -> i32
+                    let n = State.x.n
+                    g()
+                    return n
+                public func fcA(g: () -> ())
+                    var sx = Root.x()
+                    var sg = Root.log()
+                    let lx = sx.view()
+                    inspect(lx)
+                    let ll = sg.view()
+                    _ = useXG(g@move)
+                    inspect(ll)
+                public func fcB(k: bool, g: () -> ())
+                    var sx = Root.x()
+                    var sg = Root.log()
+                    var o = 1
+                    var lx = o@ref
+                    if k => lx = sx.view()
+                    let ll = sg.view()
+                    _ = useXG(g@move)
+                    inspect(lx)
+                    inspect(ll)
+
+            """ + EffectRoots);
+        Assert.Empty(c.Binding.Issues);
+        var program = AnalyzeRooted(c);
+        Assert.Equal(
+            ["useXG(g@move) ComparisonLoanConflict_Kd EffectUnknown", "useXG(g@move) ComparisonLoanConflict_Kd EffectWrite"],
+            program.Problems.All.ToArray().Select((x, i) => (x, i))
+                .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
+                .Select(x => $"{Line(c, x.x.Subject)} {x.x.Code} {string.Join(",", program.Problems.Facts(x.i).ToArray().Select(static f => f.Kind)
+                    .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown))}"));
+    }
+
+    // AnInitializationProofDecidesWhereverAnInitializerComposes's rows on rooted bodies (SPEC 15.6.4, 22.4.3; R4-M92, Z7b): the proof applies
+    // wherever a conflict's deciding effect lies in the initializer of a static every path to the site passes a Borrow of and the site may
+    // first-access it: a call that reads x (pA), the ensure of x2, whose initializer reads d (pB), a call that reads the immutable lim2 (pQ),
+    // a destructor that reads x (early), a call that reads the immutable y5, whose initializer is Unknown (pQu); without the Borrow each is
+    // the error (pA2, pB2), as is a site that never reaches d (direct). Fail-before 3b692162b: pA, pB, pQ, early and pQu the located
+    // Unsupported_Kd (OQ-F5-6 (a)'s interim, which SPEC 15.6.4's revision ends, af6410d81, O-456 (a)).
     [Fact]
     public void AnInitializationProofDecidesWhereverAnInitializerComposesRooted()
         => Assert.Equal(
             [
-                "pA: useX() Unsupported_Kd", "pA2: useX()", "pB: x2 Unsupported_Kd", "pB2: x2", "pQ: useLim() Unsupported_Kd", "direct: writeLog()",
-                "early: let r = XReader.init() Unsupported_Kd", "pQu: useY5() Unsupported_Kd",
+                "pA2: useX()", "pB2: x2", "direct: writeLog()",
             ],
             RootedEffects("""
                     public func pA()
@@ -446,10 +803,10 @@ public sealed partial class MirBorrowsTest
     // initializer's decides the Language problem (direct2: both2 writes log itself; fail-before: the located Unsupported_Kd, the key
     // counted as proved), as does an initializer the site runs that no Loan proves, beside an immutable static's Loan whose initializer
     // makes the same effect (imm2, R4-M92's immutable-static limit; fail-before: the located Unsupported_Kd). Each root and the
-    // destruction read the effect rule's copy of the row: at b4's Drop the counter root's conflict queries the row with Q left out, and the
-    // destruction's own conflict, which only gx's initializer makes, still reads the full row, so it is the located Unsupported_Kd (a
-    // reader of A4's scratch after that query would lose it). makeGx's own write of dw is R3's error: the old value's destructor runs gx's
-    // initializer, which writes dw.
+    // destruction read the effect rule's copy of the row: at b4's Drop the counter root's conflict queries the row with P left out, where
+    // DW's destructor writes counter itself, and the destruction's own conflict, which only gx's initializer makes, is nothing, since gx is
+    // passed (Z7b; fail-before 3b692162b: the located Unsupported_Kd). makeGx's own write of dw is R3's error: the old value's destructor
+    // runs gx's initializer, which writes dw.
     [Fact]
     public void ADirectEffectBesideAProvedInitializerDecidesRooted()
     {
@@ -463,7 +820,7 @@ public sealed partial class MirBorrowsTest
 
                 """;
         Assert.Equal(
-            ["makeGx: dw = DW.init()", "direct2: both2()", "imm2: x", "b4: dw = DW.init()", "b4: dw = DW.init() Unsupported_Kd"],
+            ["makeGx: dw = DW.init()", "direct2: both2()", "imm2: x", "b4: dw = DW.init()"],
             RootedEffects(
                 """
                     public var dw: DW = DW.init()
@@ -511,7 +868,9 @@ public sealed partial class MirBorrowsTest
     // meets the unique Loan, an error of its own, and Met's second block still reports A4's Deep (Lim.run) for the shared Loan a write would
     // meet (Root.pair, pair's stand-in, ends group Root); r6's ensure of x beside log's live Loan runs only x's initializer, Derived, so no
     // record. Fail-before (R5-M183): wipe() is a conflict; until Z7 the proof rested on x's and pair's initializers, so useX() and
-    // readDeep() had no Loan problem.
+    // readDeep() had no Loan problem. At rFind cx, a static with several slots whose initializer has a finding, is in Q (its Loan is live),
+    // and the chain reads no summary of an initializer with a finding, which has no node (Z7b), so the call's own write of clog under the
+    // shared Loan is the error.
     [Fact]
     public void ABodyWithAFindingLeavesOtherBodiesProblemsRooted()
     {
@@ -548,16 +907,37 @@ public sealed partial class MirBorrowsTest
                     let v = x.n
                     inspect(ll)
 
-            """ + EffectRoots + "    public func pair() -> (i32, i32) => (1, 2)\n");
+            """ + EffectRoots + "    public func pair() -> (i32, i32) => (1, 2)\n" + """
+                struct Cache<T>
+                    public group S
+                        public var cx: Counter = S.makeX()
+                        public var clog: Counter = Counter.init()
+                        public func makeX() -> Counter
+                            clog = Counter.init()
+                            return Counter.init()
+                        public func inspect<U>(value: ref/U) => ()
+                        public func readsCxWritesClog()
+                            _ = cx.n
+                            clog = Counter.init()
+                        public func rFind()
+                            var sx = Root.cx()
+                            var sg = Root.clog()
+                            let lx = sx.view()
+                            let ll = sg.view()
+                            readsCxWritesClog()
+                            inspect(lx)
+                            inspect(ll)
+
+                """);
         Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
-        foreach (var (name, kind) in new[] { ("wipe", MirBodyKind.Fn), ("x", MirBodyKind.StaticInit), ("pair", MirBodyKind.StaticInit) })
+        foreach (var (name, kind) in new[] { ("wipe", MirBodyKind.Fn), ("x", MirBodyKind.StaticInit), ("pair", MirBodyKind.StaticInit), ("cx", MirBodyKind.StaticInit) })
         {
             program.Bodies.ToArray().Single(x => x.Key.Kind == kind && x.Key.Decl?.Name == name).HasFinding = true;
         }
 
         Assert.Equal(
-            ["d2: writes()", "r4: useX()", "r4: writes()", "r5: readDeep()", "r5: readDeep() OwnershipDepthLimit_Kd"],
+            ["d2: writes()", "r4: useX()", "r4: writes()", "r5: readDeep()", "r5: readDeep() OwnershipDepthLimit_Kd", "rFind: readsCxWritesClog()"],
             Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]));
     }
 
@@ -845,9 +1225,46 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(inM, 4), $"work in M {string.Join(", ", inM)}");
     }
 
-    // V16 (R4-M92) on rooted bodies: A5 with the effect rule on a program version it checked before allocates nothing: the effect roots, the
-    // Field numbers, the activation stamps and A4's row keep their storage, each view's keys are A4's pooled row and an initializer's summary
-    // its stored one (pA's proof); e8's R3 borrows no static.
+    // V16 (Z7b; D-957, PLAN G1166) on rooted bodies: A4's excluded query walks only where an initializer of a static every path passes a
+    // Borrow of may make what a decision reads: cut's direct conflicts walk nothing (fail-before 3b692162b: Walked 8, a walk at every
+    // conflicting location with a live Loan on a static), and N proved sites cost work linear in N.
+    [Fact]
+    public void TheProofWalksOnlyWhereAProvedInitializerMayDecideRooted()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public func cut()
+                    var sc = Root.counter()
+                    var sg = Root.log()
+                    let lc = sc.view()
+                    let ll = sg.view()
+                    writeLog()
+                    writeLog()
+                    writeLog()
+                    writeLog()
+                    inspect(lc)
+                    inspect(ll)
+
+            """ + EffectRoots);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var stratum = new Stratum(c.Types);
+        Run(stratum, program, Rooted(c, program));
+        Assert.Equal([.. Enumerable.Repeat("cut: writeLog()", 4)], Problems(c, Sound(program), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        Assert.Equal(0, stratum.Walked);
+
+        static string Proofs(int n) => Prelude + EffectTypes + "    public func proofs()\n        var sx = Root.x()\n        var sg = Root.log()\n" +
+            "        let lx = sx.view()\n        let ll = sg.view()\n" + string.Concat(Enumerable.Repeat("        _ = useX()\n", n)) +
+            "        inspect(lx)\n        inspect(ll)\n" + EffectRoots;
+        long[] inN = [.. new[] { 32, 64, 128 }.Select(n => RootedWork(Proofs(n)))];
+        output.WriteLine($"N 32, 64, 128 proved sites: work {string.Join(", ", inN)}");
+        Assert.True(Grows(inN, 2), $"work in N {string.Join(", ", inN)}");
+    }
+
+    // V16 (R4-M92, Z7b) on rooted bodies: A5 with the effect rule on a program version it checked before allocates nothing: the effect
+    // roots, the Field numbers, the activation stamps and A4's row keep their storage, each view's keys are A4's pooled row and an
+    // initializer's summary its stored one, and the passed fact's entries, arena and store and P and Q are pooled (the proofs of e10a, pA
+    // and loopA's loop); e8's R3 borrows no static.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmEffectRunAllocatesNothing()
@@ -881,6 +1298,15 @@ public sealed partial class MirBorrowsTest
                     let lx = sx.view()
                     let ll = sg.view()
                     _ = useX()
+                    inspect(lx)
+                    inspect(ll)
+                public func loopA(k: bool)
+                    var sx = Root.x()
+                    var sg = Root.log()
+                    let lx = sx.view()
+                    let ll = sg.view()
+                    while k
+                        _ = x.n
                     inspect(lx)
                     inspect(ll)
 

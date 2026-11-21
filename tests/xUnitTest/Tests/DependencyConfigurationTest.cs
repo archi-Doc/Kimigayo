@@ -71,12 +71,18 @@ public class DependencyConfigurationTest
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
         => Assert.True(Record.Exception(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))) is TinyhandException or ProjectConfigurationException);
 
-    // The project's kernel32 entry names its migration (NativeConfiguration; publication does not repeat the check, DECISIONS R5-M165).
-    [Fact]
-    public void LoadingAnExplicitKernel32EntryNamesItsMigration()
+    // IMPL 20.4 (Tatara B6a, decision 20): kernel32 and kimi_backend are the compiler's supplies, so a project's entry for either, its own
+    // or for a package, under any target key, fails at the load with one note naming it (NativeConfiguration; publication does not
+    // repeat the check, DECISIONS R5-M165).
+    [Theory]
+    [InlineData("kernel32", "NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}")]
+    [InlineData("kimi_backend", "NativeLibraries={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\" Input=\"vendor/kimi_backend.lib\"}}}")]
+    [InlineData("kimi_backend", "NativeLibraries={\"x86_64-unknown-linux-gnu\"={kimi_backend={Kind=\"static\" Input=\"a.lib\"}}}")]
+    [InlineData("kimi_backend", "NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kimi_backend\" Input=\"a.lib\"}}}")]
+    public void AReservedSupplysEntryFailsAtTheLoad(string name, string source)
     {
-        var source = Encoding.UTF8.GetBytes("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}");
-        Assert.Contains("Remove the kernel32 entry", Assert.Single(Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(source)).Failures));
+        var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures;
+        Assert.Equal($"{name} is supplied by the compiler. Remove the {name} entry from NativeLibraries.", Assert.Single(failures));
     }
 
     [Theory]
@@ -354,7 +360,7 @@ public class DependencyConfigurationTest
             new() { Name = "kernel32", Package = package, Kind = "static", Input = "k.lib" },
             new() { Package = package, Kind = "static", Input = "x.lib" });
         Assert.Equal(3, notes.Length);
-        Assert.Single(notes, static x => x.StartsWith("kernel32 is generated", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.StartsWith("kernel32 is supplied by the compiler", StringComparison.Ordinal));
         Assert.Single(notes, static x => x.StartsWith("NativeLibraries record 'kernel32'", StringComparison.Ordinal));
         Assert.Single(notes, static x => x.StartsWith("NativeLibraries records targeting a Package", StringComparison.Ordinal));
     }
@@ -402,6 +408,9 @@ public class DependencyConfigurationTest
     [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1.0.0\"} Name=\"codec\" ContractId=\"example.codec.v1\" Input=\"native/codec.lib\"} {Name=\"observer\" Kind=\"import\" Input=\"observer.lib\"}}}")]
     [InlineData("NativeLibraries={t={}}")]
     [InlineData("NativeLibraries={t={{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"a\" Input=\"a.lib\"} {Package={PackageId=\"p\" PackageVersion=\"2\"} Name=\"codec\" ContractId=\"b\" Input=\"b.lib\"} {Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" Input=\"c.lib\"}}}")]
+
+    // The boundary of the reserved names' check (Tatara B6a, N1 (c)): a requirement naming one is accepted and unused (an open issue).
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\"} kernel32={Kind=\"import\"}}}")]
     public void ConfigurationRoundTripsWithoutReadingSources(string source)
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes(source));

@@ -73,7 +73,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     [Theory]
-    [InlineData("kimi_backend", "import", "backend.lib")]
+    [InlineData("kimi_backend", "static", "backend.dll")]
     [InlineData("kernel32", "import", "kernel32.dll")]
     [InlineData("kernel32", "import", "/DEFAULTLIB:evil.lib")]
     [InlineData("kernel32", "import", "kernel32.lib\0")]
@@ -107,18 +107,18 @@ public sealed class EmissionArtifactsTest : IDisposable
         ArtifactFiles.CheckPath(Path.Combine(this.directory, "codec.lib"));
     }
 
+    // IMPL 20.4 (Tatara B6a, decision 20): kimi_backend is the compiler's supply, so a project's own entry fails at preparation as
+    // InvalidDependencyConfiguration_Kd with the load's note (NativeConfiguration); the rule's rows are DependencyConfigurationTest's.
     [Fact]
-    public void BackendSupplyExpandsItsSelfTargetedRequirement()
+    public void AProjectsOwnBackendEntryCannotPrepare()
     {
-        var c = this.Create();
-        var settings = c.Project.ProjectFile;
-        settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Kind = "static" } };
-        settings.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Input = "kimi_backend.lib" } };
-        Assert.True(EmissionArtifacts.Publish(c, null, out _), MinimalEmissionTest.Describe(c));
-
-        settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"].Sha256 = new string('0', 64);
-        Assert.False(EmissionArtifacts.Publish(c, null, out _));
-        Assert.Contains("Sha256 assertion", PublicationFailure(c));
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Kind = "static", Input = "vendor/kimi_backend.lib" } };
+        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.Contains(
+            TestDiagnostics.Of(c),
+            static x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd) &&
+                x.Note == "kimi_backend is supplied by the compiler. Remove the kimi_backend entry from NativeLibraries.");
     }
 
     [Fact]
@@ -133,20 +133,6 @@ public sealed class EmissionArtifactsTest : IDisposable
         NativeToolchain.ValidateManifest(manifest.RootElement);
         using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 4", "\"schemaVersion\": 3", StringComparison.Ordinal));
         Assert.Contains("'schemaVersion' is not this compiler's", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
-    }
-
-    [Fact]
-    public void BackendHashMustMatchTheEmbeddedCatalog()
-    {
-        var c = this.Create();
-        var archive = Path.Combine(this.directory, "fake.lib");
-        File.WriteAllText(archive, "not the adopted archive");
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
-        {
-            ["kimi_backend"] = new() { Kind = "static", Input = archive },
-        };
-        Assert.False(EmissionArtifacts.Publish(c, null, out _));
-        Assert.Contains("SHA-256", PublicationFailure(c));
     }
 
     [Fact]
@@ -336,7 +322,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var file = Path.Combine(this.directory, "Hello.kimiproj");
         File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
-        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = phase == "report" ? "Generated LLVM inputs" : null };
+        var console = new DiagnosticContractTest.DiagnosticConsole { LineAction = phase == "report" ? ("Generated LLVM inputs", DiagnosticContractTest.DiagnosticConsole.Fail) : null };
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
         if (phase.EndsWith("project checks", StringComparison.Ordinal))
         {
