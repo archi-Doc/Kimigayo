@@ -6,8 +6,11 @@ namespace Kimi.Compiler;
 
 // SPEC 10.2-10.4, 8.4.8.2: candidate evaluation and selection, shared by a call and by a query that must not publish, the omitted base
 // selection of an implicit constructor (SPEC 6.3.6). Each candidate's accessibility is decided and its header bound before the set is
-// measured (RentCandidates); evaluation records each candidate's applicability and plan facts in the call's rented scratch;
-// classification decides the selection from them. Neither fails, completes nor records a node.
+// measured (RentCandidates); RentEvaluation and ReturnEvaluation are the one place the call's scratch is rented and returned, and
+// SelectAt the one entry: evaluation records each candidate's applicability and plan facts in that scratch; classification decides
+// the selection from them. Neither fails, completes nor records a node, except on a broken contract: BetterCandidate, reached from
+// classification through SelectBest and PremisesCannotAffect, records Fail(Source, Internal) when two fits of one argument record
+// unequal position counts.
 public sealed partial class Binding
 {
     private enum CallSelection : byte
@@ -166,7 +169,8 @@ public sealed partial class Binding
 
     // SPEC 10.1-10.4: one call's selection over its rented evaluation: every candidate evaluated, then the selection they determine.
     // The entry a publishing call and a query share: it starts from no deferred acquisition and no failed cause, and neither fails,
-    // completes nor records a node; the caller acts on the outcome.
+    // completes nor records a node, but for a broken contract's Fail(Source, Internal) in BetterCandidate (reached from
+    // ClassifySelection through SelectBest and PremisesCannotAffect); the caller acts on the outcome.
     private (CallSelection Kind, int Winner) SelectAt(ref CallEvaluation evaluation, in FunctionGroup candidates)
     {
         this.acquisitionFailure = null;
