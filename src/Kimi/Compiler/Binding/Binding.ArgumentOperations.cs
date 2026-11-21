@@ -353,9 +353,9 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 7.3, 10.2: a receiver through a pair layer, or one shared reference to its target at a fixed ref/U; an
-        // exclusive borrow of an owned argument keeps its explicit spelling (SPEC 15.1.5).
-        if (!projected && (receiver || pattern.Semantics == SemanticsKind.Ref) && this.TryPairReceiver(source, pattern, actual, scope, out adapted, out kind, recordPair))
+        // SPEC 7.3, 9.6.1, 10.2: a receiver through a pair layer, projected to the base declaring its member as every receiver is, or one
+        // shared reference to its target at a fixed ref/U; an exclusive borrow of an owned argument keeps its explicit spelling (SPEC 15.1.5).
+        if ((receiver || pattern.Semantics == SemanticsKind.Ref) && this.TryPairReceiver(source, pattern, actual, scope, projected ? declaringType : null, out adapted, out kind, recordPair))
         {
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             return true;

@@ -801,7 +801,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: R2<uniq/((ref/i32 during b) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // rn3s (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): rn3k with the slots exchanged: the position first.
         {
@@ -820,7 +820,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: R2<uniq/(ref/i32 during d) during q, uniq/((ref/i32 during b) -> i32) during q> = r0@move"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // rn3n (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): C2<T, U> covariant; let; slot 1 PC against FX(b), slot 2 c == d (review B1).
         {
@@ -842,7 +842,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: C2<uniq/((ref/i32 during b) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // n3f (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): rn3k without d outlives q (G492-a (i)'s n3f): also the declared Type's own record.
         {
@@ -860,7 +860,7 @@ public partial class TypeBindingTest
                 return 0
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: R2<uniq/((ref/i32 during b) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move|UnprovenOriginRelation_Kd uniq/(ref/i32 during d) during q"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move|UnprovenOriginRelation_Kd uniq/(ref/i32 during d) during q"
         },
         // rn3m (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): rn3k's other orientation (slot 1 FX(b) against PC); the declared Type's limit beside them.
         {
@@ -881,7 +881,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: C2<uniq/((ref/i32) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move|Unsupported_Kd uniq/((ref/i32) -> i32) during q"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move|Unsupported_Kd uniq/((ref/i32) -> i32) during q"
         },
         // rn3g (invalid twice, review): rn3k at an argument.
         {
@@ -1361,7 +1361,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "TypeMismatch_Kd r0@move|UnprovenOriginRelation_Kd let r: (uniq/(ref/i32 during d) during q, uniq/i64 during q) = r0@move"
+            "TypeMismatch_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // s3 (invalid twice, re-review): N6: a Function part, then a Type mismatch, then c == d: the mismatch ends the decomposition; as dev.
         {
@@ -1401,7 +1401,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
         // k2 (invalid twice, re-review): (local@ref, g) at return t: unchanged.
         {
@@ -1414,7 +1414,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
         // k3 (invalid twice, re-review): the H11 move: two body chains after g.
         {
@@ -1427,7 +1427,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
         // k6 (invalid twice, re-review): the H11 move: a declared local after t.
         {
@@ -1441,7 +1441,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t@move|UnprovenOriginRelation_Kd ref/((ref/i32 during x) -> i32)|UnsatisfiedOriginRelation_Kd let u: (ref/((ref/i32 during x) -> i32), ref/i32 during x) = t@move"
+            "UnprovenOriginContract_Kd t@move|UnprovenOriginRelation_Kd ref/((ref/i32 during x) -> i32)|UnsatisfiedOriginRelation_Kd t@move"
         },
         // rq2av (invalid, re-review): rq2a through a var local (G492-a (i)'s implementation review).
         {
@@ -1462,6 +1462,7 @@ public partial class TypeBindingTest
         },
     };
 
+    // R7-O1 H: a local annotation's fit is A5's record at its initializer (D5), and the twin at `return t` went (rn3*, n3f, s2, k*).
     [Theory]
     [MemberData(nameof(InvariantFunctionRows))]
     public void AnInvariantFunctionPartRelatesBothWays(string row, string source, string records)

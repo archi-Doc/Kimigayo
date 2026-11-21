@@ -737,10 +737,9 @@ public sealed partial class Binding
             return !exclusive || index.Left.BoundType!.Semantics == SemanticsKind.Uniq;
         }
 
-        if (node is MemberAccessKoto element && element.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.Tuple })
+        if (node is MemberAccessKoto element && this.TryBorrowedTupleElement(element, out _, out _))
         {
-            return this.TryBorrowedTupleElement(element, out _, out _) &&
-                (!exclusive || element.Left.BoundType!.Semantics == SemanticsKind.Uniq);
+            return this.LendsPart(element.Left, owner, scope, exclusive, out staticRoot); // A Tuple element through its receiver's layers.
         }
 
         if (node.BoundSymbol?.Property is { } property)
@@ -778,11 +777,7 @@ public sealed partial class Binding
                         this.LendsHandle(access.Left, this.LentOwner(owner, access.Left, scope, exclusive), out staticRoot);
                 }
 
-                // SPEC 3.4.3, 13.5.5: past an exclusive layer of the receiver's own Type, a pair layer admitting only uniq included,
-                // the Field is lent in either mode; past another reference, view or raw pointer it is shared; an owned receiver, also
-                // past a pair layer admitting owner, lends it as the receiver Place does.
-                return this.LayerAuthority(access.Left, []) == SemanticsKind.Uniq ||
-                    (access.Left.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.LendsOwner(access.Left, this.LentOwner(owner, access.Left, scope, exclusive), out staticRoot));
+                return this.LendsPart(access.Left, owner, scope, exclusive, out staticRoot);
             }
 
             return true;
@@ -811,6 +806,18 @@ public sealed partial class Binding
     {
         staticRoot = lent.StaticRoot;
         return lent.Lends || this.WritableTemporary(owner);
+    }
+
+    // SPEC 3.4.3, 13.5.5: whether a stored Field or a Tuple element is lent in a mode past every layer of its receiver's own Type (one
+    // or several, as selection reached it; PLAN G1122): past an exclusive layer, a pair layer admitting only uniq included, in either
+    // mode; past another reference, view or raw pointer shared; an owned receiver, also past a pair layer admitting owner, as the
+    // receiver Place lends it (owner, the receiver's prefix in the lending fold: LentOwner). A shared layer on the path above the
+    // receiver is the fold's (Lends).
+    private bool LendsPart(Koto receiver, PathLend? owner, BindingScope scope, bool exclusive, out Koto? staticRoot)
+    {
+        staticRoot = null;
+        return this.LayerAuthority(receiver, []) == SemanticsKind.Uniq ||
+            (receiver.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.LendsOwner(receiver, this.LentOwner(owner, receiver, scope, exclusive), out staticRoot));
     }
 
     // The forms of one path step (NextPathStep).

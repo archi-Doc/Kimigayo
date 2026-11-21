@@ -93,7 +93,6 @@ public sealed partial class Binding
         this.importedContainers = new(this);
         this.qualificationFailures = new(this);
         this.perCallOrigins = new(this);
-        this.originTwins = new(this);
         this.pairFollows = new(this);
         this.implicitPairFollows = new(this);
         this.phantomRawOrigins = new(this);

@@ -173,7 +173,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     [InlineData("let kept = label out: do\n    let n = 7\n    exit to out Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd let n = 7")]
     [InlineData("let kept = label out: do\n    let n = 7\n    let local = Kimi.Intrinsics.makeRc(View.init(n@ref))\n    exit to out Kimi.Intrinsics.clone(local@ref)\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd let n = 7")]
     [InlineData("let m = 1\nvar slot = Kimi.Intrinsics.makeRc(View.init(m@ref))\ndo\n    let n = 7\n    slot = Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire slot.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd let n = 7")]
-    [InlineData("func leak() -> rc/View\n    let n = 7\n    return Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire leak().value == 7 else => $abort(\"live\")", "UnsatisfiedOriginRelation_Kd return Kimi.Intrinsics.makeRc(View.init(n@ref))|UnsatisfiedOriginRelation_Kd Kimi.Intrinsics.makeRc(View.init(n@ref))")]
+    [InlineData("func leak() -> rc/View\n    let n = 7\n    return Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire leak().value == 7 else => $abort(\"live\")", "UnsatisfiedOriginRelation_Kd Kimi.Intrinsics.makeRc(View.init(n@ref))")] // One record (R7-O1 H: the twin at the return went with Binding's).
     public void HandlesKeepTheLoansOfTheirBorrowsAndPayloads(string use, string records)
     {
         foreach (var atomic in new[] { false, true })
