@@ -26,6 +26,10 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     private const string Failed = "IncompatibleContractImplementation_Kd Self is Sink 1";
 
+    // An immutable static whose value is an rc handle, not Transferable, beside a Transferable one.
+    private const string Shared = "struct Item\n    public var value: i32 = 7\n    public init() => ()\ngroup Shared\n    public let limit: i32 = 10\n" +
+        "    public let node: rc/Item = Kimi.Intrinsics.makeRc(Item.init())\n";
+
     // A generic's put and, in a put's body, a writer over a fixed buffer of 64 bytes.
     private const string Put = "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n";
 
@@ -84,7 +88,10 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.2: an access to a mutable static, a raw pointer read from an immutable static, an integer made a pointer and a foreign
     // call obtain authority from the environment; reading an immutable static (its initializer enters the summary), writing through a raw
-    // input and a foreign call where nothing owes confined do not.
+    // input and a foreign call where nothing owes confined do not. A part a rejected form reads is read at its own node (DECISIONS Z17,
+    // SPEC 13.7.1 step 1), so a derived write's right side reading an rc payload of an immutable static obtains that authority as its
+    // decided twin does, and one reading a Transferable static does not (fail-before: the first, no problem, the site's undecided use of
+    // the static a dependent of the error).
     [Theory]
     [InlineData("group G\n    public var count: i32 = 0\n", "        _ = G.count\n", Failed)]
     [InlineData("group G\n    public let count: i32 = 2 + 3\n", "        _ = G.count\n", "")]
@@ -97,6 +104,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\n",
         "        let output: raw/i64 = null\n        unsafe => _ = Native.query(output)\n",
         Failed)]
+    [InlineData(Shared, "        missing = Shared.node.value\n", Failed)]
+    [InlineData(Shared, "        var m = 0\n        m = Shared.node.value\n", Failed)]
+    [InlineData(Shared, "        missing = Shared.limit\n", "")]
     public void ConfinedExcludesEnvironmentAuthority(string declarations, string body, string expected)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + declarations + Witness + body + "        return .Ok(())\n"));
 

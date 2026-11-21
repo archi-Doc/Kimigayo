@@ -239,7 +239,8 @@ internal sealed partial class MirBorrows
         return true;
     }
 
-    // The departure test's uses of one location (MayDepart): each Place a use reports, until one may depart.
+    // The departure test's uses of one location (MayDepart): each Place a use reports, an Opaque site's undecided use at its root
+    // (MirDescriptors.Judged, DECISIONS Z17), until one may depart.
     private struct Departing(MirBorrows owner) : IMirUses
     {
         private MirLocation at;
@@ -254,7 +255,8 @@ internal sealed partial class MirBorrows
         {
         }
 
-        public void Place(MirPlace place, MirAccess access, MirRefKind kind) => this.Found = this.Found || owner.MayDepart(this.at, place, access, kind);
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
+            => this.Found = this.Found || owner.MayDepart(this.at, MirDescriptors.Judged(place, access), access, kind);
 
         internal void At(MirLocation at) => this.at = at;
     }

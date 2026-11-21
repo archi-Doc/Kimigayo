@@ -518,7 +518,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 
     // DECISIONS BU-86: a result whose callee Origin no argument substitutes (`.None` is no evidence for s) no longer leaves the candidate
     // Pending: s is a call region (SPEC 15.6.4 step 1; DECISIONS BU-104's twelfth-amendment paragraph), so the record is the Callable
-    // Constraint's own, with the call's Note and the Constraint related, and still carries no environment judgment.
+    // Constraint's own, with the call's Note and the Constraint and the called declaration related (R7-E2 E2-5b, M4: a location the record
+    // names is shown), and still carries no environment judgment.
     [Fact]
     public void AnUnsubstitutedResultOriginCarriesNoEnvironmentJudgment()
     {
@@ -527,8 +528,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(
             (nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(c@ref, .None)", "Call make requires F is Callable<() -> T>; this condition cannot be proven under the supplied bindings"),
             (error.Code, Text(source, error.Span), error.Note));
-        var constraint = Assert.Single(error.Related!);
-        Assert.Equal(("constraint", "F is Callable<() -> T>"), (constraint.Role, Text(source, constraint.Span)));
+        Assert.Equal(["constraint", "declaration"], error.Related!.Select(static x => x.Role));
+        Assert.Equal(("F is Callable<() -> T>", "make"), (Text(source, error.Related![0].Span), error.Related![1].Label));
     }
 
     // DECISIONS BU-86 (2026-11-03): the environment judgment decides only for a slot that no evidence binds (SPEC 10.8). Once another

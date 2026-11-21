@@ -3,7 +3,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Kimi;
-using Kimi.Build;
 using Kimi.Command;
 using Kimi.Compiler;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,8 +10,8 @@ using Xunit;
 
 namespace XunitTest;
 
-// kimi tatara's native rows (Tatara design A3 §3), on the resolved toolchain root's tatara.dll; each skips off Windows, and on Windows
-// a missing tatara.dll fails it. Single-shot runs each line in a unit of its own; the session runs every line in one unit. The fatal
+// kimi tatara's native rows (Tatara design A3 §3), on the compiler's Tatara (one instance per process, Tatara B6b1); each skips off
+// Windows, and on Windows a missing tatara.dll fails it. Single-shot runs each line in a unit of its own; the session runs every line in one unit. The fatal
 // row leaves Tatara refusing every later call for the rest of its process, so it runs in a child test process of its own (Fatal).
 [Collection<ConsoleIsolationCollection>]
 public sealed class TataraCommandNativeTest : IDisposable
@@ -89,13 +88,13 @@ public sealed class TataraCommandNativeTest : IDisposable
         Assert.NotNull(JsonNode.Parse(File.ReadAllText(Path.Combine(this.directory, "A", "bin", WindowsProfile.Target, "A.link.build.json")))!["tools"]!["tatara"]);
     }
 
-    // The fatal row in a child test process of its own, its folder this row's (Fatal); the child resolves this process's root, as
-    // FreshProcess passes it no KIMI_ variable of its own.
+    // The fatal row in a child test process of its own, its folder this row's (Fatal); the child loads the tatara.dll beside its
+    // Kimi.dll, as this process does.
     [Fact]
     public async Task AFatalErrorEndsTheSessionOfItsProcess()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        await FreshProcess.RunExplicit(typeof(Fatal), nameof(Fatal.AFatalErrorEndsTheSession), (Fatal.Folder, this.directory), ("KIMI_TOOLCHAIN_ROOT", ToolchainResolver.ResolveRoot(null)));
+        await FreshProcess.RunExplicit(typeof(Fatal), nameof(Fatal.AFatalErrorEndsTheSession), (Fatal.Folder, this.directory));
     }
 
     private static void Write(string root)

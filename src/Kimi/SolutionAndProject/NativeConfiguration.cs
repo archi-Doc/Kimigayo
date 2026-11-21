@@ -37,6 +37,11 @@ internal static class NativeConfiguration
                     (failures ??= []).Add($"NativeRequirements entry '{name}' requires Kind \"static\" or \"import\"; " +
                         "ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
                 }
+
+                if (requirement is not null && Reserved(name))
+                {
+                    (failures ??= []).Add($"{name} is supplied by the compiler. Remove the {name} entry from NativeRequirements.");
+                }
             }
         }
 
@@ -226,15 +231,18 @@ internal static class NativeConfiguration
         return (failures?.Count ?? 0) == count;
     }
 
-    // IMPL 20.4: kernel32 and kimi_backend, the reserved supplies, are the compiler's, so a supply record of either name, self-targeted
-    // or for a package, under any target, is an error.
+    // A supply record of a reserved name, self-targeted or for a package, under any target, is an error.
     private static void CheckReserved(string? name, ref List<string>? failures)
     {
-        if (name is WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary)
+        if (Reserved(name))
         {
             (failures ??= []).Add($"{name} is supplied by the compiler. Remove the {name} entry from NativeLibraries.");
         }
     }
+
+    // IMPL 20.4: kernel32 and kimi_backend, the reserved supplies, are the compiler's, so a NativeRequirements or NativeLibraries
+    // entry of either name is an error, each record kind with its own note.
+    private static bool Reserved(string? name) => name is WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary;
 
     // Whether two packaged records supply one name of one package with assertions that cannot both hold.
     private static bool Conflicts(NativeLibraryInput record, NativeLibraryInput? other)
