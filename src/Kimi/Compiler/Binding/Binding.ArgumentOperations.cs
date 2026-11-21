@@ -407,13 +407,16 @@ public sealed partial class Binding
                 return false; // SPEC 10.2: no implicit borrow of a reference slot.
             }
 
-            if (!explicitBorrow && !projected && target == SemanticsKind.Ref &&
-                this.SharedReferenceThroughLayers(actual, pattern.Components[0], scope, out var layers) is { } shared && (layers > 1 || actual.Semantics == SemanticsKind.Uniq))
+            if (!explicitBorrow && !projected && (target == SemanticsKind.Ref || (receiver && target == SemanticsKind.Uniq && BelowLayer(actualReferent) is not null)) &&
+                this.SharedReferenceThroughLayers(actual, pattern.Components[0], scope, out var layers) is { } shared &&
+                (target == SemanticsKind.Uniq ? layers > 1 && this.ExclusivelyAcquirable(source) : layers > 1 || actual.Semantics == SemanticsKind.Uniq))
             {
-                // SPEC 10.2, 15.6.3: several reference layers yield one shared reference to the parameter's referent, contained in the
-                // layers and, unless one is shared, in those that reach the source.
-                adapted = this.ReferentOrigin(source, actual, layers) is { } origin
-                    ? this.types.Reference(SemanticsKind.Ref, pattern.Components[0], origin) : shared;
+                // SPEC 10.2, 7.3.3, 15.6.3: safe value-reference layers ending in the parameter's referent yield one reference to it,
+                // contained in the layers and, unless one is shared, in those that reach the source: shared at a fixed ref/U (10.2's row);
+                // exclusive for a Receiver Expression below several layers whose path and layers grant it (7.3.3's p@follow@uniq on the
+                // path of 3.4.3; ExclusivelyAcquirable, the mode ReceiverThroughLayers' recorded read takes). One stored uniq layer at
+                // uniq/U is the Reborrow below (PLAN G147 (2) (c)).
+                adapted = this.types.Reference(target, pattern.Components[0], this.ReferentOrigin(source, actual, layers) ?? shared.Origin);
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = layers > 1 ? ArgumentOperationKind.ReferenceRead : ArgumentOperationKind.Reborrow;
                 return true;
