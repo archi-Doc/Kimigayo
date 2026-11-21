@@ -253,9 +253,10 @@ public class RawStorageTest
 
     // SPEC 5.7 (DECISIONS R4-M105, OQ-R1 (a); R4-M110): through no dereference, except through `self` in the constructors and drop of
     // the Type whose inline storage holds the layer, a `during self` layer's Place admits reads (a Move included), shared borrows and
-    // writes of null only, and an enclosing Tuple or fixed-array Place is written and borrowed as the layer's Place is. Every other
-    // write, an exclusive borrow, also a receiver's implicit one (SPEC 7.3), and a non-null Case payload is an Origin relation error, one
-    // record each; a Move of an enclosing Place is a located Unsupported_Kd (PLAN G212: SPEC does not say what it gives). Since the MIR
+    // writes of null only, and an enclosing Tuple or fixed-array Place is read, written and borrowed as the layer's Place is, element by
+    // element (R4-M117 item 6). Every other write, an exclusive borrow, also a receiver's implicit one (SPEC 7.3), and a non-null Case
+    // payload is an Origin relation error, one record each. A Move of an enclosing Place is a read the allowlist does not judge; it Moves
+    // the whole Place, the layer's element included (SPEC 13.5.3, 15.1.2), so only a whole write restores it. Since the MIR
     // decides acceptance (R6-check H5), its records on two of these Binding-rejected programs are published beside Binding's (DECISIONS
     // R5-M184, until A6's 2g-1; H3b T51, class 4): PQ-10's located Unsupported_Kd at the enclosing Tuple's Copy read `b.pair` (DECISIONS
     // R4-M120). R7-O1 H (B4: a relation problem leaves the access Resolved, so A5 reaches it; Q13 rule 3, the Middle's (iii)): PQ-10's
@@ -294,7 +295,21 @@ public class RawStorageTest
     // rejected program, counted: DECISIONS Q13).
     [InlineData("()", "for _ in b.arr@uniq => _ = 0", "ComparisonLoanConflict_Kd: var b = Block.init() | Unsupported_Kd: b.arr@uniq | UnsatisfiedOriginRelation_Kd: b.arr@uniq")]
     [InlineData("()", "let w = b.data@move\n    b.data = fresh", "UnsatisfiedOriginRelation_Kd: b.data = fresh")]
-    [InlineData("()", "let t = b.pair@move", "Unsupported_Kd: b.pair@move")]
+    // A Move of an enclosing Place (Z5): PQ-10's located Unsupported_Kd at the moved Place (R4-M120), and each program's own A1 or A5
+    // record, which Binding's former located Unsupported_Kd at the Move hid (SPEC 23.1.2): Block's drop needs the whole Place restored
+    // (16.3), the Moved Place is read, Moved again, borrowed while Moved or restored in part (13.5.3, 15.1.2), or Moved under a shared
+    // Loan (15.6); a non-null restore is the relation error, the write staying Resolved (R7-O1 B4).
+    [InlineData("()", "let t = b.pair@move", "MovedPlace_Kd: var b = Block.init() | Unsupported_Kd: b.pair")]
+    [InlineData("()", "let m = b.pair@move\n    b.pair = (fresh, 2)", "Unsupported_Kd: b.pair | UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 2)")]
+    [InlineData("()", "let m = b.pair@move\n    b.pair = m", "Unsupported_Kd: b.pair | UnsatisfiedOriginRelation_Kd: b.pair = m")]
+    [InlineData("()", "let m = b.pair@move\n    let t = b.pair\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair")]
+    [InlineData("()", "let m = b.pair@move\n    let p = b.pair.0\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair.0")]
+    [InlineData("()", "let m = b.pair@move\n    let n = b.pair.1\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair.1")]
+    [InlineData("()", "let m = b.arr@move\n    let u = b.arr[1]\n    b.arr = [null, null]", "Unsupported_Kd: b.arr | MovedPlace_Kd: b.arr[1]")]
+    [InlineData("()", "let m = b.pair@move\n    let w = b.pair.1@ref\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair.1@ref")]
+    [InlineData("()", "let m = b.pair@move\n    let n = b.pair@move\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair")]
+    [InlineData("()", "let m = b.pair@move\n    b.pair.1 = 2", "MovedPlace_Kd: var b = Block.init() | Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair.1 = 2")]
+    [InlineData("()", "let r = b.pair@ref\n    let m = b.pair@move\n    let q = r@follow.0\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair@ref | Unsupported_Kd: b.pair | ComparisonLoanConflict_Kd: b.pair")]
     // Rule W (DECISIONS Q13, BU-79; PLAN G789): a failed part at a layer's position is no evidence of what the write puts there, so only
     // its own record is reported; another layer's non-null source and an update, which reads no value, keep their records.
     [InlineData("()", "b.data = nope", "UnresolvedBinding_Kd: nope")]
@@ -366,11 +381,15 @@ public class RawStorageTest
     }
 
     // H3b T31a, PQ-10: these valid forms (SPEC 5.7's allowlist, 15.6.2) are refused by A5's located Unsupported_Kd at a non-raw borrow
-    // of a layer's Place or at a Borrow or Copy read of an enclosing Tuple or fixed-array Place (DECISIONS R4-M120, PQ-10's interim); the
-    // old analysis accepted them. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G212's unit (U-B3) restores the
-    // acceptance and moves the rows back to ASelfLayerAdmitsReadsSharedBorrowsAndNull. Each record is at the subject in each context.
+    // of a layer's Place or at a Borrow, Copy or Move read of an enclosing Tuple or fixed-array Place (DECISIONS R4-M120, PQ-10's interim);
+    // the old analysis accepted them. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G212's unit (U-B3) restores the
+    // acceptance and moves the rows back to ASelfLayerAdmitsReadsSharedBorrowsAndNull. Each record is at the subject in each context. A
+    // Move of an enclosing Place, restored whole for Block's drop (Z5: Binding completes it as a read, SPEC 5.7), is PQ-10's at the Place.
     [Theory]
     [InlineData("let c = Cell.Some(null)\n    let p: raw/u8 = match c@ref\n        Cell.Some(let q) => q@follow\n        Cell.Two((let q, _)) => q@follow\n        Cell.None => null", "let q", "Cell.Some(let q)", "Cell.Two((let q, _))")]
+    [InlineData("let t = b.pair@move\n    b.pair = (null, 2)", "b.pair", "let t = b.pair@move")]
+    [InlineData("let t = b.arr@move\n    b.arr = [null, null]", "b.arr", "let t = b.arr@move")]
+    [InlineData("match b.pair@move\n        (let p, let n) => _ = p\n    b.pair = (null, 2)", "b.pair", "match b.pair@move")]
     [InlineData("let w = b.pair@ref", "b.pair@ref", "let w = b.pair@ref")]
     [InlineData("let s = b.arr.slice()", "b.arr", "let s = b.arr.slice()")]
     [InlineData("let r = b@uniq\n    let w = r.pair@uniq", "r.pair@uniq", "let w = r.pair@uniq")]
