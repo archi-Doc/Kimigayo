@@ -137,9 +137,9 @@ public partial class OriginRelationDiagnosticTest
     // Type (10.5.1), which fits no candidate at either call kind (D1; R4, 2026-10-31).
     [Theory]
     [InlineData("pb1b_n", PbValue + "    return g(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n", "TypeMismatch_Kd .Some(x == 0)")]
-    [InlineData("pb1c_n", PbH + PbOption + "    return h(match o\n        .Some(let x) => .Some(true)\n        .None => .None\n    )\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("pb1d_n", PbH + "func k(c: bool) -> i32\n    return h(match c\n        true => .Some(true)\n        false => .None\n    )\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("pb1e_n", PbH + PbOption + "    let r = h(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n    return r\n", "TypeMismatch_Kd .Some(x == 0)")]
+    [InlineData("pb1c_n", PbH + PbOption + "    return h(match o\n        .Some(let x) => .Some(true)\n        .None => .None\n    )\n", "NoApplicableOverload_Kd h(match o")]
+    [InlineData("pb1d_n", PbH + "func k(c: bool) -> i32\n    return h(match c\n        true => .Some(true)\n        false => .None\n    )\n", "NoApplicableOverload_Kd h(match c")]
+    [InlineData("pb1e_n", PbH + PbOption + "    let r = h(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n    return r\n", "NoApplicableOverload_Kd h(match o")]
     [InlineData("pb1g_n", PbValue + "    let r = g(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n    return r\n", "TypeMismatch_Kd .Some(x == 0)")]
     [InlineData(
         "pb1h",
@@ -152,16 +152,16 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("b5g_n", RunG + "    return g(if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("b5go_n", RunG + "    return g(if c => Option.None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("b5k_n", RefOne + RefThree + RunK + "    return k(if c => one else => three)\n", "TypeMismatch_Kd three")]
-    [InlineData("b5h_n", OptionH + RunHead + "    return h(if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("b5ho_n", OptionH + RunHead + "    return h(if c => Option.None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("b5ap_n", RefOne + RefThree + ApFunc + RunHead + "    return ap(if c => one else => three)\n", "TypeMismatch_Kd three")]
+    [InlineData("b5h_n", OptionH + RunHead + "    return h(if c => .None else => .Some(true))\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(true))")]
+    [InlineData("b5ho_n", OptionH + RunHead + "    return h(if c => Option.None else => .Some(true))\n", "NoApplicableOverload_Kd h(if c => Option.None else => .Some(true))")]
+    [InlineData("b5ap_n", RefOne + RefThree + ApFunc + RunHead + "    return ap(if c => one else => three)\n", "NoApplicableOverload_Kd ap(if c => one else => three)")]
     [InlineData("b7k_n", RefOne + RefThree + RunK + "    return k(match c\n        true => one\n        false => three\n    )\n", "TypeMismatch_Kd three")]
-    [InlineData("b7ap_n", RefOne + RefThree + ApFunc + RunHead + "    return ap(match c\n        true => one\n        false => three\n    )\n", "TypeMismatch_Kd three")]
-    [InlineData("b6h", OptionH + RunHead + "    let a = h(if c => .None else => .Some(true))\n    return a\n", "TypeMismatch_Kd .Some(true)")]
+    [InlineData("b7ap_n", RefOne + RefThree + ApFunc + RunHead + "    return ap(match c\n        true => one\n        false => three\n    )\n", "NoApplicableOverload_Kd ap(match c")]
+    [InlineData("b6h", OptionH + RunHead + "    let a = h(if c => .None else => .Some(true))\n    return a\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(true))")]
     [InlineData("b6ar", OptionH + RunHead + "    let a = h(if c => .None else => .Some(1), 2)\n    return a\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(1), 2)")]
     [InlineData("b6u", OptionH + RunHead + "    let a = h(if c => .None else => .Some(undefinedName))\n    return a\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("b6g", RunG + "    let a = g(if c => .None else => .Some(true))\n    return a\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("b6ap", RefOne + RefThree + ApFunc + RunHead + "    let a = ap(if c => one else => three)\n    return a\n", "TypeMismatch_Kd three")]
+    [InlineData("b6ap", RefOne + RefThree + ApFunc + RunHead + "    let a = ap(if c => one else => three)\n    return a\n", "NoApplicableOverload_Kd ap(if c => one else => three)")]
     [InlineData("b6fn", ApFunc + RunHead + "    let a = ap(if c => func [] (x: i32) -> i32 => x else => func [] (x: i64) -> i32 => 0)\n    return a\n", "")]
     public void AFailingJoinArgumentIsALanguageError(string form, string body, string required)
         => AssertLanguageErrors(form, body, required);

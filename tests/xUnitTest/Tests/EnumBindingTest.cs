@@ -291,7 +291,7 @@ public class EnumBindingTest
     [InlineData("func f()\n    let x: Option<i64> = Option.Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option.Some(true)")]
     [InlineData("func f() -> Option<i64> => .Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(true)")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f() -> Two<i64> => Two.Both(\"a\", \"b\")\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(\"a\", \"b\")")]
-    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(.Some(true))\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(true)")]
+    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(.Some(true))\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeOpt(.Some(true))")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f(b: bool)\n    let x: Two<i64> = Two.Both(b, 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(b, 1)")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f() => Two.Both(1, 2.0)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(1, 2.0)")]
     [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v: bool) -> i64 => 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(a, func (v: bool) -> i64 => 1)")]

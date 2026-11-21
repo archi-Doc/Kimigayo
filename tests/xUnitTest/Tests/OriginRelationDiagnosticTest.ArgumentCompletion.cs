@@ -136,12 +136,12 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.3", "nar1_u", OptionH + KHead + "    return h(if c => .None else => .Some(undefinedName))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.3", "vcar6_u", ValueG + "    return g(if c => .None else => .Some(undefinedName))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.3", "vcar6_ar", ValueG + "    return g(if c => .None else => .Some(1), 2)\n", "NoApplicableOverload_Kd g(if c => .None else => .Some(1), 2)")]
-    [InlineData("U1.3", "l1_n", OptionH + KHead + "    let a = h(label l: if c => .None else => .Some(true))\n    return a\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("U1.3", "b1_n", OptionH + KHead + "    let a = h(" + LabeledDo + ".Some(true)\n    )\n    return a\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("U1.3", "lt1_n", "func h2(t: (Option<i32>, i32)) -> i32 => 0\n" + KHead + "    return h2((label l: if c => .None else => .Some(true), 1))\n", "TypeMismatch_Kd .Some(true)")]
+    [InlineData("U1.3", "l1_n", OptionH + KHead + "    let a = h(label l: if c => .None else => .Some(true))\n    return a\n", "NoApplicableOverload_Kd h(label l: if c => .None else => .Some(true))")]
+    [InlineData("U1.3", "b1_n", OptionH + KHead + "    let a = h(" + LabeledDo + ".Some(true)\n    )\n    return a\n", "NoApplicableOverload_Kd h(label s: do")]
+    [InlineData("U1.3", "lt1_n", "func h2(t: (Option<i32>, i32)) -> i32 => 0\n" + KHead + "    return h2((label l: if c => .None else => .Some(true), 1))\n", "NoApplicableOverload_Kd h2((label l: if c => .None else => .Some(true), 1))")]
     [InlineData("U1.3", "l2_n", ValueG + "    return g(label l: if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("U1.3", "b1v_n", ValueG + "    return g(" + LabeledDo + ".Some(true)\n    )\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("U1.2", "b6m", OptionH + RunHead + "    let a = h(match c\n        true => .None\n        false => .Some(true)\n    )\n    return a\n", "TypeMismatch_Kd .Some(true)")]
+    [InlineData("U1.2", "b6m", OptionH + RunHead + "    let a = h(match c\n        true => .None\n        false => .Some(true)\n    )\n    return a\n", "NoApplicableOverload_Kd h(match c")]
     [InlineData("U1.2", "b6y", "func h(o: Option<i32>, n: i32) -> i32 => 0\n" + RunHead + "    let a = h(if c => .None else => .Some(1), true)\n    return a\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(1), true)")]
     [InlineData("U1.2", "b6x", RunK + "    let a = k(if c => func [] (x: i32) -> i32 => x else => func [] (x: i64) -> i32 => 0)\n    return a\n", "TypeMismatch_Kd func [] (x: i64) -> i32 => 0")]
     public void AFailingArgumentKeepsItsIndependentLanguageErrors(string unit, string form, string body, string required)
@@ -192,7 +192,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "d2_g", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_g_t", IdentityT + "func g<T>(t: (T, i32)) -> i32 => 0\n" + KX + "    return g<i64>" + D2Join + "\n", "")]
     [InlineData("U1.5", "d2_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f" + D2Join + "\n", "NoApplicableOverload_Kd f" + D2Join)]
-    [InlineData("U1.6g", "e4", IdentityT + FTuples + "func k(c: u8, x: i64, b: bool) -> i32\n    return f(match c\n        0 => (identity(1), 2)\n        1 => (x, 3)\n        _ => (b, 4)\n    )\n", "AmbiguousBinding_Kd f(match c")]
+    [InlineData("U1.6g", "e4", IdentityT + FTuples + "func k(c: u8, x: i64, b: bool) -> i32\n    return f(match c\n        0 => (identity(1), 2)\n        1 => (x, 3)\n        _ => (b, 4)\n    )\n", "NoApplicableOverload_Kd f(match c")]
     [InlineData("U1.2", "e11", IdentityT + FTuples + KX + "    return f(if c => (identity(1), 2) else => (if c => (x, 3) else => (identity(4), 5)))\n", "")]
     [InlineData("U1.2", "t3x", IdentityT + "func f(x: ((i64, i32), i32)) -> i32 => 0\nfunc f(x: ((bool, i32), i32)) -> i32 => 1\n" + KX + "    return f(if c => ((identity(1), 2), 3) else => ((x, 3), 4))\n", "")]
     [InlineData("U1.3", "e6b", "func one(x: i64) -> i64 => x\nfunc one(x: bool) -> bool => x\nfunc f(x: ((i64) -> i64, i32)) -> i32 => 0\nfunc f(x: ((bool) -> bool, i32)) -> i32 => 1\nfunc k(c: bool, gv: (i64) -> i64) -> i32\n    return f(if c => (one, 1) else => (gv@move, 2))\n", "")]
@@ -219,12 +219,12 @@ public partial class OriginRelationDiagnosticTest
     // sc_elem, and the value call sc_h; 23.1.2), a Tuple source that awaits its position still the join's (sc_tfi), and Tuple results of
     // another length fit no candidate (sc_len; 10.5.1's last paragraph). Outside a call argument the conflict is the join's (sc_let).
     [Theory]
-    [InlineData("U1.6g", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "AmbiguousBinding_Kd f(if c => x else => b)")]
-    [InlineData("U1.6g", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "TypeMismatch_Kd b")]
-    [InlineData("U1.6g", "sc_elem", FI64 + KXB + "    return f((if c => x else => b))\n", "TypeMismatch_Kd b")]
+    [InlineData("U1.6g", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
+    [InlineData("U1.6g", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
+    [InlineData("U1.6g", "sc_elem", FI64 + KXB + "    return f((if c => x else => b))\n", "NoApplicableOverload_Kd f((if c => x else => b))")]
     [InlineData("U1.6g", "sc_h", FI64 + KXB + "    let h = f\n    return h(if c => x else => b)\n", "TypeMismatch_Kd b")]
-    [InlineData("U1.6g", "sc_tov", FTuples + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "AmbiguousBinding_Kd f(if c => (x, 1) else => (b, 2))")]
-    [InlineData("U1.6g", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "TypeMismatch_Kd if c => (x, 1) else => (b, 2)")]
+    [InlineData("U1.6g", "sc_tov", FTuples + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
+    [InlineData("U1.6g", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_len", FTuple + KXB + "    return f(if c => (x, 1) else => (x, 2, 3))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (x, 2, 3))")]
     [InlineData("U1.6g", "sc_let", KXB + "    let v = if c => x else => b\n    return 0\n", "TypeMismatch_Kd if c => x else => b")]
     public void TypedPartsInConflictAtACallArgumentWaitForTheCall(string unit, string form, string body, string records)
@@ -275,10 +275,11 @@ public partial class OriginRelationDiagnosticTest
     // of the rows that pinned "checked by the selected candidate only"): at the join's own position (wj_ov, pw8, its `match` pw16, pw17
     // in a `let`), as an element (wj_elem) and at a child position (wj_tup, its `match` wj_tup_m; wj_arr moved to U1.6f's rows); a
     // contextual Case among the sources (o2: at `Option<bool>` `.Some(1)` does not check) and an array of function references and
-    // anonymous functions (g050: at `(bool) -> bool` the typed `gv1@move` and `twice` do not fit) likewise. With one candidate the sources get their own records, as `g(identity(1))` and `g(2)` do (wj_one_n, wj_pick_n,
-    // wj_ctor_n, wj_tup_n, and wj_one_v at a value call). U1.6 (BU's U1.5 review B1): every part of a child position is formed alike
+    // anonymous functions (g050: at `(bool) -> bool` the typed `gv1@move` and `twice` do not fit) likewise. With one candidate a source that does not check
+    // makes it inapplicable: the call's NoApplicableOverload_Kd with that source's reason (design-af3 R1.7, R2.1; ruling 121 (a)) (wj_one_n,
+    // wj_pick_n, wj_ctor_n, wj_tup_n; wj_one_v at a value call keeps the sources' records). U1.6 (BU's U1.5 review B1): every part of a child position is formed alike
     // (AddResultPart), so a nested waiting join in the Tuple result of a join with one source beside Never is flattened as with two
-    // (sg1; sg1b, each selecting `f((i64, i32))`), and its one candidate gives the sources' records (sg1n). BU's landing B2 rows: a slot only waiting parts sit at stays
+    // (sg1; sg1b, each selecting `f((i64, i32))`), and its one candidate gives the call's record (sg1n). BU's landing B2 rows: a slot only waiting parts sit at stays
     // unbound, since a waiting argument is never evidence for an outer slot (SPEC 10.5.1): a deferred call beside Never (g125) or beside
     // another at a Tuple's child position (n2_flat).
     [Theory]
@@ -291,14 +292,14 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.5", "wj_elem", IdentityT + FTuples + KHead + "    return f((" + WJoin + ", 3))\n", "")]
     [InlineData("U1.5", "wj_tup", IdentityT + FTuples + KHead + "    return f(" + WTuples + ")\n", "")]
     [InlineData("U1.5", "wj_tup_m", IdentityT + FTuples + KHead + "    return f(match c\n        true => (identity(1), 2)\n        false => (2, 3)\n    )\n", "")]
-    [InlineData("U1.5", "wj_one_n", IdentityT + GBool + KHead + "    return g(" + WJoin + ")\n", WSources)]
+    [InlineData("U1.5", "wj_one_n", IdentityT + GBool + KHead + "    return g(" + WJoin + ")\n", "NoApplicableOverload_Kd g(if c => identity(1) else => 2)")]
     [InlineData("U1.5", "wj_one_v", IdentityT + GBool + KHead + "    let h = g\n    return h(" + WJoin + ")\n", WSources)]
-    [InlineData("U1.5", "wj_pick_n", IdentityT + Pick + "func k(c: bool, v: bool) -> bool\n    return pick(" + WJoin + ", v)\n", WSources)]
-    [InlineData("U1.5", "wj_ctor_n", IdentityT + BoxInit + KHead + "    let b: Box<bool> = Box.init(" + WJoin + ")\n    return 0\n", WSources)]
-    [InlineData("U1.5", "wj_tup_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 0\n" + KHead + "    return f(" + WTuples + ")\n", WSources)]
+    [InlineData("U1.5", "wj_pick_n", IdentityT + Pick + "func k(c: bool, v: bool) -> bool\n    return pick(" + WJoin + ", v)\n", "NoApplicableOverload_Kd pick(if c => identity(1) else => 2, v)")]
+    [InlineData("U1.5", "wj_ctor_n", IdentityT + BoxInit + KHead + "    let b: Box<bool> = Box.init(" + WJoin + ")\n    return 0\n", "NoApplicableOverload_Kd Box.init(if c => identity(1) else => 2)")]
+    [InlineData("U1.5", "wj_tup_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 0\n" + KHead + "    return f(" + WTuples + ")\n", "NoApplicableOverload_Kd f(if c => (identity(1), 2) else => (2, 3))")]
     [InlineData("U1.6", "sg1", IdentityT + Stop + FTuples + KD + "    return f(if c => (" + SgJoin + ", 3) else => stop())\n", "")]
     [InlineData("U1.6", "sg1b", IdentityT + FTuples + KD + "    return f(if c => (" + SgJoin + ", 3) else => (" + SgJoin + ", 3))\n", "")]
-    [InlineData("U1.6", "sg1n", IdentityT + Stop + "func g(x: (bool, i32)) -> i32 => 0\n" + KD + "    return g(if c => (" + SgJoin + ", 3) else => stop())\n", WSources)]
+    [InlineData("U1.6", "sg1n", IdentityT + Stop + "func g(x: (bool, i32)) -> i32 => 0\n" + KD + "    return g(if c => (" + SgJoin + ", 3) else => stop())\n", "NoApplicableOverload_Kd g(if c => (if d => identity(1) else => 2, 3) else => stop())")]
     [InlineData("U1.3", "g125", IdentityT + Stop + "func g<T>(x: T) -> i32 => 0\nfunc k(c1: bool, c2: bool) -> i32\n    return g(label lp: if c2 => (if c1 => stop() else => identity(2)) else => stop())\n", "")]
     [InlineData("U1.3", "n2_flat", IdentityT + "func first<T>(value: (T, i64)) -> () => ()\nfunc k(c: bool, d: bool, e: bool, x: i64) -> ()\n    first(if c => (identity(5), x) else => (identity(4), x))\n", "")]
     public void AWaitingJoinPositionIsCheckedAtEachCandidate(string unit, string form, string body, string records)
@@ -362,17 +363,18 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6", "f2", IdentityT + "func f(x: (i64, i32)) -> i32 => 0\n" + KHead + "    return f((if c => identity(1) else => undefinedName, 3))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6", "e3", IdentityT + "func f(x: (i64, i32)) -> i32 => 0\n" + KHead + "    return f(if c => (identity(1), 2) else => (undefinedName, 3))\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6", "dl1", IdentityT + "func f(x: i64) -> i32 => 0\n" + KHead + "    return f(label s: do\n        if c => exit to s undefinedName\n        exit to s identity(1)\n    )\n", "UnresolvedBinding_Kd undefinedName")]
-    [InlineData("U1.6", "g026", IdentityT + GBool + KD + "    return g(if c => identity(7) else => (if d => undefinedName else => identity(4)))\n", "NoApplicableOverload_Kd identity(4); NoApplicableOverload_Kd identity(7); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6", "g026", IdentityT + GBool + KD + "    return g(if c => identity(7) else => (if d => undefinedName else => identity(4)))\n", "NoApplicableOverload_Kd g(if c => identity(7) else => (if d => undefinedName else => identity(4))); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6", "g026_fix", IdentityT + GBool + KD + "    return g(if c => identity(7) else => (if d => true else => identity(4)))\n", "NoApplicableOverload_Kd identity(4); NoApplicableOverload_Kd identity(7)")]
-    [InlineData("U1.6", "g196", IdentityT + GOptions + KD + "    return g([if c => (if d => undefinedName else => identity(.Some(3))) else => .Some(8), .None])\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 8; UnresolvedBinding_Kd undefinedName")]
-    [InlineData("U1.6", "g196_fix", IdentityT + GOptions + KD + "    return g([if c => (if d => .None else => identity(.Some(3))) else => .Some(8), .None])\n", "TypeMismatch_Kd 3; TypeMismatch_Kd 8")]
+    [InlineData("U1.6", "g196", IdentityT + GOptions + KD + "    return g([if c => (if d => undefinedName else => identity(.Some(3))) else => .Some(8), .None])\n", "NoApplicableOverload_Kd g([if c => (if d => undefinedName else => identity(.Some(3))) else => .Some(8), .None]); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6", "g196_fix", IdentityT + GOptions + KD + "    return g([if c => (if d => .None else => identity(.Some(3))) else => .Some(8), .None])\n", "NoApplicableOverload_Kd g([if c => (if d => .None else => identity(.Some(3))) else => .Some(8), .None])")]
     [InlineData("G335", "q14", Apply2Pair + "    return apply2(if c => (if d => (func (v) => v, undefinedName) else => (func (v) => v + 1, 2)) else => stop())\n", "TypeMismatch_Kd if d => (func (v) => v, undefinedName) else => (func (v) => v + 1, 2); UnresolvedBinding_Kd undefinedName")]
     [InlineData("G335", "q14_fix", Apply2Pair + "    return apply2(if c => (if d => (func (v) => v, 1) else => (func (v) => v + 1, 2)) else => stop())\n", "TypeMismatch_Kd if d => (func (v) => v, 1) else => (func (v) => v + 1, 2)")]
     public void AFailedPartTakesNoPartInItsPosition(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // B4 (R4's design review): a join inside a Tuple inside a join, nested to depth 1 to 32, at a named call and a value call, is valid
-    // with `.None` leaves and, with one `.Some(true)` leaf, a Language error at that leaf (SPEC 10.5.1 last paragraph, 14.9.2 step 4); with
+    // with `.None` leaves and, with one `.Some(true)` leaf, a Language error (SPEC 10.5.1 last paragraph, 14.9.2 step 4), the named call's
+    // NoApplicableOverload_Kd (its one candidate inapplicable at the leaf, design-af3 R1.7) or the value call's leaf's own; with
     // literal leaves at an `i64` position (R4's dlit, dvlit), each literal takes its position's Type (SPEC 12.3, 14.9.2 step 3); B2's nd
     // (U1.6), joins nested directly in a join's first source with deferred calls as every source, is valid. The row asserts the verdict
     // at every depth; the linear work it requires is shown by the row finishing in the unit run (TypeDagScalingTest's pattern: a
@@ -394,7 +396,10 @@ public partial class OriginRelationDiagnosticTest
                 : NestedJoinArgument(depth, valueCall, failing, literal: form.EndsWith("lit", StringComparison.Ordinal));
             if (failing)
             {
-                AssertLanguageErrors($"{form} d={depth} [{unit}]", body, "TypeMismatch_Kd .Some(true)");
+                // A named call's one candidate is inapplicable at the failing leaf (SPEC 10.5.1; PLAN G924 AF-3b, design R1.7, ArgFlow
+                // ruling 121 (a)): the call's record; a value call's leaf keeps its own.
+                var named = body.Split('\n')[2].Trim()["return ".Length..];
+                AssertLanguageErrors($"{form} d={depth} [{unit}]", body, valueCall ? "TypeMismatch_Kd .Some(true)" : $"NoApplicableOverload_Kd {named}");
             }
             else
             {
