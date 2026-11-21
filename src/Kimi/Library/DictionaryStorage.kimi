@@ -1,5 +1,5 @@
-// Private ordered-storage algorithms. Typed search/destruction are shared with ordinary collection operations;
-// the compiler supplies placement and located primitives. This source owns capacity decisions and slot links.
+// Private ordered-storage algorithms. Typed search/destruction are shared with ordinary collection operations. This source
+// owns capacity decisions, slot links and placement; the compiler calls its `#Lang` functions and supplies located primitives.
 group DictionaryStorage
     // Private physical records shared with the backend; not a public collection ABI.
     #Lang("DictionaryStorageHandle")
