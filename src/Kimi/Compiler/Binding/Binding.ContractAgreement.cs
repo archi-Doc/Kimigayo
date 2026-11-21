@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -9,9 +10,6 @@ public sealed partial class Binding
     private readonly Dictionary<(BindingScope Parent, BindingSymbol Left, BindingSymbol Right), BindingScope> contractOverlapScopes = new();
     private readonly Dictionary<BindingScope, BindingScope> collisionScopes = new(ReferenceEqualityComparer.Instance); // CollisionScope's, per overlap scope
     private readonly List<(BoundConstraint A, BoundConstraint B)> associatedOverlapPairs = new();
-    private Dictionary<Koto, ContractAgreementFailure>? contractAgreementFailures;
-
-    private readonly record struct ContractAgreementFailure(BindingSymbol Left, BindingSymbol Right, BoundType? AssociatedLeft = null, BoundType? AssociatedRight = null, BindingSymbol? Associated = null);
 
     // SPEC 8.9.2: these equalities describe the intersection where two references coincide, not new declaration
     // premises. The ordinary bounded prover must establish consistency there; a residual term is never disjointness.
@@ -189,7 +187,18 @@ public sealed partial class Binding
             {
                 this.FailPremise(environment, a, scope.Owner); // R7-C3 gate 2: the disagreeing specifications fail (b where it is this one's)
                 this.FailPremise(environment, b, scope.Owner);
-                this.FailExplained(ref this.contractAgreementFailures, scope.Owner, BindingFailure.InvalidAssociatedType, new(left.Contract, right.Contract, a.RequiredType, b.RequiredType, x.Symbol));
+                var (l, r, item) = (this.FactSite(left.Contract.Declaration), this.FactSite(right.Contract.Declaration), this.FactSite(left.Symbol.Declaration));
+                this.RecordNumbered(
+                    scope.Owner,
+                    BindingFailure.InvalidAssociatedType,
+                    [
+                        new(ProblemFactKind.Related, l, 0),
+                        new(ProblemFactKind.Instance, l, this.report.Keep(left.Contract.Type!)),
+                        new(ProblemFactKind.Instance, item, this.report.Keep(a.RequiredType!)),
+                        new(ProblemFactKind.Related, r, 0),
+                        new(ProblemFactKind.Instance, r, this.report.Keep(right.Contract.Type!)),
+                        new(ProblemFactKind.Instance, item, this.report.Keep(b.RequiredType!)),
+                    ]);
             }
         }
     }
@@ -230,13 +239,45 @@ public sealed partial class Binding
                             {
                                 left.Invalid = right.Invalid = true;
                                 left.IsVerified = right.IsVerified = false;
-                                this.FailExplained(ref this.contractAgreementFailures, a.Use, BindingFailure.IncompatibleImplementation, new(left.Contract, right.Contract));
+                                var (l, r) = (this.FactSite(left.Contract.Declaration), this.FactSite(right.Contract.Declaration));
+                                this.RecordNumbered(
+                                    a.Use,
+                                    BindingFailure.IncompatibleImplementation,
+                                    [
+                                        new(ProblemFactKind.Related, l, 0),
+                                        new(ProblemFactKind.Instance, l, this.report.Keep(left.Contract.Type!)),
+                                        new(ProblemFactKind.Related, r, 0),
+                                        new(ProblemFactKind.Instance, r, this.report.Keep(right.Contract.Type!)),
+                                    ]);
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    // SPEC 8.9.2: two coinciding instances of one Contract that disagree, one problem per disagreeing pair (RecordNumbered): each instance's
+    // Contract declaration (Related, role 0, shared by both) with the instance (Instance) and, for an associated Type they bind to Types
+    // not proven equal, the Type each binds it to at its declaration (a second Instance); otherwise their effective implementation
+    // mappings disagree.
+    private void ReportDisagreement(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var associated = (BindingFailure)problem.Requirement.Kind == BindingFailure.InvalidAssociatedType;
+        var right = associated ? 3 : 2;
+        var first = DiagnosticTypeName(this.report.Value(facts[1]));
+        var second = DiagnosticTypeName(this.report.Value(facts[right + 1]));
+        object[] evidence = associated
+            ? [first, second, this.AssociatedName(this.compilation.SyntaxOf(facts[2].Site)), DiagnosticTypeName(this.report.Value(facts[2])), DiagnosticTypeName(this.report.Value(facts[5]))]
+            : [$"At {first} = {second}, effective implementation mappings do not agree"];
+        node.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            evidence: evidence,
+            related: [("contract", this.compilation.SyntaxOf(facts[0].Site), first), ("contract", this.compilation.SyntaxOf(facts[right].Site), second)],
+            condition: problem.Condition);
     }
 
     private bool SameNormalizedRequirement(BoundRequirement a, BoundRequirement b, BindingScope scope)

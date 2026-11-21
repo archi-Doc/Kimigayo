@@ -189,7 +189,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("i32", "h.x += take(t@move)", "", true)]
     [InlineData("bool", "h.x += h.x", "", false)]
     [InlineData("i32", "let q = m@uniq\n    missing = q", "", false)]
-    [InlineData("i32", "let r = y@uniq\n    missing = y\n    r@follow = 2", "", false)]
+    [InlineData("i32", "let r = y@uniq\n    missing = y\n    r@follow = 2", "f: y", false)] // Z17: the located y read at its node (R6).
     [InlineData("i32", "missing = xs[at(t@move)]\n    use(t@move)", "f: t MovedPlace_Kd", false)]
     [InlineData("i32", "(missing) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)] // Z16: the Place a parenthesized target designates (SPEC 3.4).
     [InlineData("i32", "((missing)) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
@@ -209,11 +209,54 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, WriteCodes));
     }
 
+    // SPEC 12, 13.7.1 step 1, 15.6.2, 23.1.2 (DECISIONS Z17): a rejected form's part its consumer acquires is read at its own node, as its
+    // resolved twin's is (the row `missing = y` above: a read under a live exclusive Loan, at `y`), and A5 gets no access of a part used in
+    // place, a kept part (every kept child is published in place until Binding publishes its form's use) or a part a kept borrow ends at
+    // the site: a failed selection's receiver beside a live Loan on a sibling Field (a valid program's Weak limit, an unresolved member), a
+    // kept exclusive borrow whose Loan ends at the site (R4-M70), and a located element or referent read, through a shared reference too,
+    // add no Loan conflict beside Binding's records (an element read uninitialized stays A1's, at the element; the Weak limit's construction
+    // keeps G1058's UninitializedPlace_Kd, D-983). A located element through a runtime index reads under a live Loan once, at the element,
+    // where its Index guard's shared borrow is (R4-M56), as its resolved twins do (fail-before: a second conflict at the site), and a read
+    // through a Deref under a live reborrow conflicts at the read, as its twin's; a located exclusive borrow is its built value (a
+    // Temporary), whose Loan ends at its construction.
+    [Theory]
+    [InlineData(
+        "struct Node\n    public let w: Weak<rc/Node>\n    public var v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n        self.w = w@move\n" +
+        "        self.v = v\nfunc f(w: Weak<rc/Node>) -> i32\n    var n: Node = Node.init(w@move, 1)\n    let r = n.v@uniq\n    let k = n.w@ref\n" +
+        "    r@follow = 2\n    return 0\n",
+        "init: self.w = w@move UninitializedPlace_Kd")]
+    [InlineData(
+        "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n        self.n = n\n" +
+        "func f()\n    var p = P.init(\"s\", 1)\n    let r = p.s@uniq\n    let q = p.nofield\n    r@follow = \"t\"\n",
+        "")]
+    [InlineData("func k(a: uniq/i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let z = k(y@uniq, missing)\n    y = 2\n    return z\n", "")]
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let z = match y@uniq\n        .Nope => 1\n        _ => 2\n    y = .None\n", "")]
+    [InlineData("func f()\n    var a: [2 of i32]\n    missing = a[0]\n", "f: a[0] UninitializedPlace_Kd")]
+    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    missing = r@follow\n    y = 2\n", "")]
+    [InlineData("struct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f(p: ref/Q)\n    missing = p.n\n", "")]
+    [InlineData("func f(i: isize)\n    var a = [1, 2]\n    let r = a@uniq\n    missing = a[i]\n    r@follow = [3, 4]\n", "f: a[i]")]
+    [InlineData("func f(i: isize)\n    var a = [1, 2]\n    var m = 0\n    let r = a@uniq\n    m = a[i]\n    r@follow = [3, 4]\n", "f: a[i]")]
+    [InlineData("func f(i: isize)\n    var a = [1, 2]\n    let r = a@uniq\n    let m = a[i]\n    r@follow = [3, 4]\n", "f: a[i]")]
+    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    let q = r@follow@uniq\n    missing = r@follow\n    q@follow = 3\n", "f: r@follow")]
+    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    let q = r@follow@uniq\n    let m = r@follow\n    q@follow = 3\n", "f: r@follow")]
+    [InlineData("func inspect(v: ref/i32) => ()\nfunc f()\n    var y = 1\n    let r = y@ref\n    missing = y@uniq\n    inspect(r)\n", "f: y@uniq")]
+    [InlineData("func f()\n    var y = 1\n    missing = y@uniq\n    y = 2\n", "")]
+    public void ARejectedFormsPartIsReadAtItsOwnNode(string source, string expected)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.IsRecord);
+        Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, WriteCodes));
+    }
+
     // PLAN G1022's exposure (SPEC 23.1.1): valid programs Binding rejects only through its Unsupported_Kd limits reach the derived write
     // too (tests/milestones/Milestone41.kimi's `self.selfWeak = selfWeak@move`, Milestone43.kimi's `owner.level = 30`), and keep the
     // records they had before it: Binding's limits, no construction record, and (w2) the false UninitializedPlace_Kd the derived write's
-    // site gives the construction receiver `self` while `v` is uninitialized, a root of the target the site names as read (a PLAN open
-    // issue of SiteRoots, D-799's follow-up; not G1022's). Each row: the program, Binding's codes, the problems.
+    // site gives the construction receiver `self` while `v` is uninitialized, a root of the target the site names as read (PLAN G1058's
+    // first form, D-983; not G1022's, and DECISIONS Z17 keeps it: the target's root stays undecided). Each row: the program, Binding's
+    // codes, the problems.
     [Theory]
     [InlineData("struct Node\n    public let w: Weak<rc/Node>\n    public let v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n        self.w = w@move\n        self.v = v\n", "Unsupported_Kd Unsupported_Kd", "init: self.w = w@move UninitializedPlace_Kd")]
     [InlineData("open struct Device\n    public var level: i32\n        set(value: i32) -> ()\n            storage = value\n    protected init(level: i32)\n        self.level = level\nstruct Lamp : Device\n    public init(level: i32) : base(level) => ()\nfunc g()\n    var owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init(40))\n    owner.level = 30\n", "Unsupported_Kd", "")]

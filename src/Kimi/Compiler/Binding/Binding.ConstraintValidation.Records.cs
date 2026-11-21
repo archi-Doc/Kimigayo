@@ -19,9 +19,6 @@ namespace Kimi.Compiler;
 // - Prohibitions: no proof or comparison runs to explain a record; no record is made during a proof.
 public sealed partial class Binding
 {
-    // A node's clause record, published by ReportClauseConstraint.
-    private readonly ClauseConstraintRows clauseConstraints;
-
     // The declaration that states a clause fact's clause when neither the member nor a container enclosing it does (G354 (2)): a Type
     // formed for the use, such as a Type argument's, whose formation decided the fact; its record names it, not the member.
     private static string? ForeignClauseOwner(IsKoto clause, Koto? member)
@@ -121,41 +118,50 @@ public sealed partial class Binding
             => premises.Contains(fact) || (fact.Kind == ConstraintKind.And && (Failed(fact.Left!) || Failed(fact.Right!)));
     }
 
-    // The record of a clause fact: Refuted is UnsatisfiedConstraint_Kd, Unknown UnprovenConstraint_Kd, each naming the clause.
+    // The record of a clause fact: Refuted is UnsatisfiedConstraint_Kd, Unknown UnprovenConstraint_Kd, each naming the clause (Related,
+    // role 0) and its kept proposition (Constraint), whose subject the record shows, and a selected call's declaration (role 1), which
+    // states the clause or encloses the foreign Type that does (ForeignClauseOwner).
     private BoundType? FailClauseRecord(Koto use, ReferenceConstraintFailure clause, bool unresolved)
     {
         var failure = clause.Proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint;
-        return this.FailExplained(ClauseConstraintRows.Family, use, failure, clause, unresolved);
+        var site = this.FactSite(clause.Clause);
+        Span<ProblemFact> facts = [new(ProblemFactKind.Related, site, 0), new(ProblemFactKind.Constraint, site, this.report.Keep(clause.Constraint)), default];
+        var count = 2;
+        if (clause.Declaration?.Declaration is { } declaration)
+        {
+            facts[count++] = new(ProblemFactKind.Related, this.FactSite(declaration), 1);
+        }
+
+        return this.Record(use, failure, facts[..count], unresolved: unresolved);
     }
 
-    private void ReportClauseConstraint(Koto use, DiagnosticCollection? store, ReferenceConstraintFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
+    // A clause record from its facts: its clause related, labelled by the declaration that states it, and, for a selected call, that
+    // declaration, whose name is read from it as a related declaration's is (any declaration a call selects). The Note stays (B's O-f,
+    // (c): a CLI and LSP row pins it), rendered from the facts: the outcome by the code, the member and owner by the declarations, the
+    // subject by the kept proposition.
+    private void ReportClauseConstraint(Koto use, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        var call = fact.Declaration is not null;
-        var member = fact.Declaration?.Name ?? use.BoundSymbol?.Name ?? "the referenced function";
-        var owner = ForeignClauseOwner(fact.Clause, (fact.Declaration ?? use.BoundSymbol)?.Declaration);
-        var subject = ClauseSubject(fact.Constraint) is { } type ? DiagnosticTypeName(type) : null;
-        var clause = fact.Clause.ToString();
-        var outcome = fact.Proof == ConstraintProof.Refuted ? "is refuted" : "cannot be proven";
-        var role = owner is not null ? $"required by {owner}" : call ? "required by the called declaration" : "required by the referenced declaration";
-        var note = $"{(call ? "Call" : "Function Item")} {member}{(owner is null ? null : ": " + owner)} requires {clause}; this condition {outcome}" +
+        var facts = this.report.Facts(index);
+        var clause = (IsKoto)this.compilation.SyntaxOf(facts[0].Site);
+        var declaration = facts.Length > 2 ? this.compilation.SyntaxOf(facts[2].Site) : null;
+        var member = declaration is not null ? declaration.BoundSymbol!.Name : use.BoundSymbol?.Name ?? "the referenced function";
+        var owner = ForeignClauseOwner(clause, declaration ?? use.BoundSymbol?.Declaration);
+        var subject = ClauseSubject(this.report.Constraint(facts[1])) is { } type ? DiagnosticTypeName(type) : null;
+        var text = clause.ToString();
+        var outcome = (BindingFailure)problem.Requirement.Kind == BindingFailure.UnsatisfiedConstraint ? "is refuted" : "cannot be proven";
+        var role = owner is not null ? $"required by {owner}" : declaration is not null ? "required by the called declaration" : "required by the referenced declaration";
+        var note = $"{(declaration is not null ? "Call" : "Function Item")} {member}{(owner is null ? null : ": " + owner)} requires {text}; this condition {outcome}" +
             (subject is null ? " under the supplied bindings" : $" for {subject}");
+        (string Role, Koto At, string? Label)[] related = declaration is null
+            ? [("constraint", clause, role)]
+            : [("constraint", clause, role), ("declaration", declaration, member)];
         use.ReportIn(
             store,
-            requirement,
-            code,
-            evidence: subject is null ? null : [subject, owner ?? member, clause],
+            problem.Requirement,
+            problem.Code,
+            evidence: subject is null ? null : [subject, owner ?? member, text],
             note: note,
-            related: [("constraint", fact.Clause, role)]);
-    }
-
-    /// <summary>The `clauseConstraints` family's one accessor (DECISIONS BU-220): a pass family, a node's clause record (its clause, Constraint,
-    /// proof and stating declaration), stored with its failure by the recorder (RecordedFact) and written by FailExplained (a present row
-    /// always has its Clause). Its members keep the names its readers use.</summary>
-    private readonly struct ClauseConstraintRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<ReferenceConstraintFailure, PassCounter> Family(ref NodeColumns columns) => ref columns.ClauseConstraints;
-
-        internal bool TryGetValue(Koto use, out ReferenceConstraintFailure clause) => (clause = binding.RecordedFact(use, Family)).Clause is not null;
+            related: related,
+            condition: problem.Condition);
     }
 }

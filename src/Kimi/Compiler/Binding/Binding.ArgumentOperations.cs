@@ -97,7 +97,9 @@ public sealed partial class Binding
     /// SPEC 10.2: safe value-reference layers ending in <paramref name="referent"/> yield one shared reference to it, the layers
     /// walked as <see cref="LayersTerminal"/> walks them (ref, uniq and qualifying pair layers, SPEC 3.4.3). A <c>ref</c> layer is
     /// Copied with its own Origin, so it restarts the dependency; each <c>uniq</c> layer below it is shared-Reborrowed and meets its
-    /// Origin into the result; a pair layer does either by its admitted cases (MeetLayers, SPEC 13.5.5).
+    /// Origin into the result; a pair layer does either by its admitted cases (MeetLayers, SPEC 13.5.5). Its layer count also serves the
+    /// exclusive mode of the same row (AdaptInput's through-layers arm, ReceiverThroughLayers; SPEC 7.3.3), which forms its own
+    /// <c>uniq</c> reference from it.
     /// </summary>
     /// <param name="actual">The complete Type of the value.</param>
     /// <param name="referent">The referent the expected <c>ref</c> Type names.</param>
@@ -407,13 +409,17 @@ public sealed partial class Binding
                 return false; // SPEC 10.2: no implicit borrow of a reference slot.
             }
 
-            if (!explicitBorrow && !projected && target == SemanticsKind.Ref &&
-                this.SharedReferenceThroughLayers(actual, pattern.Components[0], scope, out var layers) is { } shared && (layers > 1 || actual.Semantics == SemanticsKind.Uniq))
+            if (!explicitBorrow && !projected && (target == SemanticsKind.Ref || (receiver && target == SemanticsKind.Uniq && BelowLayer(actualReferent) is not null)) &&
+                this.SharedReferenceThroughLayers(actual, pattern.Components[0], scope, out var layers) is { } shared &&
+                (target == SemanticsKind.Uniq ? layers > 1 && this.ExclusivelyAcquirable(source) : layers > 1 || actual.Semantics == SemanticsKind.Uniq))
             {
-                // SPEC 10.2, 15.6.3: several reference layers yield one shared reference to the parameter's referent, contained in the
-                // layers and, unless one is shared, in those that reach the source.
-                adapted = this.ReferentOrigin(source, actual, layers) is { } origin
-                    ? this.types.Reference(SemanticsKind.Ref, pattern.Components[0], origin) : shared;
+                // SPEC 10.2, 7.3.3, 15.6.3: safe value-reference layers ending in the parameter's referent yield one reference to it,
+                // contained in the layers and, unless one is shared, in those that reach the source: shared at a fixed ref/U (10.2's row);
+                // exclusive for a Receiver Expression below several layers whose path and layers grant it (7.3.3's p@follow@uniq on the
+                // path of 3.4.3; ExclusivelyAcquirable, the mode ReceiverThroughLayers' recorded read takes). One stored uniq layer at
+                // uniq/U is the Reborrow below (PLAN G147 (2) (c)). The walk's Origin is the shared mode's fallback alone: the exclusive
+                // mode dereferences a concrete uniq top layer, so ReferentOrigin answers there.
+                adapted = this.types.Reference(target, pattern.Components[0], this.ReferentOrigin(source, actual, layers) ?? shared.Origin);
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = layers > 1 ? ArgumentOperationKind.ReferenceRead : ArgumentOperationKind.Reborrow;
                 return true;
