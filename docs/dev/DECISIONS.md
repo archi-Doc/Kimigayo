@@ -15487,7 +15487,9 @@ resumed by R4-M86 (2026-10-20).
     families, whose library rows a program pass reads; a working-state row is no fact, and freezing it would keep the library
     pass's working state for the process (`resultContexts`: the library pass's 204 pooled contexts, aliased to the freeze
     Binding's pool; `receiverOperations`: 125 rows, 65,944 B) with no reader. First families: `resultContexts`,
-    `receiverOperations` (ratchet 61 -> 59). Rejected: (b) the pool per pass part with the rows frozen (keeps working state as a
+    `receiverOperations` (ratchet 61 -> 59) and `requirementGroups` (R7-N5 B3-2, Q-595, D-963: a member access's lookup through
+    requirements; its library pass's 30 groups released at the freeze; a row of an earlier pass reads none, PLAN G1155's fix).
+    Rejected: (b) the pool per pass part with the rows frozen (keeps working state as a
     fact; a per-part store for one feature); (c) a kept column with a "begun in this pass" flag (a lifetime flag `StampedColumn`'s
     contract forbids); a counter or column type steering the freeze (a mode carried by a type, or a wrapper forwarding every
     operation); skipping the family in `NodeColumns.Freeze` (a skipped row keeps the library pass's run counter, 1, as its stamp,
