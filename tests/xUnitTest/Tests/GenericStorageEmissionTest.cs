@@ -96,10 +96,10 @@ public class GenericStorageEmissionTest
 
     // The same instances keep the ordinary checks: a Loan the stored reference holds, an escape beyond its Borrow, a bare transfer
     // and a pair application without an Object Target (SPEC 8.1.2: the slot is present, so its formation needs the target). The escape
-    // has A5's twin at `return h@move` beside Binding's record at `h@move` until R7 (R6-check H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // is A5's one record at `h@move` (R7-O1 H; its twin at `return h@move`, H0b §5.4, R4-M108, H3b T50, went with Binding's record).
     [Theory]
     [InlineData(Holder + "var n: i32 = 3\nlet h = Holder<ref/i32>.init(n@ref)\nn = 4\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
-    [InlineData(Holder + "func leak() -> Holder<ref/i32 during static>\n    let n: i32 = 3\n    let h = Holder<ref/i32>.init(n@ref)\n    return h@move\nlet h = leak()\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
+    [InlineData(Holder + "func leak() -> Holder<ref/i32 during static>\n    let n: i32 = 3\n    let h = Holder<ref/i32>.init(n@ref)\n    return h@move\nlet h = leak()\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
     [InlineData("struct Holder<s/T>\n    public let value: s/T\n    public init(value: s/T) => self.value = value\nlet n: i32 = 3\nlet h = Holder<ref/i32>.init(n@ref)\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.TransferRequired_Kd))]
     [InlineData("struct Holder<s/T, U> {a}\n    let value: s/T\n    let other: s/U during a\nConsole.writeLine(\"unused\")", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
     public void PairFieldsKeepTheirChecks(string source, params string[] codes)

@@ -116,8 +116,8 @@ public class IndexableContractTest
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Binding.Issues, x => x.Code == code);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c)); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
+        Assert.Contains(CompilationTestHelper.PublishedErrors(c), x => x.Code == code.ToString());
     }
 
     // SPEC 4.7.1, 8.5.2 (PLAN G715): Array conforms to UniqIndexable<isize>, so a projection through it or its parent names the element

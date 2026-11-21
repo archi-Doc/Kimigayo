@@ -161,29 +161,29 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.Semantics, Components: [var below] } && IsBorrow(type.Semantics) ? below
             : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : null;
 
-    // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand's own capability (the owner case selects
-    // P itself: a write needs a whole Place that offers Write, WritablePlace, which a writable temporary's whole Temporary Place does
-    // not offer yet, IsTemporaryPlace; a borrow lends P as a Place or a writable temporary,
-    // LendsOwner, SPEC 3.6), uniq grants Write also through a let slot but never through a shared path, and ref grants Read only. A
-    // part of an owner-case selection of a writable temporary is the temporary's part (WritableTemporary).
-    private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
-        => this.PairCapability(followed.Left, this.PairAdmitted(followed), scope, exclusive);
-
-    private bool PairCapability(Koto operand, SemanticsMask admitted, BindingScope? scope, bool exclusive)
+    // SPEC 13.5.5: the weakest capability over the admitted cases a borrow is lent (a write's is Writable's, Writes). Owner inherits the
+    // operand's own capability (the owner case selects P itself: a borrow lends P as a Place or a writable temporary, LendsOwner, SPEC
+    // 3.6), uniq grants Write also through a let slot but never through a shared path, and ref grants Read only. A part of an
+    // owner-case selection of a writable temporary is the temporary's part (WritableTemporary).
+    // Lent is the operand's lending fold in the mode (LendFold).
+    private bool PairCapability(SemanticsMask admitted, Koto operand, in PathLend lent)
     {
-        if (!exclusive)
+        if (!lent.Exclusive)
         {
-            return (admitted & SemanticsMask.Owner) == 0 || scope is null || this.LendsOwner(operand, scope, false, out _);
+            return (admitted & SemanticsMask.Owner) == 0 || this.LendsOwner(operand, lent, out _);
         }
 
         return (admitted & SemanticsMask.Ref) == 0 &&
-            ((admitted & SemanticsMask.Uniq) == 0 || !this.ReachedThroughShared(operand)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? this.WritablePlace(operand) : this.LendsOwner(operand, scope, true, out _)));
+            ((admitted & SemanticsMask.Uniq) == 0 || lent.Path.Access != SemanticsKind.Ref) &&
+            ((admitted & SemanticsMask.Owner) == 0 || this.LendsOwner(operand, lent, out _));
     }
 
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
-    // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability.
-    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, out BoundType adapted, out ArgumentOperationKind kind, bool record)
+    // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability. SPEC 9.6.1: a receiver whose member a base
+    // declares (`projection`, the base, as for a receiver through a reference layer: AdaptInput) is the layer's target, where member
+    // selection found that base (a receiver below further layers is ReceiverThroughLayers' recorded read), and lends the base
+    // subobject (PLAN G1122).
+    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundType? projection, out BoundType adapted, out ArgumentOperationKind kind, bool record)
     {
         adapted = actual;
         kind = ArgumentOperationKind.Value;
@@ -195,20 +195,20 @@ public sealed partial class Binding
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
         // A layer admitting no case selects no receiver here (stopped: the call, not the receiver, would have to rest; PLAN G750).
         var admitted = this.FollowablePair(actual, scope, out var target) ?? SemanticsMask.None;
-        if (admitted != SemanticsMask.None && !this.ReceiverTarget(target, referent, scope))
+        if (admitted != SemanticsMask.None && projection is null && !this.ReceiverTarget(target, referent, scope))
         {
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
 
-        if (admitted == SemanticsMask.None || target is null || !this.PairCapability(source, admitted, scope, exclusive))
+        if (admitted == SemanticsMask.None || target is null || !this.PairCapability(admitted, source, this.LendFold(source, scope, exclusive)))
         {
             return false;
         }
 
-        if (this.ReceiverTarget(target, referent, scope))
+        if (projection is not null || this.ReceiverTarget(target, referent, scope))
         {
-            adapted = this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
-            kind = ArgumentOperationKind.Borrow;
+            adapted = this.types.Reference(pattern.Semantics, projection ?? target, this.PairOrigin(source, actual, admitted));
+            kind = projection is null ? ArgumentOperationKind.Borrow : ArgumentOperationKind.BaseBorrow;
         }
         else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
             this.SharedReferenceThroughLayers(target, referent, scope, out _) is { } inner)

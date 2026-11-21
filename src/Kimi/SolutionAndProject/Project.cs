@@ -249,7 +249,7 @@ public partial class Project
             {
                 if (application)
                 {
-                    await NativeToolchain.Build(this, paths, this.kimigayo.NativeExecutor, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+                    await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {

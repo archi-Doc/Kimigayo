@@ -8,7 +8,10 @@ namespace Kimi.Compiler.Mir;
 // carries what `@raw` of its storage carries (Layered); a Case payload of a holder that holds only calls' results carries nothing where
 // the Case's payload Type holds no Loan but what a call's write source stored there, its holder's write slot's (Sources; SPEC 15.6
 // Holders' Case-payload sentence, the owner's O-383 (b); the Middle's phase-6 decision 2), and so does a read through such a holder's
-// reference where the referent Type holds no Loan (the referent bound, the owner's O-437 (b)). Must not decide which
+// reference where the referent Type holds no Loan (the referent bound, the owner's O-437 (b)). A borrow input's referent (Referent): the
+// value its last borrow or raw Deref goes through, by a Place operand's own steps or the Places its local's referring stores lend; none
+// where it passes no Deref or a store lends no Place. MirBorrows.Calls' Retained keeps what a Value-less row's reads carry less the
+// input's own Loans and addresses that the referent's read does not carry (SPEC 15.6.4, 15.6.3; D-935). Must not decide which
 // holders a set reaches or a call's store writes (MirBorrows.Reach), which locals hold only calls' results (MirBorrows.Holders) or which
 // Places a local's reference refers to (MirBorrows.Loans).
 internal sealed partial class MirBorrows
@@ -310,6 +313,67 @@ internal sealed partial class MirBorrows
     // raw pointer's, the prefix's read (Layered): the addresses and Loans it carries.
     private int PointerOf(int root, int layer, int parents, int step)
         => this.walk[step].Class == MirStepClass.Raw ? this.Layered(root, this.walk[step].Prefix, layer, parents) : layer;
+
+    // A borrow input's referent (SPEC 15.6.4's read through the argument, 15.6.3): the value its last borrow or raw Deref goes through on
+    // the state, by a Place operand's own steps (a Drop's destroyed Place), or for a whole local by the Places the Loans of its referring
+    // stores lend (MirBorrows.Loans' Referring), joined; -1 for none, where it passes no Deref or a store into it lends no Place (a stored
+    // reference's Copy, a parameter, a call's result, a borrow past a shared Deref). Its own stores, not the Loans in its value: a
+    // value built through a stored Reborrow also carries the children that name the intermediate holder, and a Drop's receiver has none.
+    private int Referent(ulong[] state, in MirOperand operand)
+    {
+        if (operand.Kind == MirOperandKind.Const)
+        {
+            return -1;
+        }
+
+        var place = operand.Place;
+        if (place.Projection != 0)
+        {
+            return this.Referent(state, place.Root, this.placeSteps.Walk(place, reborrow: false, ref this.walk));
+        }
+
+        if (place.Root < 0 || !this.Referring(place.Root, out var store) || store < 0)
+        {
+            return -1;
+        }
+
+        var referent = 0;
+        for (; store >= 0; store = this.referStores[(2 * store) + 1])
+        {
+            var loan = this.loanAt[this.referStores[2 * store]];
+            if (loan < 0)
+            {
+                return -1;
+            }
+
+            var lent = this.loans[loan];
+            MirDataflow.Grow(ref this.walk, lent.Count);
+            this.loanSteps.AsSpan(lent.Start, lent.Count).CopyTo(this.walk);
+            var through = this.Referent(state, lent.Place.Root, lent.Count);
+            if (through < 0)
+            {
+                return -1;
+            }
+
+            referent = this.sets.Union(referent, through);
+        }
+
+        return referent;
+    }
+
+    // Over the walk buffer's first `count` steps from a root, the value the last borrow or raw Deref goes through (PointerOf on the
+    // prefix's layer and parents), -1 for none.
+    private int Referent(ulong[] state, int root, int count)
+    {
+        var last = this.LastDeref(count);
+        if (last < 0)
+        {
+            return -1;
+        }
+
+        var (layer, parents) = this.Prefix(state, root, last);
+        return this.PointerOf(root, layer, parents, last);
+    }
 
     // A Place's read on its layer and parents (SPEC 5.7 Reading a Field; B §5.4): a `during self` layer's adds what `@raw` of the layer's
     // storage carries, the parents and its own-step entry; another Place's is its layer.

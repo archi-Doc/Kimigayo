@@ -5,7 +5,8 @@
 // the native build checks (CheckFixed) in the same order; and the readers (Field, Text, OptionalText, Items, Flag), which turn a field
 // that is missing, of another JSON kind or, for an Int32 row, another number into InvalidDataException at the read (form J, the
 // manifest's share of PLAN G983). The variable fields (optimization, the output section, the libraries, the toolchain) are written by
-// EmissionArtifacts and read, through these readers, by NativeToolchain.Build, Kernel32Imports and ToolchainResolver.
+// EmissionArtifacts; all but the toolchain are read, through these readers, by NativeToolchain.Build, Kernel32Imports and
+// ToolchainResolver. The toolchain's llvmBin is accepted and not read (Tatara design A4 §2.1; removed in B6).
 // Input: a Utf8JsonWriter (publication) or a manifest element (the native build, kernel32's and the backend's library entries), each
 // field named by its path ("section.name" in a section or an array's items).
 // Output: the fixed fields' JSON; for a read, the field's value or InvalidDataException naming the field's path, one text for a missing

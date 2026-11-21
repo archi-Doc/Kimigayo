@@ -8,11 +8,10 @@ namespace Kimi.Compiler;
 
 // The publication of Binding's diagnostics (ReportDiagnostics), after the final analysis.
 // - Responsibility: each direct issue reported with the facts its check recorded (ReportProblem or ReportIssue; at most one explanation
-//   table answers for a node's first failure), each derived issue with its prerequisite keys, the duplicate declaration groups, the
-//   non-failing records and SPEC 23.2.2's fallback for an incomplete pass without an Error.
+//   table answers for a node's first failure), each derived issue with its prerequisite keys, the non-failing records and SPEC 23.2.2's fallback for an incomplete pass without an Error.
 // - Inputs: the latest pass's issues, derived issues and explanation tables; a refused library's refusal (LibraryLayer.Refusal), which
 //   Core publishes. Outputs: the Binding partition's records. The library's freeze reports a refused library pass's records through
-//   the same per-record steps (ReportFailures, ReportDuplicateDeclarations, ReportNonFailingRecords) while its tables stand.
+//   the same per-record steps (ReportFailures, ReportNonFailingRecords) while its tables stand.
 // - Invariants: invoked after final analysis, not between Mods; each call replaces the partition's records. R7-E5 deletes ReportIssue's chain.
 // - Prohibitions: no failure is decided and no node's binding state is written here.
 public sealed partial class Binding
@@ -30,7 +29,6 @@ public sealed partial class Binding
 
         if (this.Result.Mode == BindingMode.Final)
         {
-            this.ReportDuplicateDeclarations();
             this.ReportNonFailingRecords();
 
             // SPEC 23.2.2: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
@@ -85,6 +83,23 @@ public sealed partial class Binding
         directive.ReportIn(store, problem.Requirement, problem.Code, evidence: [text], related: [("declaration", variable.TypeKoto ?? variable.NameKoto, "declaration requiring initialization")]);
     }
 
+    // SPEC 4.3.1: a local fixed-array annotation's closed reason, with the syntax that supplies or requires the evidence and the sides a
+    // conflict compared (RecordArrayInference).
+    private void ReportArrayInference(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var reason = (ArrayInferenceProblem)facts[0].Value;
+        var text = reason switch
+        {
+            ArrayInferenceProblem.Element => "the initializer supplies no element Type for this hole",
+            ArrayInferenceProblem.Length => "the initializer supplies no fixed-array length for this hole",
+            ArrayInferenceProblem.LengthConflict => $"this dimension has length {DiagnosticLengthName(this.report.Length(facts[2]))} but earlier initializer evidence established {DiagnosticLengthName(this.report.Length(facts[3]))}",
+            _ => $"the annotation requires {this.SideOf(facts[3])} here, but the initializer has {DiagnosticTypeName(this.report.Value(facts[2]))}",
+        };
+        var label = reason is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation";
+        node.ReportIn(store, problem.Requirement, problem.Code, evidence: [text], related: [("context", this.compilation.SyntaxOf(facts[1].Site), label)]);
+    }
+
     // SPEC 23.2.2's fallback site: the first node whose recorded state is not Resolved, the program part's nodes first, then the library
     // layer's.
     private Koto? FirstIncompleteNode()
@@ -118,7 +133,7 @@ public sealed partial class Binding
                 (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
             issue.Node.ReportIn(store, requirement, issue.Code, span: span);
         }
-        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
+        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures.TryGetValue(issue.Node, out var arithmetic))
         {
             ReportArithmeticConformance(issue.Node, requirement, issue.Code, arithmetic);
         }
@@ -147,23 +162,6 @@ public sealed partial class Binding
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {
             this.ReportQualification(issue.Node, store, requirement);
-        }
-        else if (issue.Failure == BindingFailure.ArrayAnnotationInference)
-        {
-            var fact = this.arrayInferenceFailures![issue.Node];
-            var reason = fact.Problem switch
-            {
-                ArrayInferenceProblem.Element => "the initializer supplies no element Type for this hole",
-                ArrayInferenceProblem.Length => "the initializer supplies no fixed-array length for this hole",
-                ArrayInferenceProblem.LengthConflict => $"this dimension has length {DiagnosticLengthName(fact.Actual!)} but earlier initializer evidence established {DiagnosticLengthName(fact.Expected!)}",
-                _ => $"the annotation requires a fixed array here, but the initializer has {DiagnosticTypeName(fact.Type!)}",
-            };
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                evidence: [reason],
-                related: [("context", fact.Related, fact.Problem is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation")]);
         }
         else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
         {
@@ -197,7 +195,7 @@ public sealed partial class Binding
         else if (this.ReportCallableSelection(issue.Node, store, requirement, issue.Code))
         {
         }
-        else if (issue.Code == DiagnosticCode.AmbiguousBinding_Kd && this.associatedAmbiguities?.TryGetValue(issue.Node, out var associated) == true)
+        else if (issue.Code == DiagnosticCode.AmbiguousBinding_Kd && this.associatedAmbiguities.TryGetValue(issue.Node, out var associated))
         {
             var first = $"{DiagnosticTypeName(this.ProjectionContract(associated.First.Symbol, associated.First.Contract))}.{associated.First.Symbol.Name}";
             var second = $"{DiagnosticTypeName(this.ProjectionContract(associated.Second.Symbol, associated.Second.Contract))}.{associated.Second.Symbol.Name}";
@@ -311,7 +309,7 @@ public sealed partial class Binding
         {
             this.ReportCallInferenceFailure(issue.Node, store, requirement, issue.Code, callInference);
         }
-        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots?.TryGetValue(issue.Node, out var unboundSlot) == true)
+        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots.TryGetValue(issue.Node, out var unboundSlot))
         {
             // SPEC 10.6, 10.8: the selected call's slot that no evidence binds, with the waiting argument whose signature holds it.
             ReportUnboundSlots(issue.Node, unboundSlot, requirement, issue.Code);
@@ -328,10 +326,6 @@ public sealed partial class Binding
             // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
             issue.Node.ReportIn(store, requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
         }
-        else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
-        {
-            this.ReportParameterShapes(issue.Node, store, requirement, shapes);
-        }
         else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
         {
             this.ReportOverrideFailure(overrideFunction, store, requirement, issue.Code);
@@ -339,10 +333,6 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
-        {
-            this.ReportEffectBound(effect, store, requirement);
         }
         else if (issue.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && this.ReportAssociatedInference(issue.Node, store, requirement))
         {
@@ -433,7 +423,7 @@ public sealed partial class Binding
             var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch);
             issue.Node.ReportIn(store, requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints?.TryGetValue(issue.Node, out var reference) == true)
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints.TryGetValue(issue.Node, out var reference))
         {
             this.ReportClauseConstraint(issue.Node, store, reference, requirement, issue.Code);
         }
@@ -451,7 +441,7 @@ public sealed partial class Binding
         {
             ReportPendingJudgment(issue.Node, pending, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints?.TryGetValue(issue.Node, out var callable) == true)
+        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints.TryGetValue(issue.Node, out var callable))
         {
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
             ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
@@ -502,15 +492,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < issues.Count; i++)
         {
-            var issue = issues[i];
-            if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
-            {
-                continue; // Pairwise declaration failures are normalized as one group (ReportDuplicateDeclarations).
-            }
-
-            this.ReportIssue(issue);
+            this.ReportIssue(issues[i]);
         }
 
+        this.ReportResolvedOriginRecords();
         for (var i = 0; i < derivedIssues.Count; i++)
         {
             var issue = derivedIssues[i];
