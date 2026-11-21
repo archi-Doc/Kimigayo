@@ -21,6 +21,13 @@ public sealed partial class HirFormsTest
         "        self.w = w@move\n        self.v = v\nfunc f(w: Weak<rc/Node>) -> i32\n    var n: Node = Node.init(w@move, 1)\n    let r = n.v@uniq\n" +
         "    let k = n.w@ref\n    r@follow = 2\n    return 0\n";
 
+    // Z17's twin z1-weak-sibling-arg (valid; SPEC 3.2.2, 12, 15.6.2): an argument `n.x` of a call Binding rejects only through the Weak
+    // limit, beside a live `uniq` on the sibling Field `n.v`.
+    private const string WeakSiblingArgument = "struct Node\n    public let w: Weak<rc/Node>\n    public var v: i32\n    public var x: i32\n" +
+        "    public init(w: Weak<rc/Node>, v: i32, x: i32)\n        self.w = w@move\n        self.v = v\n        self.x = x\n" +
+        "func g(a: Weak<rc/Node>, b: i32) -> i32 => b\nfunc f(w: Weak<rc/Node>, u: Weak<rc/Node>) -> i32\n" +
+        "    var n: Node = Node.init(w@move, 1, 2)\n    let r = n.v@uniq\n    let k = g(u@move, n.x)\n    r@follow = 2\n    return k\n";
+
     // Declarations whose callers' inputs need an Origin relation between fixed Origins the premises do not prove, whatever the input's
     // acquisition or adaptation: since R7-O1 b1 a row A5 judges (UnprovenOriginRelation_Kd at the input), the input itself resolved. State's
     // static Places, which a call's input borrows, are the inputs Binding still rejects after selection: the located limit until P42
@@ -426,12 +433,33 @@ public sealed partial class HirFormsTest
     // shared, a for's Iterable, and the operand of a conversion Binding left unclassified (KindOp's Convert arm: a same-Type acquisition
     // and G839's `h@raw/Missing`); not a selection's receiver or a built-in index's base (in place: r-weak-sibling's `n.w`, valid beside
     // its limits, an unresolved member, and a value base, which the rule takes as a Temporary in place: `mk()[missing]`, the row that
-    // fails without FormReads' in-place guard), a borrow's operand, nor an argument of a call Binding did not resolve, whose operation it
-    // did not decide (CallPlan.Of reads only a resolved call's plan), whether it selected a callee (`k2`) or none (`k`, two arguments for
-    // one parameter). Only a kept operand is marked. Fail-before: no kept operand was marked.
+    // fails without FormReads' in-place guard), nor a borrow's operand. A failed object creation's operand is read as any conversion's
+    // (`s@rc/Missing`; `s@rc` of a non-Copy `s`, SPEC 13.6.2). DECISIONS G1178 (SPEC 7.4, 10.1, 10.2, 15.1.5): an argument of an
+    // application Binding did not resolve, which no operation takes, is read under every candidate, so it is marked whatever the
+    // failure: a selected callee with a failed argument (`k2(x, missing)`), too many (`k`; an excess first argument `k(1, y)`) or too
+    // few (`k2(x)`) arguments, an unknown label (`k(b: y)`), an unresolved callee (a non-Copy element `a[i]`, a followed `r@follow`, a
+    // static `G.s`), a Case construction with two payloads for one, and r-weak-sibling's twin z1-weak-sibling-arg (valid beside its
+    // limits: `n.x`, disjoint from the live `n.v`); an explicit `@uniq` or `@move` argument is a value, marked at itself, its operand its
+    // own operation's; a Closure literal awaiting the call's Types stays replaced (Keeps), a receiver is no argument (`p.missing(p.a)`),
+    // and an argument whose own take failed is not read (a Weak Field `n.w` at `g2`, valid beside its limits). Only a kept operand is
+    // marked. Fail-before: no kept operand was marked (D-986's rows); an argument of an unresolved application was not (G1178's).
     [Theory]
-    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "k2(x, missing)", "")]
-    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k(x, missing)\n    return 1\n", "k(x, missing)", "")]
+    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "k2(x, missing)", "x missing")]
+    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k(x, missing)\n    return 1\n", "k(x, missing)", "x missing")]
+    [InlineData(K + "func f() -> i32\n    var x = 1\n    let z = k2(x)\n    return 1\n", "k2(x)", "x")]
+    [InlineData("func f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    missing(a[i])\n", "missing(a[i])", "a[i]")]
+    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    missing(r@follow)\n    r@follow = 2\n", "missing(r@follow)", "r@follow")]
+    [InlineData("func f(s: string)\n    var y = 1\n    missing(y@uniq, s@move)\n", "missing(y@uniq, s@move)", "y@uniq s@move")]
+    [InlineData("func f()\n    var y = 1\n    missing(y, func (a) => a)\n", "missing(y, func (a) => a)", "y")]
+    [InlineData("func f(x: i32) -> Option<i32>\n    return .Some(x, missing)\n", ".Some(x, missing)", "x missing")]
+    [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing(p.a)\n", "p.missing(p.a)", "p.a")]
+    [InlineData(WeakSiblingArgument, "g(u@move, n.x)", "u@move n.x")]
+    [InlineData("func f()\n    var s = \"a\"\n    let o = s@rc/Missing\n", "s@rc/Missing", "s")]
+    [InlineData("func f(s: string)\n    let o = s@rc\n", "s@rc", "s")]
+    [InlineData(K + "func f() -> i32\n    var y = 1\n    let z = k(1, y)\n    return 1\n", "k(1, y)", "1 y")]
+    [InlineData(K + "func f() -> i32\n    var y = 1\n    let z = k(b: y)\n    return 1\n", "k(b: y)", "y")]
+    [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing(G.s)\n", "missing(G.s)", "G.s")]
+    [InlineData(WeakSiblingArgument + "func g2(a: ref/Weak<rc/Node>) -> i32 => 0\nfunc h(w: Weak<rc/Node>) -> i32\n    var n: Node = Node.init(w@move, 1, 2)\n    let r = n.v@uniq\n    let k = g2(n.w)\n    r@follow = 2\n    return k\n", "g2(n.w)", "")]
     [InlineData("func f() -> i32\n    var x: i32\n    missing(x + missing2)\n    return 1\n", "x + missing2", "x missing2")]
     [InlineData("func f(s: string) -> bool\n    return s == missing\n", "s == missing", "s missing")]
     [InlineData("func f() -> i32\n    var x: i32\n    let t = (x, missing)\n    return 1\n", "(x, missing)", "x missing")]
