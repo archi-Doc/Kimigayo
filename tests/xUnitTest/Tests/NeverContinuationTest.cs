@@ -223,7 +223,7 @@ public class NeverContinuationTest
         Assert.Empty(c.Binding.Issues);
         Assert.Equal(type, TyCtxt.Name(HirTables.TypeOf(KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.ToString() == element))!));
         var f = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
-        Assert.Equal("i32", TyCtxt.Name(f.Locals.ToArray().Single(static x => x.Name == "x").Type));
+        Assert.Equal("i32", TyCtxt.Name(f.Locals.ToArray().Single(static x => x.Name == "x").Type!));
         BuildsWithoutRecords(c);
     }
 

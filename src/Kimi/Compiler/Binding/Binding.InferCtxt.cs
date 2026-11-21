@@ -9,11 +9,13 @@ namespace Kimi.Compiler;
 //   candidate's, one per candidate, a Case construction's, a fixed construction's re-check, an implicit constructor's, a function
 //   reference's), held privately; their writes, each logged while a snapshot is open; Snapshot and Rollback. A frame lives as long as
 //   its solve, so its marks and judgments are that solve's alone.
-// - Inputs: Rent and Return from the solve that owns a frame; writes through a SlotFrame (SetType, SetLength, SetInvariant,
-//   SetEnvironmentJudgment, ClearTypes, ClearLengths, CopyTypes) from the unifier (Infer, InferLength, InferArrayLength), a solve's
-//   seeding and clearing, a trial's write-back and an open Origin's instantiation.
+// - Inputs: Rent, with the scope of the use the solve judges (no default: each Rent site gives its own), and Return from the solve
+//   that owns a frame; writes through a SlotFrame (SetType, SetLength, SetInvariant, SetEnvironmentJudgment, ClearTypes, ClearLengths,
+//   CopyTypes) from the unifier (Infer, InferLength, InferArrayLength), a solve's seeding and clearing, a trial's write-back and an open
+//   Origin's instantiation.
 // - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.IsInvariant, SlotFrame.EnvironmentJudgment), which
-//   SlotSolution and the other solves read.
+//   SlotSolution and the other solves read; SlotFrame.View, the frame's scope as given, which only the unifier reads (R7-C2c2 c2-4b,
+//   design R4.12c: J4 forms a slot's bindings in that view).
 // - Invariants: no array or mutable span of a frame leaves this file, so the compiler admits no unlogged write but the environment
 //   judgments', which are written only with no snapshot open (asserted); no snapshot is open and the log is empty between two solves;
 //   a frame is returned only with no snapshot open (asserted); Rollback undoes in reverse order; the frames and the log are pooled and
@@ -33,12 +35,17 @@ public sealed partial class Binding
     {
         private readonly InferCtxt store;
         private readonly int id;
+        private readonly BindingScope view;
 
-        internal SlotFrame(InferCtxt store, int id)
+        internal SlotFrame(InferCtxt store, int id, BindingScope view)
         {
             this.store = store;
             this.id = id;
+            this.view = view;
         }
+
+        // The scope of the use whose solve owns the frame (a call's, a construction's, a reference's), carried for J4 (design R4.12c).
+        internal BindingScope View => this.view;
 
         internal ReadOnlySpan<BoundType?> Types => this.store.Types(this.id);
 
@@ -84,8 +91,8 @@ public sealed partial class Binding
         private int logCount;
         private int depth;
 
-        // A frame of at least `capacity` Type and length slots, all unbound.
-        internal SlotFrame Rent(int capacity)
+        // A frame of at least `capacity` Type and length slots, all unbound, for a solve judged in `view`.
+        internal SlotFrame Rent(int capacity, BindingScope view)
         {
             int id;
             if (this.freeCount != 0)
@@ -118,7 +125,7 @@ public sealed partial class Binding
                 this.environments[id] = new PendingJudgment?[Math.Max(capacity, 4)];
             }
 
-            return new(this, id);
+            return new(this, id, view);
         }
 
         // Returns a frame, cleared; never under an open snapshot, whose Rollback would write it.

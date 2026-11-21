@@ -388,7 +388,7 @@ public class SpecializationBindingTest
     [InlineData("C3 i5", "func w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W during static>(d: uniq/W) -> i32 => 1", "IncompatibleContractImplementation_Kd: specialize func w<W during static>(d: uniq/W) -> i32 => 1|InvalidOriginBinding_Kd: W during static|InvalidOriginBinding_Kd: W")]
     [InlineData("C19 i8", "specialize func missing<i32>(x: Option<ref/i32>) -> i32 => 1", "MissingSpecializationTarget_Kd: specialize func missing<i32>(x: Option<ref/i32>) -> i32 => 1|Unsupported_Kd: ref/i32")]
     [InlineData("C20 v18", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<() -> uniq/i32>(f: () -> uniq/i32) -> i32 => 1", "Unsupported_Kd: uniq/i32|MissingOriginBinding_Kd: uniq/i32")]
-    [InlineData("C10 r05", "func make<T>(x: i32) -> Option<T> => .None\nspecialize func make<Box>(x: i32) -> Option<Box>\n    let n: i32 = 1\n    return .Some(Box.init(n@ref))", "UnsatisfiedOriginRelation_Kd: Box.init(n@ref)")]
+    [InlineData("C10 r05", "func make<T>(x: i32) -> Option<T> => .None\nspecialize func make<Box>(x: i32) -> Option<Box>\n    let n: i32 = 1\n    return .Some(Box.init(n@ref))", "ComparisonLoanConflict_Kd: let n: i32 = 1|UnsatisfiedOriginRelation_Kd: Box.init(n@ref)")]
     [InlineData("a2 C-331", "func g<T>(x: T) -> ref/i32 => g(x@move)\nspecialize func g<Box>(x: Box) -> ref/i32 => x.value", "UnprovenOriginRelation_Kd: x.value")]
     [InlineData("a5 C-331", "func g<T>(x: T) -> ref/i32 => g(x@move)\nfunc idg<U>(y: U) -> U => y@move\nspecialize func g<Box>(x: Box) -> ref/i32 => idg(x.value)", "UnprovenOriginRelation_Kd: idg(x.value)")]
     [InlineData("e2 C-331", "func g<T>(x: T) -> ref/i32 => g(x@move)\nspecialize func g<Wrap<Box>>(x: Wrap<Box>) -> ref/i32 => x.inner.value", "UnprovenOriginRelation_Kd: x.inner.value")]
@@ -519,7 +519,8 @@ public class SpecializationBindingTest
     private static void AssertRecords(string row, string specialization, IEnumerable<(string Node, Kimi.DiagnosticCode Code)> records)
     {
         var c = MinimalEmissionTest.Analyze(Box + specialization + "\n()");
-        Assert.False(c.Binding.Result.IsComplete, row);
-        Assert.Equal(records, c.Binding.Issues.OrderBy(x => x.Node.Span.Start).Select(x => (x.Node.ToString(), x.Code)));
+        // R7-O1 H: Binding's and the analysis's verdict and records (MirSide), a body relation being A5's record.
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, row);
+        Assert.Equal(records, MirTargetSide.MirSide(c).OrderBy(static x => x.Node.Span.Start).Select(static x => (x.Node.ToString()!, x.Code)));
     }
 }

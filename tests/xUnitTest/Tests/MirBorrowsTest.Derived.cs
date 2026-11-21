@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -157,7 +158,8 @@ public sealed partial class MirBorrowsTest
     }
 
     // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2 (PLAN G1022): a write whose target Binding rejected (an unresolved name, its index or
-    // referent, a missing member, an update of a Property over an ill-formed holder Type) is derived from that failure after its right
+    // referent, a missing member, an update of a Property over an ill-formed holder Type), also through parentheses, whose Place is the
+    // operand's (SPEC 3.4; DECISIONS Z16: the fact is read at the Place the target designates), is derived from that failure after its right
     // side, which is evaluated first, so the right side's own failures stay: a second Move (A1) and a read under a live exclusive Loan (A5)
     // (fail-before: neither), also where locating a Place right side evaluates its index. The write's securing of the right side at the
     // destination Type (a Place's Copy or Reborrow) rests on the failure and adds nothing (before the rule, a Reborrow's InternalInvariant_Kd),
@@ -189,6 +191,13 @@ public sealed partial class MirBorrowsTest
     [InlineData("i32", "let q = m@uniq\n    missing = q", "", false)]
     [InlineData("i32", "let r = y@uniq\n    missing = y\n    r@follow = 2", "", false)]
     [InlineData("i32", "missing = xs[at(t@move)]\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)] // Z16: the Place a parenthesized target designates (SPEC 3.4).
+    [InlineData("i32", "((missing)) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing) += take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing)++", "", false)]
+    [InlineData("i32", "(p.nofield) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "var q = missing\n    (q) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(m) = take(t@move)", "", true)]
     public void AWriteWhoseTargetBindingRejectedBuildsItsRightSide(string holder, string body, string expected, bool accepted)
     {
         var c = MirBuildTest.Compile(Prelude + Writes.Replace("HOLDER", holder, StringComparison.Ordinal) + "    " + body + "\n");
@@ -287,6 +296,59 @@ public sealed partial class MirBorrowsTest
         Assert.Contains(record, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node.ToString().Split('\n')[0]}"));
         Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
         Assert.Equal(twin, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
+    }
+
+    // SPEC 13.3.1, 23.1.2 (PLAN G1073; rule W): a shift Binding rejected (a float's, NonIntegerOperand_Kd) is a temp of no Type, whose
+    // conversion inside a loop is stored into an element of an array the body later slices: a read value of no Type encloses no `during
+    // self` layer (Encloses), so A5 adds nothing to the shift's record (fail-before: an InvalidOperationException at MirCases.TypeOf from
+    // Encloses, the driver's CheckFaulted_Kd; the diagnostic snapshot's Milestone31 float-shift mutation).
+    [Fact]
+    public void ARejectedShiftsValueEnclosesNoLayer()
+    {
+        var c = MirBuildTest.Compile(
+            "func f() -> i32\n    let half = 1.5@bits<u32>@bits<f32>\n    var floatBytes: [4 of u8] = [0, 0, 0, 0]\n    for i in 0..4\n" +
+            "        floatBytes[i] = (half >> (i * 8))@wrap<u8>\n    let s = floatBytes[..]\n    return 0\n");
+        Assert.Equal([DiagnosticCode.NonIntegerOperand_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.Empty(Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
+    }
+
+    // PLAN G1073 (rule W; MirValidator's Bounded): an Opaque temp of no Type read as the first operand of an operator that takes its Type
+    // from its operands, with a Loan live across it so A5's step walk reads the operator, in a body MirValidator accepts: a value of no
+    // Type is no raw pointer, so Add and Sub keep no displaced value (Keeps) and A5 reports nothing (fail-before for Add and Sub: an
+    // InvalidOperationException at MirCases.TypeOf from Keeps; Mul is no displacement either way).
+    [Theory]
+    [InlineData("Add")]
+    [InlineData("Sub")]
+    [InlineData("Mul")]
+    public void AnOperandOfNoTypeIsNoRawPointer(string op)
+    {
+        var c = MirBuildTest.Compile("func w() -> i32 => 1\n");
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var body = new MirBody();
+        body.Reset(Body(program, "w").Key, default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, default));
+        var reference = c.Types.Reference(SemanticsKind.Ref, BoundType.I32);
+        MirPlace Local(BoundType? type, MirLocalKind kind) => new(body.AddLocal(new(type, kind, default)));
+        var (x, r) = (Local(BoundType.I32, MirLocalKind.Var), Local(reference, MirLocalKind.Var));
+        var (unknown, value) = (Local(null, MirLocalKind.Temp), Local(BoundType.I32, MirLocalKind.Temp));
+        SourceInfo At(int id) => new(new(0, id), 0, true);
+        int Constant(long n) => body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, n))));
+        var block = body.AddBlock();
+        body.Push(block, MirStatement.Assign(x, MirRvalue.Use(Constant(2)), At(1)));
+        body.Push(block, MirStatement.Assign(r, MirRvalue.Ref(MirRefKind.Shared, x, reference), At(2)));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(null, body.AddOpaque(new(0, 3), [])), At(3)));
+        var operands = body.AddOperand(MirOperand.Move(unknown));
+        _ = Constant(1);
+        body.Push(block, MirStatement.Assign(value, MirRvalue.Binary(Enum.Parse<MirBinaryOp>(op), operands, proven: true), At(4)));
+        body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, r, At(5)));
+        body.Push(block, MirStatement.Assign(new(0), MirRvalue.Use(body.AddOperand(MirOperand.Move(value))), At(6)));
+        body.Terminate(block, MirTerminator.Return(At(7)));
+        new Stratum(c.Types).Run(program, Validated(c, body));
+        Assert.Empty(program.Problems.All.ToArray());
     }
 
     // A5's Loan conflicts, A1's MovedPlace_Kd and limit records (a located Unsupported_Kd, the depth limit) over a program (with an

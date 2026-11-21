@@ -347,12 +347,15 @@ public sealed class BoundOrigin
 /// <c>Clause</c> is a substituted declaration clause at its supplying argument or Type occurrence <c>Use</c> (SPEC 15.3.3, 15.6.1); one with
 /// <c>WellFormed</c> is the well-formedness of the Type occurrence <c>Use</c> (SPEC 15.6.1), a callee's result premise substituted at the
 /// call <c>Use</c>, the well-formedness of its result, or the intrinsic relation of an input's instantiated Type at that input (SPEC 15.3.7,
-/// 15.6.4 step 3); one with neither is a fit (<see cref="Binding.IsFitObligation"/>), the producer's statement every consumer reads for the
+/// 15.6.4 step 3); one with neither is a fit, the producer's statement every consumer reads for the
 /// record's source. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
 /// the relation is required in (SPEC 15.6.5): the pair binders in scope of <c>Use</c> that must all be borrows, as bits of their
-/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Body</c> is the executable
-/// body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its identity.</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0, Koto? FixedBy = null)
+/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Site</c> (H11b D5,
+/// DECISIONS R4-M113) is its record's location when that is not <c>Use</c>: a local annotation's fit at the local's initializer, a local
+/// clause at the initializer that supplies one of its ends (DIAGNOSTICS); <c>Use</c> still resolves the ends and gives the premises and the
+/// case mask. <c>Body</c> is the executable body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its
+/// identity.</summary>
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0, Koto? FixedBy = null, Koto? Site = null)
 {
     internal ExecutableBody Body { get; init; }
 
@@ -527,11 +530,11 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 //   inference, a function's inherited contract), made only through `Forming` in the formation's files (ArchitectureRulesTest). An
 //   occurrence of that name forms the declaration it names: it reads no other declaration and answers no other component.
 // - Outputs: `Resolves`, `Substitution`, `Substitutions` and `SubstitutionPairs` (ResolveOrigin follows them; a function's inherited
-//   contract copies its original's); `Completed`, `Relations` and `Body`; `Failure`, `PendingCause` and `FailedClauses`; `Set`;
+//   contract copies its original's); `Completed`, `Relations` and `Body`; `Failure` and `PendingCause`; `Set`;
 //   `InferredVariance`. Each is the state as the formation left it, with no judgment.
 // - A failed clause's answers (SPEC 15.3.3, 23.1.2; H11b-0 B1): a clause that does not bind fails itself, never its owner or the
-//   declaration's other clauses. `Failure` is the first failed clause and `FailedClauses` each failed clause with the Origins it bound;
-//   neither is a premise or an obligation anywhere, and only the dependence query reads them (DependenceCause's repairs). Every other
+//   declaration's other clauses. `Failure` is the first failed clause; a failed clause's bound Origins (the formation's FailedClauses)
+//   are no premise or obligation anywhere and name only the slots it leaves Unbound (RestsOnFailedClause). Every other
 //   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s,
 //   it `Resolves` and is `Completed` as one with no failed clause, and only the pending slots a failed clause names (RestsOnFailedClause)
 //   stay Unbound, each resting on `PendingCause`: the first failed clause, or the Type, alias target or payload operand that failed
@@ -562,10 +565,9 @@ public sealed partial class Binding
         // Origins reach body rows only, which A5 judges (DECISIONS R4-M118).
         private Koto? pendingFailure;
 
-        // Each clause that failed with its bound Origins, null where an operand is unavailable (FailOriginClause): it leaves Unbound only
-        // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68), and the dependence query repairs it (DECISIONS
-        // BU-69). Kept across binds.
-        private List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
+        // The bound Origins of each clause that failed, null where an operand is unavailable (FailOriginClause): it leaves Unbound only
+        // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68). Kept across binds.
+        private List<(BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
 
         // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
         // allocated only for a local that has such Origins and kept across binds.
@@ -602,8 +604,6 @@ public sealed partial class Binding
 
         // The failed part its Unbound pending Origins rest on (RestPendingOn), or null.
         internal Koto? PendingCause => this.pendingFailure;
-
-        internal ReadOnlySpan<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)> FailedClauses => CollectionsMarshal.AsSpan(this.failedClauses);
 
         // One step of ResolveOrigin: the Origin an equality, a completed pending slot or an inferred bound substitutes for `origin`.
         internal BoundOrigin? Substitution(BoundOrigin origin) => this.replacements.GetValueOrDefault(origin);
@@ -642,7 +642,7 @@ public sealed partial class Binding
 
             internal ref Koto? PendingFailure => ref declaration.pendingFailure;
 
-            internal ref List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
+            internal ref List<(BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
 
             internal ref Dictionary<BoundOrigin, OriginVariance>? Inferred => ref declaration.inferred;
 

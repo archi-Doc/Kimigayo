@@ -36,7 +36,7 @@ internal struct HirTables
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
     internal List<DefaultDecl>? Defaults; // The parameter defaults the latest publish evaluated, in walk order: the MIR's default templates.
-    internal List<Koto>? Broken; // The nodes Binding resolved that the latest publish found without the facts their Op guarantees, published Error.
+    internal List<Koto>? Broken; // The failure facts the latest publish found without their causes (Binding.FailureFact, RestingCauses): a broken contract.
     internal NodeColumns Families; // Binding's private node families, read and written only by their accessors (DECISIONS BU-220).
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>
@@ -133,7 +133,7 @@ internal struct HirTables
     internal static BoundType? IndexCaseDecider(Koto index) => index is IndexKoto && PlanOf(index) is { Mode: 2, Plan: BoundType decider } ? decider : null;
 
     /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
-    /// operand is a Transfer whose Take OffersTake allowed through its raw branch (ElementAccess.IsRawPlace; Binding.DestroysInPlace),
+    /// operand is a Transfer whose Take OffersTake allowed through its raw branch (Binding.IsRawPlace; Binding.DestroysInPlace),
     /// the discard's plan row Flag.</summary>
     /// <param name="discard">The explicit discard.</param>
     /// <returns>Whether it destroys in place, transferring nothing.</returns>
@@ -329,7 +329,6 @@ internal struct NodeColumns
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
     internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
-    internal StampedColumn<bool, Binding.PassCounter> OriginTwins; // Pass: whether a node's Origin relation records are twins (Binding.OriginFits.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
@@ -352,6 +351,10 @@ internal struct NodeColumns
     internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
+    internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> ResultCompletions; // Work: Binding's result, conversion and fallthrough checks' (Binding.ResultStructure) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
 
     internal void Resize(int length)
     {
@@ -398,7 +401,6 @@ internal struct NodeColumns
         this.ImportedContainers.Grow(length);
         this.QualificationFailures.Grow(length);
         this.PerCallOrigins.Grow(length);
-        this.OriginTwins.Grow(length);
         this.PairFollows.Grow(length);
         this.ImplicitPairFollows.Grow(length);
         this.PhantomRawOrigins.Grow(length);
@@ -421,6 +423,10 @@ internal struct NodeColumns
         this.UnboundSlots.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
+        this.ResultCompletions.Grow(length);
+        this.GuessedCompletions.Grow(length);
+        this.PublishedCompletions.Grow(length);
+        this.LintCompletions.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -444,7 +450,6 @@ internal struct NodeColumns
         this.ImportedContainers.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
         this.PerCallOrigins.Freeze(binding);
-        this.OriginTwins.Freeze(binding);
         this.PairFollows.Freeze(binding);
         this.ImplicitPairFollows.Freeze(binding);
         this.PhantomRawOrigins.Freeze(binding);
@@ -467,6 +472,10 @@ internal struct NodeColumns
         this.UnboundSlots.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
+        this.ResultCompletions.Release();
+        this.GuessedCompletions.Release();
+        this.PublishedCompletions.Release();
+        this.LintCompletions.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -518,7 +527,6 @@ internal struct NodeColumns
             ImportedContainers = this.ImportedContainers.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
             PerCallOrigins = this.PerCallOrigins.Renumbered(length),
-            OriginTwins = this.OriginTwins.Renumbered(length),
             PairFollows = this.PairFollows.Renumbered(length),
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
             PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
@@ -541,6 +549,10 @@ internal struct NodeColumns
             UnboundSlots = this.UnboundSlots.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),
+            ResultCompletions = this.ResultCompletions.Renumbered(length),
+            GuessedCompletions = this.GuessedCompletions.Renumbered(length),
+            PublishedCompletions = this.PublishedCompletions.Renumbered(length),
+            LintCompletions = this.LintCompletions.Renumbered(length),
         };
         return columns;
     }
@@ -648,7 +660,7 @@ internal struct PlanRow
     private ulong foldedLow;
 
     /// <summary>Gets or sets the folded constant of a conversion, a number literal's value, a fixed-array element's constant index (SPEC
-    /// 15.1.3, on a ConstIndex or an Index Place, however the array is reached, in range or not: ElementAccess.ConstantIndex) or a Tuple
+    /// 15.1.3, on a ConstIndex or an Index Place, however the array is reached, in range or not: Binding.ConstantIndex) or a Tuple
     /// element's position.</summary>
     internal Int128? Folded
     {

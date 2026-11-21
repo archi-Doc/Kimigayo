@@ -66,6 +66,7 @@ public partial class Compilation
         var body = first.IsRecord ? Mir.MirProblem.NoBody : first.Body; // The body whose views and rows the facts name; a record has none.
         (object? required, object? limit, object?[]? evidence) = (null, null, null);
         List<(string Role, Koto At, string? Label)>? related = null;
+        (string Role, Koto In, SourceSpan Span, string? Label)[]? spans = null;
         List<DiagnosticKey>? causes = null;
         foreach (var fact in facts)
         {
@@ -85,7 +86,7 @@ public partial class Compilation
                     (related ??= []).Add((role, this.SyntaxOf(fact.Site), label));
                     break;
                 case ProblemFactKind.Relation when this.Relation(program, problem, body, fact) is { } relation:
-                    (evidence, var lines) = relation;
+                    (evidence, var lines, spans) = relation;
                     (related ??= []).AddRange(lines ?? []);
                     break;
                 case ProblemFactKind.Required:
@@ -138,7 +139,8 @@ public partial class Compilation
             Binding.CaseNote(null, found, single),
             evidence: evidence ?? Binding.CaseEvidence(problem.Code, null, found),
             related: Binding.WithCaseDeclarations(related?.ToArray(), this.caseBinders, found),
-            condition: (ushort)problem.Ordinal);
+            condition: (ushort)problem.Ordinal,
+            relatedSpans: spans);
     }
 
     /// <summary>Publishes a refused library (PLAN G949 Stage 2 U2a; design 5.3, R3; C2 (4); B's ruling 40 (i)): each Binding-side record as
@@ -255,8 +257,9 @@ public partial class Compilation
 
     // The fact table's Relation row (design 3.3): an Origin problem's last edge through Binding.OriginRelationFacts, its site, clause,
     // destination and source from the body's C1-F4 row, a containment edge (-1) without a row as wellFormed; the ends are
-    // the Reason's, the longer one also the supplier (Q-BU-1). Null for a broken contract: no body, no Reason ends, or a row MirOrigins forms.
-    private (object[] Evidence, (string Role, Koto At, string? Label)[]? Related)? Relation(
+    // the Reason's, the longer one also the supplier (Q-BU-1) unless the row's own longer end as formed supplied it (Binding.RowSupplier,
+    // DECISIONS R4-M133). Null for a broken contract: no body, no Reason ends, or a row MirOrigins forms.
+    private (object[] Evidence, (string Role, Koto At, string? Label)[]? Related, (string Role, Koto In, SourceSpan Span, string? Label)[]? Spans)? Relation(
         Mir.MirProgram program, in Mir.MirReport.MergedProblem problem, int body, ProblemFact fact)
     {
         if (body == Mir.MirProblem.NoBody || problem.Reason is not { Longer: { } longer, Shorter: { } shorter, Equality: var equality })
@@ -282,7 +285,7 @@ public partial class Compilation
         var at = this.SyntaxOf(row.Site);
         var wellFormed = row.Source == OriginRowSource.WellFormed;
         return source is null ? null
-            : this.Binding.OriginRelationFacts(new(at, longer, longer, shorter, equality, row.Destination, refuted, row.Clause, FixedBy: row.FixedBy, WellFormed: wellFormed), source);
+            : this.Binding.OriginRelationFacts(new(at, longer, this.Binding.RowSupplier(row.Supplier, longer, at), shorter, equality, row.Destination, refuted, row.Clause, FixedBy: row.FixedBy, WellFormed: wellFormed), source);
     }
 
     // A code without facts keyed by its subject's location, in the subject's collection (DIAGNOSTICS 4.1; DECISIONS R5-M65, R4-M71).

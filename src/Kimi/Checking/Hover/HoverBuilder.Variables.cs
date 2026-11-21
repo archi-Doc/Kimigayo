@@ -167,13 +167,7 @@ internal sealed partial class HoverBuilder
         var scope = query.ConstraintScope(syntax);
         if (!this.copies.TryGetValue((type, scope), out var copy))
         {
-            var invalid = false;
-            for (var current = scope; current is not null; current = current.Parent)
-            {
-                invalid |= current.Constraints is { Invalid: true };
-            }
-
-            copy = invalid ? ConstraintProof.Error : query.ProveCopy(type, syntax);
+            copy = query.ProveCopy(type, syntax);
             this.copies.Add((type, scope), copy);
         }
 

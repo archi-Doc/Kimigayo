@@ -50,7 +50,7 @@ public sealed partial class Binding
 
         // SPEC 10.5.3: the one candidate's trial binds its slots here, so that its record reads the signature the trial substituted.
         var slots = only?.Declaration is FunctionKoto one ? one.GenericArguments.Count : 0;
-        SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots);
+        SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots, scope);
         BindingSymbol selected;
         (int Slot, ulong Parameters)? perCall = null;
         (int Slot, ReferenceSlotFailure Failure) slotFailure = default;
@@ -190,7 +190,7 @@ public sealed partial class Binding
         if (target.GenericArguments.Count != 0)
         {
             // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.7.4).
-            var frame = this.infer.Rent(target.GenericArguments.Count);
+            var frame = this.infer.Rent(target.GenericArguments.Count, scope);
             try
             {
                 if (!this.FunctionReferenceFits(use, selected, target, required, scope, boundFrame: frame))
@@ -471,8 +471,8 @@ public sealed partial class Binding
             return null;
         }
 
-        var frame = this.infer.Rent(count);
-        var fromResult = this.infer.Rent(count);
+        var frame = this.infer.Rent(count, scope);
+        var fromResult = this.infer.Rent(count, scope);
         try
         {
             if (!this.InferReferenceSlots(symbol, function, required, frame, container, true, false, true))
@@ -608,7 +608,7 @@ public sealed partial class Binding
 
         var generic = function.GenericArguments.Count;
         var container = this.ReferenceContainer(use, symbol);
-        SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic);
+        SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic, scope);
         var origins = this.originScratch.Rent(function.Origins.Count);
         var inputCount = InputOriginCount(function);
         var inputs = this.originScratch.Rent(inputCount);

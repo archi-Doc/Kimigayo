@@ -374,7 +374,11 @@ public sealed partial class Binding
                     this.Scope = binding.GetScope(iteration.Body, this.Scope);
                     for (var i = 0; i < iteration.Bindings.Count; i++)
                     {
+                        // A loop's binding name is a node of the pass as a pattern's binding is: visited (its rows reset, then
+                        // declared), so the summary counts its state and publishes its failure, such as a repeated name's (SPEC 6.1,
+                        // 23.1.2), which no other walk reaches.
                         var name = iteration.Bindings[i];
+                        this.Visit(name);
                         binding.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, this.Scope);
                     }
 

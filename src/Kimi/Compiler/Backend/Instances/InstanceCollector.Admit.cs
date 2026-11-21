@@ -208,8 +208,13 @@ internal sealed partial class InstanceCollector
 
         for (var i = 0; !open && i < body.Locals.Length; i++)
         {
+            if (body.Locals[i].Type is not { } local)
+            {
+                continue; // SPEC 23.1.2 (rule W, PLAN G1073): a local of no Type (a slot Binding failed, MirLocal) has no instance to form.
+            }
+
             var source = body.Locals[i].Source;
-            var (instance, cause) = this.types.Answered(body.Locals[i].Type, representative);
+            var (instance, cause) = this.types.Answered(local, representative);
             if (!this.Formed(cause, parent, body.Subject(source), this.Subject(site, body, source)))
             {
                 return false;

@@ -210,6 +210,11 @@ public sealed partial class Binding
             (this.Library.MembersOf(owner.Declaration) is { } members
                 ? WitnessReceiver(members, type) : SameType(EffectiveCore(type), this.DeclarationSelf(owner)));
 
+    // SPEC 9.4.1-9.4.2, 23.1.2: a clause, base clause or enum case whose projection access fails records its own problem (Record), beside
+    // any earlier failure of that part. Its owner (here and in ValidateBaseProjections, ValidateEnumProjections, ValidateApiAccess) keeps
+    // a failure of its own: resting it on the part (RestOnPart) would derive the owner's other failure too, since IsDerived's
+    // requirement-blind arms judge the node's recorded inputs (y2: a struct's contradicting clauses beside an inaccessible one).
+    [Transitional("R7", Reason = "Each access owner keeps its own Access failure beside its part's record (y2), until R7-E5's per-problem inputs, when the owner rests on its part.")]
     private void ValidateConstraintProjectionAccess()
     {
         for (var i = 0; i < this.projectionUses.Count; i++)
@@ -238,7 +243,7 @@ public sealed partial class Binding
                     {
                         path.Invalid = true;
                         path.IsVerified = false;
-                        this.Fail(clause, BindingFailure.Access);
+                        this.Record(clause, BindingFailure.Access, []);
                         this.Fail(conditional, BindingFailure.Access);
                         this.Fail(path.Use, BindingFailure.Access);
                     }
@@ -278,7 +283,7 @@ public sealed partial class Binding
                     {
                         path.Invalid = true;
                         path.IsVerified = false;
-                        this.Fail(clause, BindingFailure.Access);
+                        this.Record(clause, BindingFailure.Access, []);
                         this.Fail(path.Use, BindingFailure.Access);
                     }
                 }
@@ -315,7 +320,7 @@ public sealed partial class Binding
                 {
                     if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
                     {
-                        this.Fail(clause, BindingFailure.Access);
+                        this.Record(clause, BindingFailure.Access, []);
                         this.Fail(owner, BindingFailure.Access);
                     }
 
@@ -350,7 +355,7 @@ public sealed partial class Binding
                 }
                 else if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, structure.BoundSymbol!))
                 {
-                    this.Fail(node, BindingFailure.Access);
+                    this.Record(node, BindingFailure.Access, []);
                     this.Fail(structure, BindingFailure.Access);
                 }
             }
@@ -378,7 +383,7 @@ public sealed partial class Binding
                 }
                 else if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, enumeration.BoundSymbol!))
                 {
-                    this.Fail(node, BindingFailure.Access);
+                    this.Record(node, BindingFailure.Access, []);
                     this.Fail(enumeration, BindingFailure.Access);
                 }
             }
@@ -422,7 +427,7 @@ public sealed partial class Binding
                         (!this.ConstraintAccessCovers(constraint, domain) ||
                             (clause.Left.BoundType is { } subject && !this.TypeAccessCovers(subject, domain, domain))))
                     {
-                        this.Fail(clause, BindingFailure.Access);
+                        this.Record(clause, BindingFailure.Access, []);
                         this.Fail(container, BindingFailure.Access);
                     }
                 }
