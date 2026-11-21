@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -62,7 +63,7 @@ public sealed class NativeToolchainTest : IDisposable
                 "kernel32 " + catalog.RootElement.GetProperty("kernel32").GetProperty("sha256").GetString(),
                 "kimi_backend " + catalog.RootElement.GetProperty("artifactSha256").GetString(),
             ],
-            ToolchainIdentity.Supplies.Select(static x => x.Name + " " + x.Sha256));
+            ToolchainIdentity.Supplies.Select(static x => x.Supply.Name + " " + x.Sha256));
         foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", "kimi_backend_windows_x64_v1.lib" }))
         {
             using var stream = supply.Open();
@@ -152,7 +153,7 @@ public sealed class NativeToolchainTest : IDisposable
         NativeToolchain.Verify(report, (severity, line) => lines.Add($"{severity}: {line}"), TestContext.Current.CancellationToken);
         var build = Tatara.Instance.Build;
         string[] expected =
-            [$"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}", .. ToolchainIdentity.Supplies.Select(static x => $"Information: {x.Name}: {x.Sha256} (the catalog's)")];
+            [$"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}", .. ToolchainIdentity.Supplies.Select(static x => $"Information: {x.Supply.Name}: {x.Sha256} (the catalog's)")];
         Assert.Equal(expected, lines);
         using var record = JsonDocument.Parse(File.ReadAllText(report));
         var root = record.RootElement;
@@ -166,7 +167,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(Tatara.ExpectedAbi, tatara.GetProperty("abi").GetString());
         Assert.Equal(ToolchainIdentity.LlvmVersion, tatara.GetProperty("llvmVersion").GetString());
         Assert.Equal(
-            ToolchainIdentity.Supplies.Select(static x => $"{x.Name} {x.Sha256} {x.Sha256} True"),
+            ToolchainIdentity.Supplies.Select(static x => $"{x.Supply.Name} {x.Sha256} {x.Sha256} True"),
             root.GetProperty("supplies").EnumerateArray().Select(static x =>
                 $"{x.GetProperty("name").GetString()} {x.GetProperty("sha256").GetString()} {x.GetProperty("expectedSha256").GetString()} {x.GetProperty("hashMatched").GetBoolean()}"));
     }
@@ -311,6 +312,115 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(paths.Executable, "executable");
         File.WriteAllText(paths.Record, record);
         await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
+    }
+
+    // PLAN G1188: run's program and every descendant end with the run. Kimi is a child process, the test apphost's "run" probe
+    // (TestProcessRecoveryTest.ProcessProbe), which runs RunExecutable on the apphost in the row's probe mode; the row writes Kimi's
+    // input and reads its output and exit code, which are the run's: each output line the program's TEMP, each error line a process of
+    // the program's tree (its id and start time), which has ended when Kimi has. "escape" leaves a descendant that holds the program's
+    // output and whose parent exited first, so a kill of the program's tree misses it; once the row has read the tree's lines, the probe
+    // cancels the run or ends its process as a second Ctrl+C does. On dev 43fc18f6c the descendant keeps the run waiting, so Kimi does
+    // not end in a minute. "no input" and "invalid input" give Kimi no standard input, or one that is no open handle of its own, before
+    // the run: the program reads end of input at once (JobProcess's closed input), never its hidden console's input; on 8653cc017 it
+    // read the console's and Kimi did not end in a minute.
+    [Theory]
+    [InlineData("exit", "x", null, 123, 0)] // The program reads Kimi's input (Tatara decision 15); its exit code is the run's (a kill's is 125).
+    [InlineData("descendant", "", null, 0, 1)] // The program's output is the run's; the descendant it left ends with the run.
+    [InlineData("escape", "", "cancel", 130, 2)] // A cancelled run ends though the escaped descendant holds the program's output.
+    [InlineData("escape", "", "end", 130, 2)] // Kimi's end (Program.EndProcess) ends the program and its descendant.
+    [InlineData("exit", "", "no input", 0, 1)] // A program run while Kimi has no standard input reads end of input.
+    [InlineData("exit", "", "invalid input", 0, 1)] // So does one run while Kimi's standard input is no open handle of its own.
+    public async Task ARunsProgramAndItsDescendantsEndWithTheRun(string program, string input, string? action, int exitCode, int lines)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The probe runs on Windows.");
+        var name = "kimi-run-" + Guid.NewGuid().ToString("N");
+        using var ready = new EventWaitHandle(initialState: false, EventResetMode.ManualReset, name + "-ready");
+        using var go = new EventWaitHandle(initialState: false, EventResetMode.ManualReset, name + "-go");
+        var start = new ProcessStartInfo(Path.ChangeExtension(typeof(NativeToolchainTest).Assembly.Location, ".exe"))
+        {
+            UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = this.directory,
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        start.Environment["KIMI_TEST_PROCESS_PROBE"] = "run";
+        start.Environment["KIMI_TEST_PROCESS_PROGRAM"] = program;
+        start.Environment["KIMI_TEST_PROCESS_READY"] = name + "-ready";
+        start.Environment["KIMI_TEST_PROCESS_GO"] = name + "-go";
+        if (action is not null)
+        {
+            start.Environment["KIMI_TEST_PROCESS_ACTION"] = action;
+        }
+
+        // A printed process is held from its line on when its id still names it (TestProcessRecoveryTest.TryIdentify), so only the
+        // run's own processes are awaited and, should one outlive the row, killed; one that already ended is not held.
+        var processes = program switch { "descendant" => 1, "escape" => 3, _ => 0 };
+        var printed = new List<string>();
+        var other = new List<string>();
+        var held = new List<Process>();
+        var ids = 0;
+        var ended = false;
+        using var kimi = new Process { StartInfo = start };
+        kimi.OutputDataReceived += (_, e) => Read(e.Data, error: false);
+        kimi.ErrorDataReceived += (_, e) => Read(e.Data, error: true);
+        kimi.Start();
+        kimi.BeginOutputReadLine();
+        kimi.BeginErrorReadLine();
+        await kimi.StandardInput.WriteAsync(input);
+        kimi.StandardInput.Close();
+        try
+        {
+            await kimi.WaitForExitAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
+            Assert.Equal(exitCode, kimi.ExitCode);
+            Assert.Equal(Enumerable.Repeat(Environment.GetEnvironmentVariable("TEMP")!, lines), printed);
+            Assert.Empty(other);
+            Assert.Equal(processes, ids);
+            Assert.All(held, static x => Assert.True(x.WaitForExit(TimeSpan.FromSeconds(10)), $"Process {x.Id} is still running."));
+        }
+        finally
+        {
+            lock (held)
+            {
+                ended = true; // No later line reads the row's state.
+                foreach (var process in held.Append(kimi).Where(static x => !x.HasExited))
+                {
+                    process.Kill();
+                    process.WaitForExit(TimeSpan.FromSeconds(10)); // Before Dispose removes the processes' working directory.
+                }
+
+                held.ForEach(static x => x.Dispose());
+            }
+        }
+
+        void Read(string? line, bool error)
+        {
+            lock (held)
+            {
+                if (line is null || ended)
+                {
+                    return;
+                }
+                else if (!error)
+                {
+                    printed.Add(line);
+                }
+                else if (!TestProcessRecoveryTest.TryIdentify(line, out var process))
+                {
+                    other.Add(line);
+                }
+                else
+                {
+                    ids++;
+                    if (process is not null)
+                    {
+                        held.Add(process);
+                    }
+                }
+
+                if (ids == processes && printed.Count == lines)
+                {
+                    go.Set();
+                }
+            }
+        }
     }
 
     // The toolchain boundary's known limit closes (R9-M10, PLAN G983): inside the toolchain's call, an exception the toolchain does not
@@ -460,7 +570,7 @@ public sealed class NativeToolchainTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var (project, paths, v1) = await this.BuildHello();
-        var staged = ToolchainIdentity.Supplies.Select(x => (x.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
             Assert.False(record.RootElement.TryGetProperty("kernel32", out _));
@@ -493,7 +603,7 @@ public sealed class NativeToolchainTest : IDisposable
         var paths = ArtifactPaths.Create(project);
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
         var entry = manifest["libraries"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == name)!;
-        entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Name == name)!.Sha256 : new string('0', 64);
+        entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name)!.Sha256 : new string('0', 64);
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
         var build = NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken);
         if (adopted)

@@ -40,7 +40,7 @@ internal static partial class NativeToolchain
             record["supplies"] = supplies;
             foreach (var supply in ToolchainIdentity.Supplies)
             {
-                report(DiagnosticSeverity.Information, $"{supply.Name}: {VerifySupply(supply, supplies)} (the catalog's)");
+                report(DiagnosticSeverity.Information, $"{supply.Supply.Name}: {VerifySupply(supply, supplies)} (the catalog's)");
             }
 
             record["status"] = "passed";
@@ -73,8 +73,8 @@ internal static partial class NativeToolchain
 
         supplies.Add((JsonNode)new JsonObject
         {
-            ["name"] = supply.Name, ["sha256"] = hash, ["expectedSha256"] = supply.Sha256, ["hashMatched"] = hash == supply.Sha256,
+            ["name"] = supply.Supply.Name, ["sha256"] = hash, ["expectedSha256"] = supply.Sha256, ["hashMatched"] = hash == supply.Sha256,
         });
-        return hash == supply.Sha256 ? hash : throw new InvalidDataException($"The compiler's {supply.Name} does not match its catalog SHA-256.");
+        return hash == supply.Sha256 ? hash : throw new InvalidDataException($"The compiler's {supply.Supply.Name} does not match its catalog SHA-256.");
     }
 }
