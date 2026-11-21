@@ -153,10 +153,7 @@ public sealed partial class Binding
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
         this.memberSides.Clear();
-        foreach (var group in this.requirementGroups.Values)
-        {
-            group.Active = false;
-        }
+        this.requirementCursor = 0;
     }
 
     private void PrepareContracts()

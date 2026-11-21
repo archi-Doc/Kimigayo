@@ -135,7 +135,9 @@ public partial class SyntaxIdTest
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
     // its container's list; OverrideEntries: a Type's implementations by original; Refusals: the refusal a losing candidate's request
     // past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by reflection, since the families'
-    // rows differ.
+    // rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each Final check's start empties them,
+    // so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
+    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]
@@ -201,9 +203,10 @@ public partial class SyntaxIdTest
     // reached by two paths (AssociatedIdentityTest); InferenceFailures, an inference hole no implementation fills; CallableConstraints,
     // a callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); ClauseConstraints, a Function Item
     // reference whose Type argument's clause is refuted (ConstraintBindingTest); B2b-1's UnboundSlots, a call whose slot nothing binds,
-    // and UniqIndexing, a Dictionary's user index; B6b's query memos written in a Bind: the result checks' of a while loop's condition,
-    // the publisher's and the lint walk's of an `if`'s result; the guess rule's is written only after a Bind, by the lint report and
-    // MIR: CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes).
+    // and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter; B6b's query
+    // memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
+    // result; the guess rule's is written only after a Bind, by the lint report and MIR:
+    // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -244,6 +247,7 @@ public partial class SyntaxIdTest
     [InlineData("ClauseConstraints", "struct K<T>\n    T is Copy\n    public let t: T\nfunc id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<K<string>>\n    return 0\n", DiagnosticCode.UnsatisfiedConstraint_Kd)]
     [InlineData("UnboundSlots", "func make<T>() -> i32 => 1\nlet x = make()\n", DiagnosticCode.UnboundTypeArgument_Kd)]
     [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
+    [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
     [InlineData("ResultCompletions", "func f(n: i32) -> i32\n    var s = 0\n    while s < n => s = s + 1\n    return s\n")]
     [InlineData("PublishedCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]

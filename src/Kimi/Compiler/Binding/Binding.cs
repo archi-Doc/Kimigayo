@@ -114,6 +114,8 @@ public sealed partial class Binding
         this.clauseConstraints = new(this);
         this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
+        this.requirementGroups = new(this);
+        this.formationCauses = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
