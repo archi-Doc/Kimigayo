@@ -1435,6 +1435,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   `ImplTable.Builtin`, the built-in conformance rows keyed on the Type and the Contract declaration's identity); C9's row names the
   Composed row's proof and the primitive refutation as Prove's and SPEC 8.7.4's supplies as one statement with it (PLAN G1235).
   Nothing frozen.
+- Revision 105 (2026-11-22, plan §14; the Front's D-1032 and D-1033, F's P1 ruling 1, R7-P1's census on dev 43fc18f6c): P8's
+  row drops G274, P9's G51 and P10's G265, and §5.1's absorbed table all three (PLAN G51 closed as not a defect, SPEC 12.3.1 and
+  12.3.3; G274 and G265 closed, no longer reproducing; R7-P1 keeps their programs as guard rows). Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
