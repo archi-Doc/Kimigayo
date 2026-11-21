@@ -43,6 +43,13 @@ public sealed partial class Binding
     // once the erasure's Owned failure is decided after the prologue).
     private List<(Koto Use, Koto? First, ICheckCause? Next, ICheckCause? ReentrySite)>? derivedUses;
 
+    // SPEC 15.2.3, 8.3.3 Finality (R7-O2 A1+A2; the owner's O-471 (a)): the pass's erasures whose Owned part is the obligation judged in
+    // Binding.Check's Final prologue (JudgePendingErasures), one per converted value with the Types and the body it was bound in, replaced
+    // when the value is bound again (ErasesToFunction, ForgetErasedOwned) and reset with the pass (ResetPrerequisites); and the body a
+    // judged obligation's record facts are read in (RefutedStatic), none outside that judgment.
+    private List<(Koto Node, BoundType Actual, BoundType Expected, ExecutableBody Body)>? pendingErasures;
+    private ExecutableBody erasureBody;
+
     // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction), which records an Owned
     // failure here at the converted value; a recorded mismatch of a Closure or Item against a Function Type always follows its erasure, so
     // a missing outcome is a broken contract. A use records one failure: its erasure's record, made where it was judged, is that record, so
@@ -107,6 +114,67 @@ public sealed partial class Binding
         return true;
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // An erasure's Owned obligation at `node` (ErasesToFunction): its proof read a region with no answer yet in the forming body.
+    private void DeferErasedOwned(Koto node, BoundType actual, BoundType expected)
+        => (this.pendingErasures ??= new()).Add((node, actual, expected, this.formingBody));
+
+    // The obligation of an erasure at `node` judged again (ErasesToFunction): none, until it defers again.
+    private void ForgetErasedOwned(Koto node)
+    {
+        for (var i = 0; this.pendingErasures is { } pending && i < pending.Count; i++)
+        {
+            if (ReferenceEquals(pending[i].Node, node))
+            {
+                pending.RemoveAt(i);
+                return;
+            }
+        }
+    }
+
+    // The Owned part of each erasure deferred (ErasesToFunction; an object view's, RequireObjectErasure), judged in Binding.Check's Final
+    // prologue, once no body is being bound, so every candidate it reads is complete (RegionValue, CarriedRegion's walk). A function erasure's
+    // record facts are judged in the erasure's body (RefutedStatic) and its failure recorded at the converted value as at the literal
+    // (FailOwnedConversion); an object view's failure is its Constraint record at the use, as at the literal, its evidence withdrawn. A
+    // value failed since keeps its failure. No region bound is recorded after it at Final (ProduceFailures).
+    private void JudgePendingErasures()
+    {
+        if (this.pendingErasures is not { Count: > 0 } pending)
+        {
+            return;
+        }
+
+        foreach (var (node, actual, expected, body) in pending)
+        {
+            if (node.BindingFailure != BindingFailure.None)
+            {
+                continue;
+            }
+
+            if (actual.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
+            {
+                if (this.ProveOwned(actual, node) is not ConstraintProof.Proven and var unowned)
+                {
+                    this.objectErasures[node] = default;
+                    this.objectErasureFailures[node] = (actual, expected);
+                    this.RequireConstraint(node, unowned, this.capabilityMode);
+                }
+
+                continue;
+            }
+
+            this.erasureBody = body;
+            var proof = this.ProveErasedOwned(actual, node, out var owned);
+            this.erasureBody = default;
+            if (proof != ConstraintProof.Proven)
+            {
+                (this.erasureOutcomes ??= new())[(actual, expected)] = new(ErasurePart.Owned, true, BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref, owned);
+                this.FailOwnedConversion(actual, expected, node, node);
+            }
+        }
+
+        pending.Clear();
     }
 
     // SPEC 23.1.2 (DECISIONS BU-75, BU-76): a conversion whose own check failed because a part it judged failed is a derived failure, with
@@ -393,14 +461,15 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 15.6.5: whether a leaf Origin cannot outlive `static`, read from the relation's judge in the forming body at `use`
+    // SPEC 15.6.5: whether a leaf Origin cannot outlive `static`, read from the relation's judge in the forming body at `use` (in the
+    // erasure's body for an obligation judged at Final, JudgePendingErasures)
     // (JudgeOriginRelation with `static` as the shorter end: the Origin at the use, a local region through its recorded sources,
     // JudgeLocalRegion, an atom by JudgeOriginAtoms); a Refuted verdict is final (a recorded bound is never removed). A leaf with a local
     // region the body judges that is not refuted is decided only once the body is bound (`final`: its later bounds may refute it); any
     // other leaf keeps the engine's verdict.
     private bool RefutedStatic(BoundOrigin origin, Koto use, ref bool final)
     {
-        if (this.JudgeOriginRelation(origin, BoundOrigin.Static, use, this.formingBody) == OriginJudgment.Refuted)
+        if (this.JudgeOriginRelation(origin, BoundOrigin.Static, use, this.erasureBody.IsBody ? this.erasureBody : this.formingBody) == OriginJudgment.Refuted)
         {
             return true;
         }

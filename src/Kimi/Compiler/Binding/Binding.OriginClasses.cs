@@ -17,14 +17,19 @@
 // - Outputs: the class, read by the judge (Binding.OriginProof.cs, Binding.LocalRegions.cs), the records (Binding.OriginFits.cs,
 //   Binding.OriginClauses.cs, Binding.CallRelations.cs) and the view (Binding.OriginRows.Atoms.cs, ClassifyAtom).
 // - Invariants: each class is decided here once, by one predicate that every reader shares; only SourcesIn and CarriedRegion read state,
-//   the region graph's, and the capture formation's with the regions' values (RegionValue); a pending atom is tested before any other
+//   the region graph's, and the capture formation's with the regions' values (RegionValue), CarriedRegion's walk formed once per Closure
+//   per region-graph version once no body is being bound (BoundClosure.Walk, its one memo); a pending atom is tested before any other
 //   class.
-// - Prohibitions: no proof, judgment, record or state; no class derived from syntax.
+// - Prohibitions: no proof, judgment or record, and no state but the walk's memo; no class derived from syntax; no walk while a body is
+//   being bound (a carried candidate is complete only once its body is bound, RegionBounded).
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // CarriedWalk's answer for a body that carries nothing, never written.
+    private static readonly List<BoundOrigin> NoCarriedRegions = new();
+
     // The C1-F4 view's row 6 (2a0-D section 3): an atom of a body that B's evaluation reaches, B's Closure's evaluating body and so on
     // outward, by the body that formed it or its slot's role (RootOf); in the declaration judge's frame, any body's atom (BU-89).
     internal static bool EnclosingAtom(BoundOrigin atom, ExecutableBody body)
@@ -135,34 +140,43 @@ public sealed partial class Binding
     // SPEC 15.6.5 (its Closure sentence and last clause; DECISIONS R7-O2 A1), 7.7.2, 15.3.6 (O-466 (b); D-993's bullet: a region reached
     // through a carried region's candidate is read in turn): whether the body of `function`, a Closure, carries `region`, a local region
     // of an enclosing body, and what it reads it as (`value`, its RegionValue; null while it has no answer yet, RegionBounded). The one
-    // reading of carried regions, at read time (CarriedRegions): the regions the Closure's own entries name (BoundClosure.Carried, the
-    // capture formation's fact), then, in turn, each region slot the value of a carried region names. A Closure that captures no binding
-    // naming the region carries nothing, though it is evaluated in one that does, and a region a nested signature only names is not
-    // carried by that name: either stays a fixed Origin with no premise (SPEC 15.3.4). Readers: the view's row 6 Value, the body's oracle,
-    // StaticOrigin (ValueIn) and the capture formation (CarryOrigin).
+    // reading of carried regions, read once no body is being bound (Final, A5; the owner's O-471 (a)): the Closure's walk (CarriedWalk).
+    // While a body is bound no walk is read, so no reader sees a set formed from incomplete candidates: only an own entry's region of the
+    // evaluating body answers, whose `let` value is complete at its declaration (SPEC 15.4.4) and whose `var` candidate has no answer yet.
+    // A Closure that captures no binding naming the region carries nothing, though it is evaluated in one that does, and a region a nested
+    // signature only names is not carried by that name: either stays a fixed Origin with no premise (SPEC 15.3.4). Readers: the view's
+    // row 6 Value, StaticOrigin (ValueIn) and the walk's admission.
     internal bool CarriedRegion(BoundOrigin region, Parsing.Koto? function, out BoundOrigin? value)
     {
         value = null;
-        if (!SlotRegion(region) || function is not Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan })
+        if (!SlotRegion(region) || function is not Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan } ||
+            (this.formingBody.IsBody ? region.Body != plan.EvaluatingBody || !plan.Carried.Contains(region) : !this.CarriedWalk(function).Contains(region)))
         {
             return false;
         }
 
-        if (!plan.Carried.Contains(region))
-        {
-            var walk = this.carriedWalk ?? new();
-            this.carriedWalk = null;
-            this.CarriedRegions(function, walk);
-            var carried = walk.Contains(region);
-            this.carriedWalk = walk;
-            if (!carried)
-            {
-                return false;
-            }
-        }
-
         value = this.RegionValue(region);
         return true;
+    }
+
+    // The regions the body of `function` carries (CarriedRegions), formed once per Closure per region-graph version (BoundClosure.Walk,
+    // WalkVersion) and read by CarriedRegion and the body's oracle (D3: one walk); none for a body that is no Closure's, and none while a
+    // body is being bound (no walk is read then).
+    internal List<BoundOrigin> CarriedWalk(Parsing.Koto? function)
+    {
+        if (this.formingBody.IsBody || function is not Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan })
+        {
+            return NoCarriedRegions;
+        }
+
+        if (plan.WalkVersion != this.regionVersion)
+        {
+            this.CarriedRegions(plan, plan.Walk);
+            plan.WalkVersion = this.regionVersion;
+            this.OriginProofMetrics?.CarriedWalk();
+        }
+
+        return plan.Walk;
     }
 
     // PLAN G936's J2: whether `value` is, or has as a meet operand, a local region that is no region slot (a call's open region), whose
@@ -203,19 +217,22 @@ public sealed partial class Binding
         return false;
     }
 
-    // CarriedRegion's walk, into `carried` (cleared first): the regions the body of `function` carries (none unless it is a Closure's), its
-    // entries' first, then, in turn, each region slot named by the value of one (RegionValue, none while it has no answer yet), unless
-    // that value names a call's open region (NamesOpenRegion); each region once. Read where a reader asks (the body's oracle once per
-    // Open), so a `var` region's candidate is read once its body is bound.
-    private void CarriedRegions(Parsing.Koto? function, List<BoundOrigin> carried)
+    // CarriedRegion's walk, into `carried` (cleared first), read only once no body is being bound (CarriedWalk): each region its Closure's
+    // own entries name (BoundClosure.Carried, the capture formation's fact) that is the evaluating body's own or one the evaluating body's
+    // Closure carries, admitted here at read time, when every candidate it reads is complete; then, in turn, each region slot named by the
+    // value of one (RegionValue), unless that value names a call's open region (NamesOpenRegion); each region once.
+    private void CarriedRegions(BoundClosure plan, List<BoundOrigin> carried)
     {
         carried.Clear();
-        if (function is not Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan })
+        var evaluating = plan.EvaluatingBody;
+        for (var i = 0; i < plan.Carried.Count; i++)
         {
-            return;
+            if (plan.Carried[i].Body == evaluating || this.CarriedRegion(plan.Carried[i], evaluating.Definition?.Declaration, out _))
+            {
+                carried.Add(plan.Carried[i]);
+            }
         }
 
-        carried.AddRange(plan.Carried);
         for (var i = 0; i < carried.Count; i++)
         {
             if (this.RegionValue(carried[i]) is not { } value || NamesOpenRegion(value))

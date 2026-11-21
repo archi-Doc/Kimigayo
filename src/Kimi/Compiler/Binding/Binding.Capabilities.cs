@@ -387,7 +387,9 @@ public sealed partial class Binding
             var mark = this.BeginAnswer();
             this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
+            var bodyBinding = this.dependence == BodyBinding;
             next.Depends = this.EndAnswer(mark, result);
+            next.ReadsBodyBinding = next.Depends && bodyBinding;
             if (next.Depends)
             {
                 this.dependentCapabilities.Add(next);
@@ -649,12 +651,12 @@ public sealed partial class Binding
                 if (dependent.Evaluated && !dependent.Depends)
                 {
                     dependent.Depends = true;
+                    dependent.ReadsBodyBinding = work.ReadsBodyBinding;
                     dependents.Add(dependent);
                 }
             }
 
-            work.Reset();
-            work.Depends = true; // Forgotten, not judged: its last evaluation's answer depends on an open obligation (the erasure's Final, OwnedMember).
+            work.Forget(); // Forgotten, not judged (Depends stays): its last evaluation's answer depends on an open obligation or the body's binding (the erasure's Final, OwnedMember).
         }
 
         dependents.Clear();

@@ -276,6 +276,8 @@ public sealed partial class Binding
         var plan = function.ClosureStorage ??= new();
         plan.Storage.Clear();
         plan.Carried.Clear();
+        plan.Walk.Clear();
+        plan.WalkVersion = -1;
         plan.Receiver = plan.CaseFreeReceiver = SemanticsKind.Ref;
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;

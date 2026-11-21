@@ -5,13 +5,13 @@
 // in one Semantics case and then Outlives per source.
 // Input: a body (ExecutableBody). Output: UniversalRelations, disposed after use; oracles open at once are disposed in reverse order.
 // Invariants: a request changes no inference or obligation state (originStateVersion); the structural instances (I1-I4) answer first; a
-// local region the body carries, in turn included (CarriedRegion's walk, read once per Open; the owner's O-466 (b)), equals its value
+// local region the body carries, in turn included (CarriedWalk, the Closure's one walk per region-graph version; the owner's O-466 (b)), equals its value
 // (RegionValue, SPEC 15.3.6's candidate; 15.6.5's Closure sentence; R7-O2 A1): Open and Close add these premises, two
 // OriginPremiseRule.Value edges each, to the rented environment alone (Equate), so it is read so at either end and at an inner node;
 // a value naming a call's open region is not read (Value, NamesOpenRegion: J2's located limit stays, RegionValue's contract); any other
 // region of an enclosing body is a node no premise names; a region of the body itself and a call's open region read as their sources, each
-// outliving the target, no source no answer (BU-127's each-bound reading, SourcesOutlive, which SolvedStatic asks at Final; removed when
-// R7-O2 A2 reads RegionValue there).
+// outliving the target, no source no answer (BU-127's each-bound reading, SourcesOutlive; at Final SolvedStatic asks it for a call's open
+// region only, R7-O2 A1+A2, removed with PLAN G936's late solve).
 // Must not: be used after its disposal or after a change of Origin state (an InvalidOperationException).
 
 using Kimi.Compiler.Parsing;
@@ -47,7 +47,7 @@ public sealed partial class Binding
         private readonly Dictionary<BoundOrigin, bool> solved = new(ReferenceEqualityComparer.Instance); // Per Close: a region's answer.
         private readonly HashSet<BoundOrigin> equated = new(ReferenceEqualityComparer.Instance); // Per Open: the regions read as values.
         private readonly List<BoundOrigin> equating = new(); // Equate's work.
-        private readonly List<BoundOrigin> carried = new(); // Per Open: the regions the body carries (CarriedRegion's walk).
+        private List<BoundOrigin> carried = NoCarriedRegions; // Per Open: the regions the body carries (CarriedWalk, the one walk).
         private OriginPremiseEnvironment? environment;
         private BoundOrigin target = BoundOrigin.Static;
         private ExecutableBody body;
@@ -81,7 +81,7 @@ public sealed partial class Binding
             this.environment = binding.RentPremises(root) ?? throw new InvalidOperationException("The premise environment of a body's oracle is not ready.");
             this.body = body;
             this.equated.Clear();
-            binding.CarriedRegions(body.Definition?.Declaration, this.carried);
+            this.carried = binding.CarriedWalk(body.Definition?.Declaration);
             binding.CollectOriginResolvers(this.environment);
             binding.ExtractOriginPremises(this.environment, root);
             this.Equate(0);

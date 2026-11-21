@@ -129,9 +129,13 @@ public sealed partial class Binding
     // receiver dependence, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
     // condition, the value's own failure, recorded here at `node` (FailOwnedConversion, RecordCondition; DECISIONS BU-107), on which every
     // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm. The conversion at the value is a
-    // reader of its comparison's region conjuncts: it forms them as the body's rows when the signature fits (FormComparisonRows).
+    // reader of its comparison's region conjuncts: it forms them as the body's rows when the signature fits (FormComparisonRows). An Owned
+    // part whose proof read a region with no answer yet (ValueIn's deferral fact, while a body is bound) is no verdict: the erasure's
+    // obligation, judged once the body is bound (DeferErasedOwned, JudgePendingErasures; the owner's O-471 (a)), its other parts judged
+    // here; an erasure judged again replaces its obligation.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
+        this.ForgetErasedOwned(node);
         var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
         var rows = this.comparisonRows.Count;
@@ -148,11 +152,19 @@ public sealed partial class Binding
         OwnedFact owned = default;
         var independence = ConstraintProof.Proven;
         var shape = signature is null || !TyCtxt.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
+        var held = this.readsUnboundedRegion;
+        this.readsUnboundedRegion = false;
         var part = !SharedReceiver(actual) ? ErasurePart.Receiver
             : shape && !fits ? ErasurePart.Shape
             : this.ProveErasedOwned(actual, node, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
-            : fits && (independence = this.ReceiverIndependence(actual)) != ConstraintProof.Proven ? ErasurePart.Dependence
             : ErasurePart.Condition;
+        var deferred = part == ErasurePart.Owned && this.readsUnboundedRegion && this.formingBody.IsBody;
+        this.readsUnboundedRegion = held;
+        if (part == ErasurePart.Condition || deferred)
+        {
+            part = fits && (independence = this.ReceiverIndependence(actual)) != ConstraintProof.Proven ? ErasurePart.Dependence : ErasurePart.Condition;
+        }
+
         if (independence == ConstraintProof.Error)
         {
             this.Fail(node, BindingFailure.Unsupported); // A retention past its limits decides nothing: the located limit at `node`.
@@ -160,6 +172,11 @@ public sealed partial class Binding
 
         if (part == ErasurePart.Condition && fits)
         {
+            if (deferred)
+            {
+                this.DeferErasedOwned(node, actual, expected);
+            }
+
             return true;
         }
 

@@ -206,23 +206,18 @@ public sealed partial class MirBorrowsTest
         => MirTargetSide.Check(source, (code, MirTargetSide.At(context, subject)));
 
     // SPEC 10.7, 7.7.4, 15.6.1 (the owner's O-61, verbatim 「O-61 a」; DECISIONS: G570): a comparison with a Function Type is judged by the
-    // contract alone, so a `var`'s region over a `static` source is no `static` there. Invalid, accepted by dev, rejected now: an erasure
-    // (s2h), a call's argument (s2c), a Callable bound (c12). An acceptance hole closed, no limit. The same rule, each invalid under O-61 (a)
-    // and rejected on dev too (G572 U3): a held Closure over a `static`-only region erased at a stated `let` (e6v), at a call's argument
-    // (e6c) and at a Field of Function Type (s9); in a nested body (c11) the inner Closure carries the region through the outer one, at its
-    // candidate once its body is bound, which R7-O2 A2 judges at Final (ACarriedVarRegionsCandidateIsReadOnceItsBodyIsBound).
-    // G572 U1's f3v (an erasure whose input needs `p outlives R`, R's one bound p), valid under the owner's O-264 Q5 (a) (J1) before, is
-    // invalid: R is only named by the nested signature, which gives no premise (SPEC 15.6.5's last clause; R7-O2 A1's ruling 2):
-    // MirBorrowsTest.Comparisons.cs. At a call's or a constructor's
-    // argument (s2c, s9, e6c) the record is at the argument since PLAN G379 (a), as at the erasure s2h: applicability reads the erasure's
-    // structural part alone and its Origin part is judged after selection (SPEC 15.6.1, 10.8; DECISIONS R4-M155's t1d_n precedent). There
-    // the region's Owned is decided only once the body is bound, so the erasure is the located Unsupported_Kd at the argument (the owner's
-    // O-406 (a), G379 (a) R4-R5: a part not decidable before finality at applicability; O-57's recorded limit stays at s2h's initialization).
+    // contract alone: a Callable bound over a `var`'s region (c12) keeps its record. The conversion's Owned condition reads a local `var`
+    // region as its candidate once its body is bound (the owner's O-481 (b), verbatim 「O-481 は (b) でよいです」; R7-O2 A1+A2), so its
+    // erasures at a stated `let` (e6v, s2h) are valid (AnErasuresOwnedReadsAVarRegionsCandidateOnceItsBodyIsBound). At a call's or a
+    // constructor's argument (s2c, e6c, s9) the record is at the argument since PLAN G379 (a): applicability reads
+    // the erasure's structural part alone and its Origin part is judged after selection (SPEC 15.6.1, 10.8; DECISIONS R4-M155's t1d_n
+    // precedent). There the region's Owned is decided only once the body is bound, so the erasure is the located Unsupported_Kd at the
+    // argument (the owner's O-406 (a), G379 (a) R4-R5: a part not decidable before finality at applicability). G572 U1's f3v (an erasure
+    // whose input needs `p outlives R`, R's one bound p) is invalid: R is only named by the nested signature, which gives no premise
+    // (SPEC 15.6.5's last clause; R7-O2 A1's ruling 2): MirBorrowsTest.Comparisons.cs.
     [Theory]
-    [InlineData(See + "func t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    let f: () -> ref/i32 during static = c@move\n    see(f())\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "c@move", null)]
     [InlineData(See + "func two(f: () -> ref/i32 during static)\n    see(f())\nfunc t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    two(c@move)\n" + Main, DiagnosticCode.Unsupported_Kd, "c@move", null)] // O-406 (a): the located limit at the argument (G379 (a) R4-R5)
     [InlineData(See + "struct H\n    public var f: () -> ref/i32 during static\n    public init(f: () -> ref/i32 during static)\n        self.f = f@move\nfunc g(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let h = H.init(c@move)\n    see(h.f())\n" + Main, DiagnosticCode.Unsupported_Kd, "c@move", null)] // O-406 (a): the located limit at the argument (G379 (a) R4-R5)
-    [InlineData(See + "func f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    let g = func [y] () => y\n    var h: () -> ref/i32 during static = g@move\n    see(h())\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "g@move", null)]
     [InlineData(See + "func two(f: () -> ref/i32 during static)\n    see(f())\nfunc k(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    let g = func [y] () => y\n    two(g@move)\n" + Main, DiagnosticCode.Unsupported_Kd, "g@move", null)] // O-406 (a): the located limit at the argument (G379 (a) R4-R5)
     [InlineData(See + "func apply<F>(g: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    let w = g()\n    return w@follow\nfunc f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let n = apply(c@ref)\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "apply(c@ref)", null)]
     public void AComparisonWithAFunctionTypeReadsTheContractAlone(string source, DiagnosticCode code, string context, string? subject)
@@ -374,32 +369,49 @@ public sealed partial class MirBorrowsTest
     public void AClauseAnEnclosingRegionMeetsHolds()
         => MirTargetSide.Check(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r outlives p\n        return w\n    let n = c()\n    see(n@ref)\n" + Main);
 
-    // s2 of the same limit (O-57, G565): the erasure's Owned record; the body's fit reads the region's value (G572 U1). Valid: the literal
-    // carries y, whose candidate read through r's region is `static`, but r is a `var` region of the body still being bound at the literal,
-    // so its candidate has no answer there (RegionBounded, R7-O2 A1's code review B1); its acceptance is R7-O2 A2's (SolvedStatic reads
-    // RegionValue at Final, BU-136), as for c11 (ACarriedVarRegionsCandidateIsReadOnceItsBodyIsBound).
-    [Fact]
-    public void AnErasedCaptureOverAStaticRegionIsARecordedLimit()
-        => MirTargetSide.Check(
-            See + "func f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> ref/i32 during static = func [y] () => y\n    see(g())\n" + Main,
-            (DiagnosticCode.UnprovenConstraint_Kd, MirTargetSide.At("func [y] () => y", null)));
+    // SPEC 15.2.3, 15.3.6, 7.7.4 (the owner's O-481 (b), verbatim 「O-481 は (b) でよいです」; O-471 (a); R7-O2 A1+A2): an erasure's Owned
+    // condition reads a local `var` region as its candidate once its body is bound, its own body's region (A2's half) or one the body
+    // carries (O-443 (a), O-466 (b)), in turn: an Owned proof that reads a region with no answer yet while a body is bound is the erasure's
+    // obligation, judged in Binding's Final prologue (JudgePendingErasures). Valid, each `static` through R's one bound: the erasure in the
+    // region's own body of a literal (s2: through y's `let`; eo0v, eol0v: a later `r = p`, `b = p`) or of a named Closure value (e6v,
+    // s2h; dev's O-61 (a) reading superseded for the Owned condition); in a nested body that carries R (c11, c11own0, s2own0), at a
+    // `return` (rt1v) and at a call's argument (ag1v: a Closure literal bound at its destination, judged at the literal, not by the
+    // applicability row that judges a named value's erasure, s2c). An object view's payload erasure reads the same (obj1v, SPEC 15.8.1:
+    // RequireObjectErasure takes the same obligation). Each was rejected with UnprovenConstraint_Kd before.
+    [Theory]
+    [InlineData("s2", See + "func f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> ref/i32 during static = func [y] () => y\n    see(g())\n" + Main)]
+    [InlineData("e6v", See + "func t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    let f: () -> ref/i32 during static = c@move\n    see(f())\n" + Main)]
+    [InlineData("s2h", See + "func f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    let g = func [y] () => y\n    var h: () -> ref/i32 during static = g@move\n    see(h())\n" + Main)]
+    [InlineData("eo0v", "func keepStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc needOwned<T>(x: T) -> i32\n    T is Owned\n    return 0\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let g: () -> i32 = func [r] () -> i32 => r@follow\n    r = p\n    return g()\n")]
+    [InlineData("eol0v", "func keepStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc needOwned<T>(x: T) -> i32\n    T is Owned\n    return 0\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var b = p\n    let r = b\n    let g: () -> i32 = func [r] () -> i32 => r@follow\n    b = p\n    return g()\n")]
+    [InlineData("ag1v", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> i32\n        return takeFn(func [r] () -> i32 => r@follow)\n    r = p\n    return c()\n")]
+    [InlineData("obj1v", "open struct Base\n    protected init() => ()\nstruct Leaf<T>: Base\n    public init(): base() => ()\npublic func main() => ()\nfunc f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let h = Kimi.Intrinsics.makeObj(Leaf<ref/i32 during r>.init())\n    let v = h@objref/Base\n    r = s\n    return 0\n")]
+    [InlineData("rt1v", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> () -> i32\n        return func [r] () -> i32 => r@follow\n    r = p\n    return c()()\n")]
+    [InlineData("c11", See + "func f(p: ref/i32 during static)\n    var r = p\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        let g: () -> ref/i32 during static = inner@move\n        see(g())\n    outer()\n" + Main)]
+    [InlineData("c11own0", "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let outer = func [r] () -> i32\n        let inner = func [r] () -> i32 => r@follow\n        let g: () -> i32 = inner@move\n        return g()\n    return outer()\n" + Main)]
+    [InlineData("s2own0", "func f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> i32 = func [y] () => y@follow\n    return g()\n" + Main)]
+    public void AnErasuresOwnedReadsAVarRegionsCandidateOnceItsBodyIsBound(string form, string program)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, string.Empty);
 
-    // SPEC 15.3.6 (a candidate over all of the variable's bounds), 15.2.3 (R7-O2 A1's code review B1): a carried `var` region's candidate
-    // has an answer only once its body is bound (RegionValue's gate, RegionBounded, which SolvedStatic reads too), so an Owned judgment in
-    // a Closure body bound at its literal reads the region. A bound recorded after the literal (`r = n@ref`; through `var r = b` in c11b)
-    // keeps the erasure's Owned record beside the relation's (c11late, s2late, c11b), and an erasure whose only requirement is Owned is
-    // rejected (c11own, s2own). Without the late bound they are valid (c11own0, s2own0, c11 and s2: the inner Closure carries r through
-    // outer, at its candidate `static`; O-61 (a)'s rule stands for s2h, s2c, c12), rejected with dev's Owned record until R7-O2 A2 judges
-    // the erasure at Final (SolvedStatic reads RegionValue, BU-136): A2's rows.
+    // SPEC 15.3.6 (a candidate over all of the variable's bounds), 15.2.3, 15.6.5 (R7-O2 A1+A2; the owner's O-471 (a), O-481 (b)): a `var`
+    // region's candidate has an answer only once its body is bound (RegionValue's gate, RegionBounded), so an erasure's Owned proof that
+    // reads it while a body is bound is judged at Final (JudgePendingErasures). A bound recorded after the literal (`r = n@ref`; through
+    // `var r = b` in c11b; `b = n@ref` through `let r = b` in eol0n) is in the candidate: rejected. In the region's own body, where `n@ref`
+    // is a Borrow local to the body, the chain to `static` is Refuted (SPEC 15.6.5): UnsatisfiedConstraint_Kd (s2own, s2late, eo0n,
+    // eol0n; dev's Unknown was judged before the bound existed, a record-kind move under Q13); in a nested body (c11own, c11late, c11b,
+    // rt1n) `n@ref` is an enclosing Borrow, fixed there: Unknown, UnprovenConstraint_Kd. A relation's record stays beside it (c11late,
+    // s2late, c11b). Their valid twins: AnErasuresOwnedReadsAVarRegionsCandidateOnceItsBodyIsBound.
     [Theory]
     [InlineData("c11own", "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let outer = func [r] () -> i32\n        let inner = func [r] () -> i32 => r@follow\n        let g: () -> i32 = inner@move\n        return g()\n    r = n@ref\n    return outer()\n" + Main, "UnprovenConstraint_Kd: let g: () -> i32 = inner@move")]
-    [InlineData("s2own", "func f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> i32 = func [y] () => y@follow\n    r = n@ref\n    return g()\n" + Main, "UnprovenConstraint_Kd: var g: () -> i32 = func [y] () => y@follow")]
+    [InlineData("s2own", "func f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> i32 = func [y] () => y@follow\n    r = n@ref\n    return g()\n" + Main, "UnsatisfiedConstraint_Kd: var g: () -> i32 = func [y] () => y@follow")]
     [InlineData("c11late", See + "func f(p: ref/i32 during static)\n    let n: i32 = 1\n    var r = p\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        let g: () -> ref/i32 during static = inner@move\n        see(g())\n    r = n@ref\n    outer()\n" + Main, "UnprovenConstraint_Kd: let g: () -> ref/i32 during static = inner@move | UnprovenOriginRelation_Kd: let g: () -> ref/i32 during static = inner@move")]
-    [InlineData("s2late", See + "func f(s: ref/i32 during static)\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> ref/i32 during static = func [y] () => y\n    r = n@ref\n    see(g())\n" + Main, "UnprovenConstraint_Kd: var g: () -> ref/i32 during static = func [y] () => y | UnprovenOriginRelation_Kd: var g: () -> ref/i32 during static = func [y] () => y")]
+    [InlineData("s2late", See + "func f(s: ref/i32 during static)\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> ref/i32 during static = func [y] () => y\n    r = n@ref\n    see(g())\n" + Main, "UnsatisfiedConstraint_Kd: var g: () -> ref/i32 during static = func [y] () => y | UnprovenOriginRelation_Kd: var g: () -> ref/i32 during static = func [y] () => y")]
     [InlineData("c11b", See + "func f(p: ref/i32 during static)\n    let n: i32 = 1\n    var b = p\n    var r = b\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        let g: () -> ref/i32 during static = inner@move\n        see(g())\n    b = n@ref\n    outer()\n" + Main, "UnprovenConstraint_Kd: let g: () -> ref/i32 during static = inner@move | UnprovenOriginRelation_Kd: let g: () -> ref/i32 during static = inner@move")]
-    [InlineData("c11own0", "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let outer = func [r] () -> i32\n        let inner = func [r] () -> i32 => r@follow\n        let g: () -> i32 = inner@move\n        return g()\n    return outer()\n" + Main, "UnprovenConstraint_Kd: let g: () -> i32 = inner@move")]
-    [InlineData("s2own0", "func f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> i32 = func [y] () => y@follow\n    return g()\n" + Main, "UnprovenConstraint_Kd: var g: () -> i32 = func [y] () => y@follow")]
-    [InlineData("c11", See + "func f(p: ref/i32 during static)\n    var r = p\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        let g: () -> ref/i32 during static = inner@move\n        see(g())\n    outer()\n" + Main, "UnprovenConstraint_Kd: let g: () -> ref/i32 during static = inner@move")]
+    [InlineData("eo0n", "func keepStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc needOwned<T>(x: T) -> i32\n    T is Owned\n    return 0\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let g: () -> i32 = func [r] () -> i32 => r@follow\n    r = n@ref\n    return g()\n", "UnsatisfiedConstraint_Kd: let g: () -> i32 = func [r] () -> i32 => r@follow")]
+    [InlineData("eol0n", "func keepStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc needOwned<T>(x: T) -> i32\n    T is Owned\n    return 0\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var b = p\n    let r = b\n    let g: () -> i32 = func [r] () -> i32 => r@follow\n    b = n@ref\n    return g()\n", "UnsatisfiedConstraint_Kd: let g: () -> i32 = func [r] () -> i32 => r@follow")]
+    [InlineData("ag1n", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> i32\n        return takeFn(func [r] () -> i32 => r@follow)\n    r = n@ref\n    return c()\n", "UnprovenConstraint_Kd: return takeFn(func [r] () -> i32 => r@follow)")]
+    [InlineData("obj1n", "open struct Base\n    protected init() => ()\nstruct Leaf<T>: Base\n    public init(): base() => ()\npublic func main() => ()\nfunc f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let h = Kimi.Intrinsics.makeObj(Leaf<ref/i32 during r>.init())\n    let v = h@objref/Base\n    r = n@ref\n    return 0\n", "UnprovenConstraint_Kd: let v = h@objref/Base")]
+    [InlineData("rt1n", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> () -> i32\n        return func [r] () -> i32 => r@follow\n    r = n@ref\n    return c()()\n", "UnprovenConstraint_Kd: return func [r] () -> i32 => r@follow")]
     public void ACarriedVarRegionsCandidateIsReadOnceItsBodyIsBound(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 

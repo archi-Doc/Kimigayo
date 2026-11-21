@@ -53,27 +53,41 @@ public sealed partial class Binding
     }
 
     // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`, each region the judgment's body reads
-    // as its value read so (ValueIn: a `let` region of that body, a region the body carries; R7-O2 A1), a region a nested signature names
-    // staying the region (SPEC 15.3.4), a `var` region whose body is still being bound too (RegionValue has no answer yet, so the
-    // judgment is Unknown until Final); a null Origin argument and an unproven Origin are Unknown. A function's scope judges in its body
-    // (JudgedAt): its literal stands in the enclosing body, whose `let` regions are not its values (D-862's e-owsin).
+    // as its value read so (ValueIn: a `let` region of that body, a `var` region of it once it is bound, a region the body carries; R7-O2
+    // A1+A2), a region a nested signature names staying the region (SPEC 15.3.4); a null Origin argument and an unproven Origin are Unknown.
+    // An Unknown whose reading met a region with no answer yet (ValueIn's deferral fact) is no verdict: it depends on the body's binding
+    // (SPEC 8.3.3 Finality: ReadBodyBinding), and the erasure that asked judges its Owned part once the body is bound (JudgePendingErasures;
+    // the owner's O-471 (a), O-481 (b)); the fact stays set for that asker. A function's scope judges in its body (JudgedAt): its literal
+    // stands in the enclosing body, whose `let` regions are not its values (D-862's e-owsin).
     private ConstraintProof StaticOrigin(BoundOrigin? origin, BindingScope scope)
     {
-        if (origin is not null && (this.ProvesOriginOutlives(this.ValueIn(origin, scope.Function), BoundOrigin.Static, JudgedAt(scope)) || this.SolvedStatic(origin)))
+        var held = this.readsUnboundedRegion;
+        this.readsUnboundedRegion = false;
+        var read = origin is null ? null : this.ValueIn(origin, scope.Function);
+        if (read is not null && (this.ProvesOriginOutlives(read, BoundOrigin.Static, JudgedAt(scope)) || this.SolvedStatic(read, scope.Function)))
         {
+            this.readsUnboundedRegion = held;
             return ConstraintProof.Proven;
         }
 
+        if (this.readsUnboundedRegion)
+        {
+            this.ReadBodyBinding();
+        }
+
+        this.readsUnboundedRegion |= held;
         this.ScopeReads.Origin ??= origin;
         return ConstraintProof.Unknown;
     }
 
-    // SPEC 15.2.3, 15.3.6, 8.3.3 (DECISIONS: G572 U2a): whether a local region's solved value, in `origin` or a meet's operand, is
-    // `static`, the oracle's one reading of a region (UniversalRelations.Outlives); its bounds are complete once its body is bound
-    // (RegionBounded, RegionValue's gate), and until then it has no answer.
-    private bool SolvedStatic(BoundOrigin origin)
+    // SPEC 15.2.3, 15.3.6, 8.3.3 (DECISIONS: G572 U2a, R7-O2 A1+A2): whether a call's open region of the judgment's body (a region with no
+    // slot value: J2's waited regions, BU-136's), in `origin` or a meet's operand, is `static`, the oracle's reading of it through its sources
+    // (UniversalRelations.Outlives, SourcesOutlive), once its body is bound (RegionBounded); a region slot is read through ValueIn alone (its
+    // candidate in a body that reads it so; a region a body only names stays the region, e-ownf). Removed with PLAN G936's late solve.
+    private bool SolvedStatic(BoundOrigin origin, Koto? function)
     {
-        if (RegionOperand(origin) is not { } region || !this.RegionBounded(region))
+        if (RegionOperand(origin) is not { Binder: { } binder } region || SlotRegion(region) || !ReferenceEquals(BodyOwner(binder), function) ||
+            !this.RegionBounded(region))
         {
             return false;
         }
@@ -127,6 +141,12 @@ public sealed partial class Binding
         // evaluation (Binding.ForgetDependentCapabilities), so the erasure's Owned owner reads a forgotten subject as Final (OwnedMember).
         internal bool Depends { get; set; }
 
+        // Whether that dependence is the bound body's binding (Binding.BodyBinding: its evaluation read a local region with no answer yet,
+        // itself or through a work it read; R7-O2 A1+A2, Revision 3.2): forgotten past the outermost request with its parts kept, only its
+        // verdict not cached (Forget), so the erasure's Owned owner classifies its parts as before (OwnedMember: a refuted leaf first) and
+        // its obligation is judged again once the body is bound (JudgePendingErasures).
+        internal bool ReadsBodyBinding { get; set; }
+
         internal CapabilityWork? Parent { get; set; }
 
         // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read;
@@ -157,19 +177,32 @@ public sealed partial class Binding
 
         internal void Reset()
         {
+            this.Forget();
+            this.Depends = false;
+            this.ReadsBodyBinding = false;
+            this.Origin = null;
+            this.Parts?.Clear();
+        }
+
+        // Its verdict and the facts that rest on it are not kept (Binding.ForgetDependentCapabilities); a work that read the body's binding
+        // keeps its parts and Origin, which its next evaluation replaces.
+        internal void Forget()
+        {
             this.Result = ConstraintProof.Unknown;
             this.Assumed = false;
             this.Evaluated = false;
             this.Queued = false;
-            this.Depends = false;
             this.Parent = null;
             this.Cause = null;
             this.OwnCause = null;
             this.Fact = null;
-            this.Origin = null;
-            this.Parts?.Clear();
             this.Reads.Clear();
             this.Dependents.Clear();
+            if (!this.ReadsBodyBinding)
+            {
+                this.Origin = null;
+                this.Parts?.Clear();
+            }
         }
 
         // A part read by an Owned judgment, on every path that combines one (G379 R5: a layer's own Origin, a structure's components,

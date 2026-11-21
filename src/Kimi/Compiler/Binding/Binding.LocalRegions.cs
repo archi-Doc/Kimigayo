@@ -46,15 +46,20 @@ public sealed partial class Binding
     private readonly List<BoundOrigin> reachAtoms = new();
     private readonly HashSet<BoundOrigin> reachSeen = new(ReferenceEqualityComparer.Instance);
 
-    // CarriedRegion's walk (Binding.OriginClasses.cs), reused; null while a walk holds it, so a walk inside RegionValue's reading uses its
-    // own.
-    private List<BoundOrigin>? carriedWalk = new();
+    // ValueIn's reads once no body is being bound, per (Origin, body) and region-graph version (valueInVersion): a DAG of regions is read
+    // in turn, so an unmemoized reading is exponential in its depth; reused.
+    private readonly Dictionary<(BoundOrigin Origin, Koto? Body), BoundOrigin> valueInReads = new();
 
     // The running pass's part of the rows (PassPart.Regions), which its steps write and reset; the driver hands it over (EnterPass),
     // Binding's own between Binds.
     private Dictionary<BoundOrigin, LocalRegion> localRegions;
     private int regionVersion;
     private int regionValues;
+    private int valueInVersion = -1;
+
+    // The deferral fact (R7-O2 A1+A2; the owner's O-471 (a)): whether a ValueIn reading since its reader cleared it met a local region with
+    // no answer yet (RegionBounded false), which stays the region: the reader's answer depends on that body's binding (StaticOrigin).
+    private bool readsUnboundedRegion;
 
     // The region graph's version: every recorded bound moves it, so a body's last one is the whole-body graph.
     internal int RegionVersion => this.regionVersion;
@@ -225,29 +230,33 @@ public sealed partial class Binding
     internal BoundOrigin RegionValueAtUse(BoundOrigin origin, Koto use)
         => this.regionValues == 0 || origin.Kind is not (OriginKind.Inference or OriginKind.Intersection) ? origin : this.RegionValueIn(origin, BodyOwner(use));
 
-    // SPEC 15.3.6, 15.6.5 (R7-O2 A1): an Origin with each region that the body of `function` reads as its value read so: a `let` region of
-    // that body as its published value (as its own body reads it, RegionValueAtUse), a region the body carries (CarriedRegion) as its
-    // candidate (RegionValue), itself or a meet's operand, each region of that candidate the body carries in turn read so (O-466 (b)); a
-    // `var` region of the body, a region a nested signature only names (SPEC 15.3.4) and a region with no value (yet) stay. Each read
-    // moves one body outward or down that body's definitions. StaticOrigin's Owned judgment reads it.
+    // SPEC 15.3.6, 15.6.5 (R7-O2 A1+A2): an Origin with each region that the body of `function` reads as its value read so: a `let` region
+    // of that body as its published value (as its own body reads it, RegionValueAtUse), a `var` region of that body as its candidate
+    // (RegionValue: once the body is bound, A2's own-body half), a region the body carries (CarriedRegion) as its candidate, itself or a
+    // meet's operand, each region of that candidate read so in turn (O-466 (b)); a region a nested signature only names (SPEC 15.3.4) and
+    // a region with no value stay, and so does a region with no answer yet (RegionBounded), which sets the deferral fact
+    // (readsUnboundedRegion). Each read moves one body outward or down that body's definitions; once no body is being bound each is
+    // read once per region-graph version (valueInReads). StaticOrigin's Owned judgment reads it.
     internal BoundOrigin ValueIn(BoundOrigin origin, Koto? function)
     {
-        if (origin.Kind != OriginKind.Intersection)
+        if (this.formingBody.IsBody)
         {
-            return this.Region(origin) is { Value: { } published } own && ReferenceEquals(own.Body, function) ? this.ValueIn(published, function)
-                : this.CarriedRegion(origin, function, out var value) && value is not null ? this.ValueIn(value, function) : origin;
+            return this.ReadValueIn(origin, function);
         }
 
-        var read = BoundOrigin.Static;
-        var changed = false;
-        for (var i = 0; i < origin.Operands.Count; i++)
+        if (this.valueInVersion != this.regionVersion)
         {
-            var operand = this.ValueIn(origin.Operands[i], function);
-            changed |= !ReferenceEquals(operand, origin.Operands[i]);
-            read = this.Meet(read, operand);
+            this.valueInReads.Clear();
+            this.valueInVersion = this.regionVersion;
         }
 
-        return changed ? read : origin;
+        if (!this.valueInReads.TryGetValue((origin, function), out var read))
+        {
+            read = this.ReadValueIn(origin, function);
+            this.valueInReads[(origin, function)] = read;
+        }
+
+        return read;
     }
 
     // SPEC 15.3.6's value of a local region (R7-O2 A1: the one reading; DECISIONS BU-127, the owner's O-422 (a), O-466 (b)), null for any
@@ -345,6 +354,38 @@ public sealed partial class Binding
         {
             throw new InvalidOperationException("A pass wrote a frozen library region (InternalInvariant; PLAN G949 S1-1).");
         }
+    }
+
+    // ValueIn's one reading of `origin` in the body of `function`.
+    private BoundOrigin ReadValueIn(BoundOrigin origin, Koto? function)
+    {
+        this.OriginProofMetrics?.ValueInRead();
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            if (this.Region(origin) is { Value: { } published } own && ReferenceEquals(own.Body, function))
+            {
+                return this.ValueIn(published, function);
+            }
+
+            if ((OwnVarRegion(origin, function) ? this.RegionValue(origin) : this.CarriedRegion(origin, function, out var value) ? value : null) is { } candidate)
+            {
+                return this.ValueIn(candidate, function);
+            }
+
+            this.readsUnboundedRegion |= IsLocalRegion(origin) && !this.RegionBounded(origin);
+            return origin;
+        }
+
+        var read = BoundOrigin.Static;
+        var changed = false;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            var operand = this.ValueIn(origin.Operands[i], function);
+            changed |= !ReferenceEquals(operand, origin.Operands[i]);
+            read = this.Meet(read, operand);
+        }
+
+        return changed ? read : origin;
     }
 
     // SPEC 15.3.6 (R7-O2 A1): whether a local region's recorded bounds are complete, so that its candidate has an answer: its body is not

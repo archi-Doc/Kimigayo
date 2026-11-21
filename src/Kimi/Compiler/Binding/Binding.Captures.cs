@@ -197,8 +197,9 @@ public sealed partial class Binding
         }
     }
 
-    // Each region slot `origin` names that is the evaluating body's own or one it carries (CarriedRegion), kept once: the Closure's own
-    // entries' regions alone; what is carried in turn through their values is read where a reader asks (CarriedRegion's walk).
+    // Each region slot `origin` names, kept once: the Closure's own entries' regions alone, with no test of whether one is carried; the
+    // walk admits them, and reads what is carried in turn through their values, once no body is being bound (CarriedRegions; R7-O2
+    // A1+A2: the capture formation reads no candidate).
     private void CarryOrigin(BoundClosure plan, BoundOrigin? origin)
     {
         if (origin is null)
@@ -206,8 +207,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (SlotRegion(origin) && (origin.Body == plan.EvaluatingBody || this.CarriedRegion(origin, plan.EvaluatingBody.Definition?.Declaration, out _)) &&
-            !plan.Carried.Contains(origin))
+        if (SlotRegion(origin) && !plan.Carried.Contains(origin))
         {
             plan.Carried.Add(origin);
         }

@@ -57,6 +57,13 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the local regions the fixed-fixed oracle read through their bounds (<c>UniversalRelations.Outlives</c>).</summary>
     internal long RegionReads { get; private set; }
 
+    /// <summary>Gets the carried-region walks formed (<c>Binding.CarriedWalk</c>: one per Closure per region-graph version).</summary>
+    internal long CarriedWalks { get; private set; }
+
+    /// <summary>Gets the reads of a region's value in a body that were computed (<c>Binding.ValueIn</c>: once per Origin and body per
+    /// region-graph version once no body is being bound).</summary>
+    internal long ValueInReads { get; private set; }
+
     /// <summary>Gets the declaration judge's chain work (<c>TyCtxt.OriginChains.Work</c> of its graphs, PLAN G318): the core's only, as
     /// the minimal-condition rule at a last edge is quadratic in its key's conditions by design (at most 64 binders), as the copy's was.</summary>
     internal long ChainWork { get; private set; }
@@ -109,11 +116,17 @@ internal sealed class OriginProofMetrics
         this.ClosureTicks = 0;
         this.ChainWork = 0;
         this.WellFormedParts = 0;
+        this.CarriedWalks = 0;
+        this.ValueInReads = 0;
         Array.Clear(this.edges);
         this.queries.Clear();
     }
 
     internal void RegionRead() => this.RegionReads++;
+
+    internal void CarriedWalk() => this.CarriedWalks++;
+
+    internal void ValueInRead() => this.ValueInReads++;
 
     internal void Chained(long work) => this.ChainWork += work;
 

@@ -132,9 +132,9 @@ public class OriginProofScalingTest(ITestOutputHelper output)
 
     // SPEC 15.6.5's Closure sentence (R7-O2 A1; the Front's T4): n nested Closures, each capturing the `let` binding of the level above's
     // capture, the innermost returning it at p (chain); and each capturing two, whose values at the next level are both meets of the two
-    // above (dag: two carried paths per level, 2^n paths in all; the code review's N5). Each Closure's carried regions are formed once
-    // (BoundClosure.Carried, a list the next level's formation reads) and each body's oracle reads each region once, in turn included:
-    // the region reads grow linearly with n (the row asserts them; the time is printed). n is 15, 30, 60 for the chain; the dag's is 5,
+    // above (dag: two carried paths per level, 2^n paths in all; the code review's N5). Each Closure's carried regions are walked once per
+    // region-graph version once no body is being bound (BoundClosure.Walk, which the body's oracle reads too) and each body's oracle reads
+    // each region once, in turn included: the region reads grow linearly with n (the row asserts them; the time is printed). n is 15, 30, 60 for the chain; the dag's is 5,
     // 10, 20, below the knee of a compile time exponential in its depth that dev has without A1 (PLAN G1209: about 36 s at
     // 30 levels); the unit that fixes G1209 raises the dag's depths to the chain's.
     [Theory]
@@ -148,12 +148,39 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         for (var i = 0; i < depths.Length; i++)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            reads[i] = CarriedReads(shape == "dag" ? CarriedDag(depths[i]) : CarriedChain(depths[i]));
+            reads[i] = CarriedMetrics(shape == "dag" ? CarriedDag(depths[i]) : CarriedChain(depths[i])).RegionReads;
             times[i] = watch.ElapsedMilliseconds;
+            Assert.NotEqual(0, reads[i]);
         }
 
         output.WriteLine($"carried {shape} N {string.Join(", ", depths)}: region reads {string.Join(", ", reads)}; ms {string.Join(", ", times)}");
         Assert.True(MirBorrowsTest.Grows(reads, 2.5), $"region reads {string.Join(", ", reads)}");
+    }
+
+    // SPEC 15.2.3, 15.3.6, 15.6.5 (R7-O2 A1+A2; the owner's O-471 (a), O-481 (b); the Front's D6): n nested Closures, each declaring a `var`
+    // bound by the captured `var` of the level above (chain), or two, each bound by both above (diamond: two carried paths per level), and
+    // the erasure of a Closure over the innermost region, whose Owned is read through each candidate in turn to `static` at Final
+    // (JudgePendingErasures): the walks (one per Closure per region-graph version, CarriedWalk) and the region reads in a body (one per
+    // region and body per version, ValueIn) grow linearly with n (asserted; the time is printed). Each is valid. n is 15, 30, 60 for the
+    // chain and 10, 20, 40 for the diamond.
+    [Theory]
+    [InlineData("chain", 15)]
+    [InlineData("diamond", 10)]
+    public void AnErasuresOwnedReadsEachCarriedCandidateOnce(string shape, int depth)
+    {
+        var (walks, values, times) = (new long[3], new long[3], new long[3]);
+        int[] depths = [depth, 2 * depth, 4 * depth];
+        for (var i = 0; i < depths.Length; i++)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var metrics = CarriedMetrics(ErasedCarried(shape == "diamond", depths[i]));
+            (walks[i], values[i], times[i]) = (metrics.CarriedWalks, metrics.ValueInReads, watch.ElapsedMilliseconds);
+            Assert.NotEqual(0, metrics.ValueInReads);
+        }
+
+        output.WriteLine($"erased {shape} N {string.Join(", ", depths)}: walks {string.Join(", ", walks)}; ValueIn reads {string.Join(", ", values)}; ms {string.Join(", ", times)}");
+        Assert.True(MirBorrowsTest.Grows(walks, 2.5), $"walks {string.Join(", ", walks)}");
+        Assert.True(MirBorrowsTest.Grows(values, 2.5), $"ValueIn reads {string.Join(", ", values)}");
     }
 
     // SPEC 15.6.5, 23.1.2 (DECISIONS BU-62; PLAN G318): k Semantics binders and k declaration rows b >= x.s, each in one binder's borrow
@@ -337,6 +364,33 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         return Called(source, indent, depth);
     }
 
+    // The Front's vco (chain) and dvo (diamond) rows at `depth`: the innermost body erases a Closure over its `var` to `() -> i32`.
+    private static string ErasedCarried(bool diamond, int depth)
+    {
+        var source = new StringBuilder("public func main() => ()\nfunc f(s: ref/i32 during static) -> i32\n    var a0 = s\n");
+        source.Append(diamond ? "    var b0 = s\n" : string.Empty);
+        var indent = "    ";
+        for (var i = 1; i <= depth; i++)
+        {
+            source.Append(CultureInfo.InvariantCulture, $"{indent}let c{i} = func [a{i - 1}{(diamond ? $", b{i - 1}" : string.Empty)}] () -> i32\n");
+            indent += "    ";
+            source.Append(CultureInfo.InvariantCulture, $"{indent}var a{i} = a{i - 1}\n");
+            if (diamond)
+            {
+                source.Append(CultureInfo.InvariantCulture, $"{indent}a{i} = b{i - 1}\n{indent}var b{i} = b{i - 1}\n{indent}b{i} = a{i - 1}\n");
+            }
+        }
+
+        source.Append(CultureInfo.InvariantCulture, $"{indent}let g: () -> i32 = func [a{depth}] () -> i32 => a{depth}@follow\n{indent}return g()\n");
+        for (var i = depth; i > 0; i--)
+        {
+            indent = indent[..^4];
+            source.Append(CultureInfo.InvariantCulture, $"{indent}return c{i}()\n");
+        }
+
+        return source.ToString();
+    }
+
     // The calls of the nested Closures c1..c{depth}, innermost first, and the entry point.
     private static string Called(StringBuilder source, string indent, int depth)
     {
@@ -349,7 +403,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         return source.Append("public func main() => ()\n").ToString();
     }
 
-    private static long CarriedReads(string source)
+    private static OriginProofMetrics CarriedMetrics(string source)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
@@ -360,8 +414,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         Assert.Empty(c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
-        Assert.NotEqual(0, metrics.RegionReads);
-        return metrics.RegionReads;
+        return metrics;
     }
 
     private static long RegionReads(int depth)

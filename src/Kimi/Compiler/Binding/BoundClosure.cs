@@ -84,10 +84,17 @@ public sealed class BoundClosure
 
     internal List<BoundCapture> Storage { get; } = new();
 
-    // SPEC 15.6.5 (R7-O2 A1): the local regions of enclosing bodies that the entries' Types name and that the evaluating body reads as
-    // their values, its own regions or regions it carries in turn; written once per entry by Binding.Captures (CarryRegions), read by
-    // Binding.CarriedRegion. MIR never reads it.
+    // SPEC 15.6.5 (R7-O2 A1+A2): the region slots the entries' Types name, the Closure's own entries only, with no test of whether they
+    // are carried (no candidate is read while the body is bound); written once per entry by Binding.Captures (CarryOrigin), read by
+    // Binding.CarriedRegions, which admits them at read time. MIR never reads it.
     internal List<BoundOrigin> Carried { get; } = new();
+
+    // SPEC 15.6.5, 15.3.6 (R7-O2 A1+A2; the owner's O-471 (a)): the regions the body carries, in turn included (Binding.CarriedRegions),
+    // formed once no body is being bound and once per region-graph version (WalkVersion; -1 when not formed, reset with Carried when the
+    // literal is bound again); read by Binding.CarriedRegion and the body's oracle (Binding.CarriedWalk). MIR never reads it.
+    internal List<BoundOrigin> Walk { get; } = new();
+
+    internal int WalkVersion { get; set; } = -1;
 
     internal List<BindingSymbol> SymbolPool { get; } = new();
 
