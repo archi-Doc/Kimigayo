@@ -22,20 +22,20 @@ namespace Kimi.Compiler;
 //   with knownBases, the final Types of the clauses that name no struct, read as ready and counted (secondRun). A difference in that run is
 //   Unsupported_Kd at the use. Only a first run fills knownBases, and it starts from none, so they are what a cold Bind of the source and
 //   mode computes; a later Bind of both unchanged (knownMode, set as a Bind completes) starts from them as that cold Bind's second run, runs
-//   once and reports what it reports. An edit clears them (Invalidate).
+//   once and reports what it reports. An edit empties them (Invalidate).
 // - Ends: a chain follows values final in the run, each a function of the declaration, so it is periodic and BaseWalk ends it; a parameter
 //   or a projection through one is no struct and ends it. A recursion among a name's evaluation, Accessible and LookupMember passes
 //   DirectBase, Running at most once per struct on the stack, or BindType, resolvingTypes at most once per syntax.
-// - Removal: clausesBindable, notReadyReads, earlyReads, knownBases, knownMode, secondRun, verifiedClause, StartRuns, VerifyEarlyReads,
-//   Bind's loop and the second PublishInheritedOptOuts go at R7-D2 d3 (plan §5.0, conformances), when a conformance's specification is read
-//   by demand.
+// - Removal: clausesBindable, notReadyReads, earlyReads, knownBases with its NodeColumns family KnownBases, knownMode, secondRun,
+//   verifiedClause, StartRuns, VerifyEarlyReads, Bind's loop and the second PublishInheritedOptOuts go at R7-D2 d3 (plan §5.0,
+//   conformances), when a conformance's specification is read by demand.
 // - Prohibited: a guard, depth bound or visited set in a reader; a judgment or a record here (ValidateBaseDeclaration owns them).
 public sealed partial class Binding
 {
+    private readonly KnownBaseRows knownBases;
     private bool clausesBindable;
     private int notReadyReads;
     private Dictionary<Koto, EarlyRead>? earlyReads;
-    private Dictionary<StructKoto, BoundType>? knownBases;
     private BindingMode? knownMode;
     private bool secondRun;
     private Koto? verifiedClause;
@@ -50,11 +50,11 @@ public sealed partial class Binding
     // A Bind starts as a second run only from the bases a completed Bind of this mode computed, so no run's result seeds the run after it.
     private void StartRuns(BindingMode mode)
     {
-        this.secondRun = this.knownMode == mode && this.knownBases is { Count: > 0 };
+        this.secondRun = this.knownMode == mode && this.knownBases.Any;
         this.knownMode = null;
         if (!this.secondRun)
         {
-            this.knownBases?.Clear();
+            this.knownBases.Empty();
         }
     }
 
@@ -96,7 +96,7 @@ public sealed partial class Binding
                 this.ResumeConsultation(consultation);
             }
         }
-        else if (!this.clausesBindable && clause.BoundType is null && this.knownBases?.GetValueOrDefault(structure) is { } known)
+        else if (!this.clausesBindable && clause.BoundType is null && this.knownBases.GetValueOrDefault(structure) is { } known)
         {
             this.AbandonQuery(symbol, DeclQueryKind.DirectBase);
             this.notReadyReads++;
@@ -168,7 +168,7 @@ public sealed partial class Binding
         }
 
         this.secondRun = true;
-        (this.knownBases ??= new(ReferenceEqualityComparer.Instance)).Clear();
+        this.knownBases.Empty();
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is StructKoto { BaseClause: { BoundType: { } type } clause } structure && this.ProbePath(clause, this.scopes[structure], UseRow(clause), 0)?.Declaration is not StructKoto)
@@ -227,6 +227,31 @@ public sealed partial class Binding
 
             this.Current = next;
             return true;
+        }
+    }
+
+    /// <summary>The `knownBases` family's one accessor (DECISIONS BU-220): a kept family, the final Type of a struct's base clause that names
+    /// no struct, filled by a first run whose early reads differ (VerifyEarlyReads) in the struct's module's NodeColumns at its SyntaxId and
+    /// kept for the second run and the later Binds of the source and mode that start from it; emptied over the latest pass's modules by a
+    /// Bind that does not (StartRuns), before each fill and by an edit (Invalidate). Its members keep the names its readers use.</summary>
+    private readonly struct KnownBaseRows(Binding binding)
+    {
+        // Whether the latest pass's modules hold a known base.
+        internal bool Any => new FamilyRows<BoundType?>(binding, static (table, _) => table.Hir.Families.KnownBases.Enumerate()).In(binding.pass).MoveNext();
+
+        internal BoundType this[StructKoto structure]
+        {
+            set => HirTables.Of(structure).Families.KnownBases.Ref(structure.SyntaxId) = value;
+        }
+
+        internal BoundType? GetValueOrDefault(StructKoto structure) => structure.SyntaxOwner is { } table ? table.Hir.Families.KnownBases.Get(structure.SyntaxId) : null;
+
+        internal void Empty()
+        {
+            for (var i = 0; i < binding.pass.Count; i++)
+            {
+                binding.pass[i].Syntax.Hir.Families.KnownBases.Empty();
+            }
         }
     }
 }
