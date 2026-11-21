@@ -202,8 +202,20 @@ public sealed partial class Binding
                 foreach (var identity in path.Contract.Contract!.AssociatedStorage)
                 {
                     if (this.InferenceHole(path, identity) && this.AssociatedBindingOf(path, identity) is { } binding &&
-                        this.inferenceBindingIndex.TryAdd(binding, this.inferenceBindings.Count))
+                        !this.inferenceBindingIndex.ContainsKey(binding))
                     {
+                        // One value per definition and identity (SPEC 8.5.5: `Self is C and P` with C: P conforms to P once): the root
+                        // paths' bindings of one identity share its hold index, the first such binding's.
+                        var index = this.inferenceBindings.Count;
+                        for (var i = 0; i < this.inferenceBindings.Count && index == this.inferenceBindings.Count; i++)
+                        {
+                            if (ReferenceEquals(this.inferenceBindings[i].Batch, batch) && this.inferenceBindings[i].Identity == identity)
+                            {
+                                index = i;
+                            }
+                        }
+
+                        this.inferenceBindingIndex.Add(binding, index);
                         this.inferenceBindings.Add(new(binding, batch, path, identity));
                     }
                 }
@@ -516,7 +528,7 @@ public sealed partial class Binding
             {
                 if (ReferenceEquals(this.inferenceBindings[i].Batch, batch))
                 {
-                    arena.Add(i);
+                    arena.Add(this.inferenceBindingIndex[this.inferenceBindings[i].Binding]);
                 }
             }
         }
