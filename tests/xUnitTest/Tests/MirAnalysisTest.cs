@@ -251,26 +251,6 @@ public sealed class MirAnalysisTest
             report.All.ToArray());
     }
 
-    // R4-M69 (SPEC 7.2.3, 23.1.1): a problem with an Inlined fact, a Language problem found inside an inline default copy, is its template's
-    // check and is dropped (Add returns -1); a limit record, which a copy records without that fact, stays, as does the template's own
-    // problem.
-    [Fact]
-    public void AnInlinedProblemIsDropped()
-    {
-        var report = new MirReport();
-        var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0, 0b10);
-        var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
-        int[] indices =
-        [
-            report.Add(loan, [new(ProblemFactKind.Anchor, new(0, 4)), new(ProblemFactKind.Inlined, new(0, 9))]),
-            report.Add(limit),
-            report.Add(loan with { Views = 0b01 }, [new(ProblemFactKind.Anchor, new(0, 4))]),
-        ];
-        Assert.Equal([-1, 0, 1], indices);
-        Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
-        Assert.Equal([new ProblemFact(ProblemFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
-    }
-
     // DECISIONS R4-M132 (rule W; R4-M96 per report, DIAGNOSTICS §4.3): a merged problem is derived exactly when every report of it is, its
     // Cause facts (their tail) the union of the reports' causes: a derived problem meeting a direct report becomes direct and stays so, two
     // derived reports keep their causes once each, the first's span moved after another problem's facts, so the other problem keeps its own.
@@ -760,15 +740,16 @@ public sealed class MirAnalysisTest
 
     // R6-check IC (MirDrops' invariant, H0b §2.1): a body A2's table marks (R4-M102) has an Error problem in MirReport, so generation's
     // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem of its code at its subject in the body (one per key,
-    // MirReport.Add), or for an inline default copy's, which the report drops, its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
-    // (Requirements), a default copy (MirDropTest.Indices) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
+    // MirReport.Add), or for an inline default copy's, which MirDrops.Problem does not add, its template's of that code and subject (R4-M69).
+    // The forms: A1's state rules and A2's incomplete layer (Requirements), A1's and A2's default copies (MirDropTest.Indices,
+    // MirDropTest.CopiedLayer) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
     [Fact]
     public void AMarkedBodyHasAnError()
     {
         var arena = "func f(flag: bool) -> i32\n" + string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    var v{n} = {n}\n")) +
             string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    if flag => v{n} = 1\n")) + "    return 0\n";
         var marks = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var source in new[] { Requirements, MirDropTest.Indices, arena })
+        foreach (var source in new[] { Requirements, MirDropTest.Indices, MirDropTest.CopiedLayer, arena })
         {
             var program = MirBuildTest.Compile(source).BuildMir();
             var problems = program.Problems.All.ToArray();

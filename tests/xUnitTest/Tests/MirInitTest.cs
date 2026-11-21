@@ -18,6 +18,20 @@ public sealed class MirInitTest
     private const string Resource = "struct Resource\n    public var name: string = \"r\"\nfunc make() -> Resource => Resource.init()\n" +
         "func consume(r: Resource) => ()\nfunc inspect(r: ref/Resource) => ()\n";
 
+    // A default that moves s twice or once, a consume, a runtime-indexed Array in a default, and a default's callers: two calls in f, one in
+    // g's two views (ACopysProblemIsItsTemplatesCheck).
+    private const string Consume = "func consume(s: string) => ()\n";
+
+    private const string MovesTwice = Consume + "func probe(n: i32 = label w: do\n    let s: string = \"abc\"\n    consume(s@move)\n    consume(s@move)\n" +
+        "    exit to w 1\n) -> i32 => n\n";
+
+    private const string MovesOnce = Consume + "func probe(n: i32 = label w: do\n    let s: string = \"abc\"\n    consume(s@move)\n    exit to w 1\n) -> i32 => n\n";
+
+    private const string TakesAt = "func take(s: string) => ()\nfunc probe(n: i32 = label w: do\n    let values: Array<string> = [\"a\", \"b\"]\n" +
+        "    let i: isize = 0\n";
+
+    private const string CopyCallers = "func f() -> i32 => probe() + probe()\nfunc g<s/T>(v: s/T) -> i32\n    s is ref or uniq\n    return probe()\n";
+
     private const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
     private const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
     private const string Parts = "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n" +
@@ -288,6 +302,27 @@ public sealed class MirInitTest
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}"));
     }
+
+    // SPEC 7.2.3, 15.1, 15.1.2, 15.1.3 (DECISIONS R4-M69, Z20): A1's Language problems in a default are its template's checks, recorded once
+    // at the default (even where no call evaluates it) whatever copies evaluate it, two calls and a two-view caller: MovedPlace_Kd,
+    // UninitializedPlace_Kd, ReassignedLet_Kd and StaticMovePathRequired_Kd (DefaultArgumentMove_Kd: ADefaultCannotMoveItsPreparedSlot);
+    // outside a copy a problem is its body's own, in a plain function and in a caller's own Move beside a copy. Each valid twin drops the
+    // failing condition.
+    [Theory]
+    [InlineData(MovesTwice + CopyCallers, "MovedPlace_Kd s 1")]
+    [InlineData(MovesTwice, "MovedPlace_Kd s 1")]
+    [InlineData(MovesOnce + CopyCallers, "")]
+    [InlineData(MovesTwice + "func f() -> i32\n    let t: string = \"x\"\n    consume(t@move)\n    let k = probe()\n    consume(t@move)\n    return k\n", "MovedPlace_Kd s 1 | MovedPlace_Kd t 1")]
+    [InlineData(Consume + "func plain() -> i32\n    let s: string = \"abc\"\n    consume(s@move)\n    consume(s@move)\n    return 1\nfunc f() -> i32 => plain() + plain()\n", "MovedPlace_Kd s 1")]
+    [InlineData(Consume + "func plain() -> i32\n    let s: string = \"abc\"\n    consume(s@move)\n    return 1\nfunc f() -> i32 => plain() + plain()\n", "")]
+    [InlineData("func probe(n: i32 = label w: do\n    let x: i32\n    exit to w x\n) -> i32 => n\n" + CopyCallers, "UninitializedPlace_Kd x 1")]
+    [InlineData("func probe(n: i32 = label w: do\n    let x: i32\n    x = 2\n    exit to w x\n) -> i32 => n\n" + CopyCallers, "")]
+    [InlineData("func probe(n: i32 = label w: do\n    let x: i32 = 1\n    x = 2\n    exit to w x\n) -> i32 => n\n" + CopyCallers, "ReassignedLet_Kd x = 2 1")]
+    [InlineData("func probe(n: i32 = label w: do\n    var x: i32 = 1\n    x = 2\n    exit to w x\n) -> i32 => n\n" + CopyCallers, "")]
+    [InlineData(TakesAt + "    take(values[i]@move)\n    exit to w 1\n) -> i32 => n\n" + CopyCallers, "StaticMovePathRequired_Kd values[i] 1")]
+    [InlineData(TakesAt + "    take(Text.toString(values[i]))\n    exit to w 1\n) -> i32 => n\n" + CopyCallers, "")]
+    public void ACopysProblemIsItsTemplatesCheck(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
     // SPEC 15.1.3: a Move of a constant index forms the referenced element's Move Path; the paths follow the accesses, never the declared
     // length (an input-size property of MirMoveData).
