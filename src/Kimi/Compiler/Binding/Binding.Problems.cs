@@ -321,6 +321,9 @@ public sealed partial class Binding
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
                 break;
+            case BindingFailure.Access when this.FactOf(index, ProblemFactKind.Related) is not null:
+                this.ReportInaccessible(node, store, index, problem);
+                break;
             case BindingFailure.AccessorReceiverShape when node is PropertyAccessorKoto { ReceiverType: { } written } accessor:
                 this.ReportAccessorReceiverShape(accessor, store, written, problem.Requirement);
                 break;

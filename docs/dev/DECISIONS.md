@@ -14180,7 +14180,8 @@ resumed by R4-M86 (2026-10-20).
     its generic Indexable use and written `index` and `indexUniq` calls.
   - Remaining under PLAN G715: Slice's conformance in source is a following unit (PLAN G777's cause, implementation matching
     refusing its `during source` result, is fixed for function requirements); a fixed array has no declaration, so its conformance
-    is a Builtin row (part b, after R7-V2c, keyed by the bound reference).
+    is a Builtin row (part b, after R7-V2c, keyed by the bound reference, as R7-M74 keys it: the Type and the declaration's identity,
+    the fixed `isize` argument a row column `BuiltinConformance` judges).
   - Rejected: Slice's `index` with `during self` (narrower than SPEC 4.7.1's table); compiler-provided Array conformance rows (the
     library can state it); an interim `Unsupported_Kd` gate for the fixed array (a second copy of the row's fact, which would also
     answer the invalid `Indexable<i32>`).
@@ -16680,6 +16681,29 @@ resumed by R4-M86 (2026-10-20).
     table; moving RegionVersion; a `HoldFlags` entry; entries for the formatting plan's synthesized borrows; forming the receiver
     column's final value (it reopens ruling 19's writer rule); the selection owning every receiver, or the comparison's condition at
     the selection (valid `t.0.mutate()` and `arr[i].mutate()` rejected).
+- **BU-244 One selection entry and one place for its scratch; the Case construction's target (PLAN G924 AF-3a)** (Front,
+  2026-11-22; Binding; Major, behaviour-preserving, a new representation (Q-633); design `front\notes\ArgFlow\design-af3.md`
+  Revision 2 (R1.3) and `ArgFlow\af3\design-casepath.md` Revision 1 (its review ACCEPT WITH CONDITIONS, F's ArgFlow rulings
+  64-69); the independent code review ACCEPT WITH CONDITIONS, F's ArgFlow ruling 120, this entry its N5) SPEC 6.5.2, 9.7, 9.7.1,
+  10.1-10.4.
+  - **`SelectAt` (`Binding.CallSelection`) is a call's selection's one entry,** for a call that publishes (`BindCallCore`) and a
+    query that must not (`SelectOmittedBaseConstructor` now, AF-3b's dependent-part query next): it clears the deferred acquisition
+    and the failed cause, evaluates every candidate (`EvaluateCallCandidates`) and classifies (`ClassifySelection`). It neither
+    fails, completes nor records a node, except a broken contract's `Fail(Source, Internal)` in `BetterCandidate`; the caller acts
+    on the outcome. `BindCallCore` runs `CheckCallShapeContracts` after it (the classification reads nothing the check writes).
+    Its scratch is rented and returned in one place, `RentEvaluation` / `ReturnEvaluation` (each pool in its old LIFO order;
+    `ReturnEvaluation` also ends the evaluation's retained rows and element positions), replacing `BindCallCore`'s inline rents and
+    `SelectOmittedBaseConstructor`'s copy of them. A query's save and restore of the selection's other state (obligations,
+    `acquisitionFailure`, `failedCause`, `activeRequirementContract`, the counters) stays with its caller until AF-3b gives both
+    queries one owner of that set (ruling 120 N2), never a second copy.
+  - **`ConstructionTarget(Case, Owner)` (`Binding.Enums`) is a new representation:** the Case a reference names and the enum Type
+    that its qualifier or the expected Type fixes (the member selection's declaring Type for a qualified reference; for a contextual
+    one the expected Type, U at an expected `ref/U` through `ExpectedTypeOf`). Its producer is `PublishedTarget`, read by
+    `BindEnumConstruction`'s three callers; AF-3b's query adds the second producer and consumer. The inferred-construction flag
+    stays out of it: `BindEnumConstruction` reads `inferredConstructionTargets` as before (PLAN G1239 (1)). With it, `CaseAt` (the
+    contextual Case's lookup without writes; `InferredCase` publishes it), `PayloadTypeAt` (a payload's Type in the constructed
+    Type) and `FormReference` (a container reference's one formation from its own arguments and its environment, pure;
+    `BindContainerReference` keeps the walk and the writes).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -24139,6 +24163,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Moves (Q13).** M3: the Notes that go. M4: a selected call's clause record relates `declaration` at the called declaration
       (a library location for a library callee). M1: a second disagreeing associated Type of one intersection (g1m, SPEC 8.9.2); an
       ancestor's and the child's requirement each adding an undeclared Callable bound (p2, SPEC 8.11.4). Corpus: as Q-616 states.
+  - **E2-4a (Q-626; the delta `back\notes\r7-e2\e2-4-delta.md` with B's rulings 1-9 and round 2's O-r2-1..4; the Front's reviews,
+    round 1 REVISE B1-B3, C1-C7 and round 2 ACCEPT WITH CONDITIONS, R2-N1).** The Access family outside the resolver records its
+    problems through one recorder, `RecordAccess` (Binding.Access.cs, through `RecordNumbered`) (SPEC 9.4, 9.4.4, 9.4.6, 11.3.2,
+    23.1.2, 23.3).
+    - **Facts.** `Related` role 0: the declaration whose accessibility does not cover the use, as returned by the Access query that
+      judged it (`InaccessibleType`, `InaccessibleConstraint`, `InaccessibleProjection`, now in the Access component's file; the bool
+      predicate `TypeAccessCovers` reads `InaccessibleType`; `ConstraintAccessCovers`, uncalled after c2, is deleted). `Related` role
+      1: a part **inside the subject's own syntax** that shows it (a result, parameter, receiver or accessor component Type, a
+      constraint clause, a projection use whose signature owner is the subject). A part outside it (a conditional block's premise,
+      shared by its members) is never the location, and a part record (a clause, base clause or enum case) and a use are their own
+      location; a Contract stays every ancestor's location, relating it (its base references are read only where BuildContract binds
+      them, R7-N2a). No new fact kind.
+    - **Invariant.** Two records at one location belong to one subject and differ in their part or declaration, or to a declaration
+      and a part nested in its syntax and differ in depth, so the published order is total (DIAGNOSTICS 4.1) and no Access record
+      makes a check Faulted.
+    - **Grouping (SPEC 23.1.2).** One problem per declaration and part: a declaration exposing one T at two parts records two, and one
+      requirement found by two checks (a function's constraint check and its projection clause's own check) publishes both; a part
+      naming two uncovered Types relates the first its query met (first only).
+    - **Sites.** Contracts' ancestor, requirement result, parameter and constraint checks and the Contract clause; ContractMatching's
+      premise clause and an associated binding (the conformance use located, the declaration related); Access.cs's function, signature
+      projection and conditional-member sites and c8's six part records; Properties' signature projection, Type and accessor
+      components (one problem per component); Storage's enum payload. Each pair's owner keeps its `Fail` until R7-E5 (ruling 16 B1
+      (a)). Fact-less with their reasons: Properties' accessor access word (SPEC 11.3.2: no declaration fails to cover a use; the
+      Property bounds the word) and ContractMatching's conformance use beside its premise's record (an owner over its failed part,
+      until R7-E5); the Ambiguous `Invalid` sites keep E2-5b's form (their candidates are not kept at the site). Structs'
+      written-`self` Duplicate keeps the slot's `Fail` until R7-E5: the function may also be a Signature group's first or later,
+      recorded after Index under the same key.
+    - **Rejected.** `Span` for the part (a part with a node is a related location); a fact-less Access record beside a related one
+      (two forms at one node publish two records for one failure); a premise or another member-shared part as role 1 (two members'
+      equal records faulted the check: round 1's B2); a fact-less record of the receiver's Duplicate at Index (it met the group's
+      record of the same key with other facts: `InternalInvariant_Kd`, round 1's B1); a direct base's reference as role 1 (a
+      `contract.Bases` read in the Access check trips R7-N2a's row, and a published base part is a new shape column; O-r2-1); relating
+      every uncovered declaration of one part (several role-0 facts and a second walk; C3).
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
@@ -24569,6 +24626,75 @@ R8-M* and R9-M* by the stage of the recording unit.
     caller-steered rule kept).
   - **Open:** the function reference's limit and BU-241's residue (PLAN G1128); c-fr1's `UnprovenConstraint_Kd`, pre-existing
     (PLAN G1222); the DAG's other walks (PLAN G1152).
+- **R7-M74 The built-in conformance rows** (Front, 2026-11-21; R7-V2c, the R7 plan §5.1 V2, Q-632; Major, behaviour-preserving; design
+  `front\notes\V2\design-v2c.md`, its independent review ACCEPT WITH CONDITIONS, V2c ruling 2; the implementation review ACCEPT WITH
+  CONDITIONS, its D2, V2c ruling 3) SPEC 13.3.3, 13.4.1, 4.6.1, 8.7.5, 22.1, 22.10.2.
+  - **Rule.** `ImplTable.Builtin(self, contract)` is the closed static table of the conformances no declaration states, one row per
+    Type and Contract: **Target** (the Contract's built-in target runs: a numeric Type's arithmetic, the operator table's
+    comparisons), **Library** (the witness table's group), **Composed** (a Tuple's or safe `ref` layer's comparison, proven by its
+    parts), **Entailed** (a PrimitiveInteger subject's arithmetic, proven by the subject's PrimitiveInteger), **Absent** (a scalar's
+    or Unit's Comparable: Refuted). The rows compose their owners' facts (`ArithmeticContracts.Supports`, `ComparisonKindOf`,
+    `OperatorTableRuns`, `WitnessGroup`) and restate none; they are disjoint, so one lookup equals the old chain in any order. A new
+    built-in conformance adds a row, never an arm at a reader. `BuiltinKind` is the plan's Builtin kind, not an ARCH closed vocabulary
+    (the planning session's decision, V2c ruling 2 OQ1).
+  - **Keying.** A row is a function of the Type and the Contract declaration's identity (its `#Lang` id), never of a bound reference's
+    arguments, so the solver (a bound reference) and the witness core (the requirement's own Contract) read one row. Where SPEC fixes
+    the reference's argument (13.3.3's `C<Self>` today), `Binding.BuiltinConformance` judges it before the row is read, once; PLAN
+    G715 (b)'s `Indexable<isize>` adds its argument there as a row column, not a second arm.
+  - **Readers.** `ResolveConformance` reads it once (`BuiltinConformance`: the reference's argument, an Entailed row's
+    PrimitiveInteger, a Composed row's `ComparisonProof`); `ResolveRequirementWitness` and `CompilerRequirementTarget` read the row of
+    the requirement's own Contract (`BuiltinTarget`, the group); `BuiltinArithmeticOutput` reads Target or Entailed (13.3.3's Output
+    rule).
+  - **Deleted.** `BuiltinArithmeticConformance`, the solver's four built-in branches, the witness core's and
+    `CompilerRequirementTarget`'s two arms, the reference symbol's `LibraryDeclaration` as the built-in rows' key. Its four other
+    readers keep that read by design, equal to the declaration's identity by the same construction (lines at f9ea0bf09):
+    `Binding.Contracts.cs:440-441` (8.7.4's premise supply), `Binding.FixedArrays.cs:19`, `Binding.Sequences.cs:332` and
+    `TyCtxt.Comparison.cs:89` (the design's §2, "Not moved").
+  - **Rejected.** A Binding partial owner (the plan names `ImplTable`; the targets and proofs are the solver's and the pass driver's);
+    stored rows (built-in Types are not symbols; a closed function needs no storage, stamp or pool); the composite kept apart (two
+    reads at the witness core); the Entailed rows as premises beside `PrimitiveIntegerSupplies` (not behaviour-preserving:
+    `ResolveConformance`'s direct readers would answer an abstract T differently); judging the arithmetic reference only where a row
+    exists (a skipped TypeIdentity proof can change an enclosing answer's dependence).
+  - **Staged.** The Composed row's proof and the primitive refutation move to Prove with R7-C9; SPEC 8.7.4's supplies, stated five
+    times, become one statement with R7-C9 or C2 (PLAN G1235). Outside the table stay the intrinsic Contracts (SPEC 8.7.1,
+    `IntrinsicContract`).
+- **R7-M75 Family 2's problems record through `Record`; a fact-less own site records `Record(node, X, [])`** (Back, 2026-11-21;
+  R7-E3 E3a-1, Q-629, D-1025; Major unit of a Major design, R7 plan §5.1 E3; design `back\notes\r7-e3\e3-design.md` §§2-4 with B's
+  E3 rulings 1-7; the Front's design review on C-439, ACCEPT WITH CONDITIONS, C1 for this unit) SPEC 23.1.2, 23.3.
+  - **Rule.** A family-2 check (calls, arguments, conversions; E2 §1.2's boundary) records its failure as a problem through `Record`,
+    as R7-M61 rules for family 1, with **no new fact kind**: a site whose check holds no fact the record shows records
+    `Record(node, X, [])`, which ReportProblem's fact-less row renders (its InvalidConstraint row for `InvalidConstraint`). A site
+    converts only where its record is the node's first failure (no call on its path failed the node: the per-site B1 statement); a
+    dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5; a site that spells its first-failure read
+    carries a Transitional naming R7-E5 and its input (ruling 16 B1 (a), E2-5a's B2 (b)), and a plain `Fail` carries none.
+  - **E3a-1.** Fifteen fact-less own sites in free files (lines at 938a2eee3): NumericConversions 182, 222, 244, 251 (the wrap and
+    bit conversions), FunctionItems 374 and RequirementItems 82 (DirectCallFunctionValue), Conversions 113 (a Move through a custom
+    setter), 335 (NonCopyOperand) and 422 (`@objref`/`@objuniq` of a non-object), ObjectViews 209 and 232 (an upcast's
+    InvalidAssignment), Indexers 94 (a key that selects no single Indexable conformance), RuntimeTypeTests 61 and 74 (a runtime
+    test's target formation) and Comparisons 119 (a library Contract without its one comparison member; unreachable with the shipped
+    library). Dictionaries 58 (B1 real: a key whose fit failed is the node the duplicate check fails) and CaseLimits 79 (an owner
+    over a failed part) keep `Fail` (PLAN G1141's dk2).
+  - **Later units add their lines here:** E3a-2 the mismatch family (`RecordTypeMismatch`'s guard goes, ruling 2), E3a-3 the
+    conversions' stores and `Related`'s role "entry", E3b selection and the call's constraints with the role "candidate" (the Front's
+    C2: each role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
+  - **Moves (Q13).** None: probes base = head (prototype 27 plus C1's), the diagnostic and semantic snapshots 0 differences.
+- **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
+  (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
+  23.1.2, 15.1, 14.11.
+  - **Rule.** A MIR analysis problem's primary location is the failing location's `MirBody.Subject` (the node `MirBuilder.Info`
+    records for its statement or terminator; the builder owns the choice), except where DIAGNOSTICS' table names another node, each
+    named there (A5: an inline default copy's outermost omitting call, R26-borrow's Borrow, a drop-live holder's declaration, the body
+    for the arena limit, a Return's body block or a constructor's declaration). A1's and A3's rows, which no DIAGNOSTICS row names,
+    are this entry's (Z15's family table): A1 the use's statement or terminator, below a runtime Index the innermost selection
+    (R4-M56); A3 the require row's failure body.
+  - **Opaque sites** (Z17's `MirBuilder.Opaque.Uses` contract): an Opaque site is located at its node, so a kept operand and an
+    undecided use it names report there; a part read by a `FakeRead` reports at the read's node. A kept part's read location is Z17c's.
+  - **Merge.** A Loan problem a body owns in an inline default copy stays one record per code and omitting call (G136's 2g-4b item).
+  - **A3.** A require nested in a construct Binding replaced stays G414 (2)'s (O-474 (b)); G105 (4)'s A3 part closes into it.
+  - **Records (Q13):** none move; the rule is pinned by `MirInitTest.AnOpaqueSitesPartIsCheckedAtItsPlace`'s rows.
+  - Supersedes: the A5 Step 2 plan's 2g-4a and 2g-4b done conditions (ledger rows) and 2g-3's "rows b1 and b3", void with the ledger.
+  - Rejected: a location rule per family in each analysis (three copies of one choice); A3 judging unbuilt syntax (a second judge of
+    SPEC 14.11); keeping an inline copy's failures apart (a key per operation for one table row).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -28102,6 +28228,11 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     as a file.
   - Amended by T-M10 (unit B6b5, 2026-11-21): the project setting `LlvmBin` and the manifest's `toolchain` member are
     removed (errors); the command line's option goes with B6b4.
+  - Amended by T-M11 (unit B6b3, 2026-11-21): `ToolProcess` and verify's tools are removed, and with them the 5-minute
+    timeout it kept for verify: no Build code launches an LLVM tool. `toolchain verify` reads no installation record, root or
+    `tatara.dll` file and takes no `LlvmBin` (`check-toolchain.ps1` checks the root). `NativeToolchain.Wait`'s `internal`, which
+    was for `ToolProcess`, serves only `RunExecutable`; once B6b3 and G1188 have both landed `Wait` has no reader, and the second
+    of them to land removes it in its merge (T's ruling on C-444 N3).
 - **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
@@ -28163,6 +28294,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     two supplies); keeping the override (two forms for one supply that can carry only the same bytes); two validators; a schema or
     value change (schema 5, `resolution: "compiler"`); an MSBuild or initializer hash check; removing `windows_x64` in B6a (its readers
     include `toolchain verify`, B6b's).
+  - Amended by T-M11 (unit B6b3, 2026-11-21): the temporary structure's checker is `check-toolchain.ps1`, not `toolchain verify`:
+    it compares the root's kernel32 and backend with the catalog and inspects kernel32's content (`Test-KimiKernel32Library`) until
+    B6b6 (PLAN G1210). B6a's design §6, "B6b's verify keeps checking it" (kernel32's content), is superseded (T's ruling R4).
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -28200,6 +28334,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `KimiToolchain` property (a second way to name a root, R1); the copy checked at Kimi's build (a second copy of the installation
     rule); the copy required (it fails CI's Ubuntu job and fresh clones) or warned about (it fails `-warnaserror`);
     `CopyToOutputDirectory="Always"` (a 68.6 MB copy per build).
+  - Amended by T-M11 (unit B6b3, 2026-11-21): the verify interim ends: `toolchain verify` resolves no root, takes neither
+    `--ToolchainRoot` nor `--LlvmBin` and hashes no `tatara.dll` (`check-toolchain.ps1` hashes the root's); `ToolchainResolver`
+    is removed, and Kimi reads `KIMI_TOOLCHAIN_ROOT` nowhere. The build's interim (the options accepted and read by no build)
+    stays until B6b4 (PLAN G1224, G1173).
 - **T-M10 `LlvmBin` removed from projects and manifests** (Tatara, 2026-11-21; the plan's unit B6b5, Q-627, D-1022; Major;
   design `artifacts\handoff\tatara\units\B6\design-b6b.md` §6; design review C-437; implementation review C-443, ACCEPT;
   the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line.
@@ -28221,3 +28359,51 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: deleting the property alone (the setting would be accepted silently, design B6b fact 3); a clause per removed
     name; a `LinkManifest.Rows` row that `WriteFixed` must skip; the general unknown-setting rule in this unit (pre-existing,
     a PLAN open issue with B6b4's docs).
+  - Amended by T-M11 (unit B6b3, 2026-11-21): `toolchain verify` reads no `--LlvmBin` (it takes no such option, its usage
+    error until B6b4's named error); B6b4 makes the option an error for every command.
+- **T-M11 `toolchain verify` as a self-check** (Tatara, 2026-11-21; the plan's unit B6b3, D-1023; Major; design
+  `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §4 with T's rulings R3, R4 and N3-1..N3-6; design review C-437;
+  implementation review C-444, ACCEPT; the owner's decision 20 (O-469 Q3 (a))). Amends T-M6's verify and tool runs, T-M8's
+  temporary structure and the interims of T-M9 and T-M10; closes PLAN G1175.
+  - **The self-check:** `kimi toolchain verify [--Report <path>]` (`ToolchainCommand.Options`: `Report` only) checks what the
+    compiler carries; it reads no root and runs no tool. `NativeToolchain.Verify` states, in order: its Tatara (`Tatara.Instance`:
+    loaded, bound, the start check); each `ToolchainIdentity.Supplies` row's embedded bytes against its catalog SHA-256
+    (`NativeToolchain.VerifySupply`); kernel32's embedded definition, read for `Kernel32Imports`' type initializer, which compares
+    it with the catalog. Output: one Information line for Tatara (build, ABI, LLVM) and one per supply ("<name>: <sha256> (the
+    catalog's)"), then "Toolchain verification passed.".
+  - **Failure semantics (C-437 N3-3):** a load or start-check failure and a supply's mismatch are the toolchain's
+    InvalidDataException ("The compiler's <name> does not match its catalog SHA-256."); the definition's mismatch is the type
+    initializer's fault (TypeInitializationException), as every embedded catalog read's is. Both are reachable only through a
+    defective build of Kimi: the catalog row test owns the invariant, and verify is its user-facing statement.
+  - **The record:** `{status, compilerVersion, llvmVersion, tatara: {build, abi, llvmVersion}, supplies: [{name, sha256,
+    expectedSha256, hashMatched}], error?, seconds}`, written first as `status "incomplete"`; at the end "passed", or "failed"
+    with `error` for the toolchain's failure or a cancellation; a fault leaves it incomplete. Gone from it: `root`, `llvmBin`,
+    `tools`, `toolchainVerification`, `reportedVersionsMatched`, `unverifiedToolchain`, `backendSha256`, `kernel32`. The build
+    record's three verification fields stay (T's ruling R3; PLAN G1227).
+  - **Reading (R4):** Q3 (a)'s "the embedded libraries' hashes against the catalog" includes kernel32's definition and excludes
+    its content inspection (`llvm-dlltool -I`, `llvm-readobj`), which needs a tool: the content is a property of the adopted
+    bytes, inspected when they are adopted (setup's `kernel32.ps1`, `test-kernel32.ps1`). B6a's design §6, "B6b's verify keeps
+    checking it", is superseded.
+  - **The development toolchain's check:** `src/backend/windows-x64/check-toolchain.ps1 [-ToolchainRoot <dir>]`, the C#
+    verify's root checks moved unchanged in rule: `installation.json`'s shape (schema 1, the profile, `tools`, `supportingDlls`
+    an object, `tatara.sha256`); seven version banners and nine hashes against the record (`llvm-dlltool`'s also against
+    `profile.json`); the supporting DLLs'; `tatara.dll`'s hash against the record, hashed and not loaded (T's ruling: moving
+    `build.ps1`'s loader into `src/Tatara/identity.ps1` would change Tatara's build identity); and the root's `windows_x64` until
+    B6b6 (C-437 N3-1): the backend's and kernel32's hashes against the catalog, kernel32's generation record and definition, and
+    its content through `kernel32.ps1`'s `Test-KimiKernel32Library` (one inspection, shared with `New-KimiKernel32Library`).
+    Callers: setup's last step and `verify.ps1 -VerifyToolchain` (its own step and log, after `toolchain verify`; the summary's
+    `toolchainVerification` is `passed` only when both pass).
+  - **G1175 (closed):** setup installs no archive DLL (no tool imports one, `artifacts\tatara\b6b\tool-imports.txt`) and records
+    `supportingDlls: {}` in schema 1, so an older base's verify on a shared root still reads an object; existing roots keep their
+    DLLs (setup deletes nothing). Temporary structure: the always-empty `supportingDlls` member; removal condition: no base
+    before B6b3 reads a shared root (PLAN G1231).
+  - **Deleted:** `ToolProcess`, `InstallationTools`, `RequireInstalledFile`, `VerifyKernel32`, `NativeToolchain.ParseVersion`
+    and `VersionPattern`, `NativeToolchain.SetupCommand` (its one reader, Tatara's load remedy, holds the text),
+    `Kernel32Imports.ValidateInstallation`, `ValidateLibrary`, their regexes and `DlltoolSha256`, `ToolchainIdentity.DlltoolSha256`,
+    `ToolchainResolver` and `ToolchainResolverTest`. Kimi reads `KIMI_TOOLCHAIN_ROOT` nowhere, and no Build code launches an LLVM
+    tool.
+  - **Interim:** `toolchain verify --ToolchainRoot x` (or `--LlvmBin x`) is the command's usage error until B6b4's named error;
+    a build accepts both options and reads neither (PLAN G1173, G1224).
+  - Rejected: verify keeping kernel32's content inspection (a tool, or an ABI change, for a property of adopted bytes); a second
+    PowerShell copy of the inspection; `check-toolchain.ps1` loading `tatara.dll` (T's ruling: no change under `src/Tatara`); a
+    `-Report` for `check-toolchain.ps1` (no reader: `verify.ps1` keeps its log).
