@@ -15801,6 +15801,29 @@ resumed by R4-M86 (2026-10-20).
     23.1.2 (no record moves); the B2a-2 line above (`Freeze` for a never-written family, `Release` for working state) and the B6b
     line (a premise stated with its tripwire), BU-219, R7-M9. Ratchet ("Node-keyed table members in Binding") 39 -> 34, the
     count (33 merged with R7-E2 E2-5a, which deletes `overrideFailures`: the second of the two to land sets the limit).
+  - **R7-N5 E** (the Back's batch, Q-619, D-1014; design `e-design.md`, B's rulings 1-8; the Front's review `review-e.md`, C1,
+    C6, C7, D1, N1, N4): the dependence store's `prerequisites` and `partPrerequisites` become the Work pass families
+    `Prerequisites` (a node's consultation range in the pass's prerequisite store, Count 0 absent) and `PartPrerequisites` (the
+    part a declaration-level check read outside a frame, null absent), released at the freeze; the walks' visited set becomes the
+    Work family `PrerequisiteVisits`, whose row carries the walk's number (the B6b line's validity unit narrower than the pass, in
+    D-986's form; the walk's Clear is NextQuery's advance, O(1)); and the pairwise checks' group store becomes the pass family
+    `DuplicateDeclarations` (never written by the library: Freeze with a "never written" NotStamps row) with `duplicateOrder`,
+    the pass's working order of groups beside it, which RecordDuplicateGroups walks (dev's insertion order, the foreign rows
+    included; reset at ResetPrerequisites with its capacity kept; listed iff its row is present, written at one site; it goes with
+    the column if RecordDuplicateGroups stops walking groups, R7-E5). All four are stored by the recorder's decision
+    (`RecordedFact`, `SetRecordedFact`), which the B4 line gave the fact a failure carries and E widens to a node's dependence rows
+    (also written at a node that rests with no failure: CompleteDependent, EndConsultation) and a walk's visit marks: a node of a
+    module the pass does not bind keeps its rows in the pass's foreign columns at its entry (`RecordedSlot` returns the slot, so a
+    visit mark is one decision, as one hash lookup was); a library node without the pass's entry reads its released column, none,
+    which is dev's answer. The other 16 tables of the Diagnostics files are explanation stores their E unit deletes (R7-E3: 7,
+    `referenceSlotFacts` included; R7-E4: 9), not converted; FailExplained's Dictionary form goes with the last of them. Whichever
+    of this line and the Q-594 + Q-598 joint head lands second adds `PrerequisiteVisitRows.Remove` (writing 0 only over a row
+    carrying the live walk's number), renames the head's `prerequisiteVisited` lines and adds a regression row that fails without
+    it (C4). Rejected (D1): a walk-local HashSet for the visits, a list scan, the mark kept in the Prerequisites row,
+    `Values.In(pass)` for the duplicate groups (it would lose a library clause's row and reorder the records), and converting the
+    16 explanation stores now (work E3 and E4 delete). Readings: SPEC 23.1.2 (the same records and `DerivedFrom` keys), 6.1 and
+    9.1 (duplicate declarations), DIAGNOSTICS 4.3; the B2a-2, B4 and B6b lines above, D-986's FormReads form, G949 S1. Ratchet
+    ("Node-keyed table members in Binding"): this batch removes four; the limit is set to the merged tree's count when it lands.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
