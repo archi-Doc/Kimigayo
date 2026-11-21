@@ -15,8 +15,8 @@ internal static partial class NativeToolchain
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
     // A project's native build. A build reads no toolchain root and no LlvmBin: --ToolchainRoot, KIMI_TOOLCHAIN_ROOT and the command
-    // line's LlvmBin name the root toolchain verify checks, and they are accepted and not read here (Tatara designs A4 §2.1, B6b1;
-    // removed in B6b).
+    // line's LlvmBin select nothing (B6b3), and they are accepted and not read here; a project's LlvmBin and a link manifest's
+    // toolchain member are errors (B6b5) (Tatara designs A4 §2.1, B6b1; the options removed in B6b4).
     internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));

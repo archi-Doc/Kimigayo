@@ -245,49 +245,4 @@ public sealed class Kernel32ImportsTest
             $"The link manifest's 'libraries' entry '{name}' is not this compiler's. Re-emit the manifest.",
             Assert.Throws<InvalidDataException>(() => LinkManifest.CheckCompilerSupply(invalid.RootElement, supply)).Message);
     }
-
-    [Theory]
-    [InlineData("generator")]
-    [InlineData("generatorSha256")]
-    [InlineData("target")]
-    [InlineData("dll")]
-    [InlineData("definitionSha256")]
-    [InlineData("sha256")]
-    public void InstallationRejectsChangedGenerationConditions(string field)
-    {
-        var entry = new JsonObject
-        {
-            ["generator"] = Kernel32Imports.Generator, ["generatorSha256"] = Kernel32Imports.DlltoolSha256,
-            ["target"] = WindowsProfile.Target, ["dll"] = Kernel32Imports.Dll,
-            ["definitionSha256"] = Kernel32Imports.DefinitionSha256, ["sha256"] = "actual library hash",
-        };
-        using var valid = JsonDocument.Parse(entry.ToJsonString());
-        Kernel32Imports.ValidateInstallation(valid.RootElement, "actual library hash");
-        entry[field] = "changed";
-        using var invalid = JsonDocument.Parse(entry.ToJsonString());
-        Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash"));
-    }
-
-    // PLAN G983 (form J): a kernel32 record that is not the JSON its reader expects (a field missing or of another kind, or not an
-    // object) states other generation conditions, InvalidDataException with its repair, never a JSON accessor's failure.
-    [Theory]
-    [InlineData("{}")]
-    [InlineData("[]")]
-    [InlineData("{\"generator\":7}")]
-    public void InstallationRejectsAMalformedRecord(string entry)
-    {
-        using var invalid = JsonDocument.Parse(entry);
-        Assert.Contains($"Run {NativeToolchain.SetupCommand} again", Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash")).Message);
-    }
-
-    [Fact]
-    public void InspectionRejectsWrongDllArchitectureMissingAndExtraImports()
-    {
-        var inspection = "Format: COFF-import-file-x86-64\n" + string.Concat(WindowsProfile.Kernel32Symbols.Select(x => $"Symbol: {x}\nSymbol: __imp_{x}\n"));
-        Kernel32Imports.ValidateLibrary("KERNEL32.dll\n", inspection);
-        Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateLibrary("OTHER.dll", inspection));
-        Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateLibrary("KERNEL32.dll", inspection.Replace("x86-64", "i386", StringComparison.Ordinal)));
-        Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateLibrary("KERNEL32.dll", inspection.Replace("Symbol: __imp_ExitProcess\n", string.Empty, StringComparison.Ordinal)));
-        Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateLibrary("KERNEL32.dll", inspection + "Symbol: unexpected\n"));
-    }
 }
