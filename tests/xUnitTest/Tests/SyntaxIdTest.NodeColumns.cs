@@ -211,7 +211,8 @@ public partial class SyntaxIdTest
     // memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
     // result; the guess rule's is written only after a Bind, by the lint report and MIR:
     // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes; D-932's
-    // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready).
+    // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;
+    // B2b-2's ResolvedSlices, a slice selected by a range value).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -259,6 +260,7 @@ public partial class SyntaxIdTest
     [InlineData("PublishedCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("EarlyReads", BaseInputFormationBindingTest.J4)]
+    [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
