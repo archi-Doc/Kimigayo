@@ -15,7 +15,7 @@ public partial class TypeDagScalingTest
     [Fact(Explicit = true)]
     public void AChainAndARingOfTenThousandDefinitionsStayWithinTheStack()
     {
-        CompilationTestHelper.AssertBindingRecordsAtLines("chain 10000", OneValueChain(10000), "");
+        CompilationTestHelper.AssertBindingRecordsAtLines("chain 10000", OneValueChain(10000), string.Empty);
         CompilationTestHelper.AssertBindingRecordsAtLines("ring 10000", TwoValueRing(10000), "Resource: Self is RC | ...");
     }
 
