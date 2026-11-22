@@ -1,8 +1,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $Manifest,
-    [string] $ToolchainRoot = '',
-    [string] $LlvmBin = '',
     [string] $Compiler = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [switch] $Run
@@ -14,8 +12,6 @@ $manifestPath = [IO.Path]::GetFullPath($Manifest)
 if (-not $Compiler) { $Compiler = Join-Path $PSScriptRoot "../../Kimi/bin/$Configuration/net10.0/Kimi.dll" }
 $Compiler = (Resolve-Path -LiteralPath $Compiler).Path
 $arguments = @('build', '--Manifest', $manifestPath)
-if ($ToolchainRoot) { $arguments += @('--ToolchainRoot', $ToolchainRoot) }
-if ($LlvmBin) { $arguments += @('--LlvmBin', $LlvmBin) }
 $output = if ([IO.Path]::GetExtension($Compiler) -ieq '.dll') { & dotnet $Compiler @arguments 2>&1 | Out-String }
           else { & $Compiler @arguments 2>&1 | Out-String }
 if ($LASTEXITCODE -ne 0) { throw "Manifest build failed ($LASTEXITCODE): $output" }

@@ -19,6 +19,11 @@ public sealed partial class Binding
     // The conformance uses whose completeness rests on a specification, settled at publication (SettleSpecificationLinks).
     private List<Koto>? specificationLinks;
 
+    // SPEC 23.1.2: the declaration whose own validation step runs (ValidateConstraintEnvironments), when it entered the step without a
+    // failure. A failure the step records against it (a direction contradiction, a premise error, a proof's) is no failed context for the
+    // step's own other checks, a self-read being no failed input; the context fails for every later check (DeclarationFailed).
+    private Koto? validationStep;
+
     // The change signal (invalidations) at the start of the latest walk of the pass's environments, -1 at the pass's start (ResetPass):
     // a walk that changed the binding moved the signal past it (ValidateConstraintEnvironments).
     private int environmentsJudged = -1;
@@ -240,35 +245,51 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!this.ValidateArithmeticDirections(scope, environment))
-            {
-                changed = true; // ValidateArithmeticDirections failed the owner and the pair's facts (R7-C3 gate 2); the rest is judged.
-            }
-
-            changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.
-            if (this.JudgeFacts(scope, environment, environment, mode, ref changed))
-            {
-                continue;
-            }
+            // SPEC 23.1.2 (F's C2 rulings 320, 324): the direction contradiction, the identity premise error (once per pass, so the
+            // certificate rounds terminate; SPEC 8.2.3) and the facts' proofs are independent: all are judged on the premises as the step
+            // found them, none reading a failure this step records against the owner as its failed context (validationStep). A
+            // contradiction then fails the pair's own premises alone (FailPairPremise); its report site keeps a member from reporting it
+            // again (MetInParent), so every check reading no premise of the pair is judged.
+            this.validationStep = scope.Owner.BindingFailure == BindingFailure.None ? scope.Owner : null;
+            var state = scope.Owner.BindingState;
+            var contradiction = this.ValidateArithmeticDirections(scope);
+            changed |= state != scope.Owner.BindingState;
+            changed |= this.RecordIdentityPremiseError(scope, mode);
+            var judged = this.JudgeFacts(scope, environment, environment, mode, ref changed);
 
             // SPEC 8.2.3 (F's C2 ruling 282, the owner's O-296 (a)): a premise error is reported where the premises causing it first
             // meet. A scope's own premises meet its enclosing scopes' there, so their premises are judged in this view too: a
             // conditional conformance's conditions against its Type's premises (l2). The enclosing premise stays valid in its own scope.
-            for (var enclosing = scope.Parent; enclosing is not null; enclosing = enclosing.Parent)
+            for (var enclosing = scope.Parent; !judged.Failed && enclosing is not null; enclosing = enclosing.Parent)
             {
-                if (enclosing.Constraints is { } inherited && this.JudgeFacts(scope, environment, inherited, mode, ref changed))
+                if (enclosing.Constraints is { } inherited)
                 {
-                    break;
+                    judged = this.JudgeFacts(scope, environment, inherited, mode, ref changed);
                 }
             }
+
+            if (contradiction is { } pair)
+            {
+                if (judged is { Failed: true, Rests: false })
+                {
+                    // The contradiction holds the owner's slot: the proof's own failure is a problem of its own beside it, as the premise
+                    // error's (C-363's C1; DIAGNOSTICS 4.3).
+                    this.Record(scope.Owner, BindingFailure.InvalidConstraint, []);
+                }
+
+                changed |= this.FailPairPremise(pair.Row, scope) | this.FailPairPremise(pair.Other, scope);
+            }
+
+            this.validationStep = null;
         }
 
         return changed;
     }
 
     // The judgment of `facts`' premises in `scope`'s view, in its owner's frame; the first Error is the owner's record, and a premise of
-    // the scope's own environment fails with it (FailPremise). Whether one failed.
-    private bool JudgeFacts(BindingScope scope, ConstraintEnvironment environment, ConstraintEnvironment facts, BindingMode mode, ref bool changed)
+    // the scope's own environment fails with it (FailPremise). Whether one failed, and whether its proof read a failed input (SPEC
+    // 23.1.2: its record then rests on that input's, which RequireConstraint takes).
+    private (bool Failed, bool Rests) JudgeFacts(BindingScope scope, ConstraintEnvironment environment, ConstraintEnvironment facts, BindingMode mode, ref bool changed)
     {
         foreach (var fact in facts.Facts)
         {
@@ -288,15 +309,16 @@ public sealed partial class Binding
             }
 
             var previous = scope.Owner.BindingState;
+            var rests = this.failedCause is not null;
             changed |= this.FailPremise(environment, fact, scope.Owner); // R7-C3: the premise's own judgment writes its state Failed
             // Other input facts can have independent contradictions. Record a
             // sole missing-name cause only when this is the entire environment.
             this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, facts.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
             changed |= previous != scope.Owner.BindingState;
-            return true;
+            return (true, rests);
         }
 
-        return false;
+        return (false, false);
     }
 
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
