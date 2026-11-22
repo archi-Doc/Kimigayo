@@ -25417,6 +25417,34 @@ R8-M* and R9-M* by the stage of the recording unit.
     keyed by Signature (the visited pairs' order would then rest on `SignatureEquals` being an equivalence); override and witness
     candidates by key; sorting the group by hash (longer, the visit order restored); a `Clear` per group; a bool-steered recursive
     layer.
+- **R7-M78 A kept part is read as the call builder reads an operand, and an Opaque site activates its kept parts' reservations**
+  (Middle, 2026-11-22; R7 plan stream Z, Z17c-M (PLAN G396 (4) 2g-2), Q-650, D-1069; Major; the owner's O-483 split; reads Z17c-F's
+  facts, BU-246; design `middle\notes\z17c-design.md` Revision 2, its review 2 ACCEPT WITH CONDITIONS (C1-C5); the implementation
+  review REVISE (B7), then ACCEPT on its fix) SPEC 12.2, 15.6.7.
+  - **Rule.** An Error node's kept operands are evaluated in syntax order as the call builder evaluates its operands (SPEC 12.2): the
+    last that builds code as the Error's form takes it (`Builds` over `PlanRow.KeptAdjust`, BU-246, Z17c-F) is found first; each is
+    formed as an invocation's reserved input where the form takes it as one (`PlanRow.KeptInput` through `Reserved`, the call
+    builder's narrowing: a written exclusive borrow is a reservation, SPEC 15.6.7; a Case payload, an aggregate's element or a
+    built-in operator's operand is none, so it stays a live Loan); and each the form reads whole that is a Place of a Copy Type is
+    secured by `Secure` (a Copy into a temp, its read), at its node where it or a later kept operand builds code, else at its site's
+    node: the decided twin's location in both (the Middle's rulings on Z18's review B4 and on P7). A temp and any other Place stay
+    as they are (rule W).
+  - **Site.** The site names each secured Place first, `MirOpaque.Kept` counting them (cleared with the use list on every path that
+    clears it), and **an Opaque site activates the reservations its kept parts hold**, as a Call does its inputs (SPEC 15.6.7;
+    `MirBorrows.Activations`, `CheckSets.Operating`); a site with no kept part, such as a failed default's, which runs during the
+    reservation, activates nothing. One rule with c2's located parts: a read part is read where its decided twin reads it. A kept
+    pair-layer input forms no reservation (a kept operand is never acquired; N27 (b)).
+  - **Amends:** Z16 E5 (a kept written `@uniq` is live only under a form that takes it as no invocation's input); R5-M63 (a kept
+    Copy-Type part is copied, its read, never acquired otherwise); `MirBorrows.Activations`' contract (the Opaque site's row);
+    `MirOpaque` (the kept count, validated `Kept <= Count`, printed by MirDump); D-1003 (2) closes (PLAN G1215).
+  - **Rejected:** a `FakeRead` with no hold (B4); a `FakeRead` as the read at the site (the site's activation loses the input); a
+    Place use as the hold (A1 checks it again after later operands); `Builds` over the column's (None, None) (every kept operand but
+    a literal would build) and over `KeptRead ? KeptAdjust : AdjustOf` (the published default already builds, N24); securing every
+    kept part at its node (Revision 0: off the twin's location where nothing later builds); a part at `last` read at the site where
+    only its path builds (a second condition; A1's twin reads a runtime element at its selection, R4-M56); every kept `@uniq`
+    reserved (an aggregate's live Loan lost: c-tuple-later, B6's Case payloads); activating every whole-local use of a site (a
+    failed default's site would activate before later defaults, SPEC 15.6.7); the form read from syntax (the Front's facts); a hold
+    without activation; a new MIR form or vocabulary entry.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
