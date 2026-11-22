@@ -153,7 +153,7 @@ public sealed partial class Binding
 
         if (kind == IntrinsicKind.ObjectPayload)
         {
-            if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
+            if (type.Symbol?.Declaration is { } declaration && this.InvalidDeclarationCause(declaration) is not null)
             {
                 result = ConstraintProof.Error;
                 return true;
@@ -173,7 +173,7 @@ public sealed partial class Binding
 
         if (kind == IntrinsicKind.Sealed)
         {
-            if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
+            if (type.Symbol?.Declaration is { } declaration && this.InvalidDeclarationCause(declaration) is not null)
             {
                 result = ConstraintProof.Error;
                 return true;

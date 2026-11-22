@@ -36,7 +36,7 @@ $script:report = @{ output = "LLVM version $expected"; exitCode = 1 }
 Assert-Failure { Get-KimiLlvmToolIdentity $PSCommandPath $expected -AllowUnpinnedToolchain } 'exit=1'
 Assert-Failure { Get-KimiLlvmToolIdentity (Join-Path $PSScriptRoot 'missing-tool.exe') $expected -AllowUnpinnedToolchain } 'Cannot obtain LLVM version'
 
-# Setup's and the backend builder's writes: Test-KimiSameFile (a missing or different destination is written, an equal one is not) and
+# Setup's writes: Test-KimiSameFile (a missing or different destination is written, an equal one is not) and
 # Move-KimiFile (one move over an existing destination, retried while another handle briefly holds it, bounded when the hold lasts).
 Add-Type -TypeDefinition 'public static class KimiHold { public static void ReleaseAfter(System.IDisposable handle, int milliseconds) { System.Threading.Tasks.Task.Delay(milliseconds).ContinueWith(_ => handle.Dispose()); } }'
 $directory = Join-Path ([IO.Path]::GetTempPath()) ('kimi-toolchain-policy-' + [guid]::NewGuid().ToString('N'))

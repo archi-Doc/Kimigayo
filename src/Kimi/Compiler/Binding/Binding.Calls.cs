@@ -481,7 +481,7 @@ public sealed partial class Binding
                     return null;
                 }
 
-                receiverOperation = receiverOperation with { ObjectCompatibility = receiverOperation.BasePath is null ? ConstraintProof.Proven : ProjectedReceiverProof(winner) };
+                receiverOperation = receiverOperation with { ObjectCompatibility = receiverOperation.BasePath is null ? ConstraintProof.Proven : this.ProjectedReceiverProof(winner) };
                 this.receiverOperations[call] = receiverOperation;
                 if (receiverOperation.ObjectCompatibility != ConstraintProof.Proven)
                 {
