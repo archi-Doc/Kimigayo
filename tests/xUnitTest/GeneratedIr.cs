@@ -13,7 +13,7 @@ namespace XunitTest;
 /// generated function, a value, a label or a generator's helper.</summary>
 internal sealed partial class GeneratedIr
 {
-    // The symbols the runtime text defines (LlvmModuleText.WriteRuntime), read once.
+    // The symbols the Windows row's runtime text defines (LlvmModuleText.WriteRuntime), read once.
     private static readonly HashSet<string> RuntimeSymbols = ReadRuntimeSymbols();
 
     private readonly HashSet<string> types = []; // Named types, which a shape keeps (runtime layouts such as %kimi.string).
@@ -119,7 +119,7 @@ internal sealed partial class GeneratedIr
     private static HashSet<string> ReadRuntimeSymbols()
     {
         var text = new StringWriter();
-        LlvmModuleText.WriteRuntime(text, null);
+        LlvmModuleText.WriteRuntime(text, LlvmModuleText.Frame(Kimi.Compiler.TargetProfile.Windows), null);
         return [.. Regex.Matches(text.ToString(), @"(?m)^define [^@\n]*@([^(\n]+)\(").Select(static x => x.Groups[1].Value)];
     }
 
