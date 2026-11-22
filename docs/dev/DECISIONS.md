@@ -28944,6 +28944,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     denied." that does not say the earlier build stays); (b) a second invalidation channel (a try-then-fallback chain; never closes
     a held record or a write-denied folder; (b2) departs from decisions 2 and 18); (c) `run --no-build` comparing the inputs'
     fingerprint (it changes the command's meaning for every edit, a decision of its own).
+  - Amended (PLAN G1257; Q-658, 2088e0a8c; amends the O-491 (d) line above): `ArtifactFiles.Replace`'s output failure is one
+    `IOException` naming its destination, with the system's message and the move's failure inside; a wrapper names only a file
+    its reason does not: `Begin` names the record with the lock's failure, and the invalidation's failure names it itself.
   - Rejected: O-467 (b) (the record alone); generation directories (decision 2); the report after the move; failing at once when
     busy; the lock in `NativeBuild.Run` only (another build's success could overwrite an invalidation); a delete-on-close lock
     (delete-pending reads as access denied); a reader lock in `run --no-build`; the lock in `emit` (not in B5: it needs the paths
