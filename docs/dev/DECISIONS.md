@@ -29590,6 +29590,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Open (C-452 O1, pre-existing; PLAN G1255):** the tool-control comparison accepts "equal failure" for every row; on the base a
     root without `windows_x64` made it pass comparing no executable. B6b6 removed that cause, and an input both sides lack still
     passes vacuously until the rows that must link are required to link.
+  - Closed by G1255 (2026-11-22): every row of the tool-control comparison, COFF and ELF, must be "equal"; the fixed rows that
+    failed alike on dev (ffi-O2 without its library, the debug IR without the entry) and the deep input now link.
   - Rejected: a root parameter or fallback in `Get-KimiKernel32` (T's N6-1: a second copy of one supply); setup deleting an
     existing root's `windows_x64` (older bases on the machine keep working, design fact 12); keeping verify's definition step for a
     file no product reads (N6).
