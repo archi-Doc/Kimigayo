@@ -593,6 +593,27 @@ public class ConstraintBindingTest
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues));
     }
 
+    // SPEC 8.6.3, 23.1.2 (R7-V1c, PLAN G373): a written Type's failing clause is one record at its occurrence wherever the Type is
+    // written (a parameter, a Function Type's result in a Field, a Field, a result, a local's annotation, a nested argument); two
+    // occurrences are two records. A transparent wrapper and the Type it wraps are one occurrence: dev recorded the clause at both.
+    // Records of the declarations that carry the Type (at other spans) are not counted here.
+    [Theory]
+    [InlineData("func g(x: Box<S>) => ()", "7:11")]
+    [InlineData("struct H\n    public var f: (i32) -> Box<S>", "8:28")]
+    [InlineData("struct H\n    public var x: Box<S>", "8:19")]
+    [InlineData("func g() -> Box<S> => $abort(\"no\")", "7:13")]
+    [InlineData("func g()\n    let b: Option<Box<S>> = .None", "8:19")]
+    [InlineData("func g(x: Array<Option<Box<S>>>) => ()", "7:24")]
+    [InlineData("func g(x: Box<S>, y: Box<S>) => ()", "7:11 7:22")]
+    [InlineData("func g(x: Array<Option<Box<K>>>) => ()", "")]
+    [InlineData("struct H\n    public var f: (i32) -> Box<K>", "")]
+    public void AWrittenTypesFailingClauseIsOneRecordAtItsOccurrence(string declaration, string occurrences)
+    {
+        var records = DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n");
+        Assert.Equal(occurrences, string.Join(' ', records.Select(static x => x.Split(' ', 4)).Where(static x => x.Length > 2 && x[2].StartsWith("Box<", StringComparison.Ordinal)).Select(static x => x[1])));
+        Assert.All(records, static x => Assert.StartsWith("UnsatisfiedConstraint_Kd ", x, StringComparison.Ordinal));
+    }
+
     // SPEC 7.5: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
     public void AMemberFunctionCanConstrainItsDeclaringTypeParameter()

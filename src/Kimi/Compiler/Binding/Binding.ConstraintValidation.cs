@@ -520,8 +520,10 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
             }
 
+            // R7-V1c (SPEC 8.6.3, 23.1.2): a written Type occurrence's clauses are judged once, at the Type node its declaration names;
+            // the node a transparent wrapper wraps is that Type (UnwrapTransparentType), so it records nothing of its own.
             if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructionTargets.Contains(node) &&
-                (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
+                (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) && !(node.Parent is TypeSemanticsKoto { IsTransparentWrapper: true } wrapper && ReferenceEquals(wrapper.Type, node)))
             {
                 var scope = this.ConstraintScope(node);
                 var use = this.VerdictUse(node); // A synthesized call's Type is its consumer's verdict (PLAN G214).
