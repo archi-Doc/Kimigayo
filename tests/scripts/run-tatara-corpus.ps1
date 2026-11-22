@@ -4,7 +4,8 @@
 # is not this checkout's (src/Tatara/identity.ps1) is refused. Without -Fixtures the tool control comparison runs its fixed rows; with it, its
 # corpus is those fixture .ll files at O0 and O2 (an LLVM update's gate, plan §6). Each fatal row runs in a child test process of its
 # own, which its class's parent row starts. Writes <Output>/report.md with the run's identity (the checkout, its state and the
-# binaries' hashes, read at the start), the test results and the corpus counts. The caller wraps the run in its own guard.
+# binaries' hashes, read at the start), the test results, the corpus counts and the rows the comparison failed. The caller wraps the
+# run in its own guard.
 param(
     [Parameter(Mandatory)] [string] $Output,
     [string] $Fixtures,
@@ -65,8 +66,9 @@ $report = @('# Tatara corpus run', '') + $checkout + @('', "Build identity $expe
 if ($env:KIMI_TATARA_CORPUS) {
     $rows = @(Get-Content -LiteralPath (Join-Path $env:KIMI_TATARA_CORPUS 'results.tsv') -ErrorAction SilentlyContinue)
     $report += '## Corpus rows', '', '| Outcome | Rows |', '|---|---|'
-    $report += $rows | ForEach-Object { ($_ -split "`t")[1] } | Group-Object | ForEach-Object { "| $($_.Name) | $($_.Count) |" }
-    $report += '', '## Rows that differ or failed', ''
-    $report += $rows | Where-Object { ($_ -split "`t")[1] -notlike 'equal*' } | ForEach-Object { "- $_" }
+    # Each line is "<row>`t<Run's decision, pass or fail>`t<outcome>" (TataraExecutorTest's Run, which owns the acceptance).
+    $report += $rows | ForEach-Object { ($_ -split "`t")[2] } | Group-Object | ForEach-Object { "| $($_.Name) | $($_.Count) |" }
+    $report += '', '## Rows Run failed', ''
+    $report += $rows | Where-Object { ($_ -split "`t")[1] -ceq 'fail' } | ForEach-Object { "- $_" }
 }
 $report | Set-Content -LiteralPath (Join-Path $Output 'report.md') -Encoding utf8

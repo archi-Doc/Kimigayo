@@ -64,8 +64,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// recorded at its call (Broken) causes, a dependent of that error (R4-M10, R5-M183).</summary>
     internal const byte Derived = 8;
 
-    /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
-    /// limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
+    /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow, or an
+    /// instance past Binding's storage bound, which A4 cannot read (TyCtxt.ReadableInstance's null, as A5 reads retention's limit) (the
+    /// depth limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
     internal const byte Deep = 16;
 
     /// <summary>An atom's kind: the destruction of a value of its Type; any other kind but <see cref="Requires"/> is 1 + the receiver of
@@ -194,7 +195,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
     // destroys (A4's, and A5's MirBorrows.Destructions'): the declared Type's instance as every reader reads one (TyCtxt.ReadableInstance,
-    // DECISIONS R4-M139), Rejected storage included; null where the substitution does not instantiate it or its storage is a Limit.
+    // DECISIONS R4-M139), Rejected storage included; null where it is past Binding's storage bound (a Limit verdict, or a formation that
+    // does not complete), which A4 reads as Deep (Item, Process; R4-M153).
     internal BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
     {
         var declared = types.Signature(callee, null, slot, out _);
@@ -331,7 +333,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // SPEC 4.9.6, 8.11.4: the one signature a published row's Callable input is called with (TyCtxt.CallsSignature) at the call's
-    // substitution, as Binding states it; none where its instance does not form (the Limit of an instance that does not form, as Below's).
+    // substitution, as Binding states it; none where its instance is past Binding's storage bound, as Below's (Deep: Item, Process).
     private BoundType? CallsSignature(BindingSymbol callee, Subst? subst, int slot)
     {
         var declared = types.CallsSignature(callee, slot);
@@ -438,7 +440,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     {
         if (type is null)
         {
-            this.found |= Limit;
+            this.found |= Deep; // A published row's parameter past Binding's storage bound (Below).
             return;
         }
 

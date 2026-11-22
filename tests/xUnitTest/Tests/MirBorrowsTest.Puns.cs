@@ -253,6 +253,24 @@ public sealed partial class MirBorrowsTest
                 let first = sl[0]
             stash(q, spare)
             kk = 2
+        func volatileReadOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var q: raw/(raw/u8) = other@raw
+            unsafe => _ = Raw.readVolatile(q@raw@raw/usize)
+            stash(q, spare)
+            kk = 2
+        func volatileWriteBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var q: raw/(raw/u8) = other@raw
+            unsafe => Raw.writeVolatile(q@raw@raw/usize, heap()@usize)
+            stash(q, spare)
+            kk = 2
         func wholeTupleRests()
             var kk: u8 = 1
             let r = kk@uniq
@@ -1633,6 +1651,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("arrayWalkOk", "")]
     [InlineData("statedOk", "")]
     [InlineData("sliceReadOk", "")]
+    [InlineData("volatileReadOk", "")] // SPEC 5.6: Raw.readVolatile stores nothing through its storage (its NoStore row).
+    [InlineData("volatileWriteBad", "volatileWriteBad: kk = 2")] // Raw.writeVolatile stores its integer there, a pun.
     [InlineData("absTakeBackBad", "absTakeBackBad: kk = 2")]
     [InlineData("absCallBad", "absCallBad: kk = 2")]
     [InlineData("absOnTupleRests", "absOnTupleRests: kk = 2 Unsupported_Kd")]
@@ -1675,6 +1695,18 @@ public sealed partial class MirBorrowsTest
         var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
         var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
+    // SPEC 5.2, 5.2.1 condition 5, 5.6 (C-457 R-c; OSF2's row 27 premise): C-457's peek, a volatile read of a ref's bits through a raw
+    // pointer to it and then a follow of the ref through that pointer, is accepted. It does not observe Raw.readVolatile's NoStore row
+    // (it is accepted without the row, as is its writeVolatile twin); volatileReadOk and volatileWriteBad are the rows that discriminate.
+    [Fact]
+    public void AVolatilePeekAtARefsBitsBeforeItsFollowIsAccepted()
+    {
+        var c = MirBuildTest.Compile(Prelude + "func peek(r: ref/i32) -> i32\n    var held: ref/i32 = r\n    var cell: raw/(ref/i32) = held@raw\n" +
+            "    unsafe\n        let bits = Raw.readVolatile(cell@raw@raw/u64)\n        return (*cell)@follow\n");
+        Assert.Empty(c.Binding.Issues);
+        Assert.Empty(Problems(c, Analyze(c), Enum.GetValues<DiagnosticCode>()));
     }
 
     // SPEC 5.2 (PLAN G806; the owner's O-220 (a), O-231 (a)): a whole-value write writes the written Type's raw Places (TyCtxt.RawPlaces).

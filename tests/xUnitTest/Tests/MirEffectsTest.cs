@@ -30,7 +30,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private const string Shared = "struct Item\n    public var value: i32 = 7\n    public init() => ()\ngroup Shared\n    public let limit: i32 = 10\n" +
         "    public let node: rc/Item = Kimi.Intrinsics.makeRc(Item.init())\n";
 
-    // A chain that grows through a destructor's composed atom, a limit at its first composition (AChainGrowingThroughADestructorIsALimit).
+    // A chain that grows through a destructor's composed atom, Deep past Binding's storage bound (AChainGrowingThroughADestructorEndsAtTheBound).
     private const string GrowingChain = "struct D<T>\n    var value: T\n    drop => ()\nstruct G<U>\n    var next: Option<rc/D<G<(U, U)>>>\n    public init()\n" +
         "        self.next = .None\n";
 
@@ -595,21 +595,22 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Problems("open struct Box<F>\n    F is Callable<() -> i32>\n        effect confined\n    F is Callable<(i32) -> i32>\n    public init() => ()\n" +
                 $"    public virtual func run(self: objref/Self, f: ref/F) -> i32\n        effect confined\n        return {call}\n"));
 
-    // SPEC 23.1.1 (DECISIONS R4-M153, implementation review 1's N3): beside a limit (a chain growing through a destructor, GrowingChain),
-    // the same witness destroys a Tuple nested past the destruction walk's bound: the guard's one ranking decides, the unsupported part
-    // over the part past the bound, so one record; without the chain the depth limit alone (until Z3 the limit was a call through several
-    // Callable signatures, which is no limit since).
+    // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M153, R4-M237; implementation review 1's N3): the witness destroys a Tuple nested past the
+    // destruction walk's bound, Deep; beside it a chain growing through a destructor (GrowingChain) ends past Binding's storage bound,
+    // Deep too: one verdict, so one depth limit record either way. Before Z25 the chain was a Limit, whose located Unsupported_Kd
+    // outranked the part past the bound (before Z3 that Limit was a call through several Callable signatures); A4 keeps no other Limit
+    // with a source form but E7's (R7-P5), and the walks' ranking stays pinned by MirTypesTest's limitDeep40.
     [Theory]
     [InlineData("", "OwnershipDepthLimit_Kd Self is Work 18446744073709551615")]
-    [InlineData("        _ = G<i32>.init()\n", "Unsupported_Kd Self is Work 18446744073709551615")]
-    public void AnUnsupportedPartOutranksAPartPastTheBound(string limit, string expected)
+    [InlineData("        _ = G<i32>.init()\n", "OwnershipDepthLimit_Kd Self is Work 18446744073709551615")]
+    public void APartPastEitherBoundIsOneDepthLimit(string chain, string expected)
     {
         var premises = "        F is Callable<() -> i32>\n            effect confined\n";
         var deep = new string('(', 40) + "0" + string.Concat(Enumerable.Range(0, 40).Select(static i => $", {i})"));
         Assert.Equal(
             Expected(expected),
             Problems(GrowingChain + "contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n" +
-                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        _ = {deep}\n{limit}        return f()\n"));
+                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        _ = {deep}\n{chain}        return f()\n"));
     }
 
     // SPEC 23.1.1 (DECISIONS R4-M153's revision 3): a destruction walk enters a Type at the shallowest depth it meets it, so a destroyed
@@ -1104,13 +1105,15 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     }
 
     // SPEC 15.3.5, 8.15 (DECISIONS R4-M58): a chain that grows through a destructor's composed atom, D's T as G<(U, U)>, terminates:
-    // Binding's storage instantiation bounds the growing instance (TyCtxt.Apply gives none), so the first composition is a limit, the
-    // located Unsupported_Kd where it owes confined.
+    // Binding's storage instantiation bounds the growing instance (TyCtxt.ReadableInstance gives none), so the first composition past it
+    // is A4's Deep, the depth limit where it owes confined (R4-M153, R7-M54; Z25, before: the located Unsupported_Kd).
     [Fact]
-    public void AChainGrowingThroughADestructorIsALimit()
+    public void AChainGrowingThroughADestructorEndsAtTheBound()
     {
         Assert.Empty(Problems(GrowingChain + "func release(g: G<i32>) => ()\n"));
-        Assert.Equal(["Unsupported_Kd Self is Sink 18446744073709551615"], Problems(Sink + Loud + GrowingChain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
+        Assert.Equal(
+            ["OwnershipDepthLimit_Kd Self is Sink 18446744073709551615"],
+            Problems(Sink + Loud + GrowingChain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
     // The Z2 DECISIONS draft (PLAN G396 (3), E1): A4's broken contract has one form per place, in a complete compilation. A call Local

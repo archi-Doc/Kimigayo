@@ -231,9 +231,10 @@ public sealed partial class Binding
             var mistyped = this.AccessorTypeMismatch(accessor);
             var inputType = accessor.Input is { } declaredInput ? Signature(mistyped ? accessor.Property.Type! : declaredInput) : null;
             // Origin-bearing inputs retain their own execution milestone. An owning or object-form written receiver
-            // is the declaration error of SPEC 11.3, not a limit of this path.
-            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (receiverType.SafeReferent is not { } referent || !AdtDef.IsStruct(referent) ||
-                (referent.Kind == BoundTypeKind.Constructed && declaringType is null));
+            // is the declaration error of SPEC 11.3, not a limit of this path. A receiver's Type comes from the declaring Type the
+            // member selection published (LookupMember), as a method call's does (CallDeclaringType): any struct, the compiler-managed
+            // Array, Dictionary and Slice included; a requirement member selected without one stays Unsupported.
+            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (receiverType.SafeReferent is null || declaringType is null);
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
                 Signature(mistyped && accessor.Kind == PropertyAccessorKind.Get ? accessor.Property.Type! : declaredResult) is not { } result ||
                 (accessor.Input is not null && inputType is null) || inputType is { CarriesAnyOrigin: true } ||
