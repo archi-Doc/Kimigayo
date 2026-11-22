@@ -605,10 +605,21 @@ public sealed partial class Binding
             this.inferenceComponents[b].RunsRented = 0;
         }
 
+        // The hold of every binding, formed in order-number order (each member newer than the last, one node each; in entry order each
+        // older member formed every newer node again: O(m^2) nodes, 13.6 GB on the 10,000-definition ring), the never-held ones last.
         var all = this.inferenceEmptyHold;
+        var held = this.inferenceHoldEntry.Count;
+        for (var o = 0; o < held; o++)
+        {
+            all = this.HoldAdd(all, this.inferenceHoldEntry[o]);
+        }
+
         for (var i = 0; i < this.inferenceBindings.Count; i++)
         {
-            all = this.HoldAdd(all, this.inferenceBindingIndex[this.inferenceBindings[i].Binding]);
+            if (this.inferenceBindingIndex[this.inferenceBindings[i].Binding] is var index && this.inferenceHoldOrder[index] < 0)
+            {
+                all = this.HoldAdd(all, index);
+            }
         }
 
         BoundConformancePath? least = null;
