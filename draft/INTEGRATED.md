@@ -1452,6 +1452,13 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   records D3-1 as landed in W-309: ClosureType's `FixedAtoms` walk no longer crosses a Closure's signature, so a closure chain's
   formations are linear (DECISIONS BU-73's R7-D3 D3-1 amendment; PLAN G348 F1); D3-2 takes `UnimagedClosure` and
   `ClosureArgumentVariance`. Nothing frozen.
+- Revision 110 (2026-11-22, plan §14; the Back's D-1063, the owner's O-486 1 (a) and 2 (b), R8-X1's review of exceptions):
+  §10.2 item 3 excepts Array `appendAll` from the A4-summary agreement, R8's decided exception at X1 (PLAN G400); §5.2's X1 row
+  names L2 (PLAN G597) as R8's exit work before X1's exit run. Nothing frozen.
+- Revision 111 (2026-11-22, plan §14; the Front's Q-646 and D-1058, F's V2e rulings 1-3, R7-V2e's landing): V2's row
+  records V2e as landed in W-310: SPEC 9.1's duplicate check compares only functions of one `SignatureHash` over `FnSig`
+  (DECISIONS R7-M77, superseding R7-M37's `SignatureKey` clause: no key type); the group checks left pairwise are PLAN
+  G1249. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
@@ -1718,3 +1725,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   download; `KIMI_E_PROCESS_HEAP` removed in B7r2; decision 23's memory gate); §7: B7's row names B7b's group B7r and its
   order, B8's row records the owner's deferral; §11: the question before B7b is answered. No earlier decision changes.
   Nothing frozen.
+- Revision 9 (2026-11-22, the B7b and B7r design's Revision 2 accepted by the Middle's review C-445 (N4), as Revision 2.1; T's
+  D-1061): §7: B7's row states the order B7 lands in, in eight windows: B7a1 and B7a2, then B7b1 (W1), B7r4 (W2), B7r1-B7r3
+  (W3, all or none), B7b2, B7b6 and B7b5 (W4), B7r5 and B7b4 (W5), B7b7 (W6), B7b8 (W7) and B7b9 (W8), replacing revision 8's
+  order (the group B7r first, from the design's Revision 1). No decision of the owner changes. Nothing frozen.
