@@ -1697,10 +1697,11 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
 
-    // SPEC 5.2, 5.2.1 condition 5, 5.6 (C-457 R-c): a volatile read of a raw pointer's bits stores nothing through its storage, so the
-    // pointer still reaches `held`, which carries r's Loan, read through it after (valid; the store twin is volatileWriteBad's pun).
+    // SPEC 5.2, 5.2.1 condition 5, 5.6 (C-457 R-c; OSF2's row 27 premise): C-457's peek, a volatile read of a ref's bits through a raw
+    // pointer to it and then a follow of the ref through that pointer, is accepted. It does not observe Raw.readVolatile's NoStore row
+    // (it is accepted without the row, as is its writeVolatile twin); volatileReadOk and volatileWriteBad are the rows that discriminate.
     [Fact]
-    public void AVolatileReadStoresNothingThroughItsStorage()
+    public void AVolatilePeekAtARefsBitsBeforeItsFollowIsAccepted()
     {
         var c = MirBuildTest.Compile(Prelude + "func peek(r: ref/i32) -> i32\n    var held: ref/i32 = r\n    var cell: raw/(ref/i32) = held@raw\n" +
             "    unsafe\n        let bits = Raw.readVolatile(cell@raw@raw/u64)\n        return (*cell)@follow\n");

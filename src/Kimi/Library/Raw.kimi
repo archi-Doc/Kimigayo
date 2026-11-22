@@ -39,8 +39,8 @@ public group Raw
     #Lang("RawSlice")
     #Intrinsic("RawSlice")
     public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s
-    /// Reads the value of `T` at `storage` with a volatile access (SPEC 5.6), which the compiler never merges, splits, removes,
-    /// duplicates or reorders with another volatile access.
+    /// Reads the value of `T` at `storage` with a volatile access (SPEC 5.6), which the compiler never merges, removes,
+    /// duplicates, splits further or reorders with another volatile access.
     ///
     /// - safety: The read meets the raw access conditions (SPEC 5.2.1): `storage` is live, aligned for `T` and readable, it holds
     ///   a valid, initialized value of `T` within its provenance, and no live Loan conflicts.

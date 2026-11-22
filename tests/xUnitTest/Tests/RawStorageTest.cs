@@ -214,7 +214,7 @@ public class RawStorageTest
     [InlineData("let view: Slice<i32> = Raw.slice(null@raw/i32, 0)", false)]
     [InlineData("let bits = Raw.readVolatile(null@raw/u32)", false)]
     [InlineData("Raw.writeVolatile(null@raw/u32, 1)", false)]
-    public void OnlyReleaseAndInitializeNeedAnUnsafeContext(string statement, bool valid)
+    public void EveryRawOperationButAllocateNeedsAnUnsafeContext(string statement, bool valid)
     {
         var diagnostics = DiagnosticCorpus.Check("public func main()\n    " + statement + "\n").Diagnostics;
         if (valid)
