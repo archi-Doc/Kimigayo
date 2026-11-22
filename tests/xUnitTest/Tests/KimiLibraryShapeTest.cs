@@ -574,7 +574,7 @@ public partial class KimiLibraryShapeTest
     // zero-sized.
     [Theory]
     [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
-    [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
+    [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal var storage: raw/E during source\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
     [InlineData("ArrayOwningIterator", "public struct ArrayOwningIterator<T>\nvar array: Storage.ArrayRepr<T>\nvar position: isize = 0\nvar count: isize\ndrop")]
     [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
     [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]

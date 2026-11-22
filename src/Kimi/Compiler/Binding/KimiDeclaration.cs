@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 // IMPL 21.3.4: the lang items, the Names a library `#Lang` gives, each one a C# reader identifies (R8-G1, the owner's O-307 (a)). The
 // catalog's members come first in the order of its entries, which KimiLibraryCatalog.Definitions indexes by this value. The 11 arithmetic
-// Contracts, Addable to Negatable, stay contiguous and in this order, since ArithmeticContracts and Binding read them as ranges
+// Contracts, Addable to Negatable, stay contiguous and in this order, since KimiLibraryCatalog and Binding read them as ranges
 // (ArithmeticContractTest).
 public enum KimiDeclarationId : byte
 {

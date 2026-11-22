@@ -14,7 +14,10 @@ using Kimi.Diagnostics;
 /// <summary>
 /// Represents an application or library build unit, configured by a project file or a single-source input.
 /// </summary>
-/// <remarks>A project is the Kimigayo equivalent of a C# project.</remarks>
+/// <remarks>A project is the Kimigayo equivalent of a C# project. Its input (IMPL 20.3.1), the selected file every build record names, is
+/// stored once and derived: the project file of a <c>.kimiproj</c> input, the one source file of a <c>.kimi</c> input's implicit project
+/// (no project file), its full path as resolution gives it; none for a project without a project file and with another number of source
+/// files (one made in memory).</remarks>
 public partial class Project
 {
     /// <summary>Gets the default settings for programmatically constructed projects.</summary>
@@ -157,6 +160,10 @@ public partial class Project
     public ProjectFile ProjectFile { get; private set; }
 
     internal string? FilePath { get; private set; }
+
+    // The project's input, derived as the summary states: publication writes it into the link manifest, every native build of the pair
+    // names it in its record, and run --no-build runs a build only of this input (PLAN G1256).
+    internal string? Input => this.FilePath ?? (this.kimiFiles.Count == 1 ? this.kimiFiles.First() : null);
 
     /// <summary>Gets the discovered source files.</summary>
     internal IReadOnlyCollection<string> KimiFiles => this.kimiFiles;
@@ -307,7 +314,7 @@ public partial class Project
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
     /// <returns>Whether every selected target passes front-end checks.</returns>
     internal bool Check(CheckContext context, CancellationToken cancellationToken)
-        => this.BuildTargetsAndPublish(false, cancellationToken, null, context);
+        => this.OwnResult((cancellationToken, context), context, static (project, s, diagnostics) => project.BuildTargets(false, s.cancellationToken, null, s.context, diagnostics));
 
     /// <summary>Publishes the IR and manifest of an accepted compilation through the generation entry, or renders the Emission result:
     /// the generation records, the publication failure, or, for an exception publication does not classify (a broken contract code
@@ -361,24 +368,25 @@ public partial class Project
     // is synchronous; do not build another async state machine around every compilation.
     // paths requests build artifacts, including a Library's record even when emit is false.
     private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
-        => this.BuildTargetsAndPublish(emit, cancellationToken, paths, null);
+        => this.OwnResult((emit, cancellationToken, paths), null, static (project, s, diagnostics) => project.BuildTargets(s.emit, s.cancellationToken, s.paths, null, diagnostics));
 
-    private bool BuildTargetsAndPublish(bool emit, CancellationToken cancellationToken, ArtifactPaths? paths, CheckContext? context)
+    // The project's own result, the product's (its configuration, lock and target-selection records) or the test unit's (PrepareTests:
+    // its configuration, TestSources, test-setting, test-identity, test-target and lock records), which body reports to its owner: a check
+    // request's caller finalizes its own diagnostics; a command renders it here, with the fault of an exception that ends it, and returns
+    // default (DIAGNOSTICS rule 9; R9-B2): the project's own checks', a target's report after its results (Emit), or a target's
+    // preparation before its front end (BuildTarget's, whose own records are then not rendered: a known limit).
+    private TResult? OwnResult<TState, TResult>(TState state, CheckContext? context, Func<Project, TState, DiagnosticOwner, TResult> body)
     {
-        // The project's own result (its configuration, lock and target-selection records): a check request's caller finalizes its own
-        // diagnostics; a command renders it here, with the fault of an exception that ends it (DIAGNOSTICS rule 9; R9-B2): the project's
-        // own checks', a target's report after its results (Emit), or a target's preparation before its front end (BuildTarget's, whose
-        // own records are then not rendered: a known limit).
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
         Exception? fault = null;
         try
         {
-            return this.BuildTargets(emit, cancellationToken, paths, context, diagnostics);
+            return body(this, state, diagnostics);
         }
         catch (Exception ex) when (this.Faults(ex, context))
         {
             fault = ex;
-            return false;
+            return default;
         }
         finally
         {
@@ -411,22 +419,9 @@ public partial class Project
             valid = !this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs));
         }
 
-        var targets = this.ProjectFile.Targets;
-        if (targets.Length == 0)
+        if (this.SelectTargets(diagnostics) is not { } targets)
         {
-            this.Fail(diagnostics, "At least one compilation target must be configured.");
             return false;
-        }
-
-        if (!string.IsNullOrEmpty(this.KimiOptions.Target))
-        {
-            if (!targets.Contains(this.KimiOptions.Target, StringComparer.Ordinal))
-            {
-                this.Fail(diagnostics, "The selected target is not configured in this project.");
-                return false;
-            }
-
-            targets = [this.KimiOptions.Target];
         }
 
         if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != TargetProfile.Windows.Target))
@@ -680,6 +675,32 @@ public partial class Project
         return reads;
     }
 
+    // IMPL 20.3: the targets the project's unit selects, the configured ones or the one --Target names; null after its record when none is
+    // configured or the selected one is not, which leaves no target to prepare.
+    private string[]? SelectTargets(DiagnosticOwner diagnostics)
+    {
+        var targets = this.ProjectFile.Targets;
+        if (targets.Length == 0)
+        {
+            this.Fail(diagnostics, "At least one compilation target must be configured.");
+            return null;
+        }
+
+        var selected = this.KimiOptions.Target;
+        if (string.IsNullOrEmpty(selected))
+        {
+            return targets;
+        }
+
+        if (!targets.Contains(selected, StringComparer.Ordinal))
+        {
+            this.Fail(diagnostics, "The selected target is not configured in this project.");
+            return null;
+        }
+
+        return [selected];
+    }
+
     private void Fail(DiagnosticOwner diagnostics, string message)
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
 
@@ -735,14 +756,14 @@ public partial class Project
             try
             {
                 // SPEC 23.2.2: an exception keeps the valid records and adds the fault; a violated contract discards them.
-                result = fault is DiagnosticContractException contract ? DiagnosticFaults.Create(contract.Fault, contract.Message, this.FilePath) :
-                    fault is not null ? DiagnosticFaults.Create(DiagnosticFault.Exception, fault.Message, this.FilePath, diagnostics.Finalize(first, last)) :
+                result = fault is DiagnosticContractException contract ? DiagnosticFaults.Create(contract.Fault, contract, this.FilePath) :
+                    fault is not null ? DiagnosticFaults.Create(DiagnosticFault.Exception, fault, this.FilePath, diagnostics.Finalize(first, last)) :
                     diagnostics.Finalize(first, last, rejected);
             }
             catch (DiagnosticContractException ex)
             {
                 // SPEC 23.2.2: a violated contract discards every partial record and reports the fault.
-                result = DiagnosticFaults.Create(ex.Fault, ex.Message, this.FilePath);
+                result = DiagnosticFaults.Create(ex.Fault, ex, this.FilePath);
             }
 
             this.kimigayo.Render(result, this.Directory);
