@@ -181,6 +181,7 @@ public partial class LayoutAttributeBindingTest
         ("slice-element", "func f(a: ref/Array<X>) -> i32\n    let s = a.slice(..)\n    return s[0].n\n", "InvalidCLayout_Kd s[0].n"),
         ("slice-sites", Over("a.slice(..).length") + "func k(a: ref/Array<X>) -> isize => a.slice(1..).length\n", "InvalidCLayout_Kd a.slice(1..)"),
         ("key-element", KeyElement, "InvalidCLayout_Kd s[0].n"),
+        // v[0]@ref is its own use (a stride read) before e.n projects, Q13's one use: two records where slice-element (s[0].n) has one.
         ("uniq-element", UniqElement, "InvalidCLayout_Kd v[0]|InvalidCLayout_Kd e.n"),
     ];
 
