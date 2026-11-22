@@ -61,6 +61,14 @@ public partial class LayoutAttributeBindingTest
     private const string KeyElement = "func h<R>(a: ref/Array<X>, r: R) -> i32\n    R is PositionRange\n    let s = a[r]\n    return s[0].n\n" +
         "func f(a: ref/Array<X>) -> i32 => h(a, ..)\n";
 
+    // The exclusive selections over X (PLAN G597's L2): a key of an open Type passed to the library's sliceUniq, an exclusive view's
+    // receiver, and an element projected past a whole view.
+    private const string ByUniqKey = "func k<R>(a: uniq/Array<X>, r: R) -> isize\n    R is PositionRange\n    return a.sliceUniq(r).length\n";
+
+    private const string UniqView = "func f(a: uniq/Array<X>) -> isize\n    var v = a.sliceUniq()\n";
+
+    private const string UniqElement = "func f(a: uniq/Array<X>) -> i32\n    var v = a.sliceUniq(..)\n    let e = v[0]@ref\n    return e.n\n";
+
     // The declarations whose C layout is unavailable with a public Field n, the Type text X of their uses, and their twins.
     private static readonly (string Name, string Declaration, string Type, string TwinDeclaration, string TwinType)[] Projected =
     [
@@ -140,11 +148,40 @@ public partial class LayoutAttributeBindingTest
         ("default-start", ByDefault + Over("h(a, 1..)"), "InvalidCLayout_Kd a[r]"),
         ("default-forward", ByDefault + Forward + Over("g(a, ..)"), string.Empty),
         ("default-forward-start", ByDefault + Forward + Over("g(a, 1..)"), "InvalidCLayout_Kd a[r]"),
+        // PLAN G597's L2: the library's sliceUniq starts its view by Storage.viewStart, which each instance of the key decides as a
+        // selection does: the stride is read only where the key displaces, at the call, and the exclusive iteration's element always.
+        ("uniq-whole", OverUniq("a.sliceUniq(..).length"), string.Empty),
+        ("uniq-prefix", OverUniq("a.sliceUniq(..2).length"), string.Empty),
+        ("uniq-closed", OverUniq("a.sliceUniq(..=1).length"), string.Empty),
+        ("uniq-from-end-end", OverUniq("a.sliceUniq(..^1).length"), string.Empty),
+        ("uniq-value", "func f(a: uniq/Array<X>) -> isize\n    let r = ..\n    return a.sliceUniq(r).length\n", string.Empty),
+        ("uniq-parameter", "func f(a: uniq/Array<X>, r: Range<Start, End>) -> isize => a.sliceUniq(r).length\n", string.Empty),
+        ("uniq-fixed", "func f(a: uniq/[2 of X]) -> isize => a.sliceUniq(..^1).length\n", string.Empty),
+        ("uniq-view", UniqView + "    return v.sliceUniq(..).length\n", string.Empty),
+        ("uniq-generic", "func g<T>(a: uniq/Array<T>) -> isize => a.sliceUniq(..).length\n" + OverUniq("g(a)"), string.Empty),
+        ("uniq-key-whole", ByUniqKey + OverUniq("k(a, ..)"), string.Empty),
+        ("uniq-start", OverUniq("a.sliceUniq(1..).length"), "InvalidCLayout_Kd a.sliceUniq(1..)"),
+        ("uniq-zero", OverUniq("a.sliceUniq(0..).length"), "InvalidCLayout_Kd a.sliceUniq(0..)"),
+        ("uniq-from-end", OverUniq("a.sliceUniq(^1..).length"), "InvalidCLayout_Kd a.sliceUniq(^1..)"),
+        (
+            "uniq-resolved",
+            "func f(a: uniq/Array<X>) -> isize\n    let r = (0..1).resolve(a.length)\n    return a.sliceUniq(r).length\n",
+            "InvalidCLayout_Kd a.sliceUniq(r)"),
+        ("uniq-fixed-start", "func f(a: uniq/[2 of X]) -> isize => a.sliceUniq(1..).length\n", "InvalidCLayout_Kd a.sliceUniq(1..)"),
+        ("uniq-view-start", UniqView + "    return v.sliceUniq(1..).length\n", "InvalidCLayout_Kd v.sliceUniq(1..)"),
+        ("uniq-generic-start", "func g<T>(a: uniq/Array<T>) -> isize => a.sliceUniq(1..).length\n" + OverUniq("g(a)"), "InvalidCLayout_Kd a.sliceUniq(1..)"),
+        ("uniq-key-start", ByUniqKey + OverUniq("k(a, 1..)"), "InvalidCLayout_Kd a.sliceUniq(r)"),
+        (
+            "uniq-next",
+            "func f(a: uniq/Array<X>) -> bool\n    var it = a.iterateUniq()\n    match it.next()\n        .Some(_) => return true\n" +
+            "        .None => return false\n",
+            "InvalidCLayout_Kd it.next()"),
         // DECISIONS Q13: an element projected past a whole view is the one use; the view, which reads no stride, is none, in another
         // function's displacing instance and in a generic body's instance alike.
         ("slice-element", "func f(a: ref/Array<X>) -> i32\n    let s = a.slice(..)\n    return s[0].n\n", "InvalidCLayout_Kd s[0].n"),
         ("slice-sites", Over("a.slice(..).length") + "func k(a: ref/Array<X>) -> isize => a.slice(1..).length\n", "InvalidCLayout_Kd a.slice(1..)"),
         ("key-element", KeyElement, "InvalidCLayout_Kd s[0].n"),
+        ("uniq-element", UniqElement, "InvalidCLayout_Kd v[0]|InvalidCLayout_Kd e.n"),
     ];
 
     // The inferred and compared forms: P<()> projected in a generic body's instance, and a comparison shim's Tuple compared through a
@@ -203,4 +240,7 @@ public partial class LayoutAttributeBindingTest
 
     // A function f over an Array of X whose value is the expression.
     private static string Over(string expression) => $"func f(a: ref/Array<X>) -> isize => {expression}\n";
+
+    // A function f over an exclusive Array of X whose value is the expression.
+    private static string OverUniq(string expression) => $"func f(a: uniq/Array<X>) -> isize => {expression}\n";
 }
