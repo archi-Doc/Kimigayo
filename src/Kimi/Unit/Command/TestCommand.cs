@@ -42,7 +42,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
             solution.PrepareProject(null);
             if (solution.Projects.Count == 0 || solution.SolutionFile.Projects.Any(x => !solution.Projects.ContainsKey(x)))
             {
-                throw new InvalidDataException("Every selected project must load successfully.");
+                throw new CommandInputException("Every selected project must load successfully.");
             }
 
             var identities = new HashSet<string>(StringComparer.Ordinal);
@@ -103,7 +103,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
 
             if (!outcomes.Any(x => x.Selected) && (!options.AllowEmpty || options.Get("--case") is not null))
             {
-                throw new InvalidDataException("No test cases match the selection.");
+                throw new CommandInputException("No test cases match the selection.");
             }
 
             if (options.List || !outcomes.Any(x => x.Selected))
