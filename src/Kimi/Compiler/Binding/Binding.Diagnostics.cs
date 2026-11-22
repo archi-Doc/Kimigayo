@@ -584,7 +584,7 @@ public sealed partial class Binding
             // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1): the check's selection.
             var name = DiagnosticTypeName(core);
             var registered = this.uniqIndexing.GetValueOrDefault(index).Conformance;
-            _ = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey);
+            var byKey = this.SelectConformance(core, uniqIndexable, owner.Scope, out var candidates) is null && candidates != 0; // by declaration: no scope read
             return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
                 byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
                 $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";
@@ -729,6 +729,14 @@ public sealed partial class Binding
         if (this.RecordedFailure(use) != BindingFailure.None)
         {
             return;
+        }
+
+        // SPEC 23.1.1, 23.1.2 (rule W; R7-C3 b, F's ruling 5): a cause whose failure rests on a part that is missing information (a
+        // conformance on its unsupported specification, RestOnSpecification) carries that part's record, which this record then rests on.
+        if (!IsMissingInformation(diagnosticCause) && diagnosticCause is not null && this.partPrerequisites.TryGetValue(diagnosticCause, out var part) &&
+            IsMissingInformation(part))
+        {
+            diagnosticCause = part;
         }
 
         if (!IsMissingInformation(diagnosticCause) && use is IsKoto clause && this.FindMissingConformanceName(clause) is { } missing)

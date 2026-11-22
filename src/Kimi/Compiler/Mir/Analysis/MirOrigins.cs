@@ -36,9 +36,12 @@
 //   or a dereferenced layer's through OriginAtom at the Ref's site, a meet's operands and a solved value's as the view holds them
 //   (MeetOperand); a chain's
 //   verdict does not depend on reachability; views whose active rows and containment edges are equal form one class, judged once, under
-//   the borrow binders all its views share (SPEC 15.6.5); an edge of the layer's part is judged with the layer's oracle (R4-M101 E4); a
-//   Ref inside an Inlined scope adds no containment (a default's rows are its template's, R4-M101 (b)); storage is pooled, so a warm run
-//   allocates nothing.
+//   the borrow binders all its views share (SPEC 15.6.5); a Ref's own Finite atom is Inferred in a class, for its judgment and queries,
+//   exactly when each Ref whose own atom it is has a containment edge in the class and lacks one in some class of the body (a class whose
+//   views do not reach the Ref's statement has none), SPEC 15.6.5's Borrow reached through a borrow where the case decides the layer
+//   (Z19's rule (A), staged until PLAN's open issue for design (B)); an edge of the layer's part is judged with the layer's oracle
+//   (R4-M101 E4); a Ref inside an Inlined scope adds no containment (a default's rows are its template's, R4-M101 (b)); storage is pooled,
+//   so a warm run allocates nothing.
 // - Must not: judge a relation Binding judged directly (it forms no row, D1); decode a slot or read a binder or forming body (only the view
 //   does); port the preserves-results skip or the top-like Anchor (PD9); or drop a problem (MirReport's).
 
@@ -134,6 +137,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
             this.Classify(view, cases.Borrows());
         }
 
+        this.Reaching();
         try
         {
             for (var c = 0; c < this.classCount; c++)

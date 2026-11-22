@@ -50,7 +50,7 @@ public partial class KimiLibraryShapeTest
             }
         }
 
-        Assert.Equal(["Replace value", "Exchange value", "StorageTransferBytes source", "RawRelease storage", "RawInitialize value", "RawSlice storage"], inputs);
+        Assert.Equal(["Replace value", "Exchange value", "StorageTransferBytes source", "RawRelease storage", "RawInitialize value", "RawSlice storage", "RawReadVolatile storage"], inputs);
     }
 
     // PLAN G779 (O-195 (a)): the functions code generation keeps out of line (KimiLibraryCatalog.KeepsOutOfLine) are a closed set, each

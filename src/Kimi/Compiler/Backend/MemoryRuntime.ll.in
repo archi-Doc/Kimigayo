@@ -1,0 +1,203 @@
+; The runtime's C memory functions (IMPL 21.4.7; the Tatara plan's decision 24), which every module defines and generated code may call:
+; LLVM lowers its memory intrinsics to them. External, so that code generation's libcalls bind to them after the IR passes; #1 is the
+; profile's #0 plus "no-builtins", so no pass turns a loop back into a call of one of them. The algorithms are the backend archive's
+; assembly ones: eight-byte chunks through align-1 accesses, then a byte tail; a zero count touches no byte.
+declare i64 @llvm.cttz.i64(i64, i1 immarg)
+
+; The first differing byte decides, its bytes compared unsigned; within a differing chunk the lowest set bit of the difference lies in
+; that byte (little endian).
+define i32 @memcmp(ptr %left, ptr %right, i64 %count) #1 {
+entry:
+  br label %words
+words:
+  %left_word = phi ptr [ %left, %entry ], [ %left_next, %same ]
+  %right_word = phi ptr [ %right, %entry ], [ %right_next, %same ]
+  %remaining = phi i64 [ %count, %entry ], [ %rest, %same ]
+  %chunk = icmp uge i64 %remaining, 8
+  br i1 %chunk, label %word, label %bytes
+word:
+  %a = load i64, ptr %left_word, align 1
+  %b = load i64, ptr %right_word, align 1
+  %difference = xor i64 %a, %b
+  %equal = icmp eq i64 %difference, 0
+  br i1 %equal, label %same, label %differ
+same:
+  %left_next = getelementptr i8, ptr %left_word, i64 8
+  %right_next = getelementptr i8, ptr %right_word, i64 8
+  %rest = sub i64 %remaining, 8
+  br label %words
+differ:
+  %bit = call i64 @llvm.cttz.i64(i64 %difference, i1 true)
+  %shift = and i64 %bit, 56
+  %a_shifted = lshr i64 %a, %shift
+  %b_shifted = lshr i64 %b, %shift
+  %a_byte = trunc i64 %a_shifted to i8
+  %b_byte = trunc i64 %b_shifted to i8
+  br label %order
+bytes:
+  %empty = icmp eq i64 %remaining, 0
+  br i1 %empty, label %equal_ranges, label %byte
+byte:
+  %left_byte = phi ptr [ %left_word, %bytes ], [ %left_after, %byte_same ]
+  %right_byte = phi ptr [ %right_word, %bytes ], [ %right_after, %byte_same ]
+  %left_count = phi i64 [ %remaining, %bytes ], [ %left_rest, %byte_same ]
+  %x = load i8, ptr %left_byte, align 1
+  %y = load i8, ptr %right_byte, align 1
+  %differs = icmp ne i8 %x, %y
+  br i1 %differs, label %order, label %byte_same
+byte_same:
+  %left_after = getelementptr i8, ptr %left_byte, i64 1
+  %right_after = getelementptr i8, ptr %right_byte, i64 1
+  %left_rest = sub i64 %left_count, 1
+  %more = icmp ne i64 %left_rest, 0
+  br i1 %more, label %byte, label %equal_ranges
+order:
+  %first = phi i8 [ %a_byte, %differ ], [ %x, %byte ]
+  %second = phi i8 [ %b_byte, %differ ], [ %y, %byte ]
+  %first32 = zext i8 %first to i32
+  %second32 = zext i8 %second to i32
+  %result = sub i32 %first32, %second32
+  ret i32 %result
+equal_ranges:
+  ret i32 0
+}
+
+define ptr @memcpy(ptr %destination, ptr %source, i64 %count) #1 {
+entry:
+  br label %words
+words:
+  %to = phi ptr [ %destination, %entry ], [ %to_next, %word ]
+  %from = phi ptr [ %source, %entry ], [ %from_next, %word ]
+  %remaining = phi i64 [ %count, %entry ], [ %rest, %word ]
+  %chunk = icmp uge i64 %remaining, 8
+  br i1 %chunk, label %word, label %bytes
+word:
+  %value = load i64, ptr %from, align 1
+  store i64 %value, ptr %to, align 1
+  %to_next = getelementptr i8, ptr %to, i64 8
+  %from_next = getelementptr i8, ptr %from, i64 8
+  %rest = sub i64 %remaining, 8
+  br label %words
+bytes:
+  %empty = icmp eq i64 %remaining, 0
+  br i1 %empty, label %done, label %byte
+byte:
+  %to_byte = phi ptr [ %to, %bytes ], [ %to_after, %byte ]
+  %from_byte = phi ptr [ %from, %bytes ], [ %from_after, %byte ]
+  %left = phi i64 [ %remaining, %bytes ], [ %left_rest, %byte ]
+  %copied = load i8, ptr %from_byte, align 1
+  store i8 %copied, ptr %to_byte, align 1
+  %to_after = getelementptr i8, ptr %to_byte, i64 1
+  %from_after = getelementptr i8, ptr %from_byte, i64 1
+  %left_rest = sub i64 %left, 1
+  %more = icmp ne i64 %left_rest, 0
+  br i1 %more, label %byte, label %done
+done:
+  ret ptr %destination
+}
+
+; Backward only for an overlapping destination above the source; a self-move touches no byte.
+define ptr @memmove(ptr %destination, ptr %source, i64 %count) #1 {
+entry:
+  %self = icmp eq ptr %destination, %source
+  br i1 %self, label %done, label %direction
+direction:
+  %above = icmp ugt ptr %destination, %source
+  %to_address = ptrtoint ptr %destination to i64
+  %from_address = ptrtoint ptr %source to i64
+  %distance = sub i64 %to_address, %from_address
+  %near = icmp ult i64 %distance, %count
+  %overlap = and i1 %above, %near
+  br i1 %overlap, label %back, label %words
+words:
+  %to = phi ptr [ %destination, %direction ], [ %to_next, %word ]
+  %from = phi ptr [ %source, %direction ], [ %from_next, %word ]
+  %remaining = phi i64 [ %count, %direction ], [ %rest, %word ]
+  %chunk = icmp uge i64 %remaining, 8
+  br i1 %chunk, label %word, label %bytes
+word:
+  %value = load i64, ptr %from, align 1
+  store i64 %value, ptr %to, align 1
+  %to_next = getelementptr i8, ptr %to, i64 8
+  %from_next = getelementptr i8, ptr %from, i64 8
+  %rest = sub i64 %remaining, 8
+  br label %words
+bytes:
+  %empty = icmp eq i64 %remaining, 0
+  br i1 %empty, label %done, label %byte
+byte:
+  %to_byte = phi ptr [ %to, %bytes ], [ %to_after, %byte ]
+  %from_byte = phi ptr [ %from, %bytes ], [ %from_after, %byte ]
+  %left = phi i64 [ %remaining, %bytes ], [ %left_rest, %byte ]
+  %copied = load i8, ptr %from_byte, align 1
+  store i8 %copied, ptr %to_byte, align 1
+  %to_after = getelementptr i8, ptr %to_byte, i64 1
+  %from_after = getelementptr i8, ptr %from_byte, i64 1
+  %left_rest = sub i64 %left, 1
+  %more = icmp ne i64 %left_rest, 0
+  br i1 %more, label %byte, label %done
+back:
+  %to_end = getelementptr i8, ptr %destination, i64 %count
+  %from_end = getelementptr i8, ptr %source, i64 %count
+  br label %back_words
+back_words:
+  %to_top = phi ptr [ %to_end, %back ], [ %to_lower, %back_word ]
+  %from_top = phi ptr [ %from_end, %back ], [ %from_lower, %back_word ]
+  %back_remaining = phi i64 [ %count, %back ], [ %back_rest, %back_word ]
+  %back_chunk = icmp uge i64 %back_remaining, 8
+  br i1 %back_chunk, label %back_word, label %back_bytes
+back_word:
+  %to_lower = getelementptr i8, ptr %to_top, i64 -8
+  %from_lower = getelementptr i8, ptr %from_top, i64 -8
+  %back_value = load i64, ptr %from_lower, align 1
+  store i64 %back_value, ptr %to_lower, align 1
+  %back_rest = sub i64 %back_remaining, 8
+  br label %back_words
+back_bytes:
+  %back_empty = icmp eq i64 %back_remaining, 0
+  br i1 %back_empty, label %done, label %back_byte
+back_byte:
+  %to_last = phi ptr [ %to_top, %back_bytes ], [ %to_before, %back_byte ]
+  %from_last = phi ptr [ %from_top, %back_bytes ], [ %from_before, %back_byte ]
+  %back_left = phi i64 [ %back_remaining, %back_bytes ], [ %back_left_rest, %back_byte ]
+  %to_before = getelementptr i8, ptr %to_last, i64 -1
+  %from_before = getelementptr i8, ptr %from_last, i64 -1
+  %moved = load i8, ptr %from_before, align 1
+  store i8 %moved, ptr %to_before, align 1
+  %back_left_rest = sub i64 %back_left, 1
+  %back_more = icmp ne i64 %back_left_rest, 0
+  br i1 %back_more, label %back_byte, label %done
+done:
+  ret ptr %destination
+}
+
+define ptr @memset(ptr %destination, i32 %value, i64 %count) #1 {
+entry:
+  %fill = trunc i32 %value to i8
+  %fill64 = zext i8 %fill to i64
+  %pattern = mul i64 %fill64, 72340172838076673
+  br label %words
+words:
+  %to = phi ptr [ %destination, %entry ], [ %to_next, %word ]
+  %remaining = phi i64 [ %count, %entry ], [ %rest, %word ]
+  %chunk = icmp uge i64 %remaining, 8
+  br i1 %chunk, label %word, label %bytes
+word:
+  store i64 %pattern, ptr %to, align 1
+  %to_next = getelementptr i8, ptr %to, i64 8
+  %rest = sub i64 %remaining, 8
+  br label %words
+bytes:
+  %empty = icmp eq i64 %remaining, 0
+  br i1 %empty, label %done, label %byte
+byte:
+  %to_byte = phi ptr [ %to, %bytes ], [ %to_after, %byte ]
+  %left = phi i64 [ %remaining, %bytes ], [ %left_rest, %byte ]
+  store i8 %fill, ptr %to_byte, align 1
+  %to_after = getelementptr i8, ptr %to_byte, i64 1
+  %left_rest = sub i64 %left, 1
+  %more = icmp ne i64 %left_rest, 0
+  br i1 %more, label %byte, label %done
+done:
+  ret ptr %destination
+}

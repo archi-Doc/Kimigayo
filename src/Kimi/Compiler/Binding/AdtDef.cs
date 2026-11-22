@@ -195,8 +195,9 @@ internal sealed class AdtDef
         // The base with its raw Origins; null exactly where Base is.
         internal BoundType? PartsBase { get; set; }
 
-        // Whether a stored Type passes IMPL A.4's height, refused inside the instance collector's answer frame (Binding.Instance; R7-T1):
-        // its part is null, and the instance's readers read it as a limit (Binding's storage walk, Layout's HeightLimit), never Rejected.
+        // Whether a stored Type passes IMPL A.4's height, refused inside the instance collector's answer frame (Binding.Instance; R7-T1)
+        // and, after Binding's run, in every frame (Binding.OpenStorageFormation; PLAN G651 U2a): its part is null, and the instance's
+        // readers read it as a limit (Binding's storage walk, Layout's HeightLimit), never Rejected.
         internal bool HeightLimit { get; set; }
 
         // The pass that substituted these Types; not current otherwise.
