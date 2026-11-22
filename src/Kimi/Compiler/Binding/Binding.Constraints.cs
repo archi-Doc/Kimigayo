@@ -247,7 +247,7 @@ public sealed partial class Binding
             if (subject.IsAbstract)
             {
                 // SPEC 8.3: a requirement on a Semantics binding is decided by containment of its admitted set.
-                var admitted = this.ResultSemantics(subject, scope);
+                var admitted = this.ResultSemantics(subject, scope, QuerySite.Nested);
                 return admitted == SemanticsMask.None ? ConstraintProof.Error :
                     (admitted & ~proposition.Mask) == 0 ? ConstraintProof.Proven :
                     (admitted & proposition.Mask) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;

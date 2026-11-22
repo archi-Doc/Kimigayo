@@ -62,10 +62,6 @@ public sealed partial class Binding
 
     internal ConstraintProof ProveSealed(BoundType type, BindingScope scope, QuerySite site) => this.RequestCapability(type, this.Library.Sealed, scope, site);
 
-    // WIP census (R7-C6 a Revision 3, C6a-1), as ProveConstraint's two-argument form.
-    [Obsolete("PLAN G651 a1: name the query's site (QuerySite).")]
-    internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope, QuerySite.Nested);
-
     // SPEC 3.5.2, 8.7.2, 8.7.3: what a set of outer Semantics, other than owner alone, states of an intrinsic capability of a layer
     // whatever its target: a shared or raw layer Copies and an exclusive or object layer does not; a Sealed or ObjectPayload Type has
     // an owner case. DECISIONS BU-240 (temporary, removed with (R)): read by the case set of a binding that forms no Type alone
@@ -277,11 +273,6 @@ public sealed partial class Binding
     // The one key of capability works: the judged subject (its class's Member) and the intrinsic Contract in the view.
     private (BoundConstraint Proposition, BindingScope Scope, bool Derivation) CapabilityKey(BoundType member, BindingSymbol intrinsic, BindingScope scope, bool derivation)
         => (this.InternConstraint(new(ConstraintKind.Contract, member, contract: intrinsic)), scope, derivation);
-
-    // WIP census (R7-C6 a Revision 3, C6a-1): a caller not yet given its QuerySite, as ProveConstraint's two-argument form.
-    [Obsolete("PLAN G651 a1: name the query's site (QuerySite).")]
-    private ConstraintProof RequestCapability(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation = false)
-        => this.RequestCapability(type, intrinsic, scope, QuerySite.Nested, derivation);
 
     // A capability request from `site` (QuerySite; PLAN G651 a1): the outermost request drains the engine (a judgment's, or a
     // proposition's atom inside its proof, JudgeConstraintAtom: QuerySite.Nested), a request inside a work's evaluation is the work's

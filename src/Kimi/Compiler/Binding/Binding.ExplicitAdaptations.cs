@@ -18,7 +18,7 @@ public sealed partial class Binding
     internal bool BorrowsExclusively(ConversionKoto conversion)
         => conversion.ConversionBinding == ConversionBinding.CaseAdaptation
             ? this.AdaptationOf(conversion) is { } plan &&
-                (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion)) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
+                (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion), conversion) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
             : conversion.BoundType is { } target && AdaptationBorrow(conversion.ConversionBinding, target) == true;
 
     // Inputs and acquisition were verified at definition. A context substitutes them and selects the canonical factory.
@@ -263,7 +263,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (operation == ConversionBinding.Identity && !this.CanSelectIdentity(source, scope, cases))
+        if (operation == ConversionBinding.Identity && !this.CanSelectIdentity(source, scope, conversion, cases))
         {
             this.Fail(conversion, BindingFailure.UnprovenConstraint);
             return false;

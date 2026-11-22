@@ -772,9 +772,11 @@ public sealed partial class Binding
         return this.FailExplained(CallableConstraintRows.Family, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }
 
-    // WIP census (R7-C6 a Revision 3, C6a-1): a caller not yet given its QuerySite; the build's CS0618 list is the census still open.
-    // Removed when that list is empty, in the same commit.
-    [Obsolete("PLAN G651 a1: name the query's site (QuerySite).")]
+    // R7-C6 a's census (PLAN G651 a1), the commit C6a-1a: a proposition query whose caller does not name its site yet, read as Nested
+    // (no frame of its own, as before QuerySite). Its callers are the predicates reached from many judgments (NotString,
+    // SuppliesPremises, ComparisonProof, SameConformanceType, RefutedOverlapInputs, OperatorRequirement, IsGenericInteger,
+    // ProvesClosedContract). Removal: C6a-1b names each caller's site and deletes every member carrying this stage.
+    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): ProveConstraint's callers that do not name their site yet; C6a-1b names them and deletes every member carrying this stage.")]
     private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope) => this.ProveConstraint(proposition, scope, QuerySite.Nested);
 
     // A proof of a proposition from `site` (QuerySite; PLAN G651 a1), settled where it is no longer combined (EndProof).

@@ -50,7 +50,7 @@ public sealed partial class Binding
             return this.BuiltinNumeric(counterpart, path.Scope) || Fail(counterpart, ArithmeticConformanceCause.LhsNotNumeric);
         }
 
-        return (this.ResultSemantics(counterpart, path.Scope) == SemanticsMask.Owner && this.NotString(counterpart, path.Scope)) ||
+        return (this.ResultSemantics(counterpart, path.Scope, path.Use) == SemanticsMask.Owner && this.NotString(counterpart, path.Scope)) ||
             Fail(counterpart, ArithmeticConformanceCause.RhsNotOwner);
 
         bool Fail(BoundType type, ArithmeticConformanceCause cause)

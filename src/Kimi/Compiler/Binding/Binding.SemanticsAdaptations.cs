@@ -96,8 +96,9 @@ public sealed partial class Binding
     /// <summary>Gets the possible outer Semantics of a complete Type or finite result-Type family.</summary>
     /// <param name="type">The complete Type.</param>
     /// <param name="scope">The available premises.</param>
+    /// <param name="site">Where its capability queries are asked from (QuerySite; PLAN G651 a1).</param>
     /// <returns>A conservative set of outer Semantics.</returns>
-    internal SemanticsMask ResultSemantics(BoundType type, BindingScope scope)
+    internal SemanticsMask ResultSemantics(BoundType type, BindingScope scope, QuerySite site)
     {
         if (type.Kind != BoundTypeKind.SemanticsAdaptation)
         {
@@ -106,15 +107,15 @@ public sealed partial class Binding
                 var admitted = this.AdmittedSemantics(whole, scope);
                 // Applying owner is transparent; its result can itself be a borrow or handle.
                 return type.Kind == BoundTypeKind.SemanticsApplication && (admitted & SemanticsMask.Owner) != 0
-                    ? (admitted & ~SemanticsMask.Owner) | this.ResultSemantics(target, scope) : admitted;
+                    ? (admitted & ~SemanticsMask.Owner) | this.ResultSemantics(target, scope, site) : admitted;
             }
 
             if (type.IsAbstract)
             {
                 return this.TargetCases(type, scope, default) == SemanticsMask.Owner ||
-                    this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven ||
-                    this.ProveSealed(type, scope) == ConstraintProof.Proven ||
-                    this.RequestCapability(type, this.Library.PrimitiveInteger, scope) == ConstraintProof.Proven
+                    this.RequestCapability(type, this.Library.ObjectPayload, scope, site) == ConstraintProof.Proven ||
+                    this.ProveSealed(type, scope, site) == ConstraintProof.Proven ||
+                    this.RequestCapability(type, this.Library.PrimitiveInteger, scope, site) == ConstraintProof.Proven
                     ? SemanticsMask.Owner : this.AdmittedSemantics(type, scope);
             }
 
@@ -124,11 +125,17 @@ public sealed partial class Binding
         var result = SemanticsMask.None;
         for (var i = 0; i < type.Components.Count; i++)
         {
-            result |= this.ResultSemantics(type.Components[i], scope);
+            result |= this.ResultSemantics(type.Components[i], scope, site);
         }
 
         return result;
     }
+
+    // R7-C6 a's census (PLAN G651 a1), the commit C6a-1a: ResultSemantics' callers inside a Type's formation and relations
+    // (IsAbstractBinding, SubstituteFamily, InactiveOuterOrigin), whose site is SubstituteType's and its relations' input, read as
+    // Nested (no frame of their own, as before QuerySite). Removal: C6a-1b names their site with SubstituteType's family.
+    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): ResultSemantics' callers in SubstituteType's family that do not name their site yet; C6a-1b names it and deletes every member carrying this stage.")]
+    internal SemanticsMask ResultSemantics(BoundType type, BindingScope scope) => this.ResultSemantics(type, scope, QuerySite.Nested);
 
     /// <summary>Forms a short adaptation's result after its selected Semantics is known.</summary>
     /// <param name="semantics">The selected Semantics.</param>
@@ -519,12 +526,12 @@ public sealed partial class Binding
     // DECISIONS BU-240 (SPEC 8.1.1, 3.5.2; E3 (a), G812 ruling 103 D2 (ii)): the cases of a binding that forms no Type: the outer
     // Semantics its premises admit (ResultSemantics, as IsAbstractBinding reads it), less those a capability proven of it refutes
     // (LayerEvidence, the solver's rule: a Copy Type has no exclusive or object outer layer). Read here only: the proofs that
-    // read ResultSemantics do not move (PLAN G886).
-    private SemanticsMask SplitCases(BoundType whole)
+    // read ResultSemantics do not move (PLAN G886). Its queries are asked from `site` (QuerySite; PLAN G651 a1).
+    private SemanticsMask SplitCases(BoundType whole, QuerySite site)
     {
         var scope = this.PremiseScope(whole);
-        var cases = this.ResultSemantics(whole, scope);
-        if (this.RequestCapability(whole, this.Library.Copy, scope) != ConstraintProof.Proven)
+        var cases = this.ResultSemantics(whole, scope, site);
+        if (this.RequestCapability(whole, this.Library.Copy, scope, site) != ConstraintProof.Proven)
         {
             return cases;
         }
@@ -539,6 +546,12 @@ public sealed partial class Binding
 
         return cases;
     }
+
+    // R7-C6 a's census (PLAN G651 a1), the commit C6a-1a: SplitCases' caller inside a Type's formation (InSplitCase, from
+    // ApplySemantics and HasOuterSlot), whose site is SubstituteType's input, read as Nested (no frame of its own, as before
+    // QuerySite). Removal: C6a-1b names its site with SubstituteType's family.
+    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): SplitCases' caller in SubstituteType's family that does not name its site yet; C6a-1b names it and deletes every member carrying this stage.")]
+    private SemanticsMask SplitCases(BoundType whole) => this.SplitCases(whole, QuerySite.Nested);
 
     // DECISIONS BU-240: the case of the binding `whole`, which forms no Type, in the combination a check is being judged in
     // (RestsOnSplitCases), stamped as read; a binding the run meets first takes its first admitted case (SplitCases). False while
@@ -646,9 +659,10 @@ public sealed partial class Binding
         }
     }
 
-    // A placeholder's Owner tag is not mode evidence. A pair's owner case does establish its target's owner form.
-    private bool CanSelectIdentity(BoundType type, BindingScope scope, ReadOnlySpan<PairCase> cases = default)
-        => !type.IsAbstract || this.TargetCases(type, scope, cases) == SemanticsMask.Owner || this.ResultSemantics(type, scope) == SemanticsMask.Owner;
+    // A placeholder's Owner tag is not mode evidence. A pair's owner case does establish its target's owner form. Asked from the
+    // conversion's `site` (QuerySite).
+    private bool CanSelectIdentity(BoundType type, BindingScope scope, QuerySite site, ReadOnlySpan<PairCase> cases = default)
+        => !type.IsAbstract || this.TargetCases(type, scope, cases) == SemanticsMask.Owner || this.ResultSemantics(type, scope, site) == SemanticsMask.Owner;
 
     // A family is interned only when no pair application has its cases: SPEC 13.5.1's `p@s` abbreviates `p@s/U`, whose Type is the
     // application `s/U` (8.2.3: one Type, one representation), so a case list that one application's cases (CaseType) give is that

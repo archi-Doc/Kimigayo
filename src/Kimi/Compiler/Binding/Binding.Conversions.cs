@@ -70,7 +70,7 @@ public sealed partial class Binding
     {
         var scope = this.ConstraintScope(conversion);
         // Copy alone admits borrow Types, whose normalized targets select Borrow rather than identity.
-        if (!this.CanSelectIdentity(type, scope))
+        if (!this.CanSelectIdentity(type, scope, conversion))
         {
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
