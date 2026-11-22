@@ -122,8 +122,8 @@ such bodies, and the private `Storage.countOverflow`, `allocationSizeExceeded`, 
 primitives (SPEC 22.2). No callback carries the location: a call through an erased or generic Callable value has
 unknown environment effects, which `confined` users of `reserve`/`tryInsert`/`shrinkToFit` exclude, and a captured
 location would need a heap environment.
-Move the remaining operation bodies into Kimigayo over common memory/ownership
-primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
+Every Dictionary operation is a Kimigayo body over common memory/ownership
+primitives (DECISIONS R8-M8, R8-M11, R8-M12); add no Dictionary algorithm as hand-written LLVM IR.
 Platform allocation/release, byte transfer, physical representation and verified
 typed ownership operations remain compiler responsibilities. Keep the original
 operation's Abort location when bridging platform failures. Nonempty literals initialize a live empty handle, acquire
@@ -141,8 +141,11 @@ an unmeasured runtime speed improvement.
 
 ## Text implementation policy
 
-Text and UTF-8 formatting operations currently use compiler-supplied LLVM IR,
-including the [generated Ryu conversion cores](../../third_party/ryu/README.md).
+Text and UTF-8 formatting are Kimigayo bodies. Three operations still use compiler-supplied LLVM IR: float
+conversion (`Storage.formatFloat`, with the [generated Ryu conversion cores](../../third_party/ryu/README.md)), i128
+decimal formatting (`Storage.formatInteger128`, an interim intrinsic, RQ16) and the erased writer's reservation
+(`Storage.erasedReserve`, a call through a code address) (DECISIONS R8-M16, R8-M18, R8-M22, R8-M30, R8-M34, R8-M46,
+R8-M48).
 This is an accepted implementation choice within Kimigayo's LLVM-based backend;
 portability alone does not require a rewrite in Kimigayo. LLVM IR implementation
 is not a language requirement, and retaining it does not imply that it is faster
