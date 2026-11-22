@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Kimi;
 using Kimi.Build;
 using Kimi.Testing;
+using Microsoft.Win32.SafeHandles;
 using Xunit;
 
 namespace XunitTest;
@@ -20,6 +21,7 @@ public class TestProcessRecoveryTest
     [InlineData("sleep", 0, "timeout", 1)]
     [InlineData("cancel", 3000, "cancelled", 130)]
     [InlineData("descendant", 0, "normal", 3)]
+    [InlineData("frame", 0, "runnerError", 3)] // A malformed result frame ends the running case before its deadline (PLAN G1243).
     public async Task RecoversManagedProcessesAndRejectsMissingCompletion(string mode, int delayMilliseconds, string termination, int exitCode)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows job management test.");
@@ -36,7 +38,7 @@ public class TestProcessRecoveryTest
             Assert.Equal(termination, outcome.Termination);
             Assert.Equal(exitCode, outcome.ExitCode);
             Assert.DoesNotContain(outcome.Errors, x => x.Contains("recovery", StringComparison.OrdinalIgnoreCase));
-            if (mode != "sleep")
+            if (mode is not ("sleep" or "frame"))
             {
                 var temporary = File.ReadAllText(outcome.Stdout!).Trim();
                 Assert.StartsWith(Path.GetTempPath(), temporary, StringComparison.OrdinalIgnoreCase);
@@ -104,7 +106,7 @@ public class TestProcessRecoveryTest
         {
             RunProgram();
         }
-        else if (mode is not ("exit" or "sleep" or "cancel" or "descendant" or "escape"))
+        else if (mode is not ("exit" or "sleep" or "cancel" or "descendant" or "escape" or "frame"))
         {
             return;
         }
@@ -130,8 +132,15 @@ public class TestProcessRecoveryTest
             using var intermediate = StartDescendant("descendant");
             intermediate.WaitForExit();
         }
+        else if (mode == "frame")
+        {
+            // A frame whose length is below its header's on the result channel (TestProcess): the runner's failure, then no exit.
+            var handle = (nint)ulong.Parse(Environment.GetEnvironmentVariable("KIMI_TEST_PIPE")!, System.Globalization.CultureInfo.InvariantCulture);
+            using var channel = new FileStream(new SafeFileHandle(handle, ownsHandle: false), FileAccess.Write);
+            channel.Write([1, 0, 0, 0]);
+        }
 
-        if (mode != "sleep")
+        if (mode is not ("sleep" or "frame"))
         {
             if (Console.In.Read() != -1)
             {
