@@ -116,10 +116,10 @@ public sealed class MirPublicationTest
             Errors(c).Select(static x => (x.Code, x.Text)).Order());
     }
 
-    // Design 3.2 (N3), 3.3 (N1): a located problem carries no fact, and the fact table has a row for every kind it meets (Inlined's problem
-    // never reaches Merged, since MirReport.Add drops it); a located problem with a fact, a Cause too, and a fact of a kind without a row are
-    // broken contracts: InternalInvariant_Kd at the subject under Ownership.Internal, as MirReport's defects, so it is one record with an
-    // analysis InternalInvariant_Kd there, and the problem itself is not published.
+    // Design 3.2 (N3), 3.3 (N1): a located problem carries no fact, and the fact table has a row for every kind it meets; a located problem
+    // with a fact, a Cause too, and a fact of a kind without a row are broken contracts: InternalInvariant_Kd at the subject under
+    // Ownership.Internal, as MirReport's defects, so it is one record with an analysis InternalInvariant_Kd there, and the problem itself
+    // is not published.
     [Fact]
     public void AFactThePublisherCannotPublishIsABrokenContract()
     {
