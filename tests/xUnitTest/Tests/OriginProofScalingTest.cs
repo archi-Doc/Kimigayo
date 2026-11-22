@@ -157,6 +157,27 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.True(MirBorrowsTest.Grows(reads, 2.5), $"region reads {string.Join(", ", reads)}");
     }
 
+    // SPEC 15.6.5, 15.4.3 rule 3 (R7-O2 O2-H): n nested Closures, each capturing the `let` binding r of the outer body, the innermost a
+    // literal whose header names r's region: while its body is bound the header reads that region as its value through the admission
+    // (AdmittedEntry), one step per enclosing Closure's own entry, and at Final each walk admits its entries once: the admissions grow
+    // linearly with n (asserted; the time is printed). Each is valid (MissingOriginBinding_Kd at the header before O2-H). n is 15, 30, 60.
+    [Fact]
+    public void AHeadersCarriedRegionIsAdmittedOnceThroughEachEnclosingClosure()
+    {
+        var (admissions, times) = (new long[3], new long[3]);
+        int[] depths = [15, 30, 60];
+        for (var i = 0; i < depths.Length; i++)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            admissions[i] = CarriedMetrics(CarriedHeader(depths[i])).CarriedAdmissions;
+            times[i] = watch.ElapsedMilliseconds;
+            Assert.NotEqual(0, admissions[i]);
+        }
+
+        output.WriteLine($"carried header N {string.Join(", ", depths)}: admissions {string.Join(", ", admissions)}; ms {string.Join(", ", times)}");
+        Assert.True(MirBorrowsTest.Grows(admissions, 2.5), $"admissions {string.Join(", ", admissions)}");
+    }
+
     // SPEC 15.2.3, 15.3.6, 15.6.5 (R7-O2 A1+A2; the owner's O-471 (a), O-481 (b); the Front's D6): n nested Closures, each declaring a `var`
     // bound by the captured `var` of the level above (chain), or two, each bound by both above (diamond: two carried paths per level), and
     // the erasure of a Closure over the innermost region, whose Owned is read through each candidate in turn to `static` at Final
@@ -362,6 +383,28 @@ public class OriginProofScalingTest(ITestOutputHelper output)
 
         source.Append($"{indent}let w: ref/i32 during p = a{depth}\n{indent}see(w)\n");
         return Called(source, indent, depth);
+    }
+
+    // AHeadersCarriedRegionIsAdmittedOnceThroughEachEnclosingClosure's program at `depth` (the h1v twin, n levels deep).
+    private static string CarriedHeader(int depth)
+    {
+        var source = new StringBuilder("struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\n");
+        source.Append("public func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let r = p\n");
+        var indent = "    ";
+        for (var i = 1; i <= depth; i++)
+        {
+            source.Append($"{indent}let c{i} = func [r] () -> i32\n");
+            indent += "    ";
+        }
+
+        source.Append($"{indent}let h = func [r] (k: Option<ref/i32 during r>) -> Box => $abort(\"no\")\n{indent}return 1\n");
+        for (var i = depth; i >= 1; i--)
+        {
+            indent = indent[4..];
+            source.Append($"{indent}return c{i}()\n");
+        }
+
+        return source.ToString();
     }
 
     // The Front's vco (chain) and dvo (diamond) rows at `depth`: the innermost body erases a Closure over its `var` to `() -> i32`.

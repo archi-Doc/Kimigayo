@@ -1,9 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Capture formation (SPEC 7.7.2): which binding a capture entry or a use in an omitted-list Closure captures, the environment binding
-// it initializes and how (CaptureAcquisition), the enclosing regions its entries carry (BoundClosure.Carried: each local region an
-// entry's Type names that the evaluating body reads as its value, its own or one the evaluating body's Closure carries; CarryRegions,
-// SPEC 15.6.5, R7-O2 A1; read by Binding.CarriedRegion, which reads what is carried in turn), and the repeated names of a written list.
+// it initializes and how (CaptureAcquisition), the enclosing regions its entries name (BoundClosure.Carried, its own entries' regions;
+// CarryRegions, SPEC 15.6.5, R7-O2 A1; read by Binding.CarriedRegion, which admits them and reads what is carried in turn), and the
+// repeated names of a written list. A literal's written header is bound only in the scope ClosureHeaderScope gives (R7-O2 O2-H), which
+// records first the literal's evaluating body and the regions its written entries name, in its Carried and in each enclosing omitted
+// list's that forwards the entry (ForwardsThrough, the one statement of forwarding); it forms no capture. An omitted list's own entries
+// are its body's uses, recorded as each captures.
 // A failed capture's facts and record belong to Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its
 // call receiver to Binding.ClosureReceivers.
 // Interim (DECISIONS BU-184; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case (until
@@ -33,7 +36,8 @@ public sealed partial class Binding
 
     // SPEC 7.7.2 (Nested Closures): a Closure whose scope is `scope` captures only what its immediately enclosing activation owns; an
     // enclosing omitted list forwards the capture of `source` (`outer`, that Closure), an explicit list or a named function does not
-    // (false). `outer` is null when the immediately enclosing activation owns `source`. The one statement of forwarding (Capture).
+    // (false). `outer` is null when the immediately enclosing activation owns `source`. The one statement of forwarding: Capture forms the
+    // forwarded capture, ClosureHeaderScope records its regions before a header binds.
     private static bool ForwardsThrough(BindingSymbol source, BindingScope scope, out FunctionKoto? outer)
     {
         outer = scope.Parent?.Function is { } enclosing && !ReferenceEquals(source.Scope.Function, enclosing) ? enclosing : null;
@@ -83,6 +87,40 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // SPEC 15.6.5, 7.7.2, 15.4.4 (R7-O2 O2-H; the owner's O-487 (a)): the scope in which every binding of a literal's written header is
+    // bound (BindClosureHeader, the header probe ClosureSignatureFits, FailClosureHeader and the call-signature evidence InferClosureHeader
+    // each take it here, the one way to it), with what the header's Owned proofs read recorded first, so CarriedRegion reads a complete
+    // set at any of them: the literal's plan (created when absent) and its evaluating body, the body the literal is in (this is its one
+    // writer); and the regions its written list's entries name, each entry's binding's Type fixed by its declaration, in the literal's
+    // Carried and in that of each enclosing omitted list that forwards the entry (ForwardsThrough). It forms no environment binding: the
+    // entries' and the forwarded captures' bindings, their slots and their order are Capture's, at the literal's binding
+    // (CaptureEntriesFail), which records the same regions again for nothing (CarryOrigin keeps a region once), so a probe records exactly
+    // the regions of the captures the binding forms. Two exceptions reach only rejected programs (rule W): an entry CaptureEntriesFail
+    // refuses before Capture (a receiver, a helper carrier) has its regions recorded, and a literal a probe reads that is never bound (its
+    // call failed) leaves an enclosing omitted list's Carried with regions it does not capture. An omitted list's own entries are its
+    // body's uses, recorded as each captures (Capture).
+    private BindingScope ClosureHeaderScope(FunctionKoto literal)
+    {
+        var scope = this.scopes[literal];
+        var plan = literal.ClosureStorage ??= new();
+        plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
+        foreach (var capture in literal.Captures ?? [])
+        {
+            if (this.Lookup(capture.Name, scope.Parent!, literal) is not { Type: { } type } source)
+            {
+                continue;
+            }
+
+            this.CarryRegions(plan, type);
+            for (var at = scope; ForwardsThrough(source, at, out var outer) && outer is { ClosureStorage: { } enclosing }; at = this.scopes[outer])
+            {
+                this.CarryRegions(enclosing, type);
+            }
+        }
+
+        return scope;
     }
 
     // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. Any

@@ -18,8 +18,8 @@
 //   Binding.OriginClauses.cs, Binding.CallRelations.cs) and the view (Binding.OriginRows.Atoms.cs, ClassifyAtom).
 // - Invariants: each class is decided here once, by one predicate that every reader shares; only SourcesIn and CarriedRegion read state,
 //   the region graph's, and the capture formation's with the regions' values (RegionValue), CarriedRegion's walk formed once per Closure
-//   per region-graph version once no body is being bound (BoundClosure.Walk, its one memo); a pending atom is tested before any other
-//   class.
+//   per region-graph version once no body is being bound (BoundClosure.Walk, its one memo), and while a body is bound its admission over
+//   the own entries alone (AdmittedEntry, shared with the walk); a pending atom is tested before any other class.
 // - Prohibitions: no proof, judgment or record, and no state but the walk's memo; no class derived from syntax; no walk while a body is
 //   being bound (a carried candidate is complete only once its body is bound, RegionBounded).
 
@@ -141,16 +141,18 @@ public sealed partial class Binding
     // through a carried region's candidate is read in turn): whether the body of `function`, a Closure, carries `region`, a local region
     // of an enclosing body, and what it reads it as (`value`, its RegionValue; null while it has no answer yet, RegionBounded). The one
     // reading of carried regions, read once no body is being bound (Final, A5; the owner's O-471 (a)): the Closure's walk (CarriedWalk).
-    // While a body is bound no walk is read, so no reader sees a set formed from incomplete candidates: only an own entry's region of the
-    // evaluating body answers, whose `let` value is complete at its declaration (SPEC 15.4.4) and whose `var` candidate has no answer yet.
-    // A Closure that captures no binding naming the region carries nothing, though it is evaluated in one that does, and a region a nested
-    // signature only names is not carried by that name: either stays a fixed Origin with no premise (SPEC 15.3.4). Readers: the view's
-    // row 6 Value, StaticOrigin (ValueIn) and the walk's admission.
+    // While a body is bound no walk is read, so no reader sees a set formed from incomplete candidates: an own entry's region answers when
+    // the walk's admission admits it (AdmittedEntry: in turn through the evaluating Closures' own entries, each recorded before its header,
+    // R7-O2 O2-H, the owner's O-487 (a)), which reads no candidate; its `let` value is complete at its declaration (SPEC 15.4.4) and its
+    // `var` candidate has no answer yet. A region reached in turn through a candidate waits for the walk. A Closure that captures no
+    // binding naming the region carries nothing, though it is evaluated in one that does, and a region a nested signature only names is
+    // not carried by that name: either stays a fixed Origin with no premise (SPEC 15.3.4). Readers: the view's row 6 Value, StaticOrigin
+    // (ValueIn; a Closure's header and body, O-443 (a)) and the walk's admission.
     internal bool CarriedRegion(BoundOrigin region, Parsing.Koto? function, out BoundOrigin? value)
     {
         value = null;
         if (!SlotRegion(region) || function is not Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan } ||
-            (this.formingBody.IsBody ? region.Body != plan.EvaluatingBody || !plan.Carried.Contains(region) : !this.CarriedWalk(function).Contains(region)))
+            !(this.formingBody.IsBody ? plan.Carried.Contains(region) && this.AdmittedEntry(plan, region) : this.CarriedWalk(function).Contains(region)))
         {
             return false;
         }
@@ -219,9 +221,13 @@ public sealed partial class Binding
 
     // SPEC 15.6.5 (the binding captured in the region's own body or in a Closure body that carries the region in turn): whether the walk
     // admits `region`, a region an own entry of `plan`'s Closure names: its body is the Closure's evaluating body, or the evaluating
-    // body's Closure carries it (CarriedRegion of that Closure).
+    // body's Closure carries it (CarriedRegion of that Closure: while a body is bound its own admission, at Final its walk). The walk's
+    // answer is a superset of the while-bound one, so a while-bound "carried" is never withdrawn at Final.
     private bool AdmittedEntry(BoundClosure plan, BoundOrigin region)
-        => region.Body == plan.EvaluatingBody || this.CarriedRegion(region, plan.EvaluatingBody.Definition?.Declaration, out _);
+    {
+        this.OriginProofMetrics?.CarriedAdmission();
+        return region.Body == plan.EvaluatingBody || this.CarriedRegion(region, plan.EvaluatingBody.Definition?.Declaration, out _);
+    }
 
     // CarriedRegion's walk, into `carried` (cleared first), read only once no body is being bound (CarriedWalk): each region its Closure's
     // own entries name (BoundClosure.Carried, the capture formation's fact) that the walk admits (AdmittedEntry), at read time, when every

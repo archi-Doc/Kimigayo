@@ -60,6 +60,10 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the carried-region walks formed (<c>Binding.CarriedWalk</c>: one per Closure per region-graph version).</summary>
     internal long CarriedWalks { get; private set; }
 
+    /// <summary>Gets the admissions of a Closure's own entry's region (<c>Binding.AdmittedEntry</c>: while a body is bound, one per
+    /// enclosing Closure the region is carried through; at Final, one per entry per walk).</summary>
+    internal long CarriedAdmissions { get; private set; }
+
     /// <summary>Gets the reads of a region's value in a body that were computed (<c>Binding.ValueIn</c>: once per Origin and body per
     /// region-graph version once no body is being bound).</summary>
     internal long ValueInReads { get; private set; }
@@ -117,6 +121,7 @@ internal sealed class OriginProofMetrics
         this.ChainWork = 0;
         this.WellFormedParts = 0;
         this.CarriedWalks = 0;
+        this.CarriedAdmissions = 0;
         this.ValueInReads = 0;
         Array.Clear(this.edges);
         this.queries.Clear();
@@ -125,6 +130,8 @@ internal sealed class OriginProofMetrics
     internal void RegionRead() => this.RegionReads++;
 
     internal void CarriedWalk() => this.CarriedWalks++;
+
+    internal void CarriedAdmission() => this.CarriedAdmissions++;
 
     internal void ValueInRead() => this.ValueInReads++;
 

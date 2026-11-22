@@ -6,8 +6,8 @@
 //   infers the result (InfersResult), and the call receiver facts (SPEC 7.7.3): the strongest requirement over every admitted case
 //   (Receiver), the requirement every case has (CaseFreeReceiver), each capture whose acquisition by value Reborrows by case
 //   (BoundCapture.BareReborrows), the first Exclusive cause, and whether this binding has classified them (Classified).
-// - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, EvaluatingBody, InfersResult and the resets),
-//   Binding.Captures (Storage, Carried), Binding.ClosureReceivers (the receiver facts).
+// - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, InfersResult and the resets), Binding.Captures
+//   (Storage, Carried, and EvaluatingBody at the header scope, ClosureHeaderScope), Binding.ClosureReceivers (the receiver facts).
 // - Outputs: InfersResult for Binding's discard rule (Binding.DiscardsFunctionBody); Receiver for acquisition and every receiver
 //   reader (value calls, candidate selection and Callable proofs, effects and the MIR builder); the cause for the write record; for a
 //   view of one admitted case, that case's
@@ -75,7 +75,8 @@ public sealed class BoundClosure
 
     internal bool ExclusiveReborrow { get; set; }
 
-    // The body that evaluates the literal and binds its header and captures (SPEC 15.3.4; Binding.ExecutableBodies.cs). MIR never reads it.
+    // The body that evaluates the literal and binds its header and captures (SPEC 15.3.4; Binding.ExecutableBodies.cs), written by the
+    // header scope (Binding.ClosureHeaderScope) before any header binding. MIR never reads it.
     internal ExecutableBody EvaluatingBody { get; set; }
 
     // Whether this binding's body infers the result, neither a written result nor a fixed expectation having fixed it before the body
@@ -84,9 +85,10 @@ public sealed class BoundClosure
 
     internal List<BoundCapture> Storage { get; } = new();
 
-    // SPEC 15.6.5 (R7-O2 A1+A2): the region slots the entries' Types name, the Closure's own entries only, with no test of whether they
-    // are carried (no candidate is read while the body is bound); written once per entry by Binding.Captures (CarryOrigin), read by
-    // Binding.CarriedRegions, which admits them at read time. MIR never reads it.
+    // SPEC 15.6.5 (R7-O2 A1+A2, O2-H): the region slots the entries' Types name, the Closure's own entries only, with no test of whether
+    // they are carried (no candidate is read while the body is bound); a written list's own entries recorded before the header (and an
+    // enclosing omitted list's forwarded entries before the nested header), an omitted list's own entries at each use; each kept once by
+    // Binding.Captures (CarryOrigin), read by Binding.CarriedRegion and CarriedRegions, which admit them (AdmittedEntry). MIR never reads it.
     internal List<BoundOrigin> Carried { get; } = new();
 
     // SPEC 15.6.5, 15.3.6 (R7-O2 A1+A2; the owner's O-471 (a)): the regions the body carries, in turn included (Binding.CarriedRegions),

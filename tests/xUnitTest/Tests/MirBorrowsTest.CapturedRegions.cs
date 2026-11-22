@@ -33,6 +33,16 @@ public sealed partial class MirBorrowsTest
 
     private const string HoldFn = "struct H\n    public var f: () -> i32\n    public init(f: () -> i32)\n        self.f = f@move\n";
 
+    // A Closure header over an enclosing `let` region r (the rows of AClosuresHeaderReadsARegionItCarriesAsItsValue): Box's slot takes the
+    // header result's default, which reads r's region as its value exactly where the Closure carries it.
+    private const string HeaderBox = "struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\n";
+
+    private const string HeaderLet = Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    let r = p\n";
+
+    private const string HeaderOf = "(k: Option<ref/i32 during r>) -> Box => $abort(\"no\")";
+
+    private const string TakeG = "func takeG<T>(g: (Option<ref/i32 during static>) -> T) -> i32 => 0\n";
+
     // SPEC 15.8.2's table, an exclusive capture: "Reborrow of a captured exclusive reference ... in a Shared or Exclusive call, depends on
     // the call receiver", so while a result is live a second Exclusive call (7.7.3, 15.6.2), or a Move of the Closure, conflicts: an arrow
     // and a block body, only the first result used, a local's borrow, an elided Origin, a second capture, a Closure held in a Field, one
@@ -427,6 +437,40 @@ public sealed partial class MirBorrowsTest
     [InlineData("rt1n", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> () -> i32\n        return func [r] () -> i32 => r@follow\n    r = n@ref\n    return c()()\n", "UnprovenConstraint_Kd: return func [r] () -> i32 => r@follow")]
     [InlineData("rv1n", "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> ref/i32 during r => r\n    let g: () -> ref/i32 during r = c@move\n    r = n@ref\n    return g()@follow\n" + Main, "UnsatisfiedConstraint_Kd: let g: () -> ref/i32 during r = c@move")]
     public void ACarriedVarRegionsCandidateIsReadOnceItsBodyIsBound(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 15.4.3 rule 3, 15.6.5, 7.7.2 (R7-O2 O2-H; the owner's O-443 (a), O-487 (a)): a Closure's header reads an enclosing body's region
+    // as its value exactly when the Closure carries it, as its body does. A written list's entries name their regions before any binding
+    // of the header (Binding.ClosureHeaderScope): at the commitment (ann1l, lc6v with a later `let`; hx1v through `[r@ref]`), the header
+    // probe (h6v) and the call-signature evidence (hxg1v); and while a body is bound a region is carried in turn through the enclosing
+    // Closures' own entries, reading no candidate (AdmittedEntry: lc5v, h1v; forwarded by an enclosing omitted list, h5v; one whose body
+    // captured r first, hw1v). Each `let` region's value is `static`. Each was rejected with MissingOriginBinding_Kd at the header before
+    // (the header bound before the entries recorded their regions); dev accepted them. Their invalid twins:
+    // AClosuresHeaderOverARegionItDoesNotCarryIsAFixedOrigin.
+    [Theory]
+    [InlineData("ann1l", HeaderBox + HeaderLet + "    let c = func [r] " + HeaderOf + "\n    return 0\n")]
+    [InlineData("lc6v", HeaderBox + HeaderLet + "    let c = func [r] " + HeaderOf + "\n    let q = 1\n    return q\n")]
+    [InlineData("hx1v", HeaderBox + HeaderLet + "    let c = func [r@ref] " + HeaderOf + "\n    return 0\n")]
+    [InlineData("h6v", HeaderBox + HeaderLet + "    let c: (Option<ref/i32 during r>) -> Box = func [r] (k) -> Box => $abort(\"no\")\n    return 0\n")]
+    [InlineData("hxg1v", HeaderBox + TakeG + HeaderLet + "    return takeG(func [r] " + HeaderOf + ")\n")]
+    [InlineData("lc5v", HeaderBox + HeaderLet + "    let c = func [r] () -> i32\n        let d = func [r] " + HeaderOf + "\n        return 1\n    return c()\n")]
+    [InlineData("h1v", HeaderBox + HeaderLet + "    let c = func [r] () -> i32\n        let d = func [r] () -> i32\n            let e = func [r] " + HeaderOf + "\n            return 1\n        return d()\n    return c()\n")]
+    [InlineData("h5v", HeaderBox + HeaderLet + "    let c = func () -> i32\n        let d = func [r] " + HeaderOf + "\n        return 1\n    return c()\n")]
+    [InlineData("hw1v", HeaderBox + HeaderLet + "    let c = func () -> i32\n        let z = r\n        let d = func [r] " + HeaderOf + "\n        return 1\n    return c()\n")]
+    public void AClosuresHeaderReadsARegionItCarriesAsItsValue(string form, string program)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, string.Empty);
+
+    // SPEC 15.6.5's last clause, 15.3.4 (D-862; R7-O2 O2-H): a region a Closure's header names but the Closure does not carry is a fixed
+    // Origin with no premise, so the header result's default has no proof: the entry names another binding (h0n; at a generic argument,
+    // hxg1n, whose call has no applicable candidate beside it), a chain broken by an inner list (h2n), an omitted list whose body uses
+    // nothing (lc7v). A carried region whose value is a body-local Borrow (h1n) is read as it, which does not outlive `static`.
+    [Theory]
+    [InlineData("h0n", HeaderBox + HeaderLet + "    let q: i32 = 1\n    let c = func [q] " + HeaderOf + "\n    return 0\n", "MissingOriginBinding_Kd: let c = func [q] " + HeaderOf)]
+    [InlineData("hxg1n", HeaderBox + TakeG + HeaderLet + "    let q: i32 = 1\n    return takeG(func [q] " + HeaderOf + ")\n", "NoApplicableOverload_Kd: return takeG(func [q] " + HeaderOf + ") | MissingOriginBinding_Kd: return takeG(func [q] " + HeaderOf + ")")]
+    [InlineData("h2n", HeaderBox + HeaderLet + "    let c = func [r] () -> i32\n        let q: i32 = 1\n        let d = func [q] " + HeaderOf + "\n        return 1\n    return c()\n", "MissingOriginBinding_Kd: let d = func [q] " + HeaderOf)]
+    [InlineData("lc7v", HeaderBox + HeaderLet + "    let c = func " + HeaderOf + "\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderOf)]
+    [InlineData("h1n", HeaderBox + Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    let r = n@ref\n    let c = func [r] () -> i32\n        let d = func [r] () -> i32\n            let e = func [r] " + HeaderOf + "\n            return 1\n        return d()\n    return c()\n", "MissingOriginBinding_Kd: let e = func [r] " + HeaderOf)]
+    public void AClosuresHeaderOverARegionItDoesNotCarryIsAFixedOrigin(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 
     // SPEC 15.3.6, 15.6.5, 15.8.2 (DECISIONS: G570): an inferred result names an enclosing region itself, as an annotated one does, so what
