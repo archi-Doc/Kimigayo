@@ -217,17 +217,22 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 15.6.5 (the binding captured in the region's own body or in a Closure body that carries the region in turn): whether the walk
+    // admits `region`, a region an own entry of `plan`'s Closure names: its body is the Closure's evaluating body, or the evaluating
+    // body's Closure carries it (CarriedRegion of that Closure).
+    private bool AdmittedEntry(BoundClosure plan, BoundOrigin region)
+        => region.Body == plan.EvaluatingBody || this.CarriedRegion(region, plan.EvaluatingBody.Definition?.Declaration, out _);
+
     // CarriedRegion's walk, into `carried` (cleared first), read only once no body is being bound (CarriedWalk): each region its Closure's
-    // own entries name (BoundClosure.Carried, the capture formation's fact) that is the evaluating body's own or one the evaluating body's
-    // Closure carries, admitted here at read time, when every candidate it reads is complete; then, in turn, each region slot named by the
-    // value of one (RegionValue), unless that value names a call's open region (NamesOpenRegion); each region once.
+    // own entries name (BoundClosure.Carried, the capture formation's fact) that the walk admits (AdmittedEntry), at read time, when every
+    // candidate it reads is complete; then, in turn, each region slot named by the value of one (RegionValue), unless that value names a
+    // call's open region (NamesOpenRegion); each region once.
     private void CarriedRegions(BoundClosure plan, List<BoundOrigin> carried)
     {
         carried.Clear();
-        var evaluating = plan.EvaluatingBody;
         for (var i = 0; i < plan.Carried.Count; i++)
         {
-            if (plan.Carried[i].Body == evaluating || this.CarriedRegion(plan.Carried[i], evaluating.Definition?.Declaration, out _))
+            if (this.AdmittedEntry(plan, plan.Carried[i]))
             {
                 carried.Add(plan.Carried[i]);
             }

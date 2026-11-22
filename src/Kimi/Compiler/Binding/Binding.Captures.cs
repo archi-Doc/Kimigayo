@@ -31,6 +31,15 @@ public sealed partial class Binding
             _ => false,
         };
 
+    // SPEC 7.7.2 (Nested Closures): a Closure whose scope is `scope` captures only what its immediately enclosing activation owns; an
+    // enclosing omitted list forwards the capture of `source` (`outer`, that Closure), an explicit list or a named function does not
+    // (false). `outer` is null when the immediately enclosing activation owns `source`. The one statement of forwarding (Capture).
+    private static bool ForwardsThrough(BindingSymbol source, BindingScope scope, out FunctionKoto? outer)
+    {
+        outer = scope.Parent?.Function is { } enclosing && !ReferenceEquals(source.Scope.Function, enclosing) ? enclosing : null;
+        return outer is null || (outer.IsAnonymous && outer.Captures is null);
+    }
+
     // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats, as a range of captureRepeatRows;
     // empty for a valid list.
     private (int Start, int Count) RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
@@ -85,11 +94,14 @@ public sealed partial class Binding
             return null; // SPEC 7.7.2: contextual self and a setter's value are never captured implicitly.
         }
 
-        if (scope.Parent?.Function is { } outer && !ReferenceEquals(source.Scope.Function, outer))
+        if (!ForwardsThrough(source, scope, out var outer))
         {
-            // A nested closure can capture only what its immediately enclosing activation owns.
-            // An inferred outer environment may forward the capture; an explicit list may not.
-            if (!outer.IsAnonymous || outer.Captures is not null || this.Capture(outer, source, this.scopes[outer]) is not { } forwarded)
+            return null;
+        }
+
+        if (outer is not null)
+        {
+            if (this.Capture(outer, source, this.scopes[outer]) is not { } forwarded)
             {
                 return null;
             }
