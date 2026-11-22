@@ -1,10 +1,8 @@
 # Original milestone sources only: one build and one direct execution per optimization level.
 # A benchmark passes -Source, -WorkRoot and -Runs: the same build and checked first run, then timing-only repetitions.
-param([int] $Milestone, [string] $ToolchainRoot, [string] $Configuration, [string] $Expected, [string] $Source = '', [string] $WorkRoot = '', [int] $Runs = 1)
+param([int] $Milestone, [string] $Configuration, [string] $Expected, [string] $Source = '', [string] $WorkRoot = '', [int] $Runs = 1)
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'toolchain.ps1')
 . (Join-Path $PSScriptRoot 'expected-output.ps1')
-$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $source = if ($Source) { [IO.Path]::GetFullPath($Source, (Get-Location).ProviderPath) } else { Join-Path $repo "tests/milestones/Milestone$Milestone.kimi" }
@@ -65,7 +63,7 @@ try {
         [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$level`"`n", $utf8)
         $preparationSeconds = $timer.Elapsed.TotalSeconds
         $timer.Restart()
-        $build = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot)
+        $build = Invoke-Kimi @('build', $project)
         [IO.File]::WriteAllBytes((Join-Path $directory 'build.stdout'), $build.stdout)
         [IO.File]::WriteAllBytes((Join-Path $directory 'build.stderr'), $build.stderr)
         $buildSeconds = $timer.Elapsed.TotalSeconds

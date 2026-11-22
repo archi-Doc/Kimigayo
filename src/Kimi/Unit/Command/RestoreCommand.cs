@@ -16,7 +16,7 @@ public sealed class RestoreCommand : ISimpleCommand<KimiOptions>
 
     public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, () =>
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, args, () =>
         {
             if (args.Length != 1)
             {
