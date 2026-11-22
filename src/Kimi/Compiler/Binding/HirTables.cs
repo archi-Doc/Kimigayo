@@ -341,6 +341,7 @@ internal struct NodeColumns
     internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
+    internal StampedColumn<(Binding.QualificationFact Value, Binding.QualificationFact Type), Binding.PassCounter> QualificationStops; // Work: a use's provisional qualification stop in each namespace, read by the resolver's miss, the running pass's working state, released at the freeze (Binding.Qualification.cs).
     internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
@@ -425,6 +426,7 @@ internal struct NodeColumns
         this.AliasTargets.Grow(length);
         this.ImportedContainers.Grow(length);
         this.QualificationFailures.Grow(length);
+        this.QualificationStops.Grow(length);
         this.PerCallOrigins.Grow(length);
         this.PairFollows.Grow(length);
         this.ImplicitPairFollows.Grow(length);
@@ -486,6 +488,7 @@ internal struct NodeColumns
         this.AliasTargets.Freeze(binding);
         this.ImportedContainers.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
+        this.QualificationStops.Release();
         this.PerCallOrigins.Freeze(binding);
         this.PairFollows.Freeze(binding);
         this.ImplicitPairFollows.Freeze(binding);
@@ -571,6 +574,7 @@ internal struct NodeColumns
             AliasTargets = this.AliasTargets.Renumbered(length),
             ImportedContainers = this.ImportedContainers.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
+            QualificationStops = this.QualificationStops.Renumbered(length),
             PerCallOrigins = this.PerCallOrigins.Renumbered(length),
             PairFollows = this.PairFollows.Renumbered(length),
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),

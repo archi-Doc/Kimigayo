@@ -320,7 +320,7 @@ public sealed partial class Binding
             {
                 case NameStepKind.Head:
                     GatheredGroupRows.GetValueOrDefault(step.Use)?.Clear();
-                    this.qualificationStops?.Remove((step.Use, !InValueNamespace(step.Role)));
+                    this.qualificationStops.Remove((step.Use, !InValueNamespace(step.Role)));
                     if (step.Import.Environment is not null)
                     {
                         this.importedContainers[step.Use] = step.Import;
