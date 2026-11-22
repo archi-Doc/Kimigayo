@@ -164,19 +164,23 @@ with no heavy run registered. A worktree whose `tatara.h` differs from the share
 `src/Tatara`, or an older base after a window that changed `tatara.h`) gives itself a toolchain directory of its own, for
 all its runs, Unit and Session included: it removes the link alone (`cmd /c rmdir toolchain`, from Git Bash
 `cmd //c rmdir toolchain`; never `/s` or a recursive delete, which empties the shared root), runs setup into the new
-directory, and builds Kimi again; it never runs setup through the junction. A window that changes `tatara.h` announces on
-the board that older bases fail the start check until they merge dev (or take a toolchain of their own).
+directory, and builds Kimi again; it never runs setup through the junction. The development scripts select `-ToolchainRoot`,
+else the checkout's `toolchain`, and fail while `KIMI_TOOLCHAIN_ROOT` is set (Tatara B6b4): unset it. A window that changes
+`tatara.h` announces on the board that older bases fail the start check until they merge dev (or take a toolchain of their
+own).
 
 `-VerifyToolchain` runs `kimi toolchain verify` (the compiler's self-check, `toolchain.json`) and then
-`src/backend/windows-x64/check-toolchain.ps1` (the development toolchain: the tools, `tatara.dll` and the root's libraries
-against `installation.json` and the catalog, `check-toolchain.log`); the summary's `toolchainVerification` is `passed` only
+`src/backend/windows-x64/check-toolchain.ps1` (the development toolchain: the tools and `tatara.dll` against
+`installation.json` and the catalog, `check-toolchain.log`); the summary's `toolchainVerification` is `passed` only
 when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrote, and setup installs no archive DLL
-(`supportingDlls: {}`); a base before Tatara B6b3 still verifies such a root (its verify reads the empty object). After
-B6b6, a newly made root serves only bases from B6a on (builds) and from B6b3 on (verify). Existing roots keep their
-files. `src/backend/windows-x64/test-toolchain-verification.ps1` tests `check-toolchain.ps1` and takes no `-Configuration`
-(it runs no compiler); its rows check, in turn, one root it makes (`artifacts/verify/toolchain/<guid>/toolchain`, removed at
-the end), whose tools and DLLs are hard links to the toolchain's (never written; a hard link needs the toolchain's volume) and
-whose `installation.json` and `windows_x64` are copies, the only files the rows change.
+(`supportingDlls: {}`); a base before Tatara B6b3 still verifies such a root (its verify reads the empty object). A root
+made from B6b6 on has no `windows_x64`: it serves bases from B6a on for builds, from B6b3 on for verify and from B6b6 on
+for the native fixtures and the other scripts that linked the root's libraries. Existing roots, the shared one included,
+keep their files (setup deletes nothing). `src/backend/windows-x64/test-toolchain-verification.ps1` tests
+`check-toolchain.ps1` and takes no `-Configuration` (it runs no compiler); its rows check, in turn, one root it makes
+(`artifacts/verify/toolchain/<guid>/toolchain`, removed at the end), whose tools and DLLs are hard links to the toolchain's
+(never written; a hard link needs the toolchain's volume) and whose `installation.json` is a copy, the only file the rows
+change.
 
 `scripts/build-kimi.ps1 -LlvmRoot <the pinned archive, extracted>` publishes `kimi.exe` with Tatara linked in and checks the
 product (PLAN G1245 says when a unit runs it). Tatara's objects embed the archive's absolute path, so the bytes of `tatara.dll`

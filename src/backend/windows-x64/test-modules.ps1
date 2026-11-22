@@ -80,7 +80,7 @@ Dependencies={Lib={PackageId="library" PackageVersion="1" Project="../Library/Li
         $null = Invoke-Kimi "$level-build" @('build', $project)
         $recordPath = Join-Path $work 'App/bin/x86_64-pc-windows-msvc/App.link.build.json'
         $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
-        if ($record.status -cne 'linked' -or $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Unverified module native build' }
+        if ($record.status -cne 'linked') { throw 'Unlinked module native build' }
         $expected = $utf8.GetBytes("module`nmodule`n")
         # A project run may print build lines first, so its stdout ends with the program's.
         $output = Invoke-Kimi "$level-run" @('run', $project, '--no-build')

@@ -26,6 +26,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 
     private const string ItemDeclarations = "func twice(v: i64) -> i64 => v\nfunc g<T>(x: T) -> i32 => 0\nfunc k(c1: bool, c2: bool) -> i32\n";
 
+    private const string ItemIdentity = "func identity<T>(value: T) -> T => value@move\n" + ItemDeclarations;
+
     // A closure whose result borrows its hidden environment receiver (SPEC 8.10, 7.7.4).
     private const string EnvironmentClosure = "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n";
 
@@ -253,6 +255,24 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData("InputCallable", "func make<T, F>(f: ref/F) -> i32\n    F is Callable<(ref/i32) -> T>\n    return 7\nlet r = make(constantOf)")]
     public void AResultOnlyUniversalIsInstantiatedToTheOpenRegion(string name, string body)
         => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceResultOnly" + name, "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc constantOf(n: ref/i32) -> ref/i32 during s => $abort(\"never\")\n" + body + "\nrequire r == 7 else => $abort(\"result only\")", string.Empty);
+
+    // DECISIONS BU-175 (R7-C8 U-D3r): the Input row with its input nested in Tuples past 64 levels; `s` is still result-only. On
+    // `2f7d4a10d^` this valid form fails by Mentions' count of 64 (NoApplicableOverload_Kd). Today it guards the form's acceptance,
+    // not Mentions: with that count put back, or with Mentions answering "mentioned" at every depth, no row of this class changes,
+    // since FitOrigin proves the result's relation that IsResultOnlyOrigin would decide. No invalid twin: the cut only answered
+    // "mentioned", which an input naming the universal already is.
+    [Theory]
+    [InlineData(65)]
+    [InlineData(130)]
+    public void AResultOnlyUniversalBesideADeepInputIsInstantiatedToTheOpenRegion(int depth)
+    {
+        // A nested borrow names its Origin (SPEC 15.4.2): `t` in the Item, `static` in the expected signature.
+        string Nest(string terminal) => new string('(', depth) + terminal + string.Concat(Enumerable.Repeat(", i32)", depth));
+        var source = $"func constantOf(n: {Nest("ref/i32 during t")}) -> ref/i32 during s => $abort(\"never\")\n" +
+            $"func make<T>(f: ({Nest("ref/i32 during static")}) -> T) -> i32 => 7\n" +
+            "let r = make(constantOf)\nrequire r == 7 else => $abort(\"result only\")\n";
+        CompilationTestHelper.AssertBindingRecordsAtLines($"result-only-{depth}", source, string.Empty); // Binding's records; see AReferenceBindsASlotOfAnyHeight.
+    }
 
     // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.
     [Theory]
@@ -676,6 +696,17 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData("guard", "gt1n", ItemDeclarations + "    return g<(i64) -> bool>(twice)\n", "*: return g<(i64) -> bool>(twice) | ...")]
     [InlineData("guard", "gt2n", ItemDeclarations + "    return g<(i64) -> bool>(if c1 => twice else => twice)\n", "*: return g<(i64) -> bool>(if c1 => twice else => twice) | ...")]
     public void AnItemIsErasedAtASlotAnExplicitTypeArgumentFixes(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.5.3, 10.8, 10.3, 10.2 (PLAN G356 it1, R7-P1): a lone non-generic Item needs no S, so it is independently typable and binds T
+    // to its Function Item Type; the expected result fills no bound slot, and the declaration erases the Item Type (10.2's erasure row).
+    // No existing row pins it1's form.
+    [Theory]
+    [InlineData("I3", "it1", ItemIdentity + "    let v: (i64) -> i64 = identity(twice)\n    _ = v(1)\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "it1i", ItemIdentity + "    let v = identity(twice)\n    _ = v(1)\n    return 0\n", "")]
+    [InlineData("guard", "it1d", ItemIdentity + "    let v: (i64) -> i64 = twice\n    _ = v(1)\n    return 0\n", "")]
+    [InlineData("guard", "it1n", ItemIdentity + "    let v: (i64) -> bool = identity(twice)\n    return 0\n", "*: let v: (i64) -> bool = identity(twice) | ...")]
+    public void AnItemArgumentKeepsItsItemTypeAndTheExpectedResultErasesIt(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

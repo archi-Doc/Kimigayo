@@ -182,14 +182,18 @@ public class Solution
         {
             if (Directory.Exists(x))
             {
-                foreach (var y in ListFiles(x, $"*{Constants.KimiSolutionExtension}"))
+                // IMPL 20.3.1: exactly one .kimisln selects that solution, and more than one is an error.
+                switch (ListFiles(x, $"*{Constants.KimiSolutionExtension}"))
                 {
-                    if (!this.TryReadFile(Path.GetFullPath(y), logger))
-                    {
-                        throw new CommandInputException("Cannot load solution: " + y);
-                    }
+                    case [var solution]:
+                        if (!this.TryReadFile(Path.GetFullPath(solution), logger))
+                        {
+                            throw new CommandInputException("Cannot load solution: " + solution);
+                        }
 
-                    goto SolutionLoaed;
+                        goto SolutionLoaed;
+                    case { Length: > 1 } solutions:
+                        throw new CommandInputException("More than one solution file in directory: " + string.Join(", ", solutions));
                 }
 
                 // Load project file in directory
