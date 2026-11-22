@@ -367,15 +367,10 @@ public sealed partial class Binding
 
         // SPEC 8.6.1, 8.9: the one conformance the Contract selects (a Contract named without Type arguments, a requirement's owner, by
         // its declaration); an ambiguous selection (several by declaration, or two colliding direct conformances) stays undecided here.
-        var identity = this.SelectConformance(type, contract, scope, out var ambiguous);
-        if (ambiguous)
-        {
-            return ConstraintProof.Unknown;
-        }
-
+        var identity = this.SelectConformance(type, contract, scope, out var candidates);
         if (identity is null)
         {
-            return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return candidates == 0 && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)

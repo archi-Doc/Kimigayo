@@ -78,10 +78,10 @@ public sealed partial class Binding
         BoundConformance? uniq = null;
         if (core.Symbol is { Declaration: StructKoto or EnumKoto })
         {
-            var conformance = this.SelectConformance(core, indexable, scope, out var ambiguous);
+            var conformance = this.SelectConformance(core, indexable, scope, out var candidates);
             if (conformance is null)
             {
-                if (!ambiguous)
+                if (candidates == 0)
                 {
                     return false;
                 }
