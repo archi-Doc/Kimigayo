@@ -99,19 +99,30 @@ if ($pending.Count -gt 0) {
         ForEach-Object { [ordered]@{ symbol = $_; dllimport = $true } })
     $head = $head | ConvertTo-Json -Depth 10
     # Each pending fixture's two pairs, written before the first round (a record is this run's build): its O2 pair in the output
-    # directory, its O0 pair in O0/, the IR copied, the manifest written and an earlier run's record removed. A write failure fails the step.
+    # directory, its O0 pair in O0/, the IR copied, the manifest written and an earlier run's record removed, in up to -Parallel
+    # chunks of fixtures. A write failure fails the step.
     $queue = [Collections.Generic.List[object]]::new() # Per fixture, its builds with no record.
     foreach ($fixture in $pending) {
-        $name = [Text.Json.JsonEncodedText]::Encode("$($fixture.BaseName).ll").ToString()
         $builds[$fixture.Name] = @(foreach ($level in @('O0', 'O2')) {
             $pair = if ($level -ceq 'O2') { Join-Path $out $fixture.BaseName } else { Join-Path $out "O0/$($fixture.BaseName)" }
-            [IO.File]::Copy($fixture.FullName, "$pair.ll", $true)
-            [IO.File]::Delete("$pair.link.build.json")
-            [IO.File]::WriteAllText("$pair.link.json", $head.Replace('@IR@', $name).Replace('@SHA256@', $irHashes[$fixture.Name]).Replace('@LEVEL@', $level), $utf8)
             [pscustomobject]@{ level = $level; manifest = "$pair.link.json"; record = "$pair.link.build.json"; log = $null }
         })
         $queue.Add($builds[$fixture.Name])
     }
+    @(for ($k = 0; $k -lt [Math]::Min($Parallel, $pending.Count); $k++) { , @(for ($i = $k; $i -lt $pending.Count; $i += $Parallel) { $i }) }) | ForEach-Object -Parallel {
+        $ErrorActionPreference = 'Stop'
+        $utf8 = [Text.UTF8Encoding]::new($false)
+        $pending = $using:pending; $queue = $using:queue; $irHashes = $using:irHashes; $head = $using:head
+        foreach ($i in $_) {
+            $fixture = $pending[$i]
+            $name = [Text.Json.JsonEncodedText]::Encode("$($fixture.BaseName).ll").ToString()
+            foreach ($build in $queue[$i]) {
+                [IO.File]::Copy($fixture.FullName, ($build.manifest -replace '\.link\.json$', '.ll'), $true)
+                [IO.File]::Delete($build.record)
+                [IO.File]::WriteAllText($build.manifest, $head.Replace('@IR@', $name).Replace('@SHA256@', $irHashes[$fixture.Name]).Replace('@LEVEL@', $build.level), $utf8)
+            }
+        }
+    } -ThrottleLimit $Parallel
     # Rounds of up to -Parallel lanes, the fixtures dealt round robin (a fixture's lines to one lane): a lane sends its lines to its
     # session. A round that attempts no line ends the builds.
     for ($session = 0; $queue.Count -gt 0; $session += $lanes.Count) {
