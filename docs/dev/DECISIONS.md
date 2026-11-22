@@ -23934,6 +23934,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     column list is stated once there.
   - Superseded in part by R7-M73 (G1128, Q-618): the third column, the invariant marks (`IsInvariant`, `SetInvariant`), is the
     slot bindings, each evidence binding of a slot with its composed polarity (`SlotBinding`, `AddBinding`).
+  - Its Temporary `SavedCandidates` ended by R7-M52 commit 2b (`a21eb286f`): a candidate's mapping, Origins and input Origins are its
+    own strides of the evaluation's columns, so the winner's solution has one representation. The RP6 row's sentence stands.
 - **R7-M41 A judgment about a Type reads its identity class** (Front, 2026-11-19; R7-C2c2 c2-4a, Q-514; Major, an acceptance
   mover; design `design-c24.md` Revision 1 with R1.4 and R1.8: the design review and R1.8's short check ACCEPT WITH NOTES, the
   implementation review ACCEPT WITH NOTES, F's C2 ruling 146; F's C2 rulings 125-234; the owner's O-344 (a), O-345 (b), O-410 (a);
@@ -24324,7 +24326,26 @@ R8-M* and R9-M* by the stage of the recording unit.
     per-candidate width beside the late measurement (two widths of one call); the one-pass walk F (it did not remove the barrier).
     **Left (O10, PLAN G1098):** `MatchInputOrigin`'s skip and `MatchResultOrigins`' bound stay for their callers that reserve
     their own widths. Behaviour unchanged; Bind bytes unchanged; time is the landing window's RP8 slot.
-  - Commits 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
+  - **Commit 2b: a candidate's mapping, Origins and input Origins are its own columns** (behaviour unchanged; `a21eb286f`). A named
+    call's evaluation (`CallEvaluation`) keeps each candidate's argument mapping, Origin slots and input Origins in its own stride of
+    one `count x stride` array per column, as its operations, root rows and child slices already are: `MappingOf(i)`, `OriginsOf(i)`
+    and `InputsOf(i)` beside `OperationsOf`, `RowsOf` and `ChildSliceOf`, one accessor each (ruling O-4), rented once per call by
+    `RentEvaluation` and never grown, replaced or returned before `ReturnEvaluation`. `Solution(evaluation, i, ...)` gives candidate
+    i its mapping and Origin strides; `SlotSolution.Mapping` is empty outside a named call's candidate, and the helpers that hold a
+    solution read `solution.Mapping` (G812's `SettleSources`, `SettleWaiting`, `InferWaiting`, `SolveLate` among them).
+    `ValidateFixedConstruction` and `CheckCallShapeContracts` take the evaluation. **Rule (the writers):** only
+    `EvaluateCallCandidate` writes a candidate's mapping (`MapCallArguments`); the evaluation, the defaults' re-check, the waiting
+    re-trial and the selected call's judgments solve into the candidate's own Origin strides, and `CallType` marks its input
+    Origins Static there; the fixed re-check (X) solves into its own scratch, asserted not to overlap the columns, and copies the
+    selected candidate's Origins into its column. **Deleted:** the saved mode (`SavedCandidates`, `AllMaps`, `AllOrigins`,
+    `AllInputs`) and its rents, the saves in `EvaluateCallCandidate`, `BindCallCore`'s copy-back of the winner's columns and the
+    fixed re-check's mapping copies and copy-back. **Rejected:** `Memory<BoundOrigin>` slices in `FailUnformedCall`'s state and an
+    array-plus-index slice in its lambda (each a second statement of the accessor's slice); folding D2-3 into this commit (it would
+    mix a behaviour-preserving column move with the selection's result change). **Temporary:** `SelectedCandidate`'s second
+    evaluation of the canonical winner (G886-p3), which now writes that candidate's own columns for `FailUnformedCall`; removed by
+    R7-P2 D2-3 after commits 3 and 4. **Cost:** per named call one index array of `count x argumentCount` and two Origin arrays of
+    `count x stride` (before one shared stride each, plus `N x` copies for N > 1); Bind time is slot T-333's reading.
+  - Commits 3 and 4 add their parts (design §4's DECISIONS paragraph).
   - Amended by R7-M73 (G1128): the store's column list reads the slot bindings for the invariant marks.
 - **R7-M53 G396's remainder and G147 (2) are R7's stream Z: every no-stage producer removed, not excepted** (K for the Middle's D-872
   and the Front's D-874, 2026-11-19; the owner's order, DECISIONS Q22; R7 plan revision 102's stream Z and §10.1 item 6; censuses on
