@@ -229,7 +229,7 @@ public sealed partial class Binding
 
                             var self = this.SelfType(left.Type);
                             if (this.DisjointConformanceFacts(a.Scope, b.Scope) || this.RefutedOverlapInputs(a.Scope, scope, a.Use) || this.RefutedOverlapInputs(b.Scope, scope, a.Use) ||
-                                this.ProveConformanceConditions(a, self, scope) == ConstraintProof.Refuted || this.ProveConformanceConditions(b, self, scope) == ConstraintProof.Refuted)
+                                this.ProveConformanceConditions(a, self, scope, a.Use) == ConstraintProof.Refuted || this.ProveConformanceConditions(b, self, scope, a.Use) == ConstraintProof.Refuted)
                             {
                                 continue;
                             }

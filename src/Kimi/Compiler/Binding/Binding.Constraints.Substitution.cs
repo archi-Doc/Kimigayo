@@ -59,10 +59,10 @@ public sealed partial class Binding
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, BoundType? self = null, bool incomplete = false, bool skipUnresolved = false)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, QuerySite site, BoundType? self = null, bool incomplete = false, bool skipUnresolved = false)
     {
         var binder = substitution.Binder;
-        this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
+        this.BeginProof(site); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
         var derived = false;
         ClauseFact? best = null;

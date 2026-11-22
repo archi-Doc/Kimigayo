@@ -98,7 +98,7 @@ public sealed partial class Binding
             stateChanged |= closed;
         }
 
-        this.BeginProof();
+        this.BeginProof(QuerySite.Nested); // The publication opens no frame: each state's check runs in its declaration's site frame.
         var reverse = false;
         var limitChanged = false;
         while (stateChanged || limitChanged)
@@ -155,7 +155,7 @@ public sealed partial class Binding
     // A read of a declaration's published state (a bound Contract reference reads its declaration's): inside a proof scope it joins that
     // scope directly, which is what a scope of its own would hand on (EndProof); outside every scope it settles in its own, as the check it
     // replaces did.
-    private ConstraintProof ReadSourceState(BindingSymbol symbol, out Completion completion)
+    private ConstraintProof ReadSourceState(BindingSymbol symbol, QuerySite site, out Completion completion)
     {
         var declaration = ((DeclarationContainerKoto)symbol.Declaration).BoundSymbol!;
         completion = declaration.SourceState is ConstraintProof.Proven or ConstraintProof.Refuted ? Completion.Complete : Completion.Provisional;
@@ -164,13 +164,13 @@ public sealed partial class Binding
             return this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact);
         }
 
-        this.BeginProof();
+        this.BeginProof(site);
         return this.EndProof(this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact));
     }
 
     private ConstraintProof CheckClosedDeclarationConstraints(DeclarationContainerKoto container)
     {
-        this.BeginProof();
+        this.BeginProof(container);
         var proof = ConstraintProof.Proven;
         for (var i = 0; i < container.ConstraintNodes.Count; i++)
         {
@@ -188,7 +188,7 @@ public sealed partial class Binding
 
             var scope = this.scopes[container];
             var subject = clause.Left.BoundType;
-            var formation = subject is null ? ConstraintProof.Unknown : this.CheckTypeConstraints(subject, scope);
+            var formation = subject is null ? ConstraintProof.Unknown : this.CheckTypeConstraints(subject, scope, QuerySite.Nested);
             proof = CombineProof(proof, CombineProof(formation, this.ProveConstraint(constraint, scope, QuerySite.Nested), true), true);
         }
 

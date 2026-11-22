@@ -442,7 +442,7 @@ public sealed partial class Binding
     }
 
     private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site)
-        => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope, site), true);
+        => CombineProof(this.CheckTypeConstraints(type, scope, site), this.ProveConformance(type, contract, scope, site), true);
 
     private bool ValidateClosedTypeConstraints(BindingMode mode)
     {
@@ -520,7 +520,7 @@ public sealed partial class Binding
             // Closed clauses are declaration obligations, never assumptions or new conformances.
             var scope = this.scopes[container];
             var frame = this.BeginConsultation(clause);
-            var proof = CombineProof(this.CheckTypeConstraints(subject, scope), this.ProveConstraint(constraint, scope, clause), true);
+            var proof = CombineProof(this.CheckTypeConstraints(subject, scope, clause), this.ProveConstraint(constraint, scope, clause), true);
             var state = container.BindingState;
             this.RequireConstraintInFrame(clause, proof, mode, frame);
             var containerFrame = this.BeginConsultation(container); // The owner's outcome is its clause's.
@@ -548,7 +548,7 @@ public sealed partial class Binding
                 var scope = this.ConstraintScope(node);
                 var use = this.VerdictUse(node); // A synthesized call's Type is its consumer's verdict (PLAN G214).
                 var frame = this.BeginConsultation(use);
-                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
+                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, use);
                 this.RequireConstraintInFrame(use, result, mode, frame);
                 if (node.BindingState == BindingState.Invalid)
                 {
@@ -775,7 +775,7 @@ public sealed partial class Binding
     // A proof of a proposition from `site` (QuerySite; PLAN G651 a1), settled where it is no longer combined (EndProof).
     private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope, QuerySite site)
     {
-        this.BeginProof();
+        this.BeginProof(site);
         return this.EndProof(this.ProveProposition(proposition, scope));
     }
 

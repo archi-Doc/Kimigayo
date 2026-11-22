@@ -368,7 +368,7 @@ public sealed partial class Binding
             return this.ReadVerdict(work.Result, null, work.Fact);
         }
 
-        this.BeginProof();
+        this.BeginProof(site);
         try
         {
             do
@@ -767,7 +767,7 @@ public sealed partial class Binding
     // The capability engine stays coinductive over structure (SPEC 15.3.5); the formation of an instance it reads is a
     // nominal judgment, read inductively through the solver's re-entry rule (InstanceFormation, SPEC 8.6.1, 8.3.3).
     private ConstraintProof InstanceCapability(CapabilityWork work, ConstraintProof result)
-        => result == ConstraintProof.Proven ? CombineProof(result, this.InstanceFormation(work.Type, work.Scope), true) : result;
+        => result == ConstraintProof.Proven ? CombineProof(result, this.InstanceFormation(work.Type, work.Scope, QuerySite.Nested), true) : result;
 
     private ConstraintProof NominalCopy(CapabilityWork work, DeclarationContainerKoto container)
     {
@@ -804,7 +804,7 @@ public sealed partial class Binding
                 return ConstraintProof.Error;
             }
 
-            var condition = this.ProveConditionalPremises(declaration.Premises, work.Type, work.Scope);
+            var condition = this.ProveConditionalPremises(declaration.Premises, work.Type, work.Scope, QuerySite.Nested);
 
             result = CombineProof(result, CombineProof(validation, condition, true), false);
         }

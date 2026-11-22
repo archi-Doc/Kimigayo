@@ -101,7 +101,7 @@ public sealed partial class Binding
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (its open
     // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
     // its published source state.
-    private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
+    private ConstraintProof VerifyConformance(BoundConformancePath conformance, QuerySite site, ConstraintProof? inheritedProof = null)
     {
         // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance). Stored only on
         // a change, so a verified frozen path, never Unsupported (FreezeLibrary's UnsettledPath check), is never written (PLAN G949
@@ -118,7 +118,7 @@ public sealed partial class Binding
 
         if (conformance.InheritedFrom is not null)
         {
-            return this.VerifyInheritedConformance(conformance);
+            return this.VerifyInheritedConformance(conformance, site);
         }
 
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid ||
@@ -167,7 +167,7 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ConformanceSelf(conformance);
-            var declarationProof = this.ReadSourceState(conformance.Type, out _);
+            var declarationProof = this.ReadSourceState(conformance.Type, site, out _);
             if (!this.ValidArithmeticConformance(conformance, self))
             {
                 return ConstraintProof.Error;
@@ -276,7 +276,7 @@ public sealed partial class Binding
                             }
                         }
 
-                        ancestorProofs[i] = this.VerifyConformance(this.impls.Path(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract), prerequisites);
+                        ancestorProofs[i] = this.VerifyConformance(this.impls.Path(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract), site, prerequisites);
                         proof = CombineProof(proof, ancestorProofs[i], true);
                     }
                 }
@@ -409,7 +409,7 @@ public sealed partial class Binding
             // Q13). Every other reader rested at the first branch.
             if (proof == ConstraintProof.Proven)
             {
-                this.BeginProof();
+                this.BeginProof(site);
                 proof = this.EndProof(this.ConsultsFailedPremise(conformance.Scope.Parent) is null ? ConstraintProof.Proven : ConstraintProof.Unknown);
             }
 
@@ -472,7 +472,7 @@ public sealed partial class Binding
     // atom (its consequence, an identity between Types, is checked and never assumed) or any other conjunct. One proof, as the clause's.
     private ConstraintProof ProveSpecification(BoundConstraint written, BindingScope scope, BoundType self, BoundType? binding, QuerySite site)
     {
-        this.BeginProof();
+        this.BeginProof(site);
         return this.EndProof(Conjunct(written));
 
         ConstraintProof Conjunct(BoundConstraint conjunct)
@@ -588,7 +588,7 @@ public sealed partial class Binding
             // SPEC 15.3.7: the implementation's Origins are solved first (CompareCallableContracts), and its clauses are read under the
             // one substitution its signature is (PLAN G700, G707).
             var proof = CombineProof(
-                this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises),
+                this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises, conformance.Use),
                 this.CompareCallableContracts(new(requirement), new(implementation), premises, conformance.Use, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
                 true);
             var substitution = SubstitutionOf(implementation, selection.DeclaringType, arguments.AsSpan(0, requirement.GenericArguments.Count), default, origins, inputs);

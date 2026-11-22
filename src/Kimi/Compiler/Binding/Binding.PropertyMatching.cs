@@ -47,7 +47,7 @@ public sealed partial class Binding
         }
 
         this.BindHeader(implementation.Symbol);
-        var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope);
+        var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope, conformance.Use);
         if (proof != ConstraintProof.Proven)
         {
             return proof;

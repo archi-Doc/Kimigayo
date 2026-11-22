@@ -741,14 +741,15 @@ public sealed partial class Binding
         return pending.Count != count;
     }
 
-    /// <summary>PLAN G651 a1 (R7-C6 a, F's C8 ruling 9): where a proof query is asked from, an input of every query whose proof can form a
-    /// Type past the height limit (Binding.TypeHeight, SubstituteType's refusal), so a query that names no site does not compile: the
-    /// node of the judgment that needs the answer (a Koto converts to it: the node whose validity, acquisition or published plan reads
-    /// the verdict); Nested, a scope inside a running proof or capability work (a connective's operand, a clause of a clause list, a
-    /// work's read), whose site is its outermost query's; AfterPass, a query after Binding's pass (MIR, R7-M38's after-pass rule, PLAN
-    /// G651 U2). Nested and AfterPass are one value, a query that opens no frame of its own; their two names are the census's reading.
-    /// A refusal still reads the open consultation frame (BU-161); the frame at a judgment's node where none is open is R7-C6 a's second
-    /// commit.</summary>
+    /// <summary>PLAN G651 a1 (R7-C6 a, F's C8 rulings 9 and 13): where a proof query is asked from, an input of every proof entry and
+    /// every proof opener (BeginProof's callers at nesting 0), so a query that names no site does not compile: the node of the judgment
+    /// that needs the answer (a Koto converts to it: the node whose validity, acquisition or published plan reads the verdict); Nested,
+    /// no frame of its own: a scope inside a running proof or capability work (a connective's operand, a clause of a clause list, a
+    /// work's read), a query SubstituteType's family asks while it forms a Type, or a publication whose checks open their own site
+    /// frames, whose site is the open frame's; AfterPass, a query after Binding's pass (MIR, R7-M38's after-pass rule, PLAN G651 U2).
+    /// Nested and AfterPass are one value, a query that opens no frame of its own; their two names are the census's reading.
+    /// SubstituteType's family takes no site: its refusal reads the open consultation frame, the site's one carrier (BU-134, BU-161);
+    /// the frame at a judgment's node where none is open is R7-C6 a's second commit (the outermost BeginProof).</summary>
     internal readonly struct QuerySite
     {
         private QuerySite(Koto node) => this.Node = node;

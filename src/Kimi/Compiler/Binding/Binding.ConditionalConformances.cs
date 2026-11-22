@@ -106,7 +106,7 @@ public sealed partial class Binding
         return false;
     }
 
-    private ConstraintProof VerifyConformanceAgreement(BoundConformance identity)
+    private ConstraintProof VerifyConformanceAgreement(BoundConformance identity, QuerySite site)
     {
         if (identity.Invalid)
         {
@@ -117,7 +117,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
             var a = this.impls.PathsOf(identity)[i];
-            var available = this.VerifyConformance(a);
+            var available = this.VerifyConformance(a, site);
             if (a.InheritedFrom is not null && available != ConstraintProof.Proven)
             {
                 if (available != ConstraintProof.Refuted)
@@ -146,8 +146,8 @@ public sealed partial class Binding
                 // Only refutation in an independently valid environment establishes exclusion.
                 // Arbitrary errors (invalid names, declarations, cycles) are never disjointness.
                 var self = this.SelfType(a.Type);
-                var ab = this.ProveConformanceConditions(a, self, b.Scope);
-                var ba = this.ProveConformanceConditions(b, self, a.Scope);
+                var ab = this.ProveConformanceConditions(a, self, b.Scope, site);
+                var ba = this.ProveConformanceConditions(b, self, a.Scope, site);
                 var disjoint = this.DisjointConformanceFacts(a.Scope, b.Scope);
                 if (ab == ConstraintProof.Error || ba == ConstraintProof.Error)
                 {
@@ -332,13 +332,6 @@ public sealed partial class Binding
         }
     }
 
-    // R7-C6 a's census (PLAN G651 a1), C6a-1b's frontier: the proof opener's caller in the retention rows (IteratorTransfer, read by
-    // TyCtxt.Retains' hold walk, whose site is that walk's), read as Nested (no frame of its own, as before QuerySite). Removal: C6a-1b
-    // names its site with the openers' (R3.1's second part).
-    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): ResolveConformance's caller in the retention rows that does not name its site yet; C6a-1b names it and deletes every member carrying this stage.")]
-    private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, out BoundConformancePath? evidence)
-        => this.ResolveConformance(type, contract, scope, QuerySite.Nested, out evidence);
-
     private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site, out BoundConformancePath? evidence)
     {
         evidence = null;
@@ -398,7 +391,7 @@ public sealed partial class Binding
 
         if (identity is null)
         {
-            return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope, site) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
@@ -414,12 +407,12 @@ public sealed partial class Binding
 
         try
         {
-            this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
+            this.BeginProof(site); // The paths are one disjunction (DECISIONS BU-22).
             var result = ConstraintProof.Refuted;
             for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
             {
                 var path = this.impls.PathsOf(identity)[i];
-                var definition = this.VerifyConformance(path);
+                var definition = this.VerifyConformance(path, QuerySite.Nested);
                 if (path.Unsupported && this.conformanceChecks == 0)
                 {
                     // SPEC 23.1.1, 23.1.2: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedCause).
@@ -427,7 +420,7 @@ public sealed partial class Binding
                     definition = ConstraintProof.Error;
                 }
 
-                var condition = this.PathEvidence(path, type, scope);
+                var condition = this.PathEvidence(path, type, scope, QuerySite.Nested);
                 var available = definition == ConstraintProof.Proven ? condition : condition == ConstraintProof.Error ? ConstraintProof.Error : definition;
                 result = CombineProof(result, available, false);
                 if (available == ConstraintProof.Proven)
@@ -438,7 +431,7 @@ public sealed partial class Binding
 
             if (result == ConstraintProof.Proven)
             {
-                result = CombineProof(result, this.InstanceFormation(type, scope), true);
+                result = CombineProof(result, this.InstanceFormation(type, scope, QuerySite.Nested), true);
             }
 
             if (result != ConstraintProof.Proven)
@@ -583,16 +576,16 @@ public sealed partial class Binding
     // holds only for the bindings the declaration's Constraints allow, so it rests on those Constraints at the instance's arguments (the
     // formation step alone, BeginTypeFormation and EndTypeFormation; R7-C2e2 e2-3b R2.5), each proven with SPEC 8.3.3's re-entry rule: a
     // Constraint whose obligation is open supplies none. An argument's own formation is its written site's, judged there.
-    private ConstraintProof InstanceFormation(BoundType type, BindingScope scope)
+    private ConstraintProof InstanceFormation(BoundType type, BindingScope scope, QuerySite site)
         => type.Symbol is not { Declaration: DeclarationContainerKoto, Schema.GenericSlots.Count: > 0 } symbol ? ConstraintProof.Proven
             : type.Components.Count != symbol.Schema.GenericSlots.Count ? ConstraintProof.Unknown
-            : this.BeginTypeFormation(type, scope) is { } proof ? this.EndProof(this.EndTypeFormation(type, scope, proof)) : ConstraintProof.Error;
+            : this.BeginTypeFormation(type, scope, site) is { } proof ? this.EndProof(this.EndTypeFormation(type, scope, proof)) : ConstraintProof.Error;
 
     // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
     // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the
     // scope's (IdentityRefuted), or each of its paths' own conditions is Refuted (PLAN G866). The walk opens the obligation as
     // ResolveConformance does (openObligations); a request reaching it open reads no evidence and rules out nothing.
-    private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope)
+    private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope, QuerySite site)
     {
         if (contract.Type is not { } required || ReferenceEquals(required.Symbol, contract) || this.ConformancesOf(symbol) is not { } bindings)
         {
@@ -614,7 +607,7 @@ public sealed partial class Binding
                 {
                     for (var p = 0; p < this.impls.PathsOf(bindings[i]).Count; p++)
                     {
-                        if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope) != ConstraintProof.Refuted)
+                        if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope, site) != ConstraintProof.Refuted)
                         {
                             return true;
                         }
@@ -636,11 +629,11 @@ public sealed partial class Binding
     // (DeclaredPath, SPEC 8.6.2), so that path's Failed state is read the same way (the joint code review's B1, F's C2 ruling 302). A
     // test of whether a path can apply reads the conditions alone (ProveConformanceConditions): an Invalid path is never evidence that
     // the conformance does not apply (8.3.2 closed world).
-    private ConstraintProof PathEvidence(BoundConformancePath path, BoundType type, BindingScope scope)
+    private ConstraintProof PathEvidence(BoundConformancePath path, BoundType type, BindingScope scope, QuerySite site)
         => (path.Invalid ? path : path.DeclaredPath is { Invalid: true } declared ? declared : null) is { } failed ? this.RestOnFailure(failed)
-            : this.ProveConformanceConditions(path, type, scope);
+            : this.ProveConformanceConditions(path, type, scope, site);
 
-    private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
+    private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope, QuerySite site)
     {
         if (path.InheritedFrom is not null)
         {
@@ -649,16 +642,16 @@ public sealed partial class Binding
             this.inheritedPremiseSteps++;
             if (path.DeclaredSelf is { } layer)
             {
-                return this.StoredType(layer, type) is { } declared ? this.ProveConformanceConditions(path.DeclaredPath!, declared, scope) : ConstraintProof.Unknown;
+                return this.StoredType(layer, type) is { } declared ? this.ProveConformanceConditions(path.DeclaredPath!, declared, scope, site) : ConstraintProof.Unknown;
             }
 
-            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
+            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope, site) : ConstraintProof.Unknown;
         }
 
-        return this.ProveConditionalPremises(path.Premises, type, scope);
+        return this.ProveConditionalPremises(path.Premises, type, scope, site);
     }
 
-    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, BoundType type, BindingScope scope)
+    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, BoundType type, BindingScope scope, QuerySite site)
     {
         if (premises is null)
         {
@@ -672,7 +665,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        this.BeginProof();
+        this.BeginProof(site);
         var result = ConstraintProof.Proven;
         var derived = false;
         ClauseFact? conditions = null;

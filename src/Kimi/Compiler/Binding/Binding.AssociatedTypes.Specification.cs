@@ -48,18 +48,6 @@ public sealed partial class Binding
         return resolved with { Type = this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments) };
     }
 
-    // R7-C6 a's census (PLAN G651 a1), C6a-1b's frontier: ProjectionSpecification's callers in SubstituteType's normalization family
-    // (ContractTypeCore, CompletedProjection), whose site is ContractType's and StoredType's input, read as Nested (no frame of their own,
-    // as before QuerySite). Removal: C6a-1b names it with SubstituteType's family.
-    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): ProjectionSpecification's callers in SubstituteType's normalization family that do not name their site yet; C6a-1b names it and deletes every member carrying this stage.")]
-    private ProjectionOutcome ProjectionSpecification(BoundType projection, BindingScope scope) => this.ProjectionSpecification(projection, scope, QuerySite.Nested);
-
-    // R7-C6 a's census (PLAN G651 a1), C6a-1b's frontier: UnconditionalBinding's callers in SubstituteType's normalization family and the
-    // identity table (ContractTypeCore, IdentityClasses), read as Nested (no frame of their own, as before QuerySite). Removal: C6a-1b
-    // names it with SubstituteType's family.
-    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): UnconditionalBinding's callers in SubstituteType's normalization family and the identity table that do not name their site yet; C6a-1b names it and deletes every member carrying this stage.")]
-    private BoundType? UnconditionalBinding(BoundType member, BoundType projection, out bool pending) => this.UnconditionalBinding(member, projection, QuerySite.Nested, out pending);
-
     // R7-C2c2 c2-4 (design RB3, S3; SPEC 8.2.3 "the available completed associated-Type bindings" are grounds): the binding a
     // constructed member's own unconditional conformance (no `when`, not inherited) declares for a projection, as the member's Type;
     // null without one or where two such paths disagree. Declarations only (no identity, no proof); `pending` when a binding is not yet
@@ -146,7 +134,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
             var path = this.impls.PathsOf(identity)[i];
-            var condition = this.PathConditions(path, receiver, scope, out var held);
+            var condition = this.PathConditions(path, receiver, scope, site, out var held);
             if (condition == ConstraintProof.Error)
             {
                 return new(null, null, pending, null, default, Completion.Provisional);
@@ -193,17 +181,17 @@ public sealed partial class Binding
     // requirement's evidence in progress holds the path pending (`held`): the path's evidence (its conditions and, for a path they do not
     // rule out, the receiver's formation, one answer) depends on an obligation that evidence holds (EndHeldAnswer). A formation read holds
     // none, so it reads the conditions alone.
-    private ConstraintProof PathConditions(BoundConformancePath path, BoundType receiver, BindingScope scope, out bool held)
+    private ConstraintProof PathConditions(BoundConformancePath path, BoundType receiver, BindingScope scope, QuerySite site, out bool held)
     {
         held = false;
         if (this.FormationRead)
         {
-            return this.PathEvidence(path, receiver, scope);
+            return this.PathEvidence(path, receiver, scope, site);
         }
 
         var mark = this.BeginAnswer();
-        var condition = this.PathEvidence(path, receiver, scope);
-        var evidence = condition is ConstraintProof.Proven or ConstraintProof.Unknown ? CombineProof(condition, this.InstanceFormation(receiver, scope), true) : condition;
+        var condition = this.PathEvidence(path, receiver, scope, site);
+        var evidence = condition is ConstraintProof.Proven or ConstraintProof.Unknown ? CombineProof(condition, this.InstanceFormation(receiver, scope, site), true) : condition;
         held = this.EndHeldAnswer(mark, evidence);
         return condition;
     }

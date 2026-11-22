@@ -162,7 +162,7 @@ public sealed partial class Binding
     }
 
     // Closed descriptor bindings use the public premises, without assuming those premises from the body scope.
-    internal ConstraintProof VirtualApplicability(VirtualSlot slot)
+    internal ConstraintProof VirtualApplicability(VirtualSlot slot, QuerySite site)
     {
         if (slot.DeclaringType.ContainsParameter)
         {
@@ -172,8 +172,8 @@ public sealed partial class Binding
         var original = slot.Original;
         var scope = this.ModuleScope(original);
         return CombineProof(
-            this.CheckConstraints(original.TypeConstraints, SubstitutionOf(original, slot.DeclaringType, [], default), scope),
-            this.ProveMemberConditions(original.BoundSymbol!, slot.DeclaringType, scope),
+            this.CheckConstraints(original.TypeConstraints, SubstitutionOf(original, slot.DeclaringType, [], default), scope, site),
+            this.ProveMemberConditions(original.BoundSymbol!, slot.DeclaringType, scope, site),
             true);
     }
 

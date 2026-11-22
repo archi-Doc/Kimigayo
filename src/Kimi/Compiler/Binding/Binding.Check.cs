@@ -82,7 +82,8 @@ public sealed partial class Binding
                 var consumer = this.synthesizedCalls?.GetValueOrDefault(invocation);
                 if (consumer is not { BindingFailure: not BindingFailure.None } && !call.PremiseReadsMark)
                 {
-                    this.RequireClauses(this.VerdictUse(node), this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
+                    var use = this.VerdictUse(node);
+                    this.RequireClauses(use, this.CheckCallTypeConstraints(call, this.ConstraintScope(node), use), mode, this.Library.PresentedTarget(call.Target));
                 }
 
                 if (consumer is { BindingFailure: not BindingFailure.None })
@@ -92,7 +93,7 @@ public sealed partial class Binding
             }
             else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
             {
-                var proof = this.CheckRuntimeTestTypeConstraints(runtimeTest, this.ConstraintScope(test));
+                var proof = this.CheckRuntimeTestTypeConstraints(runtimeTest, this.ConstraintScope(test), test);
                 this.RequireConstraint(test, proof, mode);
                 if (proof != ConstraintProof.Proven)
                 {

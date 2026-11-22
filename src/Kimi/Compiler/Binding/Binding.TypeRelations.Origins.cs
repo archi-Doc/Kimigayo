@@ -143,13 +143,6 @@ public sealed partial class Binding
         return (semantics & SemanticsMask.Borrow) == 0;
     }
 
-    // R7-C6 a's census (PLAN G651 a1), C6a-1b's frontier: FitOuterOrigins' caller in the relation walk (RelationWalk, whose judgment's
-    // node is its constructors' input, null in the context-free relations Fits reads), read as Nested (no frame of its own, as before
-    // QuerySite). Removal: C6a-1b names the walk's site with SubstituteType's family and the relations' readers.
-    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): FitOuterOrigins' caller in the relation walk that does not name its site yet; C6a-1b names it and deletes every member carrying this stage.")]
-    private OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter, in CallableInstance comparison)
-        => this.FitOuterOrigins(actual, expected, binding, use, QuerySite.Nested, out longer, out shorter, comparison);
-
     // SPEC 8.1.2, 15.6.1: the outer Origins of a fit's two Types of one shape. Two written Origins relate. Two pair layers of one binder
     // relate their slots, the implicit `o` of an original `s/T` included, so the original `W` fits `s/T during a` when `o` outlives `a`. A
     // pair layer that stores no slot although a borrow case is admitted is unformed: its formation failure is recorded where it is

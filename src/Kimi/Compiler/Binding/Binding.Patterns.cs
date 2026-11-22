@@ -551,7 +551,7 @@ public sealed partial class Binding
 
     private bool ValidatePatternType(BoundMatch plan, Koto syntax, BoundType type, BindingScope scope)
     {
-        var proof = this.CheckTypeConstraints(type, scope);
+        var proof = this.CheckTypeConstraints(type, scope, syntax);
         if (proof == ConstraintProof.Proven)
         {
             return true;

@@ -131,12 +131,6 @@ public sealed partial class Binding
         return result;
     }
 
-    // R7-C6 a's census (PLAN G651 a1), the commits C6a-1a and C6a-1b's first: ResultSemantics' callers inside a Type's formation
-    // (IsAbstractBinding, SubstituteFamily), whose site is SubstituteType's input, read as Nested (no frame of their own, as before
-    // QuerySite); the relations' caller (InactiveOuterOrigin) names its site. Removal: C6a-1b names it with SubstituteType's family.
-    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): ResultSemantics' callers in SubstituteType's family that do not name their site yet; C6a-1b names it and deletes every member carrying this stage.")]
-    internal SemanticsMask ResultSemantics(BoundType type, BindingScope scope) => this.ResultSemantics(type, scope, QuerySite.Nested);
-
     /// <summary>Forms a short adaptation's result after its selected Semantics is known.</summary>
     /// <param name="semantics">The selected Semantics.</param>
     /// <param name="source">The complete input Type.</param>
@@ -260,7 +254,7 @@ public sealed partial class Binding
     // owner (ResultSemantics; the owner's O-311 (a)), when it binds as an owner Type. ApplySemantics, the substitution of a family and
     // HasOuterSlot read it.
     private bool IsAbstractBinding(BoundType binding) => binding.IsAbstractType
-        ? this.ResultSemantics(binding, this.PremiseScope(binding)) != SemanticsMask.Owner
+        ? this.ResultSemantics(binding, this.PremiseScope(binding), QuerySite.Nested) != SemanticsMask.Owner
         : HasOwnSelector(binding);
 
     // SPEC 8.1.1, 8.2.3 (Rd3): the cases a pair target alone takes from its pair, the selected case or else its binder's admitted set; in
@@ -547,12 +541,6 @@ public sealed partial class Binding
         return cases;
     }
 
-    // R7-C6 a's census (PLAN G651 a1), the commit C6a-1a: SplitCases' caller inside a Type's formation (InSplitCase, from
-    // ApplySemantics and HasOuterSlot), whose site is SubstituteType's input, read as Nested (no frame of its own, as before
-    // QuerySite). Removal: C6a-1b names its site with SubstituteType's family.
-    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): SplitCases' caller in SubstituteType's family that does not name its site yet; C6a-1b names it and deletes every member carrying this stage.")]
-    private SemanticsMask SplitCases(BoundType whole) => this.SplitCases(whole, QuerySite.Nested);
-
     // DECISIONS BU-240: the case of the binding `whole`, which forms no Type, in the combination a check is being judged in
     // (RestsOnSplitCases), stamped as read; a binding the run meets first takes its first admitted case (SplitCases). False while
     // no check is judged, and for a binding that admits no case or is met beyond the 64 a blame holds (it stays Unformed).
@@ -567,7 +555,7 @@ public sealed partial class Binding
         var index = this.SplitIndex(whole);
         if (index < 0)
         {
-            var admitted = this.SplitCases(whole);
+            var admitted = this.SplitCases(whole, QuerySite.Nested);
             index = this.SplitIndex(whole); // Its premises' proofs may have met it.
             if (index < 0)
             {
@@ -846,7 +834,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var admitted = this.ResultSemantics(whole, this.PremiseScope(whole)) & (SemanticsMask)family.Length;
+            var admitted = this.ResultSemantics(whole, this.PremiseScope(whole), QuerySite.Nested) & (SemanticsMask)family.Length;
             var children = this.RentTypes(BitOperations.PopCount((uint)admitted));
             try
             {

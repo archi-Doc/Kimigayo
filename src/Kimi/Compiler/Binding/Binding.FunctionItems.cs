@@ -264,7 +264,7 @@ public sealed partial class Binding
 
         var container = this.ReferenceContainer(use, single);
         this.failedCause = null;
-        var proof = this.ReferenceArgumentProof((FunctionKoto)single.Declaration, [], scope, container);
+        var proof = this.ReferenceArgumentProof((FunctionKoto)single.Declaration, [], scope, container, use);
         if (proof != ConstraintProof.Proven)
         {
             this.RequireClauses(use, proof, this.capabilityMode);
@@ -385,7 +385,7 @@ public sealed partial class Binding
 
             var container = this.ReferenceContainer(use, selected);
             this.failedCause = null;
-            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths);
+            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, use, lengths);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireClauses(use, proof, this.capabilityMode);

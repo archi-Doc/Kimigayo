@@ -192,7 +192,7 @@ public sealed partial class Binding
     // reset empties, so a layer record would be dropped or explained by another pass's tables; a siteless height refusal too: its
     // at-once report does not survive ReportDiagnostics, which invalidates the Binding partition and re-reports it only while the flag
     // holds, and the program pass's ResetPass clears the flag, so a library one would be dropped silently; the term goes with the flag's
-    // Transitional, G651 a1. A startup record is never the library pass's: CheckStartup runs after a Final Bind, outside every pass,
+    // Transitional, G651 a4. A startup record is never the library pass's: CheckStartup runs after a Final Bind, outside every pass,
     // over the source modules only; and, from PLAN G949 Stage 2 U2a (C1 (x)), no record in the library module's syntax list), else it
     // is refused: its records are reported by the per-record steps while its tables stand and kept as typed facts in the layer's
     // refusal (LibraryLayer.Refusal; a syntax record stays its module's list's, which the refusal only notes: form (R)), false

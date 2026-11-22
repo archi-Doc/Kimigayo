@@ -903,7 +903,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            var state = this.ReadSourceState(source, out var read);
+            var state = this.ReadSourceState(source, QuerySite.Nested, out var read); // The solver answers inside the proof that asks it.
             completion = Meet(completion, read);
             if (state != ConstraintProof.Proven)
             {

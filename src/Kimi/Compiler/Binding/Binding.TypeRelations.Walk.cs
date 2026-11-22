@@ -234,6 +234,9 @@ public sealed partial class Binding
             this.partQuery = binding.enteredParts.Begin(binding.storageVersion);
         }
 
+        // The node of its proofs' judgment (QuerySite): its use, else Nested (the context-free relations Fits reads).
+        private readonly QuerySite Site => this.use is { } at ? at : QuerySite.Nested;
+
         // The first failure of the walk's last false answer.
         internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
 
@@ -349,7 +352,7 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = this.owner.FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
+                outer = this.owner.FitOuterOrigins(actual, expected, this.binding, this.use, this.Site, out longer, out shorter, instance);
             }
 
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;

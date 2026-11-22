@@ -479,7 +479,7 @@ public sealed partial class Binding
             var conformance = this.impls.InPass.Paths[i];
             this.failedCause = null;
             var frame = this.BeginConsultation(conformance.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
-            var proof = this.VerifyConformance(conformance);
+            var proof = this.VerifyConformance(conformance, conformance.Use);
             if (final && conformance.InheritedFrom is null && !(conformance.Unsupported && mode == BindingMode.Final))
             {
                 this.RequireConstraintInFrame(conformance.Use, proof, mode, frame);
@@ -503,7 +503,7 @@ public sealed partial class Binding
                     this.failedCause = null;
                     this.conformanceChecks++;
                     var frame = this.BeginConsultation(this.impls.PathsOf(identity)[0].Use); // The agreement's judgment is at its first path's use.
-                    var agreement = this.VerifyConformanceAgreement(identity);
+                    var agreement = this.VerifyConformanceAgreement(identity, this.impls.PathsOf(identity)[0].Use);
                     this.conformanceChecks--;
                     var explicitPath = false;
                     foreach (var path in this.impls.PathsOf(identity))

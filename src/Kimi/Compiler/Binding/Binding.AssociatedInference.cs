@@ -375,7 +375,7 @@ public sealed partial class Binding
                     foreach (var source in evidence)
                     {
                         if (!this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope, path.Use) ||
-                            this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope) != ConstraintProof.Proven)
+                            this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope, path.Use) != ConstraintProof.Proven)
                         {
                             continue;
                         }

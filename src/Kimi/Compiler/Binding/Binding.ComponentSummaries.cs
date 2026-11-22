@@ -122,7 +122,7 @@ public sealed partial class Binding
         var result = ConstraintProof.Proven;
         for (var i = 0; i < summary.Instances.Count; i++)
         {
-            result = CombineProof(result, this.InstanceFormation(summary.Instances[i], work.Scope), true);
+            result = CombineProof(result, this.InstanceFormation(summary.Instances[i], work.Scope, QuerySite.Nested), true);
         }
 
         for (var i = 0; i < summary.Components.Count; i++)
