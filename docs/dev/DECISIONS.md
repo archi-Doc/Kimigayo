@@ -29870,7 +29870,12 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   (`FunctionCodegen.WriteAccess`), the word from the two writers, no flag on the ordinary path. Both Backend rows are Target None
   and **Need None**: T is the call's by-value result or operand, which `LayoutNeed`'s statement does not cover (the `RawInitialize`
   precedent). MIR's rows are `Intrinsic(None, 1)` and `Intrinsic(None, 2)`, raw accesses through the arguments (SPEC §8.11.2); no
-  MIR reader removes or duplicates a call by its effect row (B N5, confirmed by the Middle in C-457). Binding's
+  MIR reader removes or duplicates a call by its effect row (B N5, confirmed by the Middle in C-457). Reading (C-479 B C4, F N1;
+  D-1127 N1): decision 39's 'each call is exactly one access' is one volatile access per call. A `T` no wider than the machine word
+  is one machine access; a wider `T` (`i128`, `u128` on x86_64) is one access per word, the words' order unspecified (IMPL §21.3.1),
+  never merged, removed, duplicated, split further or reordered with another volatile access. Rejected: excluding `i128` and `u128`
+  (it narrows `PrimitiveInteger`, which decision 39 names); one 16-byte access (`cmpxchg16b` is a read-modify-write, which writes a
+  device register on a read and faults on read-only memory; an SSE move is unavailable on the none target). Binding's
   `IntrinsicDisposition.WritesThrough` gains `VolatileWrite => parameter == 0` (the closure classifier, SPEC §7.7.3).
   `KimiDeclarationId.RawReadVolatile` (+1, `#Lang("RawReadVolatile")` on the declaration, a recognition entry) carries the NoStore
   row `(RawReadVolatile, 0b1)`: its storage receives no store (call retention and A5's pun rule, C-189; without the row A5 gives a
