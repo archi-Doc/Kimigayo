@@ -1039,6 +1039,37 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         }
     }
 
+    // Z2's E6 (DECISIONS R7-M57; SPEC 8.10, 7.3.3): Binding proves only Closures, function items and Function Types Callable and acquires a
+    // value call's callee to one reference over one (AcquireValueCallee), so a call through any other Type is a broken contract the solve
+    // meets with no site: it throws in a complete compilation (the check ends as CheckFaulted_Kd), and in an incomplete one (an unrelated
+    // function Binding rejects) it is Derived, with no record. No program reaches it, so the test forges `rr()`'s operand back to `rr`,
+    // ref/ref/<closure>, the callee before the acquisition (before E6: the obligation's located Unsupported_Kd in both).
+    [Fact]
+    public void ACallThroughNoCallableIsABrokenContract()
+    {
+        var thrown = Assert.Throws<InvalidOperationException>(() => Forged(string.Empty));
+        Assert.Contains(
+            "every Callable A4 calls through is a Closure, a function item, a Function value or abstract (InternalInvariant)", thrown.Message, StringComparison.Ordinal);
+        Assert.Empty(Forged("group H2\n    public func other() -> i32 => missingName\n"));
+
+        // A4's problems over the program whose S.put calls `rr()` through rr's own local.
+        static string[] Forged(string rest)
+        {
+            var c = MirBuildTest.Compile(Sink + Loud + Witness + "        let g = func () -> i32 => 2\n        let r = g@ref\n        let rr = r@ref\n" +
+                "        _ = rr()\n        return .Ok(())\n" + rest + "public func main() => ()\n");
+            var program = c.BuildMir();
+            var put = program.VersionBodies.ToArray().Single(static x => x.Key.Decl?.Name == "put");
+            var block = Enumerable.Range(0, put.Blocks.Length).Single(b => put.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
+            var rr = Enumerable.Range(0, put.Locals.Length).Single(x => put.Locals[x].Name == "rr");
+            put.Terminate(block, put.Blocks[block].Terminator with { Operand = MirOperand.Copy(new(rr)) });
+            var cases = new MirCases(c.Types);
+            var flow = new MirDataflow(new MirReach(), cases);
+            var report = new MirReport();
+            Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, report, All);
+            return Problems(c, report);
+        }
+    }
+
     // PLAN G951 E3 (DECISIONS R5-M168's input rule): A4 judges the obligations whose subject is in the root range; one outside it is the
     // library check's (MirAnalysisTest.TheLibraryHasNoAnalysisProblem, the library as a root module), so the failing witness of S
     // (LocalRecordsTheProgramsVersion's program) is not judged under a root range that excludes its module.

@@ -377,6 +377,19 @@ public sealed partial class FunctionCodegenTest
             "Console.writeLine(\"\\(x1) \\(x2) \\(x3) \\(x4) \\(x5) \\(x6) \\(x7) \\(x8) \\(x9)\")\n",
             "20 10 30 10 20 10 20 10 30\n"
         },
+        {
+            // PLAN G597's L2: sliceUniq's view starts at Storage.viewStart's keyed Storage over the remainder's raw pointer, so a write
+            // through each view lands at its first element's offset: an Array's whole, displaced and from-end views, a fixed array's
+            // displaced view, a zero-sized element's displaced view (stride 0) and an empty Array's whole and zero-start views (its
+            // storage null at capacity 0, IMPL 21.1.3, which a zero displacement keeps, SPEC 5.3).
+            "RvalueKeyedRawStorage",
+            "var a: Array<i32> = [10, 20, 30]\nvar v1 = a.sliceUniq(..)\nv1[0] = 1\nvar v2 = a.sliceUniq(1..)\nv2[1] = 3\n" +
+            "var v3 = a.sliceUniq(..^1)\nv3[1] = 2\nlet n3 = v3.length\nvar f: [3 of i32] = [10, 20, 30]\nvar w = f.sliceUniq(1..)\nw[0] = 7\n" +
+            "var z: Array<()> = [(), (), ()]\nvar u = z.sliceUniq(1..)\nu[0] = ()\nlet nu = u.length\n" +
+            "var e: Array<i32> = []\nlet ne = e.sliceUniq(..).length\nlet nz = e.sliceUniq(0..).length\n" +
+            "Console.writeLine(\"\\(a[0]) \\(a[1]) \\(a[2]) \\(n3) \\(f[1]) \\(nu) \\(ne) \\(nz)\")\n",
+            "1 2 3 2 7 2 0 0\n"
+        },
     };
 
     // A requirement's witnesses (SPEC 8.6.3-8.6.4; DECISIONS R5-M93): a conformance's body, an inherited one and a generic Type's instance.

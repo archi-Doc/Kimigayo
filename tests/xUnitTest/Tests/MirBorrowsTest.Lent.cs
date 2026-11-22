@@ -89,6 +89,26 @@ public sealed partial class MirBorrowsTest
         return text.ToString();
     }
 
+    // A program whose body Copies b.pair, a Tuple enclosing a `during self` layer, n times through no dereference, each Copy used right
+    // after it is made (CallableRegionScalingTest.EnclosingCopiesScaleWithTheDenseTerm).
+    internal static string EnclosingCopyChain(int n)
+    {
+        var text = new StringBuilder(LentShapes).Append("func f(fresh: raw/u8)\n    let b = Packet.init()\n");
+        for (var i = 1; i <= n; i++)
+        {
+            text.Append($"    let t{i} = b.pair\n    usep(t{i}.0)\n");
+        }
+
+        return text.ToString();
+    }
+
+    // A program whose body reads whole a Field enclosing a `during self` layer k Tuples deep and uses the layer through the Copy's k steps
+    // (CallableRegionScalingTest.ADeepEnclosingReadIsWithinItsWalk).
+    internal static string DeepEnclosingRead(int k)
+        => LentShapes + $"struct Deep\n    internal var t: {new string('(', k)}raw/u8 during self{string.Concat(Enumerable.Repeat(", i32)", k))}\n" +
+            $"    public init() => self.t = {new string('(', k)}null{string.Concat(Enumerable.Repeat(", 1)", k))}\n" +
+            $"func f(fresh: raw/u8)\n    let b = Deep.init()\n    let t = b.t\n    usep(t{string.Concat(Enumerable.Repeat(".0", k))})\n";
+
     // The distinct positions A5 publishes for the Places of the body's statements whose text is the read (every Place where it is null),
     // after A5's run of the body, and the Work those positions took.
     private static (string[] Positions, long Work) LentPositions(string source, string function, string? read)

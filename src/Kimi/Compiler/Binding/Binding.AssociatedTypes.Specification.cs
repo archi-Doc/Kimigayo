@@ -59,9 +59,9 @@ public sealed partial class Binding
         var associated = projection.Symbol!;
         var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
         if (member.Symbol is not { } owner || qualifier is { Kind: BoundTypeKind.Constructed } || associated.Scope.Owner.BoundSymbol is not { } contract ||
-            this.ConformanceByDeclaration(owner, contract, out _) is not { } identity)
+            this.SelectConformance(member, contract, owner.Scope, out _) is not { } identity)
         {
-            return null; // a Contract reference with Type arguments selects by reference (ConformanceByReference, a proof): no ground (named limit)
+            return null; // a Contract reference with Type arguments selects by reference (SelectConformance, a proof): no ground (named limit)
         }
 
         BoundType? found = null;
@@ -121,9 +121,8 @@ public sealed partial class Binding
         }
 
         var constructed = qualifier is { Kind: BoundTypeKind.Constructed };
-        if (receiver.Symbol is not { } owner ||
-            (!constructed ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _)
-                : this.ConformanceByReference(owner, receiver, associated, qualifier!, scope)) is not { } identity)
+        if (receiver.Symbol is null ||
+            this.SelectConformance(receiver, associated.Scope.Owner.BoundSymbol!, constructed ? qualifier : null, scope, out _) is not { } identity)
         {
             return new(null, null, pending, null, default, named || (receiver.Symbol is not null && constructed) ? Completion.Provisional : Completion.Complete);
         }
@@ -204,34 +203,6 @@ public sealed partial class Binding
     private bool PathsAgree(BoundType left, BoundType right, BoundType receiver, BindingScope scope)
         => this.SameCompleteType(left, right) ||
             (this.StoredType(left, receiver) is { } x && this.StoredType(right, receiver) is { } y && this.SameConformanceType(x, y, scope));
-
-    // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
-    // names `qualifier` in `scope` (NamesReference) as the declaring reference of `associated`.
-    private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier, BindingScope scope)
-    {
-        if (this.ConformancesOf(owner) is not { } identities)
-        {
-            return null;
-        }
-
-        BoundConformance? found = null;
-        for (var i = 0; i < identities.Count; i++)
-        {
-            var identity = identities[i];
-            if (identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
-                (ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope)))
-            {
-                if (found is not null && !ReferenceEquals(found, identity))
-                {
-                    return null;
-                }
-
-                found = identity;
-            }
-        }
-
-        return found;
-    }
 
     // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
     // complete Type), the conformance path it comes from (its Scope the binding's conformance scope) and the path's identity it binds (a
