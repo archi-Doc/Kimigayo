@@ -90,7 +90,7 @@ foreach ($level in @('O0', 'O2')) {
 
 # Use the actual emitted module, changing only OS declarations to explicitly named test adapters.
 $faultIr = Get-Content (Join-Path $fixtures 'Hello.ll') -Raw
-foreach ($name in @('GetProcessHeap', 'HeapAlloc', 'HeapFree', 'GetStdHandle', 'WriteFile', 'GetLastError', 'ExitProcess')) {
+foreach ($name in @('VirtualAlloc', 'VirtualFree', 'GetStdHandle', 'WriteFile', 'GetLastError', 'ExitProcess')) {
     $faultIr = $faultIr.Replace("@$name(", "@test_$name(")
 }
 $faultIr = $faultIr.Replace('declare dllimport ', 'declare ')
@@ -98,12 +98,13 @@ $faultIr += @'
 
 @test_mode = external global i32
 @test_location = private constant [13 x i8] c"Test.kimi:1:1"
-declare ptr @test_memory()
 declare void @test_layout(i64, i64, i64, i64)
 '@
+# Modes 16 and 19 (a null process heap) went with KIMI_E_PROCESS_HEAP (the Tatara plan's decision 27); the others keep their numbers.
+$modes = @(0..30 | Where-Object { $_ -notin @(16, 19) })
 $reasonCount = [regex]::Match($faultIr, '@__kimi_reasons = private constant \[(\d+) x').Groups[1].Value
 if (-not $reasonCount) { throw 'Missing Abort reason table' }
-for ($mode = 0; $mode -le 30; $mode++) {
+foreach ($mode in $modes) {
     $body = switch ($mode) {
         { $_ -eq 29 -or $_ -eq 30 } {
             $reason = if ($mode -eq 29) { $reasonCount } else { '-1' }
@@ -122,15 +123,17 @@ for ($mode = 0; $mode -le 30; $mode++) {
         }
         13 { "  call void @__kimi_free(ptr null, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         14 { "  %memory = call ptr @__kimi_alloc(i64 0, ptr @test_location, i64 13)`n  call void @__kimi_free(ptr %memory, ptr @test_location, i64 13)`n  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
-        { $_ -eq 17 -or $_ -eq 19 } { "  %memory = call ptr @test_memory()`n  call void @__kimi_free(ptr %memory, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
+        17 { "  %memory = call ptr @__kimi_alloc(i64 300000, ptr @test_location, i64 13)`n  call void @__kimi_free(ptr %memory, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         18 { "  %slot = alloca %kimi.string, align 8`n  store %kimi.string { ptr @__kimi_text, i64 13, i8 3 }, ptr %slot, align 8`n  call void @__kimi_destroy_string(ptr %slot, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         20 { "  %memory = call ptr @__kimi_alloc(i64 -1, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         default {
-            $heap = $mode -in @(14, 15, 16, 22, 24, 26)
+            $heap = $mode -in @(14, 15, 22, 24, 26)
             $length = if ($mode -in @(14, 21, 24)) { 0 } else { 13 }
             $value = if ($heap) { "%memory" } else { "@__kimi_text" }
             $kind = if ($heap) { 1 } else { 0 }
-            $acquire = if ($heap) { "  %memory = call ptr @__kimi_alloc(i64 $length, ptr @test_location, i64 13)`n" } else { '' }
+            # A heap string's bytes are the text's, copied into the allocator's block.
+            $fill = if ($length -ne 0) { "  %text = load [13 x i8], ptr @__kimi_text, align 1`n  store [13 x i8] %text, ptr %memory, align 1`n" } else { '' }
+            $acquire = if ($heap) { "  %memory = call ptr @__kimi_alloc(i64 $length, ptr @test_location, i64 13)`n$fill" } else { '' }
             # Console.writeLine's body writes the string's bytes and the LF through __kimi_stdout (SPEC 22.7); the caller destroys the string, as generated code does.
             "$acquire  %slot = alloca %kimi.string, align 8`n  %handle = insertvalue %kimi.string { ptr null, i64 $length, i8 $kind }, ptr $value, 0`n  store %kimi.string %handle, ptr %slot, align 8`n  call void @__kimi_stdout(ptr $value, i64 $length, ptr @test_location, i64 13)`n  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr @test_location, i64 13)`n  call void @__kimi_destroy_string(ptr %slot, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable"
         }
@@ -144,7 +147,7 @@ Invoke-Tool $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', '-O2', '-ffr
 foreach ($level in @('O0', 'O2')) {
     $stem = Join-Path $out "faults.$level"
     Compile-Ir $faultPath $stem $level
-    for ($mode = 0; $mode -le 30; $mode++) {
+    foreach ($mode in $modes) {
         $exe = "$stem.$mode.exe"
         Invoke-Tool $tools['lld-link'] @("$stem.obj", $adapter, $archive, $Kernel32, "/entry:test_entry_$mode", '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$exe")
         Execute $exe ([byte[]]@())

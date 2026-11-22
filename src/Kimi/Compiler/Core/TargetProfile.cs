@@ -29,8 +29,9 @@ internal sealed class TargetProfile
     private const string WindowsFloatMarker = "_fltused";
 
     // The kernel32 declarations the generated runtimes emit, with their import-ABI physical signatures: the ordinary runtime of SPEC
-    // 21.4.7 and the two test-runtime APIs, which one source can reach in either build. A null signature marks a declaration no
-    // expressible LibraryImport can share: the ExitProcess declaration is noreturn, an ABI attribute no import carries (SPEC 21.2).
+    // 21.4.7, the two test-runtime APIs, which one source can reach in either build, then the platform layer's pages (the Tatara plan's
+    // decision 23, B7r2). A null signature marks a declaration no expressible LibraryImport can share: the ExitProcess declaration is
+    // noreturn, an ABI attribute no import carries (SPEC 21.2).
     private static readonly (string Symbol, string? Signature)[] WindowsRuntimeDeclarations =
     [
         ("GetProcessHeap", "p"),
@@ -42,6 +43,8 @@ internal sealed class TargetProfile
         ("ExitProcess", null),
         ("GetEnvironmentVariableA", "4pp4"),
         ("SetHandleInformation", "4p44"),
+        ("VirtualAlloc", "pp844"),
+        ("VirtualFree", "4p84"),
     ];
 
     // The backend supply's helper symbols in catalog order (IMPL 21.4.7), which its supply and the reserved external names share: the
@@ -50,7 +53,7 @@ internal sealed class TargetProfile
 
     /// <summary>Gets the windows-x64 row, the pinned, module-local Windows execution profile (IMPL 21.4). Its reserved supplies (IMPL
     /// 20.4), in Ordinal name order: kernel32, the generated import library, whose symbol set is the runtime declarations' symbols, then
-    /// the VirtualAlloc test family and the Windows counter APIs; and kimi_backend, the backend archive, a static library of its helper
+    /// VirtualProtect and the Windows counter APIs; and kimi_backend, the backend archive, a static library of its helper
     /// catalog (IMPL 21.4.7).</summary>
     internal static TargetProfile Windows { get; } = new()
     {
@@ -74,7 +77,7 @@ internal sealed class TargetProfile
                 "import",
                 [
                     .. WindowsRuntimeDeclarations.Select(static x => x.Symbol),
-                    "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency",
+                    "VirtualProtect", "QueryPerformanceCounter", "QueryPerformanceFrequency",
                 ]),
             new("kimi_backend", "static", WindowsBackendSymbols),
         ],

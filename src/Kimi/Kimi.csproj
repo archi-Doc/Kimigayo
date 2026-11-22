@@ -38,6 +38,7 @@
     <EmbeddedResource Include="Diagnostics\RepairKind.tinyhand" />
     <EmbeddedResource Include="Compiler\Backend\Runtime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\WindowsPlatform.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\HeapRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\MemoryRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\ErasedWriterRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\Utf8FloatRuntime.ll.in" />

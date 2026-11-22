@@ -1,8 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled constants, the
-// runtime, composed of windows-x64's platform layer (WindowsPlatform.ll.in, which owns every kernel32 call) and the common part
-// (Runtime.ll.in) and expanded in one scan, with its ABI definitions spliced in and its test variant, the memory part every module defines after it
+// runtime, composed of windows-x64's platform layer (WindowsPlatform.ll.in, which owns every kernel32 call of the runtime in a program
+// module), the common part (Runtime.ll.in) and Kimi's allocator (HeapRuntime.ll.in) and expanded in one scan, with its ABI definitions
+// spliced in and its test variant, the memory part every module defines after it
 // (MemoryRuntime.ll.in: the runtime's memcmp, memcpy, memmove and memset, TargetProfile.MemorySymbols), the erased writer's kept runtime
 // (ErasedWriterRuntime.ll.in: the ErasedReserve intrinsic's routine, a module part on request), the float formatting part
 // (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the 128-bit
@@ -92,8 +93,8 @@ internal static partial class LlvmModuleText
     internal static readonly string MemoryRuntime = ExpandRuntime(Template("MemoryRuntime.ll.in"), []);
 
     // SPEC 21.4.3, 22.2: the nullable form of Alloc (RuntimeAbi.TryAllocateBytes), defined where a body calls it: null wherever Alloc
-    // would Abort (a size above isize's range, no process heap, a failed allocation), the layer's block (RuntimeAbi.HeapAllocate) otherwise,
-    // a fresh start; no location to report.
+    // would Abort (a size above isize's range, a failed allocation), the allocator's block (RuntimeAbi.HeapAllocate) otherwise, a fresh
+    // start; no location to report.
     internal static readonly string TryAllocate = ExpandRuntime(
         """
         {{__kimi_try_allocate}}
@@ -130,7 +131,7 @@ internal static partial class LlvmModuleText
         "target datalayout = \"" + TargetProfile.Windows.DataLayout + "\"\n" +
         RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + TargetProfile.Windows.FloatMarker + " = global i32 0, align 4\n";
 
-    // The runtime: the platform layer (windows-x64's, over kernel32) and the common part, one text expanded in one scan.
+    // The runtime: the platform layer (windows-x64's, over kernel32), the common part and the allocator, one text expanded in one scan.
     private static readonly string Runtime = ExpandRuntime(RuntimeTemplate, RuntimeAbi.RuntimeDefinitions) + "\n";
 
     // A test build's runtime: each Abort definition first reports the aborted test to the test runtime.
@@ -186,8 +187,9 @@ internal static partial class LlvmModuleText
         }
     }
 
-    // A runtime template (the Windows, formatting, Array and test runtimes) expanded in one ordered scan into one builder sized
-    // for the template and its definitions: `\r\n` becomes `\n`, each definition is spliced in at its `{{name}}` marker line and every
+    // A runtime template (the runtime, the memory part, the erased writer, the formatting parts and the test runtime) expanded in one
+    // ordered scan into one builder sized for the template and its definitions: `\r\n` becomes `\n`, each definition is spliced in at
+    // its `{{name}}` marker line and every
     // other marker takes its owner's text, an abort reason's (AbortReasons.Expand) or an ABI constant's (RuntimeAbi.Expand), whose
     // names are disjoint. Compiler-facing runtime signatures come from the same FunctionAbi records as calls and each is defined once,
     // so a missing or repeated definition marker, or a marker no owner expands, is a broken template. Every `{{` opens a marker, so a
@@ -240,8 +242,9 @@ internal static partial class LlvmModuleText
     }
 
     /// <summary>Gets the runtime's template: windows-x64's platform layer (WindowsPlatform.ll.in, the definitions of
-    /// RuntimeAbi.PlatformRoutines and every kernel32 call), then the common part (Runtime.ll.in), read as one text.</summary>
-    internal static string RuntimeTemplate => Template("WindowsPlatform.ll.in") + "\n" + Template("Runtime.ll.in");
+    /// RuntimeAbi.PlatformRoutines and every kernel32 call of the runtime in a program module), the common part (Runtime.ll.in), then
+    /// Kimi's allocator (HeapRuntime.ll.in), read as one text.</summary>
+    internal static string RuntimeTemplate => Template("WindowsPlatform.ll.in") + "\n" + Template("Runtime.ll.in") + "\n" + Template("HeapRuntime.ll.in");
 
     /// <summary>Gets the erased writer's kept runtime (ErasedWriterRuntime.ll.in), expanded once.</summary>
     internal static string ErasedWriterRuntime => ErasedWriter.Text;

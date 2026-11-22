@@ -1,5 +1,7 @@
-; windows-x64-v1 platform layer over kernel32: the routines through which the common runtime (Runtime.ll.in) writes, exits and takes
-; and returns heap blocks, and the Abort report's OS-error prefix. Every kernel32 call of a module lies in these definitions.
+; windows-x64-v1 platform layer over kernel32: the routines through which the common runtime (Runtime.ll.in) writes and exits and
+; its allocator (HeapRuntime.ll.in) maps and releases pages, and the Abort report's OS-error prefix. Every kernel32 call of the runtime
+; in a program module lies in these definitions; the test runtime's calls and a program's own kernel32 imports are outside the layer.
+; The process heap's three declarations are unused until the Tatara plan's B7r3 removes them with kernel32's set.
 declare dllimport ptr @GetProcessHeap()
 declare dllimport ptr @HeapAlloc(ptr, i32, i64)
 declare dllimport i32 @HeapFree(ptr, i32, ptr)
@@ -7,6 +9,8 @@ declare dllimport ptr @GetStdHandle(i32)
 declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
 declare dllimport i32 @GetLastError()
 declare dllimport void @ExitProcess(i32) noreturn
+declare dllimport ptr @VirtualAlloc(ptr, i64, i32, i32)
+declare dllimport i32 @VirtualFree(ptr, i64, i32)
 
 @__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
 
@@ -63,28 +67,21 @@ success:
   ret i64 -1
 }
 
-; Temporary until Kimi's allocator (the Tatara plan's B7r2): blocks of the process heap, a zero-byte request taking one byte; null
-; without a process heap or on failure.
-{{__kimi_heap_allocate}}
+; Committed read-write pages, MEM_COMMIT | MEM_RESERVE (12288) and PAGE_READWRITE (4): a page-aligned run of at least the byte count,
+; which Windows places in 64 KiB granules at or above the unmapped bound (so a 1 MiB region is 16 granules); null on failure, without
+; an OS error.
+{{__kimi_pages}}
 entry:
-  %process_heap = call ptr @GetProcessHeap()
-  %no_heap = icmp eq ptr %process_heap, null
-  br i1 %no_heap, label %failed, label %allocate
-allocate:
-  %zero = icmp eq i64 %bytes, 0
-  %actual = select i1 %zero, i64 1, i64 %bytes
-  %memory = call ptr @HeapAlloc(ptr %process_heap, i32 0, i64 %actual)
-  ret ptr %memory
-failed:
-  ret ptr null
+  %pages = call ptr @VirtualAlloc(ptr null, i64 %bytes, i32 12288, i32 4)
+  ret ptr %pages
 }
 
-; Temporary until B7r2: a block back to the process heap; -1 = released, otherwise a zero-extended DWORD error.
-{{__kimi_heap_release}}
+; A run the pages routine returned, released whole (MEM_RELEASE, 32768, takes no size); -1 = released, otherwise a zero-extended DWORD
+; error.
+{{__kimi_release_pages}}
 entry:
-  %process_heap = call ptr @GetProcessHeap()
-  %result = call i32 @HeapFree(ptr %process_heap, i32 0, ptr %block)
-  %failed = icmp eq i32 %result, 0
+  %released = call i32 @VirtualFree(ptr %pages, i64 0, i32 32768)
+  %failed = icmp eq i32 %released, 0
   br i1 %failed, label %failure, label %done
 failure:
   %error = call i32 @GetLastError()
@@ -92,17 +89,4 @@ failure:
   ret i64 %error64
 done:
   ret i64 -1
-}
-
-; Temporary until B7r2 removes the reason: KIMI_E_PROCESS_HEAP at the location when there is no process heap.
-{{__kimi_check_process_heap}}
-entry:
-  %process_heap = call ptr @GetProcessHeap()
-  %no_heap = icmp eq ptr %process_heap, null
-  br i1 %no_heap, label %heap_failure, label %done
-heap_failure:
-  call void @__kimi_abort(i32 {{reason_heap}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
-  unreachable
-done:
-  ret void
 }

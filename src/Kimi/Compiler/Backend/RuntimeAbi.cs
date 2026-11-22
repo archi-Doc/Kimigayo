@@ -2,8 +2,9 @@
 
 // Owns the runtime ABI of the windows-x64-v1 profile (SPEC 21.3.1, 22.1-22.7; DECISIONS R5-M15): the representations of Unit,
 // string values and string handles, the string release kinds, the zero-sized buffer address, and the FunctionAbi of each
-// runtime routine that generated code defines or calls, the platform layer's routines (PlatformRoutines, which the common runtime calls
-// and the layer template defines; the Tatara plan's decision 22), with the routines whose template definitions are spliced from them, and
+// runtime routine that generated code defines or calls, the platform layer's routines (PlatformRoutines, which the common runtime and
+// the allocator call and the layer template defines; the Tatara plan's decision 22), with the routines whose template definitions are
+// spliced from them, and
 // the text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes (the zero-sized buffer address at
 // `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at `{{static_release_kind}}`
 // and `{{heap_release_kind}}`, TargetProfile.Windows's unmapped bound at `{{unmapped_bound}}`, and the layer's OS-error prefix at
@@ -11,8 +12,8 @@
 // Input: none; the entry symbol and the unmapped bound come from TargetProfile.Windows; a marker's name and the expanded text being written.
 // Output: the records, read by code generation and by LlvmModuleText's runtime splice; a constant marker's text appended.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
-// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime templates (the common part and the layer) hold exactly
-// once; a template spells a marker's constant only through its marker, and a writer through the constant.
+// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime templates (the layer, the common part and the allocator)
+// hold exactly once; a template spells a marker's constant only through its marker, and a writer through the constant.
 // Must not take BoundType, syntax or MIR types, or hold a per-module record.
 
 using System.Globalization;
@@ -26,7 +27,7 @@ internal static class RuntimeAbi
     /// <summary>The Static string releaseKind: compiler constant backing that is never freed (the string representation, IMPL 21.1.3).</summary>
     internal const int StaticReleaseKind = 0;
 
-    /// <summary>The Heap string releaseKind: bytes of a process heap block, which the string's destruction frees. A buffer's string
+    /// <summary>The Heap string releaseKind: bytes of a heap block (Kimi's allocator's), which the string's destruction frees. A buffer's string
     /// takes its kind as the library's HeapBuffer.intoString writes it, 1 for an allocation and 0 for none, so Heap is 1 and Static 0
     /// (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
     internal const int HeapReleaseKind = 1;
@@ -135,19 +136,22 @@ internal static class RuntimeAbi
     // else the OS error or NoOsError.
     internal static readonly FunctionAbi Write = new("__kimi_write", "i64", [new("i32", "stream"), new("ptr", "data"), new("i64", "length")]);
 
-    // The layer's heap blocks (IMPL 21.4.3), temporary over the process heap until Kimi's allocator (the Tatara plan's B7r2): a block of a
-    // byte size, null on failure; a block's release, -1 when released, else the OS error.
+    // The layer's pages (IMPL 21.4.3; the Tatara plan's decision 23): a page-aligned run of at least a byte count, readable and writable,
+    // at or above the unmapped bound, null on failure; a run's release, by its start and byte count, -1 when released, else the OS error.
+    internal static readonly FunctionAbi Pages = new("__kimi_pages", "ptr", [new("i64", "bytes")]);
+
+    internal static readonly FunctionAbi ReleasePages = new("__kimi_release_pages", "i64", [new("ptr", "pages"), new("i64", "bytes")]);
+
+    // Kimi's allocator (IMPL 21.4.3; the Tatara plan's decision 23; HeapRuntime.ll.in, common to every target) over the layer's pages: a
+    // 16-aligned block of a byte size at most isize's maximum, null without pages; a block's release, -1 when released, else the OS error.
     internal static readonly FunctionAbi HeapAllocate = new("__kimi_heap_allocate", "ptr", [new("i64", "bytes")]);
 
     internal static readonly FunctionAbi HeapRelease = new("__kimi_heap_release", "i64", [new("ptr", "block")]);
 
-    // Temporary (removal: the Tatara plan's B7r2, with KIMI_E_PROCESS_HEAP): the null process heap's Abort at an allocation's or
-    // release's location, which the blocks' other callers (the nullable Alloc, the test runtime) do not have.
-    internal static readonly FunctionAbi CheckProcessHeap = new("__kimi_check_process_heap", Unit.ComputationType, [Location, LocationLength]);
-
-    /// <summary>Gets the platform layer's routines, which the common runtime calls and only the layer template defines; every OS call of
-    /// a module lies in their definitions (NativeAllocationAudit.AssertOsCallsInLayer), the process exit in Exit's.</summary>
-    internal static readonly FunctionAbi[] PlatformRoutines = [Exit, Write, HeapAllocate, HeapRelease, CheckProcessHeap];
+    /// <summary>Gets the platform layer's routines, which the common runtime and the allocator call and only the layer template defines;
+    /// every kernel32 call of the runtime in a program module lies in their definitions, each routine's own calls pinned by
+    /// NativeAllocationAudit.AssertOsCallsInLayer (the test runtime's calls and a program's own imports are outside the layer).</summary>
+    internal static readonly FunctionAbi[] PlatformRoutines = [Exit, Write, Pages, ReleasePages];
 
     // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue
     // from its condition and the site's number in the test catalog and sends the values held for it; the issue's message, a borrowed string;
@@ -171,9 +175,9 @@ internal static class RuntimeAbi
         "void",
         [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
-    /// <summary>Gets the runtime definitions expanded into the runtime (Runtime.ll.in and WindowsPlatform.ll.in): the layer's routines,
-    /// then the common part's compiler-facing ones.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [.. PlatformRoutines, DestroyString, Abort, AbortMessage];
+    /// <summary>Gets the runtime definitions expanded into the runtime (WindowsPlatform.ll.in, Runtime.ll.in and HeapRuntime.ll.in): the
+    /// layer's routines, the allocator's, then the common part's compiler-facing ones.</summary>
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [.. PlatformRoutines, HeapAllocate, HeapRelease, DestroyString, Abort, AbortMessage];
 
     // The constants a runtime template spells through a marker, by the marker's name (Expand), each as its text.
     private static readonly (string Name, string Text)[] Constants =
