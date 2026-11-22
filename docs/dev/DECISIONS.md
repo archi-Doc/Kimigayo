@@ -14573,6 +14573,8 @@ resumed by R4-M86 (2026-10-20).
   item's selector and Name are resolved with the item and not indexed, so their rows are reset by `Binding.RowReset` before the item
   is indexed, and the rebind after an append gives the fresh compilation's verdict.
   - Removal: at R7-D2 c, whose pre-order walk reaches every node (COMPILER_ARCHITECTURE's temporaries list).
+  - Removed by R7-M79 (R7-D2 c, Q-667; the landing commit): the indexer's one iterative walk reaches every node in a slot, so
+    `Binding.RowReset` is deleted.
   - Rejected: clearing each module's base columns at the pass start (R7-D2 c's change); a reset in `EffectTarget` or
     `BindEffectBound` (consumers deciding the indexer's reset).
 
@@ -25447,6 +25449,22 @@ R8-M* and R9-M* by the stage of the recording unit.
     reserved (an aggregate's live Loan lost: c-tuple-later, B6's Case payloads); activating every whole-local use of a site (a
     failed default's site would activate before later defaults, SPEC 15.6.7); the form read from syntax (the Front's facts); a hold
     without activation; a new MIR form or vocabulary entry.
+- **R7-M79 R7-D2 c: the indexer is one iterative walk** (2026-11-22; Front, Binding; Q-667; Major, design review RQ6; F's D2
+  rulings 1, 4, 5). The indexer (`Binding.IndexWalk`, replacing `IndexVisitor` and `TestSyntaxVisitor`) is one iterative pre-order
+  walk over Koto's child slots with one pooled stack of entries (`IndexStack`: kept across passes, emptied when a walk ends, a
+  faulted one included; a walk entered over a non-empty stack is InternalInvariant), closed contexts (Index, Pattern, ExcludedTest,
+  ResetOnly) and steps (Declare, arm Candidates, match Arms), in dev's order. Each node it reaches is reset once before the first
+  write to it in the pass (`ResetEntry`): at its entry, an attribute of a leading chain at its chain owner's entry (form (B));
+  `ResetRow` is the one per-node reset in every context. A try's arms are reached when BindMatch selects them. The walk reaches
+  every node in a slot of the trees it walks, which meets BU-194's removal condition (`RowReset` deleted). The rows it newly resets
+  are an excluded test's subtree, its leading attribute chain included, and a handled attribute's operand (a Test marker's,
+  Layout's, a function's LibraryImport's, an implementation Attribute's). A warm Test-to-Product rebind gives the excluded test's
+  subtree (its `#Test` marker and its body) its cold Product rows (a named move, rows only; no Hover change observed); a handled
+  attribute's operand is bound by no pass in either build, so its reset finds row 0 (no move). Rejected: each attribute recording
+  itself ((A): reverses an excluded test's `Binding.Issues` order, moves `InvalidateAttributeTarget` after the marker's record and
+  merges a marker's two writes, a count change); the excluded test's row alone resetting its chain (the narrow (B): misses a nested
+  function's marker, a second resetting row and a mode on the entry); a column clear at the pass start (a second reset site);
+  `SyntaxTable.Nodes`' id order (a try's deferred arms are no pre-order id range: `TryKoto.SelectOption`).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi

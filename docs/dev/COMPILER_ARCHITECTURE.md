@@ -288,9 +288,6 @@ is restricted to Parsing/Binding. IntrinsicId's limit is 27 since R8-I1 (DECISIO
   - R7-T1's, removed by G651 a1 (DECISIONS R7-M54): `Binding.answer` (Transitional), the instance collector's answer frame, the
     interim form of G651's after-run site kind "the caller records"; a1 makes the site `SubstituteType`'s input and the frame that
     site kind;
-  - G799's, removed at R7-D2 c (the indexer's walk replaced by SyntaxTable's pre-order, which reaches every node; DECISIONS BU-194):
-    `Binding.RowReset`, a stateless visitor (one static instance) that resets the HIR rows of an effect item's selector and Name,
-    which `IndexVisitor` does not index, so no lookup a pass published on them is read by the next (`Binding.Indexing.cs`);
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」);
