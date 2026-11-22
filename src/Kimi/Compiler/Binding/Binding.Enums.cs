@@ -340,7 +340,7 @@ public sealed partial class Binding
                 // fact its walk gives (RecordMismatch).
                 if (!this.FitsStructurallyAt(result, expected, use))
                 {
-                    return !this.FitsTypeAt(result, expected, use, out var contract) && contract.IsCondition
+                    return !this.FitsTypeAt(result, expected, use, out var contract, null) && contract.IsCondition
                         ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
