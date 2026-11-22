@@ -130,9 +130,11 @@ public sealed partial class Binding
             var nested = structure.NestedContainers[i];
 
             // Any inherited Type member reserves the name (Qualifier: every Type member but a pair binder, which no struct declares).
-            if (this.LookupMember(baseType, nested.Name, scope, LookupRole.Qualifier).Member is not null)
+            // SPEC 6.1, 9.6: the later is the nested Container, related to the inherited declaration; the struct keeps the slot's failure,
+            // an owner over its member's record (Transitional, R7-E5's per-problem inputs).
+            if (this.LookupMember(baseType, nested.Name, scope, LookupRole.Qualifier).Member is { } inherited)
             {
-                this.Fail(nested, BindingFailure.Duplicate);
+                this.RecordNumbered(nested, BindingFailure.Duplicate, [new(ProblemFactKind.Related, this.FactSite(inherited.Declaration), 0)]);
                 this.Fail(structure, BindingFailure.Duplicate);
                 return false;
             }
@@ -153,8 +155,10 @@ public sealed partial class Binding
 
             // Names reserve the declaration layer regardless of signatures or conditions.
             // The original derived receiver supplies protected access, including Properties.
-            if (this.LookupMember(baseType, entry.Key, scope, LookupRole.Value, this.SelfType(structure.BoundSymbol!)).Member is not null)
+            // SPEC 6.2.2: the later is the member, related to the inherited one; the struct's failure as above.
+            if (this.LookupMember(baseType, entry.Key, scope, LookupRole.Value, this.SelfType(structure.BoundSymbol!)).Member is { } inherited)
             {
+                this.RecordNumbered(member.Declaration, BindingFailure.Duplicate, [new(ProblemFactKind.Related, this.FactSite(inherited.Declaration), 0)]);
                 this.Fail(structure, BindingFailure.Duplicate);
                 return false;
             }
