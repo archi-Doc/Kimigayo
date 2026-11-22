@@ -11,12 +11,6 @@ namespace Kimi.Compiler;
 // callable one (CallableSignatureFits). Each entry is one query of the relation's one walk (RelationWalk, Binding.TypeRelations.Walk.cs).
 public sealed partial class Binding
 {
-    /// <summary>Compares interned complete types without erasing their Origin contracts.</summary>
-    /// <param name="left">The first canonical type.</param>
-    /// <param name="right">The second canonical type from the same compilation.</param>
-    /// <returns>Whether both references identify the same complete type.</returns>
-    public static bool SameType(BoundType left, BoundType right) => ReferenceEquals(left, right);
-
     // SPEC 3.8: whether `actual` is a subtype of `expected`.
     internal bool IsSubtype(BoundType actual, BoundType expected)
         => new RelationWalk(this, null, null, OriginPart.Judged).Fits(actual, expected);
@@ -163,7 +157,10 @@ public sealed partial class Binding
             : this.types.Rebuild(required, [required.Components[0], BoundType.Never], required.Origin, (BoundOrigin[])required.OriginArguments);
     }
 
-    private BoundType DirectTarget(BoundType whole)
+    // SPEC 8.1.1: the direct target of a pair binder's binding: a family's case by case, a layer's target, a Type parameter's or pair
+    // original's projection, and a value Type or an owner-proven abstract Type itself; a binding that forms no Type has none represented
+    // (Unformed, BU-240).
+    private BoundType? DirectTarget(BoundType whole)
     {
         if (whole.Kind == BoundTypeKind.SemanticsAdaptation)
         {
@@ -180,7 +177,7 @@ public sealed partial class Binding
             return whole.Symbol!.Kind == BindingSymbolKind.SemanticsTarget ? whole.Symbol.Type! : this.types.Intern(BoundTypeKind.TargetProjection, whole.Symbol, SemanticsKind.Owner, []);
         }
 
-        return whole;
+        return this.FormsUnder(whole) ? whole : this.Unformed();
     }
 
     // A Type with its binder's slots, lengths and pair Origins and the images of its Origin binder's declared slots and per-call atoms
@@ -279,7 +276,7 @@ public sealed partial class Binding
                 return this.SubstituteFamilyArgument(type, substitution, slot, selection);
             }
 
-            if (selection.Kind != BoundTypeKind.Parameter && selection.Semantics != SemanticsKind.Parameter)
+            if (!this.IsAbstractBinding(selection))
             {
                 return FamilyCase(type, selection.Semantics) is { } child ? this.SubstitutePart(child, substitution, query) : null;
             }
@@ -301,14 +298,7 @@ public sealed partial class Binding
             // SPEC 8.1.2: an original `s/T` denotes the pair's binding (TyCtxt.PairBinding), its projection `T` the direct target.
             var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole)
                 : type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } ? this.types.PairBinding(whole) : whole;
-            if (type.Origin is { } replacement && (IsBorrow(projected.Semantics) || projected.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation))
-            {
-                // SPEC 8.1.2: the annotation binds the outer-Origin slot of a borrow binding; a value binding keeps no slot,
-                // and an abstract binding keeps it conditional.
-                projected = this.WithOrigins(projected, this.SubstituteSlotOrigin(replacement, substitution), (BoundOrigin[])projected.OriginArguments);
-            }
-
-            return projected;
+            return projected is not null && type.Origin is { } replacement ? this.AnnotatedOriginal(projected, this.SubstituteSlotOrigin(replacement, substitution)) : projected;
         }
 
         // DECISIONS BU-60: the Type instance a closure's context holds is a part of the Closure Type.

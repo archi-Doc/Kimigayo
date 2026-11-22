@@ -1,7 +1,6 @@
 # The development toolchain's check (check-toolchain.ps1; Tatara B6b3): a valid root passes, and each malformed installation record,
-# changed hash, changed kernel32 generation record or definition, and missing file fails naming its cause. Each row checks a root of
-# its own: the toolchain's tools and DLLs hard-linked (read only, never written), installation.json and windows_x64 copied, so a row
-# changes only its copies.
+# changed hash and missing file fails naming its cause. Each row checks a root of its own: the toolchain's tools and DLLs hard-linked
+# (read only, never written) and installation.json copied, so a row changes only its copies. A root's windows_x64 is not read (B6b6).
 [CmdletBinding()]
 param([string] $ToolchainRoot = '')
 $ErrorActionPreference = 'Stop'
@@ -11,15 +10,12 @@ $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $check = Join-Path $PSScriptRoot 'check-toolchain.ps1'
 $work = Join-Path $repo "artifacts/verify/toolchain/$([guid]::NewGuid().ToString('N'))"
 $copy = Join-Path $work 'toolchain'
-New-Item -ItemType Directory -Path (Join-Path $copy 'windows_x64') -Force | Out-Null
+New-Item -ItemType Directory -Path $copy -Force | Out-Null
 try {
     foreach ($file in Get-ChildItem -LiteralPath $ToolchainRoot -File | Where-Object Extension -In '.exe', '.dll') {
         $null = New-Item -ItemType HardLink -Path (Join-Path $copy $file.Name) -Target $file.FullName
     }
     Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'installation.json') -Destination $copy
-    foreach ($name in @('kernel32.lib', 'kernel32.def', 'kernel32.json', 'kimi_backend_windows_x64_v1.lib')) {
-        Copy-Item -LiteralPath (Join-Path $ToolchainRoot "windows_x64/$name") -Destination (Join-Path $copy "windows_x64/$name")
-    }
     function Test-Row([string] $Name, [string] $ErrorText = '') {
         $failure = $null
         try { & $check -ToolchainRoot $copy *> (Join-Path $work "$Name.log") }
@@ -57,32 +53,17 @@ try {
     $changed.tatara.sha256 = '0' * 64
     $changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
     Test-Row 'tatara-hash' 'tatara.dll SHA-256 mismatch'
+    # A tool off profile.json's identity, though its record matches (llvm-dlltool's pin), fails naming the file and setup (C-452 R1).
+    Remove-Item -LiteralPath (Join-Path $copy 'llvm-dlltool.exe')
+    $null = New-Item -ItemType HardLink -Path (Join-Path $copy 'llvm-dlltool.exe') -Target (Join-Path $ToolchainRoot 'llvm-readobj.exe')
+    $changed = $installation | ConvertFrom-Json
+    $changed.tools.'llvm-dlltool' = Get-KimiSha256 (Join-Path $copy 'llvm-dlltool.exe')
+    $changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
+    Test-Row 'dlltool-pin' 'llvm-dlltool.exe. Run src/backend/windows-x64/setup.ps1'
     [IO.File]::WriteAllText($installationPath, $installation)
-    $kernelPath = Join-Path $copy 'windows_x64/kernel32.json'
-    $metadata = [IO.File]::ReadAllText($kernelPath)
-    foreach ($field in @('target', 'definitionSha256', 'generatorSha256', 'sha256')) {
-        $changed = $metadata | ConvertFrom-Json
-        $changed.$field = 'changed'
-        $changed | ConvertTo-Json | Set-Content -LiteralPath $kernelPath -Encoding utf8
-        Test-Row "kernel-$field" 'kernel32 generation conditions'
-    }
-    [IO.File]::WriteAllText($kernelPath, $metadata)
-    Add-Content -LiteralPath (Join-Path $copy 'windows_x64/kernel32.def') -Value 'Changed'
-    Test-Row 'definition' 'kernel32 definition SHA-256 mismatch'
-    Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'windows_x64/kernel32.def') -Destination (Join-Path $copy 'windows_x64/kernel32.def') -Force
-    [IO.File]::WriteAllText((Join-Path $copy 'windows_x64/kimi_backend_windows_x64_v1.lib'), 'changed')
-    Test-Row 'backend' 'Adopted backend SHA-256 mismatch'
-    Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib') -Destination (Join-Path $copy 'windows_x64/kimi_backend_windows_x64_v1.lib') -Force
-    # A kernel32.lib its kernel32.json agrees with, but not the catalog's kernel32.sha256 (the adopted bytes).
-    $kernelLibrary = Join-Path $copy 'windows_x64/kernel32.lib'
-    [IO.File]::WriteAllText($kernelLibrary, 'changed')
-    $changed = $metadata | ConvertFrom-Json
-    $changed.sha256 = (Get-FileHash -LiteralPath $kernelLibrary -Algorithm SHA256).Hash.ToLowerInvariant()
-    $changed | ConvertTo-Json | Set-Content -LiteralPath $kernelPath -Encoding utf8
-    Test-Row 'kernel-catalog' 'Adopted kernel32 SHA-256 mismatch'
-    [IO.File]::WriteAllText($kernelPath, $metadata)
-    Remove-Item -LiteralPath $kernelLibrary
-    Test-Row 'missing-kernel' 'setup.ps1'
+    # A missing tool is a missing file, whose remedy is setup.
+    Remove-Item -LiteralPath (Join-Path $copy 'llvm-objdump.exe')
+    Test-Row 'missing-tool' 'setup.ps1'
 }
 finally { Remove-Item -LiteralPath $copy -Recurse -Force }
 Write-Output "Toolchain verification tests passed: $work"

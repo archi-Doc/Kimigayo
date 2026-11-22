@@ -2020,7 +2020,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
-    // PLAN G1073 (SPEC 23.1.2; D3): an EndBorrow ends the Loans a reference local holds. An Index over a receiver Binding rested (a use of
+    // PLAN G1073 (SPEC 23.1.2; BU-240): an EndBorrow ends the Loans a reference local holds. An Index over a receiver Binding rested (a use of
     // a failed getter, D-823) lends the receiver's Opaque temp of no Type through a stand-in of no Type, which holds none and agrees with a
     // reference: no finding (fail-before: EndBorrowLocal, InternalInvariant_Kd at the Index); the stand-in typed as no reference is one.
     [Theory]

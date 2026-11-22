@@ -9,7 +9,8 @@
 // (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
 // operator-domain facts (Operates, the operator table's domain, which the Backend's operator columns read too), and the pairing of the
 // arithmetic Contracts with MIR's operators (ArithmeticOperations, read by Contract through ArithmeticOperation).
-// Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
+// Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk
+// (in which a fixed array of constant length 0 has no part: SPEC 4.1, it destroys nothing).
 // The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
 // (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Their answers at a verdict are one value, MirOutcome, combined only by
 // its Join: decided outranks Limit, Limit outranks Deep, Deep outranks none. A decided answer is the verdict whatever an unknown part is

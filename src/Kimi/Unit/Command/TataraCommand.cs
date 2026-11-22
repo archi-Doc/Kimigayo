@@ -44,7 +44,7 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
 
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(kimigayo, async () =>
+        Environment.ExitCode = await CommandExecution.Execute(kimigayo, args, async () =>
         {
             if (args.Length != 0)
             {

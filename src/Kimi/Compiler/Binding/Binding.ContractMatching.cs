@@ -631,7 +631,7 @@ public sealed partial class Binding
             witness.RequirementReceiver = requirement.BoundSymbol!.ReceiverIndex is var receiverIndex && receiverIndex >= 0 ? this.ContractType(requirement.Parameters[receiverIndex].Type.BoundType!, premises, self) : null;
             witness.ImplementationReceiver = implementation.BoundSymbol!.ReceiverIndex is var implementationIndex && implementationIndex >= 0 ? this.CallType(implementation.Parameters[implementationIndex].Type.BoundType!, implementation, arguments, premises, null, origins, inputs, selection.DeclaringType) : null;
             witness.SetOrigins(origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, InputOriginCount(implementation)));
-            witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
+            witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? this.ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
             if (witness.ObjectCompatibility == ConstraintProof.Unknown)
             {
                 conformance.Unsupported = true; // SPEC 12.7: OCC-X (UnsupportedProof).
@@ -695,8 +695,20 @@ public sealed partial class Binding
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication)
         {
-            // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow, so s/U is matched only once s is inferred and
-            // the application is formed (FormedApplication); an unformed application binds nothing.
+            // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow, so s/U is matched only formed (FormedApplication forms every
+            // application whose s is known, at every depth, and an input still holding an open one is not matched yet). A formed
+            // application, of a caller's or another fixed pair, meets the actual's layer of that pair (LayerTarget, as Infer), whose
+            // outer slot and target it matches; it binds nothing otherwise.
+            if (LayerTarget(pattern, actual) is { } target)
+            {
+                if (pattern.Origin is { } slot && actual.Origin is { } supplied)
+                {
+                    this.MatchInputOrigin(slot, supplied, binder, origins, inputs, known);
+                }
+
+                this.MatchInputOrigins(pattern.Components[0], target, binder, origins, inputs, known);
+            }
+
             return;
         }
 
