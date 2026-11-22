@@ -443,7 +443,6 @@ Every Abort cause of [§17.4.1](17-failure-handling.md#1741-causes) and of the K
 | `KIMI_E_ALLOC_SIZE: Allocation size exceeds limit` | A requested size overflows or exceeds the maximum object size |
 | `KIMI_E_ALLOC: Failed to allocate memory` | The allocator returns no memory |
 | `KIMI_E_FREE: Failed to free memory` | A detected release failure |
-| `KIMI_E_PROCESS_HEAP: Failed to obtain process heap` | The runtime heap is unavailable |
 | `KIMI_E_STDOUT: Failed to write to stdout` | Standard output fails |
 | `KIMI_E_STRING_RELEASE: Invalid string release kind` | A detected invalid string representation during destruction (detection not guaranteed) |
 | `KIMI_E_CLOCK: Elapsed-time counter failed` | The elapsed-time counter fails, reports a nonpositive frequency or goes backward |
