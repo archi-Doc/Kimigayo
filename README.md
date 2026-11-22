@@ -206,22 +206,16 @@ toolchain/
   llvm-objdump.exe
   tatara.dll
   installation.json
-  windows_x64/
-    kimi_backend_windows_x64_v1.lib
-    kernel32.def
-    kernel32.lib
-    kernel32.json
 ```
 
 Setup and `check-toolchain.ps1` use the complete tool set above. A build reads no toolchain root and runs no LLVM tool: it runs
 Tatara, which the compiler carries (a build of Kimi copies the repository's `toolchain/tatara.dll` beside `Kimi.dll`, so set up the
 toolchain first and build Kimi again after setup changes `tatara.dll`), and the compiler carries the adopted `kernel32.lib` and
-backend archive and stages them as it stages a program's library. `windows_x64/` is still installed for the native fixtures and `check-toolchain.ps1` (until Tatara B6b6). No Windows SDK or extra Clang headers are
-required to build Kimi applications. The backend archive, the installed `kernel32.lib` and `llvm-dlltool.exe` must match the
-hashes in `profile.json`.
+backend archive and stages them as it stages a program's library; the scripts read those committed files too. No Windows SDK or
+extra Clang headers are required to build Kimi applications. `llvm-dlltool.exe` must match the hash in `profile.json`.
 
 From the repository root, with the LLVM 22.1.8 release archive (`clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz`) extracted,
-copy its tools, build, test, and install the backend library, and build and install `tatara.dll` with:
+copy its tools, build and test the backend library, and build and install `tatara.dll` with:
 
 ```powershell
 ./src/backend/windows-x64/setup.ps1 -LlvmRoot 'C:/path/to/clang+llvm-22.1.8-x86_64-pc-windows-msvc'
@@ -231,8 +225,8 @@ Setup builds `tatara.dll` from the archive's `lib` and `include`, so it also nee
 and the DIA SDK that Visual Studio installs ([src/Tatara](src/Tatara/README.md)). It writes no file whose installed copy already has
 the same SHA-256, so an unchanged rerun writes nothing.
 
-To rebuild the native library later, run `./src/backend/windows-x64/build.ps1`.
-Setup also installs `windows_x64/kernel32.lib` and its generation metadata, and fails unless both libraries reproduce the committed ones (`src/backend/windows-x64/`, pinned by `profile.json`). Ordinary builds do not read them. `kimi toolchain verify` checks what the compiler carries; `./src/backend/windows-x64/check-toolchain.ps1` checks a development toolchain root (setup runs it last).
+To rebuild and check the backend's candidates later, run `./src/backend/windows-x64/build.ps1`.
+Setup installs no library: it fails unless the backend archive and `kernel32.lib` it builds reproduce the committed ones (`src/backend/windows-x64/`, pinned by `profile.json`), and an existing root's `windows_x64/` is left in place and read by nothing. `kimi toolchain verify` checks what the compiler carries; `./src/backend/windows-x64/check-toolchain.ps1` checks a development toolchain root (setup runs it last).
 
 Building the C# compiler itself (`dotnet build`) does not require this LLVM toolchain; without `toolchain/tatara.dll` the compiler's
 native builds fail and name setup.
