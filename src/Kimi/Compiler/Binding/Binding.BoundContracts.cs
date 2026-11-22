@@ -17,7 +17,7 @@ namespace Kimi.Compiler;
 //   Type substitution, a compiler-made reference of a library Contract (arithmetic operators), and readers of a formed reference
 //   (ContractReferenceOf).
 // - Prohibitions: no other member forms a Contract's Constructed Type from Type-argument syntax. The path reads no subject, substitutes
-//   nothing and answers no declaration query; queries by declaration (SatisfiesDeclaration, ConformanceByDeclaration, IsRefinement over a
+//   nothing and answers no declaration query; queries by declaration (SatisfiesDeclaration, SelectConformance, IsRefinement over a
 //   library Contract) take symbols the compiler holds, never a written Contract.
 public sealed partial class Binding
 {

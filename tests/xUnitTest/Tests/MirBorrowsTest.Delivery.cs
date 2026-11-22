@@ -223,7 +223,7 @@ public sealed partial class MirBorrowsTest
 
     // DIAGNOSTICS (A6 facts, DECISIONS R4-M156): the delivery's record has the Field borrow as its Anchor and no witness, since the
     // delivered value's next use is the caller's; a Refuted Field borrow stored where the body does not own is the derived conflict (its
-    // Cause fact). R7-O1 H: Binding judges no body relation, so a store whose Field borrow is Refuted (Assigned) is built too: its conflict
+    // Cause fact), whose Store is E's store, keepCel's call (Z18b). R7-O1 H: Binding judges no body relation, so a store whose Field borrow is Refuted (Assigned) is built too: its conflict
     // is derived from that relation, listed on the MIR side with its Cause, one published record (F-H-9's class; it was an Opaque).
     [Fact]
     public void TheDeliveryRecordCarriesItsAnchor()
@@ -249,7 +249,10 @@ public sealed partial class MirBorrowsTest
                 .Select(f => $"{f.Kind} {Line(c, f.Site)}")))
             .ToArray();
         Assert.Equal(
-            ["self.u = o: Anchor self.u@follow@ref", "self.cel = Cel.init(): Anchor self.cel@ref, Store self.cel = Cel.init(), Cause self.cel@ref"],
+            [
+                "self.u = o: Anchor self.u@follow@ref",
+                "self.cel = Cel.init(): Anchor self.cel@ref, Store Del.keepCel(out, self.cel@ref), Cause self.cel@ref",
+            ],
             found);
         var assigned = MirBuildTest.Compile(Prelude + RawShapes + OwnStepShapes + AnchorShapes + DeliveryShapes + """
             struct Assigned {a}

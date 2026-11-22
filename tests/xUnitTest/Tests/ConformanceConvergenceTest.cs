@@ -983,13 +983,13 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData(InlineCycleDirect, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughOption, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleWithAValue, "Application", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
-    [InlineData(InlineCycleInferred, "Library", "3*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
-    [InlineData(InlineCycleInTupleAndArray, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInferred, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInTupleAndArray, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughTwoTypes, "Library", "2*InvalidConstraint_Kd 2*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughAnotherContract, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleGrowing, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
-    [InlineData(InlineCycleInferredWithAValue, "Library", "4*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
-    [InlineData(InlineCycleWrittenWithAMethod, "Library", "4*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInferredWithAValue, "Library", "3*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleWrittenWithAMethod, "Library", "3*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     public void ABindingOnlyInlineCycleIsItsBindingsError(string source, string outputKind, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source, outputKind));
 

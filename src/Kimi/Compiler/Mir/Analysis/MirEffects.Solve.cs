@@ -250,7 +250,7 @@ internal sealed partial class MirEffects
             {
                 var atom = this.atoms[a];
                 // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
-                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
+                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, past Binding's storage bound: Deep (Process).
                 var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
                 this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Call);
             }
@@ -259,7 +259,8 @@ internal sealed partial class MirEffects
 
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
     // (Require), or a call through a Callable value (SPEC 8.11.4): a Closure's or a function item's body entered through its substitution,
-    // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises.
+    // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises. Binding proves no other Type
+    // Callable (SPEC 8.10) and acquires a value call's callee to one of these (TryCallable, AcquireValueCallee): any other is Unsited.
     private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null)
     {
         if (type is not null && kind == Requires)
@@ -271,7 +272,7 @@ internal sealed partial class MirEffects
         if (type is null || kind == Drop)
         {
             var glue = new Glue(this);
-            this.found |= type is null ? Limit : (byte)0;
+            this.found |= type is null ? Deep : (byte)0; // An instance past Binding's storage bound (R4-M153), as A5 reads retention's.
             MirTypes.Destruction(types, type, ref glue);
             return;
         }
@@ -307,16 +308,20 @@ internal sealed partial class MirEffects
 
                 this.Enter(this.program.Callee(new(MirCalleeKind.Fn, function)), item, function); // Its declaration (SPEC 15.6.4, Local).
                 break;
+            case BoundTypeKind.Function: // SPEC 8.11.4: a common Function Type has no evidence (erasure keeps no bound).
+                this.found |= Unknown;
+                break;
             default:
-                this.found |= type.Kind == BoundTypeKind.Function ? Unknown : Limit;
+                this.found |= this.Unsited(
+                    $"A call through `{TyCtxt.Name(type)}`: every Callable A4 calls through is a Closure, a function item, a Function value or abstract");
                 break;
         }
     }
 
     // A body a part's destruction or a call enters, composed in the views its substitution selects; a published operation's row instead
     // (SPEC 4.9.6); a function without a body is what Binding classifies, and one it does not classify a broken contract, unreachable by
-    // any program (Local records the one at a call, Broken; the solve's throws, DECISIONS BU-102's form) in a complete compilation, and in an
-    // incomplete one a dependent of Binding's records (Derived; R5-M183: a Closure in a declaration Binding rejected has no body).
+    // any program (Local records the one at a call, Broken; the solve's, Unsited) in a complete compilation, and in an incomplete one a
+    // dependent of Binding's records (Derived; R5-M183: a Closure in a declaration Binding rejected has no body).
     private void Enter(MirBody? body, Subst? subst, BindingSymbol symbol)
     {
         if (types.Published(symbol) is { } row)
@@ -343,14 +348,19 @@ internal sealed partial class MirEffects
 
         if (body is null)
         {
-            this.found |= Class(symbol) ?? (types.BindingComplete ? throw new InvalidOperationException(
-                $"`{symbol}` has no MIR body and no Bodyless category in a complete compilation: every callee A4 enters has one or the other (InternalInvariant).")
-                : Derived);
+            this.found |= Class(symbol) ?? this.Unsited(
+                $"`{symbol}` has no MIR body and no Bodyless category in a complete compilation: every callee A4 enters has one or the other");
             return;
         }
 
         this.Compose(body.Ordinal, this.Views(body, subst), subst);
     }
+
+    // A broken contract the solve meets, with no site to record it at (the class header's second form; DECISIONS R7-M57, BU-102): a throw in
+    // a complete compilation (TyCtxt.BindingComplete), the check ending as CheckFaulted_Kd; in an incomplete one Derived, resting on Binding's
+    // records.
+    private byte Unsited(string contract)
+        => types.BindingComplete ? throw new InvalidOperationException($"{contract} (InternalInvariant).") : Derived;
 
     // SPEC 4.9.6, 8.11.3: a published requirement on a Type under the Contract reference its call recorded. An abstract Type has no
     // implementation: the requirement is nothing where the definition's premises declare it confined, else the summary's atom, composed at

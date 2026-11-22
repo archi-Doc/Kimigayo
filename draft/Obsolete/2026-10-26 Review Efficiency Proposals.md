@@ -1,6 +1,6 @@
 # Review Efficiency Proposals (WORKFLOW, DECISIONS Q10)
 
-Status: proposal (the owner asked on 2026-10-26 for it to be placed here). Author: the R5 planning session. Scope: `docs/dev/WORKFLOW.md`
+Status: 完了 (closed 2026-11-22, withdrawn by the owner; nothing integrated; INTEGRATED 2026-11-22). Author: the R5 planning session. Scope: `docs/dev/WORKFLOW.md`
 "Review", "Repeated reviews" and the documentation exemption; `docs/dev/VERIFICATION.md`'s checks (proposal 3); PLAN's open-issue rows
 (proposal 4). Nothing here is adopted until the owner revises WORKFLOW.
 
