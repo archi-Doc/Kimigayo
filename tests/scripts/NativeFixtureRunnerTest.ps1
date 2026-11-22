@@ -151,9 +151,9 @@ New-Fixture $mixed 'returned-divergence'
 New-Fixture $mixed 'nul-output' -stdout "日`0`n"
 New-Fixture $mixed 'normalized-error' -source ($ir.Replace('\E6\97\A5', 'e\CC\81')) -stdout "e$([char]0x301)`n" -stderr "$([char]0xE9)`n"
 New-Fixture $mixed 'bom-output' -stdout "$([char]0xFEFF)日`n"
-# A dependency no supply provides (Sleep is no kernel32 import of the profile): the build's object inspection rejects it.
-New-Fixture $mixed 'forbidden-dependency' -source ($ir.Replace('declare dllimport void @ExitProcess(i32) noreturn', "declare dllimport void @ExitProcess(i32) noreturn`ndeclare dllimport void @Sleep(i32)").
-    Replace('  call void @ExitProcess(i32 7)', "  call void @Sleep(i32 0)`n  call void @ExitProcess(i32 7)"))
+# A kernel32 import referenced in another form than its declaration (ExitProcess without dllimport): it links through kernel32.lib's
+# thunk, so only the build's object inspection rejects it.
+New-Fixture $mixed 'forbidden-dependency' -source ($ir.Replace('declare dllimport void @ExitProcess', 'declare void @ExitProcess'))
 $records = Invoke-Case 'mixed-failures' (Join-Path $mixed '*.ll') 4 -expected $false -count 13 -deadline 30000
 if (@($records | Where-Object status -CEQ 'passed').Count -ne 1 -or ($records | Where-Object fixture -eq 'valid.ll').status -cne 'passed') {
     throw 'Failures were lost or affected an independent fixture.'
@@ -172,20 +172,43 @@ $sample = $invalid.executions[0].result
 if ($sample.violations.Count -ne 2 -or @($sample.violations | Where-Object kind -CNE 'invalidUtf8').Count -ne 0 -or
     $sample.problems.Count -ne 0 -or $null -ne $sample.unrecoveredProcessId) { throw 'Invalid UTF-8 capture/recovery facts were lost.' }
 $badIr = $records | Where-Object fixture -CEQ 'bad-ir.ll'
-if ($badIr.status -cne 'failed' -or $badIr.builds[0].status -ceq 'linked') { throw 'An observed LLVM failure became incomplete.' }
+if ($badIr.status -cne 'failed' -or $badIr.builds[0].recordStatus -ceq 'linked') { throw 'An observed LLVM failure became incomplete.' }
 $unverified = $records | Where-Object fixture -CEQ 'unverified-ir.ll'
-if ($unverified.status -cne 'failed' -or $unverified.builds.Count -ne 1 -or $unverified.builds[0].status -ceq 'linked' -or
+if ($unverified.status -cne 'failed' -or $unverified.builds.Count -ne 1 -or $unverified.builds[0].recordStatus -ceq 'linked' -or
     $unverified.executions.Count -ne 0) { throw 'IR that fails only the verifier was not rejected by its first build.' }
 $dependency = $records | Where-Object fixture -CEQ 'forbidden-dependency.ll'
-if ($dependency.status -cne 'failed' -or $dependency.builds[0].status -ceq 'linked' -or $dependency.problems.Count -ne 0) {
-    throw 'A forbidden dependency was linked or became an incomplete observation.'
+if ($dependency.status -cne 'failed' -or $dependency.builds[0].recordStatus -ceq 'linked' -or $dependency.problems.Count -ne 0 -or
+    -not (Select-String -LiteralPath $dependency.builds[0].log -SimpleMatch 'Unsupported actual object dependency: ExitProcess U')) {
+    throw 'A forbidden dependency was linked, failed otherwise or became an incomplete observation.'
 }
 $missingInput = $records | Where-Object fixture -CEQ 'missing-sidecar.ll'
 if ($missingInput.status -cne 'incomplete' -or $missingInput.problems.Count -ne 1 -or
     $missingInput.problems[0].operation -cne 'fixture.input') { throw 'Missing input lost its owning operation.' }
-$divergent = Join-Path $work 'divergent' 
-# Its call before the loop gives __kimi_start a frame and so the unwind information a native build requires.
-New-Fixture $divergent 'loop' -source "target triple = `"x86_64-pc-windows-msvc`"`n@_fltused = global i32 0`ndeclare dllimport ptr @GetStdHandle(i32)`ndefine void @__kimi_start() noreturn uwtable {`nentry:`n  %out = call ptr @GetStdHandle(i32 -11)`n  br label %loop`nloop:`n  br label %loop`n}`n" -stdout '' -stderr '' -exitCode 0
+# A build that ends its session (an LLVM fatal error: x86 cannot select an AArch64 intrinsic, its result kept at O2) dealt ahead of
+# another fixture in one lane: the lines after it go to a later round's session, where the other fixture is built and passes.
+$rounds = Join-Path $work 'fatal'
+New-Fixture $rounds 'cannot-select' -source @'
+target triple = "x86_64-pc-windows-msvc"
+@_fltused = global i32 0
+@v = global <4 x i32> zeroinitializer
+declare <4 x i32> @llvm.aarch64.neon.abs.v4i32(<4 x i32>)
+declare dllimport void @ExitProcess(i32) noreturn
+define void @__kimi_start() noreturn uwtable {
+  %x = load volatile <4 x i32>, ptr @v
+  %y = call <4 x i32> @llvm.aarch64.neon.abs.v4i32(<4 x i32> %x)
+  store volatile <4 x i32> %y, ptr @v
+  call void @ExitProcess(i32 7)
+  unreachable
+}
+'@
+New-Fixture $rounds 'valid'
+$records = Invoke-Case 'rounds' (Join-Path $rounds '*.ll') 1 -expected $false -count 2 -deadline 30000
+$fatal = $records | Where-Object fixture -CEQ 'cannot-select.ll'
+$later = $records | Where-Object fixture -CEQ 'valid.ll'
+if ($fatal.status -cne 'failed' -or $fatal.builds[0].log -cnotmatch 'session-0\.log$' -or $later.status -cne 'passed' -or
+    @($later.builds | Where-Object log -CMatch 'session-0\.log$').Count -ne 0) { throw 'A session ended by its build lost the next round.' }
+$divergent = Join-Path $work 'divergent'
+New-Fixture $divergent 'loop' -source "target triple = `"x86_64-pc-windows-msvc`"`n@_fltused = global i32 0`ndefine void @__kimi_start() noreturn uwtable {`nentry:`n  br label %loop`nloop:`n  br label %loop`n}`n" -stdout '' -stderr '' -exitCode 0
 [IO.File]::WriteAllText((Join-Path $divergent 'loop.observation'), '100', $utf8)
 $records = Invoke-Case 'divergence' (Join-Path $divergent '*.ll') 2 -expected $true -count 1 -deadline 30000
 foreach ($execution in $records[0].executions) {
@@ -251,8 +274,14 @@ if ($unattempted.status -cne 'incomplete' -or $unattempted.problems[0].operation
 }
 $results.Add(@{ name = 'unattempted'; passed = $true; records = @($unattempted) })
 
-# A non-ASCII output folder: the sessions' UTF-8 lines and the pairs' records name the pairs exactly.
-$null = Invoke-Case "path-$([char]0x51FA)$([char]0x529B)" (Join-Path $valid '*.ll') 2 -expected $true -count 2 -deadline 30000
+# A non-ASCII output folder under a console input code page that is not UTF-8 (932, which a redirected input otherwise takes): the
+# sessions' UTF-8 lines and the pairs' records name the pairs exactly.
+$savedInput = [Console]::InputEncoding
+try {
+    [Console]::InputEncoding = [Text.Encoding]::GetEncoding(932)
+    $null = Invoke-Case "path-$([char]0x51FA)$([char]0x529B)" (Join-Path $valid '*.ll') 2 -expected $true -count 2 -deadline 30000
+}
+finally { [Console]::InputEncoding = $savedInput }
 
 # An unwritable log destination aborts the step instead of publishing a failed fixture.
 $context.logs = Join-Path $work 'evidence-file'
@@ -329,5 +358,5 @@ try { & $runner -Configuration $Configuration -FixtureDirectory $empty -FixtureP
 catch { $caught = $true; $_ | Out-String | Add-Content (Join-Path $evidence 'empty.log') }
 if (-not $caught) { throw 'An empty selection must fail.' }
 $results | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $evidence 'summary.json')
-Write-Output ("PASS native runner: serial/parallel UTF-8, exits, mixed failures, forbidden dependency, unattempted and lost builds, " +
+Write-Output ("PASS native runner: serial/parallel UTF-8, exits, mixed failures, forbidden dependency, unattempted and lost builds, rounds, " +
     "non-ASCII paths, result reuse, CPU observation, delayed/insufficient execution, broad patterns and sidecar-only rejection; $evidence")

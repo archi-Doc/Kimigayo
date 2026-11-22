@@ -1,6 +1,6 @@
 # One fixture owns its optimization-level results: each level's build, read from its pair's record (test-scalars.ps1's kimi tatara
 # sessions built them), and its executable's run; workers share only the run context. A build whose record is not linked is a failure,
-# as a failed native build is (its text is in the session's log); a missing input, a pair with no record (its line was not attempted)
+# whatever stopped it (its text is in the session's log); a missing input, a pair with no record (its line was not attempted)
 # or missing evidence is incomplete verification. Process outcomes are already classified by their owner; this worker never interprets
 # exception messages.
 [CmdletBinding()]
@@ -33,7 +33,7 @@ try {
                 return
             }
             $record = Get-Content -LiteralPath $build.record -Raw | ConvertFrom-Json
-            $result.builds.Add([pscustomobject]@{ level = $build.level; manifest = $build.manifest; status = $record.status; log = $build.log })
+            $result.builds.Add([pscustomobject]@{ level = $build.level; manifest = $build.manifest; recordStatus = $record.status; log = $build.log })
             "build $($build.level): $($record.status); $($build.manifest); session log $($build.log)"
             if ($record.status -cne 'linked') { return }
             $target = Join-Path (Split-Path -Parent $build.record) ([IO.Path]::GetFileNameWithoutExtension($record.executable))
@@ -53,7 +53,7 @@ catch {
     $_ | Out-String | Add-Content -LiteralPath $log
 }
 $incomplete = $result.problems.Count -gt 0 -or @($result.executions | Where-Object { $_.result.status -ceq 'incomplete' }).Count -gt 0
-$failed = @($result.builds | Where-Object status -CNE 'linked').Count -gt 0 -or
+$failed = @($result.builds | Where-Object recordStatus -CNE 'linked').Count -gt 0 -or
     @($result.executions | Where-Object { $_.result.status -ceq 'failed' }).Count -gt 0
 $result.status = if ($incomplete) { 'incomplete' } elseif ($failed) { 'failed' }
 elseif (($result.levels -join ',') -ceq 'O0,O2') { 'passed' } else { 'incomplete' }
