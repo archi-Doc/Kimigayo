@@ -332,7 +332,8 @@ public sealed partial class Binding
     {
         for (var b = start; b < end; b++)
         {
-            foreach (var path in this.inferenceComponents[b].Paths)
+            var batch = this.inferenceComponents[b];
+            foreach (var path in batch.Paths)
             {
                 if (path.InheritedFrom is not null)
                 {
