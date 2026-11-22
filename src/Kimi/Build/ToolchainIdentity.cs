@@ -2,7 +2,7 @@
 
 // Owns the native-toolchain identity of the windows-x64 profile, read from the compiler's embedded backend record (profile.json, the
 // resource Kimi.WindowsBackendProfile.json; DECISIONS R5-M165, R5-M174): the pinned LLVM release, the backend archive's package id, ABI
-// version, version, SHA-256 and file name, the kernel32 definition and library hashes, the backend supply (Backend: the profile's
+// version, version and SHA-256, the kernel32 definition and library hashes, the backend supply (Backend: the profile's
 // reserved supply the record's library names), and the compiler's supplies (IMPL 20.4's reserved supplies): one row per supply of the
 // target profile (WindowsProfile.Supplies: its name, kind and symbols), with the manifest fields that identify it and its bytes, which
 // the compiler carries as an embedded resource (Kimi.Kernel32.lib, Kimi.WindowsBackend.lib, committed beside the catalog) whose SHA-256
@@ -22,8 +22,6 @@ namespace Kimi.Build;
 /// <summary>The pinned native-toolchain identity of the windows-x64 profile, from the compiler's embedded backend record.</summary>
 public static class ToolchainIdentity
 {
-    public const string BackendFile = "kimi_backend_windows_x64_v1.lib";
-
     // Backend supply identity (SPEC 21.4.7).
     internal const string BackendPackageId = "kimi-backend-windows-x64";
     internal const int BackendAbiVersion = 2;

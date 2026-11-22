@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'kernel32.ps1')
 . (Join-Path $PSScriptRoot 'expected-output.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
@@ -196,8 +197,7 @@ define void @entry() noreturn {
 '@ | Set-Content -LiteralPath $exitIr -Encoding utf8
 & (Join-Path $LlvmBin 'llc.exe') -filetype=obj $exitIr -o "$exitIr.obj"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture object generation failed' }
-$kernel32 = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
-& (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" $kernel32 /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
+& (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" (Get-KimiKernel32) /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture link failed' }
 $output = Invoke-Kimi @('run', "$exitIr.exe") 37
 $output = Invoke-Kimi @('run', (Join-Path $work 'missing.exe')) 1

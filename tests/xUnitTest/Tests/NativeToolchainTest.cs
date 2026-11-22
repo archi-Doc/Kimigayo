@@ -64,7 +64,7 @@ public sealed class NativeToolchainTest : IDisposable
                 "kimi_backend " + catalog.RootElement.GetProperty("artifactSha256").GetString(),
             ],
             ToolchainIdentity.Supplies.Select(static x => x.Supply.Name + " " + x.Sha256));
-        foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", ToolchainIdentity.BackendFile }))
+        foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", "kimi_backend_windows_x64_v1.lib" }))
         {
             using var stream = supply.Open();
             using var bytes = new MemoryStream();
