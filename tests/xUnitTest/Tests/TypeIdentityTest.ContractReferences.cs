@@ -34,6 +34,8 @@ public partial class TypeIdentityTest
 
     private const string Base = "contract Base\n    func size(self: ref/Self) -> i32\ncontract Sub: Base\nfunc use<X>(x: ref/X) -> i32\n    X is Base\n    return x.size()\n";
 
+    private const string Nest = "struct Outer<A>\n    public struct Inner\n        public init() => ()\n";
+
     private const string Key = "struct Name\n    Self is Copy\n    public let id: isize\n    public init(id: isize) => self.id = id\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -144,13 +146,27 @@ public partial class TypeIdentityTest
     // SPEC 8.2.3 Premise errors and Cycles: a Type identical with a proper part of itself is InvalidConstraint_Kd (tests/diagnostics/spec-cases.json,
     // 8.2.3-identity-premises) where the premises meet, at a Contract for what its Constraints alone cause and never again at uses. `T is U` with `U is
     // T` identifies them, and a projection is no proper part.
-    [InlineData("C3", "cyclic", "func cyclic<T, U>(value: T) -> i32\n    T is Option<U>\n    U is Option<T>\n    return 0\n", "InvalidConstraint_Kd: U is Option<T>", Explicit = true)]
+    [InlineData("C3", "cyclic", "func cyclic<T, U>(value: T) -> i32\n    T is Option<U>\n    U is Option<T>\n    return 0\n", "InvalidConstraint_Kd: U is Option<T>")]
     [InlineData("guard", "cyc-swap", "func same<T, U>(value: T) -> U\n    T is U\n    U is T\n    return value@move\n", "")]
-    [InlineData("C3", "cyc-self", "func f<T>(value: T) -> i32\n    T is Option<T>\n    return 0\n", "InvalidConstraint_Kd: T is Option<T>", Explicit = true)]
+    [InlineData("C3", "cyc-self", "func f<T>(value: T) -> i32\n    T is Option<T>\n    return 0\n", "InvalidConstraint_Kd: T is Option<T>")]
     [InlineData("guard", "cyc-proj", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is T.(C).X\n    return 0\n", "")]
     [InlineData("guard", "cyc-part", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    return 0\n", "InvalidConstraint_Kd: T is Option<T.(C).X> | InvalidConstraint_Kd: func f<T>(value: T) -> i32")] // O-344 (a): Option declares no C
-    [InlineData("C3", "cyc-both", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    T.(C).X is T\n    return 0\n", "InvalidConstraint_Kd: T.(C).X is T", Explicit = true)]
-    [InlineData("C3", "cyc-contract", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "InvalidConstraint_Kd: Self.Y is Option<Self.X>", Explicit = true)]
+    [InlineData("C3", "cyc-both", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    T.(C).X is T\n    return 0\n", "InvalidConstraint_Kd: T.(C).X is T")]
+    [InlineData("C3", "cyc-contract", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "InvalidConstraint_Kd: Self.Y is Option<Self.X>")]
+    // R7-C3 C3d (PLAN G830, G797): one record per error group at the last own premise clause with a Type in it: a cycle through a nested
+    // Type's enclosing argument, at a Type declaration, through a supplied Constraint joined by the declaration's own premise, and the Proof
+    // row's cycle through an owner-admitting pair; each with its valid twin.
+    [InlineData("C3", "cyc-nest", Nest + "func f<T>(value: T) -> i32\n    T is Outer<T>.Inner\n    return 0\n", "InvalidConstraint_Kd: T is Outer<T>.Inner")]
+    [InlineData("C3", "cyc-nest-t", Nest + "func f<T>(value: T) -> i32\n    T is Outer<i32>.Inner\n    return 0\n", "")]
+    [InlineData("C3", "cyc-nest2", Nest + "func f<T, U>(value: T) -> i32\n    T is Outer<U>.Inner\n    U is Option<T>\n    return 0\n", "InvalidConstraint_Kd: U is Option<T>")]
+    [InlineData("C3", "cyc-type", "struct S<T, U>\n    T is Option<U>\n    U is Option<T>\n", "InvalidConstraint_Kd: U is Option<T>")]
+    [InlineData("C3", "cyc-type-t", "struct S<T, U>\n    T is Option<U>\n    U is Option<i32>\n", "")]
+    [InlineData("C3", "cyc-use", "func cyclic<T, U>(value: T) -> i32\n    T is Option<U>\n    U is Option<T>\n    let y: Option<U> = value@move\n    return 0\n", "InvalidConstraint_Kd: U is Option<T>")]
+    [InlineData("C3", "cyc-contract-t", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<i32>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "")]
+    [InlineData("C3", "cyc-supply", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\nfunc f<T>(value: T) -> i32\n    T is C\n    T.(C).Y is T.(C).X\n    return 0\n", "InvalidConstraint_Kd: T.(C).Y is T.(C).X")]
+    [InlineData("C3", "cyc-supply-t", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\nfunc f<T>(value: T) -> i32\n    T is C\n    T.(C).Y is i32\n    return 0\n", "")]
+    [InlineData("C3", "cyc-pair", "func f<s/A>(x: ref/A) -> ()\n    s is owner or ref\n    A is s/A\n    ()\n", "UnprovenConstraint_Kd: A is s/A")]
+    [InlineData("C3", "cyc-pair-t", "func f<s/A>(x: ref/A) -> ()\n    s is owner\n    A is s/A\n    ()\n", "")]
     public void ContractReferencesAreIdentifiedByTheirNormalizedForm(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
