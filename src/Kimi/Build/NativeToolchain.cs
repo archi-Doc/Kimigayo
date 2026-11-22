@@ -78,10 +78,12 @@ internal static partial class NativeToolchain
     // (Name.link.build.lock, opened without sharing and kept on disk), and then invalidates the record; the caller holds the lock until
     // the build ends. While another build holds it (IsSharingFailure), the build reports once that it waits and retries every 100 ms.
     // The token is read only in that wait, which it cancels before anything is written: a free lock is taken and the record invalidated
-    // under a cancelled token too. Any other failure is the output's. Every exception after the open closes the lock again, so no failed
-    // build leaves its output locked in a long-lived process. O0 and O2 share the record, so they share the lock. Its callers are the
-    // two hosts that begin a build of a record, Project.Build and BuildManifest (test builds into a directory of its own), which read
-    // nothing before it but the configuration.
+    // under a cancelled token too. Any other failure is the output's; a failed open or invalidation leaves the record as it was, so its
+    // exception says that the build could not begin and names the record, which keeps its last state (IMPL 20.3.2: the earlier success;
+    // PLAN G1205, O-491 (d)). Every exception after the open closes the lock again, so no failed build leaves its output locked in a
+    // long-lived process. O0 and O2 share the record, so they share the lock. Its callers are the two hosts that begin a build of a
+    // record, Project.Build and BuildManifest (test builds into a directory of its own), which read nothing before it but the
+    // configuration.
     internal static async Task<FileStream> Begin(string record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(record)!);
@@ -103,6 +105,10 @@ internal static partial class NativeToolchain
                     waiting = true;
                 }
             }
+            catch (Exception ex) when (IsOutputFailure(ex))
+            {
+                throw NotBegun(record, ex);
+            }
 
             await Task.Delay(100, cancellationToken);
         }
@@ -114,6 +120,10 @@ internal static partial class NativeToolchain
             begun = true;
             return output;
         }
+        catch (Exception ex) when (IsOutputFailure(ex))
+        {
+            throw NotBegun(record, ex);
+        }
         finally
         {
             if (!begun)
@@ -121,6 +131,9 @@ internal static partial class NativeToolchain
                 output.Dispose();
             }
         }
+
+        static IOException NotBegun(string record, Exception ex)
+            => new($"The build could not begin, so its record keeps its last state: {record}. {ex.Message}", ex);
     }
 
     // A checked Library's record, with the front end's metadata of its one target, which the project reads (a compiler step's read).

@@ -532,6 +532,43 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(1, this.console.Text.Split("Waiting for another build: ").Length - 1);
     }
 
+    // A build that cannot begin (NativeToolchain.Begin; PLAN G1205, O-491 (d)): after a successful v1, a v2 whose first invalidation
+    // cannot replace the record (read-only, or held without delete sharing) or whose lock cannot be opened (read-only) fails saying that
+    // the build could not begin and that its record, which it names, keeps its last state; the record is v1's success (IMPL 20.3.2: "the
+    // earlier success when the first invalidation fails"), so run --no-build runs v1's executable. On the installed toolchain.
+    [Theory]
+    [InlineData("record read-only")]
+    [InlineData("record held")]
+    [InlineData("lock read-only")]
+    public async Task ABuildThatCannotBeginNamesItsRecordWhichKeepsItsLastState(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, paths, v1) = await this.BuildHello();
+        var record = File.ReadAllText(paths.Record);
+        var file = row == "lock read-only" ? Path.ChangeExtension(paths.Record, ".lock") : paths.Record;
+        var project = this.Hello("Hi");
+        using var held = row == "record held" ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
+        if (held is null)
+        {
+            File.SetAttributes(file, FileAttributes.ReadOnly);
+        }
+
+        try
+        {
+            Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        }
+        finally
+        {
+            held?.Dispose();
+            File.SetAttributes(file, FileAttributes.Normal); // Before Dispose deletes the directory.
+        }
+
+        Assert.Contains($"The build could not begin, so its record keeps its last state: {paths.Record}. ", this.console.Text, StringComparison.Ordinal);
+        Assert.Equal(record, File.ReadAllText(paths.Record));
+        Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        Assert.Equal(0, await project.Run(TestContext.Current.CancellationToken));
+    }
+
     // A build waits only while another build holds its record's lock (NativeToolchain.Begin; C-433 B2, N6): after a build in this process
     // whose invalidation failed (its record's path a directory, an output failure: the lock was closed again), and while another
     // output's lock is held, Hello builds with no waiting line (a wait would fail the build at the console instead of hanging the row).
