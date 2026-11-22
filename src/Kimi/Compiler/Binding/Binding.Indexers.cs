@@ -76,9 +76,9 @@ public sealed partial class Binding
 
         bool exclusiveAvailable;
         BoundConformance? uniq = null;
-        if (core.Symbol is { Declaration: StructKoto or EnumKoto } owner)
+        if (core.Symbol is { Declaration: StructKoto or EnumKoto })
         {
-            var conformance = this.ConformanceByDeclaration(owner, indexable, out var ambiguous);
+            var conformance = this.SelectConformance(core, indexable, scope, out var ambiguous);
             if (conformance is null)
             {
                 if (!ambiguous)
@@ -99,7 +99,7 @@ public sealed partial class Binding
             }
             else
             {
-                uniq = this.Library.UniqIndexable is { } uniqIndexable ? this.ConformanceByDeclaration(owner, uniqIndexable, out _) : null;
+                uniq = this.Library.UniqIndexable is { } uniqIndexable ? this.SelectConformance(core, uniqIndexable, scope, out _) : null;
             }
 
             exclusiveAvailable = this.ConformsHere(core, uniq, scope);
@@ -169,33 +169,11 @@ public sealed partial class Binding
 
     // SPEC 4.7.1, 8.6.1: the one conformance of the receiver's declaration to a bound reference of `contract` that names the key's
     // reference (`contract` with the key's Type below its safe value-reference layers as its argument, LayersTerminal; the key parameter
-    // is ref/Key) for `core` in `scope` (NamesReference), or null for none or several.
+    // is ref/Key) for `core` in `scope` (SelectConformance), or null for none or several.
     private BoundConformance? ConformanceForKey(BoundType core, BindingSymbol contract, Koto keyNode, BindingScope scope)
-    {
-        if (KeyType(keyNode) is not { } written || core.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
-        {
-            return null;
-        }
-
-        var type = this.LayersTerminal(written, scope);
-        BoundConformance? found = null;
-        for (var i = 0; i < identities.Count; i++)
-        {
-            var identity = identities[i];
-            if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && identity.Contract.Type is { } formal &&
-                this.NamesReference(formal, core, this.types.Rebuild(formal, [type], null, []), scope))
-            {
-                if (found is not null)
-                {
-                    return null;
-                }
-
-                found = identity;
-            }
-        }
-
-        return found;
-    }
+        => KeyType(keyNode) is { } written
+            ? this.SelectConformance(core, contract, this.types.Rebuild(this.SelfType(contract), [this.LayersTerminal(written, scope)], null, []), scope, out _)
+            : null;
 
     // SPEC 8.3.3: a registered conformance supplies its requirements to this instance only when its conditions hold here;
     // a refuted or unproven condition supplies nothing, and the Type stays usable through its other conformances.

@@ -584,7 +584,7 @@ public sealed partial class Binding
             // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1): the check's selection.
             var name = DiagnosticTypeName(core);
             var registered = this.uniqIndexing.GetValueOrDefault(index).Conformance;
-            _ = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey);
+            _ = this.SelectConformance(core, uniqIndexable, owner.Scope, out var byKey); // by declaration: no scope read
             return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
                 byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
                 $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";

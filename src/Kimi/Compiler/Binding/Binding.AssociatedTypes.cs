@@ -33,8 +33,9 @@ public sealed partial class Binding
     }
 
     // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
-    // conformance of that reference or of a refinement of it, not to a sibling reference of the same declaration.
-    private bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
+    // conformance that reference selects at `type`'s Self in the clause's scope (SelectConformance; SPEC 8.5.1, 8.5.5: a qualifier is a
+    // direct conformance, normalized) or to a refinement of it, not to a sibling reference of the same declaration.
+    private bool SpecifiesContract(IsKoto clause, BindingSymbol type, BindingSymbol contract)
     {
         var head = AssociatedHead(clause);
         head = head is OriginApplicationKoto applied ? UnwrapTransparentType(applied.Type) : head;
@@ -43,7 +44,8 @@ public sealed partial class Binding
             return true;
         }
 
-        return ReferenceEquals(contract, reference) || contract.Contract?.Ancestors.Contains(reference) == true;
+        return this.SelectConformance(this.SelfType(type), reference, this.ConstraintScope(clause), out _) is { } selected &&
+            (ReferenceEquals(contract, selected.Contract) || contract.Contract?.Ancestors.Contains(selected.Contract) == true);
     }
 
     // The Type that `Self` denotes inside a declaration: a Contract's Self parameter, or the declared Type applied to its own
@@ -479,7 +481,7 @@ public sealed partial class Binding
                 return pending ? null : this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
 
-            if (!this.SelectorQualifies(owner, self, bound))
+            if (!this.SelectorQualifies(owner, self, bound, scope))
             {
                 return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
@@ -491,8 +493,9 @@ public sealed partial class Binding
         BindingSymbol? reference = null;
         var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause, out reference) : null;
         var ambiguous = false;
+        BoundConformance? selected = null;
         if (associated is null || (owner.Declaration is not ContractKoto &&
-            this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is null))
+            (selected = this.SelectConformance(self, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, scope, out ambiguous)) is null))
         {
             // SPEC 23.1.2: FindAssociated may have recorded the Name's ambiguity at this clause first (SPEC 8.5.2) and found nothing, which
             // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1).
@@ -505,7 +508,11 @@ public sealed partial class Binding
             return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
         }
 
-        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: parameters);
+        // SPEC 8.5.1, 8.5.5, 8.6.1: a bound reference names the conformance it selects, so the projection carries that conformance's
+        // reference (`Iter<S.(HasItem).Item>` for a written `Iter<i32>` under `S.(HasItem).Item is i32`), the requirement its paths have.
+        var named = reference ?? qualifier;
+        var contract = named is not null && IsBoundContractReference(named) && selected is not null ? selected.Contract : named;
+        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, contract)], originArguments: parameters);
         clause.BoundSymbol = associated;
         clause.Left.BoundSymbol = associated;
         name!.BoundSymbol = associated;
@@ -530,10 +537,10 @@ public sealed partial class Binding
     // SPEC 8.5.1 Qualification, 8.4.3: the Contract a selector names is a direct conformance or an ancestor of the owner. A Contract's
     // conformances are itself and its ancestors, and it is not its own ancestor, so it qualifies a proper ancestor; a struct's or an enum's
     // are the conformances it declares and their ancestors (8.6.2).
-    private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract)
+    private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract, BindingScope scope)
         => owner.Declaration is ContractKoto
             ? !ReferenceEquals(contract, owner) && IsRefinement(owner, contract)
-            : this.ConformanceByDeclaration(self.Symbol!, contract, out _) is not null;
+            : this.SelectConformance(self, contract, scope, out _) is not null;
 
     private void PrepareAssociatedBindings()
     {
@@ -576,7 +583,7 @@ public sealed partial class Binding
             var container = (DeclarationContainerKoto)path.Type.Declaration;
             for (var j = 0; j < container.Members.Count; j++)
             {
-                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.RootContract))
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.Type, path.RootContract))
                 {
                     Collect(constraint, path);
                 }
