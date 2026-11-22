@@ -8,10 +8,12 @@
 // (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE): at Dispose, and when this process ends, by TerminateProcess too (a second Ctrl+C). The host
 // rule of the programs Kimi runs: a Windows x64 host, as WindowsProfile's target (IMPL 20.3, 20.6.1).
 // Readers: Testing's TestProcess (a test case, IMPL 20.6.3) and Build's NativeToolchain.RunExecutable (run's program, IMPL 20.3).
-// Input: the executable, its working directory, its environment block (null: this process's), its standard input (an open handle of
-// this process, of which the child gets an inheritable duplicate, or null: none, whether a reader has one being the reader's decision)
-// and the handles it inherits besides (each inheritable). A child with no input gets a closed one, the one form of "no input": the read
-// end of an anonymous pipe whose write end closes before the start, so it reads end of input at once, never its hidden console's input.
+// Input: the executable, its working directory, its environment block (null: this process's), whether it shares this process's
+// standard input (the reader's decision: run's, Tatara decision 15; a test case's is closed, IMPL 20.6.3) and the handles it inherits
+// besides (each inheritable). A shared input is an inheritable duplicate of this process's own, read after the host check; when this
+// process has none (no handle, or a value that is no open handle of it) the child gets a closed one, as a child that does not share it
+// does: the one form of "no input", the read end of an anonymous pipe whose write end closes before the start, so it reads end of input
+// at once, never its hidden console's input.
 // Output: the child's standard output and error, each a pipe this process reads; its exit, the one awaitable of it (Exited: a task the
 // thread pool's registered wait on the process completes, so no thread blocks and nothing polls), and its exit code once it has exited;
 // whether the job's processes have all ended (IsRecovered). A failure is an exception naming the failed call, and for a start the
@@ -43,10 +45,11 @@ internal unsafe class JobProcess : IDisposable
     /// <param name="executable">The executable's full path.</param>
     /// <param name="directory">The working directory.</param>
     /// <param name="environment">The environment block, or null for this process's environment.</param>
-    /// <param name="input">The child's standard input, an open handle of this process, or null for none (a closed input).</param>
+    /// <param name="sharesInput">Whether the child shares this process's standard input (else, or when it has none, a closed one).</param>
     /// <param name="inherited">The inheritable handles the child inherits besides its standard ones.</param>
-    internal JobProcess(string executable, string directory, string? environment, SafeHandle? input, params ReadOnlySpan<nint> inherited)
+    internal JobProcess(string executable, string directory, string? environment, bool sharesInput, params ReadOnlySpan<nint> inherited)
     {
+        // The host check precedes every handle the start takes and the input it reads (PLAN G1244).
         if (!OperatingSystem.IsWindows() || RuntimeInformation.OSArchitecture != Architecture.X64)
         {
             throw new PlatformNotSupportedException("Running a program requires Windows x64.");
@@ -75,8 +78,9 @@ internal unsafe class JobProcess : IDisposable
             stdout = outRead;
             using var errorWrite = Pipe(out var errorRead);
             stderr = errorRead;
-            using var closed = input is null ? ClosedInput() : null;
-            using var inputCopy = Inheritable(input ?? closed!, executable);
+            SafeHandle? shared = sharesInput ? StandardInput() : null;
+            using var closed = shared is null ? ClosedInput() : null;
+            using var inputCopy = Inheritable(shared ?? closed!, executable);
             nuint bytes = 0;
             _ = InitializeProcThreadAttributeList(0, 2, 0, ref bytes);
             attributes = Marshal.AllocHGlobal(checked((nint)bytes));
@@ -258,15 +262,18 @@ internal unsafe class JobProcess : IDisposable
         return pipe.ClientSafePipeHandle;
     }
 
-    // The child's input: an inheritable duplicate of the handle, owned by the caller, with the handle's access (DUPLICATE_SAME_ACCESS);
-    // a handle that is no open handle of this process fails the start.
+    // This process's standard input, which it does not own; null when it has none: no handle, or a value that is no open handle of
+    // this process (one its parent passed without letting it inherit).
+    private static SafeFileHandle? StandardInput()
+    {
+        var input = new SafeFileHandle(GetStdHandle(-10), ownsHandle: false);
+        return !input.IsInvalid && GetHandleInformation(input.DangerousGetHandle(), out _) ? input : null;
+    }
+
+    // The child's input: an inheritable duplicate of an open handle of this process (its standard input or a closed input), owned by
+    // the caller, with the handle's access (DUPLICATE_SAME_ACCESS).
     private static SafeFileHandle Inheritable(SafeHandle handle, string executable)
     {
-        if (handle.IsInvalid)
-        {
-            throw new ArgumentException($"Cannot start {executable}: its standard input is no handle.", nameof(handle));
-        }
-
         var current = GetCurrentProcess();
         if (!DuplicateHandle(current, handle.DangerousGetHandle(), current, out var copy, 0, inherit: true, 2))
         {
@@ -346,6 +353,13 @@ internal unsafe class JobProcess : IDisposable
 
     [DllImport("kernel32.dll")]
     private static extern nint GetCurrentProcess();
+
+    [DllImport("kernel32.dll")]
+    private static extern nint GetStdHandle(int kind);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetHandleInformation(nint handle, out uint flags);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
