@@ -24,7 +24,7 @@ namespace Kimi.Compiler;
 //   PlaceAuthority's one path rule, SPEC 15.6.2's shared layer anywhere on the path, a Deref through a `ref` or `objref` borrow or a
 //   pair layer in a shared case and a Slice element among them).
 // - Outputs: Borrows(atom, members, out marks), the atom's entries and limit marks; AtomMarks(atom), whether it carries any limit mark
-//   (Z6's Marks reads it); and RetentionState, the key field of TyCtxt's retention memo: the region and borrow versions until the pass's
+//   (Z6's one Marks reader reads it); and RetentionState, the key field of TyCtxt's retention memo: the region and borrow versions until the pass's
 //   Check has run, Complete afterwards.
 // - Invariants: an atom's forming Borrow is formed before any Type stating the atom can be read (a typed path, a Field read or a
 //   substitution states the atom only from a Type that carries it), except where the fact is not written yet while a part that states
@@ -45,8 +45,8 @@ namespace Kimi.Compiler;
 //   a borrow fact of it, and its shared path is the SharedAddress mark alone.
 // - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry, no
 //   second list of borrow facts; no mark outside the publication, no second flag beside LimitMarks (a new named limit is a value of it,
-//   with its removal condition); RegionVersion is not moved; no reader but Z6's (the entries by the binder reading, the marks by its
-//   one Marks reader), the validator and tests.
+//   with its removal condition); RegionVersion is not moved; no reader but Z6's (the entries by the binder reading; the marks by A5's
+//   StoredMembers and retention's binder reading, both through Z6's one Marks reader, G147 ruling 67), the validator and tests.
 public sealed partial class Binding
 {
     // RetentionState's value once the pass's borrow writers have run: outside every sum of the two versions within a run.
@@ -67,9 +67,10 @@ public sealed partial class Binding
     // between Binds.
     private bool borrowsComplete;
 
-    // A row's limit marks (DECISIONS BU-243; G147 ruling 66): one value per named limit, a fact about the atom that its Borrows do not
-    // show and that bounds what a raw layer stating the atom addresses, so Z6's reader answers the limit (the located Unsupported_Kd) for
-    // a marked atom with an exclusive member. Each value names its removal condition.
+    // A row's limit marks (DECISIONS BU-243; G147 rulings 66, 67): one value per named limit, a fact about the atom that its Borrows do
+    // not show and that bounds what a raw layer stating the atom addresses. Z6's one Marks reader reads them for a marked atom with an
+    // exclusive member: A5's StoredMembers answers the limit (the located Unsupported_Kd), retention's binder reading gives no members.
+    // Each value names its removal condition.
     [Flags]
     internal enum LimitMarks : byte
     {
