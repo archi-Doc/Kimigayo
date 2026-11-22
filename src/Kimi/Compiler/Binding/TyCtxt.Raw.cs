@@ -155,16 +155,18 @@ internal sealed partial class TyCtxt
     // StoredParts, the holder's (DECISIONS BU-41). A path that ends at no raw layer is a broken contract.
     internal HoldStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions) => binding.StoredStep(instance, part, positions);
 
-    // SPEC 5.7 Origins, Calls (G160-4's (3a); DECISIONS BU-24): the borrows the Origin of a raw layer a holder stores belongs to, by the key
-    // of the Holdings read that met it (the layer, the Type its declaration writes there, the holding instance), appended to `members`: its
-    // Origin under the instance's substitution, within the instance, so its members
-    // are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. Each member is the scope
-    // Type it is found at, the referent its borrow admits (a slot keeper's under the Type binding the slot) and whether it may keep an
-    // exclusive Loan. Total: false when the members are incomplete (a keeper cycle that changes its Type arguments, or a keeper Binding's
-    // storage instantiation does not complete), and for a layer a Type slot's argument supplies whose Origin steps Exclusive: its borrows
-    // are the scope's that wrote the Type (a pair slot's states none). One walk of each (slot, owner Type) the bound slots' keepers reach.
-    // The key is the caller's: a `layer` that is no raw layer answers true with no members, where StoredStep's path query throws; Holdings
-    // publishes a Members entry only at a raw layer, so its reader cannot pass one.
+    // SPEC 5.7 Origins, Calls (G160-4's (3a); DECISIONS BU-24; PLAN G148 (1), R7 plan Z6): the borrows the Origin of a raw layer a holder
+    // stores belongs to, by the key of the Holdings read that met it (the layer, the Type its declaration writes there, the holding
+    // instance), appended to `members`, read at one arm by `written`: a layer the declaration writes, within the instance (the keepers of
+    // the slots the instance binds its Origin to); any other (a Type argument supplies it), by the Origin's binder (Binding.AtomMembers).
+    // `self`, `static` and an unstated layer have none. Each member is the referent its borrow admits (a slot keeper's under the Type
+    // binding the slot) and whether it may keep an exclusive Loan; its Input is no index a reader reads. Total: false when the members are
+    // unanswered (a keeper cycle that changes its Type arguments, a keeper Binding's storage instantiation does not complete, an Origin kind
+    // without a row, a raw layer's region slot) and at the named limits of the Origin's limit marks (Binding.LimitMarks): at either arm, a
+    // value of another Origin fitted into the layer or a claim with an exclusive member; at the binder arm also an address taken past a
+    // shared path with an exclusive member. False appends no member. The key is the caller's: a `layer` that is no raw layer answers true
+    // with no members, where StoredStep's path query throws; Holdings publishes a Members entry only at a raw layer, so its reader cannot
+    // pass one.
     internal bool RawMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
         => binding.StoredMembers(layer, written, holder, members);
 

@@ -103,11 +103,12 @@ public sealed partial class Binding
     internal HoldStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions)
         => this.DeclaredStep(this.StoredLayer(instance, part, positions, out var declared), declared, instance);
 
-    // RawMembers of a raw layer an instance stores, by a Holdings read's key (`written` the Type its declaration writes there, a raw layer's
-    // where it states one): its Origin under the instance's substitution, within the instance, so
-    // its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. False when the
-    // walk is incomplete (RawMembers), and for a layer a Type slot's argument supplies whose Origin steps Exclusive: that Origin belongs to
-    // the borrows of the scope that wrote the Type (an input's, a body local's), not to the instance's, and a call may store through it.
+    // A5's route to the members of a raw layer an instance stores (PLAN G148 (1), R7 plan Z6): the borrows its Origin under the instance's
+    // substitution belongs to, at one arm by `written`: a layer the declaration writes, within the instance (RawMembers: the keepers of
+    // the slots the instance binds it to); any other (a Type argument supplies it), by the Origin's binder (AtomMembers: the borrows of the
+    // scope that wrote it, a body's or an input's). `self`, `static` and an unstated layer have none. False where the members are
+    // unanswered, and at the named limits, by the Origin's limit marks at the layer's arm (LimitsDeclared, LimitsBinder). False appends
+    // no member (Z6's R5.4).
     internal bool StoredMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
     {
         if (layer.RawOrigin is not { } origin || StepOf(origin) != HoldStep.Exclusive)
@@ -115,8 +116,17 @@ public sealed partial class Binding
             return true;
         }
 
-        // The declared arm (`written` a raw layer): within the instance. Any other (a Type argument supplies the layer) is unanswered.
-        return written is { IsPointer: true } && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in holder), members);
+        var first = members.Count;
+        var declared = written is { IsPointer: true };
+        var complete = declared ? this.RawMembers(origin, new ReadOnlySpan<BoundType>(in holder), members) : this.AtomMembers(origin, members);
+        var range = CollectionsMarshal.AsSpan(members)[first..];
+        complete = complete && !(declared ? LimitsDeclared(this.Marks(origin), range) : LimitsBinder(this.Marks(origin), range));
+        if (!complete)
+        {
+            members.RemoveRange(first, members.Count - first);
+        }
+
+        return complete;
     }
 
     // A raw Origin as its signature writes it (DECISIONS BU-113): `x.s` denotes the slot argument of x's declared Type (the declaration's
@@ -154,15 +164,92 @@ public sealed partial class Binding
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
 
-    // Whether RawStepAt judges a layer where its Origin is bound (BinderStep's arm: a Type argument's, a Closure environment's), not
-    // within the walked scope; retention's member reads (ContractMembers) take the same arm.
+    // The named limits' rule at a declared layer (Z6's C1a, R7.1.2), the members read there given: a fit from another Origin (the fit's
+    // source may carry more authority than the slot's keepers admit, SPEC 5.7 Fits and claims under O-498 Q1 (i)), or a claim with an
+    // exclusive member (R2.3). An address past a shared path is no limit here: it writes less than the keepers admit (C2).
+    private static bool LimitsDeclared(LimitMarks marks, ReadOnlySpan<RawMember> members)
+        => (marks & LimitMarks.FittedIntoHolder) != 0 || ((marks & LimitMarks.Claimed) != 0 && AnyExclusive(members));
+
+    // The named limits' rule at the binder arm (Z6's C1a, R7.1, R6.8), the members read there given: a fit from another Origin (O-498
+    // Q2 (b): the layer is read by its stated Origin only where nothing else is fitted into it), or a claim or an address past a shared
+    // path with an exclusive member.
+    private static bool LimitsBinder(LimitMarks marks, ReadOnlySpan<RawMember> members)
+        => (marks & LimitMarks.FittedIntoHolder) != 0 || ((marks & (LimitMarks.Claimed | LimitMarks.SharedAddress)) != 0 && AnyExclusive(members));
+
+    private static bool AnyExclusive(ReadOnlySpan<RawMember> members)
+    {
+        foreach (var member in members)
+        {
+            if (member.Exclusive)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Whether RawStepAt judges a layer where its Origin is bound (BinderStep's arm: a Type argument's, a Closure environment's), the one
+    // arm whose members are read by the Origin's binder (BinderReading), not within the walked scope (Z6's R5.1).
     private bool BoundElsewhere(BoundType? written, BoundType? signature)
         => written is not { IsPointer: true } && this.retentionInputs != 0 && !(signature is { IsPointer: true } && this.retentionDeclared.Count > 0);
+
+    // Z6's one reader of the publication's limit marks (R6.2, G147 ruling 67): an atom's (Binding.AtomMarks), each operand of a meet's
+    // joined.
+    private LimitMarks Marks(BoundOrigin origin)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return this.AtomMarks(origin);
+        }
+
+        var joined = LimitMarks.None;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            joined |= this.AtomMarks(origin.Operands[i]);
+        }
+
+        return joined;
+    }
+
+    // One binder reading per Origin within a retention computation (Z6's R6.2; BinderStep and ContractMembers share its key): the members
+    // by the Origin's binder (AtomMembers) and the step they give, Shared where every member keeps only shared Loans (R5.10; SPEC 5.2.1
+    // condition 3, 15.6.4 item 1), else the kind's. Kept in binderReadings, cleared with the computation's state (EndRetention; never
+    // nested, G74).
+    private (int Start, int Count, bool Complete, HoldStep Step) BinderReading(BoundOrigin origin)
+    {
+        if (this.binderReadings.TryGetValue(origin, out var known))
+        {
+            return known;
+        }
+
+        var start = this.binderReadingMembers.Count;
+        var complete = this.AtomMembers(origin, this.binderReadingMembers);
+        var shared = complete && this.binderReadingMembers.Count > start;
+        for (var i = start; shared && i < this.binderReadingMembers.Count; i++)
+        {
+            shared = !this.binderReadingMembers[i].Exclusive;
+        }
+
+        // A layer the marks limit at this arm (LimitsBinder) has no members here, and steps by its kind, so retention reads it as itself
+        // (its pointee) while A5's StoredMembers answers false: the call keeps the located Unsupported_Kd (R6.8 (b2), R7.1). A false
+        // answer here would be CallRetention.Limit, another record (OwnershipDepthLimit_Kd) that retains nothing. Removal: the marks'.
+        if (complete && LimitsBinder(this.Marks(origin), CollectionsMarshal.AsSpan(this.binderReadingMembers)[start..]))
+        {
+            this.binderReadingMembers.RemoveRange(start, this.binderReadingMembers.Count - start);
+            shared = false;
+        }
+
+        var reading = (start, this.binderReadingMembers.Count - start, complete, shared ? HoldStep.Shared : StepOf(origin));
+        this.binderReadings.Add(origin, reading);
+        return reading;
+    }
 
     // SPEC 5.7 Authority (DECISIONS BU-113): a raw layer judged where its Origin is bound, "never by the caller's actual borrow": a
     // function's Input or Parameter Origin by that function's declared inputs (SignatureStep over TyCtxt.Signature, read in
     // place into retentionBinderInputs), a Type's own slot by its Loan requirement over its declaration's cases; any other (an accessor's
-    // or a Closure's own Origin, which has no declared signature here, a body-local Place or inference atom, a set, `static`) by its kind.
+    // or a Closure's own Origin, which has no declared signature here, a body-local Place or inference atom, a set, `static`) by its
+    // binder reading (BinderReading: Shared where every member keeps only shared Loans, else its kind; Z6's R5.10).
     private HoldStep BinderStep(BoundOrigin? raw)
     {
         raw = SlotArgument(raw);
@@ -171,11 +258,35 @@ public sealed partial class Binding
             return this.RequirementAt(slot, null).Strongest == LoanRequirement.Ref ? HoldStep.Shared : StepOf(raw);
         }
 
-        if (raw is not { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionKoto { IsDestructor: false, BoundSymbol: { } function } })
+        if (raw is { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionKoto { IsDestructor: false, BoundSymbol: { } function } })
         {
-            return StepOf(raw);
+            return this.SignatureStep(raw, this.BinderInputs(function));
         }
 
+        return raw is null ? StepOf(raw) : this.BinderReading(raw).Step;
+    }
+
+    // SPEC 5.7 Origins, Authority (DECISIONS BU-113; Z6's B3): the members of an Input or Parameter Origin where it is bound, as BinderStep
+    // reads it: a Type's own slot's keepers within Self (each kept referent, exclusive where the slot is `uniq` in some case), a
+    // function's Origin within its declared inputs (BinderInputs); none where the slot argument is no Origin a reader reads (StepOf);
+    // false for any other binder (an accessor's or a Closure's own Origin, which has no declared signature here).
+    private bool BinderMembers(BoundOrigin raw, List<RawMember> members)
+    {
+        var origin = SlotArgument(raw)!;
+        if (origin is { Kind: OriginKind.Parameter, Binder: DeclarationContainerKoto { BoundSymbol: { Schema: not null } declaration } })
+        {
+            var self = this.SelfType(declaration);
+            return this.RawMembers(origin, new ReadOnlySpan<BoundType>(in self), members);
+        }
+
+        return origin is { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionKoto { IsDestructor: false, BoundSymbol: { } function } }
+            ? this.RawMembers(origin, this.BinderInputs(function), members) : StepOf(origin) != HoldStep.Exclusive;
+    }
+
+    // A function's declared inputs (TyCtxt.Signature), read in place into retentionBinderInputs: the one reading BinderStep and BinderMembers
+    // take of where its Origins are bound.
+    private ReadOnlySpan<BoundType> BinderInputs(BindingSymbol function)
+    {
         var inputs = this.retentionBinderInputs;
         inputs.Clear();
         _ = this.types.Signature(function, null, -1, out var count);
@@ -187,7 +298,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.SignatureStep(raw, CollectionsMarshal.AsSpan(inputs));
+        return CollectionsMarshal.AsSpan(inputs);
     }
 
     // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」; design-final §15): the step of a raw layer an instance stores (`layer`,

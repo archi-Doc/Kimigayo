@@ -724,8 +724,9 @@ public sealed partial class TyCtxtTest
     // Type parameter or a pair layer (a Field, a Case payload, a Tuple or array element, or above the layer in a Tuple argument), is no
     // declared layer: it has the kind of the Origin the argument states (none Unstated, `static` Static, any other Exclusive), never the
     // stored cap, and a pair's raw case states none (SPEC 8.1.2), nor does a raw argument a pair slot binds (SPEC 8.1.1, DECISIONS BU-34:
-    // `Holder<raw/i32 during y>` is `Holder<raw/i32>`). Its Origin's borrows are not the instance's, so an Exclusive one's members are
-    // incomplete. No declaration states such a layer (RawStated). A path whose substituted part is no raw layer stays a broken contract, as
+    // `Holder<raw/i32 during y>` is `Holder<raw/i32>`). Its Origin's borrows are not the instance's: an Exclusive one's members are read
+    // where its Origin is bound (PLAN G148 (1), R7 plan Z6: tb's y, probe's `y: uniq/i32` and the keeper `loan: Loan<uniq/E during source>`
+    // of r's R, each an exclusive i32; FAIL-FIRST: false, no member). No declaration states such a layer (RawStated). A path whose substituted part is no raw layer stays a broken contract, as
     // does a `during self` layer a Type argument supplies (DECISIONS BU-58: `self` binds Holder only on a layer its declaration writes).
     [Fact]
     public void ARawLayerATypeArgumentSuppliesStepsByItsOwnOrigin()
@@ -742,8 +743,8 @@ public sealed partial class TyCtxtTest
             layers.Select(x => types.StoredStep(x.Instance, x.Part, x.Positions)));
         Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         var members = new List<RawMember>();
-        Assert.Equal((false, true, true), (MembersAt(types, p[10], 0, [], members), MembersAt(types, p[9], 0, [], members), MembersAt(types, p[21], 0, [], members)));
-        Assert.Empty(members);
+        Assert.Equal((true, true, true), (MembersAt(types, p[10], 0, [], members), MembersAt(types, p[9], 0, [], members), MembersAt(types, p[21], 0, [], members)));
+        Assert.Equal(["i32 X", "i32 X"], members.Select(static x => $"{x.Referent} {(x.Exclusive ? "X" : "S")}"));
         Assert.Same(p[13], p[21]);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(p[20], 0, [])).Message, StringComparison.Ordinal);
         var supplied = types.Intern(BoundTypeKind.Constructed, p[9].Symbol, SemanticsKind.Owner, [types.Pointer(BoundType.I32, BoundOrigin.Holder)]);
@@ -779,7 +780,9 @@ public sealed partial class TyCtxtTest
     // DECISIONS BU-58 (G307's Q1): one kept part at two positions whose declarations write different Types, P's Fields x and y and E's and
     // E3's Cases A and B sharing one kept payload Tuple, steps by what each writes there (a slot's ref cap, Shared, against a supplied
     // layer's own Origin, Exclusive, or `static`), so WrittenAt tells the positions apart. Where WrittenAt is null, the layer steps by its
-    // kept Origin's kind alone and has no member (an Exclusive one's members are incomplete).
+    // kept Origin's kind alone and its members are read where its Origin is bound (PLAN G148 (1), R7 plan Z6; SPEC 5.7 Origins: probe's
+    // `y: uniq/i32`, an exclusive i32, and the keepers of the slots y binds, E's `C(Loan<ref/i32 during s>)` and P's `loan`, shared i32s;
+    // FAIL-FIRST: false, no member).
     [Fact]
     public void WrittenAtTellsApartThePositionsOfOneKeptPart()
     {
@@ -796,10 +799,12 @@ public sealed partial class TyCtxtTest
         (BoundType Instance, int Part, int[] Positions)[] rows = [(q[1], 0, [0]), (q[1], 1, [0]), (q[2], 1, [0]), (q[2], 2, [0]), (q[3], 0, [0]), (q[3], 1, [0])];
         var members = new List<RawMember>();
         Assert.Equal(
-            ["raw/i32 during Parameter Shared True 1", "- Exclusive False 0", "raw/i32 during Parameter Shared True 1", "- Exclusive False 0",
+            ["raw/i32 during Parameter Shared True 1", "- Exclusive True 3", "raw/i32 during Parameter Shared True 1", "- Exclusive True 3",
                 "raw/ref/i32 during Parameter Shared True 0", "raw/ref/i32 during Static Static True 0"],
             rows.Select(x => $"{Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))} {types.StoredStep(x.Instance, x.Part, x.Positions)} " +
                 $"{MembersAt(types, x.Instance, x.Part, x.Positions, Cleared(members))} {members.Count}"));
+        Assert.True(MembersAt(types, q[1], 1, [0], Cleared(members)));
+        Assert.Equal(["i32 X", "i32 S", "i32 S"], members.Select(static x => $"{x.Referent} {(x.Exclusive ? "X" : "S")}"));
         Assert.Equal(
             [Binding.StepOf(KeptLayer(types, q[1], 1, [0]).RawOrigin), Binding.StepOf(KeptLayer(types, q[2], 2, [0]).RawOrigin)],
             [types.StoredStep(q[1], 1, [0]), types.StoredStep(q[2], 2, [0])]);
@@ -876,7 +881,8 @@ public sealed partial class TyCtxtTest
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS BU-41): a layer a Type argument supplies below the holder is read on the instance the holder's kept
     // part reaches, which its first read substitutes: Outer<raw/u8 during x>'s `w` is Wrap<raw/u8 during x>, whose `value` is supplied
-    // and steps Exclusive with incomplete members, where AdtDef's Wrap<raw/u8> reads Unstated, and Opt2's payload reaches the same
+    // and steps Exclusive, its members x's borrow by probe's declaration (SPEC 5.7 Origins, Authority; PLAN G148 (1), R7 plan Z6: the
+    // referent i32, exclusive for `x: uniq/i32`; FAIL-FIRST: false, no member), where AdtDef's Wrap<raw/u8> reads Unstated, and Opt2's payload reaches the same
     // instance. Each layer, also an Option's payload, an enum Case with a stated and a supplied payload, fixed array elements, a Tuple
     // component and a pair slot's layer, which states no Origin (DECISIONS BU-34, so the holder stores AdtDef's part), is stated by no
     // declaration (RawStated) but E2's and FA's own `raw/u8` (DECISIONS BU-46); a Case without its payload position, a component with no
@@ -889,8 +895,10 @@ public sealed partial class TyCtxtTest
         var members = new List<RawMember>();
         var wrap = Kept(1);
         Assert.Equal(
-            (HoldStep.Exclusive, false, false),
+            (HoldStep.Exclusive, false, true),
             (types.StoredStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), MembersAt(types, wrap, 0, [], members)));
+        Assert.Equal(["i32 X"], members.Select(static x => $"{x.Referent} {(x.Exclusive ? "X" : "S")}"));
+        members.Clear();
         Assert.Equal(HoldStep.Address, types.StoredStep(AdtDef.FieldType(c.Types, p[1], 0)!, 0, []));
         Assert.Same(wrap, types.StoredParts(p[3], out _)[0]!.Components[0]);
         var option = Kept(9);
@@ -898,11 +906,11 @@ public sealed partial class TyCtxtTest
         (BoundType Instance, int Part, int[] Positions)[] layers =
             [(option, some, [0]), (Kept(10), 0, [0]), (Kept(10), 0, [1]), (Kept(11), 0, [1]), (Kept(11), 1, [0]), (Kept(12), 0, [1]), (Kept(13), 0, [])];
         Assert.Equal(
-            ["Exclusive False False", "Address True True", "Exclusive False False", "Exclusive False False", "Address True True",
-                "Exclusive False False", "Address False True"],
+            ["Exclusive False True", "Address True True", "Exclusive False True", "Exclusive False True", "Address True True",
+                "Exclusive False True", "Address False True"],
             layers.Select(x => $"{types.StoredStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
                 $"{MembersAt(types, x.Instance, x.Part, x.Positions, members)}"));
-        Assert.Empty(members);
+        Assert.Equal(["i32 X", "i32 X", "i32 X", "i32 X"], members.Select(static x => $"{x.Referent} {(x.Exclusive ? "X" : "S")}"));
         Assert.Same(AdtDef.FieldType(c.Types, p[13], 0), Kept(13));
         (BoundType Instance, int Part, int[] Positions)[] broken = [(option, some, []), (Kept(12), 0, [0]), (Kept(12), 0, [5])];
         Assert.All(broken, x => Assert.Contains(
@@ -1268,10 +1276,11 @@ public sealed partial class TyCtxtTest
         int[] zero = [0], one = [1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
+            members.Clear();
             if (types.StoredStep(p[3], 0, []) != HoldStep.Own || types.StoredStep(p[6], 1, []) != HoldStep.Shared || types.StoredStep(p[8], 1, one) != HoldStep.Own ||
                 types.StoredStep(p[19], 0, zero) != HoldStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
                 !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.StoredStep(nested, 0, []) != HoldStep.Exclusive ||
-                TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || MembersAt(types, nested, 0, [], members) ||
+                TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || !MembersAt(types, nested, 0, [], members) ||
                 TyCtxt.RawStated(types.StoredParts(p[3], out _)[0]!))
             {
                 throw new InvalidOperationException("Stored raw steps changed.");

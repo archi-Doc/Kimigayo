@@ -375,10 +375,11 @@ public sealed partial class Binding
     }
 
     // SPEC 5.7 Calls (D15; design-final §6.2): a raw parameter layer whose Origin steps Exclusive lets the call write what each borrow the
-    // Origin belongs to admits (RawMembers: the referent of each input whose outer Origin it is, the keepers of each slot it binds in a
-    // nominal Type of the contract, substituted by that Type; ContractMembers, `signature` the declared counterpart), walked as input
-    // `index`'s writable content. Each (Origin, input) is walked once per contract or erased signature, which loses nothing: its members
-    // and its content atom are the same each time. An incomplete member walk makes the contract CallRetention.Limit.
+    // Origin belongs to admits at the layer's position (ContractMembers: the referent of each input whose outer Origin it is and the
+    // keepers of each slot it binds in a nominal Type of the contract, substituted by that Type; or the Origin's own where it is bound,
+    // `signature` the declared counterpart that tells them apart), walked as input `index`'s writable
+    // content. Each (Origin, input) is walked once per contract or erased signature, which loses nothing: its members and its content
+    // atom are the same each time. Unanswered members make the contract CallRetention.Limit.
     private void RawContent(BoundOrigin origin, int index, BoundType? signature)
     {
         if (!this.retentionRawVisits.Add((origin, index)))

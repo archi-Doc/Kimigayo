@@ -329,9 +329,10 @@ public sealed partial class Binding
         }
     }
 
-    // What a raw layer of the contract whose Origin steps Exclusive lets the call write, at any holder (RawContent's members over the contract
-    // scope: the referent of each input whose outer Origin it is, the keepers of each slot it binds, a holding instance's included), each
-    // past the layer (ContractMembers, at the layer's position), for the output fold; an incomplete member walk is the Limit.
+    // What a raw layer of the contract whose Origin steps Exclusive lets the call write, at any holder (RawContent's members, at the
+    // layer's position, ContractMembers: over the contract scope, the referent of each input whose outer Origin it is and the keepers of
+    // each slot it binds, a holding instance's included; or the Origin's own where it is bound), each past the layer, for the output fold;
+    // unanswered members are the Limit.
     private void Members(OriginPremiseEnvironment environment, BoundOrigin origin, BoundType? written, BoundType? signature, StorageAt at)
     {
         if (at.Storage == NoStorage)
@@ -350,11 +351,26 @@ public sealed partial class Binding
         this.rawMembers.RemoveRange(start, end - start);
     }
 
-    // Retention's one read of the members of a stated raw layer (Z6's R5.1, R5.5), appended to rawMembers, by the layer's position
-    // (`written`, `signature`; RawStepAt's arms, BoundElsewhere): RawMembers within `scope`, the walked contract's; unanswered members are
-    // the Limit.
+    // Retention's one read of the members of a stated raw layer, at its step's position (Z6's R5.1, R5.2, R5.5), appended to rawMembers:
+    // within `scope`, the walked contract's, where RawStepAt judges it there (a layer the declaration or the walked signature writes),
+    // else by its Origin's binder (the one BinderReading BinderStep made at the layer, by the same key), whose referents are in the
+    // caller's terms, so their Origins join the call's instantiated ones (R4-M154 Revision 2's set); unanswered members are the Limit.
     private void ContractMembers(BoundOrigin origin, BoundType? written, BoundType? signature, ReadOnlySpan<BoundType> scope)
-        => this.retentionLimit |= !this.RawMembers(origin, scope, this.rawMembers);
+    {
+        if (!this.BoundElsewhere(written, signature))
+        {
+            this.retentionLimit |= !this.RawMembers(origin, scope, this.rawMembers);
+            return;
+        }
+
+        var reading = this.BinderReading(SlotArgument(origin)!);
+        this.retentionLimit |= !reading.Complete;
+        for (var i = reading.Start; i < reading.Start + reading.Count; i++)
+        {
+            this.rawMembers.Add(this.binderReadingMembers[i]);
+            this.Instantiation(this.binderReadingMembers[i].Referent);
+        }
+    }
 
     // What a layer refers to. For the output fold: the storage past it where the call may write through it (the root from before the
     // root), and the result's own past any layer (a result carries its whole Type); else, below a position (`targets`, its storage; -1
@@ -525,11 +541,12 @@ public sealed partial class Binding
     }
 
     // The Types a position's fit reads (SPEC 5.7 "retains as that borrow would"; DECISIONS R4-M154, r2.2), appended to retentionReads as a
-    // run its caller removes: a raw layer stating an Origin reads as each borrow that Origin belongs to among the contract's inputs
-    // (RawMembers: an input whose outer Origin it is, a slot keeper), `ref/R` or `uniq/R` of its referent R by its mode, and as itself
-    // where none does; any other Type as itself. OwnedOrigin leaves out `self` (Holder, SPEC 5.7): it names the holding value, no input
-    // of the contract, and what a `during self` layer admits is its entries', so such a layer reads as itself. An incomplete
-    // member walk is the Limit.
+    // run its caller removes: a raw layer stating an Origin reads as each borrow that Origin belongs to at the position's arm
+    // (ContractMembers: among the contract's inputs, an input whose outer Origin it is or a slot keeper; or the Origin's own where it is
+    // bound), `ref/R` or `uniq/R` of its referent R
+    // by its mode, and as itself where none does; any other Type as itself. OwnedOrigin leaves out `self` (Holder, SPEC 5.7): it names the
+    // holding value, no input of the contract, and what a `during self` layer admits is its entries', so such a layer reads as itself.
+    // Unanswered members are the Limit.
     private (int Start, int End) Reads(BoundType type, BoundType? written, BoundType? signature)
     {
         var start = this.retentionReads.Count;
