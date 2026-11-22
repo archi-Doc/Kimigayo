@@ -9,8 +9,8 @@ namespace Kimi.Compiler.Mir;
 //   the Loans, which a value carries where the element may have arrived other than as the borrow or a Copy or Reborrow of it stored into a
 //   part with a fixed Origin (Indirect, Arrive), joined by union, so the marker is a may-fact, and ended with its Loan; the escape holders
 //   (E, _0 and MirLocalRole.Result temps, U2); whether a carrier keeps a W element (Kept: a transit value, a holder other than an escape
-//   holder, or an escape holder holding its marker); a conflict's or err(ended)'s causes (Derived, EndedCauses), which the problem's
-//   record appends as Cause facts (CauseFacts).
+//   holder, or an escape holder holding its marker); a conflict's, err(ended)'s or R26-borrow's causes (Derived, EndedCauses,
+//   DefaultCauses; Z19), which the problem's record appends as Cause facts (CauseFacts).
 // - Transfer rules, each where a value is formed (MirBorrows.Values, .Reach, .Calls, .Flow): an aggregate, a part step and a raw Deref
 //   mark; a read through a reference keeps a whole holder's state and marks a part's or E's (Parts, for content and chain alike, a
 //   Closure call's receiver content included, DECISIONS R4-M148); a Call's Value row keeps its argument; an arrival into an escape
@@ -19,7 +19,9 @@ namespace Kimi.Compiler.Mir;
 // - Inputs: MirOrigins' Causes, Refutes and Fixed for the body Judge just judged (read, never re-derived); the program's problems' views.
 // - Invariants: where MirOrigins.Refutes is false there is no W element, no marker and no query, so the run is exactly the rule-free one; a
 //   conflict is derived exactly when every conflicting candidate the check set takes is a W element no carrier keeps (R4-M96), its causes
-//   their causes' union; a located Unsupported_Kd, a limit's included, carries no cause.
+//   their causes' union; a DefaultArgumentBorrow_Kd exactly when its slot-rooted Loan is a W element no carrier keeps at any of the view's
+//   Returns or stores, its causes the element's (SPEC 23.1.2: the relation is the failure's one record); a located Unsupported_Kd, a
+//   limit's included, and a DefaultArgumentAccess_Kd carry no cause.
 // - Prohibitions: no Origin judged or class read here (MirOrigins'), no problem dropped, no merge of reports (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -274,6 +276,21 @@ internal sealed partial class MirBorrows
             this.Join(w);
         }
     }
+
+    // R26-borrow's causes: a slot-rooted Loan's W element's, where no carrier keeps it at any of the view's Returns or stores (its
+    // defaultHeld bits hold no HeldIndirect, MirBorrows.Defaults); none otherwise.
+    private void DefaultCauses(int loan, byte held)
+    {
+        this.causes.Clear();
+        if (this.wCount > 0 && this.wOfLoan[loan] is var w and >= 0 && (held & HeldIndirect) == 0)
+        {
+            this.Join(w);
+        }
+    }
+
+    // Whether a set a store puts in E holds a Loan's indirect marker: the Loan arrived there as no Copy of the borrow (Arrive decided it
+    // for E's receiving Type before the store's entry).
+    private bool MarkedIn(int set, int loan) => this.wCount > 0 && this.wOfLoan[loan] is var w and >= 0 && this.sets.Contains(set, this.Mark(w));
 
     // A W element's causes joined to the conflict's, each once.
     private void Join(int w)

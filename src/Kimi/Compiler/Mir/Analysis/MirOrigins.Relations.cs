@@ -28,8 +28,8 @@ internal enum MirRelation : byte
 //   a local inference region the body's own solution, which may be any region its bounds admit; an enclosing body's region, Fixed here,
 //   reads as its solved value (UniversalRelations.Outlives).
 // - Inputs: the class's edges (ClassEdges: its active rows by MeetNode's rule, each a relation the body's problems check, and its
-//   containment edges); the C1-F4 view's atoms (TyCtxt.OriginAtom) and the body's fixed-fixed oracle (TyCtxt.UniversalRelations, the
-//   layer's for the layer's part) under the class's borrow binders.
+//   containment edges); the C1-F4 view's atoms (TyCtxt.OriginAtom) of the class's kinds (KindOf, as Judge reads them) and the body's
+//   fixed-fixed oracle (TyCtxt.UniversalRelations, the layer's for the layer's part) under the class's borrow binders.
 // - Outputs: a MirRelation: Holds where the relation, added as an edge, adds no relation the body could not satisfy for every value of
 //   its Fixed Origins: each Fixed node at or above the longer end (stopping at Fixed nodes) outlives, by the oracle, each Fixed node at or
 //   below the shorter end, and no Finite node above the longer end meets a Fixed one below the shorter end (SPEC 15.6.5); Fails otherwise;
@@ -129,7 +129,7 @@ internal sealed partial class MirOrigins
     }
 
     // The nodes a walk from a node over one direction's edges meets (Walk): into `found`, the Fixed ones and, above the longer end, the
-    // Finite ones (a body-local region, which outlives no Fixed Origin).
+    // Finite ones in the indexed class (a body-local region, which outlives no Fixed Origin; KindOf, as Judge reads them).
     private void Bounds(int start, int[] index, int[] edges, int[] ends, List<int> found)
     {
         var atoms = this.slice.Atoms;
@@ -139,7 +139,7 @@ internal sealed partial class MirOrigins
         found.Clear();
         foreach (var node in this.reachQueue.AsSpan(0, this.Walk(1, index, edges, ends)))
         {
-            var kind = atoms[node].Kind;
+            var kind = this.KindOf(node);
             if (kind == OriginAtomKind.Fixed || (kind == OriginAtomKind.Finite && ReferenceEquals(found, this.above)))
             {
                 found.Add(node);
