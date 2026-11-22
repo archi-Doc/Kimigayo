@@ -102,6 +102,10 @@ public sealed partial class Binding
     // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
     // its published source state.
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
+        => this.CheckConformance(conformance, inheritedProof);
+
+    // The conformance's check (VerifyConformance's): its own judgment, every exit returning its verdict.
+    private ConstraintProof CheckConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof)
     {
         // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance). Stored only on
         // a change, so a verified frozen path, never Unsupported (FreezeLibrary's UnsettledPath check), is never written (PLAN G949
