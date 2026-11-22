@@ -41,7 +41,7 @@ public sealed class LspEffectHoverTest : IDisposable
         Directory.CreateDirectory(this.directory);
         var main = Path.Combine(this.directory, "main.kimi");
         File.WriteAllText(main, CheckedSource);
-        File.WriteAllText(Path.Combine(this.directory, "App.kimiproj"), $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(this.directory, "App.kimiproj"), $"OutputKind=\"Application\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         await using var client = new LspTestClient();
         await client.InitializeAsync("{\"checkQuietPeriodMs\":1000}");
         await client.OpenAsync(main, CheckedSource);
@@ -70,7 +70,7 @@ public sealed class LspEffectHoverTest : IDisposable
         Directory.CreateDirectory(this.directory);
         var main = Path.Combine(this.directory, "main.kimi");
         File.WriteAllText(main, Text);
-        File.WriteAllText(Path.Combine(this.directory, "App.kimiproj"), $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(this.directory, "App.kimiproj"), $"OutputKind=\"Application\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         await using var client = new LspTestClient();
         await client.InitializeAsync("{\"checkQuietPeriodMs\":1000}");
         await client.OpenAsync(main, Text);

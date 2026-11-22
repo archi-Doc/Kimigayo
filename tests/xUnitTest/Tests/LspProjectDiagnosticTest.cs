@@ -25,7 +25,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     {
         var path = Path.Combine(this.directory, "Hello.kimi");
         await using var client = new LspTestClient();
-        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}");
+        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{TargetProfile.Windows.Target}\"}}");
         await client.OpenAsync(path, "::Kimi.Console.writeLine(\"Hello\" +\n");
         var publish = await client.ReceiveAsync(x => LspTestClient.IsPublish(x, LspTestClient.Uri(path)));
         Assert.Equal(1, publish.GetProperty("params").GetProperty("version").GetInt32());
@@ -53,7 +53,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         var spelling = LspTestClient.OtherSpelling(path, shortName);
         Assert.SkipWhen(spelling is null, "The volume gives the test directory no 8.3 short name.");
         await using var client = new LspTestClient();
-        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}", Related);
+        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{TargetProfile.Windows.Target}\"}}", Related);
         await client.OpenUriAsync(spelling, Source);
         var publish = (await client.ReceiveAsync(LspTestClient.IsPublish)).GetProperty("params");
         Assert.Equal(spelling, publish.GetProperty("uri").GetString());
@@ -137,7 +137,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     {
         var path = Path.Combine(this.directory, "Labels.kimi");
         await using var client = new LspTestClient();
-        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}");
+        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{TargetProfile.Windows.Target}\"}}");
         await client.OpenAsync(path, source);
         var diagnostics = await client.PublishAsync(path);
         var error = Assert.Single(diagnostics.EnumerateArray(), x => x.GetProperty("severity").GetInt32() == 1);
@@ -210,7 +210,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         await client.InitializeAsync();
         await client.OpenAsync(this.PathOf("App", "main.kimi"), Valid);
         Assert.NotEqual(0, (await client.PublishAsync(other)).GetArrayLength());
-        Assert.Contains(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product {WindowsProfile.Target})"));
+        Assert.Contains(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product {TargetProfile.Windows.Target})"));
 
         File.WriteAllText(other, "func two() -> i32 => 2\n");
         await client.NotifyAsync("workspace/didChangeWatchedFiles", $"{{\"changes\":[{{\"uri\":\"{LspTestClient.Uri(other)}\",\"type\":2}}]}}");
@@ -250,7 +250,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         await using var client = new LspTestClient();
         await client.InitializeAsync();
         await client.OpenAsync(this.PathOf("App", "main.kimi"), Valid + "#Test\nfunc check()\n    $expect(true)\n");
-        await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Test {WindowsProfile.Target}): Completed"));
+        await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Test {TargetProfile.Windows.Target}): Completed"));
     }
 
     [Fact]
@@ -267,12 +267,12 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     [Fact]
     public async Task SessionTargetsSelectTheProductUnits()
     {
-        var project = this.WriteProject("App", ("main.kimi", Valid), $"Targets={{\"{WindowsProfile.Target}\", \"x86_64-unknown-linux-gnu\"}}");
+        var project = this.WriteProject("App", ("main.kimi", Valid), $"Targets={{\"{TargetProfile.Windows.Target}\", \"x86_64-unknown-linux-gnu\"}}");
         await using (var client = new LspTestClient())
         {
             await client.InitializeAsync("{\"checkQuietPeriodMs\":0,\"allTargets\":true}");
             await client.OpenAsync(this.PathOf("App", "main.kimi"), Valid);
-            await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Product {WindowsProfile.Target}): Completed"));
+            await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Product {TargetProfile.Windows.Target}): Completed"));
             await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Product x86_64-unknown-linux-gnu): Completed"));
         }
 
@@ -282,7 +282,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
             await client.OpenAsync(this.PathOf("App", "main.kimi"), Broken);
             Assert.NotEqual(0, (await client.PublishAsync(this.PathOf("App", "main.kimi"))).GetArrayLength());
             Assert.Contains(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product x86_64-unknown-linux-gnu)"));
-            Assert.DoesNotContain(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product {WindowsProfile.Target})"));
+            Assert.DoesNotContain(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product {TargetProfile.Windows.Target})"));
         }
     }
 
@@ -291,7 +291,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     {
         var library = this.WriteProject("Lib", ("main.kimi", "func two() -> i32 => 2 +\n"), "PackageId=\"lib\" PackageVersion=\"1\"");
         var project = this.WriteProject("App", ("main.kimi", Valid), string.Empty, "Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}");
-        var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        var resolution = DependencyResolver.Resolve(project, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
         DependencyLock.Update(DependencyLock.PathForProject(project), resolution, TestContext.Current.CancellationToken); // A check never restores.
         await using var client = new LspTestClient();
         await client.InitializeAsync();
@@ -308,7 +308,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".kimiproj");
-        var targets = settings.Contains("Targets=", StringComparison.Ordinal) ? string.Empty : $"Targets={{\"{WindowsProfile.Target}\"}} ";
+        var targets = settings.Contains("Targets=", StringComparison.Ordinal) ? string.Empty : $"Targets={{\"{TargetProfile.Windows.Target}\"}} ";
         File.WriteAllText(path, $"OutputKind=\"Library\" {targets}Dependencies={{{dependencies}}} {settings}");
         File.WriteAllText(Path.Combine(folder, source.File), source.Text);
         return path;

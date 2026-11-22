@@ -74,7 +74,7 @@ public class ContainerFragmentBindingTest
     public void BaseUsesItsDefiningSourceEnvironmentAfterReload(bool baseFirst)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("types.kimi", "group Left\n    public open struct B\n        public func value() -> i32 => 7\ngroup Right\n    public open struct B\n        public func value() -> string => \"wrong\""));
         var withBase = new SourceDocument("base.kimi", "alias Left\nstruct S: B");
         var withoutBase = new SourceDocument("other.kimi", "alias Right\nstruct S\nfunc use() -> i32 => S.value()");
@@ -92,7 +92,7 @@ public class ContainerFragmentBindingTest
     public void FieldsFollowTheLogicalDeclarationOrder()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var second = new SourceDocument("b.kimi", "struct Config\n    var second: i32 = 2");
         c.Kotonoha.AddSources([second, new SourceDocument("a.kimi", "struct Config\n    var first: i32 = 1")]);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
@@ -107,7 +107,7 @@ public class ContainerFragmentBindingTest
     public void ReloadRetainsConflictingFragmentDiagnostics(string first, string second)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("first.kimi", first));
         Assert.True(c.Bind().IsComplete);
         c.Kotonoha.AddSource(new SourceDocument("second.kimi", second));

@@ -116,7 +116,7 @@ public class ValueCallBindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         Assert.Same(plan, call.ValueCallOf());
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);

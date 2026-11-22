@@ -24,7 +24,7 @@ public partial class KimiLibraryShapeTest
     private const string Milestone31 = "tests/milestones/Milestone31.kimi";
 
     // The empty program's check, the reference of every row; not the Library compilation the other tests read, which is bound only.
-    private static readonly Lazy<Compilation> EmptyProgram = new(() => Check(Compilation.CreateForTest(), string.Empty, WindowsProfile.Target));
+    private static readonly Lazy<Compilation> EmptyProgram = new(() => Check(Compilation.CreateForTest(), string.Empty, TargetProfile.Windows.Target));
 
     private static readonly Lazy<(string Fact, string[] Lines)[]> EmptyProgramFacts = new(() => Facts(EmptyProgram.Value));
 
@@ -44,7 +44,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("docs/examples/Utf8Formatting/Utf8Formatting.kimi")]
     public void TheLibraryIsIndependentOfTheProgram(string program)
     {
-        var c = Check(Compilation.CreateForTest(), program, WindowsProfile.Target);
+        var c = Check(Compilation.CreateForTest(), program, TargetProfile.Windows.Target);
         SameAsTheEmptyPrograms(c);
     }
 
@@ -58,7 +58,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("documentation and hover")]
     public void TheLibraryIsIndependentOfTheInputs(string input)
     {
-        var (c, target) = (Compilation.CreateForTest(), WindowsProfile.Target);
+        var (c, target) = (Compilation.CreateForTest(), TargetProfile.Windows.Target);
         switch (input)
         {
             case "test build":
@@ -90,10 +90,10 @@ public partial class KimiLibraryShapeTest
         var c = Checked(ModuleBindingTest.Create(source, "public group Api\n    public func value() => ()", configure: static (root, _) =>
         {
             root.Alias = ["Lib.Api"];
-            root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+            root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         }));
         Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha));
-        Assert.NotNull(c.Configuration(c.Kotonoha)!.NativeRequirements[WindowsProfile.Target]["codec"]);
+        Assert.NotNull(c.Configuration(c.Kotonoha)!.NativeRequirements[TargetProfile.Windows.Target]["codec"]);
         Assert.NotNull(c.References(c.Kotonoha));
         var library = c.Library.Kotonoha;
         Assert.Equal(["Kimi"], c.DefaultAliases(library));
@@ -113,7 +113,7 @@ public partial class KimiLibraryShapeTest
     [InlineData(Milestone31)]
     public void ACompilationsLibraryBodiesAreTheLibraryChecks(string program)
     {
-        var c = Check(Compilation.CreateForTest(), program, WindowsProfile.Target);
+        var c = Check(Compilation.CreateForTest(), program, TargetProfile.Windows.Target);
         var (own, library) = (c.BuildMir(), MirBuildTest.LibraryRange(c));
         var built = own.Bodies.ToArray().Where(static x => x.Source.IsLibrary).ToArray();
         Assert.Equal(program.Length == 0, built.Length == 0);

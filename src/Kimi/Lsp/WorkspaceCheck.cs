@@ -118,7 +118,7 @@ internal sealed class WorkspaceCheck
     }
 
     /// <summary>Gets the host target for implicit projects, or empty when the host has none.</summary>
-    public static string HostTarget { get; } = OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 ? WindowsProfile.Target : string.Empty;
+    public static string HostTarget { get; } = OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 ? TargetProfile.Windows.Target : string.Empty;
 
     /// <summary>Places a check's diagnostics at their report URIs (SPEC 23.4), each URI's list in display-range and result order.</summary>
     /// <param name="output">The check output.</param>
@@ -711,7 +711,7 @@ internal sealed class WorkspaceCheck
                     plans.Add(new(key, item, path, CheckMode.Product, members));
                 }
 
-                var testKey = new UnitKey(path, UnitKind.Test, productTargets.Contains(WindowsProfile.Target, StringComparer.Ordinal) ? WindowsProfile.Target : string.Empty);
+                var testKey = new UnitKey(path, UnitKind.Test, productTargets.Contains(TargetProfile.Windows.Target, StringComparer.Ordinal) ? TargetProfile.Windows.Target : string.Empty);
                 plans.Add(new(testKey, item, path, CheckMode.Test, members));
                 if (item.HasTestSources)
                 {
@@ -739,7 +739,7 @@ internal sealed class WorkspaceCheck
             var product = new UnitKey(document, UnitKind.Product, target);
             required.Add(product);
             plans.Add(new(product, null, document, CheckMode.Product, [document]));
-            plans.Add(new(new(document, UnitKind.Test, target == WindowsProfile.Target ? target : string.Empty), null, document, CheckMode.Test, [document]));
+            plans.Add(new(new(document, UnitKind.Test, target == TargetProfile.Windows.Target ? target : string.Empty), null, document, CheckMode.Test, [document]));
         }
 
         this.start.Post(new DerivationDone

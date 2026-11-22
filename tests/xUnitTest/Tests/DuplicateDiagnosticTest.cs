@@ -86,7 +86,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
     public void TheFirstDeclarationFollowsConsumedSourceOrder()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("z-first.kimi", "group G\n    public func x() => ()"));
         c.Kotonoha.AddSource(new SourceDocument("a-second.kimi", "group G\n    public func x() => ()"));
         Assert.False(c.Bind().IsComplete);
@@ -151,7 +151,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
     public void RootRuntimeDeclarationsRemainSourceLocal()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         foreach (var path in new[] { "first.kimi", "second.kimi" })
         {
             c.Kotonoha.AddSource(new SourceDocument(path, "let x = 1\nfunc f() => ()"));

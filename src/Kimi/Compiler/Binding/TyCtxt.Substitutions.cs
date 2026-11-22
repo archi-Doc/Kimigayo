@@ -12,11 +12,12 @@
 // Formation, this file's representation: whether a substitution formed its instance, the cause travelling with a null one (Apply's
 // Type, Compose's Subst): Formed (and only then an instance), Incomplete (a step that does not complete), HeightLimit (Binding.TypeHeight's
 // refusal answered inside the instance collector's answer frame, which only the collector's run opens, OpenAnswer, to the formation
-// that owns it, Answered, the collector's query, recorded by that query's reader at its requesting site). Apply reads no storage, so its
-// cause is the substitution's alone; an instance's stored Types are formed by Binding.Instance, which publishes its own cause beside them
-// (AdtDef.InstanceStorage.HeightLimit), never Apply's or Compose's (whose verdict walk, Instance's, may form them). Apply, Instance and
-// Compose own no refusal, so one inside the frame outside Answered and outside an instance is the frame's, recorded at its close as PLAN
-// G651's site-less record, and one after the run outside the frame stays that record (R7-T1, N1).
+// that owns it, Answered, the collector's query, or Witness, a requirement call's resolution, as its target's Cause, recorded by the
+// query's reader at its requesting site). Apply reads no storage, so its cause is the substitution's alone; an instance's stored Types
+// are formed by Binding.Instance, which publishes its own cause beside them (AdtDef.InstanceStorage.HeightLimit), never Apply's or
+// Compose's (whose verdict walk, Instance's, may form them). Apply, Instance and Compose own no refusal, so one inside the frame outside
+// Answered, Witness and an instance is the frame's, recorded at its close as PLAN G651's site-less record, and one after the run outside
+// the frame stays that record (R7-T1, N1).
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
 // compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
 // grows are reused.
@@ -55,7 +56,7 @@ internal sealed partial class TyCtxt
 
         /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered it to this formation in
         /// the collector's answer frame instead of recording it (PLAN G651's after-run site kind "the caller records": Answered, the
-        /// instance collector's query, whose reader records it).</summary>
+        /// instance collector's query, or a requirement call's resolution, Witness's target's Cause, whose reader records it).</summary>
         HeightLimit,
     }
 
