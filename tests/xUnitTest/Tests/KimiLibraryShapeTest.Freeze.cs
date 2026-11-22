@@ -86,6 +86,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.EarlyReads"] = "never written: the library declares no struct with a base (TheLibraryDeclaresNoStructWithABase), so no library lookup sees a clause not ready",
         ["NodeColumns.RequirementGroups"] = "released at the freeze: the library pass's requirement groups, its member lookups' working state, no reader reads after it (R7-N5 B3-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.ResolvedSlices"] = "released at the freeze: the library pass's range-value slices, its working state; IsResolvedSlice refuses a library node (R7-N5 B2b-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.SynthesizedCalls"] = "released at the freeze: the library pass's synthesized calls and their consumers, its working state, read only by that pass's checks (R7-N5 B1b-1; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.ResolvingTypes"] = "released at the freeze: BindType's cycle guard, the library pass's working state, every row reset as its BindType returns (R7-N5 B1b-1; TheFreezeReleasesTheLibrarysWorkingState)",
     };
 
@@ -476,7 +477,8 @@ public partial class KimiLibraryShapeTest
     // rented; with either Release row skipped, NoLaterStepWritesTheLibraryLayer and TheLibraryLayerAfterARestartIsTheEmptyPrograms
     // find the library pass's 125 receiver operations and 204 result contexts) and the freeze releases the library's ResultContexts,
     // ReceiverOperations, RequirementGroups (B3-2: its 30 groups at library member accesses), ResolvedSlices (B2b-2: its range-value
-    // slices) and ResolvingTypes (B1b-1: BindType's guard, whose pages hold no row) columns: stamp 0, no row and no arena. Counters are per Binding (R8-M53): a reading compilation's first run has the
+    // slices), ResolvingTypes (B1b-1: BindType's guard, whose pages hold no row) and SynthesizedCalls (B1b-1: its synthesized calls)
+    // columns: stamp 0, no row and no arena. Counters are per Binding (R8-M53): a reading compilation's first run has the
     // library pass's counter value, 1 (FreezeLibrary refuses a rerun), so a column the freeze left at that stamp would answer the
     // library pass's rows (and the freeze Binding's pooled contexts) there; released, no library node's row answers, a library slice's
     // included, while the program's own `if` keeps its row.
@@ -501,6 +503,7 @@ public partial class KimiLibraryShapeTest
         Released(families.PartPrerequisites);
         Released(families.PrerequisiteVisits);
         Released(families.ResolvingTypes);
+        Released(families.SynthesizedCalls);
         var nodes = library.Kotonoha.Syntax.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
         Assert.Contains(nodes, static x => x is IfKoto or MatchKoto or DoKoto or LoopKoto);
         Assert.Contains(nodes, static x => x is IndexKoto { Right: RangeKoto });

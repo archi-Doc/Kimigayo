@@ -88,7 +88,7 @@ public sealed partial class Binding
             var argument = call.ArgumentNodes[i];
             if (this.PropagateBound(argument, operations[i].ParameterType) is null)
             {
-                if (this.FormsBorrows && this.synthesizedCalls?.ContainsKey(call) != true)
+                if (this.FormsBorrows && !this.synthesizedCalls.ContainsKey(call))
                 {
                     // Selection wrote the call's operations (the receiver's last), and this argument's header may state their Borrows'
                     // atoms: formed before it binds (Binding.RawOrigins.Borrows). A synthesized call's plan is its consumer's to commit

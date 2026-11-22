@@ -212,7 +212,8 @@ public partial class SyntaxIdTest
     // B2b-2's ResolvedSlices, a slice selected by a range value; R7-N5 E's Prerequisites, the consultation range of `s == missing`,
     // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute; PrerequisiteVisits, the walk of a
     // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`; B1b-1's ResolvingTypes,
-    // a written Type's BindType, whose rows are reset as it returns, so the column holds carved pages, not rows).
+    // a written Type's BindType, whose rows are reset as it returns, so the column holds carved pages, not rows; SynthesizedCalls,
+    // Milestone23's range calls).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -262,6 +263,7 @@ public partial class SyntaxIdTest
     [InlineData("EarlyReads", BaseInputFormationBindingTest.J4)]
     [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
     [InlineData("ResolvingTypes", "let x: i32 = 1\n")]
+    [InlineData("SynthesizedCalls", "milestone:Milestone23")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
