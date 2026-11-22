@@ -85,7 +85,7 @@ try {
                     return
                 }
             }
-            $arguments = @("$target.obj", $archive, $kernel.path, '/entry:__kimi_start', '/subsystem:console',
+            $arguments = @("$target.obj", $archive, $kernel, '/entry:__kimi_start', '/subsystem:console',
                 '/nodefaultlib', '/Brepro', "/out:$target.exe")
             if (-not (Invoke-Tool $tools['lld-link'] $arguments)) { return }
             $execution = Invoke-KimiFixtureProcess $target @{

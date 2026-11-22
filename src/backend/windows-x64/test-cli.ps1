@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'kernel32.ps1')
 . (Join-Path $PSScriptRoot 'expected-output.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
@@ -123,7 +124,7 @@ foreach ($level in @('O0', 'O2')) {
     $output = Invoke-Kimi @('build', $project)
     if ($output -match '(?m)^Hello, world!') { throw 'Build executed the Application' }
     $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
-    if ($record.status -cne 'linked' -or $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Invalid successful build record' }
+    if ($record.status -cne 'linked') { throw 'Invalid successful build record' }
     # The record's libraries are the compiler's, each its staged snapshot (<stem>.native/<hash>.lib) with the catalog's hash.
     $libraries = @($record.libraries | ForEach-Object { "$($_.name) $($_.sha256) $($_.path.Replace('\', '/').EndsWith(".native/$($_.sha256).lib"))" }) -join ','
     if ($null -ne $record.kernel32 -or $libraries -cne "kernel32 $($catalog.kernel32.sha256) True,kimi_backend $($catalog.artifactSha256) True") {
@@ -196,8 +197,7 @@ define void @entry() noreturn {
 '@ | Set-Content -LiteralPath $exitIr -Encoding utf8
 & (Join-Path $LlvmBin 'llc.exe') -filetype=obj $exitIr -o "$exitIr.obj"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture object generation failed' }
-$kernel32 = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
-& (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" $kernel32 /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
+& (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" (Get-KimiKernel32) /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture link failed' }
 $output = Invoke-Kimi @('run', "$exitIr.exe") 37
 $output = Invoke-Kimi @('run', (Join-Path $work 'missing.exe')) 1

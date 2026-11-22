@@ -5,10 +5,10 @@
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
 // pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the compiler's Tatara: linked into
 // kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root; the built Application's run;
-// toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs: its Tatara, its supplies' bytes and
-// kernel32's definition against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
+// toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs, two steps: its Tatara's start check and
+// its supplies' bytes against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
 // toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is;
-// ToolchainIdentity); kernel32's definition (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
+// ToolchainIdentity, with Kernel32Imports' DLL and generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
 // development toolchain's tools and files are checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the compiler's Tatara and embedded supplies (toolchain verify).
@@ -45,9 +45,8 @@
 // remedy; a failed call (return 1, or 2 after which every later call in the process fails naming the first cause) an IOException
 // "Tatara failed: <operation>" with LLVM's or LLD's text, as a tool's failure is.
 // The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
-// toolchain verify states the catalog's invariants (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256 is the
-// toolchain's InvalidDataException; an embedded kernel32 definition that differs from the catalog's is Kernel32Imports' initializer's
-// fault.
+// toolchain verify states the catalog's invariant (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256 is the
+// toolchain's InvalidDataException.
 
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -250,7 +249,6 @@ internal static partial class NativeToolchain
     private static JsonObject CreateBuildRecord() => new()
     {
         ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
-        ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
 
     // Kimi's own standard input for run's program (Tatara decision 15), which the caller does not own; null when Kimi has none: no handle,
