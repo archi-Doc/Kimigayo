@@ -14,7 +14,10 @@ using Kimi.Diagnostics;
 /// <summary>
 /// Represents an application or library build unit, configured by a project file or a single-source input.
 /// </summary>
-/// <remarks>A project is the Kimigayo equivalent of a C# project.</remarks>
+/// <remarks>A project is the Kimigayo equivalent of a C# project. Its input (IMPL 20.3.1), the selected file every build record names, is
+/// stored once and derived: the project file of a <c>.kimiproj</c> input, the one source file of a <c>.kimi</c> input's implicit project
+/// (no project file), its full path as resolution gives it; none for a project without a project file and with another number of source
+/// files (one made in memory).</remarks>
 public partial class Project
 {
     /// <summary>Gets the default settings for programmatically constructed projects.</summary>
@@ -157,6 +160,10 @@ public partial class Project
     public ProjectFile ProjectFile { get; private set; }
 
     internal string? FilePath { get; private set; }
+
+    // The project's input, derived as the summary states: publication writes it into the link manifest, every native build of the pair
+    // names it in its record, and run --no-build runs a build only of this input (PLAN G1256).
+    internal string? Input => this.FilePath ?? (this.kimiFiles.Count == 1 ? this.kimiFiles.First() : null);
 
     /// <summary>Gets the discovered source files.</summary>
     internal IReadOnlyCollection<string> KimiFiles => this.kimiFiles;

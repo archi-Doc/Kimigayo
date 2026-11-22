@@ -131,7 +131,8 @@ internal static partial class NativeToolchain
     /// process (no tool is launched). The constructor takes the build's fixed inputs: the project whose supplies it checks (none for a
     /// standalone manifest), the pair, the root its records redact, the optimization and the host's report and cancellation, which Tatara's
     /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> runs the steps once, in order: the pair's
-    /// identity, Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
+    /// identity, with the input the manifest names, resolved as its other paths are (absent for a pair emitted from memory or by an
+    /// earlier compiler), Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
     /// version), the libraries (each staged: the compiler's supplies from its resources, a program's from its input), the object, its
     /// inspection, the link to a private file, the report and the commit; the steps fill the record and <see cref="Run"/> writes each of
     /// its states. The commit, after the report and the last cancellation point, writes the success record, which names the private
@@ -192,6 +193,7 @@ internal static partial class NativeToolchain
                 throw new PlatformNotSupportedException("Native build currently requires Windows.");
             }
 
+            this.record["input"] = LinkManifest.OptionalText(this.manifest, "input") is { } input ? ResolvePath(input, this.outputDirectory) : null;
             var tools = new JsonObject();
             this.record["tools"] = tools;
             this.record["irSha256"] = irHash;
