@@ -104,7 +104,7 @@ internal sealed partial class MirBorrows
 
             if (loan.Destroying)
             {
-                this.Destroyed(reservation, cases.TypeOf(this.lent[local]), taking, at);
+                this.Destroyed(reservation, cases.TypeOf(this.LentInto(local)), taking, at);
             }
         }
 
