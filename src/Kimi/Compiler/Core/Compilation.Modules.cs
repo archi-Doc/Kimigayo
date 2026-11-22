@@ -45,7 +45,8 @@ public partial class Compilation
     }
 
     // A configured path read by the Type production (F.5; the alias target's, GroupKoto) in a configuration document of its module, as
-    // KimiLibrary.CreateAbort forms its built-in syntax. The loader refused an empty path; the effective path carries no leading `::`.
+    // KimiLibrary.CreateAbort forms its built-in syntax, and declared as the opening alias the configuration states (SPEC 18.2.3), so its
+    // lookup row is an alias target's (UseRow: Qualifier). The loader refused an empty path; the effective path has no leading `::`.
     internal static Koto ParseConfiguredPath(Kotonoha module, string path)
     {
         var source = new SourceDocument($"configuration://alias/{path}", path);
@@ -56,7 +57,9 @@ public partial class Compilation
         {
             tokenizer.ReadAll();
             var reader = new TokenReader(context, ref tokenizer);
-            return Parser.ParseType(ref reader, Parser.TypeContext.AnnotatedType);
+            var target = Parser.ParseType(ref reader, Parser.TypeContext.AnnotatedType);
+            _ = new AliasKoto(ref reader, target, null, target.Span);
+            return target;
         }
         finally
         {
