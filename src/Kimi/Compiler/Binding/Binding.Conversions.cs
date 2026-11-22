@@ -246,7 +246,7 @@ public sealed partial class Binding
 
             if (IsExclusive(pattern.Semantics))
             {
-                this.JudgeHolderPlace(conversion.Left, HolderAccess.ExclusiveBorrow, null, conversion);
+                this.JudgeHolderPlace(conversion.Left, null, conversion);
             }
 
             if (this.IsNeverValue(conversion.Left, actual))
@@ -361,7 +361,7 @@ public sealed partial class Binding
 
             if (IsExclusive(semantics))
             {
-                this.JudgeHolderPlace(conversion.Left, HolderAccess.ExclusiveBorrow, null, conversion);
+                this.JudgeHolderPlace(conversion.Left, null, conversion);
             }
 
             // SPEC 14.9.3: an object creation of a Never operand and a borrow of a Never value only pass it on (IsNeverValue).

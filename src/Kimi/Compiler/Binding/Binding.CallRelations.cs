@@ -237,7 +237,7 @@ public sealed partial class Binding
 
             if (operation.Kind == ArgumentOperationKind.Borrow && IsExclusive(mode.Semantics))
             {
-                this.JudgeHolderPlace(source, HolderAccess.ExclusiveBorrow, null, source);
+                this.JudgeHolderPlace(source, null, source);
             }
         }
 

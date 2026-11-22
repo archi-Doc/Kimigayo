@@ -460,7 +460,7 @@ public sealed partial class Binding
     // (`i32 is Addable<U.(HasItem).Item>` with SrcI for U); an Entailed row applies when its subject is proven PrimitiveInteger.
     private ImplTable.BuiltinRow BuiltinConformance(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site)
     {
-        if (ArithmeticContractSyntax.Identity(contract) is { } id && !ArithmeticContracts.IsLeft(id) && id != KimiDeclarationId.Negatable &&
+        if (ArithmeticContractSyntax.Identity(contract) is { } id && !KimiLibraryCatalog.IsLeftContract(id) && id != KimiDeclarationId.Negatable &&
             (contract.Type is not { Components: [var counterpart] } || !this.SameConformanceType(counterpart, type, scope, site)))
         {
             return default;

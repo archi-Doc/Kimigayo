@@ -127,7 +127,7 @@ public sealed partial class Binding
         Prepare(ref this.builtinCompare, KimiDeclarationId.Comparable);
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
-            if (!ArithmeticContracts.IsLeft(id))
+            if (!KimiLibraryCatalog.IsLeftContract(id))
             {
                 Prepare(ref this.builtinArithmetic[ArithmeticSlot(id)], id);
             }
