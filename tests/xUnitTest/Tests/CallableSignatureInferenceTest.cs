@@ -26,6 +26,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 
     private const string ItemDeclarations = "func twice(v: i64) -> i64 => v\nfunc g<T>(x: T) -> i32 => 0\nfunc k(c1: bool, c2: bool) -> i32\n";
 
+    private const string ItemIdentity = "func identity<T>(value: T) -> T => value@move\n" + ItemDeclarations;
+
     // A closure whose result borrows its hidden environment receiver (SPEC 8.10, 7.7.4).
     private const string EnvironmentClosure = "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n";
 
@@ -694,6 +696,17 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData("guard", "gt1n", ItemDeclarations + "    return g<(i64) -> bool>(twice)\n", "*: return g<(i64) -> bool>(twice) | ...")]
     [InlineData("guard", "gt2n", ItemDeclarations + "    return g<(i64) -> bool>(if c1 => twice else => twice)\n", "*: return g<(i64) -> bool>(if c1 => twice else => twice) | ...")]
     public void AnItemIsErasedAtASlotAnExplicitTypeArgumentFixes(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.5.3, 10.8, 10.3, 10.2 (PLAN G356 it1, R7-P1): a lone non-generic Item needs no S, so it is independently typable and binds T
+    // to its Function Item Type; the expected result fills no bound slot, and the declaration erases the Item Type (10.2's erasure row).
+    // No existing row pins it1's form.
+    [Theory]
+    [InlineData("I3", "it1", ItemIdentity + "    let v: (i64) -> i64 = identity(twice)\n    _ = v(1)\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "it1i", ItemIdentity + "    let v = identity(twice)\n    _ = v(1)\n    return 0\n", "")]
+    [InlineData("guard", "it1d", ItemIdentity + "    let v: (i64) -> i64 = twice\n    _ = v(1)\n    return 0\n", "")]
+    [InlineData("guard", "it1n", ItemIdentity + "    let v: (i64) -> bool = identity(twice)\n    return 0\n", "*: let v: (i64) -> bool = identity(twice) | ...")]
+    public void AnItemArgumentKeepsItsItemTypeAndTheExpectedResultErasesIt(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
