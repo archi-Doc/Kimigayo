@@ -19,7 +19,7 @@ internal sealed partial class InstanceCollector
     private static CapabilityGap? ArithmeticGap(in RequirementTarget target)
     {
         var contract = TyCtxt.ShimContract(target.Target!);
-        if (!ArithmeticContracts.IsArithmetic(contract))
+        if (!KimiLibraryCatalog.IsArithmeticContract(contract))
         {
             return null;
         }

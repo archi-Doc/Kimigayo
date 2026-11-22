@@ -2492,7 +2492,7 @@ public sealed partial class InstanceCollectorTest
         var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).Order().ToArray();
         Assert.Equal(expected, c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())).Order());
         var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin);
-        Assert.Equal(refused.Length == 0, shims.Any(static x => ArithmeticContracts.IsArithmetic(TyCtxt.Contract(x.Key.Symbol!).LibraryDeclaration)));
+        Assert.Equal(refused.Length == 0, shims.Any(static x => KimiLibraryCatalog.IsArithmeticContract(TyCtxt.Contract(x.Key.Symbol!).LibraryDeclaration)));
     }
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
@@ -3084,7 +3084,7 @@ public sealed partial class InstanceCollectorTest
         {
             KimiDeclarationId.Equatable => "BuiltinEquals",
             KimiDeclarationId.Comparable => "BuiltinCompare",
-            var contract when ArithmeticContracts.IsArithmetic(contract) => "BuiltinArithmetic",
+            var contract when KimiLibraryCatalog.IsArithmeticContract(contract) => "BuiltinArithmetic",
             var contract => throw new InvalidOperationException($"{function.Name} of {contract} is no shim."),
         };
     }

@@ -203,7 +203,7 @@ public sealed partial class Binding
 
         if (assignment && left is not null && kind == KotoKind.Equals)
         {
-            this.JudgeHolderPlace(binary.Left, HolderAccess.Write, binary.Right, binary);
+            this.JudgeHolderPlace(binary.Left, binary.Right, binary);
         }
 
         if (decision.Failure == BindingFailure.None && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
@@ -290,7 +290,7 @@ public sealed partial class Binding
 
         if (!write)
         {
-            this.JudgeHolderPlace(target, HolderAccess.Update, null, operation);
+            this.JudgeHolderPlace(target, null, operation);
         }
 
         return true;

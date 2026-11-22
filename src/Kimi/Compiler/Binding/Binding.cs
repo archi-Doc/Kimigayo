@@ -53,7 +53,6 @@ public sealed partial class Binding
         }
 
         this.compilation = compilation;
-        this.indexer = new(this);
         this.Library = library;
         this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);

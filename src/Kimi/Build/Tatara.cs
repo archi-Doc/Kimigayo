@@ -280,6 +280,7 @@ internal sealed record TataraContext(
 /// <summary>A symbol of an object: its name and llvm-nm's letter for its kind (U, T, D, B, R, ...).</summary>
 internal readonly record struct ObjectSymbol(string Name, char Kind);
 
-/// <summary>What <see cref="Tatara.Inspect"/> reads from an object; NativeBuild judges them and writes the record's form.
-/// <c>HasUnwind</c>: the object has unwind entries; <c>HasDefaultLibrary</c>: it names a default library.</summary>
+/// <summary>What <see cref="Tatara.Inspect"/> reads from an object; NativeBuild judges them, but <c>HasUnwind</c>, and writes the record's
+/// form. <c>HasUnwind</c>: the object has unwind entries, which no build judges (an object of frameless leaves has none, IMPL 21.4); its
+/// removal is staged with tatara.h's flag kind 0. <c>HasDefaultLibrary</c>: it names a default library.</summary>
 internal readonly record struct ObjectFacts(IReadOnlyList<ObjectSymbol> Undefined, IReadOnlyList<ObjectSymbol> DefinedExternal, bool HasUnwind, bool HasDefaultLibrary);

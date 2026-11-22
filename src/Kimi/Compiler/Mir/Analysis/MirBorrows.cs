@@ -24,12 +24,14 @@
 // their problems as Cause facts; UnretainedRawStore_Kd at a safe direct store of an input's own part that its own contract refuses
 // (SPEC 5.2.1 Retained dependencies; MirBorrows.Storing, PLAN G581); and Work, the steps it took (A3 6.2).
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:
-// - a raw pointer's addresses and own-step entries and PQ-10's Borrows and reads: MirBorrows.Addresses (R4-M116);
+// - a raw pointer's addresses, the own-step rows of the Places reads use and PQ-10's narrowed limit: MirBorrows.Addresses (R4-M116, Z5-R1);
 // - the own-step entries' departures: MirBorrows.OwnSteps (R4-M116);
 // - a Call's contract rows, P9's and untied stores among them: MirBorrows.CallRows; their transfer: MirBorrows.Calls;
 // - the effect rule and its initialization proof: MirBorrows.Effects;
 // - a default template's slot-rooted test, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
 // - a Place's steps and their classes, E17's Inline row included: MirSteps (R4-M100);
+// - a Place's and a borrow's exact lent position (the storage past each dereference, by the borrow that formed the reference):
+//   MirBorrows.Lent (Z5-F), over MirBorrows.Loans' store record;
 // - the problems' codes and facts, and PD13's held view: MirBorrows.Reports, its fact MirBorrows.CallRows' (R4-M148);
 // - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
