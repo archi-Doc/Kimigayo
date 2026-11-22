@@ -4324,6 +4324,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Completes R4-M127's "Until U2" clause, BU-38's "x3 and r8", PLAN G240's R4 readers, BU-36's Open item for A4's `Solve`,
     `MirCases.Views` and the builder's `FoldType`, and BU-37's Open item for `Destroyed`'s null part (departing from its "a dependent
     by R4-M118": the Derived class is rejected above); each stays and names this entry.
+  - Superseded in part by R4-M237 (2026-11-23, Z25): "Each keeps its own meaning of a Limit (... A4's Limit class ...)" for A4: A4's
+    atom and `Below` read `ReadableInstance`'s null as Deep; A4's `Limit` class keeps E5, E6 and E7.
 - **R4-M140 A5's holding memo: the holder rule once per case Type and program version (G258 D1)** (2026-10-26; the owner's 「D1・D2 を採用
   (推奨)」 of 2026-10-26, which accepts D1's cold allocation; the G258 report's §4 D1, option (a)).
   - Representation: `MirBorrows.holding`, a `Dictionary<BoundType, (bool Holds, MirWrites Writes)>` by reference beside the walk's
@@ -5027,6 +5029,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Out of scope, open: `HoldsRaw`, `MirStatic.RawHolding` and `RawStaticRead` (2b-5); Binding's `ContainsRawPointer` past depth 32 (BU);
     A4's null-instance Limit (`TyCtxt.ReadableInstance`'s null mixes Binding's storage limit with other nulls until TyCtxt publishes the
     outcome, BU); `MirWrites.Limit`'s "reached" rule beside Deep's "would add" (a later unit). Not temporary.
+  - Amended by R4-M237 (2026-11-23, Z25): A4's Deep also covers an instance past Binding's storage bound (`TyCtxt.ReadableInstance`'s
+    null), so the open item A4's null-instance Limit closes for that bound; the null's other cause (`Formation.Incomplete`) stays an
+    unseparated remainder (PLAN G651 U2).
 - **R4-M154 Retention per storage (WK, PLAN G276 with G279): a call keeps an argument's own value only in storage that can hold it, and
   the callables its contract hands its body retain as erased callees** (superseded in part by BU-66: rule 2 at an abstract part and
   rule 3 without a Type gate; by R4-M219, the A5 value redesign's U3c: Revision 8's Place-Type key for the record of an element
@@ -5648,6 +5653,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Applied by R7-M57 (2026-11-20; R7-M53's Rule): A4's E1, E2 and A5's M3c (i)-(iii) are broken contracts or resting answers;
     M3c's Unclassed arm stays with Z9.
   - Applied by R7-M58 (2026-11-20; R7-M53's Rule): X3, a capture use no consumer takes, is a broken contract (`InternalInvariant_Kd`).
+  - Applied by R4-M237 (2026-11-23, Z25; R7-M53's Rule): A4's E3, E4 read Binding's storage bound as Deep.
 - **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
   「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; BU's review REVISE B1, the fix round under the owner's 「GO」)
   - SPEC 8.4, 8.3.2's refinement row: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type, and only
@@ -7859,6 +7865,29 @@ and migration obligations remain in force; no numeric cap changes are authorized
     cause (failing closed)", because since R4-M104 and R4-M132 nothing is dropped and the Origin stratum judges before the Loan
     stratum, so only R26-borrow reads the other's record and is the dependent check; amends `BorrowedDefaultTest`'s 11-19 class (iii)
     pin (one failure, not two). 2g-5 is closed: F4 and F7's escape went with W (R4-M104); F9's PreparedInput pair goes here.
+- **R4-M237 A4 reads an instance past Binding's storage bound as Deep (Z25)** (Middle, 2026-11-23; PLAN G396 (3), stream Z's Z25,
+  Q-687, D-1135; Major, no separate design review: the implementation review, ACCEPT WITH CONDITIONS, covers the design; the
+  Middle's rulings 11-23 00:4x) SPEC 8.11.2, 23.1.1; IMPL 21.3.2.
+  - **Rule.** R7-M53's Rule and R7-M54's ("Where a retention or effect walk meets the bound, A5's or A4's `OwnershipDepthLimit_Kd`
+    is the program's record") applied to A4's E3 and E4. `TyCtxt.ReadableInstance`'s null for an instance past Binding's storage
+    bound (PLAN G128's height 64 or path 256) is A4's `Deep` class wherever A4 reads it: `MirEffects.Item` (a published row's
+    parameter, `Below`) and `MirEffects.Solve.Process` (a callee's atom composed under the call, and `Enter`'s rows), as A5 reads
+    retention's `CallRetention.Limit`. The obligation records `OwnershipDepthLimit_Kd` (`MirEffects.Outcome`, unchanged). A4's
+    composition through a destructor's atom grows past `MirDepths` and ends only at Binding's bound, so A4 keeps reading that bound
+    and reads it as the bound.
+  - **Remainder, unseparated.** The null publishes no cause, so a formation that does not complete (`Formation.Incomplete`) reads
+    Deep too; it is not part of the record's meaning. It is a broken contract for the collector (`Report`, R5-M151) and, outside its
+    frame, an after-run height refusal Binding records itself (G651's site-less `InternalInvariant_Kd`); where A4 meets it (an
+    associated projection normalized after the run) its `OwnershipDepthLimit_Kd` is a dependent record beside G651's. PLAN G651 U2
+    separates the after-run height; BU-36's step has no reproducer.
+  - **Rejected.** A4 reading the formation (`Apply`) with a composition depth counter of its own (a second bound beside Binding's
+    for the same purpose); keeping `Limit` with a stage (none exists; R7-M53 removes, not excepts).
+  - **Supersedes in part** R4-M139's "Each keeps its own meaning of a Limit (... A4's Limit class ...)" for A4 (A4's atom and
+    `Below` read the null as Deep); **amends** R4-M153 (A4's Deep also covers an instance past Binding's storage bound). A4's `Limit`
+    class keeps E5 (Z3), E6 (Z2's rest) and E7 (R7-P5).
+  - **Rows.** `MirEffectsTest.DepthLimit`'s rel65, rel65-loud, wipe65, clear65 and their twins, and
+    `AChainGrowingThroughADestructorEndsAtTheBound`; records move `Unsupported_Kd` -> `OwnershipDepthLimit_Kd` at the obligation on
+    programs the base rejects (Q13), none in the snapshot corpus; no acceptance move.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
