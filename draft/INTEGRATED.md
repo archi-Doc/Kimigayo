@@ -1718,3 +1718,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   download; `KIMI_E_PROCESS_HEAP` removed in B7r2; decision 23's memory gate); §7: B7's row names B7b's group B7r and its
   order, B8's row records the owner's deferral; §11: the question before B7b is answered. No earlier decision changes.
   Nothing frozen.
+- Revision 9 (2026-11-22, the B7b and B7r design's Revision 2 accepted by the Middle's review C-445 (N4), as Revision 2.1; T's
+  D-1061): §7: B7's row states the order B7 lands in, in eight windows: B7a1 and B7a2, then B7b1 (W1), B7r4 (W2), B7r1-B7r3
+  (W3, all or none), B7b2, B7b6 and B7b5 (W4), B7r5 and B7b4 (W5), B7b7 (W6), B7b8 (W7) and B7b9 (W8), replacing revision 8's
+  order (the group B7r first, from the design's Revision 1). No decision of the owner changes. Nothing frozen.
