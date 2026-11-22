@@ -218,7 +218,7 @@ public sealed partial class Binding
                     return this.BindNode(conversion, conversionScope);
                 }
 
-                return this.BindType(conversion.Right, conversionScope);
+                return this.BindConversionTarget(conversion.Right, conversionScope, this.TypeContext(conversion.Right, conversionScope));
             case IdentifierNameKoto name:
                 var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name);
                 if (symbol?.Kind == BindingSymbolKind.Function)
