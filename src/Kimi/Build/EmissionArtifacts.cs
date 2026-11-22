@@ -21,11 +21,9 @@ public static class EmissionArtifacts
     /// (Compilation.Generated, with the output kind and the external declarations the manifest states; R9-B1).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
-    /// <param name="irPath">The published IR path on success.</param>
     /// <returns>Whether the complete matched pair was published.</returns>
-    internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath)
+    internal static bool Publish(Compilation compilation, ArtifactPaths? paths)
     {
-        irPath = null;
         if (ToolchainIdentity.BackendVersion.Length == 0 || ToolchainIdentity.BackendSha256.Length != 64)
         {
             return FailBeforeGeneration(compilation, DiagnosticCode.InternalInvariant_Kd, null);
@@ -84,7 +82,6 @@ public static class EmissionArtifacts
 
                 Replace(tempIr, destination);
                 Replace(tempManifest, manifest);
-                irPath = destination;
                 return true;
             }
             catch (Exception ex) when (IsPublicationFailure(ex))

@@ -31,7 +31,9 @@
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders). A build of a record (Project.Build, build --Manifest) holds the record's lock
-// (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave.
+// (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave; a build's files are
+// named from its record's Name (ArtifactPaths), a --Manifest build's IR included, so the lock covers every file it writes. A native build
+// holds its IR, with read sharing only, from the pair's hash to its end, so it compiles the bytes its record names.
 // Must not: check source semantics, or read compiler state outside the list above.
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
 // The link manifest's fixed fields (one table), the compiler's supplies' entries (their rows) and its readers are LinkManifest's: no
