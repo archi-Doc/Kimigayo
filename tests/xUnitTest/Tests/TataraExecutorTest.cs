@@ -45,9 +45,10 @@ public sealed class TataraExecutorTest : IDisposable
 
     private static string Hello => Path.Combine(Repository.Root, "docs", "examples", "Hello", "Hello.kimi");
 
-    private static string Kernel32 => Path.Combine(Root, "windows_x64", "kernel32.lib");
+    // The libraries the compiler carries, committed beside the catalog (Tatara B6b6).
+    private static string Kernel32 => Path.Combine(Repository.Root, "src", "backend", "windows-x64", "kernel32.lib");
 
-    private static string Backend => Path.Combine(Root, "windows_x64", ToolchainIdentity.BackendFile);
+    private static string Backend => Path.Combine(Repository.Root, "src", "backend", "windows-x64", "kimi_backend_windows_x64_v1.lib");
 
     public void Dispose() => Directory.Delete(this.directory, true);
 
@@ -81,7 +82,7 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // The tool control comparison (permanent): the archive's opt, llc and lld-link with P13's arguments against Tatara's operations,
-    // on the IR of the fixed rows or every corpus fixture, at O0 and O2.
+    // on the IR of the fixed rows or every corpus fixture, at O0 and O2; both links take the libraries the compiler carries.
     [Fact]
     public async Task TataraEqualsTheTools()
     {

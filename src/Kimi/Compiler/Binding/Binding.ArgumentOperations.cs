@@ -125,13 +125,13 @@ public sealed partial class Binding
         return null;
     }
 
-    private static ConstraintProof ProjectedReceiverProof(BindingSymbol implementation, BoundAccessor? accessor = null)
+    private static bool IsTransfer(Koto source) => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer };
+
+    private ConstraintProof ProjectedReceiverProof(BindingSymbol implementation, BoundAccessor? accessor = null)
         // SPEC 12.7.1: a shared receiver grants only read/shared-borrow effects.
         // Exclusive receivers still require the receiver-preservation fixed point.
-        => implementation.Declaration.BindingState == BindingState.Invalid || accessor?.Declaration?.BindingState == BindingState.Invalid ? ConstraintProof.Error
+        => this.DeclarationFailed(implementation.Declaration) || (accessor?.Declaration is { } declaration && this.DeclarationFailed(declaration)) ? ConstraintProof.Error
             : (accessor?.Receiver?.Semantics ?? ReceiverShape(implementation)) is SemanticsKind.Ref or SemanticsKind.ObjRef ? ConstraintProof.Proven : ConstraintProof.Unknown;
-
-    private static bool IsTransfer(Koto source) => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer };
 
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
     // so a call without applicable candidates names the required spelling (SPEC 15.1.5), the Place that needs it and,

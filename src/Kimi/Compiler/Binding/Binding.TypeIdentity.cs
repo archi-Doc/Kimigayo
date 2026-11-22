@@ -15,7 +15,8 @@ namespace Kimi.Compiler;
 //   edges a constructor's components and a projection's Contract arguments (SPEC 8.3.3's expansion), Cyclic only through a
 //   constructor edge (R7-C2c2 c2-4b); a Type that is no node is in the class of the node it is congruent with (ClassOf); the
 //   premise error an error class is (SPEC 8.2.3's table), recorded once per pass at the declaration whose premises first form it;
-//   the identity proposition's Proven (IdentityProven); the class key the premise supply compares by (ClassKey, R7-C2c2 c2-1); the
+//   the identity proposition's Proven (IdentityProven; two complete Types by SameCompleteType, Binding.TypeIdentity.Complete, R7-C3
+//   C3c); the class key the premise supply compares by (ClassKey, R7-C2c2 c2-1); the
 //   one form every Type of a class takes in a view (ClassForm, R7-C2c2 c2-4b: its own contract in Binding.TypeIdentity.Keys, its
 //   readers closed to the intakes of the judgments over identical Types); and BU-72's HIR premise (`P is` the ClassForm of `P`).
 // - Inputs: the view's chain of valid Constraint environments: positive identity premises and their availability (R7-C2e1's
@@ -295,18 +296,30 @@ public sealed partial class Binding
         }
 
         this.identityRecorded.Add(scope, (scope.Owner.BindingFailure == BindingFailure.None, limited));
-        this.Fail(scope.Owner, failure);
+        if (ImplementationLimit(failure) is null)
+        {
+            this.Record(scope.Owner, failure, []); // a problem of its own where the owner's first failure is another check's (SPEC 23.1.2)
+        }
+        else
+        {
+            // A Resource record (SPEC 8.3.3 Limits, 23.1.1) is written as every limit writer writes it (RefuseProof's, TypeHeight's): the
+            // owner's failure, whose issue names its limit (ReportIssue); a problem carries no limit fact.
+            this.Fail(scope.Owner, failure);
+        }
+
         return true;
     }
 
     // SPEC 8.2.3, 23.1.2: a declaration whose own failure is its premise error keeps its context, as a shape violation keeps its signature:
     // the error is reported once, at it, and its other checks are judged as in a valid view.
     // R7-C3 (B1'): any failed premise is this context's case: an identity premise error recorded at the declaration (identityRecorded),
-    // or a premise whose proof failed and left the evidence (FailPremise), both its own record.
+    // or a premise whose proof failed and left the evidence (FailPremise), both its own record; and SPEC 13.3.4's direction contradiction
+    // as its owner's own record (a premise error by 8.2.3's site, x41n's Reading 1), whose pair of clause instances fails no premise (F's C2
+    // ruling 324).
     private bool KeepsPremiseErrorContext(Koto declaration)
         => this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { } environment &&
             ((this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Own) ||
-                ReferenceEquals(environment.FailedPremise?.Use, declaration));
+                ReferenceEquals(environment.FailedPremise?.Use, declaration) || this.RecordedFailure(declaration) == BindingFailure.ArithmeticDirection);
 
     // SPEC 8.3.3 Limits: whether a declaration's premise closure (its own premises or an enclosing declaration's) reached the limit,
     // whatever its first failure: a class past it is cut, so a judgment through it depends on the limited analysis. Binding.CaseLimits'
