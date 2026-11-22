@@ -25507,6 +25507,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     Dictionary kernel at O2, runs 0.61x.
   - The RP8 exception closed (PLAN G949 Stage 2 U6, 2026-11-19): its cause, the per-compilation rebinding of the library (PLAN G337),
     ended with R8-L1 U3 (W-272's RP8: warm Bind B/A' Hello 0.585, Milestone26 0.966, Interpolation 0.973); R8-M55's U6 line.
+  - **One growth target (PLAN G970, R8-X1 U1, 2026-11-22; 1b57a2802):** `Storage.growthTarget(capacity, stride, minimum)`, a
+    `#CallerLocation` internal function, states SPEC 4.9.8's target once (twice the capacity, at least 4 and at least `minimum`, at
+    most `largest / stride`; a larger `minimum` Aborts with `KIMI_E_ALLOC_SIZE` at the standard operation's caller location), and
+    `growArray` and `DictionaryStorage.grow` call it, keeping only their zero stride, early return and transfer. `HeapBuffer.reserve`
+    keeps SPEC 22.9.4's own target.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
