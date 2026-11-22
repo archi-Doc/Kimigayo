@@ -6,22 +6,97 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 10.5.1 (G812 rulings 122, 123): the parts awaiting their call (a contextual Case, a named Call) that the last argument fit
+    // met, each with the Type at its position and the components down to it from the argument (WaitingPart). The outermost fit
+    // (FitArgument) starts it; a part's fit within it (FitArgumentPart) adds to it, and the arms that add a step add it to these
+    // too. Only a value call on the split reads it (ItemCallFails), right after the fit, as its one candidate's check of them.
+    private readonly List<WaitingPart> waitingParts = new();
+
+    // The waiting parts a value call's split check is judging (WaitingPartFails), each judgment's from its own mark.
+    private readonly List<WaitingPart> judgedParts = new();
+
+    // DECISIONS BU-240 (the owner's O-392 (c), G812 rulings 109, 111; temporary, removed with (R)): the components down to the part
+    // where the last argument fit failed (FitArgument's Inapplicable): a Tuple or array literal's element (ProbeAggregateArgument)
+    // or a join's child position (FitsPosition), below the layer it is borrowed at (FitComposite), then, below a typed part, the
+    // components its structural fit names (FitTyped); none where the failure is the argument's own. A value call on the split
+    // reads it right after the fit and blames that part's bindings (ItemCallFails).
+    private ComponentPath argumentMisfit;
+
+    // SPEC 6.5.2: the ordinal of the Case a contextual Case names in `type`'s enum, else -1.
+    private static int CaseOrdinal(Koto node, BoundType type)
+    {
+        var name = ((SyntaxFormKoto)((node as InvocationKoto)?.Method ?? node)).Operands is [IdentifierNameKoto identifier] ? identifier.IdentifierName : null;
+        for (var i = 0; AdtDef.Case(type, i) is { } found; i++)
+        {
+            if (found.Symbol.Name == name)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    // The component of `type` (an instance of the Case's enum) that payload `i` of Case `ordinal` takes: its slot where the payload's
+    // declared Type is the enum's slot, else -1 (the position no component path names: ComponentPath).
+    private static int PayloadSlot(BoundType type, int ordinal, int i)
+        => AdtDef.Case(type, ordinal) is { } found && i < found.Payload.Length && found.Payload[i].BoundType is { Kind: BoundTypeKind.Parameter, Symbol: { } slot }
+            ? ContainerSlot(type.Symbol!.Declaration, slot) : -1;
+
     // SPEC 10.4 step 1 (PLAN G924, G916): the class of a part checked against its expected Type, by its Materialization there: its one
     // owner temporary of U borrowed at `ref/U`, else Expected-Type fitting by value. The one class source of FitComposite and of an
     // open position's whole literal or join (TryCandidateCore).
     private static ArgumentAdaptation ExpectedTypeClass(BoundType? temporary)
         => temporary is not null ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.ExpectedTypeFitting;
 
+    // The waiting parts met below a part's position (from `from` on), as the enclosing position sees them: within its component
+    // `index`; none (the part's own position, -1) where the part is no component of it.
+    private void WaitingWithin(int from, int index)
+    {
+        for (var i = from; i < this.waitingParts.Count; i++)
+        {
+            this.waitingParts[i] = this.waitingParts[i] with { Path = index < 0 ? default : this.waitingParts[i].Path.Within(index) };
+        }
+    }
+
+    // A part of a join's waiting position (FitsPosition): one awaiting its call is met at the position's Type.
+    private bool MetWaiting(Koto part, BoundType type)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        if (this.KindOf(node) is PartKind.Case or PartKind.Call && this.AwaitsCall(node))
+        {
+            this.waitingParts.Add(new(part, type, default));
+        }
+
+        return true;
+    }
+
+    // SPEC 3.8 (G812 ruling 116): whether a literal's or a join position's own shape fits its Type; a shape that does not is the
+    // position's own failure (ComponentPath.AtShape), as the structural fit's is.
+    private bool ShapeFits(bool fits)
+    {
+        this.argumentMisfit = fits ? this.argumentMisfit : ComponentPath.AtShape;
+        return fits;
+    }
+
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
     // operation that adapts it (unset when it does not fit, but for a literal's range shape). Another part that awaits its call (a
-    // Case, a Call) is checked only by the selected candidate; an anonymous function (Function) fits by its signature and a function
-    // group (Reference) by conversion (SPEC 7.7.4). An Aggregate or Join fits by its shape and parts; a Literal by its Type (SPEC
-    // 12.3), shared-borrowed at ref/T as an owner temporary; a typed part by erasure or the common adaptation, structurally (SPEC
-    // 15.6.1). Fitting publishes nothing.
+    // Case, a Call) is checked only by the selected candidate: it waits, and the fit publishes it (waitingParts); an anonymous
+    // function (Function) fits by its signature and a function group (Reference) by conversion (SPEC 7.7.4). An Aggregate or Join fits
+    // by its shape and parts; a Literal by its Type (SPEC 12.3), shared-borrowed at ref/T as an owner temporary; a typed part by
+    // erasure or the common adaptation, structurally (SPEC 15.6.1). Fitting publishes nothing else.
     private CandidateApplicability FitArgument(Koto part, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
+    {
+        this.waitingParts.Clear();
+        return this.FitArgumentPart(part, type, scope, use, out operation);
+    }
+
+    // FitArgument within an enclosing fit: a literal's element, a Case's payload, a join's late part.
+    private CandidateApplicability FitArgumentPart(Koto part, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
     {
         var node = KotoHelper.UnwrapParentheses(part);
         operation = default;
+        this.argumentMisfit = default;
         var kind = this.KindOf(node);
         switch (kind)
         {
@@ -57,10 +132,49 @@ public sealed partial class Binding
                 return this.FitLiteral(part, node, type, scope, out operation);
             case PartKind.Case or PartKind.Call when this.AwaitsCall(node):
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
+                this.waitingParts.Add(new(part, type, default));
                 return CandidateApplicability.Waiting;
             default:
                 return this.FitTyped(part, node, type, scope, use, out operation);
         }
+    }
+
+    // SPEC 6.5.2, 10.5.1 (G812 rulings 118, 122, 123): a contextual Case awaiting its call, judged at the Type its position has, as its
+    // selected call completes it (ItemCallFails' judgment of a waiting part): it resolves in that Type's enum with its payload count
+    // (its own shape, ShapeFits), and each payload, prepared before the search (PrepareWaitingCases), fits its Type there as an
+    // argument, read only; a payload whose declared Type is the enum's slot leaves the Type at that argument (ComponentPath), any other
+    // none, and the waiting parts met in it are published below the Case the same way. A Case that fits waits for its call.
+    private CandidateApplicability FitCaseAt(Koto part, BoundType type, BindingScope scope)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        if (!NeedsEnumContext(node))
+        {
+            return CandidateApplicability.Waiting;
+        }
+
+        var call = node as InvocationKoto;
+        var payloads = AdtDef.CaseTypes(this.types, type);
+        var ordinal = payloads is null ? -1 : CaseOrdinal(node, type);
+        var found = ordinal >= 0 ? AdtDef.Case(type, ordinal) : null;
+        if (!this.ShapeFits(found is not null && payloads![ordinal] is not null && EnumArityMatches(found.Payload.Length, call)))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
+        for (var i = 0; call is not null && i < call.ArgumentNodes.Count; i++)
+        {
+            var met = this.waitingParts.Count;
+            var fit = this.FitArgumentPart(call.ArgumentNodes[i], payloads![ordinal]!.Components[i], scope, call, out _);
+            var index = PayloadSlot(type, ordinal, i);
+            this.WaitingWithin(met, index);
+            if (fit == CandidateApplicability.Inapplicable)
+            {
+                this.argumentMisfit = index >= 0 ? this.argumentMisfit.Within(index) : default;
+                return CandidateApplicability.Inapplicable;
+            }
+        }
+
+        return CandidateApplicability.Waiting;
     }
 
     // SPEC 4.3, 4.6.2, 10.5.1: a Tuple or array literal or a mixed range fits a candidate's Type by its shape and parts, read only: each
@@ -71,12 +185,13 @@ public sealed partial class Binding
         if (source is ArrayLiteralKoto array)
         {
             // SPEC 4.3: a call-argument literal fits the candidate's fixed array of exactly its length, or its owned Array.
-            if (expected is not { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } ||
-                (array.FillLength is not null && expected.Kind != BoundTypeKind.FixedArray) ||
-                (expected.Kind == BoundTypeKind.FixedArray && (array.FillLength is null ? expected.Length != array.Elements.Count :
-                    array.FillCount is not { } count || (count.IsConstant
-                        ? expected.LengthExpression is not null || expected.Length != count.Value
-                        : !ReferenceEquals(expected.LengthExpression, count)))))
+            var shaped = expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } &&
+                (array.FillLength is null || expected.Kind == BoundTypeKind.FixedArray) &&
+                (expected.Kind != BoundTypeKind.FixedArray || (array.FillLength is null ? expected.Length == array.Elements.Count :
+                    array.FillCount is { } count && (count.IsConstant
+                        ? expected.LengthExpression is null && expected.Length == count.Value
+                        : ReferenceEquals(expected.LengthExpression, count))));
+            if (!this.ShapeFits(shaped))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -84,9 +199,12 @@ public sealed partial class Binding
             var first = this.positionOperations.Count;
             for (var i = 0; i < array.Elements.Count; i++)
             {
+                var met = this.waitingParts.Count;
                 var result = this.FitElement(array.Elements[i], ExpectedChild(array, i, expected)!, scope);
+                this.WaitingWithin(met, 0);
                 if (result != CandidateApplicability.Applicable)
                 {
+                    this.argumentMisfit = this.argumentMisfit.Within(0);
                     return result;
                 }
             }
@@ -101,16 +219,19 @@ public sealed partial class Binding
 
         if (source is TupleLiteralKoto tuple)
         {
-            if (!TupleShapeAt(tuple, expected))
+            if (!this.ShapeFits(TupleShapeAt(tuple, expected)))
             {
                 return CandidateApplicability.Inapplicable;
             }
 
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
+                var met = this.waitingParts.Count;
                 var result = this.FitElement(tuple.Elements[i], ExpectedChild(tuple, i, expected)!, scope);
+                this.WaitingWithin(met, i);
                 if (result != CandidateApplicability.Applicable)
                 {
+                    this.argumentMisfit = this.argumentMisfit.Within(i);
                     return result;
                 }
             }
@@ -127,8 +248,8 @@ public sealed partial class Binding
         {
             // SPEC 4.6.2: the candidate's range of this shape supplies each literal-only boundary's S or E; a typed boundary
             // must supply exactly its Type argument, through a value read.
-            if (expected is not { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Components.Count: 2 } ||
-                !ReferenceEquals(expected.Symbol, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range))
+            if (!this.ShapeFits(expected is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Components.Count: 2 } &&
+                ReferenceEquals(expected.Symbol, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range)))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -146,7 +267,7 @@ public sealed partial class Binding
     // waiting one is checked by the selected candidate (Applicable here).
     private CandidateApplicability FitElement(Koto part, BoundType type, BindingScope scope)
     {
-        var fit = this.FitArgument(part, type, scope, part, out var operation);
+        var fit = this.FitArgumentPart(part, type, scope, part, out var operation);
         if (fit is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
             this.positionOperations.Add(operation);
@@ -213,9 +334,9 @@ public sealed partial class Binding
             {
                 _ when this.PartFailed(part) => true, // SPEC 23.1.2: what only a failed part would cause is dependent.
                 (PartKind.Call, FunctionKoto closure) => !this.AwaitsCall(closure) || this.ClosureSignatureFits(closure, type),
-                (PartKind.Call, _) => true,
-                (PartKind.Aggregate, TupleLiteralKoto tuple) => TupleShapeAt(tuple, type),
-                (PartKind.Aggregate, ArrayLiteralKoto array) => this.ArrayShapeAt(array, type),
+                (PartKind.Call, _) => this.MetWaiting(part, type),
+                (PartKind.Aggregate, TupleLiteralKoto tuple) => this.ShapeFits(TupleShapeAt(tuple, type)),
+                (PartKind.Aggregate, ArrayLiteralKoto array) => this.ShapeFits(this.ArrayShapeAt(array, type)),
                 (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>
                     this.FitsTypedPart(part, own, type, common, ref positionClass),
                 (PartKind.Typed, TupleLiteralKoto or ArrayLiteralKoto) when this.IsAggregatePart(part) => this.FitsWholeAt(part, type),
@@ -243,10 +364,15 @@ public sealed partial class Binding
         for (var i = 0; i < children; i++)
         {
             var child = this.positionParts.Count;
+            var met = this.waitingParts.Count;
             var fits = this.AddChildPosition(start, end, i, type) is { } element && this.FitsPosition(child, element);
             this.ClosePosition(child);
+            this.WaitingWithin(met, type.Kind == BoundTypeKind.Tuple ? i : 0);
             if (!fits)
             {
+                // ComponentPath (G812 rulings 112, 114): the failing child leaves the position at its component, a Tuple's element or
+                // an array's element (ChildPattern), as a literal's element does (ProbeAggregateArgument), so the path is the argument's.
+                this.argumentMisfit = this.argumentMisfit.Within(type.Kind == BoundTypeKind.Tuple ? i : 0);
                 return false;
             }
         }
@@ -287,10 +413,17 @@ public sealed partial class Binding
         var temporary = this.Materialization(node, type, scope);
         var valueType = temporary ?? type;
         var first = this.positionOperations.Count;
+        var met = this.waitingParts.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
+        if (temporary is not null)
+        {
+            this.WaitingWithin(met, 0); // The literal is the layer's target, the owner temporary of U at `ref/U` (Materialization).
+        }
+
         if (result != CandidateApplicability.Applicable)
         {
             this.positionOperations.RemoveRange(first, this.positionOperations.Count - first);
+            this.argumentMisfit = temporary is not null ? this.argumentMisfit.Within(0) : this.argumentMisfit; // The literal is the layer's target.
         }
 
         operation = result != CandidateApplicability.Applicable ? default : new(
@@ -353,7 +486,7 @@ public sealed partial class Binding
 
         if (!this.AdaptInput(
                 node, FixedPattern.Open(type), actual, scope, null, null, out var adapted, out var quality, out var kind, recordPair: false, deferAcquisition: true) ||
-            !this.FitsStructuralPartAt(adapted, type, use))
+            !this.FitsStructuralPartAt(adapted, type, use, out this.argumentMisfit))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -361,4 +494,7 @@ public sealed partial class Binding
         operation = new(part, actual, type, kind, quality, AdaptedType: adapted);
         return CandidateApplicability.Applicable;
     }
+
+    // A part awaiting its call that a fit met: the part, the Type at its position and the components down to it.
+    private readonly record struct WaitingPart(Koto Part, BoundType Type, ComponentPath Path);
 }

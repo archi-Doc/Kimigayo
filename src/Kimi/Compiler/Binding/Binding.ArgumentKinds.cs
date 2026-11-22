@@ -378,6 +378,46 @@ public sealed partial class Binding
         return valid;
     }
 
+    // SPEC 6.5.2, 10.5.1 (G812 ruling 123): prepares the payloads of each contextual Case awaiting its call that a value call on the
+    // split meets in `part` (the part, a Tuple or array literal's elements, a join's results, a Case's payloads), as a call's arguments
+    // are prepared (PrepareCallArguments), before the call's search, so that no run of it binds. A Case whose payload fails is left
+    // there: it rests on that payload's record.
+    private void PrepareWaitingCases(Koto part, BindingScope scope)
+    {
+        var node = PartCore(KotoHelper.UnwrapParentheses(part));
+        if (NeedsEnumContext(node))
+        {
+            if (node is InvocationKoto call && this.PrepareCallArguments(call, scope, callableContext: true))
+            {
+                for (var i = 0; i < call.ArgumentNodes.Count; i++)
+                {
+                    this.PrepareWaitingCases(call.ArgumentNodes[i], scope);
+                }
+            }
+
+            return;
+        }
+
+        if (CallableParts(node) is { } elements)
+        {
+            for (var i = 0; i < elements.Count; i++)
+            {
+                this.PrepareWaitingCases(elements[i], scope);
+            }
+        }
+        else if (this.KindOf(node) == PartKind.Join && ControlFlowExpression(node) is { } join)
+        {
+            var start = this.positionParts.Count;
+            this.AddResults(join);
+            for (var i = start; i < this.positionParts.Count; i++)
+            {
+                this.PrepareWaitingCases(this.positionParts[i], scope);
+            }
+
+            this.ClosePosition(start);
+        }
+    }
+
     // SPEC 10.5.1: prepares an argument part once per pass, by its kind. An anonymous function waits for a candidate's signature; an
     // Aggregate or Join prepares its parts; control flow is classified by the survey of its result sources (SPEC 14.9.1); a Literal is
     // fitted after selection, unless the parser kept it as a recovery, which fails here so that the call rests on its Error; every other
