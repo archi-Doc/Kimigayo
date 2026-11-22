@@ -9,10 +9,11 @@ namespace Kimi.Compiler;
 // (SemanticsIndexed false), and BindMatch indexes them during body binding (IndexMatchArms), once the Subject's Type selects Option
 // or Result (Binding.Patterns.cs).
 // - Responsibility: one iterative pre-order walk over the child slots (IndexWalk, over IndexStack's entries). It reaches each node in
-//   a slot of the trees it walks (the source roots; the library's non-intrinsic root containers and root members) once per holding
-//   slot, in one context (IndexEntryKind), and resets it once before the first write to it in the pass (ResetEntry: at its entry,
-//   or, for an attribute of a leading chain, at its chain owner's entry, since the declaration's row judges the Attributes that
-//   attach to it, SPEC 6.7). In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
+//   a slot of the trees it walks (the source roots; the library's non-intrinsic root containers and root members; each module's
+//   configured paths, IndexConfiguredPaths) once per holding slot, in one context (IndexEntryKind), and resets it once before the
+//   first write to it in the pass (ResetEntry: at its entry, or, for an attribute of a leading chain, at its chain owner's entry,
+//   since the declaration's row judges the Attributes that attach to it, SPEC 6.7).
+//   In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
 //   functions, parameters, locals, generic and length parameters, enum cases, pattern bindings and guard candidates); a test function
 //   the build does not include is resolved without indexing its signature or body, which the ExcludedTest context walks for its
 //   Layout and misplaced Test attributes only; a valid one is still declared, so its declaration is judged in every build (SPEC
