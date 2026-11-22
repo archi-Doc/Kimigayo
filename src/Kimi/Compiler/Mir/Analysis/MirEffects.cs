@@ -1,14 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
-// Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
+// Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T with
+// the signature the call selected) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds) and
 // into which store (MirDropTable.LibraryHolds: the driver records a body's local facts in the store it began or continued, BeginLibrary,
 // ContinueLibrary or BeginProgram, in the step that closes the body's A2 entry in A2's store of that segment, so A4's library store and A2's hold the same
 // bodies; a driver that fills one without the other breaks Base), TyCtxt's
-// obligations and callee facts, TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
+// obligations and callee facts, the Callable signature each call through a Callable value selected (SPEC 8.10, 8.11.4: a value call's
+// CallPlan.DeclaredSignature, the Value callee's TypeToken; a published row's Callable input's one signature, TyCtxt.CallsSignature),
+// TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
 // DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12), and the root
 // range.
 // Output: Run's result, whether its round was clean; IncompatibleContractImplementation_Kd,
@@ -24,7 +27,8 @@
 // and the driver steps and runs the next round until one is clean.
 // Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there, one on a projection with a
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
-// G128's bound); requirement calls on an abstract Self and virtual calls take the bounds of the caller's own premises, a requirement on
+// G128's bound), a call atom's signature with its Type; a call through an abstract input takes the bounds of the caller's premises with
+// that signature (TyCtxt.CallableBounds), requirement calls on an abstract Self and virtual calls the bounds of the caller's own premises, a requirement on
 // another Self what its witnesses run; one worklist with recorded dependencies solves
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing. The local facts are recorded per
 // segment (PLAN G950): the library segment's nodes first, into a store of their own (Locals) kept while its library segment holds
@@ -32,7 +36,8 @@
 // per program version (BeginProgram); each store holds its nodes' and bodies'
 // entries by the node id and the ordinal themselves, and a reader takes a node's store by the library's node count (its nodes come
 // first) and a body's by A2's fact (MirDropTable.LibraryHolds, PLAN G951 U2-K; no offset, no ordinal tested against LibraryCount).
-// Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
+// Must not read syntax or HIR, re-derive premises, bounds or obligations, select a call's Callable signature again, report a failure
+// that only an Opaque site or a callee
 // Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
 using Kimi.Diagnostics;
@@ -265,7 +270,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             var type = cases.TypeOf(terminator.Operand);
             _ = TyCtxt.Layer(type, out var callable, out _);
-            this.Item(callable, (byte)(1 + (int)(type.SafeReferent is not null ? type.Semantics : SemanticsKind.Owner)));
+            var signature = body.Consts[callee.Arg].Type; // The signature the call selected (MirCallee), as Binding states it.
+            this.Item(callable, (byte)(1 + (int)(type.SafeReferent is not null ? type.Semantics : SemanticsKind.Owner)), signature: signature);
             if (callable is { IsAbstract: true })
             {
                 this.Given(body, terminator);
@@ -299,9 +305,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
             if (row.Calls >= 0)
             {
-                // SPEC 4.9.6, 8.11.4: the row's Callable input, called through a shared borrow of the actual argument and then destroyed.
+                // SPEC 4.9.6, 8.11.4: the row's Callable input, called through a shared borrow of the actual argument with its one
+                // signature and then destroyed.
                 var callable = this.Below(symbol, subst, row.Calls);
-                this.Item(callable, Shared);
+                var signature = this.CallsSignature(symbol, subst, row.Calls);
+                this.Item(signature is null ? null : callable, Shared, signature: signature);
                 this.Item(callable, Drop);
             }
 
@@ -322,6 +330,14 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
 
         this.Enter(null, subst, symbol);
+    }
+
+    // SPEC 4.9.6, 8.11.4: the one signature a published row's Callable input is called with (TyCtxt.CallsSignature) at the call's
+    // substitution, as Binding states it; none where its instance is past Binding's storage bound, as Below's (Deep: Item, Process).
+    private BoundType? CallsSignature(BindingSymbol callee, Subst? subst, int slot)
+    {
+        var declared = types.CallsSignature(callee, slot);
+        return subst is null ? declared : types.ReadableInstance(declared, subst);
     }
 
     // A broken contract Local meets at the call it reads (the class header's one form with a site; DECISIONS R4-M148's path, as A5's
@@ -420,7 +436,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
     }
 
-    private void Item(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null)
+    private void Item(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null, BoundType? signature = null)
     {
         if (type is null)
         {
@@ -428,7 +444,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             return;
         }
 
-        this.writing.Add(new Atom(type, kind, requirement, contract, call));
+        this.writing.Add(new Atom(type, kind, requirement, contract, call, signature));
     }
 
     private void AddEdge(MirBody callee, Subst? subst) => this.writing.Add(new Edge(callee.Ordinal, this.Views(callee, subst), subst));
@@ -467,7 +483,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// Self, the Type, its Contract reference (<see cref="Subst.Declaring"/>) and the requirement's own Types and lengths, at which its
     /// witness runs; null for a summary's atom, whose abstract Self names no conformance, and for a published row's requirement, which has
     /// no own slot.</param>
-    internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, Subst? Call = null);
+    /// <param name="Signature">The signature of a call through its Type (a kind 1 + a receiver; SPEC 8.11.4): the one the call selected
+    /// (<see cref="MirCallee"/>'s TypeToken) or a published row's Callable input's (<see cref="TyCtxt.CallsSignature"/>), whose premises'
+    /// bounds the call uses on an abstract Type; null for any other kind.</param>
+    internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, Subst? Call = null, BoundType? Signature = null);
 
     // A call of a body: the callee's ordinal, the views its substitution selects under the caller's view and the substitution: the call's;
     // null for a body entered in every view (the initializer of a static with several slots, Initialize); the identity (TyCtxt.Identity) for the callee's own Types read in the

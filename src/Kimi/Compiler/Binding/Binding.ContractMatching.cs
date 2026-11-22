@@ -568,7 +568,12 @@ public sealed partial class Binding
                 return (ConstraintProof.Unknown, null);
             }
 
-            this.AddConstraintFact(environment, this.ContractConstraint(constraint, premises, self));
+            var instance = this.ContractConstraint(constraint, premises, self);
+            this.AddConstraintFact(environment, instance);
+            if (!ReferenceEquals(instance, constraint))
+            {
+                environment.AddStatement(instance, requirement, constraint); // at Self (SPEC 8.11.4); an unchanged one is in place
+            }
         }
 
         this.ExpandScopeContractPremises(premises);
