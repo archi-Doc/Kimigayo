@@ -29,6 +29,57 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 10.8, 22.1: a named call's explicit Type and length arguments, bound into its evaluation; a spelling that both a Type and a
+    // length slot of an accessible candidate (of its `count` candidate rows, each with its Accessible verdict: RentCandidates) can take
+    // is not chosen (false). Binding an already bound argument binds nothing again.
+    private bool BindExplicitArguments(ref CallEvaluation evaluation, int count)
+    {
+        var (generic, scope) = (evaluation.Generic, evaluation.Scope);
+        for (var i = 0; generic is not null && i < generic.TypeArguments.Count; i++)
+        {
+            var syntax = generic.TypeArguments[i];
+            var isLength = this.IsLengthArgument(syntax, scope);
+            var argumentName = UnwrapTypeSyntax(syntax);
+            while (argumentName is ParenthesizedTypeKoto parentheses)
+            {
+                argumentName = UnwrapTypeSyntax(parentheses.Type);
+            }
+
+            // A question, not the argument's lookup (R7-N1e2-1R): whether its spelling also names a Type, in a Type position's row.
+            // It publishes nothing: the argument is then looked up once, as a length (a value) or by its BindType.
+            if (isLength && this.ProbePath(argumentName, scope, UseRow(argumentName), 0) is not null)
+            {
+                var typeSlot = false;
+                var lengthSlot = false;
+                foreach (ref readonly var candidate in evaluation.Evaluated.AsSpan(0, count))
+                {
+                    if (candidate.Accessible && candidate.Symbol!.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count)
+                    {
+                        lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
+                        typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
+                    }
+                }
+
+                if (typeSlot && lengthSlot)
+                {
+                    return false;
+                }
+
+                isLength = !typeSlot;
+            }
+
+            evaluation.ExplicitLengths[i] = isLength ? this.BindLength(syntax, scope) : null;
+            if (evaluation.ExplicitLengths[i] is null && syntax.BindingFailure == BindingFailure.None)
+            {
+                this.BindType(syntax, scope);
+            }
+
+            evaluation.ExplicitTypes[i] = evaluation.ExplicitLengths[i] is null ? syntax.BoundType : null;
+        }
+
+        return true;
+    }
+
     private BoundType? BindCallCore(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         var callee = call.Method;
@@ -100,7 +151,18 @@ public sealed partial class Binding
         {
             var callableType = callee is InvocationKoto || group is null ? callee.BoundType : this.BindReference(callee, group, scope);
             var several = false;
-            if (callableType is not null && this.TryCallable(callableType, scope, out var signature, out var receiverKind, out several))
+            BoundType signature = null!;
+            var receiverKind = SemanticsKind.Owner;
+            var unformedMark = this.unformedWrites;
+            var callable = callableType is not null && this.TryCallable(callableType, scope, out signature, out receiverKind, out several);
+            if (this.UnformedSince(unformedMark))
+            {
+                // DECISIONS BU-240 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents:
+                // the call is judged in the cases of the split layer, each part as the unsplit path judges it (BindValueCallOnSplit).
+                return this.BindValueCallOnSplit(call, scope, callableType!, expected, unformedMark);
+            }
+
+            if (callable)
             {
                 return this.BindValueCall(call, scope, signature, receiverKind);
             }
@@ -139,9 +201,7 @@ public sealed partial class Binding
         }
 
         var requirementGroup = candidates.Requirements;
-        var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
-        var evaluated = this.RentCandidates(candidates, callee, scope);
-        var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
+        var (evaluated, self, shape) = this.NamedCandidates(callee, group, candidates, scope);
 
         // SPEC 6.3.4, 7.3.2-7.3.3: a group with a receiver shape acquires the call's Receiver Expression whole, a use that a special
         // receiver's row without Whole never permits (BindReference rejects its other uses). The record is at the receiver, and the
@@ -155,7 +215,7 @@ public sealed partial class Binding
         callee.BindingState = BindingState.Resolved;
         if (this.GatheredGroupFails(callee, candidates))
         {
-            this.candidateScratch.Return(evaluated, clearArray: true);
+            this.candidateScratch.Return(evaluated, clearArray: true); // NamedCandidates' rows; RentEvaluation rented nothing yet
             return Complete(call, null);
         }
 
@@ -173,51 +233,11 @@ public sealed partial class Binding
         BoundDefaultArgument[]? defaults = null;
         try
         {
-            if (generic is not null)
+            if (!this.BindExplicitArguments(ref evaluation, shape.Count))
             {
-                for (var i = 0; i < generic.TypeArguments.Count; i++)
-                {
-                    var syntax = generic.TypeArguments[i];
-                    var isLength = this.IsLengthArgument(syntax, scope);
-                    var argumentName = UnwrapTypeSyntax(syntax);
-                    while (argumentName is ParenthesizedTypeKoto parentheses)
-                    {
-                        argumentName = UnwrapTypeSyntax(parentheses.Type);
-                    }
-
-                    // A question, not the argument's lookup (R7-N1e2-1R): whether its spelling also names a Type, in a Type position's row.
-                    // It publishes nothing: the argument is then looked up once, as a length (a value) or by its BindType.
-                    if (isLength && this.ProbePath(argumentName, scope, UseRow(argumentName), 0) is not null)
-                    {
-                        var typeSlot = false;
-                        var lengthSlot = false;
-                        foreach (ref readonly var candidate in evaluated.AsSpan(0, candidateCount))
-                        {
-                            if (candidate.Accessible && candidate.Symbol!.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count)
-                            {
-                                lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
-                                typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
-                            }
-                        }
-
-                        if (typeSlot && lengthSlot)
-                        {
-                            // Both namespaces can supply this spelling. Do not silently choose
-                            // a kind before candidate-local dual-namespace binding is available.
-                            return this.Fail(call, BindingFailure.Unsupported, true);
-                        }
-
-                        isLength = !typeSlot;
-                    }
-
-                    explicitLengths[i] = isLength ? this.BindLength(syntax, scope) : null;
-                    if (explicitLengths[i] is null && syntax.BindingFailure == BindingFailure.None)
-                    {
-                        this.BindType(syntax, scope);
-                    }
-
-                    explicitTypes[i] = explicitLengths[i] is null ? syntax.BoundType : null;
-                }
+                // Both namespaces can supply a spelling. Do not silently choose a kind before candidate-local dual-namespace binding is
+                // available.
+                return this.Fail(call, BindingFailure.Unsupported, true);
             }
 
             var (selection, winnerIndex) = this.SelectAt(ref evaluation, candidates);
@@ -249,6 +269,19 @@ public sealed partial class Binding
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
                 // pending at every call; the selection rests on that failure (SPEC 23.1.2).
                 return this.CompleteDependent(call, evaluation.FailedPendingSignature!);
+            }
+
+            if (selection == CallSelection.UnformedSplit)
+            {
+                // DECISIONS BU-240 (temporary, PLAN G886; ClassifySelection; G812 rulings 139, 141): judged case by case; a candidate every
+                // case selects, whose own trial reads no split, is the selection (SelectionOnSplit), else the call rests or fails there.
+                var split = this.SelectionOnSplit(in evaluation);
+                if (split.Selected < 0)
+                {
+                    return this.FailUnformedCall(ref evaluation, split.Fails, split.Canonical);
+                }
+
+                winnerIndex = split.Selected;
             }
 
             if (selection == CallSelection.Unproven)
@@ -520,6 +553,7 @@ public sealed partial class Binding
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             RequireOriginWidths(selected, originSlots, inputSlots);
             (call.CallStorage ??= new()).Set(this, executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
+            call.CallStorage.PremiseReadsMark = evaluated[winnerIndex].PremiseReadsMark; // DECISIONS BU-240 (G812 ruling 159).
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
@@ -551,12 +585,18 @@ public sealed partial class Binding
             return Complete(call, null);
         }
 
-        var evaluated = evaluation.Evaluated;
-        var start = this.rejectedRows.Count;
+        return this.FailAmbiguous(in evaluation, AppliedCandidates(in evaluation));
+    }
+
+    // SPEC 10.4, 23.1.2: a call ambiguous between the candidates `applied` names (bits of their indices in the evaluation), each a row
+    // that explains the record (RecordRejected); a split check's call gives its canonical run's (FailUnformedCall, G812 ruling 141).
+    private BoundType? FailAmbiguous(in CallEvaluation evaluation, ulong applied)
+    {
+        var (call, evaluated, start) = (evaluation.Call, evaluation.Evaluated, this.rejectedRows.Count);
         var erasure = ErasureIncomparable(evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride, call.ArgumentNodes.Count);
-        for (var i = 0; i < evaluation.Count; i++)
+        for (var i = 0; i < Math.Min(evaluation.Count, 64); i++)
         {
-            if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+            if ((applied & (1UL << i)) != 0)
             {
                 this.rejectedRows.Add(new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure));
             }

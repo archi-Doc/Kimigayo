@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class PairAnnotationBindingTest
+public partial class PairAnnotationBindingTest
 {
     // Structs whose slot only a conditional pair slot uses (SPEC 15.3.5), by what the binder admits, and nested users of them.
     internal const string HolderUniq = "struct Holder<s/T> {a}\n    s is uniq\n    public let item: s/T during a\n";
@@ -398,7 +398,11 @@ public class PairAnnotationBindingTest
 
     // SPEC 10.8, 8.1.1 (D-590 (1)): a pair target's position meets the target of the pair's binding, a Type in the caller's terms, by
     // structure and Semantics; in a recursive call or a construction of the enclosing structure its symbols are the callee's own, and
-    // reading it as a pattern once overflowed the stack. Each valid form is accepted; each invalid twin is its one record.
+    // reading it as a pattern once overflowed the stack. Each valid form is accepted; each invalid twin is its one record. `f(x@move,
+    // x@move)` binds `s/T` by the pair target alone, which forms no Type (PLAN G886): its verdict rests on that unformed split, so its
+    // record is the located Unsupported_Kd (DECISIONS BU-240, the owner's O-332 (a)) until the representation lands; 2f4bec489 gave the
+    // unproven `s is owner or ref` (UnprovenConstraint_Kd), which returns with it, as GenericIdentityAdaptationTest's Proof-record
+    // assertions for an associated Item without owner evidence do.
     [Theory]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, x@move)\n", "clean")]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f<s/T>(m@move, x@move)\n", "clean")]
@@ -408,9 +412,28 @@ public class PairAnnotationBindingTest
     [InlineData("struct S<s/T>\n    s is owner or ref\n    public init(m: s/T, x: T) => ()\n    public func g(self: ref/Self, m: s/T, x: T) -> i32\n        let k = S<s/T>.init(m@move, x@move)\n        return 0\n", "clean")]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, m@move)\n", "1*MovedPlace_Kd 1*NoApplicableOverload_Kd")]
     [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: V, y: T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, x@move, y@move)\n", "1*NoApplicableOverload_Kd")]
-    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*MovedPlace_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*MovedPlace_Kd 1*Unsupported_Kd")]
     public void ARecursivePairTargetMeetsItsBindingAsACallerType(string program, string profile)
         => Assert.Equal(profile, DiagnosticCorpus.RecordProfile(program));
+
+    // G812 ruling 156 (BoundTypeKind.Open's contract): no node publishes a Type holding a split's mark. A waiting call whose inference
+    // slot takes the mark (qP7d, valid: `mk2(.None) -> (T, T)` at `(s0/Box during a, s0/Box during a)`) and its `.None` publish the
+    // canonical case's Types (the split call's completion unmarks them, CompleteOnSplit; G812 ruling 158), and the HIR publisher lists a
+    // node holding one as Broken (InternalInvariant_Kd at MIR build). e446d93a5 published `(Open, Open)` and `Option<Open>` on them.
+    [Fact]
+    public void NoNodePublishesASplitsMark()
+    {
+        var c = Parse("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nstruct Tag\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc mk2<T>(x: Option<T>) -> (T, T)\n    return stop()\nfunc putP<s0/W0>(m0: s0/W0, n: (s0/Box during a, s0/Box during a), k: s0/Box during c) -> i32\n    return 0\nfunc call<t0/U0>(k0: t0/U0, u0: U0) -> i32\n    t0 is owner or ref\n    U0 is Owned\n    let b0 = Box.init(1)\n    let b1 = Box.init(2)\n    let g = Tag.init(2)\n    return putP<U0>(u0@move, mk2(.None), stop())\n");
+        Assert.False(c.Bind().IsComplete);
+        HirTables.Publish(c);
+        var nodes = HirColumnsTest.Reachable(c.Kotonoha);
+        Assert.DoesNotContain(nodes, static x => HirTables.TypeOf(x) is { ContainsOpen: true });
+        Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
+        var literal = nodes.OfType<NumberLiteralKoto>().First(static x => HirTables.TypeOf(x) is not null);
+        HirTables.Of(literal).Meanings[literal.SyntaxId] = c.Types.Open(HirTables.TypeOf(literal)!);
+        typeof(Binding).GetMethod("PublishPass", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(c.Binding, null);
+        Assert.Contains(literal, c.Kotonoha.Syntax.Hir.Broken!);
+    }
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.ParseSuccess(source, "annotation.kimi");

@@ -380,7 +380,7 @@ public partial class LayoutAttributeBindingTest
     private static Compilation Check(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);

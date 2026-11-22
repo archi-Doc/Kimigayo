@@ -56,7 +56,7 @@ public class OriginRedesignTest
     public void CompletesDeclarationOriginContracts(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var prefix = source.StartsWith("struct V", StringComparison.Ordinal) ? string.Empty : "struct V<T> {source}\n    public let value: ref/T during source\n";
         c.Kotonoha.AddSource(new SourceDocument("redesign.kimi", prefix + source));
         Assert.Empty(TestDiagnostics.Of(c));
@@ -87,7 +87,7 @@ public class OriginRedesignTest
     public void RejectsInvalidOriginDeclarations(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("invalid.kimi", "struct V<T> {source}\n    let value: ref/T during source\n" + source));
         Assert.Empty(TestDiagnostics.Of(c));
         c.Project.ProjectFile.OutputKind = OutputKind.Library;

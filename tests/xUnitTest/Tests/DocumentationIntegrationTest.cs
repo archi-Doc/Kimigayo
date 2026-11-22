@@ -157,7 +157,7 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
         {
             var c = Compilation.CreateForTest();
             c.CollectDocumentation = collect;
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("same.kimi", source));
             Assert.True(c.Bind().IsComplete);
             if (collect)
@@ -218,7 +218,7 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
     {
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n        /// windows\n        public struct S\n    #case _\n        /// other\n        public struct S"));
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         var target = Compilation.CreateForTest();

@@ -35,7 +35,7 @@ public class ClosedConformancePrerequisiteBindingTest
         Assert.Equal(!cycle, c.Binding.GetConformanceDefinition(Container(c, "A").TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         Assert.Equal(!cycle, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);

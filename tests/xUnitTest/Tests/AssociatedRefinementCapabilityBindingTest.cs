@@ -31,7 +31,7 @@ public class AssociatedRefinementCapabilityBindingTest
     public void BothOuterAndRefinedContractPrerequisitesRemainRequired(bool outer)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var condition = "\n    Source is Origin";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source\npublic contract Trait: Copy" + (outer ? string.Empty : condition) + "\npublic contract Elements" + (outer ? condition : string.Empty) + "\n    associate Item is Trait\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()"));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
