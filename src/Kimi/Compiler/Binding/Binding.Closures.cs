@@ -60,9 +60,9 @@ public sealed partial class Binding
     // SPEC 7.7.3, 8.10: a refuted candidate's closure argument whose minimum call receiver its Callable Constraint does not permit is the
     // candidate's failure only when the candidate applies once that receiver is permitted (TryCandidate); a rejected candidate then names
     // both receivers (NoApplicableOverload_Kd).
-    private ClosureReceiverRefutation? PermittedClosureReceiver(int[] mapping, in SlotSolution solution, bool waitingCallables)
+    private ClosureReceiverRefutation? PermittedClosureReceiver(in SlotSolution solution, bool waitingCallables)
     {
-        if (this.ClosureReceiverMismatch(solution.Call, solution.Function, mapping) is not { } mismatch)
+        if (this.ClosureReceiverMismatch(solution.Call, solution.Function, solution.Mapping) is not { } mismatch)
         {
             return null;
         }
@@ -81,7 +81,7 @@ public sealed partial class Binding
 
     // SPEC 7.7.3, 8.10: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
     // none when no argument or several do. A common Function parameter has no Callable Constraint and is never named here.
-    private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, int[] mapping)
+    private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, ReadOnlySpan<int> mapping)
     {
         ClosureReceiverRefutation? found = null;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)

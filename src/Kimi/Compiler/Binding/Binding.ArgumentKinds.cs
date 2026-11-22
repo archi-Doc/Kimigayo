@@ -565,7 +565,7 @@ public sealed partial class Binding
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, declaringType);
         var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
-        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved(evaluation.Mapping)))
+        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved()))
         {
             this.DeferNestedCall(call, evaluation.Expected);
             Complete(call, null);
@@ -577,10 +577,10 @@ public sealed partial class Binding
             return true;
         }
 
-        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(winner);
         foreach (var kind in OwnTypeSteps)
         {
-            if (solution.DefaultArguments(evaluation.Mapping, kind, out var applied) is { } misfit)
+            if (solution.DefaultArguments(kind, out var applied) is { } misfit)
             {
                 this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
                 return false;
@@ -610,12 +610,12 @@ public sealed partial class Binding
                 evaluation.Scope,
                 evaluation.Frames[winner].Types,
                 evaluation.Frames[winner].Lengths,
-                evaluation.Mapping,
+                solution.Mapping,
                 operations,
                 evaluation.Expected,
                 evaluation.Self,
-                evaluation.Origins,
-                evaluation.Inputs,
+                solution.Origins,
+                solution.Inputs,
                 declaringType);
         }
 
@@ -628,7 +628,6 @@ public sealed partial class Binding
     {
         var state = this.TryCandidate(
             solution,
-            evaluation.Mapping,
             evaluation.Evaluated[winner].ArgumentMap,
             evaluation.Expected,
             operations,
