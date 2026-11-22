@@ -520,16 +520,32 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
             }
 
-            // R7-V1c (SPEC 8.6.3, 23.1.2): a written Type occurrence's clauses are judged once, at the Type node its declaration names;
-            // the node a transparent wrapper wraps is that Type (UnwrapTransparentType), so it records nothing of its own.
+            // R7-V1c (SPEC 8.6.3, 23.1.2): the walk visits a written Type once. A transparent wrapper is the Type it wraps
+            // (UnwrapTransparentType), not a second occurrence: the occurrence is visited at its outermost node, whose Type is the
+            // complete written Type (its Origin arguments included), and its record is at the wrapped node, the Type the Constraint is
+            // about; the wrapper's verdict is that node's (rule W, RestOnPart). A check that recorded at either node first keeps its record.
             if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructionTargets.Contains(node) &&
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) && !(node.Parent is TypeSemanticsKoto { IsTransparentWrapper: true } wrapper && ReferenceEquals(wrapper.Type, node)))
             {
+                var written = UnwrapTransparentType(node)!;
                 var scope = this.ConstraintScope(node);
-                var use = this.VerdictUse(node); // A synthesized call's Type is its consumer's verdict (PLAN G214).
+                var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
                 var frame = this.BeginConsultation(use);
                 var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
                 this.RequireConstraintInFrame(use, result, mode, frame);
+                if (result != ConstraintProof.Proven && !ReferenceEquals(written, node) && this.RecordedState(node) != BindingState.Invalid &&
+                    this.RecordedState(written) is var state and not BindingState.Resolved)
+                {
+                    if (state == BindingState.Invalid)
+                    {
+                        this.RestOnPart(node, written);
+                    }
+                    else
+                    {
+                        this.SetRecordedState(node, state);
+                    }
+                }
+
                 if (node.BindingState == BindingState.Invalid)
                 {
                     // Invalid type formation in a clause must not remain available as evidence.
