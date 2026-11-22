@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 //   `#Unsupported` declaration's own text (its signature, leading region, Fields or body) is part of that declaration, not a use.
 // - Inputs: a written Name and the selection handed to it, where it is handed on. In ResolvePath that is a path's component as the walk
 //   completes it (ResolvePath, ResolveRootPath and the value Name's ResolveValue return through the verdict), before it becomes the next
-//   component's qualifier or the path's end. Outside ResolvePath it is each walk's one selection (SelectQualifier, SelectMember,
+//   component's qualifier or the path's end. Outside ResolvePath it is each walk's one selection (SelectMember,
 //   BindLengthName's member arm), until BU-122 c-f bring those walks into ResolvePath. A selected function names its Name's function
 //   group (SPEC 9.5.1): its head's chain and each further source the walk gathered for the Name (its ImportGroup steps, which PublishPath
 //   publishes after the verdict). A call's winner and a function item hand their Name one selected function (SupportedFunction).

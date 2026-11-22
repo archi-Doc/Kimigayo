@@ -92,11 +92,11 @@ public partial class KimiLibraryShapeTest
             root.Alias = ["Lib.Api"];
             root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         }));
-        Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha));
+        Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha).Select(static x => x.Path));
         Assert.NotNull(c.Configuration(c.Kotonoha)!.NativeRequirements[TargetProfile.Windows.Target]["codec"]);
         Assert.NotNull(c.References(c.Kotonoha));
         var library = c.Library.Kotonoha;
-        Assert.Equal(["Kimi"], c.DefaultAliases(library));
+        Assert.Equal(["Kimi"], c.DefaultAliases(library).Select(static x => x.Path));
         Assert.Null(c.Configuration(library));
         Assert.Null(c.References(library));
         SameAsTheEmptyPrograms(c);

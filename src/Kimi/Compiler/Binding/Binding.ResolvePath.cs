@@ -1017,20 +1017,6 @@ public sealed partial class Binding
     private bool VisibleAt(BindingSymbol candidate, Koto use)
         => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && this.ParameterVisible(candidate);
 
-    // An alias target's segment and a default alias's segment: one unfiltered selection with its ambiguity reported (part e folds both walks).
-    private BindingSymbol? SelectQualifier(BindingSymbol? head, BindingScope scope, Koto use)
-    {
-        var candidates = default(TypeCandidates);
-        this.AddTypeCandidates(ref candidates, head, scope, LookupRole.Qualifier, 0);
-        if (candidates.Ambiguous)
-        {
-            this.Fail(use, BindingFailure.Ambiguous, unresolved: true);
-            return null;
-        }
-
-        return this.Supported(use, candidates.Match ?? candidates.First);
-    }
-
     private ResolvedPath SelectedPath(in TypeCandidates candidates, Koto use, int step)
     {
         if (candidates.Ambiguous)

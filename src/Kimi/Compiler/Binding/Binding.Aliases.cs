@@ -46,6 +46,7 @@ public sealed partial class Binding
 
     private void PrepareAliases()
     {
+        this.PrepareDefaultAliases();
         foreach (var alias in this.aliases)
         {
             if (alias.CodeContext.SourceDocument is not { } document)
@@ -151,15 +152,10 @@ public sealed partial class Binding
         try
         {
             var originDeclaration = this.BeginOriginDeclaration(alias, scope);
-            var path = this.NamePath(targetSyntax, scope);
-            var symbol = path.Symbol;
-
-            // SPEC 23.1.2, 18.2.1 (F's ruling N1-7 (2)): a target the walk selects nothing for is bound as every Type use is, which records
-            // the walk's failure where it fails (FailingStep: the missing or refused component), and the alias rests on that record (rule W);
-            // a built-in Type forms, and is no Container.
-            if (symbol is null && this.BindType(targetSyntax, scope, this.TypeContext(targetSyntax, scope)) is null)
+            var (symbol, failed) = this.SelectAliasTarget(targetSyntax, scope);
+            if (failed is not null)
             {
-                this.CompleteDependent(alias, FailingStep(path, targetSyntax));
+                this.CompleteDependent(alias, failed); // SPEC 23.1.2 (rule W): the walk's record, where it failed.
                 RestPendingOn(originDeclaration, alias);
                 return null;
             }
@@ -196,6 +192,16 @@ public sealed partial class Binding
         {
             this.aliasResolutionDepth--;
         }
+    }
+
+    // SPEC 18.2.1, 23.1.2 (F's ruling N1-7 (2)): a target's selection by the path walk from its module's root, a source alias's and a
+    // configured default alias's alike (stages 5-6 off while aliasResolutionDepth is set): the selected symbol; else the node whose
+    // record the walk's failure is, the target bound as every Type use is (BindNamedType's miss records where the walk failed,
+    // FailingStep); else, for a target forming a built-in Type, neither (no Container: the caller's record).
+    private (BindingSymbol? Symbol, Koto? Failed) SelectAliasTarget(Koto target, BindingScope scope)
+    {
+        var path = this.NamePath(target, scope);
+        return path.Symbol is not null || this.BindType(target, scope, this.TypeContext(target, scope)) is not null ? (path.Symbol, null) : (null, FailingStep(path, target));
     }
 
     // Read only provenance that ordinary lookup actually selected in this target; no alias lookup or Type reconstruction occurs.

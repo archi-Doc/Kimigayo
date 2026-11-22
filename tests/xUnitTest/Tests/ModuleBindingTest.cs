@@ -153,12 +153,43 @@ public partial class ModuleBindingTest
     [Fact]
     public void ADefaultAliasOpensNoFormalParameter()
     {
-        // SPEC 18.2.1, 18.2.3 (PLAN G574): a default alias opens its target's direct members, never its formal parameters.
+        // SPEC 18.2.1, 18.2.3 (PLAN G574): a default alias opens its target's direct members, never its formal parameters. A generic
+        // target is never fully bound (F's rulings N1-2 C1, N1-3): one record at the configuration (the module root), and the use of `T`,
+        // resting on it, records nothing (N1-2 C2; it was one UnresolvedBinding_Kd at `T`).
         var compilation = Create("public struct Box<T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "public group Api", configure: (root, _) => root.Alias = ["Box"]);
         Assert.False(compilation.Bind().IsComplete);
         var issue = Assert.Single(compilation.Binding.Issues);
-        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
-        Assert.Equal("T", issue.Node.ToString());
+        Assert.Equal(DiagnosticCode.InvalidTypeFormation_Kd, issue.Code);
+        Assert.Same(compilation.Kotonoha.RootKoto, issue.Node);
+    }
+
+    // SPEC 18.2.3, 18.2.1 (F's rulings N1-2, N1-3, N1-7 (5); design d rows): a configured default alias resolves as a source alias's target
+    // does, by the path walk from its module's root: an inherited member is found (d05v), a path through the library's name too (C4); a
+    // formal parameter is no member (d02i), a generic Container is never fully bound (d01u, d06i, d07i) and a path naming nothing is
+    // reported without a use (d08i): one record at the module root, which a use resting on it adds nothing to.
+    [Theory]
+    [InlineData("d01u", "Box", "func g() -> i32 => make()", "InvalidTypeFormation_Kd")]
+    [InlineData("d02i", "Box.T", "func g() => ()", "UnresolvedBinding_Kd")]
+    [InlineData("d05v", "Derived.Node", "func g() -> i32 => make()", null)]
+    [InlineData("d06i", "A.B", "func g() -> i32 => helper()", "InvalidTypeFormation_Kd")]
+    [InlineData("d07i", "A.B", "func g() => ()", "InvalidTypeFormation_Kd")]
+    [InlineData("d08i", "Nope", "func g() => ()", "UnresolvedBinding_Kd")]
+    [InlineData("c4v", "Kimi.Console", "func g() => writeLine(\"ok\")", null)]
+    public void ADefaultAliasResolvesByThePathWalk(string row, string alias, string use, string? code)
+    {
+        const string Declarations = "public struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\n" +
+            "public open struct Base\n    public init() => ()\n    public struct Node\n        public init() => ()\n        public func make() -> i32 => 1\n" +
+            "public struct Derived : Base\n    public init() : base() => ()\n" +
+            "public struct A<T>\n    public group B\n        public func helper() -> i32 => 1\n" +
+            "public struct A<T, U>\n    public group B\n        public func helper() -> i32 => 1\n";
+        var compilation = Create(Declarations + use, "public group Api", configure: (root, _) => root.Alias = [alias]);
+        Assert.True((code is null) == compilation.Bind().IsComplete, row + ": " + string.Join("; ", compilation.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
+        if (code is not null)
+        {
+            var issue = Assert.Single(compilation.Binding.Issues);
+            Assert.Equal(code, issue.Code.ToString());
+            Assert.Same(compilation.Kotonoha.RootKoto, issue.Node);
+        }
     }
 
     [Fact]

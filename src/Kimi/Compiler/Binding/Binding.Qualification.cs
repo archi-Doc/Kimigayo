@@ -282,9 +282,9 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.compilation.DefaultAliases(fact.At.CodeContext.Kotonoha))
+        foreach (var row in this.compilation.DefaultAliases(fact.At.CodeContext.Kotonoha))
         {
-            AddScope(this.DefaultAliasTarget(fact.At, path));
+            AddScope(this.DefaultAliasTarget(row));
         }
 
         var at = fact.At!;

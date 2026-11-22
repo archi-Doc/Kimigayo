@@ -26,77 +26,56 @@ public sealed partial class Binding
         return null;
     }
 
-    private void ValidateDefaultAliases()
+    // SPEC 18.2.3, IMPL 20.2 (F's rulings N1-3, N1-7 (5)): every configured default alias of the pass's modules is evaluated where every
+    // source alias is (PrepareAliases), so a path that no use reads is judged too.
+    private void PrepareDefaultAliases()
     {
         foreach (var module in this.pass.Sources)
         {
-            foreach (var path in this.compilation.DefaultAliases(module))
+            foreach (var row in this.compilation.DefaultAliases(module))
             {
-                if (this.DefaultAliasTarget(module.RootKoto, path) is null)
-                {
-                    this.Fail(module.RootKoto, BindingFailure.MissingName, true);
-                }
+                this.DefaultAliasTarget(row);
             }
         }
     }
 
-    private BindingScope? DefaultAliasTarget(Koto use, string path)
+    // SPEC 18.2.3, 18.2.1 (F's rulings N1-3, N1-4, N1-7 (5)): a configured default alias evaluated as a source alias is, once per pass at
+    // its first read and cached per module and path: its node's rows reset by Indexing's reset step, the target selected and formed from
+    // its module's root (SelectAliasTarget, BindContainerQualifier; stages 5-6 off). A failure is the configuration's: a definite record at
+    // the module root (Invalid, never pending, N1-3), with the code of the walk's failure; no reader reads the node's own records.
+    private BindingScope? DefaultAliasTarget(Compilation.DefaultAlias row)
     {
-        if (path is "Kimi" or "::Kimi")
-        {
-            return this.Library.Scope;
-        }
-
-        var key = (use.CodeContext.Kotonoha, path);
+        var module = row.Target.CodeContext.Kotonoha;
+        var key = (module, row.Path);
         if (this.defaultAliasTargets.TryGetValue(key, out var cached))
         {
             return cached;
         }
 
         this.defaultAliasTargets.Add(key, null);
-        var root = this.ModuleScope(use);
-        var scope = root;
-        var remaining = path.AsSpan();
-        if (remaining.StartsWith("::"))
+        ConfiguredPathReset.Instance.Visit(row.Target);
+        var scope = this.ModuleScope(row.Target);
+        this.aliasResolutionDepth++;
+        try
         {
-            remaining = remaining[2..];
-        }
-
-        var first = true;
-        while (!remaining.IsEmpty)
-        {
-            var dot = remaining.IndexOf('.');
-            var name = dot < 0 ? remaining : remaining[..dot];
-            scope.Types.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out var symbol);
-            if (first && name.SequenceEqual("Kimi"))
+            var (symbol, failed) = this.SelectAliasTarget(row.Target, scope);
+            var reference = symbol?.Declaration is DeclarationContainerKoto ? this.BindContainerQualifier(row.Target, symbol, scope, this.TypeContext(row.Target, scope)) : null;
+            var failure = failed is not null ? this.RecordedFailure(failed)
+                : reference is null ? BindingFailure.InvalidTypeFormation
+                : reference.OriginArguments.Count != (symbol!.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!) ? BindingFailure.InvalidOrigin
+                : BindingFailure.None;
+            if (failure != BindingFailure.None || failed is not null)
             {
-                symbol = this.Library.Module;
-            }
-
-            symbol = this.SelectQualifier(symbol, root, use);
-
-            if (symbol is null && first && (!this.compilation.IsTestBuild || this.TestReferenceAllowed(use, name.ToString())) && this.compilation.References(use.CodeContext.Kotonoha) is { } references &&
-                references.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out var module))
-            {
-                symbol = this.moduleSymbols!.GetValueOrDefault(module);
-            }
-
-            if (symbol is null || !this.Accessible(symbol, root) || !this.scopes.TryGetValue(symbol.Declaration, out scope))
-            {
+                this.Fail(module.RootKoto, failure == BindingFailure.None ? BindingFailure.MissingName : failure);
                 return null;
             }
 
-            if (dot < 0)
-            {
-                this.defaultAliasTargets[key] = scope;
-                return scope;
-            }
-
-            remaining = remaining[(dot + 1)..];
-            first = false;
+            return this.defaultAliasTargets[key] = this.scopes[symbol!.Declaration];
         }
-
-        return null;
+        finally
+        {
+            this.aliasResolutionDepth--;
+        }
     }
 
     // SPEC 9.5.1: function groups from several sources of one stage gather into one group (an ImportGroup step); any other kind beside a
@@ -159,7 +138,7 @@ public sealed partial class Binding
             this.AddTypeCandidates(ref candidates, named.Declaration!.BoundSymbol, scope, role, arity, named);
         }
 
-        AliasKoto? failed = null;
+        Koto? failed = null;
         for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
         {
             var alias = documentAliases[i];
@@ -176,9 +155,10 @@ public sealed partial class Binding
             return this.SelectedPath(candidates, use, step);
         }
 
-        foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
+        foreach (var row in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
-            var target = this.DefaultAliasTarget(use, path);
+            var target = this.DefaultAliasTarget(row);
+            failed ??= target is null ? row.Target.CodeContext.Kotonoha.RootKoto : null;
             this.AddTypeCandidates(ref candidates, target is null ? null : MemberTypes(target, name), scope, role, arity);
         }
 
@@ -191,7 +171,7 @@ public sealed partial class Binding
     {
         var stage = default(ValueImports);
         var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
-        AliasKoto? failed = null;
+        Koto? failed = null;
         for (var i = 0; !stage.Ends && documentAliases is not null && i < documentAliases.Count; i++)
         {
             var alias = documentAliases[i];
@@ -211,22 +191,25 @@ public sealed partial class Binding
             return this.ImportStageEnd(stage, name, scope, use, failed);
         }
 
-        foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
+        foreach (var row in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
             if (stage.Ends)
             {
                 break;
             }
 
-            this.AddImport(ref stage, this.DefaultAliasTarget(use, path), default, name, scope, use);
+            var target = this.DefaultAliasTarget(row);
+            failed ??= target is null ? row.Target.CodeContext.Kotonoha.RootKoto : null;
+            this.AddImport(ref stage, target, default, name, scope, use);
         }
 
         return this.ImportStageEnd(stage, name, scope, use, failed);
     }
 
-    // SPEC 23.1.2 (rule W; F's ruling N1-2 C2): a use whose import stages selected nothing read every opening alias of its document,
-    // a failed one included, so its miss rests on that alias's record and records nothing of its own.
-    private ResolvedPath ImportMiss(Koto use, AliasKoto? failed)
+    // SPEC 23.1.2 (rule W; F's rulings N1-2 C2, N1-3): a use whose import stages selected nothing read every opening alias of its
+    // document and every configured default alias, a failed one included, so its miss rests on that alias's record (a configured one's
+    // is its module root's) and records nothing of its own.
+    private ResolvedPath ImportMiss(Koto use, Koto? failed)
     {
         if (failed is not null)
         {
@@ -275,7 +258,7 @@ public sealed partial class Binding
     // G633: one group gathered from two environments is valid, SPEC 9.5.1 and 7.4, but a use holds one imported environment), which
     // refuses the Name with the walk's Unsupported step (the located Unsupported_Kd); then 9.5's stop, the stage having only Cases and
     // members needing a receiver (none Selectable); else the merged selection. A miss rests on a failed alias (ImportMiss).
-    private ResolvedPath ImportStageEnd(in ValueImports stage, string name, BindingScope scope, Koto use, AliasKoto? failed)
+    private ResolvedPath ImportStageEnd(in ValueImports stage, string name, BindingScope scope, Koto use, Koto? failed)
         => stage.Ambiguous ? new(PathEnd.Ambiguous, null, use)
             : stage.Limited ? this.ImportLimit(use)
             : stage.Imported is not { } imported ? this.ImportMiss(use, failed)
@@ -288,5 +271,18 @@ public sealed partial class Binding
     private readonly record struct ValueImports(BindingSymbol? Imported, AliasImport Import, BindingScope? Source, bool Selectable, bool Ambiguous, bool Limited)
     {
         internal bool Ends => this.Ambiguous || this.Limited;
+    }
+
+    // The reset of a configured path node's subtree before its pass's first read (F's ruling N1-4 (2)): Indexing's reset step for each
+    // node, the one reset every document node takes.
+    private sealed class ConfiguredPathReset : KotoVisitor
+    {
+        internal static readonly ConfiguredPathReset Instance = new();
+
+        public override void Visit(Koto node)
+        {
+            ResetEntry(node);
+            node.VisitChildren(this);
+        }
     }
 }

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -13,6 +14,7 @@ public partial class Compilation
     private Dictionary<Kotonoha, Dictionary<string, Kotonoha>>? moduleReferences;
     private Dictionary<Kotonoha, string[]>? moduleAliases;
     private Dictionary<Kotonoha, ProjectFile>? moduleConfigurations;
+    private Dictionary<Kotonoha, DefaultAlias[]>? defaultAliasRows;
     private string[] rootAliases = RequiredAliases;
 
     /// <summary>Gets the source modules by ordinal. A prepared Compilation may have none (<see cref="AnalyzesNoModule"/>): R5-M25's
@@ -40,6 +42,26 @@ public partial class Compilation
         }
 
         return paths.Count == 1 ? RequiredAliases : paths.Order(StringComparer.Ordinal).ToArray();
+    }
+
+    // A configured path read by the Type production (F.5; the alias target's, GroupKoto) in a configuration document of its module, as
+    // KimiLibrary.CreateAbort forms its built-in syntax. The loader refused an empty path; the effective path carries no leading `::`.
+    internal static Koto ParseConfiguredPath(Kotonoha module, string path)
+    {
+        var source = new SourceDocument($"configuration://alias/{path}", path);
+        _ = module.LogicalName(source);
+        var context = new CodeContext(module, sourceDocument: source);
+        var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
+        try
+        {
+            tokenizer.ReadAll();
+            var reader = new TokenReader(context, ref tokenizer);
+            return Parser.ParseType(ref reader, Parser.TypeContext.AnnotatedType);
+        }
+        finally
+        {
+            tokenizer.Dispose();
+        }
     }
 
     internal bool Prepare(string target, DependencyPartition graph)
@@ -89,8 +111,31 @@ public partial class Compilation
     internal ProjectFile? Configuration(Kotonoha module)
         => ReferenceEquals(module, this.Kotonoha) ? this.Project.ProjectFile : this.moduleConfigurations?.GetValueOrDefault(module);
 
-    internal string[] DefaultAliases(Kotonoha module)
-        => ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
+    // A module's configured default aliases, each path parsed once for the Compilation (F's ruling N1-4 (1), (2)): the configuration
+    // owner reads it by the Type production in a configuration document of the module, as KimiLibrary forms its built-in syntax; the
+    // node lives for the Compilation and Binding resets its rows each pass. The library's row is the library's own (KimiLibrary).
+    internal DefaultAlias[] DefaultAliases(Kotonoha module)
+    {
+        if (ReferenceEquals(module, this.Library.Kotonoha))
+        {
+            return this.Library.DefaultAliases;
+        }
+
+        var rows = this.defaultAliasRows ??= new();
+        if (!rows.TryGetValue(module, out var parsed))
+        {
+            var paths = ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
+            parsed = new DefaultAlias[paths.Length];
+            for (var i = 0; i < paths.Length; i++)
+            {
+                parsed[i] = new(paths[i], ParseConfiguredPath(module, paths[i]));
+            }
+
+            rows.Add(module, parsed);
+        }
+
+        return parsed;
+    }
 
     // failed is the root's verdict. The graph's checks below read no root fact it rests on, so they run after a root failure, each
     // failure its own record (SPEC 23.1.2); the modules are established only when no check failed. A module's variables start from the
@@ -188,4 +233,8 @@ public partial class Compilation
         this.SourceModules = modules;
         return true;
     }
+
+    /// <summary>A module's configured default alias (SPEC 18.2.3, IMPL 20.2): its effective path and that path read once by the Type
+    /// production in a configuration document of the module (F's ruling N1-4 (1)), the node Binding evaluates by the path walk.</summary>
+    internal readonly record struct DefaultAlias(string Path, Koto Target);
 }
