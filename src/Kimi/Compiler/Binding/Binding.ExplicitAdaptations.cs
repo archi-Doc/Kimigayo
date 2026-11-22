@@ -277,7 +277,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            var proof = this.RequestCapability(source, this.Library.ObjectPayload, scope);
+            var proof = this.RequestCapability(source, this.Library.ObjectPayload, scope, conversion);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(conversion, proof, this.capabilityMode);
@@ -310,7 +310,7 @@ public sealed partial class Binding
             }
         }
         else if (operation != ConversionBinding.ObjectUpcast && this.IsBarePlace(conversion.Left) &&
-            this.ProveCopy(source, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
+            this.ProveCopy(source, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
         {
             this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             return false;

@@ -243,7 +243,7 @@ public sealed partial class Binding
     {
         var search = this.SearchAssociated(qualifier, scope, name, null);
         var both = search.Found is { } associated && (search.Alternative is not null || search.Source is not { } source || Unconditional(this.impls.PathsOf(source)) ||
-            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: search.Reference ?? associated.Scope.Owner.BoundSymbol!)), scope) == ConstraintProof.Proven);
+            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: search.Reference ?? associated.Scope.Owner.BoundSymbol!)), scope, path) == ConstraintProof.Proven);
         if (!both && !this.contractHeadersReady)
         {
             this.earlyProjections.Add((path, PathEnd.Selected, qualifier, scope, name, null));

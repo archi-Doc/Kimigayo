@@ -189,7 +189,7 @@ public sealed partial class Binding
             var scope = this.scopes[container];
             var subject = clause.Left.BoundType;
             var formation = subject is null ? ConstraintProof.Unknown : this.CheckTypeConstraints(subject, scope);
-            proof = CombineProof(proof, CombineProof(formation, this.ProveConstraint(constraint, scope), true), true);
+            proof = CombineProof(proof, CombineProof(formation, this.ProveConstraint(constraint, scope, QuerySite.Nested), true), true);
         }
 
         return this.EndProof(proof);

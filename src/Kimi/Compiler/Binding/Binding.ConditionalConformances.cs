@@ -675,7 +675,7 @@ public sealed partial class Binding
             var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.StoredConstraint(written, type), scope, type) : null;
             var limit = this.ScopeReads.Limit;
             var error = this.ScopeReads.Error;
-            var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
+            var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope, QuerySite.Nested);
             if (this.DerivedObligation(proof, error))
             {
                 derived = true;

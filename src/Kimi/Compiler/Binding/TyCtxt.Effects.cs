@@ -96,7 +96,7 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.7.2, 16.3.3: whether a Type is proven Sealed, whose handle's destruction runs only its own destructor, under a definition's
     // premises.
-    internal bool Sealed(BindingSymbol? definition, BoundType type) => binding.ProveSealed(type, binding.EffectPremises(definition)) == ConstraintProof.Proven;
+    internal bool Sealed(BindingSymbol? definition, BoundType type) => binding.ProveSealed(type, binding.EffectPremises(definition), Binding.QuerySite.AfterPass) == ConstraintProof.Proven;
 
     // SPEC 8.13.3: a body a call of a function with a substitution may run, by index (Binding.Implementation); null past the last.
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index) => binding.Implementation(function, subst, index);
@@ -132,7 +132,7 @@ internal sealed partial class TyCtxt
         {
             if (!this.proven.TryGetValue(type, out var copy))
             {
-                copy = binding.ProveCopy(type, premises) == ConstraintProof.Proven; // SPEC 8.14, 8.15.2: per Semantics case (G642).
+                copy = binding.ProveCopy(type, premises, Binding.QuerySite.AfterPass) == ConstraintProof.Proven; // SPEC 8.14, 8.15.2: per Semantics case (G642).
                 this.proven.Add(type, copy);
             }
 

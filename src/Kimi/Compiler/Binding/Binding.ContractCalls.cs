@@ -78,7 +78,7 @@ public sealed partial class Binding
         for (var i = 0; i < group.Contracts.Count + group.PropertyContracts.Count; i++)
         {
             var contract = i < group.Contracts.Count ? group.Contracts[i] : group.PropertyContracts[i - group.Contracts.Count];
-            if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope) == ConstraintProof.Proven)
+            if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope, member) == ConstraintProof.Proven)
             {
                 this.AddContractPremises(contract.Contract!, type, scope);
             }

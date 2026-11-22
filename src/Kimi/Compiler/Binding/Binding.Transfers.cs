@@ -124,7 +124,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.ProveCopy(type, this.ConstraintScope(function)) == ConstraintProof.Proven)
+            if (this.ProveCopy(type, this.ConstraintScope(function), function) == ConstraintProof.Proven)
             {
                 environment.CaptureAcquisition = CaptureAcquisition.Copy;
             }

@@ -212,7 +212,7 @@ public sealed partial class Binding
             foreach (var ancestor in shape.AncestorStorage)
             {
                 var inheritedProof = IntrinsicContract.Of(ancestor.Intrinsic).Judged
-                    ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope)
+                    ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope, path.Use)
                     : this.VerifyConformance(this.impls.Path(path.Type, ancestor, path.Declaration, path.RootContract));
                 proof = CombineProof(proof, inheritedProof, true);
             }
@@ -238,7 +238,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                proof = CombineProof(proof, this.ProveRequirement(constraint, scope, self), true);
+                proof = CombineProof(proof, this.ProveRequirement(constraint, scope, self, path.Use), true);
             }
 
             for (var s = 0; s < path.InheritedSourceCount; s++)

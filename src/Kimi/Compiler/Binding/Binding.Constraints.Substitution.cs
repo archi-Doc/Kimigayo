@@ -96,7 +96,7 @@ public sealed partial class Binding
             var unknown = this.ScopeReads.Unknown;
             var limit = this.ScopeReads.Limit;
             var error = this.ScopeReads.Error;
-            var proof = this.FailedClauseRead(constraint, bound) is { } failed ? this.RestOnFailure(failed) : this.ProveConstraint(substituted, scope);
+            var proof = this.FailedClauseRead(constraint, bound) is { } failed ? this.RestOnFailure(failed) : this.ProveConstraint(substituted, scope, QuerySite.Nested);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
@@ -131,7 +131,7 @@ public sealed partial class Binding
 
     // SPEC 10.5, 8.3: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves
     // neither applicability nor negation even while a waiting argument is still open.
-    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, BoundType? self)
+    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, BoundType? self, QuerySite site)
     {
         for (var i = 0; i < clauses.Count; i++)
         {
@@ -142,7 +142,7 @@ public sealed partial class Binding
 
             var substituted = this.SubstituteConstraint(bound, substitution, true);
 
-            if (!substituted.HasUnresolved && this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope) == ConstraintProof.Unknown)
+            if (!substituted.HasUnresolved && this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope, site) == ConstraintProof.Unknown)
             {
                 return true;
             }

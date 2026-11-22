@@ -101,7 +101,7 @@ public sealed partial class Binding
                 for (var i = 0; i < count; i++)
                 {
                     // Judge against the derived declaration, before assuming any slot premise.
-                    if (this.ProveConstraint(facts[i], function.BoundSymbol.Scope) is ConstraintProof.Proven or ConstraintProof.Unknown)
+                    if (this.ProveConstraint(facts[i], function.BoundSymbol.Scope, function) is ConstraintProof.Proven or ConstraintProof.Unknown)
                     {
                         this.AddConstraintFact(header.Constraints!, facts[i]);
                     }
@@ -467,7 +467,7 @@ public sealed partial class Binding
             // stand (SPEC 23.1.2); a rejected definition publishes no body (DECISIONS R4-M18). R7-C3 (F's C2 rulings 313, 271 (1), 255):
             // the refuted premise is the override's failed premise, it and its conjuncts in the one Failed state (FailPremise), so a body
             // proof that reads it rests on the override's record and none of it is evidence.
-            var proof = this.ProveConstraint(bound, premises);
+            var proof = this.ProveConstraint(bound, premises, function);
             this.AddConstraintFact(premises.Constraints!, bound);
             if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
@@ -514,7 +514,7 @@ public sealed partial class Binding
                     break;
                 }
 
-                var proof = this.ProveConstraint(bound, premises);
+                var proof = this.ProveConstraint(bound, premises, function);
                 if (proof != ConstraintProof.Proven)
                 {
                     if (proof == ConstraintProof.Error)

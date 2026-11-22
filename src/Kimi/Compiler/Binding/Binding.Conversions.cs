@@ -75,7 +75,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
 
-        if (this.IsBarePlace(conversion.Left) && this.ProveCopy(type, scope) != ConstraintProof.Proven)
+        if (this.IsBarePlace(conversion.Left) && this.ProveCopy(type, scope, conversion) != ConstraintProof.Proven)
         {
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
@@ -91,7 +91,7 @@ public sealed partial class Binding
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
         if (!this.OffersTake(conversion.Left) ||
-            (this.ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, this.ConstraintScope(conversion)) != ConstraintProof.Proven))
+            (this.ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven))
         {
             return this.FailTake(conversion, conversion.Left);
         }
@@ -201,7 +201,7 @@ public sealed partial class Binding
             }
 
             if (IsObjectSemantics(reference.Semantics) && reference.Components.Count == 1 &&
-                this.ProveSealed(reference.Components[0], scope) == ConstraintProof.Proven)
+                this.ProveSealed(reference.Components[0], scope, conversion) == ConstraintProof.Proven)
             {
                 Complete(conversion.Right, reference.Components[0]);
                 conversion.ConversionBinding = ConversionBinding.PayloadFollow;
@@ -336,7 +336,7 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (this.ProveCopy(copied, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
+            if (this.ProveCopy(copied, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
             {
                 return this.Record(conversion, BindingFailure.NonCopyOperand, []);
             }

@@ -126,7 +126,7 @@ public sealed partial class Binding
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
             {
                 kind = PropertyWitnessKind.StorageCopy;
-                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
+                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope, conformance.Use) : ConstraintProof.Refuted;
             }
             else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && ReferenceEquals(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {

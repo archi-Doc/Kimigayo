@@ -192,7 +192,7 @@ public sealed partial class Binding
             if (IntrinsicContract.Of(conformance.Contract.Intrinsic).Judged)
             {
                 // SPEC 8.7.1: the judgment of `Self is K`, as a Contract clause is proven; a declared Copy is validated where it opts in.
-                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope), true);
+                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, conformance.Use), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;
                 return intrinsicProof;
             }
@@ -295,7 +295,7 @@ public sealed partial class Binding
 
                 var associated = this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol);
                 var clauseScope = this.AssociatedFormationScope(conformance, associated, scope);
-                proof = CombineProof(proof, this.ProveRequirement(constraint, clauseScope, self), true);
+                proof = CombineProof(proof, this.ProveRequirement(constraint, clauseScope, self, conformance.Use), true);
             }
 
             var container = (DeclarationContainerKoto)conformance.Type.Declaration;
@@ -313,7 +313,7 @@ public sealed partial class Binding
                         if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
                         {
                             var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
-                            proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity)), true);
+                            proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity), conformance.Use), true);
                         }
                     }
                 }
@@ -330,7 +330,7 @@ public sealed partial class Binding
                     }
 
                     var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
-                    proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity)), true);
+                    proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity), conformance.Use), true);
                 }
             }
 
@@ -450,13 +450,13 @@ public sealed partial class Binding
     // specification's obligation): one answer holding pending the obligations open when it began (BeginEvidence), so a part of the
     // specified Types whose route depends on one stays the projection there (HeldPending) and only a judgment reading that part reads it
     // pending; Unknown when the answer depends on one (it supplies none). The clause is instantiated for the conforming Type inside it.
-    private ConstraintProof ProveRequirement(BoundConstraint written, BindingScope scope, BoundType self)
+    private ConstraintProof ProveRequirement(BoundConstraint written, BindingScope scope, BoundType self, QuerySite site)
     {
         var mark = this.BeginEvidence();
         var verdict = ConstraintProof.Unknown;
         try
         {
-            verdict = this.ProveConstraint(this.ContractConstraint(written, scope, self), scope);
+            verdict = this.ProveConstraint(this.ContractConstraint(written, scope, self), scope, site);
         }
         finally
         {
@@ -470,7 +470,7 @@ public sealed partial class Binding
     // formed from (`binding`, its first candidate) is the binding itself, a formation read (the Types it names are formed where written,
     // after the conformance holds); every other conjunct is an obligation of the conformance, a requirement's evidence: a further identity
     // atom (its consequence, an identity between Types, is checked and never assumed) or any other conjunct. One proof, as the clause's.
-    private ConstraintProof ProveSpecification(BoundConstraint written, BindingScope scope, BoundType self, BoundType? binding)
+    private ConstraintProof ProveSpecification(BoundConstraint written, BindingScope scope, BoundType self, BoundType? binding, QuerySite site)
     {
         this.BeginProof();
         return this.EndProof(Conjunct(written));
@@ -479,8 +479,8 @@ public sealed partial class Binding
             => conjunct.Kind switch
             {
                 ConstraintKind.And => CombineProof(Conjunct(conjunct.Left!), Conjunct(conjunct.Right!), true),
-                ConstraintKind.TypeIdentity when ReferenceEquals(conjunct.RequiredType, binding) => this.ProveConstraint(this.ContractConstraint(conjunct, scope, self), scope),
-                _ => this.ProveRequirement(conjunct, scope, self),
+                ConstraintKind.TypeIdentity when ReferenceEquals(conjunct.RequiredType, binding) => this.ProveConstraint(this.ContractConstraint(conjunct, scope, self), scope, QuerySite.Nested),
+                _ => this.ProveRequirement(conjunct, scope, self, site),
             };
     }
 
@@ -602,7 +602,7 @@ public sealed partial class Binding
 
                 var substituted = this.SubstituteConstraint(constraint, substitution);
 
-                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);
+                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises, conformance.Use), true);
                 var clause = (IsKoto)implementation.TypeConstraints[i];
                 if (clause.EffectBounds.Count != 0 && substituted.Kind == ConstraintKind.Callable)
                 {

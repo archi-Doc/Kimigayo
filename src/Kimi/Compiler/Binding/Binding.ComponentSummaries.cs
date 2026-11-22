@@ -75,7 +75,7 @@ public sealed partial class Binding
             // Every complete Type argument is retained, including unused and inherited slots.
             var saved = this.ScopeReads.Origin;
             this.ScopeReads.Origin = null;
-            var proof = this.RequestCapability(types[i], work.Intrinsic, work.Scope);
+            var proof = this.RequestCapability(types[i], work.Intrinsic, work.Scope, QuerySite.Nested);
             result = CombineProof(result, proof, true);
             this.ScopeReads.Origin = work.Part(i, proof, this.ScopeReads.Origin, saved, types[i]);
         }
@@ -95,7 +95,7 @@ public sealed partial class Binding
             this.ScopeReads.Origin = null;
             var projection = this.StoredType(summary.Projections[i], work.Type);
             var proof = projection is null ? ConstraintProof.Unknown
-                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, projection, contract: work.Intrinsic)), work.Scope);
+                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, projection, contract: work.Intrinsic)), work.Scope, QuerySite.Nested);
             result = CombineProof(result, proof, true);
             this.ScopeReads.Origin = work.Part(types.Count + origins.Count + i, proof, this.ScopeReads.Origin, saved, projection);
         }
@@ -104,7 +104,7 @@ public sealed partial class Binding
         {
             // The declaration's stored instances are formed once, in its formals (StorageFormation). The instance judged adds only its own
             // formation (InstanceCapability), which proves the declaration's Constraints at its arguments (SPEC 8.6.1, 8.3.3 Finality).
-            result = this.RequestCapability(this.SelfType(symbol), work.Intrinsic, this.ConstraintScope(container), derivation: true);
+            result = this.RequestCapability(this.SelfType(symbol), work.Intrinsic, this.ConstraintScope(container), QuerySite.Nested, derivation: true);
         }
 
         return summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown
@@ -128,7 +128,7 @@ public sealed partial class Binding
         for (var i = 0; i < summary.Components.Count; i++)
         {
             var component = summary.Components[i].Declaration;
-            result = CombineProof(result, this.RequestCapability(this.SelfType(component), work.Intrinsic, this.ConstraintScope(component.Declaration), derivation: true), true);
+            result = CombineProof(result, this.RequestCapability(this.SelfType(component), work.Intrinsic, this.ConstraintScope(component.Declaration), QuerySite.Nested, derivation: true), true);
         }
 
         return result;

@@ -370,7 +370,7 @@ public sealed partial class Binding
             var contract = step.Symbol!.Scope.Owner.BoundSymbol!;
             if (!subject.IsProofDecided ||
                 this.RecursiveInStorage(contract) ||
-                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: contract)), summary.Scope) != ConstraintProof.Proven)
+                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: contract)), summary.Scope, (Koto?)summary.Container ?? summary.Path!.Use) != ConstraintProof.Proven)
             {
                 return;
             }
