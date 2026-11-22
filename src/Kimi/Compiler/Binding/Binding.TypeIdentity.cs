@@ -15,7 +15,8 @@ namespace Kimi.Compiler;
 //   edges a constructor's components and a projection's Contract arguments (SPEC 8.3.3's expansion), Cyclic only through a
 //   constructor edge (R7-C2c2 c2-4b); a Type that is no node is in the class of the node it is congruent with (ClassOf); the
 //   premise error an error class is (SPEC 8.2.3's table), recorded once per pass at the declaration whose premises first form it;
-//   the identity proposition's Proven (IdentityProven); the class key the premise supply compares by (ClassKey, R7-C2c2 c2-1); the
+//   the identity proposition's Proven (IdentityProven; two complete Types by SameCompleteType, Binding.TypeIdentity.Complete, R7-C3
+//   C3c); the class key the premise supply compares by (ClassKey, R7-C2c2 c2-1); the
 //   one form every Type of a class takes in a view (ClassForm, R7-C2c2 c2-4b: its own contract in Binding.TypeIdentity.Keys, its
 //   readers closed to the intakes of the judgments over identical Types); and BU-72's HIR premise (`P is` the ClassForm of `P`).
 // - Inputs: the view's chain of valid Constraint environments: positive identity premises and their availability (R7-C2e1's

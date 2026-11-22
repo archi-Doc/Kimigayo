@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="TataraObjects">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -51,11 +51,43 @@
     <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>
 
-  <!-- The managed form's Tatara (Tatara B6b1): the checkout's toolchain's tatara.dll beside Kimi.dll, beside the outputs that reference
-       Kimi and in its publish (until B6b2 links it); without one, Kimi builds and its first native build names setup. -->
+  <!-- The managed form's Tatara (Tatara B6b1): the checkout's toolchain's tatara.dll beside Kimi.dll and beside the outputs that
+       reference Kimi; without one, Kimi builds and its first native build names setup. The published kimi.exe links Tatara (below). -->
   <ItemGroup>
-    <None Include="$(KimiRepositoryRoot)toolchain\tatara.dll" Link="tatara.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('$(KimiRepositoryRoot)toolchain\tatara.dll')" />
+    <None Include="$(KimiRepositoryRoot)toolchain\tatara.dll" Link="tatara.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="'$(PublishAot)' != 'true' and Exists('$(KimiRepositoryRoot)toolchain\tatara.dll')" />
   </ItemGroup>
+
+  <!-- The published kimi.exe (Tatara B6b2, scripts/build-kimi.ps1): Tatara linked in from src/Tatara/build.ps1's checked objects and
+       its link.rsp (the archive's libraries and LLVMSupport's link interface, as tatara.dll is linked), on the static UCRT: NativeAOT's
+       two arguments that link the UCRT dynamically are removed, so LLVM's rpmalloc serves the whole image's malloc and free and no CRT
+       allocates from another heap. build-kimi.ps1's import check guards the removal. TataraObjects (the objects' directory) takes its
+       trailing separator here, a TreatAsLocalProperty of the project, never in the argument. -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <TataraObjects>$([MSBuild]::EnsureTrailingSlash('$(TataraObjects)'))</TataraObjects>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(PublishAot)' == 'true'">
+    <DirectPInvoke Include="tatara" />
+    <NativeLibrary Include="$(TataraObjects)*.obj" />
+  </ItemGroup>
+  <Target Name="TataraLink" AfterTargets="SetupOSSpecificProps" Condition="'$(PublishAot)' == 'true'">
+    <Error Condition="'$(TataraObjects)' == '' or !Exists('$(TataraObjects)link.rsp')" Text="kimi.exe links Tatara: publish it with scripts/build-kimi.ps1." />
+    <ReadLinesFromFile File="$(TataraObjects)link.rsp">
+      <Output TaskParameter="Lines" ItemName="TataraLinkInput" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <LinkerArg Include="@(TataraLinkInput)" />
+      <LinkerArg Remove="/NODEFAULTLIB:libucrt.lib;/DEFAULTLIB:ucrt.lib" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The published folder is kimi.exe alone: the two package DLLs Kimi never calls (Arc.Crypto's blake3_dotnet.dll, libsodium's
+       libsodium.dll; decision 20 Q1 (a)) are left out by name, so any other native asset reaches the folder and fails the one-file
+       check. -->
+  <Target Name="KimiOneFile" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(PublishAot)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.AssetType)' == 'native' and ('%(ResolvedFileToPublish.NuGetPackageId)/%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'Arc.Crypto/blake3_dotnet.dll' or '%(ResolvedFileToPublish.NuGetPackageId)/%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libsodium/libsodium.dll')" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Arc.Collections" Version="2.2.0" />
