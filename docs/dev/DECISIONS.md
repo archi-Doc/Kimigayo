@@ -3381,7 +3381,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
-- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151, R4-M157 and R4-M219's U6-U7)
+- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151, R4-M157, R4-M219's U6-U7 and R4-M235's PQ-10)
   (2026-10-25; R4-M116's design B′ as amended,
   the rulings PQ-1 to PQ-13; its two departures are rulings amending B′: W keeps "E where the set carries Φ_E", and the untracked rule
   is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's first and second limits)
@@ -3411,6 +3411,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - PQ-10: a located `Unsupported_Kd` at a non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and
     at a Copy or Move read of such an enclosing Place; a mark makes the view a producer (D5). Registered for X-2 (PD28); removal stage: a
     Loan records the layer's own-step entry and positions (R4-M117 item 6 states the meaning), when a program needs the form.
+    Narrowed by R4-M235 (Z5-R1, Q-668): a non-raw Borrow of such a Place issues its ordinary Loan and no mark; the limit is a read
+    whose own-step row is Unplaced, at the read, in a view with a borrow the base marked; a Copy or Move read of an enclosing Place
+    keeps the mark until Z5-R2 (R-A).
   - r3 is removed (PQ-5): a default's raw stores are the omitting call's, applied by its own rows (window1 and window2 err, window3 is
     valid). No `Raw.slice` row and no `MirDescriptors` change (PQ-4); A5 reads neither `RawMembers` nor `RawStep(raw)` (PQ-7).
   - Supersedes R4-M36's "a raw pointer … hold[s] none", R4-M73's `Raw` bullet (`MirWrites.Raw`), A3 E16's raw clause, R4-M93's r3, and
@@ -7788,6 +7791,39 @@ and migration obligations remain in force; no numeric cap changes are authorized
     without the path.
   - Staged: audit finding 7 (A4's readers recorded once per Run, the design's stamp) waits for its RP8 measurement under PLAN G349.
   - Moves: none at publication (42 test expectations of internal NoBody view values).
+- **R4-M234 Z5-F: A5 publishes each read's and each borrow's exact lent position** (Middle, 2026-11-22; the owner's O-482 (a); Z5's A5
+  half after its second stop; R7 plan Z5, PLAN G212, G396 (3); Q-668, D-1104; read by R4-M235)
+  - Representation: a position, a root key and a run of A5's steps passing no borrow or raw Deref, is the storage a Place denotes where
+    the body forms it exactly: a Place passing no such Deref is its own; past one, the lent position of the borrow whose reference the
+    last one goes through (the lender: the reference root's one whole store, followed through whole Copies and Moves and a Tuple's or
+    fixed array's operands, a constant index read as MirSteps reads it), then the steps after it; none for any other store or step.
+    `MirBorrows.Lent` publishes `Lent(place)` only (no per-entry column: Z5-R1 reads `Lent(place)`; `LentAt(location)`, which had no
+    reader, was removed with Z5's N12), after the view's Addresses pre-pass (which completes Exposed), made on demand and kept per
+    view by Place, by borrow location and by whole local, the lender chain a loop: linear in the reads and stores.
+  - `MirBorrows.Loans`' store record is the one writer of a local's stores: every store into its whole Place is listed, `OtherStore`
+    marks one that is no referring store and `PartStore` a store into a part, so `Referring` is unchanged; `lent[]` is removed and
+    `LentInto` derives the Place a Ref lent into a local (G136's input temps) from the same record.
+  - Rejected: the referent by a Type match among the read's parents (Z5-M1; its review's B1-B3 and the half's a06, a14); an entry for
+    every borrow past a shared Deref (more set elements, and a whole value still cannot tell its elements apart); per-element values
+    in A5's states (a rewrite of A5; recorded with N3); the referring stores as they were (blind to aggregates and Copies of parts); a
+    per-entry column `Lent(entry)` (its one reader removed by Z5-R1 Revision 1's B1); a published `LentAt(location)` with no reader
+    (N12: Z5-R2 adds a borrow-position reader with its reader if R-A needs one).
+- **R4-M235 Z5-R1: a read through a dereference of a `during self` layer or an enclosing Place carries the owner's own-step entry at its
+  exact lent position, with its parents whole** (Middle, 2026-11-22; the owner's O-482 (a); R7 plan Z5, PLAN G212, G396 (3); Q-668,
+  D-1104; design `middle\notes\z5r1-design.md` Revision 2 with 2a, review 3 ACCEPT WITH CONDITIONS; narrows R4-M120's PQ-10 bullet;
+  reads R4-M234)
+  - A non-raw borrow of a layer's or enclosing Place issues its ordinary Loan and no mark. A5's own-step table keeps one row per Place
+    a read uses, decided by one owner walk over one step run: the Place's exact lent position, else its own steps. An owner whose Place
+    the position names gives its direct own-step entry; the read carries it with every Loan and address its parents carry (SPEC 15.6
+    Holders, 15.6 Addresses, 5.7; O-230 Q1 (a)); the owner past a dereference is thereby named and its Warning recorded (superseding
+    there the Z5-M designs' M-R4, an owner past a dereference carried for the Warning only, with no Warning recorded). The read's
+    parents whole can give a Language record where the base's limit stood, as for layerRef, whose twins through no dereference already
+    carry it.
+  - PQ-10, narrowed: a read whose row is Unplaced (an owner no Place names, or no run naming one) is the location's limit, a located
+    `Unsupported_Kd` at the read, in a view with a borrow the base marked; a Copy or Move of an enclosing Place through no dereference
+    keeps the mark until Z5-R2.
+  - Rejected: dropping a parent's Loan by its position (Revision 0's `Lending`: SPEC 15.6 Holders, R4-M191); the Type match (Z5-M1,
+    B1-B3); the limit by the parents' Loans (E3); the limit on every "none" read (pa, tw). Z5-F's per-entry position is not published.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
