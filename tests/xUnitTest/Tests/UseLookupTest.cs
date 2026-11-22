@@ -70,9 +70,10 @@ public class UseLookupTest
     // A Type argument is a Type position: a value named `Kimi` beside an opened struct `Kimi` asks Core, never stage 4 (v02).
     [InlineData("alias A\ngroup A\n    public struct Kimi\n        public let n: i32 = 1\nfunc take<T>() -> i32 => 0\nfunc f(Kimi: i32) -> i32\n    return take<Kimi>()", "")]
     // A generic adaptation target takes its Type row: a Contract alone is unresolved there (w01), as a missing Contract parent is (t05:
-    // the resolver's miss, SPEC 9.5; it was InvalidConstraint_Kd until R7-E2 E2-4b, PLAN G1207, B's ruling 7).
+    // the resolver's miss, SPEC 9.5; it was InvalidConstraint_Kd until R7-E2 E2-4b, PLAN G1207, B's ruling 7), at the generic's Name as a
+    // Type use's miss is (C-405 C1, B's ruling 9; ContractBindingTest's x2g).
     [InlineData("contract C<T>\n    func m(self: ref/Self) -> i32\nfunc f(x: i32) -> i32\n    let y = x@C<i32>\n    return 0", "UnresolvedBinding_Kd C")]
-    [InlineData("contract D: Missing<i32>\n    func k(self: ref/Self) -> i32", "InvalidConstraint_Kd contract D|UnresolvedBinding_Kd Missing<i32>")]
+    [InlineData("contract D: Missing<i32>\n    func k(self: ref/Self) -> i32", "InvalidConstraint_Kd contract D|UnresolvedBinding_Kd Missing")]
     // An effect selector names its declaration and has the bound ancestor it designates as its Type (SPEC 8.11.1; review 3's v-e1, v-e2,
     // v-e5), below a root-name form too; one without its Type arguments names no reference (EffectBoundDeclarationTest).
     [InlineData(BoundEffect + "contract Q: P<i32>\n    effect ::P<i32>.value confined", "")]
