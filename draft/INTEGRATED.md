@@ -1474,6 +1474,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   `TestSyntaxVisitor`; DECISIONS R7-M79) and b as a census line that closes when the N5 batch holding `shapeJudgments` lands; N5's
   row: the census gains `shapeJudgments` (Koto-keyed through `ShapePair`'s fields, invisible to the line-regex ratchet; 24 → 25 on
   dev), converted or deleted in one N5 batch with a type-aware ratchet row (PLAN G1069). Nothing frozen.
+- Revision 116 (2026-11-23, plan §14; the Front's Q-693 and D-1143, F's V2a2/C3b rulings 1, 3 and 4 and ruling (A), R7-C3 b's
+  landing): C3's row records b as landed in W-322 (`SelectConformance`, one selection of a Type's conformance by a Contract;
+  DECISIONS R7-M82) and its remainder C3b-2 (PLAN G1300: a specification whose qualifier names a conformance of several members)
+  as next. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
