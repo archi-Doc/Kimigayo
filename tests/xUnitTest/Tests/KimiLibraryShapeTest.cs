@@ -63,6 +63,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.RawRelease, "public unsafe func release<T>(storage: raw/T)"),
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
         (KimiDeclarationId.RawSlice, "public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s"),
+        (KimiDeclarationId.ViewStart, "internal unsafe func viewStart<P, R>(storage: P, start: isize) -> P\nR is PositionRange"), // The builder's Form (L2).
         (KimiDeclarationId.RawReadVolatile, "public unsafe func readVolatile<T>(storage: raw/T) -> T\nT is PrimitiveInteger"),
     ];
 
@@ -145,7 +146,7 @@ public partial class KimiLibraryShapeTest
         // R8-X1's Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share, PLAN G970; OSF2's Raw.writeVolatile,
         // whose pair Raw.readVolatile is cataloged for its NoStore row).
         // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`.
-        Assert.Equal(121, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(122, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             Assert.NotNull(c.Library.GetSymbol(entry.Id));
@@ -158,7 +159,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf(c));
         }
 
-        Assert.Equal((121, 84), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
+        Assert.Equal((122, 84), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
@@ -201,7 +202,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal("public contract " + symbol.Name, Shape(declaration));
         }
 
-        if (symbol.Definition.Kind == DispositionKind.Intrinsic || entry.Implementation is not null)
+        if (symbol.Definition.Kind is DispositionKind.Intrinsic or DispositionKind.Form || entry.Implementation is not null)
         {
             Assert.False(HasBody(declaration));
         }
@@ -247,7 +248,8 @@ public partial class KimiLibraryShapeTest
 
     // IMPL 21.3.4 (R8-G1 row L2): a function or constructor without a definition, outside a Contract, is a foreign import, or a
     // cataloged compiler function carrying `#Intrinsic` exactly when its symbol's Definition is an intrinsic, or a `#Lang`
-    // constructor the catalog links to the internal function that defines it; a function with a definition carries no `#Intrinsic`.
+    // constructor the catalog links to the internal function that defines it, or a `#Lang` function whose catalog entry is a Form row
+    // (PLAN G597's L2: Storage.viewStart); a function with a definition carries no `#Intrinsic`.
     // An `#Unsupported` declaration omits its Body too (rows L9-L11, R8-G1 G1-3b-2). Every library source is ordinary
     // (R8-G1 G1-5): such a declaration omits its Body by its Attribute (FunctionKoto.OmitsBody).
     [Fact]
@@ -299,7 +301,8 @@ public partial class KimiLibraryShapeTest
                 Assert.True(symbol!.LibraryDeclaration is not { } id ? LangName(function) is null : ReferenceEquals(c.Library.GetSymbol(id), symbol) && LangName(function) == id.ToString(), Line(function));
                 var served = symbol.Definition.Kind == DispositionKind.Intrinsic;
                 var linked = function.IsConstructor && symbol.Definition.Kind == DispositionKind.Body && symbol.LibraryDeclaration is { } linkedId && KimiLibraryCatalog.ImplementationOf(linkedId) is not null;
-                Assert.True(intrinsic == served && (served || linked), Line(function));
+                var form = !function.IsConstructor && symbol.Definition.Kind == DispositionKind.Form;
+                Assert.True(intrinsic == served && (served || linked || form), Line(function));
             }
 
             foreach (var nested in container.NestedContainers)
@@ -312,12 +315,13 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void EveryCompilerFunctionHasAShape()
     {
-        // Every registered intrinsic or linked constructor, named or not (R8-G1 G1-6), and no other declaration, has its row.
+        // Every registered intrinsic, Form function (L2) or linked constructor, named or not (R8-G1 G1-6), and no other declaration, has
+        // its row.
         var library = Library.Value.Library;
         var expected = new HashSet<Koto>(ReferenceEqualityComparer.Instance);
         foreach (var symbol in library.RegisteredSymbols)
         {
-            if (symbol.Definition.Kind == DispositionKind.Intrinsic || (symbol.LibraryDeclaration is { } id && KimiLibraryCatalog.ImplementationOf(id) is not null))
+            if (symbol.Definition.Kind is DispositionKind.Intrinsic or DispositionKind.Form || (symbol.LibraryDeclaration is { } id && KimiLibraryCatalog.ImplementationOf(id) is not null))
             {
                 expected.Add(symbol.Declaration);
             }
@@ -328,7 +332,7 @@ public partial class KimiLibraryShapeTest
             .. CompilerFunctionShapes.Select(x => library.GetSymbol(x.Id)!.Declaration),
             .. UnnamedCompilerFunctionShapes.Select(x => LibrarySource.Declaration(library, x.Path)),
         ];
-        Assert.Equal((28, 28), (expected.Count, shaped.Length));
+        Assert.Equal((29, 29), (expected.Count, shaped.Length));
         Assert.True(expected.SetEquals(shaped));
     }
 
@@ -358,7 +362,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the
-    // library registers as the intrinsic it calls; a direct line's fixed arm invokes Text.writer's body since R8-W2 b2-1.
+    // library registers as the intrinsic it calls; a direct line's fixed arm invokes Text.writer's body since R8-W2 b2-1. PLAN G597's
+    // L2 (the owner's O-490 (a)): the one Form function, whose call the builder writes as its MIR form, is Storage.viewStart.
     [Fact]
     public void ServedFunctionsHaveTheirDeclarations()
     {
@@ -366,6 +371,8 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(
             [IntrinsicId.RawSlice],
             new[] { KimiDeclarationId.RawSlice }.Select(x => library.GetSymbol(x)!.Definition.Id));
+        var forms = library.RegisteredSymbols.ToArray().Where(static x => x.Definition.Kind == DispositionKind.Form).ToArray();
+        Assert.Equal([KimiDeclarationId.ViewStart], forms.Select(static x => x.LibraryDeclaration!.Value));
     }
 
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
