@@ -804,10 +804,17 @@ public sealed partial class Binding
             // SPEC 10.5.1: a payload checked against the expected Type that a probe prepared (a nested call or Case awaiting its call) is
             // checked at its payload Type, settled or not; any other settled payload is bound at it below (its independent binding with
             // no expected Type would publish other Origins: Kimi's `.Ok(WriteWindow.init(..))`, AF-3b phase 2).
+            // A payload whose fit fails at a part checked against its Type (a failed check: the part's own resolution there has no
+            // applicable candidate or is ambiguous) is bound at it, where that failure is its own record, on which the construction
+            // rests (SPEC 23.1.2, rule W; ArgFlow ruling 152 C3); any other misfit is the construction's Type mismatch.
             var fitted = default(BoundArgumentOperation);
             var fit = settled.Contains(i) && this.AwaitedKind(source) is not (PartKind.Call or PartKind.Case) ? CandidateApplicability.Applicable
                 : this.FitArgument(source, type, scope, source, out fitted);
-            _ = this.TakeTrialChecked(use); // A failed check is the construction's misfit below.
+            if (this.TakeTrialChecked(use) is not null && fit == CandidateApplicability.Inapplicable)
+            {
+                fit = CandidateApplicability.Applicable;
+            }
+
             if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
             {
                 this.Fail(use, BindingFailure.TypeMismatch);
