@@ -482,9 +482,9 @@ public sealed partial class Binding
     // cases (SelectionOnSplit, G812 ruling 139): where it fails in every one the call keeps its own record, the canonical run's
     // classification, as BindCall records it with no evaluation to explain it (FailWaitingSelection). Each part awaiting the call is
     // judged and completed as a value call's part on the split is (CompleteNamedPartOnSplit; G812 rulings 134, 136, 143, 156), at the
-    // parameter the trial of the candidate the canonical run selects (SelectedCandidate) forms, as SlotSolution.Type forms a parameter:
-    // in each case of the bindings it reads, then in the canonical case, marked open where a split binding decides it (OpenForm); the
-    // call rests on the first that fails.
+    // parameter the first evaluation of the candidate the canonical run selects forms from its own columns, as SlotSolution.Type forms
+    // a parameter: in each case of the bindings it reads, then in the canonical case, marked open where a split binding decides it
+    // (OpenForm); the call rests on the first that fails.
     private BoundType? FailUnformedCall(ref CallEvaluation evaluation, bool fails, ProbedSelection canonical)
     {
         var call = evaluation.Call;
@@ -494,7 +494,9 @@ public sealed partial class Binding
                 : this.FailWaitingSelection(call, canonical.Kind == CallSelection.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         }
 
-        var shaped = canonical.Kind == CallSelection.Selected ? this.SelectedCandidate(ref evaluation, canonical.Winner) : -1;
+        // The canonical run's winner indexes this evaluation's candidates: both evaluate the call's one group (GroupOf) in RentCandidates'
+        // order, so it is below Count and names the same candidate, whose columns are its first evaluation's.
+        var shaped = canonical.Kind == CallSelection.Selected ? canonical.Winner : -1;
         Koto? completion = null;
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
@@ -579,33 +581,6 @@ public sealed partial class Binding
         return (!rests, canonical, only);
     }
 
-    // DECISIONS BU-240 (G812 rulings 134, 139): candidate `index` (the canonical run's winner) evaluated again alone, into its own frame,
-    // row and columns, as a query that publishes nothing (BeginSelectionQuery), unless it was evaluated last; the evaluation's counts
-    // stay its selection's. -1 for none. Removed by R7-P2 D2-3, which reads the winner's first evaluation from its columns.
-    private int SelectedCandidate(ref CallEvaluation evaluation, int index)
-    {
-        if (index < 0 || index == evaluation.Count - 1)
-        {
-            return index;
-        }
-
-        var (query, saved, selection) = (this.BeginSelectionQuery(), evaluation, this.OpenFrame());
-        this.candidateTrials++;
-        try
-        {
-            evaluation.Count = index;
-            this.EvaluateCallCandidate(ref evaluation, saved.Evaluated[index].Symbol!);
-            return index;
-        }
-        finally
-        {
-            this.candidateTrials--;
-            this.CloseFrame(selection);
-            this.EndSelectionQuery(query);
-            evaluation = saved; // The rented frame, rows and columns keep the trial's contents.
-        }
-    }
-
     // A named call's selection probed as a query (ProbeSelection): its classification and winner, the candidates that applied, and
     // whether a pending candidate's Unknown premise reads the split.
     private readonly record struct ProbedSelection(CallSelection Kind, int Winner, ulong Applied, bool PremiseReadsSplit);
@@ -628,10 +603,11 @@ public sealed partial class Binding
     // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. Each candidate's
     // slots are its own frame (Frames, R7-I2 c), and its argument operations, root rows, child slice, mapping, Origins and input Origins
     // its own stride of the call's columns (OperationsOf, RowsOf, ChildSliceOf, MappingOf, OriginsOf, InputsOf: `Count x stride` arrays
-    // rented once per call and never grown, replaced or returned before the selection ends; one accessor each). Only EvaluateCallCandidate
-    // writes a candidate's mapping (MapCallArguments); the evaluation, the defaults' re-check, the waiting re-trial and the selected call's
-    // judgments solve into the candidate's own Origin strides (Solution), and CallType marks its input Origins Static there; the fixed
-    // re-check solves into its own scratch and copies the selected candidate's back (ValidateFixedConstruction).
+    // rented once per call and never grown, replaced or returned before the selection ends; one accessor each). Only a candidate's first
+    // evaluation (EvaluateCallCandidate) writes its mapping (MapCallArguments); the evaluation, the defaults' re-check, the waiting
+    // re-trial and the selected call's judgments solve into the candidate's own Origin strides (Solution), and CallType marks its input
+    // Origins Static there; the fixed re-check solves into its own scratch and copies the selected candidate's back
+    // (ValidateFixedConstruction).
     private struct CallEvaluation
     {
         internal InvocationKoto Call;
