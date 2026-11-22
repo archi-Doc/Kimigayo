@@ -23243,6 +23243,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   `ArgumentMapping.AllowsPositionalArgument`'s receiver read) with R7-P3 (its row normalizes each form to `FnSig`), the other 25 (with
   AssociatedInference.cs:309's read through a Type-node local) by R7-Y4 (the Koto forwarding's deletion, after N5, T2 and E move the
   Binding reads; Y4's zero-reference row finds any left).
+  - Superseded in part by R7-M77 (R7-V2e, Q-646): the clause "`SignatureEquals` stays the comparison until R7-V2e's
+    `SignatureKey`": the key is SPEC 9.1's `SignatureHash`, with no key type; `SignatureEquals` stays the comparison.
 - **R7-M38 A projection's supply reaches the Types identical with it, through a cycle as the walk's least fixpoint, and an extension
   ends at 32 rounds (PLAN G881, G881b)** (Front, 2026-11-19; R7-C2; Major, an acceptance mover; the owner's O-309 (b), O-320 (a)
   (G881 and G881b land together), O-321 (b) (the bound and one closed-vocabulary entry, `BindingFailure.PremiseClosureLimit`, 89 of
@@ -24846,6 +24848,35 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Supersedes: the A5 Step 2 plan's 2g-4a and 2g-4b done conditions (ledger rows) and 2g-3's "rows b1 and b3", void with the ledger.
   - Rejected: a location rule per family in each analysis (three copies of one choice); A3 judging unbuilt syntax (a second judge of
     SPEC 14.11); keeping an inline copy's failures apart (a key per operation for one table row).
+- **R7-M77 SPEC 9.1's duplicate check compares only functions of one `SignatureHash`** (Front, 2026-11-22; R7-V2e, the R7 plan
+  §5.1 V2, Q-646, D-1058; Major, behaviour-preserving; design `front\notes\V2\design-v2e.md` option B, its independent review ACCEPT
+  WITH CONDITIONS, V2e rulings 1 and 2; the implementation review ACCEPT WITH CONDITIONS, its T1, V2e ruling 3) SPEC 9.1.
+  - **Rule.** `ValidateSignatures` hashes each non-specialization function of a member group once (`SignatureHash` over `FnSig`: the
+    generic and parameter counts and, of each parameter Type and of its direct parts where `SignatureEquals` compares parts, what
+    `SignatureEquals` compares before any part (`SignatureLayer`): Kind, Semantics, Length, the part count and the symbol, by slot
+    number or by identity; null when a parameter Type is unbound), links each function to the next later one of its hash
+    (`SignatureGroup`), and compares a function only with those, in today's pair order, so the `Fail`/`FailDuplicate` sequence is
+    unchanged. Equal Signatures have equal hashes (each hashed field is one `SignatureEquals` requires equal, or equal by reference),
+    so no duplicate is missed. `SignatureEquals` and `SignatureLayer` classify a Type's kind by one pair of predicates
+    (`SignaturePartsCompared`, `SignatureSymbolBySlot`), so the two cannot drift. `SignatureEquals` stays the one comparison of two
+    declared signatures and of two Types after a substitution (8.4.2, 8.4.3, 8.6.3, 8.13.1, the virtual slot, 7.4's slot sharing).
+  - **Linear** only in a group whose Signatures differ within the top two layers of their parameter Types: Signatures that differ
+    only deeper or in a length expression (n overloads `m(x: Array<Array<S_i>>)`) share a hash and are still compared pairwise. A
+    full-depth hash would walk shared Type DAGs; hashing an interned Type by identity is wrong, since Origins distinguish interned
+    Types but not Signatures (SPEC 9.1).
+  - **Records (Q13):** none move; pinned by `DuplicateDiagnosticTest`'s `DuplicateSignatureChecksAreLinearInTheGroup` (S1, reading
+    `DuplicateCheckWork`) and `EveryLaterFunctionOfOneSignatureHashIsCompared` (a same-hash chain walked past an unequal function;
+    a slot inside a direct part).
+  - **Supersedes** R7-M37's clause "`SignatureEquals` stays the comparison until R7-V2e's `SignatureKey`" (and the 11-08 design's
+    "`SignatureEquals` kept only as the key's equality"): its reason no longer holds, since no key type has a second reader (override
+    and witness candidates compare after a per-pair substitution, and `MatchesRequirement` is three-valued, an unbound input
+    pending), so the plan's `SignatureKey` is this hash, with no key type.
+  - **Left pairwise** (PLAN G1249): SPEC 7.4's checker (pairwise by its rule), 7.3's receiver scan over a group's receivers, 8.13's
+    specialization-key scans and 8.4.3's same-name requirement scan.
+  - Rejected: a `SignatureKey` struct (option A: a wrapper whose only content is the hash, one reader, +40 lines); equality classes
+    keyed by Signature (the visited pairs' order would then rest on `SignatureEquals` being an equivalence); override and witness
+    candidates by key; sorting the group by hash (longer, the visit order restored); a `Clear` per group; a bool-steered recursive
+    layer.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -26416,10 +26447,17 @@ R8-M* and R9-M* by the stage of the recording unit.
       synthesized nodes have equal ids in every program and compare by id (c17, `TheLibraryPassNumbersEveryLibraryNode`, checks them
       one by one over the ten programs and the corpus). `KimiLibraryShapeTest.SynthesizedNodes` and the Milestone27 row's assertion
       that its ids differ are deleted.
-  - **Temporary 2: no library parameter default** (`TheLibraryDeclaresNoParameterDefault`; M-N4, R2-N5).
+  - **Temporary 2, now a lasting library rule: no library parameter default** (`TheLibraryDeclaresNoParameterDefault`; M-N4,
+    R2-N5; the owner's O-486 3 (a)).
     - The test checks three places, for functions and `init`: the declarations, `Hir.Defaults` after the Final Bind, and default
       templates in the library MIR.
-    - Removal: U5b or a later unit freezes the templates' omission facts (`Recursive`, `Failed`, `Reads`).
+    - Lasting by the owner's O-486 3 (a) (R8-X1, 2026-11-22, verbatim 「3a 4a（推奨）」); its removal condition (U5b or a later
+      unit freezes the templates' omission facts) passed without removing it. The library declares no parameter default. Reason:
+      no SPEC or LIBRARY declaration has one, and the frozen library refuses a program pass's write of a default template's
+      omission facts (`Recursive`, `Failed`, `Reads`); R7-N5 B2b-1's premise and the codegen gate's location rule (R5's
+      `InstanceCollector.Subject` overload: an inlined default template outside the root modules is unreachable) rest on it. A
+      SPEC revision adding a defaulted library parameter carries the unit that freezes those facts with the library and revisits
+      both.
   - Rejected: comparing synthesized nodes by id now. It fails today (R5-M168), and only U2's freeze removes the cause. (Amended by
     PLAN G949 S1-e: the cause, a program's uses ordering the ids, is gone before U2's freeze, so this reason no longer holds.)
 - **R8-M33 One MIR ordinal space with a library prefix, owned by `MirProgram`** (Back, 2026-11-11; R8-L1 U5a-1; the design
@@ -28386,6 +28424,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `tatara.dll` file and takes no `LlvmBin` (`check-toolchain.ps1` checks the root). `NativeToolchain.Wait`'s `internal`, which
     was for `ToolProcess`, serves only `RunExecutable`; once B6b3 and G1188 have both landed `Wait` has no reader, and the second
     of them to land removes it in its merge (T's ruling on C-444 N3).
+  - Amended by T-M15 (unit B6b4, 2026-11-22): the command line's option is removed (an error naming its removal; PLAN G1173
+    closed).
 - **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
@@ -28454,6 +28494,11 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     (`Supply`); the Ordinal-order invariant is the row's, checked by `CoreModelTest`, and `ToolchainIdentity`'s initializer checks
     that its material's keys are the row's supplies in the row's order (InvalidDataException otherwise); `ToolchainIdentity.Backend`
     is the row's supply the catalog's `library` names. `NativeConfiguration.Reserved` reads the row.
+  - Amended by T-M16 (unit B6b6, 2026-11-22): the temporary structure is removed. Setup installs neither library (`build.ps1`
+    keeps building and checking both candidates against the catalog and installs none), every script and test reads the committed
+    files through `kernel32.ps1`'s `Get-KimiKernel32` and `toolchain.ps1`'s `Get-KimiBackendArchive` (each the one place naming its
+    file), `check-toolchain.ps1` reads no `windows_x64`, and `ToolchainIdentity.BackendFile` is deleted; existing roots keep the
+    folder, which nothing reads (PLAN G1210 closed).
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -28498,6 +28543,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M14 (unit B6b2, 2026-11-22): the published form is one file: `kimi.exe` links Tatara's objects, the managed copy
     reaches no NativeAOT publish (its item is conditioned on `'$(PublishAot)' != 'true'`), and the published folder is `Kimi.exe`
     alone (PLAN G1225 closed).
+  - Amended by T-M15 (unit B6b4, 2026-11-22): the build's interim ends: the options are errors, and the development scripts
+    refuse `KIMI_TOOLCHAIN_ROOT` (PLAN G1224 closed).
 - **T-M10 `LlvmBin` removed from projects and manifests** (Tatara, 2026-11-21; the plan's unit B6b5, Q-627, D-1022; Major;
   design `artifacts\handoff\tatara\units\B6\design-b6b.md` §6; design review C-437; implementation review C-443, ACCEPT;
   the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line.
@@ -28516,6 +28563,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     not read" sentences (`LinkManifest`, `NativeToolchain.Build`).
   - **Interim:** the command line's `--LlvmBin` is accepted and read by no build until B6b4, which also removes
     `toolchain verify`'s reading (PLAN G1173).
+    Amended by T-M15 (unit B6b4, 2026-11-22): the interim ends; `--LlvmBin` is an invalid option naming its removal, and the
+    Rejected line's PLAN open issue is G1253.
   - Rejected: deleting the property alone (the setting would be accepted silently, design B6b fact 3); a clause per removed
     name; a `LinkManifest.Rows` row that `WriteFixed` must skip; the general unknown-setting rule in this unit (pre-existing,
     a PLAN open issue with B6b4's docs).
@@ -28567,6 +28616,12 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: verify keeping kernel32's content inspection (a tool, or an ABI change, for a property of adopted bytes); a second
     PowerShell copy of the inspection; `check-toolchain.ps1` loading `tatara.dll` (T's ruling: no change under `src/Tatara`); a
     `-Report` for `check-toolchain.ps1` (no reader: `verify.ps1` keeps its log).
+  - Amended by T-M16 (unit B6b6, 2026-11-22; C-444 N6, T's ruling): verify has two steps, its Tatara and its supplies; the
+    compiler no longer embeds kernel32's definition (`Kimi.Kernel32.def`, `Kernel32Imports.Definition`/`DefinitionSha256` and their
+    initializer's comparison removed), since it carried the file only to check it, so the self-check's third step and the failure
+    semantics' definition mismatch go: the manifest's `definitionSha256` is the catalog's and `Kernel32ImportsTest` compares the
+    committed file with the catalog. The development check's `windows_x64` checks (N3-1) ended with the root's copy, and the tool
+    rules it shares with setup have one owner, `toolchain.ps1` (PLAN G1228 and G1230 closed).
 - **T-M12 `run`'s program in a kill-on-close job: `JobProcess`** (Tatara, 2026-11-22; PLAN G1188, Q-637, D-1045; Major; design
   `artifacts\handoff\tatara\units\G1188\design.md`; the Middle's review C-442, review 2 ACCEPT WITH CONDITIONS; the Front's and the
   Back's consent C-446). Amends T-M5's SP1 limit; closes PLAN G1188.
@@ -28677,3 +28732,89 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `build.ps1`'s report table (a formatted table; `identity.ps1` is the one rule both read); `build.ps1` publishing its object
     list for both links (it changes `src/Tatara` and its build identity, while the emptied folder gives the same list); O-485 (b),
     the pair kept, and (c), B6b2 held for a unit that measures where the 4 ms go.
+- **T-M15 The command line's toolchain options removed** (Tatara, 2026-11-22; the plan's unit B6b4, PLAN G1224 and G1173's
+  command-line part, Q-644, D-1054; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §5 and §13; design review
+  C-437 C4, C5, N4-1..N4-4; the Middle's implementation review C-449, B1 fixed by T's ruling (A), the repeated review ACCEPT;
+  the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line and T-M9's interim; closes PLAN G1173 and G1224.
+  - **The removed options:** `KimiOptions.Removed`, one table of removed command-line options, each a name and its text:
+    `ToolchainRoot` ("--ToolchainRoot was removed: Kimi carries its toolchain.") and `LlvmBin` ("--LlvmBin was removed: Kimi carries
+    its toolchain."). A later removal adds a row. A removed option is an invalid option of the command it was given to, reported with
+    the table's text by that command's own invalid-option path: `KimiOptions.RemovedOption(argument)` supplies only the text, and its
+    two readers decide the outcome. `CommandExecution.Execute` (the command layer's entry for every command but `test` and `lsp`)
+    reads the arguments the parser handed the command before its action: each occurrence's text on standard error, exit 1 (IMPL
+    20.3), the action not run, so `check --Format json` writes no document (SPEC 23.3), `run` fails with 1 before launch, and a `kimi
+    tatara` line fails alone. `TestOptions`' unknown-option throw reads the same text: `test`'s 2 (IMPL 20.6.4) and, under
+    `--format json`, its result document. The same form as `ProjectFile.Removed` (B6b5) under another owner and contract.
+  - **Reading (C4, N1, N2):** an argument names a removed option when it is an option word (`SimpleParserHelper.IsOptionName`) whose
+    name after its leading `-` equals a row's, ignoring case: the parser's own lookup (`OptionSet.ParseCore`: `TrimStart('-')`, then
+    the `OrdinalIgnoreCase` `LongNameToOption`), internal to SimpleCommandLine 0.47.0, so it is restated at the table's read.
+    `CommandOptionsTest.ARemovedOptionIsNamedAsTheParserBindsAnOption` pins the agreement with the real parser's binding and the
+    arguments it hands the command. The readers read the parser's own arguments, so its tokens and boundaries hold by construction:
+    nothing after an unenclosed `|` (the parser reads the first command only), and an option word after `--` is named (the parser has
+    no `--` boundary, and no Kimi command forwards arguments after it: `run` takes no program arguments, IMPL 20.3).
+  - **N4-2:** each occurrence is one text (SPEC 23.1.2: independent), in order, where the command layer reads the arguments; **N4-3:**
+    the texts go to standard error, nothing to standard output, and no file is written.
+  - **Accepted consequences (T's ruling (A)):** (1) `lsp` reads no arguments, so it reports no removal (PLAN G1251); (2) a help
+    request (`kimi help ...`, `kimi build help ...`) runs no command and reports none; (3) a quoted `"--ToolchainRoot"` is reported:
+    the parser hands the command the word unwrapped; (4) a line whose other option fails to parse (`--Target --ToolchainRoot`) shows
+    only the parser's error, since it runs no command; (5) `test` reports its first invalid option, as for every `test` option error
+    (`TestOptions` throws at the first).
+  - **N4-4:** `toolchain.ps1`'s `Resolve-KimiToolchainRoot` reads no `KIMI_TOOLCHAIN_ROOT` and throws while it is set
+    ("KIMI_TOOLCHAIN_ROOT was removed: unset it (the scripts take -ToolchainRoot <directory>)."), with or without `-ToolchainRoot`: a
+    permanent statement of a removed input, so a shell that still sets it never has setup write a worktree's junction to the shared
+    root. The scripts' order is `-ToolchainRoot`, else the checkout's `toolchain/`.
+  - **N7 (C-444):** `tests/scripts/run-tatara-corpus.ps1` tests the `tatara.dll` the test host loads (the xUnit output's copy, B6b1)
+    and names it, a missing one as missing (C-449 N5); its `-Dll` and private root go (a DLL of a unit's own reaches the test host
+    through a toolchain directory of the worktree's own, then a build).
+  - **Deleted:** `KimiOptions.ToolchainRoot` and `LlvmBin`, `TestOptions`' two names, 49 script parameters (the milestone harness,
+    its 40 milestone scripts, four benchmarks, test-modules, manual-build, test-manual-build's dormant `-MismatchedLlvmBin` row),
+    the Kimi-child `KIMI_TOOLCHAIN_ROOT` of test-cli, test-modules and the corpus run, BuildChain's `--toolchain` and `toolchainRoot`.
+  - Rejected: deleting the properties alone (design fact 3: `--ToolchainRoot C:\tc` would read as the input, "Input not found"); a
+    check in each command; one check in `CommandUnit.Product.Execute` before the parser (C-449 B1: `test` passes it too, so it gave
+    `test` 1, IMPL 20.6.4's code for a failed case; avoiding that needs a `test` clause); an IMPL revision giving `test` 1 (T: no
+    IMPL change); an ordinal `--Name` match (C4: narrower than the parser's rule); the first hit only in the command layer (N4-2); the
+    command's console writer (standard output, where `check --Format json` puts its document); copying `-Dll` beside the test
+    output's `Kimi.dll` (an output the next `PreserveNewest` build does not restore).
+- **T-M16 The toolchain root's `windows_x64` removed** (Tatara, 2026-11-22; the plan's unit B6b6, PLAN G1210 and G1228-G1230,
+  Q-649, D-1066; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §7; design review C-437 with T's rulings N6-1 and
+  N6-2, and T's rulings on C-444's N4-N6 (`units\B6\brief-b6b6-impl.md`); the Middle's implementation review C-452, ACCEPT, C1 met
+  on the refreshed head; the owner's decision 20 (O-469 (a), (a), (a))). Ends T-M8's temporary structure and amends T-M11's verify
+  and development check; closes PLAN G1210, G1228, G1229 and G1230.
+  - **The committed files are the only copies:** the compiler carries `kernel32.lib` and the backend archive (T-M8), and no root
+    holds a copy. Setup installs neither library: `build.ps1` still builds both candidates and checks them against the catalog
+    (B6a's C3), and its install branch is deleted. Every script and test that linked the root's copy reads the committed file
+    through the one place naming it, `kernel32.ps1`'s `Get-KimiKernel32` (T's N6-1: `Get-KimiInstalledKernel32` renamed, with no
+    root parameter and no fallback) or `toolchain.ps1`'s `Get-KimiBackendArchive`; `build.ps1` names its candidates after them
+    (C-452 R4), and `TataraExecutorTest`'s tool control links both sides with them. `ToolchainIdentity.BackendFile` is deleted.
+    Existing roots, the shared one included, keep their `windows_x64` (setup deletes nothing); nothing reads it.
+  - **Nothing checks a root's libraries (N6-2):** `check-toolchain.ps1` checks the tools, the supporting DLLs and `tatara.dll`
+    against `installation.json` and the catalog; its `windows_x64` checks (the backend's and kernel32's hashes, kernel32's
+    generation record, definition and content; T-M11's N3-1 interim) go with `test-toolchain-verification.ps1`'s rows for them.
+    kernel32's content is inspected where its bytes are adopted (`New-KimiKernel32Library`, run by setup and an LLVM update).
+  - **No definition carried only to check it (C-444 N6, T's ruling):** the embedded `Kimi.Kernel32.def`,
+    `Kernel32Imports.Definition` and `DefinitionSha256` and their initializer's comparison are deleted, and `toolchain verify` has
+    two steps, its Tatara and its supplies' bytes against the catalog (IMPL 20.3.2 loses the definition mismatch). Before the
+    deletion every reader was grepped: a manifest's `definitionSha256` reads the catalog (`ToolchainIdentity`'s kernel32 row).
+    `Kernel32ImportsTest` compares the committed `kernel32.def` with the catalog's `definitionSha256` and with the profile's
+    kernel32 symbols. `Kernel32Imports` keeps the DLL and generator names its supply's manifest entry carries (C-452 R7 not taken:
+    the two constants stay with `Kernel32Imports`, whose subject they are, though only `ToolchainIdentity` reads them).
+  - **One PowerShell owner per installation rule (C-444 N4):** `toolchain.ps1` owns the rules setup and `check-toolchain.ps1` both
+    read: `Get-KimiToolchainToolNames` (the nine tools), `Get-KimiToolchainToolSha256` (a tool's identity: the version banner of the
+    seven that print one, `llvm-dlltool`'s pin through `Get-KimiDlltoolIdentity`, moved from `kernel32.ps1`, and `llvm-lib`'s hash)
+    and `Get-KimiSha256`, which the builder scripts' hashes read; `kernel32.ps1` reads `toolchain.ps1`, never the reverse (C-452
+    R5). The one observable difference: a tool whose hash matches its record but not its identity (an `llvm-dlltool` off
+    `profile.json`'s pin) fails as "Tool identity mismatch: <file>. Run <setup> after an intentional update (<cause>)" (C-452 R1;
+    `test-toolchain-verification.ps1`'s `dlltool-pin` row), not "Tool executable SHA-256 mismatch".
+  - **The inspection's rejection rows (C-444 N5):** `test-kernel32.ps1` checks `Test-KimiKernel32Library` at its one owner: the
+    adopted library passes, and each library crafted by `llvm-dlltool` from the shared definition fails for its one difference
+    (another DLL name, an ARM64 library, a missing, an extra and a duplicate symbol). The "no Format" row reads the adopted library
+    through `llvm-readobj` with its Format lines dropped, since no library has members listed without one; a member-less archive
+    (one `llvm-ar` or `llvm-lib` writes from no input) as a real library on which `llvm-readobj` prints no Format line is
+    unverified, so the row keeps the shim (C-452 R6). The function's failure splits into "unexpected architecture" and "unexpected
+    import symbol set".
+  - **Open (C-452 O1, pre-existing; PLAN G1255):** the tool-control comparison accepts "equal failure" for every row; on the base a
+    root without `windows_x64` made it pass comparing no executable. B6b6 removed that cause, and an input both sides lack still
+    passes vacuously until the rows that must link are required to link.
+  - Rejected: a root parameter or fallback in `Get-KimiKernel32` (T's N6-1: a second copy of one supply); setup deleting an
+    existing root's `windows_x64` (older bases on the machine keep working, design fact 12); keeping verify's definition step for a
+    file no product reads (N6).
