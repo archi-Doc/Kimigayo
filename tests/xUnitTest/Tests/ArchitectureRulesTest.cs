@@ -586,6 +586,9 @@ public class ArchitectureRulesTest
     // by Binding.FailPremise only, and NameUnprovenInput by FailInput only (Binding.premiseFailures). A direct call anywhere else would
     // leave the census at 0, and the per-proof readers would answer "nothing failed".
     [InlineData("Writers of the Failed state", "src/Kimi/Compiler", @"(?<!\bthis)\.(?:FailPremise|NameUnprovenInput)\(", "Binding/Binding.ConstraintValidation.cs=1;Binding/Binding.Diagnostics.Prerequisites.cs=1")]
+    // Z3-B1 (SPEC 6.4.2 step 3, 8.11.4): a premise's Statements are recorded only by the two writers that hold another declaration's
+    // premise under a substitution (ConstraintEnvironment's contract); a new copying writer whose premises carry bounds joins here.
+    [InlineData("Writers of a premise's Statements", "src/Kimi/Compiler", @"\.AddStatement\(", "Binding/Binding.ContractMatching.cs=1;Binding/Binding.VirtualOverrides.cs=1")]
     // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W8 and an outermost walk, the
     // ContractSolver header) give Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here.
     // Every spelling of Complete is counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
