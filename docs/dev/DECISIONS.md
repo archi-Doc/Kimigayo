@@ -3381,7 +3381,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
-- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151, R4-M157 and R4-M219's U6-U7)
+- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151, R4-M157, R4-M219's U6-U7 and R4-M235's PQ-10)
   (2026-10-25; R4-M116's design B′ as amended,
   the rulings PQ-1 to PQ-13; its two departures are rulings amending B′: W keeps "E where the set carries Φ_E", and the untracked rule
   is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's first and second limits)
@@ -3411,6 +3411,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - PQ-10: a located `Unsupported_Kd` at a non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and
     at a Copy or Move read of such an enclosing Place; a mark makes the view a producer (D5). Registered for X-2 (PD28); removal stage: a
     Loan records the layer's own-step entry and positions (R4-M117 item 6 states the meaning), when a program needs the form.
+    Narrowed by R4-M235 (Z5-R1, Q-668): a non-raw Borrow of such a Place issues its ordinary Loan and no mark; the limit is a read
+    whose own-step row is Unplaced, at the read, in a view with a borrow the base marked; a Copy or Move read of an enclosing Place
+    keeps the mark until Z5-R2 (R-A).
   - r3 is removed (PQ-5): a default's raw stores are the omitting call's, applied by its own rows (window1 and window2 err, window3 is
     valid). No `Raw.slice` row and no `MirDescriptors` change (PQ-4); A5 reads neither `RawMembers` nor `RawStep(raw)` (PQ-7).
   - Supersedes R4-M36's "a raw pointer … hold[s] none", R4-M73's `Raw` bullet (`MirWrites.Raw`), A3 E16's raw clause, R4-M93's r3, and
@@ -7788,6 +7791,39 @@ and migration obligations remain in force; no numeric cap changes are authorized
     without the path.
   - Staged: audit finding 7 (A4's readers recorded once per Run, the design's stamp) waits for its RP8 measurement under PLAN G349.
   - Moves: none at publication (42 test expectations of internal NoBody view values).
+- **R4-M234 Z5-F: A5 publishes each read's and each borrow's exact lent position** (Middle, 2026-11-22; the owner's O-482 (a); Z5's A5
+  half after its second stop; R7 plan Z5, PLAN G212, G396 (3); Q-668, D-1104; read by R4-M235)
+  - Representation: a position, a root key and a run of A5's steps passing no borrow or raw Deref, is the storage a Place denotes where
+    the body forms it exactly: a Place passing no such Deref is its own; past one, the lent position of the borrow whose reference the
+    last one goes through (the lender: the reference root's one whole store, followed through whole Copies and Moves and a Tuple's or
+    fixed array's operands, a constant index read as MirSteps reads it), then the steps after it; none for any other store or step.
+    `MirBorrows.Lent` publishes `Lent(place)` only (no per-entry column: Z5-R1 reads `Lent(place)`; `LentAt(location)`, which had no
+    reader, was removed with Z5's N12), after the view's Addresses pre-pass (which completes Exposed), made on demand and kept per
+    view by Place, by borrow location and by whole local, the lender chain a loop: linear in the reads and stores.
+  - `MirBorrows.Loans`' store record is the one writer of a local's stores: every store into its whole Place is listed, `OtherStore`
+    marks one that is no referring store and `PartStore` a store into a part, so `Referring` is unchanged; `lent[]` is removed and
+    `LentInto` derives the Place a Ref lent into a local (G136's input temps) from the same record.
+  - Rejected: the referent by a Type match among the read's parents (Z5-M1; its review's B1-B3 and the half's a06, a14); an entry for
+    every borrow past a shared Deref (more set elements, and a whole value still cannot tell its elements apart); per-element values
+    in A5's states (a rewrite of A5; recorded with N3); the referring stores as they were (blind to aggregates and Copies of parts); a
+    per-entry column `Lent(entry)` (its one reader removed by Z5-R1 Revision 1's B1); a published `LentAt(location)` with no reader
+    (N12: Z5-R2 adds a borrow-position reader with its reader if R-A needs one).
+- **R4-M235 Z5-R1: a read through a dereference of a `during self` layer or an enclosing Place carries the owner's own-step entry at its
+  exact lent position, with its parents whole** (Middle, 2026-11-22; the owner's O-482 (a); R7 plan Z5, PLAN G212, G396 (3); Q-668,
+  D-1104; design `middle\notes\z5r1-design.md` Revision 2 with 2a, review 3 ACCEPT WITH CONDITIONS; narrows R4-M120's PQ-10 bullet;
+  reads R4-M234)
+  - A non-raw borrow of a layer's or enclosing Place issues its ordinary Loan and no mark. A5's own-step table keeps one row per Place
+    a read uses, decided by one owner walk over one step run: the Place's exact lent position, else its own steps. An owner whose Place
+    the position names gives its direct own-step entry; the read carries it with every Loan and address its parents carry (SPEC 15.6
+    Holders, 15.6 Addresses, 5.7; O-230 Q1 (a)); the owner past a dereference is thereby named and its Warning recorded (superseding
+    there the Z5-M designs' M-R4, an owner past a dereference carried for the Warning only, with no Warning recorded). The read's
+    parents whole can give a Language record where the base's limit stood, as for layerRef, whose twins through no dereference already
+    carry it.
+  - PQ-10, narrowed: a read whose row is Unplaced (an owner no Place names, or no run naming one) is the location's limit, a located
+    `Unsupported_Kd` at the read, in a view with a borrow the base marked; a Copy or Move of an enclosing Place through no dereference
+    keeps the mark until Z5-R2.
+  - Rejected: dropping a parent's Loan by its position (Revision 0's `Lending`: SPEC 15.6 Holders, R4-M191); the Type match (Z5-M1,
+    B1-B3); the limit by the parents' Loans (E3); the limit on every "none" read (pa, tw). Z5-F's per-entry position is not published.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -14573,6 +14609,8 @@ resumed by R4-M86 (2026-10-20).
   item's selector and Name are resolved with the item and not indexed, so their rows are reset by `Binding.RowReset` before the item
   is indexed, and the rebind after an append gives the fresh compilation's verdict.
   - Removal: at R7-D2 c, whose pre-order walk reaches every node (COMPILER_ARCHITECTURE's temporaries list).
+  - Removed by R7-M79 (R7-D2 c, Q-667; the landing commit): the indexer's one iterative walk reaches every node in a slot, so
+    `Binding.RowReset` is deleted.
   - Rejected: clearing each module's base columns at the pass start (R7-D2 c's change); a reset in `EffectTarget` or
     `BindEffectBound` (consumers deciding the indexer's reset).
 
@@ -21901,6 +21939,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R9-M10: the project's own result (`Project.BuildTargetsAndPublish`) and the build's own result (`Project.Build`) end
     as Faulted the same way, beside the front end's and the Emission result; under `Project.Build` the toolchain's classification
     applies only around its own calls.
+    - Amended by PLAN G1011 (R9 part A, Q-669, 2026-11-22): the project's own result is `Project.OwnResult` (was
+      `Project.BuildTargetsAndPublish`), the product's and the test unit's (`PrepareTests`).
 - **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, PLAN G332; the owner approved the departure from K
   package 4.6/KD9 together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known
   limit)
@@ -25306,6 +25346,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Staged.** The Composed row's proof and the primitive refutation move to Prove with R7-C9; SPEC 8.7.4's supplies, stated five
     times, become one statement with R7-C9 or C2 (PLAN G1235). Outside the table stay the intrinsic Contracts (SPEC 8.7.1,
     `IntrinsicContract`).
+  - Amended by R7-T2 U10 (2026-11-22; 36b1fd233): the arithmetic Target rows read `TyCtxt.HasBuiltinArithmetic` (was
+    `ArithmeticContracts.Supports`).
 - **R7-M75 Family 2's problems record through `Record`; a fact-less own site records `Record(node, X, [])`** (Back, 2026-11-21;
   R7-E3 E3a-1, Q-629, D-1025; Major unit of a Major design, R7 plan §5.1 E3; design `back\notes\r7-e3\e3-design.md` §§2-4 with B's
   E3 rulings 1-7; the Front's design review on C-439, ACCEPT WITH CONDITIONS, C1 for this unit) SPEC 23.1.2, 23.3.
@@ -25417,6 +25459,50 @@ R8-M* and R9-M* by the stage of the recording unit.
     keyed by Signature (the visited pairs' order would then rest on `SignatureEquals` being an equivalence); override and witness
     candidates by key; sorting the group by hash (longer, the visit order restored); a `Clear` per group; a bool-steered recursive
     layer.
+- **R7-M78 A kept part is read as the call builder reads an operand, and an Opaque site activates its kept parts' reservations**
+  (Middle, 2026-11-22; R7 plan stream Z, Z17c-M (PLAN G396 (4) 2g-2), Q-650, D-1069; Major; the owner's O-483 split; reads Z17c-F's
+  facts, BU-246; design `middle\notes\z17c-design.md` Revision 2, its review 2 ACCEPT WITH CONDITIONS (C1-C5); the implementation
+  review REVISE (B7), then ACCEPT on its fix) SPEC 12.2, 15.6.7.
+  - **Rule.** An Error node's kept operands are evaluated in syntax order as the call builder evaluates its operands (SPEC 12.2): the
+    last that builds code as the Error's form takes it (`Builds` over `PlanRow.KeptAdjust`, BU-246, Z17c-F) is found first; each is
+    formed as an invocation's reserved input where the form takes it as one (`PlanRow.KeptInput` through `Reserved`, the call
+    builder's narrowing: a written exclusive borrow is a reservation, SPEC 15.6.7; a Case payload, an aggregate's element or a
+    built-in operator's operand is none, so it stays a live Loan); and each the form reads whole that is a Place of a Copy Type is
+    secured by `Secure` (a Copy into a temp, its read), at its node where it or a later kept operand builds code, else at its site's
+    node: the decided twin's location in both (the Middle's rulings on Z18's review B4 and on P7). A temp and any other Place stay
+    as they are (rule W).
+  - **Site.** The site names each secured Place first, `MirOpaque.Kept` counting them (cleared with the use list on every path that
+    clears it), and **an Opaque site activates the reservations its kept parts hold**, as a Call does its inputs (SPEC 15.6.7;
+    `MirBorrows.Activations`, `CheckSets.Operating`); a site with no kept part, such as a failed default's, which runs during the
+    reservation, activates nothing. One rule with c2's located parts: a read part is read where its decided twin reads it. A kept
+    pair-layer input forms no reservation (a kept operand is never acquired; N27 (b)).
+  - **Amends:** Z16 E5 (a kept written `@uniq` is live only under a form that takes it as no invocation's input); R5-M63 (a kept
+    Copy-Type part is copied, its read, never acquired otherwise); `MirBorrows.Activations`' contract (the Opaque site's row);
+    `MirOpaque` (the kept count, validated `Kept <= Count`, printed by MirDump); D-1003 (2) closes (PLAN G1215).
+  - **Rejected:** a `FakeRead` with no hold (B4); a `FakeRead` as the read at the site (the site's activation loses the input); a
+    Place use as the hold (A1 checks it again after later operands); `Builds` over the column's (None, None) (every kept operand but
+    a literal would build) and over `KeptRead ? KeptAdjust : AdjustOf` (the published default already builds, N24); securing every
+    kept part at its node (Revision 0: off the twin's location where nothing later builds); a part at `last` read at the site where
+    only its path builds (a second condition; A1's twin reads a runtime element at its selection, R4-M56); every kept `@uniq`
+    reserved (an aggregate's live Loan lost: c-tuple-later, B6's Case payloads); activating every whole-local use of a site (a
+    failed default's site would activate before later defaults, SPEC 15.6.7); the form read from syntax (the Front's facts); a hold
+    without activation; a new MIR form or vocabulary entry.
+- **R7-M79 R7-D2 c: the indexer is one iterative walk** (2026-11-22; Front, Binding; Q-667; Major, design review RQ6; F's D2
+  rulings 1, 4, 5). The indexer (`Binding.IndexWalk`, replacing `IndexVisitor` and `TestSyntaxVisitor`) is one iterative pre-order
+  walk over Koto's child slots with one pooled stack of entries (`IndexStack`: kept across passes, emptied when a walk ends, a
+  faulted one included; a walk entered over a non-empty stack is InternalInvariant), closed contexts (Index, Pattern, ExcludedTest,
+  ResetOnly) and steps (Declare, arm Candidates, match Arms), in dev's order. Each node it reaches is reset once before the first
+  write to it in the pass (`ResetEntry`): at its entry, an attribute of a leading chain at its chain owner's entry (form (B));
+  `ResetRow` is the one per-node reset in every context. A try's arms are reached when BindMatch selects them. The walk reaches
+  every node in a slot of the trees it walks, which meets BU-194's removal condition (`RowReset` deleted). The rows it newly resets
+  are an excluded test's subtree, its leading attribute chain included, and a handled attribute's operand (a Test marker's,
+  Layout's, a function's LibraryImport's, an implementation Attribute's). A warm Test-to-Product rebind gives the excluded test's
+  subtree (its `#Test` marker and its body) its cold Product rows (a named move, rows only; no Hover change observed); a handled
+  attribute's operand is bound by no pass in either build, so its reset finds row 0 (no move). Rejected: each attribute recording
+  itself ((A): reverses an excluded test's `Binding.Issues` order, moves `InvalidateAttributeTarget` after the marker's record and
+  merges a marker's two writes, a count change); the excluded test's row alone resetting its chain (the narrow (B): misses a nested
+  function's marker, a second resetting row and a mode on the entry); a column clear at the pass start (a second reset site);
+  `SyntaxTable.Nodes`' id order (a try's deferred arms are no pre-order id range: `TryKoto.SelectOption`).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -25479,6 +25565,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     Dictionary kernel at O2, runs 0.61x.
   - The RP8 exception closed (PLAN G949 Stage 2 U6, 2026-11-19): its cause, the per-compilation rebinding of the library (PLAN G337),
     ended with R8-L1 U3 (W-272's RP8: warm Bind B/A' Hello 0.585, Milestone26 0.966, Interpolation 0.973); R8-M55's U6 line.
+  - **One growth target (PLAN G970, R8-X1 U1, 2026-11-22; 1b57a2802):** `Storage.growthTarget(capacity, stride, minimum)`, a
+    `#CallerLocation` internal function, states SPEC 4.9.8's target once (twice the capacity, at least 4 and at least `minimum`, at
+    most `largest / stride`; a larger `minimum` Aborts with `KIMI_E_ALLOC_SIZE` at the standard operation's caller location), and
+    `growArray` and `DictionaryStorage.grow` call it, keeping only their zero stride, early return and transfer. `HeapBuffer.reserve`
+    keeps SPEC 22.9.4's own target.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
@@ -26488,6 +26579,11 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves:** none (probes, snapshots, compare-fixtures; the commit states them).
   - Amended by R7-T2 U7 (R7-M56's amending line): `ReferenceTypes.IsPointer` is `BoundType.IsPointer`, a Type's own fact (the same
     set); the builder's read stays, and every open-coded raw-layer test in Binding, MIR and the Backend reads it.
+  - Amended by R7-T2 U10 (2026-11-22; 36b1fd233): no root statement is left (U3, U7, U10), so the domain's statements are `TyCtxt`'s
+    and `BoundType`'s. The root `ArithmeticContracts` is deleted: `Supports` is `TyCtxt.HasBuiltinArithmetic` (`TyCtxt.Comparison.cs`,
+    beside `OperatorCompares`; the same set), a pure `TyCtxt` function the MIR builder reads; `IsArithmetic` and `IsLeft` are
+    `KimiLibraryCatalog.IsArithmeticContract` and `IsLeftContract`; `ArithmeticContractSyntax` stays Binding's; the staged removal
+    (PLAN G708) reads `HasBuiltinArithmetic`.
 
 - **R8-M26 MIR publishes whether an rvalue kind has a Place: `MirDescriptor.HasPlace`** (Middle, 2026-11-10; PLAN G668's remainder,
   G668c; Minor, behavior-preserving; review ACCEPT by the Middle's reviewer, who wrote none of it; amends R4-M62).
@@ -26532,6 +26628,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     measured on `aab961bab` and are not re-run on the head; the head pins the same forms as tests.
   - **Remainder.** `sliceUniq(range)`: `Storage.sliceUniq` stays the one library displacement until L2 (R8-M13's removal condition,
     unchanged); its record on a valid program is a known conservative error, not a verdict. PLAN G597 stays open for it.
+  - **`UniqRemainder` without `position` (L2's U1, R8 L2 design Revision 1 scope S1, 2026-11-22; 83d85ec4b):** the exclusive
+    remainder holds `var storage: raw/E during source` (its first untaken element by construction), `count` and `loan`. Exclusive
+    `splitFirst` and `tryGetPairUniq` advance `storage` in place of `position`, and `Storage.sliceUniq` displaces `storage` by the
+    selected start alone (its raw `Add` stays the one library displacement until U3). R8-M13's L1 obligation on `UniqSlice.init`
+    (a remainder at its first untaken element) is removed: it holds by construction. `RefRemainder` and every shared iteration keep
+    `position` (scope S1: no shared iteration code moves); S2 (`RefRemainder` too) is a rejected widening (L2 design §8).
   - **Rejected.** A new MIR form for a view's start (a closed-vocabulary change the keyed operand makes unnecessary); the rule
     copied into the Backend; a per-instance rebuild of generic MIR; keying on the key's Place (its value may be consumed by its
     resolution); the keyed form for every key that does not start at the storage in the body (round 1: it moved closed keys' MIR and
@@ -27518,6 +27620,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `drop`; its sites report the location its drop glue receives, the Drop's (SPEC 22.5.1). `Array.sort(by:)`, which destroys its
     by-value `by` inside the operation, carries `#CallerLocation` (the search by ownership found no other library body destroying a
     possibly destructor-bearing value without it). No glue or MIR change.
+  - Amended by R7-T2 U10 (2026-11-22; 36b1fd233): a shim's arithmetic Contract is `KimiLibraryCatalog.IsArithmeticContract` (was the
+    root `ArithmeticContracts.IsArithmetic`, G1-4b's "Shims").
   - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
     facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
     `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
@@ -28718,6 +28822,13 @@ R8-M* and R9-M* by the stage of the recording unit.
     prints as the toolchain's failure; any other type is the build's or the command's fault. The embedded catalog
     (`ToolchainIdentity`) keeps its reads: its static constructor's exceptions reach callers as `TypeInitializationException`, never
     a listed type.
+  - Amended by PLAN G1014 and G1011 (R9 part A, Q-669, 2026-11-22): the fault's Note is no longer "its message": it is the
+    exception's chain, each link the type's full name and its message, outer first, joined by ` ---> `, its head kept under the Note
+    limit, formed by `DiagnosticFaults.Create` alone (DIAGNOSTICS §6). The project's own result is `Project.OwnResult` (was
+    `BuildTargetsAndPublish`), shared by `check`, `emit` and `build` and by the test unit's `PrepareTests`, whose configuration,
+    TestSources, test-setting, test-identity, test-target and lock records it finalizes the same way; `Project.SelectTargets` is both
+    results' one target selection. The Rejected helper stays rejected: `OwnResult` is one finalization point, the project's own
+    result, shared by its callers, not a helper across the four (`BuildTarget`, `PublishArtifacts` and `Build` keep their own).
 - **R9-M11 The generation result carries the link facts; the link manifest is one table with its readers (R9-B1)** (Middle,
   2026-11-18; the R7-R9 plan's §5.3 unit B1, parts 1 and 2; Major; under R9-M6 and R9-M10; design review REVISE then ACCEPT WITH
   NOTES; the Back's consent on its codegen half, C-389; W-256)
@@ -28820,6 +28931,11 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends R9-M10 (its known limit (3) closes: outside `Project.Build` the set applies only around a command's own toolchain calls
     and `kimi test`'s native build) and R5-M169 (its rejected catch in `CommandExecution` concerned generation's exceptions, which
     the Emission result owns; the command's own result has this one).
+  - Amended by PLAN G1014 and G1011 (R9 part A, Q-669, 2026-11-22): the command's fault's Note is no longer "its message": it is
+    the exception's chain, as on every fault path (R9-M10's amendment; DIAGNOSTICS §6). The Open line's `PrepareTests`' fault path
+    (G1011) and the note's form (G1014) close: an exception in test preparation is the test unit's own result's fault
+    (`Project.OwnResult`), `CheckFaulted_Kd` at the project file, `kimi test` exit 2 (IMPL 20.6.4), and its test-target failures
+    are `ProjectPreparationFailed_Kd` records.
 
 ## Tatara (adopted 2026-11-19)
 
@@ -29228,13 +29344,17 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `test`); its planned later owner is B7b8's `TargetProfile.Host` (design B7b), where the check moves.
   - `RunExecutable` passes Kimi's standard input, awaits the exit on a thread of its own, kills the job after the exit and at the
     cancellation, then drains the copies. `Process.Start` and `Kill(entireProcessTree)` leave `run`, and `NativeToolchain.Wait`
-    with them: its last reader went, and this unit's merge after B6b3 removes it (T-M6 as T-M11 amends it).
+    with them: its last reader went, and this unit's merge after B6b3 removes it (T-M6 as T-M11 amends it). Superseded in part by
+    T-M19 (`run` shares the input through `JobProcess`'s `sharesInput` and awaits `JobProcess.Exited`).
   - "No input" (commits 3/4 and 4/4; C-446 N1, T's rulings; C-442 review 2 R2-N2): only run's `NativeToolchain.StandardInput` decides
     that Kimi has none (no handle, or no open handle of the process). `JobProcess` duplicates the input it is given (inheritable) or
     fails the start, and gives a child with no input a closed one, the one form of "a child with no input": the read end of an
     anonymous pipe whose write end closes before the start, so the child reads end of input at once, never its hidden console's input
     (which a child with no input handle got, so a read blocked). `TestProcess` passes none. So design §5 (6)'s "gives the program
-    none" holds: "none" is a closed input.
+    none" holds: "none" is a closed input. Superseded in part by T-M19 (C-446 N1's reason no longer holds): `JobProcess`, not
+    `run`'s `NativeToolchain.StandardInput`, decides that Kimi has none, after its host check; it duplicates the shared input it
+    reads (`sharesInput`), not an input it is given, or fails the start; and `TestProcess` shares none (`sharesInput: false`)
+    instead of passing none. The closed input of a child with no input stays.
   - Stated changes: a descendant the program leaves ends when `run` returns (as a test case's); the program inherits only its standard
     handles; no error dialog on an unhandled exception; a breakaway fails; a failure names its call and a start's the executable
     (N6); `run` refuses a non-x64 Windows host; a program `run` starts while Kimi has no standard input reads end of input.
@@ -29469,3 +29589,67 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: r3 §4's full column set now (columns without a reader that differs); `Find`/`Host` now (no reader that
     `TargetProfile.Windows` does not serve; B7b's selection); `WindowsProfile` kept as an alias or the triple as a second `const`
     (two names for one fact); a constructor (positional columns); the rename by hand (not regenerable at landing).
+- **T-M19 `JobProcess`'s exit and input, one form each** (Tatara, 2026-11-22; PLAN G1243, G1244, Q-662, D-1090; Major,
+  prototype-first; design `artifacts\handoff\tatara\units\G1243\design.md` Revision 0; C-455: the Middle's review, the Front's
+  consent, the Back's consent with condition C1). Amends T-M12; closes PLAN G1243 and G1244.
+  - **The exit:** `JobProcess.Exited`, a task the thread pool's registered wait on the process handle completes
+    (`UnsafeRegisterWaitForSingleObject`, once; continuations run asynchronously), is the one awaitable of a child's exit until
+    `Dispose` (which unregisters the wait; C-455 N3): it never faults or is cancelled, no thread blocks per child and nothing polls.
+    The process handle's one owner is a private `WaitHandle`, whose handle the registration references; `Dispose` unregisters first.
+    `Wait(int)` is removed; `ExitCode` is read once `Exited` has completed. The readers bound the wait (`Task.WaitAsync`): `run`
+    with its token (Ctrl+C kills, drains and returns 130 as before); `test` with the run's token, the case's deadline (by the
+    Stopwatch from before the start, IMPL 20.6.3; a wait whose timer ends early waits again for the rest, rounded up to a whole
+    millisecond, `WaitAsync`'s unit, so the loop never spins: C-455 C1) and its streams' first failure. Of two near-simultaneous
+    events (an exit just after the deadline, a stream failure just before an exit), the first one the runner has seen decides the
+    label, as the old poll's tick did; `Exited` trails the kernel by its callback, so a case that writes a malformed frame and exits
+    at once now likely reads "runnerError" where the base read "crash" (exit code 3 either way; only the `termination` label moves)
+    (C-455 N1). `RunExecutable`'s `StartNew(LongRunning)` and `TestWorker`'s 10 ms exit poll are gone; its recovery loop after the
+    kill is unchanged (awaiting the drains first measured no gain; the job's end has no awaitable short of a completion port).
+  - **The input:** `JobProcess` takes whether the child shares this process's standard input (`sharesInput`: `run`'s, Tatara
+    decision 15; a test case's is closed, IMPL 20.6.3) and reads that input itself, after its host check, so off a Windows x64 host
+    `run <file.exe>` and `run --no-build` are refused ("Running a program requires Windows x64.", exit 1) instead of ending as
+    Faulted (`CheckFaulted_Kd`). **Supersedes T-M12's "only run's `NativeToolchain.StandardInput` decides that Kimi has none":**
+    `JobProcess` reads the input it shares after its host check, and this process having none (no handle, or no open handle of it)
+    gives the closed input. C-446 N1's reason (an invalid handle *from a reader* would be read as "no input" and hide a broken
+    handle) no longer holds: no reader passes a handle, and the conversion applies only to this process's own input, which only
+    `run` shares; N1's property stays (nothing hides a reader's broken handle). `StandardInput` and its two kernel32 imports move
+    from Build into `JobProcess` (Build declares no kernel32 import of its own); `Inheritable`'s invalid-handle `ArgumentException`
+    goes.
+  - Limits: the refusal is not reachable from xUnit on the Windows x64 test host (no seam; B7b8's `TargetProfile.Host` is where a
+    host fact becomes published); a WSL reproducer covers it (`artifacts\tatara\g1243\impl\g1244-wsl.log`), and its row (G1244-1)
+    lands as an xUnit row in B7b8, where the host becomes `TargetProfile.Host` (C-455 N2). The NativeAOT `kimi.exe`'s registered
+    wait is run by no check (AGENTS runs NativeAOT tests only on explicit instruction; C-455 N4). No row pins C1's rounding (the
+    spin changed no outcome, and no seam sets the timer).
+  - Rejected: `Task<uint>` (the code read in the wait's callback); a `WaitForExitAsync(token)` method (a second form); a blocked
+    thread per child; the poll; a linked token source cancelled by the deadline and the streams; `Task.Delay(remaining, token)`
+    raced with the exit; the host rule checked again at `run`'s call site; a deferred input; `StandardInput` guarded by
+    `OperatingSystem.IsWindows()`; a test seam for the host.
+- **T-M20 `run --no-build` compares the record's input** (Tatara, 2026-11-22; PLAN G1256, Q-664, D-1098; design
+  `artifacts\handoff\tatara\units\G1256\design.md` Revision 0; C-466: the Middle's review, ACCEPT WITH CONDITIONS; T took C1 and
+  C2). Closes PLAN G1256.
+  - The input is stored once, published once and named by every pair and record. `Project.Input` is derived, never stored: the
+    project file (`FilePath`) of a `.kimiproj` input, the one source file of a `.kimi` input's implicit project, its full path as
+    resolution gives it; none for a project made in memory (C1). Publication writes it into the link manifest (`input`, relative to
+    the output directory as the manifest's other paths are, absent when the project names none); every native build's record names
+    the manifest's input resolved there (a Library's record, the project's); `run --no-build` runs only a record that names the
+    project's input, compared ignoring case (G1202's Q3), else "The latest build record names another input: <input>" or "names no
+    input" (a record written before G1256: one `kimi build` rewrites it). `build --Manifest` names the pair's input, so
+    `emit; build --Manifest; run --no-build` of one project runs.
+  - Rejected: the manifest build's record naming the manifest (changes test-cli's manifest rows and names neither file kind IMPL
+    20.3.1 lists); accepting a record without the member (keeps the hole for every earlier record); an absolute manifest path (an
+    equal pair in two folders differs); a second `Project` member holding the input (equal to `FilePath` for every `.kimiproj`
+    project; C1).
+- **T-M21 The native build's object inspection judges no unwind entry** (Tatara, 2026-11-22; PLAN G1271, Q-666, D-1101; design
+  `artifacts\handoff\tatara\units\UNWIND\design.md` Revision 0; C-474: the Middle's review, ACCEPT WITH CONDITIONS; T took C1 and
+  N1). Closes PLAN G1271, whose row keeps the staged removal.
+  - IMPL 21.4's "Windows x64 unwind information" is the ABI's (T's ruling): an entry for each function that allocates stack, saves a
+    nonvolatile register or calls, none for a frameless leaf. Its owner is the profile: `TargetProfile.Windows.UnwindTables` on every
+    definition (`LlvmModuleText`'s `uwtable(async)`, asserted by `GeneratedIrTest.OneRequirementHoldsForTheGeneratedText`; the
+    manifest's `codegen.unwindTables` checked by `LinkManifest.CheckFixed`), with LLVM's frame lowering placing the entries.
+    `NativeBuild.Inspect`'s "the object has an entry" (4e6c6fd87's script check) refused every leaf-only object and never checked the
+    per-function meaning, so it is removed; the `_fltused` and default-library refusals stay.
+  - The leaf row relies on O2 folding `__kimi_start` into a frameless leaf; if a later LLVM keeps a frame there, the row builds with
+    entries and fails its "no exception table" assertion, and the next LLVM update's gate meets it first (C-474 N1).
+  - Rejected: an exact object check (leafness needs disassembly; a copy of LLVM's decision), a forced entry for leaves (O2 cost), an
+    IR `uwtable` check in the build (a second copy of the emitter's rule). The fact's removal is staged as PLAN G1271 states
+    (removal condition: Tatara B7b7 lands).

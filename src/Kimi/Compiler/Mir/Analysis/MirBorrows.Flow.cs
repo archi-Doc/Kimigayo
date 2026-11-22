@@ -24,7 +24,7 @@ internal sealed partial class MirBorrows
     // makes; a Call's.
     private void Plan(ulong[] state, int block, int index, bool checks)
     {
-        (this.entryCount, this.planLocation, this.mustValue, this.mustKept) = (0, this.Location(block, index), 0, 0);
+        (this.entryCount, this.planLocation, this.mustValue, this.mustKept, this.limit) = (0, this.Location(block, index), 0, 0, false);
         foreach (var set in this.read)
         {
             this.reads[set] = default;
