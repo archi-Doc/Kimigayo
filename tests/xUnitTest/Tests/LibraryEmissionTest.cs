@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Kimi.Build;
 using Kimi.Compiler;
 using Xunit;
@@ -26,8 +27,9 @@ public class LibraryEmissionTest
         }
     }
 
-    // A Library's module from the generation entry exports no definition and has no OS entry (DECISIONS R5-M12's class S assertion on the
-    // old generator's module, rewritten at G3), for each source the harness emits.
+    // A Library's module from the generation entry exports no definition but the runtime's memory functions, which every module defines
+    // (IMPL 21.4.7; the Tatara plan's decision 24, B7r4), and has no OS entry (DECISIONS R5-M12's class S assertion on the old generator's
+    // module, rewritten at G3), for each source the harness emits.
     [Theory]
     [MemberData(nameof(HarnessSources))]
     public void EmitsInspectionWithoutAnOsEntry(string name, string source)
@@ -37,7 +39,7 @@ public class LibraryEmissionTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Matches(@"(?m)^define internal ", ir);
-        Assert.DoesNotMatch(@"(?m)^define (?!internal )", ir);
+        Assert.Equal(TargetProfile.MemorySymbols, Regex.Matches(ir, @"(?m)^define (?!internal )[^@]*@([\w.]+)\(").Select(static x => x.Groups[1].Value));
         Assert.DoesNotContain("@__kimi_start", ir);
         Assert.DoesNotContain("@__kimi_entry_body", ir);
         Assert.Contains("@_fltused = global i32 0, align 4", ir);

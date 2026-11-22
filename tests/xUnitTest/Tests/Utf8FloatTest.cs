@@ -93,8 +93,8 @@ public class Utf8FloatTest
             ir.Append(i + 1 == cases.Count ? "\"}\n]\n" : "\"},\n");
         }
 
+        // The oracle compares through the runtime's memcmp, which every module defines (IMPL 21.4.7).
         ir.Append("""
-            declare i32 @memcmp(ptr, ptr, i64)
             @float_passed = private constant [14 x i8] c"oracle passed\0A"
 
             define internal void @float_audit() #0 {

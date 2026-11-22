@@ -70,6 +70,20 @@ public sealed class Kernel32ImportsTest
     public void RuntimeTemplateSplicesEachDefinitionOnce(string template, string body)
         => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
 
+    // IMPL 21.4.7 (the Tatara plan's decision 24, B7r4): the memory part defines exactly TargetProfile.MemorySymbols, in order, each
+    // external under #1, and declares only an LLVM intrinsic; the footer's #1 is #0 plus "no-builtins".
+    [Fact]
+    public void TheMemoryPartDefinesTheMemorySymbols()
+    {
+        var text = LlvmModuleText.MemoryRuntime;
+        Assert.Equal(TargetProfile.MemorySymbols, Regex.Matches(text, @"(?m)^define (?:ptr|i32) @(\w+)\([^)]*\) #1 \{$").Select(static x => x.Groups[1].Value));
+        Assert.Equal(TargetProfile.MemorySymbols.Length, Regex.Matches(text, @"(?m)^define ").Count);
+        Assert.All(Regex.Matches(text, @"(?m)^declare [^@]*@([\w.]+)\("), static x => Assert.StartsWith("llvm.", x.Groups[1].Value, StringComparison.Ordinal));
+        var profile = Regex.Match(LlvmModuleText.Footer, @"(?m)^attributes #0 = \{ (.*) \}$").Groups[1].Value;
+        Assert.Contains("\"target-cpu\"", profile, StringComparison.Ordinal);
+        Assert.Contains($"\nattributes #1 = {{ {profile} \"no-builtins\" }}\n", LlvmModuleText.Footer, StringComparison.Ordinal);
+    }
+
     // PLAN G371: what is read without a marker. HeapBuffer.intoString (Formatting.kimi) gives its string the release kind 0 or 1 as a
     // literal, so Static is 0 and Heap 1; the zero-sized buffer lies below the unmapped bound, so __kimi_free never releases it.
     [Fact]

@@ -705,7 +705,7 @@ public sealed partial class FunctionCodegenTest
     public void DivisionAndShiftChecksAbortBeforeTheirInstruction(string source, string instruction, string divisor, string condition, int reason)
     {
         var (ir, text) = Parse(source);
-        var operation = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == instruction);
+        var operation = Assert.Single(Internal(ir).SelectMany(static x => x.Instructions), x => x.Shape == instruction);
         var f = Assert.Single(ir.Functions, x => x.Instructions.Contains(operation));
         var check = Assert.Single(f.Blocks, x => x.Successors.Count == 2 && x.Successors[1].Instructions.Contains(operation));
         var abort = AssertAbort(ir, text, check.Successors[0], reason, source, source[(source.IndexOf("=> ", StringComparison.Ordinal) + 3)..]);
@@ -1272,7 +1272,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func same(p: uniq/raw/i32, q: raw/i32) -> bool => p == q", "eq", 2, 0)]
     public void AComparisonReadsEachOperandAtItsTerminal(string source, string predicate, int left, int right)
     {
-        var compare = Assert.Single(Parse(source).Ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == $"icmp {predicate} ptr %, %");
+        var compare = Assert.Single(Internal(Parse(source).Ir).SelectMany(static x => x.Instructions), x => x.Shape == $"icmp {predicate} ptr %, %");
         Assert.Equal([left, right], compare.Operands.Select(Loads));
     }
 
@@ -1335,6 +1335,29 @@ public sealed partial class FunctionCodegenTest
             Assert.Single(Regex.Matches(text, Regex.Escape(definition)));
             Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
             Assert.Contains(text, ir, StringComparison.Ordinal);
+        }
+    }
+
+    // IMPL 21.4.7 (the Tatara plan's decision 24, B7r4): every module, an Application's, a Library's and a test build's, defines the
+    // runtime's memory functions once, from the memory part after the runtime; its only other external definition is an entry (fail-before:
+    // no module defined them, so every link took the backend archive's).
+    [Fact]
+    public void EveryModuleDefinesTheMemoryFunctionsOnce()
+    {
+        var modules = new (string Text, string[] Entry)[]
+        {
+            (Generate("Console.writeLine(\"Hello\")"), [RuntimeAbi.Start.Name]),
+            (Generate(Analyze("func f() => ()", OutputKind.Library)), []),
+            (Generate(Verifications), [RuntimeAbi.Start.Name]),
+        };
+        foreach (var (text, entry) in modules)
+        {
+            var at = text.IndexOf(LlvmModuleText.MemoryRuntime, StringComparison.Ordinal);
+            Assert.InRange(at, 0, text.Length);
+            Assert.Equal(at, text.LastIndexOf(LlvmModuleText.MemoryRuntime, StringComparison.Ordinal));
+            Assert.Equal(
+                [.. TargetProfile.MemorySymbols, .. entry],
+                Regex.Matches(text, @"(?m)^define (?!internal )[^@]*@([\w.]+)\(").Select(static x => x.Groups[1].Value));
         }
     }
 
@@ -1910,6 +1933,10 @@ public sealed partial class FunctionCodegenTest
             return writer.ToString();
         })];
     }
+
+    // The module's internal functions: its generated code and runtime, without the runtime's memory functions, which every module defines
+    // with external linkage (IMPL 21.4.7).
+    private static IEnumerable<IrFunction> Internal(GeneratedIr ir) => ir.Functions.Where(static x => x.Signature.StartsWith("internal ", StringComparison.Ordinal));
 
     // The module's functions that body items' texts define.
     private static IrFunction[] Functions(GeneratedIr ir, string[] items)
