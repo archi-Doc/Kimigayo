@@ -101,6 +101,27 @@ public sealed partial class TyCtxtTest
     // A generic function whose closure an instance closes, called with two lengths.
     private const string BorrowsPrelude = "func inspect<T>(value: ref/T) => ()\npublic func main() -> () => ()\n";
 
+    // Z6-F2's rows (AFitFromAnotherOriginMarksTheHoldersAtoms): the holders, t6's setup and tail around a row's holder and fit (s's atom
+    // marked: SharedAddress by `s@follow@raw`, FittedIntoHolder by the fit), d04's holder in parts, and t9's Cell.
+    private const string FitsPrelude = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
+        "    public func put<U>(self: uniq/Self, v: U) => ()\nstruct Box<E>\n    public var value: E\n    public init(value: E) => self.value = value@move\n" +
+        "    public func put<U>(self: uniq/Self, v: U) => ()\n    public func set(self: uniq/Self, v: E) => self.value = v@move\n";
+
+    private const string FitHead = "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|let s = w@ref|var r = v@uniq|";
+
+    private const string FitTail = "|h.put(z@ref)|z = 5|inspect(v)";
+
+    private const string FitS = "let s = w@ref Inference -1:  SharedAddress, FittedIntoHolder";
+
+    private const string FitHolderStruct = "struct HF {s}|    var p: ";
+
+    private const string FitHolderBody = "|        self.p = q|        self.k = k|    public func put<U>(self: uniq/Self, v: U) => ()|";
+
+    private const string FitHolderUse = "var x = 1|var y = 2|var z = 3|var v: ref/i32 = y@ref|var r = v@uniq|var h = HF.init(x@ref, r@follow@raw";
+
+    private const string FitCell = "struct Cell {o}|    var p: raw/u8 during o|    var k: uniq/i32 during o|    public init(p: raw/u8 during o, k: uniq/i32 during o)|" +
+        "        self.p = p|        self.k = k|    public func put<U>(self: uniq/Self, v: U) => ()|";
+
     private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
         "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
 
@@ -956,6 +977,52 @@ public sealed partial class TyCtxtTest
             $"    inspect({inspected}){tail.Replace("|", "\n    ", StringComparison.Ordinal)}\n");
         string[] expected = marked.Length == 0 ? [] : marked.Split('|');
         Assert.Equal(expected, BorrowRows(c).Where(static x => x.EndsWith(nameof(Binding.LimitMarks.SharedAddress), StringComparison.Ordinal)));
+    }
+
+    // SPEC 5.7 under O-498 Q1 (i), G147 ruling 75 (Z6-F2): a value whose raw layer states another Origin, fitted into a raw layer, marks
+    // the atom that layer states FittedIntoHolder (the raw fit's target; at swap's invariant position its value's too), whatever form
+    // places it: an assignment (t6, t6t, the written-Type t6w, n01), a written-Type initializer (t4k), an argument through Self's E (t6m)
+    // or a callee's own Origin (t6c), replace and swap (t6r, t6rx), a generic result (t6g), a Field write (t6f), a write through `h@uniq`
+    // (t6p), a conversion restating the Origin outside unsafe (t6x), a constructor's slot (d04, d04t), and a callee's clause relating an
+    // input raw layer's Origin to another (t6e, the raw fit's second source; store's own body fit marks its `a`); t6's reassignment also
+    // as an overloaded call's argument (t6o) and in a Closure body (t6k). `null` and an equal Origin form none (t6wn, p02, p10, t08x, x01,
+    // d01, t9, t9k). s's atom also carries SharedAddress where `s@follow@raw` is taken (s = w@ref). Labels from SPEC
+    // (`G147\z6f2i\labels.txt`, before any run): the marked rows I (h's layer may hold r's exclusive address of v, so put may store z's
+    // borrow in v), t6wn, x01, d01, t9 and t9k V, p02, p10 and t08x I for other reasons.
+    [Theory]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => h = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw)|if c => h = Wrap.init(r@follow@raw)" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)|if c => h = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Box.init(s@follow@raw@raw/u8)|if c => h.set(r@follow@raw@raw/u8)" + FitTail, FitS)]
+    [InlineData("func setp(h: uniq/Wrap<raw/u8 during o>, q: raw/u8 during o) => h@follow = Wrap.init(q)|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => setp(h@uniq, r@follow@raw@raw/u8)" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => Kimi.Intrinsics.replace(h@uniq, with: Wrap.init(r@follow@raw@raw/u8))" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|var g = Wrap.init(r@follow@raw@raw/u8)|if c => Kimi.Intrinsics.swap(h@uniq, g@uniq)" + FitTail, FitS + "|var r = v@uniq Inference -1:  FittedIntoHolder")]
+    [InlineData("func pick<T>(a: T, b: T) -> T => a@move|", FitHead + "var h = Wrap.init(pick(s@follow@raw@raw/u8, r@follow@raw@raw/u8))" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Box.init(s@follow@raw@raw/u8)|if c => h.value = r@follow@raw@raw/u8" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c|    let hr = h@uniq|    hr@follow = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
+    [InlineData("func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b)|    origin b outlives a|    h@follow = Wrap.init(q)|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => store(h@uniq, r@follow@raw@raw/u8)" + FitTail, "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b) Parameter 0:  FittedIntoHolder|" + FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(r@follow@raw@(raw/u8 during s))" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder")]
+    [InlineData("func g(v: ()) => ()|func g(v: i32) => ()|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => g(h = Wrap.init(r@follow@raw@raw/u8))" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|let pr = r@follow@raw@raw/u8|let hr = h@uniq|var put2 = func [hr, pr] () => hr@follow = Wrap.init(pr)|if c => put2()" + FitTail, FitS)]
+    [InlineData("", "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|var k = v@uniq|var r = w@uniq|let q: raw/u8 during k = r@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "var k = v@uniq Inference -1:  FittedIntoHolder")]
+    [InlineData(FitHolderStruct + "raw/u8 during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/u8 during s)" + FitHolderBody, FitHolderUse + "@raw/u8)" + FitTail, "var h = HF.init(x@ref, r@follow@raw@raw/u8) Inference 0:  FittedIntoHolder")]
+    [InlineData(FitHolderStruct + "raw/(ref/i32 during s) during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/(ref/i32 during s) during s)" + FitHolderBody, FitHolderUse + ")" + FitTail, "var h = HF.init(x@ref, r@follow@raw) Inference 0:  FittedIntoHolder")]
+    [InlineData("", "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|var r = w@uniq|var u = v@uniq|var q = r@follow@raw@raw/u8|if c => q = u@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "var r = w@uniq Inference -1:  FittedIntoHolder")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|let s = w@ref|var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)|h.put(z@ref)|z = 5|inspect(w)", "")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|var r = w@uniq|var h = Wrap.init(r@follow@raw@raw/u8)|h.put(z@ref)|z = 5|inspect(w)", "")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|let s = w@ref|let q: raw/u8 during s = s@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|var r = w@uniq|var q: raw/u8 during r = null|unsafe => q = w@raw@(raw/u8 during r)|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|var r = w@uniq|let c2 = r@ref|var h = Wrap.init(c2@follow@follow@raw@raw/u8)|h.put(z@ref)|z = 5|inspect(w)", "")]
+    [InlineData("struct HD {s}|    var p: raw/u8 during s|    var k: ref/i32 during s|    var m: uniq/i32 during s|    public init(k: ref/i32 during s, m: uniq/i32 during s)|        self.p = k@follow@raw@raw/u8|        self.k = k|        self.m = m|    public func put<U>(self: uniq/Self, v: U) => ()|    public func store(self: uniq/Self)|        var z = 3|        self.put(z@ref)|        z = 5|", "return", "")]
+    [InlineData(FitCell, "var z = 3|var b = (0, 1)|let s = b.0@ref|let a = s@follow@raw@raw/u8|var h = Cell.init(null, b.0@uniq)|h.put(z@ref)|z = 5|inspect(b)", "")]
+    [InlineData(FitCell, "var z = 3|var b = (0, 1)|var k = b.0@uniq|let s = k@ref|let a = s@follow@follow@raw@raw/u8|var h = Cell.init(null, k)|h.put(z@ref)|z = 5", "")]
+    public void AFitFromAnotherOriginMarksTheHoldersAtoms(string declarations, string body, string marked)
+    {
+        var c = MinimalEmissionTest.Analyze(BorrowsPrelude + FitsPrelude + declarations.Replace("|", "\n", StringComparison.Ordinal) +
+            $"func p(c: bool)\n    {body.Replace("|", "\n    ", StringComparison.Ordinal)}\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        string[] expected = marked.Length == 0 ? [] : marked.Split('|');
+        Assert.Equal(expected, BorrowRows(c).Where(static x => x.Contains(nameof(Binding.LimitMarks.FittedIntoHolder), StringComparison.Ordinal)));
     }
 
     // SPEC 8.6.1, 8.2.3, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct

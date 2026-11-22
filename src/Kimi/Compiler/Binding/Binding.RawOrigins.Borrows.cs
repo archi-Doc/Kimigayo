@@ -6,11 +6,12 @@ namespace Kimi.Compiler;
 
 // The Origin-atom borrows (SPEC 5.7 Origins: "the outer Origin of a borrow value (an input's or, in a body, a local's) [belongs] to that
 // borrow"; 15.6.5: a finite Origin local to a body, a Borrow's; contract of Binding.RawOrigins.cs; originpub design Revision 3, G147
-// rulings 18, 19 and 66; DECISIONS BU-243, Z6).
+// rulings 18, 19, 66 and 75; DECISIONS BU-243, Z6).
 // - Responsibility: for each Projection or Anchor atom, the Borrows Binding commits with it as their outer Origin (each such operand of a
 //   meet), each as RawMember(-1, referent, exclusive) by BorrowReferent of its Type, equal referents joining their modes, in commit order;
 //   and for any atom, its limit marks (LimitMarks, one value per named limit): Claimed where a published claim's Type states it (5.7 Fits
-//   and claims), SharedAddress where a published address whose authority is shared does (5.2.1 condition 3, 5.4).
+//   and claims), SharedAddress where a published address whose authority is shared does (5.2.1 condition 3, 5.4), FittedIntoHolder
+//   where a raw fit's target does, or at an invariant position its value (5.7 under O-498 Q1 (i)).
 // - Inputs: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each formed once by its writer, outside
 //   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36, 37): the node's own facts at BindNode's end
 //   (OwnBorrows: its written Borrow, Slice view or object view, its receiver operation, its calls' operations);
@@ -23,7 +24,8 @@ namespace Kimi.Compiler;
 //   (MarkLimits: a claim's Origin, ClaimedOrigin; an address's, where its Place's path, folded once by PlaceAuthority's PathFold, is
 //   reached through shared, SPEC 15.6.2's shared layer anywhere on the path (a Deref through a `ref` or `objref` borrow, a pair layer in
 //   a shared case and a Slice element among them), or passes a conformance selection, SPEC 5.4 and 4.7.1 (a user index, an Array or
-//   Dictionary element: PathPrefix.Conformance)).
+//   Dictionary element: PathPrefix.Conformance)); and the pass's raw fits (Binding.ValueFits.cs' rawFits), which the publication's
+//   start reads once for FittedIntoHolder (BeginBorrowPublication).
 // - Outputs: Borrows(atom, members), the atom's entries; AtomMarks(atom), its limit marks (None without a row), the one row read of Z6's
 //   one Marks reader; and RetentionState, the key field of TyCtxt's retention memo: the region and borrow versions until the pass's
 //   Check has run, Complete afterwards.
@@ -52,6 +54,11 @@ namespace Kimi.Compiler;
 //   a borrow fact of it, and its shared authority (its path reached through shared, or passing a conformance selection) is the
 //   SharedAddress mark alone. No form is left unmarked after G147 ruling 72; the mark only over-reads a pair layer by its weakest
 //   admitted case (its `uniq` case marked: dev's limit, not a hole). Z6's route (a) removes the mark, and with it that over-read.
+//   (SPEC 5.7, O-498 Q1 (i)) a fitted raw pointer keeps its source's authority: FittedIntoHolder's two sources are the placing fits'
+//   raw positions (FitOuterOrigins' pointer arm) and a call's substituted clause relating an input raw layer's Origin to another; a fit
+//   form that places a value without a placing entry is that form's defect, not a case here (G147 ruling 75). The raw fits are
+//   complete when the publication reads them (every placing fit runs while the pass binds, before the publication), so the row is
+//   safe without a version by the order above; Z6's route (a) removes it.
 // - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry, no
 //   second list of borrow facts; no mark outside the publication, no second flag beside LimitMarks (a new named limit is a value of it,
 //   with its removal condition); RegionVersion is not moved; no reader but Z6's (the entries by the binder reading; the marks by A5's
@@ -95,6 +102,14 @@ public sealed partial class Binding
         // authority, which its members do not show, since an address forms no borrow fact (SPEC 5.4; Z6's R6.1; G147 ruling 72).
         // Removal: Z6's route (a), A5's W reading condition 3 per address (O-498 Q2 (b)'s removal condition, a later stream Z row).
         SharedAddress = 2,
+
+        // SPEC 5.7 under O-498 Q1 (i): a value whose raw layer states another Origin is fitted into a raw layer stating the atom (a
+        // raw fit's target; at an invariant position its value too), so the layer may hold a pointer with that source's authority, which
+        // the atom's members do not show. Its sources (Binding.ValueFits.cs' rawFits): the placing fits' raw positions, and a call's
+        // substituted clause relating an input raw layer's Origin to another (G147 ruling 75). It bounds both arms; the address mark
+        // stays at the binder arm (Z6 R7.1.2). Removal: Z6's route (a), the fit's source Origins published and read, so that a fitted
+        // layer is read by the join of its sources' members (O-498 Q2 (b)'s removal condition).
+        FittedIntoHolder = 4,
     }
 
     // The key field of TyCtxt's retention memo (DECISIONS G570, as the publication amends it): until the rows are complete, the region
@@ -434,7 +449,8 @@ public sealed partial class Binding
     }
 
     // The publication's start (PublishPass): its publication side emptied and the running part's marks cleared, so a republication
-    // reads none of an earlier one.
+    // reads none of an earlier one; then the FittedIntoHolder row, formed from the pass's raw fits once, every fit being decided
+    // before the publication: each atom a raw fit's target states and, at an invariant position, each its value states.
     private void BeginBorrowPublication()
     {
         this.publishedFailure = false;
@@ -446,6 +462,15 @@ public sealed partial class Binding
         foreach (var row in this.borrows.Values)
         {
             row.Marks = LimitMarks.None;
+        }
+
+        foreach (var fit in this.rawFits)
+        {
+            this.Mark(fit.Target, LimitMarks.FittedIntoHolder);
+            if (fit.Equality)
+            {
+                this.Mark(fit.Value, LimitMarks.FittedIntoHolder);
+            }
         }
     }
 
