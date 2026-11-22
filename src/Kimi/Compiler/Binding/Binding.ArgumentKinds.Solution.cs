@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The solution of the call's `candidate`-th candidate from its evaluation: its frame, mapping, Origin strides and root rows, and the
-    // call's scope, Self and explicit Type arguments. Its Origin views cover the candidate's slots (RequireOriginWidths).
+    // call's scope, Self, explicit Type arguments and the candidate's requirement reference. Its Origin views cover the candidate's
+    // slots (RequireOriginWidths).
     private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
     {
         RequireOriginWidths(function, evaluation.OriginSlots, evaluation.InputSlots);
@@ -28,6 +29,7 @@ public sealed partial class Binding
             Mapping = evaluation.MappingOf(candidate),
             Origins = evaluation.OriginsOf(candidate),
             Inputs = evaluation.InputsOf(candidate),
+            RequirementContract = evaluation.RequirementContractOf(candidate),
         };
     }
 
@@ -76,6 +78,7 @@ public sealed partial class Binding
         internal ReadOnlySpan<int> Mapping; // A candidate's call argument i maps to its parameter Mapping[i] (MapCallArguments); empty outside a named call's candidate.
         internal Span<BoundOrigin> Origins;
         internal Span<BoundOrigin> Inputs;
+        internal BindingSymbol? RequirementContract; // A named call's candidate's (CallEvaluation.RequirementContractOf); its trial runs under it.
         internal bool FixedConstruction;
 
         // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
@@ -421,7 +424,7 @@ public sealed partial class Binding
             binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
             var closedOwner = this.DeclaringType is { } declaringType
                 ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
-            var reference = binding.activeRequirementContract; // The Contract reference CallSelection tries the candidate under (SPEC 8.6.4).
+            var reference = this.RequirementContract; // The Contract reference the candidate is tried under (SPEC 8.6.4).
             var bindings = new CandidateBindings(
                 function, function.BoundSymbol!, this.Substitution(arguments), this.Self, this.DeclaringType, closedOwner, reference, unbound, constructor);
             var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
