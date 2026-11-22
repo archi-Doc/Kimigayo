@@ -153,24 +153,18 @@ public sealed partial class Binding
             var originDeclaration = this.BeginOriginDeclaration(alias, scope);
             var path = this.NamePath(targetSyntax, scope);
             var symbol = path.Symbol;
-            if (symbol is null)
-            {
-                // SPEC 23.1.2 (rule W): a walk that failed its use (an ambiguity, a refused component) is the alias's record; a miss records
-                // nothing at the target, so it is the alias's own, the walk's code (as dev's plain targets recorded it).
-                if (this.RecordedFailure(path.Use) != BindingFailure.None)
-                {
-                    this.CompleteDependent(alias, path.Use);
-                }
-                else
-                {
-                    this.Fail(alias, BindingFailure.MissingName, true);
-                }
 
+            // SPEC 23.1.2, 18.2.1 (F's ruling N1-7 (2)): a target the walk selects nothing for is bound as every Type use is, which records
+            // the walk's failure where it fails (FailingStep: the missing or refused component), and the alias rests on that record (rule W);
+            // a built-in Type forms, and is no Container.
+            if (symbol is null && this.BindType(targetSyntax, scope, this.TypeContext(targetSyntax, scope)) is null)
+            {
+                this.CompleteDependent(alias, FailingStep(path, targetSyntax));
                 RestPendingOn(originDeclaration, alias);
                 return null;
             }
 
-            if (symbol.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto))
+            if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto))
             {
                 this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
                 RestPendingOn(originDeclaration, alias);

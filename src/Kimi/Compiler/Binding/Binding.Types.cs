@@ -28,6 +28,12 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 23.1.2: where a Type path's walk that selected nothing failed, which its record names: its failing step (its use), as
+    // `S.Missing` of `S.Missing.X`, when that step is a qualifier of the path; else the path, where an ambiguity or a qualification stop
+    // keeps its own record.
+    private static Koto FailingStep(in ResolvedPath head, Koto syntax)
+        => head.End == PathEnd.Unresolved && StoppedAtQualifier(head.Use, syntax) ? head.Use : syntax;
+
     private static Koto UnwrapTypeSyntax(Koto node)
     {
         while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, ConversionOperation: null })
@@ -348,9 +354,7 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            // SPEC 23.1.2: an unresolved walk failed at its failing step (its use), as `S.Missing` of `S.Missing.X`, when that step is a
-            // qualifier of the path; an ambiguity or a qualification stop keeps its own record at the path.
-            return this.FailMissing(head.End == PathEnd.Unresolved && StoppedAtQualifier(head.Use, syntax) ? head.Use : syntax, scope, BindingFailure.MissingType);
+            return this.FailMissing(FailingStep(head, syntax), scope, BindingFailure.MissingType);
         }
 
         syntax.BoundSymbol = symbol;
