@@ -467,7 +467,7 @@ public sealed partial class Binding
             return this.BindTruncatedLiteral(conversion, target, operand);
         }
 
-        var fit = plain && ((literal && (target is { HasIntegerArithmetic: true } || this.TakesGenericLiterals(target, scope))) || (target is { IsFloatingPoint: true } && (literal || floatingLiteral)));
+        var fit = plain && ((literal && (target is { HasIntegerArithmetic: true } || this.TakesGenericLiterals(target, scope, conversion))) || (target is { IsFloatingPoint: true } && (literal || floatingLiteral)));
         var previousLiteral = this.floatingIntegerLiteral;
         BoundType? source;
         try
@@ -531,9 +531,9 @@ public sealed partial class Binding
 
         // SPEC 8.7.4: a checked conversion between Types that satisfy PrimitiveInteger, including unbound ones, and the
         // conversions between a proven T and Wrapping<T>, including a generic literal fitted to Wrapping<T>.
-        if ((this.IsGenericInteger(source, scope) && this.IsIntegerOperand(target, scope)) || (source.IsInteger && this.IsGenericInteger(target, scope)) ||
-            (this.IsGenericWrapping(source, scope) && (ReferenceEquals(target, source) || ReferenceEquals(target, source.Components[0]))) ||
-            (this.IsGenericWrapping(target, scope) && ReferenceEquals(source, target.Components[0])))
+        if ((this.IsGenericInteger(source, scope, conversion) && this.IsIntegerOperand(target, scope, conversion)) || (source.IsInteger && this.IsGenericInteger(target, scope, conversion)) ||
+            (this.IsGenericWrapping(source, scope, conversion) && (ReferenceEquals(target, source) || ReferenceEquals(target, source.Components[0]))) ||
+            (this.IsGenericWrapping(target, scope, conversion) && ReferenceEquals(source, target.Components[0])))
         {
             conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Integer;
             return Complete(conversion, target);

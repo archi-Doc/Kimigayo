@@ -178,12 +178,12 @@ public sealed partial class Binding
                 for (var w = 0; w < a.WitnessStorage.Count; w++)
                 {
                     var witness = a.WitnessStorage[w];
-                    same &= b.WitnessMap.TryGetValue(witness.Identity, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope);
+                    same &= b.WitnessMap.TryGetValue(witness.Identity, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope, a.Use);
                 }
 
                 foreach (var binding in a.AssociatedStorage)
                 {
-                    same &= b.AssociatedStorage.TryGetValue(binding.Key, out var otherType) && this.SameConformanceType(binding.Value, otherType, scope);
+                    same &= b.AssociatedStorage.TryGetValue(binding.Key, out var otherType) && this.SameConformanceType(binding.Value, otherType, scope, a.Use);
                 }
 
                 for (var w = 0; w < a.PropertyWitnessStorage.Count; w++)
@@ -195,7 +195,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    same &= this.SamePropertyWitness(x, y, scope);
+                    same &= this.SamePropertyWitness(x, y, scope, a.Use);
                 }
 
                 if (!same)
@@ -212,17 +212,17 @@ public sealed partial class Binding
         return proof;
     }
 
-    private bool SameConformanceType(BoundType? a, BoundType? b, BindingScope scope)
-        => ReferenceEquals(a, b) || (a is not null && b is not null && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.TypeIdentity, this.ContractType(a, scope), this.ContractType(b, scope))), scope) == ConstraintProof.Proven);
+    private bool SameConformanceType(BoundType? a, BoundType? b, BindingScope scope, QuerySite site)
+        => ReferenceEquals(a, b) || (a is not null && b is not null && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.TypeIdentity, this.ContractType(a, scope), this.ContractType(b, scope))), scope, site) == ConstraintProof.Proven);
 
     // SPEC 8.6.1, 8.2.3: a conformance's bound Contract reference `formal`, in its declaration's terms, names the bound reference
     // `required` of the same Contract for `receiver` when its instance is one Type with `required` in `scope`, judged as two paths are
     // (SameConformanceType): the substitution can leave a projection over the receiver's arguments that names a Type
     // (`Iter<S.(HasItem).Item>` of `B<SrcI>` is `Iter<i32>`), or a premise of `scope` names one, so the substituted form's reference
     // decides no identity.
-    private bool NamesReference(BoundType formal, BoundType receiver, BoundType required, BindingScope scope)
+    private bool NamesReference(BoundType formal, BoundType receiver, BoundType required, BindingScope scope, QuerySite site)
         => ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, receiver) is { } instance &&
-            this.SameConformanceType(instance, required, scope);
+            this.SameConformanceType(instance, required, scope, site);
 
     private void BindConditionalDeclarations(bool conditions)
     {
@@ -332,17 +332,24 @@ public sealed partial class Binding
         }
     }
 
+    // R7-C6 a's census (PLAN G651 a1), C6a-1b's frontier: the proof opener's caller in the retention rows (IteratorTransfer, read by
+    // TyCtxt.Retains' hold walk, whose site is that walk's), read as Nested (no frame of its own, as before QuerySite). Removal: C6a-1b
+    // names its site with the openers' (R3.1's second part).
+    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): ResolveConformance's caller in the retention rows that does not name its site yet; C6a-1b names it and deletes every member carrying this stage.")]
     private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, out BoundConformancePath? evidence)
+        => this.ResolveConformance(type, contract, scope, QuerySite.Nested, out evidence);
+
+    private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site, out BoundConformancePath? evidence)
     {
         evidence = null;
 
         // SPEC 13.3.3, 13.4.1, 4.6.1, 8.7, 22.1: the built-in row of the Type and the reference's Contract (BuiltinConformance); a
         // composed comparison holds by its parts (R7-C9's Prove).
-        if (this.contractHeadersReady && this.BuiltinConformance(type, contract, scope) is { Kind: not ImplTable.BuiltinKind.None } builtin)
+        if (this.contractHeadersReady && this.BuiltinConformance(type, contract, scope, site) is { Kind: not ImplTable.BuiltinKind.None } builtin)
         {
             return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error
                 : builtin.Kind == ImplTable.BuiltinKind.Absent ? ConstraintProof.Refuted
-                : builtin.Kind == ImplTable.BuiltinKind.Composed ? this.ComparisonProof(type, contract, scope, false, out _) : ConstraintProof.Proven;
+                : builtin.Kind == ImplTable.BuiltinKind.Composed ? this.ComparisonProof(type, contract, scope, site, false, out _) : ConstraintProof.Proven;
         }
 
         // SPEC 8.3: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
@@ -370,7 +377,7 @@ public sealed partial class Binding
         {
             foreach (var candidate in bindings)
             {
-                if (candidate.Contract.Type is { } formal && this.NamesReference(formal, type, contractReference, scope))
+                if (candidate.Contract.Type is { } formal && this.NamesReference(formal, type, contractReference, scope, site))
                 {
                     identity = candidate;
                     break;
@@ -451,16 +458,16 @@ public sealed partial class Binding
     // in `scope` and a bound Contract reference, None where none applies: the reference's argument SPEC fixes is judged first, once: an
     // arithmetic reference's is Self (`C<Self>`), one Type with it in `scope` (SameConformanceType), as a projection naming it is
     // (`i32 is Addable<U.(HasItem).Item>` with SrcI for U); an Entailed row applies when its subject is proven PrimitiveInteger.
-    private ImplTable.BuiltinRow BuiltinConformance(BoundType type, BindingSymbol contract, BindingScope scope)
+    private ImplTable.BuiltinRow BuiltinConformance(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site)
     {
         if (ArithmeticContractSyntax.Identity(contract) is { } id && !ArithmeticContracts.IsLeft(id) && id != KimiDeclarationId.Negatable &&
-            (contract.Type is not { Components: [var counterpart] } || !this.SameConformanceType(counterpart, type, scope)))
+            (contract.Type is not { Components: [var counterpart] } || !this.SameConformanceType(counterpart, type, scope, site)))
         {
             return default;
         }
 
         var row = ImplTable.Builtin(type, contract);
-        return row.Kind != ImplTable.BuiltinKind.Entailed || this.IsGenericInteger(row.Subject, scope) ? row : default;
+        return row.Kind != ImplTable.BuiltinKind.Entailed || this.IsGenericInteger(row.Subject, scope, site) ? row : default;
     }
 
     // The start of an answer whose dependence a reader asks: the depth now and the dependence of the answers enclosing it.

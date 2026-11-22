@@ -35,22 +35,22 @@ public sealed partial class Binding
         }
     }
 
-    private bool IsGenericInteger(BoundType? type, BindingScope scope)
+    private bool IsGenericInteger(BoundType? type, BindingScope scope, QuerySite site)
         => type is { IsProofDecided: true } &&
-            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
+            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope, site) == ConstraintProof.Proven;
 
     // SPEC 8.7.4, 3.1.1: Wrapping<T> over a Type proven PrimitiveInteger has the wrapping integer operators, unary minus for
     // every instantiation, the generic literals 0 through 127 and the conversions to and from T; each instance uses its Scalar.
-    private bool IsGenericWrapping(BoundType? type, BindingScope scope)
+    private bool IsGenericWrapping(BoundType? type, BindingScope scope, QuerySite site)
         => type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping &&
-            this.IsGenericInteger(type.Components[0], scope);
+            this.IsGenericInteger(type.Components[0], scope, site);
 
     // An integer Type, concrete or generic: the Types that positions, range boundaries, lengths and shift counts accept.
-    private bool IsIntegerOperand(BoundType? type, BindingScope scope) => type is { IsInteger: true } || this.IsGenericInteger(type, scope);
+    private bool IsIntegerOperand(BoundType? type, BindingScope scope, QuerySite site) => type is { IsInteger: true } || this.IsGenericInteger(type, scope, site);
 
     // A Type with the integer operators (SPEC 13.3.1): an integer or wrapping integer Type, concrete or generic.
-    private bool IsArithmeticInteger(BoundType? type, BindingScope scope)
-        => type is { HasIntegerArithmetic: true } || this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
+    private bool IsArithmeticInteger(BoundType? type, BindingScope scope, QuerySite site)
+        => type is { HasIntegerArithmetic: true } || this.IsGenericInteger(type, scope, site) || this.IsGenericWrapping(type, scope, site);
 
     private BoundType? BindUnary(UnaryKoto unary, BindingScope scope, BoundType? expected)
     {
@@ -72,7 +72,7 @@ public sealed partial class Binding
 
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
         {
-            if (this.TakesGenericLiterals(expected, scope))
+            if (this.TakesGenericLiterals(expected, scope, unary))
             {
                 if (!number.IsInteger)
                 {
@@ -341,7 +341,7 @@ public sealed partial class Binding
         var result = assignment ? BoundType.Unit : left;
         if (operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan)
         {
-            var count = this.ShiftCountApplicability(right, scope);
+            var count = this.ShiftCountApplicability(right, scope, binary);
             return count.Failure == BindingFailure.None ? Complete(binary, result) : this.FailOperator(binary, binary.Right, count);
         }
 

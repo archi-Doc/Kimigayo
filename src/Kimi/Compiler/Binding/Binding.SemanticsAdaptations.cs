@@ -131,9 +131,9 @@ public sealed partial class Binding
         return result;
     }
 
-    // R7-C6 a's census (PLAN G651 a1), the commit C6a-1a: ResultSemantics' callers inside a Type's formation and relations
-    // (IsAbstractBinding, SubstituteFamily, InactiveOuterOrigin), whose site is SubstituteType's and its relations' input, read as
-    // Nested (no frame of their own, as before QuerySite). Removal: C6a-1b names their site with SubstituteType's family.
+    // R7-C6 a's census (PLAN G651 a1), the commits C6a-1a and C6a-1b's first: ResultSemantics' callers inside a Type's formation
+    // (IsAbstractBinding, SubstituteFamily), whose site is SubstituteType's input, read as Nested (no frame of their own, as before
+    // QuerySite); the relations' caller (InactiveOuterOrigin) names its site. Removal: C6a-1b names it with SubstituteType's family.
     [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): ResultSemantics' callers in SubstituteType's family that do not name their site yet; C6a-1b names it and deletes every member carrying this stage.")]
     internal SemanticsMask ResultSemantics(BoundType type, BindingScope scope) => this.ResultSemantics(type, scope, QuerySite.Nested);
 

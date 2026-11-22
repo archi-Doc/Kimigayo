@@ -42,7 +42,7 @@ public sealed partial class Binding
     // never the specifications (CollisionScope). The inputs rule the intersection out when the judge finds that view contradictory: an
     // identity class in Conflict, or an input the view's closed world refutes (Refuted, or Error: a premise against its closed world),
     // alike for every input kind.
-    private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap)
+    private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap, QuerySite site)
     {
         var collision = this.CollisionScope(original, overlap);
         if (this.ClassesOf(collision, out _) is { Worst: IdentityClasses.Conflict })
@@ -63,7 +63,7 @@ public sealed partial class Binding
                 // the overlap. Only independently valid generic inputs can rule the intersection out.
                 var subject = fact.Kind == ConstraintKind.Not ? fact.Left?.Subject : fact.Subject;
                 if (subject is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection } && !IsContractSelf(subject) &&
-                    this.ProveConstraint(this.ContractConstraint(fact, collision, null), collision) is ConstraintProof.Refuted or ConstraintProof.Error)
+                    this.ProveConstraint(this.ContractConstraint(fact, collision, null), collision, site) is ConstraintProof.Refuted or ConstraintProof.Error)
                 {
                     return true;
                 }
@@ -178,12 +178,12 @@ public sealed partial class Binding
             var (x, y) = (a.Subject!, b.Subject!);
             if (!((BoundOrigin[])x.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])y.OriginArguments) ||
                 this.AssociatedIdentity(x) is not { } left || this.AssociatedIdentity(y) is not { } right ||
-                this.ContractOverlapScope(scope, left.Contract, right.Contract) is not { } overlap || this.RefutedOverlapInputs(scope, overlap))
+                this.ContractOverlapScope(scope, left.Contract, right.Contract) is not { } overlap || this.RefutedOverlapInputs(scope, overlap, scope.Owner))
             {
                 continue;
             }
 
-            if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap))
+            if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap, scope.Owner))
             {
                 this.FailPremise(environment, a, scope.Owner); // R7-C3 gate 2: the disagreeing specifications fail (b where it is this one's)
                 this.FailPremise(environment, b, scope.Owner);
@@ -228,14 +228,14 @@ public sealed partial class Binding
                             }
 
                             var self = this.SelfType(left.Type);
-                            if (this.DisjointConformanceFacts(a.Scope, b.Scope) || this.RefutedOverlapInputs(a.Scope, scope) || this.RefutedOverlapInputs(b.Scope, scope) ||
+                            if (this.DisjointConformanceFacts(a.Scope, b.Scope) || this.RefutedOverlapInputs(a.Scope, scope, a.Use) || this.RefutedOverlapInputs(b.Scope, scope, a.Use) ||
                                 this.ProveConformanceConditions(a, self, scope) == ConstraintProof.Refuted || this.ProveConformanceConditions(b, self, scope) == ConstraintProof.Refuted)
                             {
                                 continue;
                             }
 
                             this.AddOverlapFacts(scope, b.Scope);
-                            if (!this.SameNormalizedMappings(a, b, scope) || !this.SameNormalizedMappings(b, a, scope))
+                            if (!this.SameNormalizedMappings(a, b, scope, a.Use) || !this.SameNormalizedMappings(b, a, scope, a.Use))
                             {
                                 left.Invalid = right.Invalid = true;
                                 left.IsVerified = right.IsVerified = false;
@@ -280,22 +280,22 @@ public sealed partial class Binding
             condition: problem.Condition);
     }
 
-    private bool SameNormalizedRequirement(BoundRequirement a, BoundRequirement b, BindingScope scope)
-        => ReferenceEquals(a.Symbol, b.Symbol) && (ReferenceEquals(a.Contract, b.Contract) || this.SameConformanceType(a.Contract.Type, b.Contract.Type, scope));
+    private bool SameNormalizedRequirement(BoundRequirement a, BoundRequirement b, BindingScope scope, QuerySite site)
+        => ReferenceEquals(a.Symbol, b.Symbol) && (ReferenceEquals(a.Contract, b.Contract) || this.SameConformanceType(a.Contract.Type, b.Contract.Type, scope, site));
 
-    private bool SameNormalizedMappings(BoundConformancePath a, BoundConformancePath b, BindingScope scope)
+    private bool SameNormalizedMappings(BoundConformancePath a, BoundConformancePath b, BindingScope scope, QuerySite site)
     {
         foreach (var x in a.WitnessStorage)
         {
             var found = false;
             foreach (var y in b.WitnessStorage)
             {
-                if (!this.SameNormalizedRequirement(x.Identity, y.Identity, scope))
+                if (!this.SameNormalizedRequirement(x.Identity, y.Identity, scope, site))
                 {
                     continue;
                 }
 
-                if (!ReferenceEquals(x.Implementation, y.Implementation) || !this.SameFunctionWitness(x.Function, y.Function, scope))
+                if (!ReferenceEquals(x.Implementation, y.Implementation) || !this.SameFunctionWitness(x.Function, y.Function, scope, site))
                 {
                     return false;
                 }
@@ -314,12 +314,12 @@ public sealed partial class Binding
             var found = false;
             foreach (var y in b.AssociatedStorage)
             {
-                if (!this.SameNormalizedRequirement(x.Key, y.Key, scope))
+                if (!this.SameNormalizedRequirement(x.Key, y.Key, scope, site))
                 {
                     continue;
                 }
 
-                if (!this.SameConformanceType(x.Value, y.Value, scope))
+                if (!this.SameConformanceType(x.Value, y.Value, scope, site))
                 {
                     return false;
                 }
@@ -338,12 +338,12 @@ public sealed partial class Binding
             var found = false;
             foreach (var y in b.PropertyWitnessStorage)
             {
-                if (x.Requirement.Kind != y.Requirement.Kind || !this.SameNormalizedRequirement(x.Identity, y.Identity, scope))
+                if (x.Requirement.Kind != y.Requirement.Kind || !this.SameNormalizedRequirement(x.Identity, y.Identity, scope, site))
                 {
                     continue;
                 }
 
-                if (!this.SamePropertyWitness(x, y, scope))
+                if (!this.SamePropertyWitness(x, y, scope, site))
                 {
                     return false;
                 }
@@ -360,11 +360,11 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool SamePropertyWitness(BoundPropertyWitness x, BoundPropertyWitness y, BindingScope scope)
+    private bool SamePropertyWitness(BoundPropertyWitness x, BoundPropertyWitness y, BindingScope scope, QuerySite site)
     {
-        if (!ReferenceEquals(x.Requirement, y.Requirement) || !ReferenceEquals(x.Implementation, y.Implementation) || x.Kind != y.Kind || !this.SameMemberPath(x.BasePath, y.BasePath, scope) || x.ObjectCompatibility != y.ObjectCompatibility ||
-            !this.SameConformanceType(x.ReceiverType, y.ReceiverType, scope) || !this.SameConformanceType(x.InputType, y.InputType, scope) ||
-            !this.SameConformanceType(x.ResultType, y.ResultType, scope) || !this.SameConformanceType(x.ImplementationType, y.ImplementationType, scope) || x.InputOrigins.Count != y.InputOrigins.Count)
+        if (!ReferenceEquals(x.Requirement, y.Requirement) || !ReferenceEquals(x.Implementation, y.Implementation) || x.Kind != y.Kind || !this.SameMemberPath(x.BasePath, y.BasePath, scope, site) || x.ObjectCompatibility != y.ObjectCompatibility ||
+            !this.SameConformanceType(x.ReceiverType, y.ReceiverType, scope, site) || !this.SameConformanceType(x.InputType, y.InputType, scope, site) ||
+            !this.SameConformanceType(x.ResultType, y.ResultType, scope, site) || !this.SameConformanceType(x.ImplementationType, y.ImplementationType, scope, site) || x.InputOrigins.Count != y.InputOrigins.Count)
         {
             return false;
         }

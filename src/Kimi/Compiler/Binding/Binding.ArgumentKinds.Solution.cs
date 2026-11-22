@@ -256,7 +256,7 @@ public sealed partial class Binding
                 try
                 {
                     // Oldest first, in the arguments' order, so dev's record location is kept (R1.3 (i)).
-                    CollectOldestFirst(binding, head, skeleton, inference);
+                    CollectOldestFirst(binding, head, skeleton, inference, this.Call);
                 }
                 finally
                 {
@@ -273,12 +273,12 @@ public sealed partial class Binding
                 }
             }
 
-            static void CollectOldestFirst(Binding binding, SlotBinding? node, BoundType skeleton, OriginInference inference)
+            static void CollectOldestFirst(Binding binding, SlotBinding? node, BoundType skeleton, OriginInference inference, QuerySite site)
             {
                 if (node is not null)
                 {
-                    CollectOldestFirst(binding, node.Next, skeleton, inference);
-                    binding.CollectOriginInference(skeleton, node.Type, inference, node.Polarity);
+                    CollectOldestFirst(binding, node.Next, skeleton, inference, site);
+                    binding.CollectOriginInference(skeleton, node.Type, inference, site, node.Polarity);
                 }
             }
 

@@ -33,7 +33,7 @@ public sealed partial class Binding
     /// <param name="path">A verified definition path only when the judgment is Proven; its Types retain declaration slots.</param>
     /// <returns>The four-valued use-site proof result.</returns>
     public ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, Koto context, out BoundConformancePath? path)
-        => this.ResolveConformance(type, contract, this.ConstraintScope(context), out path);
+        => this.ResolveConformance(type, contract, this.ConstraintScope(context), context, out path);
 
     private static bool IsRefinement(BindingSymbol child, BindingSymbol parent)
     {
@@ -402,7 +402,7 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
+    private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site)
     {
         if (this.UnprovenInputRead(type, contract, scope) is { } failed)
         {
@@ -423,15 +423,15 @@ public sealed partial class Binding
         // SPEC 8.7.4: a proven PrimitiveInteger supplies PrimitiveIntegerSupplies; Wrapping<T> over it has the comparison
         // conformances of its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat
         // row, for an abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
-        var premise = contract.LibraryDeclaration is { } supplied && Array.IndexOf(PrimitiveIntegerSupplies, supplied) >= 0 && this.IsGenericInteger(type, scope);
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope);
+        var premise = contract.LibraryDeclaration is { } supplied && Array.IndexOf(PrimitiveIntegerSupplies, supplied) >= 0 && this.IsGenericInteger(type, scope, site);
+        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope, site);
 
         // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
         premise = premise || this.PremiseRefines(type, contract, scope);
 
         // Definition evidence is still resolved so that its errors are never hidden by an assumption (PremiseJoin, by polarity). The
         // closed world hides no Failed premise that speaks to the proposition (R7-C3, F's C2 ruling 278: the one rule at this exit too).
-        var verdict = PremiseJoin(premise, this.ResolveConformance(type, contract, scope, out _));
+        var verdict = PremiseJoin(premise, this.ResolveConformance(type, contract, scope, site, out _));
         return this.SpokenConformance(type, contract, scope, verdict);
     }
 
@@ -528,7 +528,7 @@ public sealed partial class Binding
                 var use = this.projectionUses[i];
                 this.failedCause = null;
                 var frame = this.BeginConsultation(use.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
-                this.RequireConstraintInFrame(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode, frame);
+                this.RequireConstraintInFrame(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use), use.Use), mode, frame);
             }
         }
     }

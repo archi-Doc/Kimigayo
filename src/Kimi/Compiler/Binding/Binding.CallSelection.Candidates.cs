@@ -379,7 +379,7 @@ public sealed partial class Binding
         if (returnPattern.CarriesOrigin)
         {
             solution.OriginInference ??= this.BeginOriginInference(solution.Call, function);
-            this.CollectOriginInference(returnPattern, resultExpected, solution.OriginInference, result: true);
+            this.CollectOriginInference(returnPattern, resultExpected, solution.OriginInference, solution.Frame.Node, result: true);
         }
 
         return structure;

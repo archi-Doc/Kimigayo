@@ -102,7 +102,7 @@ public sealed partial class Binding
                 uniq = this.Library.UniqIndexable is { } uniqIndexable ? this.ConformanceByDeclaration(owner, uniqIndexable, out _) : null;
             }
 
-            exclusiveAvailable = this.ConformsHere(core, uniq, scope);
+            exclusiveAvailable = this.ConformsHere(core, uniq, scope, source);
         }
         else if (core.Kind == BoundTypeKind.Parameter && this.PremiseRefines(core, indexable, scope))
         {
@@ -183,7 +183,7 @@ public sealed partial class Binding
         {
             var identity = identities[i];
             if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && identity.Contract.Type is { } formal &&
-                this.NamesReference(formal, core, this.types.Rebuild(formal, [type], null, []), scope))
+                this.NamesReference(formal, core, this.types.Rebuild(formal, [type], null, []), scope, keyNode))
             {
                 if (found is not null)
                 {
@@ -199,8 +199,8 @@ public sealed partial class Binding
 
     // SPEC 8.3.3: a registered conformance supplies its requirements to this instance only when its conditions hold here;
     // a refuted or unproven condition supplies nothing, and the Type stays usable through its other conformances.
-    private bool ConformsHere(BoundType type, BoundConformance? conformance, BindingScope scope)
-        => conformance is not null && this.ProveConformance(type, conformance.Contract, scope) == ConstraintProof.Proven;
+    private bool ConformsHere(BoundType type, BoundConformance? conformance, BindingScope scope, QuerySite site)
+        => conformance is not null && this.ProveConformance(type, conformance.Contract, scope, site) == ConstraintProof.Proven;
 
     private InvocationKoto? BindIndexerCall(IndexKoto source, BindingScope scope, bool exclusive)
     {

@@ -329,7 +329,7 @@ public sealed partial class Binding
             if (ProjectionDeclarationOwner(use.Use) is { } declaration)
             {
                 var frame = this.BeginConsultation(declaration); // The proof's reads of other nodes (RequireConstraintInFrame).
-                changed |= this.RecordDeclarationInput(use, declaration, this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode, frame);
+                changed |= this.RecordDeclarationInput(use, declaration, this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use), declaration), mode, frame);
             }
         }
 
@@ -350,7 +350,7 @@ public sealed partial class Binding
             }
 
             var frame = this.BeginConsultation(declaration);
-            var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+            var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use), declaration);
             if (proof != ConstraintProof.Error)
             {
                 this.DropConsultation(frame);
@@ -425,12 +425,12 @@ public sealed partial class Binding
                 // Explicit Type syntax can normalize away the constrained qualifier.
                 if (parent is InvocationKoto call && ReferenceEquals(node, call.Method))
                 {
-                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use), use.Use);
                     this.RequireConstraint(call, proof.Value, mode);
                 }
                 else if (parent is IsKoto { IsRuntimeTest: true } test && ReferenceEquals(node, test.Right))
                 {
-                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use), use.Use);
                     this.RequireConstraint(test, proof.Value, mode);
                     if (proof != ConstraintProof.Proven)
                     {
@@ -441,8 +441,8 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope)
-        => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope), true);
+    private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site)
+        => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope, site), true);
 
     private bool ValidateClosedTypeConstraints(BindingMode mode)
     {
@@ -771,13 +771,6 @@ public sealed partial class Binding
         var record = new CallableConstraintFact(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, use));
         return this.FailExplained(CallableConstraintRows.Family, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }
-
-    // R7-C6 a's census (PLAN G651 a1), the commit C6a-1a: a proposition query whose caller does not name its site yet, read as Nested
-    // (no frame of its own, as before QuerySite). Its callers are the predicates reached from many judgments (NotString,
-    // SuppliesPremises, ComparisonProof, SameConformanceType, RefutedOverlapInputs, OperatorRequirement, IsGenericInteger,
-    // ProvesClosedContract). Removal: C6a-1b names each caller's site and deletes every member carrying this stage.
-    [Transitional("C6a-1b", Reason = "R7-C6 a's census (PLAN G651 a1): ProveConstraint's callers that do not name their site yet; C6a-1b names them and deletes every member carrying this stage.")]
-    private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope) => this.ProveConstraint(proposition, scope, QuerySite.Nested);
 
     // A proof of a proposition from `site` (QuerySite; PLAN G651 a1), settled where it is no longer combined (EndProof).
     private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope, QuerySite site)

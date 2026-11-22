@@ -20,7 +20,7 @@ public sealed partial class Binding
 
     // SPEC 13.3.3: an arithmetic built-in row's (Target or Entailed, BuiltinConformance) Output is Self. W5 (ContractSolver's
     // Completion): Complete at the static gate, Provisional past it (the conformance proves).
-    private BoundType? BuiltinArithmeticOutput(BoundType projection, BindingScope scope, out Completion completion)
+    private BoundType? BuiltinArithmeticOutput(BoundType projection, BindingScope scope, QuerySite site, out Completion completion)
     {
         completion = Completion.Complete;
         if (projection is not { Kind: BoundTypeKind.AssociatedProjection, Components: [var self, var reference], Symbol.Scope.Owner.BoundSymbol: { } declaration } ||
@@ -30,7 +30,7 @@ public sealed partial class Binding
         }
 
         completion = Completion.Provisional;
-        return this.BuiltinConformance(self, this.BoundContractReference(reference), scope).Kind is ImplTable.BuiltinKind.Target or ImplTable.BuiltinKind.Entailed
+        return this.BuiltinConformance(self, this.BoundContractReference(reference), scope, site).Kind is ImplTable.BuiltinKind.Target or ImplTable.BuiltinKind.Entailed
             ? self : null;
     }
 }

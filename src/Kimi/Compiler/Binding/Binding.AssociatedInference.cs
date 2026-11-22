@@ -374,7 +374,7 @@ public sealed partial class Binding
                     var binding = this.AssociatedBindingOf(path, identity)!;
                     foreach (var source in evidence)
                     {
-                        if (!this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) ||
+                        if (!this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope, path.Use) ||
                             this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope) != ConstraintProof.Proven)
                         {
                             continue;
@@ -611,7 +611,7 @@ public sealed partial class Binding
     // walk's, ContainsInferenceHole's and the evidence's one hole test.
     private BoundRequirement? InferenceHoleOf(BoundConformancePath path, BoundType type)
         => type.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(type.Components[0].Symbol, path.Type) &&
-            this.AssociatedInPath(path.RootPath, type.Components[0], type.Symbol!, type.Components.Count == 2 ? type.Components[1] : null, path.Scope) is { } identity &&
+            this.AssociatedInPath(path.RootPath, type.Components[0], type.Symbol!, type.Components.Count == 2 ? type.Components[1] : null, path.Scope, path.Use) is { } identity &&
             this.InferenceHole(path, identity) ? identity : null;
 
     private bool InferenceTypeInScope(BoundType type, BindingSymbol owner, AssociatedInference batch, out Koto? invalid)

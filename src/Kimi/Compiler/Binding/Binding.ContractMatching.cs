@@ -589,7 +589,7 @@ public sealed partial class Binding
             // one substitution its signature is (PLAN G700, G707).
             var proof = CombineProof(
                 this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises),
-                this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
+                this.CompareCallableContracts(new(requirement), new(implementation), premises, conformance.Use, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
                 true);
             var substitution = SubstitutionOf(implementation, selection.DeclaringType, arguments.AsSpan(0, requirement.GenericArguments.Count), default, origins, inputs);
             IsKoto? bound = null;

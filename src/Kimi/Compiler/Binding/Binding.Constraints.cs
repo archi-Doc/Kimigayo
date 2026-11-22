@@ -262,7 +262,7 @@ public sealed partial class Binding
         }
 
         // Registration is not verified conformance. In particular, absence is not refutation.
-        return proposition.Contract is { } contract ? this.ProveConformance(proposition.Subject!, contract, scope) : ConstraintProof.Unknown;
+        return proposition.Contract is { } contract ? this.ProveConformance(proposition.Subject!, contract, scope, QuerySite.Nested) : ConstraintProof.Unknown;
     }
 
     // The one find over the two levels (PassPart.Levels; PLAN G949 Stage 2 U4; C-380 F3 (a)): content in no level is inserted at the

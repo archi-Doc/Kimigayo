@@ -71,7 +71,7 @@ public sealed partial class Binding
     private (BindingSymbol Target, BoundType? Declaring)? LeafTarget(BindingSymbol site, BoundType self, BindingSymbol contract, string? name)
     {
         if (contract.Contract?.OwnRequirement() is { } requirement &&
-            this.ResolveRequirementWitness(requirement, self, contract, this.ConstraintScope(site.Declaration)) is
+            this.ResolveRequirementWitness(requirement, self, contract, this.ConstraintScope(site.Declaration), site.Declaration) is
             { Kind: RequirementWitnessKind.LibraryWitness, Target: { } member })
         {
             return (member, null);

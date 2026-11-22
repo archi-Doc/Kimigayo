@@ -99,7 +99,7 @@ public sealed partial class Binding
             Array.Clear(origins);
             originBindings = origins;
             Array.Clear(inputOrigins);
-            proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
+            proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, conformance.Use, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
         }
         else
         {

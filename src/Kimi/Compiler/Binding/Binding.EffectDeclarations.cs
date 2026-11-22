@@ -473,7 +473,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
             var candidate = shape.Ancestors[i];
-            if (ReferenceEquals(candidate, reference) || (IsBoundContractReference(candidate) && IsBoundContractReference(reference) && this.SameConformanceType(candidate.Type, reference.Type, scope)))
+            if (ReferenceEquals(candidate, reference) || (IsBoundContractReference(candidate) && IsBoundContractReference(reference) && this.SameConformanceType(candidate.Type, reference.Type, scope, effect)))
             {
                 ancestor = candidate;
                 matches++;

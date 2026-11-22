@@ -353,7 +353,7 @@ public sealed partial class Binding
 
         var evidence = ProjectionEvidence(associated, reference, qualifier);
         this.projectionUses.Add((syntax, type, evidence));
-        if (this.SuppliesPremises(type, evidence, scope))
+        if (this.SuppliesPremises(type, evidence, scope, syntax))
         {
             // Expand only a referenced receiver's proved contract. This avoids eagerly generating
             // an unbounded chain for recursive associated requirements such as E is SelfContract.
@@ -377,8 +377,8 @@ public sealed partial class Binding
         => this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
 
     // SPEC 8.3.2: whether `type is evidence` (ProjectionEvidence) is proved in `scope`, so the Contract supplies its premises for `type`.
-    private bool SuppliesPremises(BoundType type, BindingSymbol evidence, BindingScope scope)
-        => !this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope) == ConstraintProof.Proven;
+    private bool SuppliesPremises(BoundType type, BindingSymbol evidence, BindingScope scope, QuerySite site)
+        => !this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope, site) == ConstraintProof.Proven;
 
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
     private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;
@@ -773,7 +773,7 @@ public sealed partial class Binding
         => this.AssociatedBindingOf(path.RootPath, associated) is { Candidates.Count: > 0 } binding ? binding.Candidates[0] : null;
 
     private BoundRequirement? AssociatedInPath(
-        BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope)
+        BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope, QuerySite site)
     {
         BoundRequirement? found = null;
         foreach (var identity in path.Contract.Contract!.AssociatedStorage)
@@ -781,7 +781,7 @@ public sealed partial class Binding
             if (ReferenceEquals(identity.Symbol, associated))
             {
                 var reference = this.ProjectionContract(associated, identity.Contract);
-                if (qualifier is null || ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope))
+                if (qualifier is null || ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope, site))
                 {
                     if (found is not null)
                     {

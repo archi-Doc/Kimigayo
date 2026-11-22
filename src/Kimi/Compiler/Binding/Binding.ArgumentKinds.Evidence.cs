@@ -348,7 +348,7 @@ public sealed partial class Binding
                 }
             }
 
-            var common = binding.SelectCommonType(adapted, binding.ConstraintScope(binding.positionParts[start]), out _);
+            var common = binding.SelectCommonType(adapted, binding.ConstraintScope(binding.positionParts[start]), binding.positionParts[start], out _);
             adapted.Clear();
             return common is not null && this.InferFrom(pattern, common, new(null, Contribution.Evidence, Relations: false));
         }
@@ -384,7 +384,7 @@ public sealed partial class Binding
                 if (matched.CarriesOrigin && actual.CarriesOrigin)
                 {
                     this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
-                    binding.CollectOriginInference(matched, actual, this.OriginInference, known: quantifier);
+                    binding.CollectOriginInference(matched, actual, this.OriginInference, this.Frame.Node, known: quantifier);
                 }
             }
 

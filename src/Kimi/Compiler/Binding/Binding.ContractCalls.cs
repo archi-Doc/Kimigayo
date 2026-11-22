@@ -55,13 +55,13 @@ public sealed partial class Binding
         // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
         // concrete integers gain no members. Temporary: this clause names Position apart from PrimitiveIntegerSupplies until
         // PLAN G776 decides the member calls an entailed built-in conformance gives; it then reads that list or goes.
-        if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
+        if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope, member))
         {
             Add(position);
         }
 
         // Numeric witnesses are requirements under generic evidence, not named numeric members.
-        if (this.IsGenericInteger(type, scope))
+        if (this.IsGenericInteger(type, scope, member))
         {
             for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.RemainderProvider; id++)
             {
