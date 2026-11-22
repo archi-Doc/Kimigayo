@@ -12,7 +12,7 @@ namespace XunitTest;
 /// No public layer reads the fact yet (Z5-R1 does), so the rows read it after A5's run of the body.</summary>
 public sealed partial class MirBorrowsTest
 {
-    // F's Packet (data .0, pair .1, arr .2, nest .3) and Cell (Some case 0, Two case 1), and Mixed2 (mix .0).
+    // F's Packet (data .0, pair .1, arr .2, nest .3), Cell (Some case 0, Two case 1), Outer and Duo, and Mixed2 (mix .0) and Arr2.
     private const string LentShapes = """
         func usep(p: raw/u8) => ()
         struct Packet
@@ -32,6 +32,15 @@ public sealed partial class MirBorrowsTest
         struct Mixed2
             internal var mix: (raw/u8 during self, raw/u8)
             public init() => self.mix = (null, null)
+        struct Outer
+            internal var inner: Packet
+            public init() => self.inner = Packet.init()
+        struct Duo
+            internal var duo: (Packet, i32)
+            public init() => self.duo = (Packet.init(), 1)
+        struct Arr2
+            internal var ps: [2 of Packet]
+            public init() => self.ps = [Packet.init(), Packet.init()]
 
         """;
 
@@ -67,27 +76,14 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(position, Assert.Single(LentPositions(source, function, read).Positions));
     }
 
-    // PLAN G212 (N3 of Z5-F's review): a read's position, a borrow's and a whole local's lender are each made once per view, so n reads
-    // through a chain of n Copies, or of n Reborrows past a dereference, take Work linear in n (each read along the chain alike).
-    internal static long[] LentWork(string borrow, string chained)
-        => [.. new[] { 64, 128, 256 }.Select(n => LentPositions(LentShapes + Chain(borrow, chained, n), "f", null)).Select(static x =>
-        {
-            Assert.Contains("b.1.0", x.Positions); // The reads are placed exactly, through the whole chain.
-            return x.Work;
-        })];
-
-    // A chain of n locals from a borrow of b.pair, each formed from the one before, with a read through each, the last first.
-    private static string Chain(string borrow, string chained, int n)
+    // A program whose body Copies a borrow of b.pair n times, each Copy from the one before and read through right after it is made
+    // (CallableRegionScalingTest.PlacedReadsAreLinearInACopyChain).
+    internal static string LentChain(int n)
     {
-        var text = new StringBuilder($"func f(fresh: raw/u8)\n    var b = Packet.init()\n    let r0 = {borrow}\n");
+        var text = new StringBuilder(LentShapes).Append("func f(fresh: raw/u8)\n    let b = Packet.init()\n    let r0 = b.pair@ref\n");
         for (var i = 1; i <= n; i++)
         {
-            text.Append($"    let r{i} = ").Append(chained.Replace("{0}", $"r{i - 1}", StringComparison.Ordinal)).Append('\n');
-        }
-
-        for (var i = n; i >= 0; i--)
-        {
-            text.Append($"    let x{i} = r{i}@follow.0\n");
+            text.Append($"    let r{i} = r{i - 1}\n    usep(r{i}@follow.0)\n");
         }
 
         return text.ToString();

@@ -54,18 +54,12 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void EachAxisScalesWithinItsBound(string axis, double factor)
         => WorkScales(output, Sizes(axis), factor);
 
-    // Z5-F (N3 of its review): A5's exact lent positions (MirBorrows.Lent) for n reads through a chain of n Copies or n Reborrows past a
-    // dereference, at n = 64, 128, 256, the last read first: each read's position, each borrow's and each whole local's lender are made
-    // once per view, so the work is linear in n (MirBorrowsTest.LentWork).
-    [Theory]
-    [InlineData("b.pair@ref", "{0}")]
-    [InlineData("b.pair@uniq", "{0}@follow@uniq")]
-    public void LentPositionsAreLinearInTheChain(string borrow, string chained)
-    {
-        var work = MirBorrowsTest.LentWork(borrow, chained);
-        output.WriteLine($"lent work {string.Join(", ", work)}");
-        Assert.True(work[1] > work[0] && MirBorrowsTest.Grows(work, 2), $"lent work {string.Join(", ", work)}");
-    }
+    // Z5-F and Z5-R1 (Z5-F's review N3, Z5-R1's design section 7): A5's work and Loan-set bytes on a chain of n Copies of a borrow of a
+    // layer's enclosing Place, each read through right after it is made, at n = 64, 128, 256, every read placed by its exact lent position
+    // (MirBorrows.Addresses' Place, one Lent per listed row; a whole local's lender kept per view): linear.
+    [Fact]
+    public void PlacedReadsAreLinearInACopyChain()
+        => WorkScales(output, [.. new[] { 64, 128, 256 }.Select(MirBorrowsTest.LentChain)], 2);
 
     // RP8 (PLAN G492-a (iii); J1, the owner's O-264 Q5 (a), O-286 (a)): a comparison's proof reads the recorded bounds of each region it
     // names, each node and bound once (O(N + B) per request), so k chained `var` locals, each with a later store, and m comparisons over

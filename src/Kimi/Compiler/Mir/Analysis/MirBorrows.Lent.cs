@@ -13,10 +13,11 @@ namespace Kimi.Compiler.Mir;
 // written through a pointer (Exposed), a reference reached past a Deref, a runtime Index or a Downcast, a Cast, an Adt or Fill aggregate.
 // A position's steps keep their kinds, classes, arguments and prefixes; a resolved step's Prefix is its own Place's, whose Type it reads.
 // Inputs: the view's body, the Loans' store record and Exposed, final once the Addresses pre-pass has run (it completes Exposed with the
-// holders a direct address names), and MirSteps' walk. Precondition: no Lent or LentAt before the view's Addresses pre-pass has run.
+// holders a direct address names), and MirSteps' walk. Precondition: no Lent or LentAt before the view's Addresses pre-pass has walked
+// its uses (its Place asks every position after the walk and before any own-step entry it makes).
 // Cost: positions are made on demand, the first time a view asks (none in a view that asks none), and kept per view: a read's by its Place,
 // a borrow's by its location and a whole local's lender by the local, so each store is followed and each position's run copied once per
-// view; the lender chain is a loop, not a recursion. Each store followed and each step copied is Work. Readers: none yet (Z5-R1's R-C).
+// view; the lender chain is a loop, not a recursion. Each store followed and each step copied is Work. Reader: MirBorrows.Addresses' Place (R-C).
 // Must not issue a Loan, carry a value, record a problem, intern projections or compare Types.
 internal sealed partial class MirBorrows
 {
