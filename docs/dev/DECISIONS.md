@@ -24666,11 +24666,15 @@ R8-M* and R9-M* by the stage of the recording unit.
       gate's `Unsupported_Kd` -> one `TypeHeightLimit_Kd` at `w == w`); `Callee`'s, `Runs`' and `Parts`' readings are reached by no
       row (a requirement Item's height record is its own Type formation's, in `In` through `TyCtxt.Answered`, before `Callee`'s
       `Witness`, on dev too; a comparison item past 128 meets R5-M170's key limit first).
-    - **SPEC 8.9.1's reading (the Front's C1b):** the resolution forms the conformances of Self's Type to the Contract in declaration
-      order up to the one that names the reference (by 8.9.1 the only one: direct conformances never collide), then that
-      conformance's premises; a refusal while forming an earlier one or a premise is the call's `TypeHeightLimit_Kd`; a later
-      conformance is not formed. Only that forming follows clause order (o1-names-over: one THL at the call; o1-names-swap:
-      accepted).
+    - **SPEC 8.9.1's reading (the Front's C1b; amended by R7-C3 b, F's C3b ruling (A), C-481):** the resolution is
+      `SelectConformance`'s (R7-M82), which judges every conformance of Self's Type to the Contract through `NamesReference` (the
+      candidate count its readers need: two colliding direct conformances are ambiguous), then the selected conformance's premises; a
+      refusal while forming any member's substituted formal or a premise is the call's `TypeHeightLimit_Kd`. The record does not
+      depend on clause order: o1-names-over and o1-names-swap (InstanceCollectorTest names90, namesSwap90) each record one THL at the
+      call; at Box^80, within the height, both orders are accepted (names80, namesSwap80, also generated and run). Rejected for the
+      move: a member whose judgment the height refuses read as not a candidate (a refused judgment is not a no: a program whose second
+      conformance would collide could be accepted unproven; it would also move names90 and namesItem90), and a selection that stops
+      once its answer cannot change (a reader mode parameter: `BindAssociatedName` and the solver read the count).
     - **`TyCtxt.Comparison` is total** (`ComparisonNode`, not nullable): the builder's B1 `Unsupported_Kd` producer
       (`MirBuilder.Compare`) is removed, with the null arms in `Parts`, codegen and the validator. `Compose`'s `_ => None` is the
       broken contract: it composes a template or a Type a site formed within the height, whose conformance Binding proved at that
@@ -25790,6 +25794,37 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: one least location per Loan (it can name a store whose path never reaches the access); a provenance lattice (every body
     pays for a rejected body's fact); writing the fact after the replay (a second write path into a merged problem); keeping entry
     order for R26 (a second structure beside the set).
+- **R7-M82 One selection of a Type's conformance by a Contract** (Front, 2026-11-22; R7-C3 b, PLAN G302, Q-693, D-1143; Major, an
+  acceptance mover; F's V2a2/C3b rulings 1, 3 and 4). `SelectConformance(receiver, contract, reference, scope, out candidates)`
+  (`Binding.Contracts`) is the one answer to which conformance of a Type's declaration a Contract selects (SPEC 8.6.1, 8.4.3). Its
+  candidates are the identities of that Contract declaration that `IsSelectionCandidate`, the one admission test, admits: for a bound
+  reference, the identity's reference is the given one as written or names it at the receiver in the scope (`NamesReference`, the
+  judge's, R7-M24); for a query by declaration (no reference, which the compiler asks), every identity of that declaration. Candidates
+  naming one bound reference are one conformance (SPEC 8.6.1: an explicit one and those implied by refinement; 8.9.2: merging paths;
+  PLAN G798), so any member represents it, since their bindings and mappings must agree and a disagreement is the declaration's error
+  (8.9.2): the selection returns the first member in declaration order, the set's **representative**, not a preference; no candidate
+  is ranked by how its reference is written (SPEC 8.2.3). Two declared directly collide (8.9.1; the clause's DuplicateBinding_Kd) and
+  several by declaration are distinct: both are ambiguous and none is selected. `candidates` publishes the count: each reader says
+  what an ambiguity is for it (the solver Unknown, the index AmbiguousBinding_Kd, the others none), and the one reader that binds one
+  member reads a count above one: **a specification whose qualifier names a conformance of several members gets the located
+  `Unsupported_Kd` at the specification** (order-independent: r1, r2, r1b, r2b; binding a specification to the whole set is PLAN
+  G1300's), and a use of such a projection rests on that limit: `FailConstraint`, the InvalidConstraint record's owner, names as its
+  cause the part a cause's failure rests on when that part is missing information (a conformance on its unsupported specification,
+  which `RestOnSpecification` publishes), so the use's record is derived from the reported `Unsupported_Kd` (rule W; F's ruling 5).
+  `SpecifiesContract` reads the admission test for a path's Contract and its ancestors, so a specification belongs to every member of
+  the conformance its qualifier names, never to one representative. A specification's projection carries the selected conformance's
+  reference (sp2, sp3: `Iter<i32>.Tag` beside `Self is Iter<S.(HasItem).Item>` under `S.(HasItem).Item is i32`). It replaces
+  `ConformanceByDeclaration`, `ConformanceByReference`, `ConformanceForKey`'s and `InstanceContract`'s loops and the solver's two-step
+  lookup. Amends R7-M20's unthreaded list (`SelectConformance` for a query by declaration, final after the InheritedConformances
+  query) and the BoundContracts prohibition's list of declaration queries (`SelectConformance` for `ConformanceByDeclaration`).
+  Rejected: the first match with a count read by each reader (a second copy of the convergence rule); the as-written candidate
+  preferred, for every reader or for specifications only (acceptance would follow a qualifier's spelling, and the comparison would
+  rank rather than admit: F's ruling 4, option (2)); every naming candidate one conformance, two direct ones too (x2's index record
+  lost); a member over a reference Type only or a Contract symbol only; an exact-key shortcut (it hides a second candidate);
+  normalized ImplTable keys (C3 decision 10); for the use's record, widening the Resource-limit walk (RestsOnRecoveryOrLimit) to
+  Unsupported records (a second rule over every check, deriving independent failures too), resting the use on the conformance as a
+  part (it would also derive the use of a conformance with its own record, beyond the ruled forms) and a cause type naming a
+  specification (a new representation for an input the conformance publishes).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
