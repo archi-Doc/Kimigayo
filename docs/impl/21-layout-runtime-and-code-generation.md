@@ -156,7 +156,7 @@ The Kimi Kotonoha this compiler provides ([§22.1](../spec/22-core-execution-and
 | `#CallerLocation` | a function whose failures report the invoking user expression ([§22.5.1](../spec/22-core-execution-and-foreign-functions.md#2251-abort-location)), which its private ABI carries |
 | `#Unsupported` | a declaration whose every use this implementation reports as Unsupported at the use ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) |
 
-A Kimi function or constructor without a definition (§22.1: its Body omitted or holding only its leading region) carries `#Intrinsic` or `#Unsupported`, or is a constructor whose `#Lang` Name the compiler links to an internal function with the same parameters and premises, whose body defines it. Imports (`#LibraryImport`, §22.6) and Containers with empty bodies ([§6.1.1](../spec/06-declarations-and-containers.md#611-source-root-and-nested-containers)) are bodiless by their own rules.
+A Kimi function or constructor without a definition (§22.1: its Body omitted or holding only its leading region) carries `#Intrinsic` or `#Unsupported`, is a constructor whose `#Lang` Name the compiler links to an internal function with the same parameters and premises, whose body defines it, or is a function whose `#Lang` Name the compiler writes as an operation at each call (`ViewStart`: a view's first element's address, [§5.3](../spec/05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing)). Imports (`#LibraryImport`, §22.6) and Containers with empty bodies ([§6.1.1](../spec/06-declarations-and-containers.md#611-source-root-and-nested-containers)) are bodiless by their own rules.
 
 ## 21.4. Windows x64 runtime
 
