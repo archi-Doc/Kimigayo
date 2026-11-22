@@ -20,6 +20,9 @@ namespace Kimi.Compiler;
 //   inside a request (a held answer is Provisional).
 public sealed partial class Binding
 {
+    // OQ2's items limit (BU-29; the owner's O-484 (2 x); SPEC 8.3.3 Limits): a component's request holds at most this many held states.
+    internal const int InferenceStateLimit = 65536;
+
     private readonly Dictionary<AssociatedBinding, int> inferenceBindingIndex = new(ReferenceEqualityComparer.Instance);
 
     private readonly List<InferenceEntry> inferenceBindings = new();
@@ -39,9 +42,6 @@ public sealed partial class Binding
     private readonly Dictionary<(AssociatedBinding Binding, int Hold), HeldAnswer> inferenceValues = new();
 
     private readonly Dictionary<(AssociatedInference Batch, int Hold, int Owner), AssociatedInference> inferenceRuns = new();
-
-    // OQ2's items limit (BU-29; the owner's O-484 (2 x); SPEC 8.3.3 Limits): a component's request holds at most this many held states.
-    internal const int InferenceStateLimit = 65536;
 
     // The held states the requests evaluated in this compilation (design §6, D2-C3: the cost per state is the time over this count).
     internal int InferenceStates { get; private set; }
