@@ -17057,8 +17057,8 @@ resumed by R4-M86 (2026-10-20).
     resting (SPEC 10.1: an unproven candidate is never dropped so that another wins); where every case selects one candidate whose
     own trial reads no split, it is the selection. An Unproven run is a failure only where its premise reads no split binding
     (`PremiseReadsSplit`). Each part awaiting the call is judged as a value call's part is, by one per-part search over the
-    candidate's `form` (`ArgumentPartFails`; `CallType` at the frame of the candidate the canonical run selects,
-    `SelectedCandidate`), and completed through `CompleteNamedPartOnSplit`.
+    candidate's `form` (`ArgumentPartFails`; `CallType` at the frame and columns of the candidate the canonical run selects, as
+    its first evaluation wrote them, R7-M52 D2-3), and completed through `CompleteNamedPartOnSplit`.
   - **The open formed Type** (the owner's O-428 (a)). A resting part of a split call is completed by the one unsplit completion
     (`CompleteValueCallPart`) at its parameter as the canonical case forms it, marked open (`BoundTypeKind.Open`;
     `BoundType.ContainsOpen`; `TyCtxt.Open`) at each position a split binding decides (`OpenForm`, `OpenMarked`: the innermost
@@ -17110,7 +17110,7 @@ resumed by R4-M86 (2026-10-20).
     `ItemCallFails`, `ItemPart`, `ItemPartFails`, `ItemSignatureFits`, `UnformedItemFails`, `RestsOnErasure`, `FitsOpenLayer`,
     `AdaptsAtLayer`, `IsEvidencedSource`, `InferReferencePart`, `FailedMember`, `BlameMisfit`, `SlotBindings`, `DecideErasure`,
     `FitCaseAt`, `JudgeSplitPart`, `FoldRunFailure`, `CompleteFailedPart`, `CompletePartOnSplit`, `CompleteNamedPartOnSplit`,
-    `BindValueCallOnSplit`, `SelectionOnSplit`, `SelectedCandidate`, `ProbedSelection`, `FailUnformedCall`,
+    `BindValueCallOnSplit`, `SelectionOnSplit`, `ProbedSelection`, `FailUnformedCall`,
     `ErasedByEveryCandidate`, `FailUnformedOwned`, `FailErasedOwned`, `OpenForm`, `OpenMarked`, `Unmarked`, `RestsAtOpenPosition`,
     `RestsBelowOpenPosition`, `CompleteOnSplit`, `OpenMarkRemover`, `OpenParts.Of` (the marks' reading; `OpenParts` itself replaced
     the closure binder's `openResult` and keeps its result bit). Also gone with (R): `LeafDisagrees` (once the evidence path judges
@@ -24344,8 +24344,38 @@ R8-M* and R9-M* by the stage of the recording unit.
     mix a behaviour-preserving column move with the selection's result change). **Temporary:** `SelectedCandidate`'s second
     evaluation of the canonical winner (G886-p3), which now writes that candidate's own columns for `FailUnformedCall`; removed by
     R7-P2 D2-3 after commits 3 and 4. **Cost:** per named call one index array of `count x argumentCount` and two Origin arrays of
-    `count x stride` (before one shared stride each, plus `N x` copies for N > 1); Bind time is slot T-333's reading.
-  - Commits 3 and 4 add their parts (design §4's DECISIONS paragraph).
+    `count x stride` (before one shared stride each, plus `N x` copies for N > 1); Bind time is slot T-333's reading. Ended by D2-3
+    (`aa3328987`).
+  - **D2-3: a split call's canonical winner is read from its first evaluation's columns** (behaviour unchanged; `aa3328987`).
+    `FailUnformedCall` forms each awaiting part's parameter from the columns of the canonical run's winner as its first evaluation
+    wrote them (`shaped = canonical.Winner`): the canonical run (`ProbeSelection`) evaluates the call's one group in `RentCandidates`'
+    order, so the winner indexes the call's evaluation. **Rule (the writers):** only a candidate's first evaluation writes its mapping
+    and row. **Deleted:** `SelectedCandidate`, the second evaluation of the winner under `BeginSelectionQuery`. **Rejected:**
+    `Memory<BoundOrigin>` slices in the lambda's state; keeping the re-trial and widening the query's saved state to its side
+    effects (positions, child rows, stamps, the BU-240 fields, `HeldRefusal`). **Evidence:** probe P-3 (corpus reading; 0 difference
+    lines, 8 reaches, the suite and both corpora).
+  - **Commit 3: a candidate trial writes one result row** (behaviour unchanged; `0ee8b22fd`). `TryCandidate` and `TryCandidateCore`
+    take the solution, the expected result, the operations and `ref EvaluatedCandidate` (10 -> 4 parameters, 0 outs): the trial
+    writes the row's eight trial members (`State`, `DefaultsUsed`, `Unsolved`, `ClosureReceiver`, `IndependentRejection`,
+    `ConstraintFailure`, `PremiseUnknown`, `Acquisition`) on every path, from the `ArgumentMap` its caller wrote. The named call's
+    evaluation tries into the candidate's row; `CheckDefaulted` and the waiting re-trial try a local copy (`CheckDefaulted` takes
+    back only `State` and `Unsolved`); the fixed re-check its own seeded row. **The acquisition:** `EvaluatedCandidate.Acquisition`
+    (an Applicable trial's absent spelling, SPEC 15.1.5); `LastAcquisition(in CallEvaluation)`, the last such row in evaluation
+    order, is what the NoneApplicable arm reads; the propagation of the field from a trial to its successors is deleted, and the
+    field stays `AdaptInput`'s out-channel (O4's Temporary). **The requirement reference (SPEC 8.6.4):** one expression over the call,
+    `CallEvaluation.RequirementContractOf(i)`, a trial's input, not a row member; `Solution(evaluation, i, ...)` fills the view
+    `SlotSolution.RequirementContract`, which `Prove` reads; the trial saves, sets and restores the ambient field from the view (the
+    contract solver's request input, O3); the selected call's winner and plan read the accessor. **`SelectAt`** clears the
+    reference beside the acquisition and the cause. `ErasureIncomparable` takes the evaluation; `FailUnboundSlots` the winner's
+    solution (12 -> 3). **Rejected:** a stored `EvaluatedCandidate.RequirementContract` (O-1 (b)); a `CandidateOperations` view over
+    the eight array + stride slices (O-4 (a): `SelectBest`, `PremisesCannotAffect`, `ComparableCallableSlots` and `CandidateOrder`
+    serve four selections, P3's input); row copies of `premiseReadsSplit` and `refusedOnSplit` (O-5: BU-240 temporaries with G886's
+    removal); commit 4 as a pure move before E3b-1 (O-2 (b)). **Evidence:** P-1's A6, A7, A8 and C2 (corpus reading; 0 FAIL lines;
+    the reference null at every SelectAt entry); snapshot 0, semantic HIR+MIR 0. **Cost:** its T slot after T-333 (A a21eb286f, B
+    0ee8b22fd; c34p2-c34-timing.ps1).
+  - **The NoneApplicable record reads the rows** (commit 4, O-2 (a)): written by R7-M75 (R7-E3b-1) as
+    `RecordNoneApplicable(in CallEvaluation)`, the NoneApplicable writer, which reads the rows, the operation columns and
+    `LastAcquisition` and runs no fit, inference or proof.
   - Amended by R7-M73 (G1128): the store's column list reads the slot bindings for the invariant marks.
 - **R7-M53 G396's remainder and G147 (2) are R7's stream Z: every no-stage producer removed, not excepted** (K for the Middle's D-872
   and the Front's D-874, 2026-11-19; the owner's order, DECISIONS Q22; R7 plan revision 102's stream Z and §10.1 item 6; censuses on
