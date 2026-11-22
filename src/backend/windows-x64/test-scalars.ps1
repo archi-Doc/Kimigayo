@@ -25,9 +25,8 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $tools = @{}
 foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-dlltool', 'llvm-readobj', 'llvm-nm')) { $tools[$name] = Join-Path $LlvmBin "$name.exe" }
 $profile = Read-KimiWindowsProfile
-$kernel = Get-KimiInstalledKernel32 $ToolchainRoot
-$archive = Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
-if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw "Installed backend is missing. Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM $($profile.llvmVersion) archive, extracted>." }
+$kernel = Get-KimiKernel32
+$archive = Get-KimiBackendArchive
 Write-Output 'Toolchain verification: not-performed'
 $allowedSymbols = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($symbol in $profile.providedSymbols) { $null = $allowedSymbols.Add($symbol) }
@@ -51,7 +50,7 @@ function Get-NativeFileHash([string] $Path) {
     $stream = [IO.File]::OpenRead($Path)
     try { [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
 }
-$environment = @(foreach ($name in @('opt', 'llc', 'llvm-nm', 'lld-link')) { $tools[$name] }) + @($archive, $kernel.path) +
+$environment = @(foreach ($name in @('opt', 'llc', 'llvm-nm', 'lld-link')) { $tools[$name] }) + @($archive, $kernel) +
     @(foreach ($name in @('test-scalars.ps1', 'test-scalar-fixture.ps1', 'test-scalar-process.ps1', 'expected-output.ps1', 'toolchain.ps1', 'kernel32.ps1', 'profile.json')) {
         Join-Path $PSScriptRoot $name
     })

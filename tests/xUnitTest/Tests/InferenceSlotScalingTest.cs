@@ -156,6 +156,24 @@ public class InferenceSlotScalingTest
         Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{form} [{unit}]: work {string.Join(", ", work)}");
     }
 
+    // R7-P1's cost rows for the own paths P3 merges into the one call pipeline (R7-P0's census §1): a chain of depth 10, 20 and 40, each
+    // level one call of the form, valid (SPEC 10.1, 10.4, 10.5.1): a Function-typed value (vc), an overloaded Function Item selected at a
+    // parameter's Function Type (fi), an implicit constructor whose omitted base clause selects its base's (ic, a chain of derived structs,
+    // SPEC 6.3.6) and an enum Case whose payload is a direct call's result (ec). The work is the shared pipeline's count, as in the rows above;
+    // a form whose own path that count does not see today is Explicit until P3 routes it through the pipeline: on dev 1c6bc5939 fi, ic
+    // and ec grow linearly, while value calls are not counted at all (vc's count is 0 at every depth, and a check at depths 10 to 80
+    // shows no growth in time either), so vc states that P3's pipeline counts them. No existing row pins vc's form.
+    [Theory]
+    [InlineData("P3", "vc", Explicit = true)]
+    [InlineData("guard", "fi")]
+    [InlineData("guard", "ic")]
+    [InlineData("guard", "ec")]
+    public void EachOwnPathCallFormTakesWorkLinearInItsDepth(string unit, string form)
+    {
+        long[] work = [.. new[] { 10, 20, 40 }.Select(depth => Work(Bound(OwnPathChain(form, depth))))];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{form} [{unit}]: work {string.Join(", ", work)}");
+    }
+
     // G379 (a)'s C3 (SPEC 10.5.1, 10.1 step 5): a chain of nested Tuple literals with an erasure at its innermost element, which step 5 reads
     // among the element positions (tl): at depth 10, 20 and 40 the first run is inapplicable there and run<T> is selected, and the one call's
     // selection work does not grow with the depth (each element position is fitted and read once per candidate). From depth 80 the Type's
@@ -219,6 +237,33 @@ public class InferenceSlotScalingTest
                 $"    var a: i32 = 1\n    let r = a@ref\n    let c = func [r] (x: ref/i32 during q) -> i32 => 0\n    return run(q, {argument})\n()"
             : "func identity<T>(v: T) -> T => v@move\nfunc take(value: i64) -> i32 => 0\nfunc pick(v: i32) -> i32 => v\nfunc pick(v: i64) -> i64 => v\n" +
                 $"func k(c: bool) -> i32\n    return take({argument})\n()";
+    }
+
+    private static string OwnPathChain(string form, int depth)
+    {
+        if (form == "ic")
+        {
+            return "open struct C0\n    public init() => ()\n" + string.Concat(Enumerable.Range(1, depth).Select(static i => $"open struct C{i}: C{i - 1}\n")) + "()";
+        }
+
+        var argument = "1";
+        for (var i = 0; i < depth; i++)
+        {
+            argument = form switch
+            {
+                "vc" => $"g({argument})",
+                "fi" => $"run(pick, {argument})",
+                _ => $"tag(E.A({argument}))",
+            };
+        }
+
+        var head = form switch
+        {
+            "vc" => "func k(g: (i32) -> i32) -> i32\n",
+            "fi" => "func pick(v: i32) -> i32 => v\nfunc pick(v: i64) -> i64 => v\nfunc run(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc k() -> i32\n",
+            _ => "enum E\n    A(i32)\nfunc tag(e: E) -> i32 => 0\nfunc k() -> i32\n",
+        };
+        return $"{head}    return {argument}\n()";
     }
 
     private static long[] ColdBytes(string workload, int[] calls)
