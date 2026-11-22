@@ -3423,7 +3423,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Loan records the layer's own-step entry and positions (R4-M117 item 6 states the meaning), when a program needs the form.
     Narrowed by R4-M235 (Z5-R1, Q-668): a non-raw Borrow of such a Place issues its ordinary Loan and no mark; the limit is a read
     whose own-step row is Unplaced, at the read, in a view with a borrow the base marked; a Copy or Move read of an enclosing Place
-    keeps the mark until Z5-R2 (R-A).
+    keeps the mark until Z5-R2 (R-A). The Copy/Move clause is removed by R4-M238 (Z5-R2): its mark and record are deleted.
   - r3 is removed (PQ-5): a default's raw stores are the omitting call's, applied by its own rows (window1 and window2 err, window3 is
     valid). No `Raw.slice` row and no `MirDescriptors` change (PQ-4); A5 reads neither `RawMembers` nor `RawStep(raw)` (PQ-7).
   - Supersedes R4-M36's "a raw pointer … hold[s] none", R4-M73's `Raw` bullet (`MirWrites.Raw`), A3 E16's raw clause, R4-M93's r3, and
@@ -7840,7 +7840,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     carry it.
   - PQ-10, narrowed: a read whose row is Unplaced (an owner no Place names, or no run naming one) is the location's limit, a located
     `Unsupported_Kd` at the read, in a view with a borrow the base marked; a Copy or Move of an enclosing Place through no dereference
-    keeps the mark until Z5-R2.
+    kept the mark until Z5-R2 (removed by R4-M238).
   - Rejected: dropping a parent's Loan by its position (Revision 0's `Lending`: SPEC 15.6 Holders, R4-M191); the Type match (Z5-M1,
     B1-B3); the limit by the parents' Loans (E3); the limit on every "none" read (pa, tw). Z5-F's per-entry position is not published.
 - **R4-M236 Z19 (G396 (4) 2g-5): R26-borrow takes rule W's derivation; a case-decided borrow layer makes a Ref's own atom
@@ -7889,6 +7889,29 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Rows.** `MirEffectsTest.DepthLimit`'s rel65, rel65-loud, wipe65, clear65 and their twins, and
     `AChainGrowingThroughADestructorEndsAtTheBound`; records move `Unsupported_Kd` -> `OwnershipDepthLimit_Kd` at the obligation on
     programs the base rejects (Q13), none in the snapshot corpus; no acceptance move.
+- **R4-M238 Z5-R2: a Copy or Move read of a Tuple or fixed-array Place enclosing a `during self` layer carries its owner's own-step
+  entry, which exposes its owner's storage only** (Middle, 2026-11-23; the owner's O-482 (a); R7 plan Z5, PLAN G212, G396 (3); Q-694,
+  D-1145; commit 013c24bf0; design `middle\notes\z5r2-design.md` with Revision 1; removes the Copy/Move clause of R4-M120's PQ-10
+  bullet as R4-M235 left it)
+  - A5's own-step row of a Place through no borrow or raw Deref is decided by one owner walk for every Type the table lists: a raw
+    pointer whose owner's part is a layer stepping Own, and a Tuple or fixed array enclosing one inline within the same holding value
+    (SPEC 5.7 Reading a Field: element by element). A Copy or Move read of the Place carries the row's entry with its layer, and the
+    local it fills carries it whole (M-R2); a Move reads as a Copy (5.7 Writing) and departs no owner (5.2.1 (3)).
+  - An own-step entry exposes its owner's storage in the local, not the whole root (SPEC 5.7's Origin table: `raw/T during self`
+    addresses "storage the value holding the layer owns: an own step of that value", and 5.7 Fits and claims keeps a defined access
+    within it): A5's per-local record keeps `OwnerExposed` beside `ExposedHolder`; every reader of "a pointer the body formed may
+    write the local" reads both (`Exposed`), and `Lender` reads the plain address's bit alone (`ExposedHolder`: 15.6 Addresses,
+    `P@raw` through no dereference addresses the holder at the root, the whole holder), since no position it follows (a root's one
+    whole store through Copies, Moves and Tuple or fixed-array aggregates) lies in an owner's storage (a struct's Field, a Case
+    payload's component, a handle's payload). A reference stored beside the owner in the same root keeps its exact lender, whether the
+    walk or R-C forms the entry; Z5-R1's order (positions before entries) stays `Place`'s precondition.
+  - The scaling rows: `CallableRegionScalingTest.EnclosingCopiesScaleWithTheDenseTerm` (A3 6.3's existing dense term, "accesses x live
+    nodes", R4-M57 and PLAN G768's open item C: each Copy is an access of `b`, which its entry borrows, and each gather's BasePass
+    scans the words of the entry's n holders; bound at the dense rows' factor 5) and `ADeepEnclosingReadIsWithinItsWalk` (the
+    per-prefix walk's O(k²), the base's order).
+  - Rejected: the entry added at the read by a Type test (a second copy of the row rule); the mark kept for Moves (a Move's value is
+    its Copy's); per-element values (R4-M160, R4-M191, O-230 Q1 (a)); narrowing the prefix rows (option (e)) alone (the Copy's own row
+    keeps the cause); a clause for Tuple roots (one form's case).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
