@@ -715,17 +715,19 @@ public sealed partial class MirBorrowsTest
     // SPEC 5.3, 8.15.3 (PLAN G597's L2; the Middle's C-476 C3): the MIR-layer observation of MirBuilder.Form, on Storage.sliceUniq's
     // body, labelled from SPEC first, valid. Its call `viewStart(state.storage, selected.start)` is no Call: it is the keyed Storage over
     // the remainder's raw pointer Place `state.storage`, `storage(_1.0, copy _n.0, const type R)`, with the selected start and a Type
-    // token of the body's open R, which each instance decides (fail-before: without Form's branch the call stays a Call and no keyed
-    // Storage line appears). Its view start is `state.storage + start` (SPEC 5.3), an address among the elements the remainder's pointer
-    // reaches in what `source` covers, never the by-value parameter state's own storage, so the view is `during source` as the
-    // signature states: the library check (A1-A5 over every library body) reports nothing, with and without MirSteps.Index's raw row
-    // (it writes nothing through its view), so it pins no difference between the readings.
+    // token of the body's open R, which each instance decides (fail-before: without Form's branch the call stays a Call, which the MIR
+    // validator records as an Operation finding, and no keyed Storage line appears). Its view start is `state.storage + start` (SPEC
+    // 5.3), an address among the elements the remainder's pointer reaches in what `source` covers, never the by-value parameter state's
+    // own storage, so the view is `during source` as the signature states: the library check (A1-A5 over every library body) and the
+    // MIR validator report nothing, with and without MirSteps.Index's raw row (it writes nothing through its view), so it pins no
+    // difference between the readings.
     [Fact]
     public void SliceUniqsViewStartAddressesTheRemaindersElements()
     {
         var c = SemanticSnapshotTest.Bind("library").Compilation;
         var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), 1);
         Assert.Empty(program.Problems.All.ToArray().Select(static x => $"{x.Code} {x.Subject.Module}:{x.Subject.Id}"));
+        Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(
             static x => x.Key.Decl is { Name: "sliceUniq", Scope.Owner: DeclarationContainerKoto { Name: "Storage" } });
         var text = new StringBuilder();
