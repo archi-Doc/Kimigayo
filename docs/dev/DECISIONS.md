@@ -23243,6 +23243,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   `ArgumentMapping.AllowsPositionalArgument`'s receiver read) with R7-P3 (its row normalizes each form to `FnSig`), the other 25 (with
   AssociatedInference.cs:309's read through a Type-node local) by R7-Y4 (the Koto forwarding's deletion, after N5, T2 and E move the
   Binding reads; Y4's zero-reference row finds any left).
+  - Superseded in part by R7-M77 (R7-V2e, Q-646): the clause "`SignatureEquals` stays the comparison until R7-V2e's
+    `SignatureKey`": the key is SPEC 9.1's `SignatureHash`, with no key type; `SignatureEquals` stays the comparison.
 - **R7-M38 A projection's supply reaches the Types identical with it, through a cycle as the walk's least fixpoint, and an extension
   ends at 32 rounds (PLAN G881, G881b)** (Front, 2026-11-19; R7-C2; Major, an acceptance mover; the owner's O-309 (b), O-320 (a)
   (G881 and G881b land together), O-321 (b) (the bound and one closed-vocabulary entry, `BindingFailure.PremiseClosureLimit`, 89 of
@@ -24846,6 +24848,35 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Supersedes: the A5 Step 2 plan's 2g-4a and 2g-4b done conditions (ledger rows) and 2g-3's "rows b1 and b3", void with the ledger.
   - Rejected: a location rule per family in each analysis (three copies of one choice); A3 judging unbuilt syntax (a second judge of
     SPEC 14.11); keeping an inline copy's failures apart (a key per operation for one table row).
+- **R7-M77 SPEC 9.1's duplicate check compares only functions of one `SignatureHash`** (Front, 2026-11-22; R7-V2e, the R7 plan
+  §5.1 V2, Q-646, D-1058; Major, behaviour-preserving; design `front\notes\V2\design-v2e.md` option B, its independent review ACCEPT
+  WITH CONDITIONS, V2e rulings 1 and 2; the implementation review ACCEPT WITH CONDITIONS, its T1, V2e ruling 3) SPEC 9.1.
+  - **Rule.** `ValidateSignatures` hashes each non-specialization function of a member group once (`SignatureHash` over `FnSig`: the
+    generic and parameter counts and, of each parameter Type and of its direct parts where `SignatureEquals` compares parts, what
+    `SignatureEquals` compares before any part (`SignatureLayer`): Kind, Semantics, Length, the part count and the symbol, by slot
+    number or by identity; null when a parameter Type is unbound), links each function to the next later one of its hash
+    (`SignatureGroup`), and compares a function only with those, in today's pair order, so the `Fail`/`FailDuplicate` sequence is
+    unchanged. Equal Signatures have equal hashes (each hashed field is one `SignatureEquals` requires equal, or equal by reference),
+    so no duplicate is missed. `SignatureEquals` and `SignatureLayer` classify a Type's kind by one pair of predicates
+    (`SignaturePartsCompared`, `SignatureSymbolBySlot`), so the two cannot drift. `SignatureEquals` stays the one comparison of two
+    declared signatures and of two Types after a substitution (8.4.2, 8.4.3, 8.6.3, 8.13.1, the virtual slot, 7.4's slot sharing).
+  - **Linear** only in a group whose Signatures differ within the top two layers of their parameter Types: Signatures that differ
+    only deeper or in a length expression (n overloads `m(x: Array<Array<S_i>>)`) share a hash and are still compared pairwise. A
+    full-depth hash would walk shared Type DAGs; hashing an interned Type by identity is wrong, since Origins distinguish interned
+    Types but not Signatures (SPEC 9.1).
+  - **Records (Q13):** none move; pinned by `DuplicateDiagnosticTest`'s `DuplicateSignatureChecksAreLinearInTheGroup` (S1, reading
+    `DuplicateCheckWork`) and `EveryLaterFunctionOfOneSignatureHashIsCompared` (a same-hash chain walked past an unequal function;
+    a slot inside a direct part).
+  - **Supersedes** R7-M37's clause "`SignatureEquals` stays the comparison until R7-V2e's `SignatureKey`" (and the 11-08 design's
+    "`SignatureEquals` kept only as the key's equality"): its reason no longer holds, since no key type has a second reader (override
+    and witness candidates compare after a per-pair substitution, and `MatchesRequirement` is three-valued, an unbound input
+    pending), so the plan's `SignatureKey` is this hash, with no key type.
+  - **Left pairwise** (PLAN G1249): SPEC 7.4's checker (pairwise by its rule), 7.3's receiver scan over a group's receivers, 8.13's
+    specialization-key scans and 8.4.3's same-name requirement scan.
+  - Rejected: a `SignatureKey` struct (option A: a wrapper whose only content is the hash, one reader, +40 lines); equality classes
+    keyed by Signature (the visited pairs' order would then rest on `SignatureEquals` being an equivalence); override and witness
+    candidates by key; sorting the group by hash (longer, the visit order restored); a `Clear` per group; a bool-steered recursive
+    layer.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
