@@ -53,8 +53,8 @@ internal static class NativeAllocationAudit
             }
         }
 
-        AssertExitsThroughHook(ir);
-        ir = Interpose(Interpose(Interpose(ir, "HeapAlloc", "audit_alloc"), "HeapFree", "audit_free"), "__kimi_exit", "__kimi_audit_exit");
+        AssertOsCallsInLayer(ir);
+        ir = Interpose(Interpose(Interpose(ir, RuntimeAbi.HeapAllocate.Name, "audit_alloc"), RuntimeAbi.HeapRelease.Name, "audit_free"), "__kimi_exit", "__kimi_audit_exit");
         if (transferred is not null)
         {
             // A bound without the routine would count nothing, and a program whose bodies transfer bytes counts them only through calls
@@ -99,7 +99,7 @@ internal static class NativeAllocationAudit
             @audit_frees = private global i64 0
             @audit_bytes = private global i64 0
             @audit_transferred = private global i64 0
-            define internal ptr @audit_alloc(ptr %heap, i32 %flags, i64 %size) {
+            define internal ptr @audit_alloc(i64 %size) {
             entry:
               %previous = load i64, ptr @audit_allocations
               %count = add i64 %previous, 1
@@ -112,30 +112,56 @@ internal static class NativeAllocationAudit
             rejected:
               ret ptr null
             allocate:
-              %data = call ptr @HeapAlloc(ptr %heap, i32 %flags, i64 %size)
+              %data = call ptr @{{RuntimeAbi.HeapAllocate.Name}}(i64 %size)
               ret ptr %data
             }
-            define internal i32 @audit_free(ptr %heap, i32 %flags, ptr %data) {
+            define internal i64 @audit_free(ptr %data) {
             entry:
               %previous = load i64, ptr @audit_frees
               %count = add i64 %previous, 1
               store i64 %count, ptr @audit_frees
-              %ok = call i32 @HeapFree(ptr %heap, i32 %flags, ptr %data)
-              ret i32 %ok
+              %error = call i64 @{{RuntimeAbi.HeapRelease.Name}}(ptr %data)
+              ret i64 %error
             }
 
             """;
         ScalarEmissionTest.WriteFixture(name, ir, stdout, exit, stderr);
     }
 
-    // The process exits only through __kimi_exit (IMPL 21.4.2), where an audit hooks: ExitProcess may appear only on its
-    // one declaration and inside that definition.
-    internal static void AssertExitsThroughHook(string ir)
+    // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1): the platform layer owns the module's OS calls. Every mention of a runtime kernel32
+    // function (TargetProfile.Windows.RuntimeDeclarations) but its one declaration lies inside a layer routine's definition
+    // (RuntimeAbi.PlatformRoutines), and ExitProcess's inside __kimi_exit's, so the process exits only there, where an audit hooks.
+    internal static void AssertOsCallsInLayer(string ir)
     {
-        var exit = Assert.Single(Regex.Matches(ir, @"(?ms)^define [^\n]*@__kimi_exit\(.*?^\}"));
-        var rest = ir.Remove(exit.Index, exit.Length);
-        var declaration = Assert.Single(Regex.Matches(rest, @"(?m)^declare [^\n]*@ExitProcess\([^\n]*$"));
-        Assert.DoesNotContain("ExitProcess", rest.Remove(declaration.Index, declaration.Length), StringComparison.Ordinal);
+        var offenders = new List<string>();
+        var definitions = new Regex(@"(?ms)^define [^\n]*?@([^(\s]+)\(.*?^\}");
+        foreach (Match definition in definitions.Matches(ir))
+        {
+            var name = definition.Groups[1].Value;
+            var layer = Array.Exists(RuntimeAbi.PlatformRoutines, x => x.Name == name);
+            foreach (var (symbol, _) in TargetProfile.Windows.RuntimeDeclarations)
+            {
+                var allowed = layer && (symbol != "ExitProcess" || name == RuntimeAbi.Exit.Name);
+                if (!allowed && Mentions(definition.Value, symbol))
+                {
+                    offenders.Add(name + " mentions " + symbol);
+                }
+            }
+        }
+
+        var outside = definitions.Replace(ir, string.Empty);
+        foreach (var (symbol, _) in TargetProfile.Windows.RuntimeDeclarations)
+        {
+            var lines = outside.Split('\n').Where(x => Mentions(x, symbol)).ToArray();
+            if (lines.Length > 1 || (lines.Length == 1 && !lines[0].StartsWith("declare ", StringComparison.Ordinal)))
+            {
+                offenders.Add("the module text mentions " + symbol + " outside its declaration");
+            }
+        }
+
+        Assert.Empty(offenders);
+
+        static bool Mentions(string text, string symbol) => Regex.IsMatch(text, "@" + Regex.Escape(symbol) + @"(?![\w.$])");
     }
 
     // Replaces the one occurrence of anchor; any other count fails.

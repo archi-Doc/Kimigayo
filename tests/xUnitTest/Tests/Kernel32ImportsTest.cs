@@ -33,7 +33,7 @@ public sealed class Kernel32ImportsTest
         Assert.Equal(ToolchainIdentity.Kernel32DefinitionSha256, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(definition))));
         var exports = definition.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal);
         Assert.True(exports.SetEquals(TargetProfile.Windows.Supply("kernel32")!.Symbols));
-        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
+        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsPlatform.ll.in"));
         foreach (Match match in Regex.Matches(runtime, @"declare dllimport .*?@(\w+)\("))
         {
             Assert.Contains(match.Groups[1].Value, exports);
@@ -68,6 +68,7 @@ public sealed class Kernel32ImportsTest
     [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1912\n")]
     [InlineData("{{__kimi_exit}}\n  ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)\n", "  ret ptr inttoptr (i64 4096 to ptr)\n")]
     [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
+    [InlineData("{{__kimi_exit}}\n[{{os_prefix_length}} x i8] c\"{{os_prefix}}\"\n", "[8 x i8] c\" (win32=\"\n")]
     public void RuntimeTemplateSplicesEachDefinitionOnce(string template, string body)
         => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
 
@@ -94,18 +95,18 @@ public sealed class Kernel32ImportsTest
         Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, TargetProfile.Windows.UnmappedBound - 1);
     }
 
-    // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, the Windows runtime's,
-    // the Array runtime's or the test runtime's (the definitions, the reason indices, the reason table and its count, the ABI
-    // constants), by its text throughout the whole text wrote.
+    // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, the runtime's (the
+    // platform layer and the common part), the Array runtime's or the test runtime's (the definitions, the reason indices, the reason
+    // table and its count, the ABI constants), by its text throughout the whole text wrote.
     [Theory]
-    [InlineData("WindowsRuntime")]
+    [InlineData("Runtime")]
     [InlineData("TestRuntime")]
     public void RuntimeTemplateExpandsAsEachMarkersReplacement(string runtime)
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
         var (template, definitions) = runtime switch
         {
-            "WindowsRuntime" => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in")), RuntimeAbi.RuntimeDefinitions),
+            "Runtime" => (LlvmModuleText.RuntimeTemplate, RuntimeAbi.RuntimeDefinitions),
             _ => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll")), Array.Empty<FunctionAbi>()),
         };
         var expected = template;
@@ -132,8 +133,7 @@ public sealed class Kernel32ImportsTest
     [InlineData("{{__kimi_destroy_string}}\n", "{{__kimi_destroy_string}}\n{{__kimi_destroy_string}}\n")]
     public void ABrokenMarkerLineOfTheRuntimeFails(string marker, string replacement)
     {
-        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var template = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
+        var template = LlvmModuleText.RuntimeTemplate;
         Assert.Contains(marker, template, StringComparison.Ordinal);
         Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(
             template.Replace(marker, replacement, StringComparison.Ordinal), RuntimeAbi.RuntimeDefinitions));
@@ -173,7 +173,7 @@ public sealed class Kernel32ImportsTest
     public void RuntimeDeclarationTableMatchesTheEmittedDeclarations()
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in")) +
+        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsPlatform.ll.in")) +
             File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll"));
         var declared = new List<string>();
         foreach (Match match in Regex.Matches(runtime, @"(?m)^declare dllimport (\S+) @(\w+)\(([^)]*)\)(.*)$"))

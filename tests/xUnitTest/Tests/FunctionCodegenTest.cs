@@ -1154,7 +1154,7 @@ public sealed partial class FunctionCodegenTest
     {
         var (ir, text) = Parse(source);
         var definition = Assert.Single(
-            ir.Functions,
+            ir.Program,
             x => x.Signature == callee && !x.Instructions.Any(y => y.Opcode == "call" && y.Callee is { } c && c.Signature == callee));
         var site = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Opcode == "call" && x.Callee == definition);
         Assert.Equal(call, site.Shape);

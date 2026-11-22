@@ -118,7 +118,7 @@ for ($mode = 0; $mode -le 30; $mode++) {
                 12 { 'inttoptr (i64 65536 to ptr)', '4294967298' }
             }
             $expectedError = if ($mode -eq 8 -or $mode -eq 12) { '-1' } else { '-2' }
-            "  %result = call i64 @__kimi_write_bytes(i32 -11, ptr $ptr, i64 $length)`n  %ok = icmp eq i64 %result, $expectedError`n  %code = select i1 %ok, i32 0, i32 111`n  call void @__kimi_exit(i32 %code)`n  unreachable"
+            "  %result = call i64 @__kimi_write_bytes(i32 1, ptr $ptr, i64 $length)`n  %ok = icmp eq i64 %result, $expectedError`n  %code = select i1 %ok, i32 0, i32 111`n  call void @__kimi_exit(i32 %code)`n  unreachable"
         }
         13 { "  call void @__kimi_free(ptr null, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         14 { "  %memory = call ptr @__kimi_alloc(i64 0, ptr @test_location, i64 13)`n  call void @__kimi_free(ptr %memory, ptr @test_location, i64 13)`n  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }

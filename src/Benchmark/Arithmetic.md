@@ -31,7 +31,7 @@ from the median and time seven more fresh processes. Process startup remains inc
 Report IR bytes (original at O0, optimized at O2), executable bytes and the PE `.text` virtual/raw sizes separately. `.text` includes the
 linked runtime, so it is a whole-program comparison, not an isolated function size.
 
-`ArithmeticCostTest` independently asserts zero warm compiler allocation and counts actual native HeapAlloc/HeapFree
-calls and bytes with `NativeAllocationAudit`, retaining the checksum and normal startup/cleanup. Instrumented fixtures
+`ArithmeticCostTest` independently asserts zero warm compiler allocation and counts actual native heap block
+allocations, releases and bytes (the platform layer's block routines) with `NativeAllocationAudit`, retaining the checksum and normal startup/cleanup. Instrumented fixtures
 are used only for allocation verification, never timing. Alias, effects, failure, destruction and setter semantics are
 covered by the functional tests and current Program 37 (former 43). Do not infer speedups or universal allocation guarantees from this workload.

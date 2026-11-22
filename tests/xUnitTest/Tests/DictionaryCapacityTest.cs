@@ -55,7 +55,7 @@ public class DictionaryCapacityTest
     public void AllocationFailureLeavesThePreviousHandleUntouched()
     {
         var (runtime, reserve, _) = Runtime();
-        var ir = runtime.Replace("call ptr @HeapAlloc(", "call ptr @probe_fail_alloc(", StringComparison.Ordinal);
+        var ir = runtime.Replace("call ptr @__kimi_heap_allocate(", "call ptr @probe_fail_alloc(", StringComparison.Ordinal);
         const string abort = """
             define internal void @__kimi_abort(i32 %reason, ptr %location, i64 %location_length, i64 %error) noreturn #0 {
             entry:
@@ -78,7 +78,7 @@ public class DictionaryCapacityTest
             """;
         ir = DynamicArrayCapacityLimitTest.ReplaceDefinition(ir, "__kimi_abort", abort);
         ir += "\n@probe_handle = private global { ptr, i64, i64, i64, i64, i64, i64 } { ptr @probe_memory, i64 0, i64 4, i64 0, i64 0, i64 0, i64 0 }\n" +
-            "define internal ptr @probe_fail_alloc(ptr %heap, i32 %flags, i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
+            "define internal ptr @probe_fail_alloc(i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
         WriteProbe("AllocationFailure", ir, $"  %reserved = call i64 @{reserve}(ptr @probe_handle, i64 24, i64 5, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 0, string.Empty);
     }
 

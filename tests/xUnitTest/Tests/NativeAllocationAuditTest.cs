@@ -24,14 +24,18 @@ public class NativeAllocationAuditTest
     // An exit that bypasses __kimi_exit, as a generator calling the import directly would write it.
     private const string DirectExit = "define internal void @audit_direct_exit() {\nentry:\n  call void @ExitProcess(i32 0)\n  unreachable\n}\n";
 
+    // A block taken from the process heap outside the platform layer, as the runtime took it before the layer (the Tatara plan's B7r1).
+    private const string DirectAllocation =
+        "define internal ptr @audit_direct_alloc() {\nentry:\n  %heap = call ptr @GetProcessHeap()\n  %data = call ptr @HeapAlloc(ptr %heap, i32 0, i64 1)\n  ret ptr %data\n}\n";
+
     [Theory]
-    [InlineData("Control", "call ptr @HeapAlloc(")]
-    [InlineData("TailNoalias", "tail call noalias ptr @HeapAlloc(")]
+    [InlineData("Control", "call ptr @__kimi_heap_allocate(")]
+    [InlineData("TailNoalias", "tail call noalias ptr @__kimi_heap_allocate(")]
     public void EveryAllocationSpellingIsCounted(string name, string spelling)
         => Audit(name, Append, 1, 16, transformIr: ir =>
         {
-            Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal); // Every runtime allocation site, respelled.
-            return ir.Replace("call ptr @HeapAlloc(", spelling, StringComparison.Ordinal);
+            Assert.Contains("call ptr @__kimi_heap_allocate(", ir, StringComparison.Ordinal); // Every runtime allocation site, respelled.
+            return ir.Replace("call ptr @__kimi_heap_allocate(", spelling, StringComparison.Ordinal);
         });
 
     // A count below or above its bound fails the run.
@@ -42,8 +46,8 @@ public class NativeAllocationAuditTest
         => NativeAllocationAudit.WriteFixture("NativeAllocationAudit" + name, Append, new(minimum, maximum), 1, 16, exit: 93, stderr: string.Empty);
 
     [Theory]
-    [InlineData("HeapAlloc")]
-    [InlineData("HeapFree")]
+    [InlineData("__kimi_heap_allocate")]
+    [InlineData("__kimi_heap_release")]
     [InlineData("__kimi_exit")]
     public void UnredirectedReferenceFails(string symbol)
     {
@@ -51,9 +55,25 @@ public class NativeAllocationAuditTest
         Assert.Throws<DoesNotContainException>(() => Audit("Stray", Append, 1, 16, transformIr: ir => ir + stray));
     }
 
-    [Fact]
-    public void DirectExitFails()
-        => Assert.Throws<DoesNotContainException>(() => Audit("Exit", Append, 1, 16, transformIr: ir => ir + DirectExit));
+    // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1): a kernel32 call outside the platform layer's routines, the exit's outside __kimi_exit,
+    // fails the audit before any run.
+    [Theory]
+    [InlineData(DirectExit)]
+    [InlineData(DirectAllocation)]
+    public void AnOsCallOutsideTheLayerFails(string definition)
+        => Assert.Throws<EmptyException>(() => Audit("OsCall", Append, 1, 16, transformIr: ir => ir + definition));
+
+    // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1): Hello's module and a Dictionary program's, which also defines the nullable Alloc, call
+    // kernel32 only inside the platform layer's routines and exit only through __kimi_exit.
+    [Theory]
+    [InlineData("Console.writeLine(\"Hello, world!\")", false)]
+    [InlineData(Entries, true)]
+    public void TheOsCallsLieInThePlatformLayer(string source, bool nullable)
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));
+        Assert.Equal(nullable, ir.Contains("define internal ptr @__kimi_try_allocate(", StringComparison.Ordinal));
+        NativeAllocationAudit.AssertOsCallsInLayer(ir);
+    }
 
     [Theory]
     [InlineData("declare dllimport ptr @HeapReAlloc(ptr, i32, ptr, i64)")]

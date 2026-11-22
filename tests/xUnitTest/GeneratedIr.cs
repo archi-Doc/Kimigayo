@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.RegularExpressions;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -12,9 +13,13 @@ namespace XunitTest;
 /// generated function, a value, a label or a generator's helper.</summary>
 internal sealed partial class GeneratedIr
 {
+    // The symbols the runtime text defines (LlvmModuleText.WriteRuntime), read once.
+    private static readonly HashSet<string> RuntimeSymbols = ReadRuntimeSymbols();
+
     private readonly HashSet<string> types = []; // Named types, which a shape keeps (runtime layouts such as %kimi.string).
     private readonly Dictionary<string, List<string>> groups = []; // Attribute groups by #N.
     private readonly Dictionary<string, IrFunction> symbols = [];
+    private readonly HashSet<IrFunction> runtime = []; // The functions of RuntimeSymbols this module defines.
     private readonly List<string> metadata = [];
     private readonly List<(IrValue Call, string Symbol)> calls = [];
     private readonly Dictionary<string, IrValue> values = []; // Of the function being read, as are blocks and uses.
@@ -27,6 +32,10 @@ internal sealed partial class GeneratedIr
 
     /// <summary>Gets the functions, defined and declared, in text order.</summary>
     public List<IrFunction> Functions { get; } = [];
+
+    /// <summary>Gets the functions but the runtime text's own definitions (LlvmModuleText.WriteRuntime's, whose platform layer routines share
+    /// signatures with generated functions): the generated functions, the imports and the intrinsics, which a signature selects.</summary>
+    public IEnumerable<IrFunction> Program => this.Functions.Where(x => !this.runtime.Contains(x));
 
     /// <summary>Gets the startup body: the function <c>__kimi_start</c> calls first.</summary>
     public IrFunction Startup => Assert.IsType<IrFunction>(this.Function("__kimi_start").Instructions.First(static x => x.Opcode == "call").Callee);
@@ -83,10 +92,10 @@ internal sealed partial class GeneratedIr
     /// <returns>The function.</returns>
     public IrFunction Function(string symbol) => Assert.Contains(symbol, this.symbols);
 
-    /// <summary>Gets the one function with a signature.</summary>
+    /// <summary>Gets the one function with a signature among <see cref="Program"/>.</summary>
     /// <param name="signature">The <see cref="IrFunction.Signature"/>.</param>
     /// <returns>The function.</returns>
-    public IrFunction Single(string signature) => Assert.Single(this.Functions, x => x.Signature == signature);
+    public IrFunction Single(string signature) => Assert.Single(this.Program, x => x.Signature == signature);
 
     /// <summary>Asserts that nothing claims termination (IMPL 21.3.1: optimization never changes nontermination; LLVM_OPTIMIZATION D03 and
     /// D04): no <c>mustprogress</c> or <c>willreturn</c> on a function or a call, attribute groups resolved, and no
@@ -106,6 +115,13 @@ internal sealed partial class GeneratedIr
     }
 
     private static bool IsTerminationClaim(string attribute) => attribute is "mustprogress" or "willreturn";
+
+    private static HashSet<string> ReadRuntimeSymbols()
+    {
+        var text = new StringWriter();
+        LlvmModuleText.WriteRuntime(text, null);
+        return [.. Regex.Matches(text.ToString(), @"(?m)^define [^@\n]*@([^(\n]+)\(").Select(static x => x.Groups[1].Value)];
+    }
 
     // The parts of a list at depth 0: outside quotes, parentheses, brackets and braces.
     private static List<string> Split(string text, char separator)
@@ -215,7 +231,13 @@ internal sealed partial class GeneratedIr
         var signature = $"{line[(line.IndexOf(' ') + 1)..at].Trim()} ({string.Join(", ", parameters)})";
         var function = new IrFunction(signature, this.Attributes(line[(close + 1)..].TrimEnd('{', ' ')), parameters);
         this.Functions.Add(function);
-        this.symbols.Add(line[(at + 1)..open], function);
+        var symbol = line[(at + 1)..open];
+        this.symbols.Add(symbol, function);
+        if (defined && RuntimeSymbols.Contains(symbol))
+        {
+            this.runtime.Add(function);
+        }
+
         return defined ? function : null;
     }
 
