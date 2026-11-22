@@ -29090,6 +29090,13 @@ R8-M* and R9-M* by the stage of the recording unit.
     (G1011) and the note's form (G1014) close: an exception in test preparation is the test unit's own result's fault
     (`Project.OwnResult`), `CheckFaulted_Kd` at the project file, `kimi test` exit 2 (IMPL 20.6.4), and its test-target failures
     are `ProjectPreparationFailed_Kd` records.
+  - Amended by PLAN G1012 (R9 part C, Q-683, 2026-11-23): `TestCommand`'s type lists are gone (the `kimi test` bullet's 'PLAN G1012
+    removes the list'): its options' and selection's errors are `CommandInputException` (`TestOptions`, with `--results-dir` named at
+    `Parse`), the identity conflict is the project's error line (the loop goes on), each runner step (the run directory, a project's
+    artifact directory, its startup, the run) classifies its own failure (3: an output failure its message, anything else the command's
+    fault), and any other exception is the command's fault, `CheckFaulted_Kd` without a location and its `errors` entry, exit 2. The
+    startup's place and consequence stand (a startup failure ends the project loop). The Open line's `TestCommand`'s type lists (G1012)
+    close; G1012 keeps the `finally`'s fault.
 
 ## Tatara (adopted 2026-11-19)
 
