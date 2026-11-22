@@ -30209,7 +30209,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     member). A member the link does not pull adds nothing; a weak definition yields to the module's (C-445 C3's probe and
     `NativeToolchainTest.ASuppliedMemoryFunctionIsADuplicateOfTheModules`). No supplied library in the repository defines one.
   - **Measurement:** window W2 (RP8, K's): the 13-kernel O2 corpus A = the `.S`, B = the IR, and a copy kernel; Hello.O2.exe
-    5,120 -> 7,168 bytes (+2,048; O0 6,656 -> 8,192), the four functions without function sections (B7r4's record).
+    5,120 -> 7,168 bytes (+2,048; O0 6,656 -> 8,192), the four functions without function sections (B7r4's record). T-W321
+    (A fc0662c55, B 34ab5dde7; `artifacts\benchmarks\rp8w-W-321-*`): no O2 kernel slower beyond its A=A; code differs in all 13;
+    faster beyond A=A on Array (aligned 0.788), the copy kernel (aligned 0.866), Iterators (0.967) and Dictionary (0.991), with
+    R5-M147 not read there (no matched pair); the rest inside; Bind within, compiler bytes +0. So `rep movsb` is not adopted.
   - Rejected: weak definitions of the four (a supplied library would replace the runtime's functions silently); a pre-link scan of
     every supplied archive (a second inspection for one form, while LLD reports the duplicate exactly when a second definition would
     enter the program); musl's functions; `memcpy` as an alias of `memmove` (not the archive's algorithm); internal or `linkonce`
