@@ -363,10 +363,11 @@ public partial class Project
     private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
         => this.OwnResult((emit, cancellationToken, paths), null, static (project, s, diagnostics) => project.BuildTargets(s.emit, s.cancellationToken, s.paths, null, diagnostics));
 
-    // The project's own result (its configuration, lock and target-selection records, which body reports to its owner): a check request's
-    // caller finalizes its own diagnostics; a command renders it here, with the fault of an exception that ends it, and returns default
-    // (DIAGNOSTICS rule 9; R9-B2): the project's own checks', a target's report after its results (Emit), or a target's preparation
-    // before its front end (BuildTarget's, whose own records are then not rendered: a known limit).
+    // The project's own result, the product's (its configuration, lock and target-selection records) or the test unit's (PrepareTests:
+    // its configuration, TestSources, test-setting, test-identity, test-target and lock records), which body reports to its owner: a check
+    // request's caller finalizes its own diagnostics; a command renders it here, with the fault of an exception that ends it, and returns
+    // default (DIAGNOSTICS rule 9; R9-B2): the project's own checks', a target's report after its results (Emit), or a target's
+    // preparation before its front end (BuildTarget's, whose own records are then not rendered: a known limit).
     private TResult? OwnResult<TState, TResult>(TState state, CheckContext? context, Func<Project, TState, DiagnosticOwner, TResult> body)
     {
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();

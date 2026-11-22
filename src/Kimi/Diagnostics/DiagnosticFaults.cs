@@ -6,7 +6,10 @@ namespace Kimi.Diagnostics;
 
 /// <summary>
 /// The one fault path (SPEC 23.2.2): exactly one <c>CheckFaulted_Kd</c> Error explains a Faulted result. Its text is fixed here and
-/// depends neither on the catalog nor on ordinary formatting; a test keeps it equal to the catalog entry.
+/// depends neither on the catalog nor on ordinary formatting; a test keeps it equal to the catalog entry. Its Note is the exception's
+/// chain, each link the type's full name and its message, outer first, joined by <c> ---&gt; </c>, its head kept under the Note limit
+/// so the outer type always shows; a contract violation's Note has the same form. <see cref="Create"/> alone forms it, and no caller
+/// forms its own (DIAGNOSTICS §6, PLAN G1014).
 /// </summary>
 internal static class DiagnosticFaults
 {
@@ -56,9 +59,8 @@ internal static class DiagnosticFaults
             }
         }
 
-        // DIAGNOSTICS §6 (PLAN G1014): the environment-dependent detail is formed only here, never by a caller: the exception's chain, each
-        // link its type's full name and message, outer first, joined as the framework joins inner exceptions. Its head is kept under the
-        // ordinary Note limit, so the outer type always shows; the fault path stays independent of catalog formatting.
+        // The class contract's Note: the links are joined as the framework joins inner exceptions, and the head is cut by the ordinary
+        // Note rule, so the fault path stays independent of catalog formatting.
         var chain = new StringBuilder();
         for (Exception? link = exception; link is not null && chain.Length <= DiagnosticLimits.NoteLength; link = link.InnerException)
         {
