@@ -399,7 +399,7 @@ public sealed partial class Binding
                 break;
             case GenericParameterKoto parameter:
                 var typeSymbol = this.Declare(node, parameter.Identifier, parameter.SemanticsParameter is null ? BindingSymbolKind.TypeParameter : BindingSymbolKind.SemanticsTarget, node, scope);
-                typeSymbol.Slot = scope.Parameters!.Count - 1;
+                typeSymbol.Slot = scope.Parameters!.Types.Count - 1;
                 typeSymbol.WholeType ??= this.types.Parameter(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
                 typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : this.types.Parameter(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
                 if (parameter.SemanticsParameter is not null)
@@ -410,7 +410,7 @@ public sealed partial class Binding
                     semanticsSymbol.Pair = typeSymbol;
                     typeSymbol.Pair = semanticsSymbol;
                     this.PairOuterOrigin(typeSymbol); // SPEC 8.1.1: the binder's outer Origin, interned with its binder (PLAN G949 S1-e).
-                    if (!scope.Parameters!.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
+                    if (!scope.Parameters!.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
                     {
                         this.Fail(node, BindingFailure.Duplicate);
                     }

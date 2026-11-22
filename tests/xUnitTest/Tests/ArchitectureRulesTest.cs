@@ -568,10 +568,10 @@ public class ArchitectureRulesTest
     // be an enum, which keeps its whole list until PrepareStorage fails it, or a Contract, whose refinements are many (BuildContract).
     [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]
     // R7-N1a (RP6): ResolvePath reads the Type namespace; the others are the alias and module walks (R7-N1 e) and their own tables. PublishPath
-    // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b. R7-N1 f-1: a scope's formal
-    // parameters (BindingScope.Parameters) are Type-namespace reads too: TypeStage's (the root path reads its root through it) and the
-    // library witness rows' own slots.
-    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.(?:Types|Parameters\?)\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
+    // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b. R7-N1 f: a scope's formal
+    // parameters (BindingScope.Parameters.Types) are Type-namespace reads too: TypeStage's (the root path reads its root through it) and
+    // the library witness rows' own slots.
+    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.ResolvePath.cs=1")]
     // PLAN G647: a walk of one Type's parts has no count of its own, so a depth or count compared with a literal stays at the census's
     // sites, over the whole compiler (Mir/Build and Mir/Analysis are in scope and have none): Origin-term nesting (FunctionTypes'

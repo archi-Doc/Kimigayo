@@ -918,11 +918,12 @@ internal sealed class BindingScope(Koto owner)
     // The scope's Type-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
 
-    // SPEC 9.1, 9.5, 9.6: the Type-namespace formal parameters the scope's declaration declares (Type parameters, pair targets and their
-    // binders), found by the stage walk at their declaring position and never a member a path or an opening alias reaches; null until
-    // the scope declares one (AddParameters), so a scope that declares none allocates no table.
-    internal Dictionary<string, BindingSymbol>? Parameters { get; private set; }
+    // SPEC 9.1, 9.5, 9.6, 4.4.1: the formal parameters the scope's declaration declares, by namespace as its members are, found by the
+    // stage walk at their declaring position and never a member a path or an opening alias reaches; null until the scope declares one
+    // (AddParameters), so a scope that declares none allocates no table.
+    internal ScopeParameters? Parameters { get; private set; }
 
+    // The scope's Value-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Values { get; } = new(StringComparer.Ordinal);
 
     internal Dictionary<string, BoundOrigin>? Origins { get; set; }
@@ -953,12 +954,13 @@ internal sealed class BindingScope(Koto owner)
         set => this.Link(ref this.conformancePath, value);
     }
 
-    internal Dictionary<string, BindingSymbol> AddParameters() => this.Parameters ??= new(StringComparer.Ordinal);
+    internal ScopeParameters AddParameters() => this.Parameters ??= new();
 
     internal void Reset()
     {
         this.Types.Clear();
-        this.Parameters?.Clear();
+        this.Parameters?.Types.Clear();
+        this.Parameters?.Values.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
         this.OriginSets?.Clear();
@@ -975,6 +977,15 @@ internal sealed class BindingScope(Koto owner)
             this.LinkVersion++;
         }
     }
+}
+
+// A scope's formal parameters by namespace (BindingScope.Parameters): Type parameters, pair targets and their binders in Types, a
+// function's length slots (SPEC 4.4.1) in Values.
+internal sealed class ScopeParameters
+{
+    internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
+
+    internal Dictionary<string, BindingSymbol> Values { get; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>How a check judged a repair condition from its own facts (SPEC 23.1.3); a refuted condition withholds the candidate.</summary>

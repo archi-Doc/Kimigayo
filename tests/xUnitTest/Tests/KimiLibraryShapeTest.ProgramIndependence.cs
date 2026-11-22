@@ -239,13 +239,13 @@ public partial class KimiLibraryShapeTest
 
     // A scope's members and facts: a program pass that added to a library scope would show here.
     private static string Scope(BindingScope scope)
-        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] parameters=[{Names(scope.Parameters ?? new())}] values=[{Names(scope.Values)}]" +
+        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] parameters=[{Names(scope.Parameters?.Types)}] values=[{Names(scope.Values)}] lengths=[{Names(scope.Parameters?.Values)}]" +
             $" origins=[{string.Join(',', scope.Origins?.Keys.Order(StringComparer.Ordinal) ?? Enumerable.Empty<string>())}]" +
             $" constraints={scope.Constraints is not null}" +
             $" premises={Where(scope.ImplementationPremises?.Owner)} path={scope.ConformancePath is not null}";
 
-    private static string Names(Dictionary<string, BindingSymbol> names)
-        => string.Join(',', names.OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
+    private static string Names(Dictionary<string, BindingSymbol>? names)
+        => string.Join(',', (names ?? new()).OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
 
     private static string Where(BindingSymbol? symbol) => Where(symbol?.Declaration);
 

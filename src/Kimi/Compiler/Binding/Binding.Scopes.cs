@@ -82,16 +82,20 @@ public sealed partial class Binding
             return symbol;
         }
 
-        var parameter = kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget;
-        var table = parameter ? scope.AddParameters() : kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.AssociatedType ? scope.Types : scope.Values;
+        // SPEC 9.1, 4.4.1: a kind's namespace, and whether it is a formal parameter of the scope's declaration (BindingScope.Parameters).
+        var values = kind is not (BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.AssociatedType or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget);
+        var parameter = kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.LengthParameter;
+        var members = values ? scope.Values : scope.Types;
+        var parameters = (parameter ? scope.AddParameters() : scope.Parameters) is { } declared ? values ? declared.Values : declared.Types : null;
+        var table = parameter ? parameters! : members;
         if (table.TryGetValue(name, out var previous))
         {
             symbol.Next = previous;
         }
 
-        // SPEC 9.1, 9.7.3: a Name repeats in one namespace and scope only as a function group or a Type of another arity, and a Type
-        // parameter conflicts with a nested declaration of its namespace: the scope's two Type tables are one space for this rule.
-        if ((previous ?? (parameter ? scope.Types : ReferenceEquals(table, scope.Types) ? scope.Parameters : null)?.GetValueOrDefault(name)) is { } conflict &&
+        // SPEC 9.1, 9.7.3: a Name repeats in one namespace and scope only as a function group or a Type of another arity, and a formal
+        // parameter conflicts with a declaration of its namespace: a namespace's member and parameter tables are one space for this rule.
+        if ((previous ?? (parameter ? members : parameters)?.GetValueOrDefault(name)) is { } conflict &&
             (kind != BindingSymbolKind.Function || conflict.Kind != BindingSymbolKind.Function) &&
             !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, conflict)))
         {

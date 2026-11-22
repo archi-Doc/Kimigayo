@@ -987,12 +987,13 @@ public sealed partial class Binding
     {
         var candidates = default(TypeCandidates);
         this.AddTypeCandidates(ref candidates, current.Types.GetValueOrDefault(name), scope, role, arity);
-        this.AddTypeCandidates(ref candidates, current.Parameters?.GetValueOrDefault(name), scope, role, arity);
+        this.AddTypeCandidates(ref candidates, current.Parameters?.Types.GetValueOrDefault(name), scope, role, arity);
         return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);
     }
 
     // SPEC 9.3, 9.5: a stage's first visible, accessible value; a Container stage whose candidates are all Cases or members needing a
-    // receiver (none HasUnqualifiedCandidate) stops the lookup (qualification required).
+    // receiver (none HasUnqualifiedCandidate) stops the lookup (qualification required). The scope's length slots (4.4.1), the Value
+    // namespace's formal parameters, are read after its members (a Name in both is a duplicate: DeclareKept).
     private ResolvedPath ValueStage(BindingScope current, BindingScope scope, Koto use, string name)
     {
         var head = current.Values.GetValueOrDefault(name);
@@ -1011,7 +1012,7 @@ public sealed partial class Binding
             return new(PathEnd.Selected, candidate, use);
         }
 
-        return new(PathEnd.Unresolved, null, use);
+        return current.Parameters?.Values.GetValueOrDefault(name) is { } slot && this.Accessible(slot, scope) ? new(PathEnd.Selected, slot, use) : new(PathEnd.Unresolved, null, use);
     }
 
     // SPEC 9.3, 7.2.3: whether a value binding is visible at `use`: a local only after its declaration (its initializer sees the outer

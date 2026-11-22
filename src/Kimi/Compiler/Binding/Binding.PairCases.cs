@@ -354,7 +354,7 @@ public sealed partial class Binding
 
             // Each scope's binders go to the front, in slot order, so outer scopes precede inner ones.
             var count = 0;
-            foreach (var symbol in parameters.Values)
+            foreach (var symbol in parameters.Types.Values)
             {
                 if (symbol.Kind != BindingSymbolKind.SemanticsTarget || symbol.WholeType is not { } whole)
                 {

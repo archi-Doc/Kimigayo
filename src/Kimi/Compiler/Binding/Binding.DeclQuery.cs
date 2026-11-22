@@ -163,7 +163,8 @@ public sealed partial class Binding
         foreach (var scope in this.scopes.Values.In(this.pass))
         {
             AddDeclared(symbols, scope.Types);
-            AddDeclared(symbols, scope.Parameters);
+            AddDeclared(symbols, scope.Parameters?.Types);
+            AddDeclared(symbols, scope.Parameters?.Values);
             AddDeclared(symbols, scope.Values);
         }
 
