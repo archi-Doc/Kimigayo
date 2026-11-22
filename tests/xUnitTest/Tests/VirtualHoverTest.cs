@@ -183,7 +183,7 @@ public sealed class VirtualHoverTest
     private static Compilation Create(string text)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.CollectHover = true;
         c.CollectDocumentation = true;
         c.Kotonoha.AddSource(new("main.kimi", text));

@@ -37,7 +37,7 @@ internal sealed partial class MirValidator
 
         // DECISIONS R5-M166: a Requirement callee's comparison mode names Equatable's or Comparable's own requirement (Reversed only
         // Comparable's) through its own Contract (Contract null) on a Self whose comparison under source operators TyCtxt.Comparison composes
-        // as a Composite node (not a Limit, not a leaf), the node A4, the collector and code generation read.
+        // as a Composite node (not a leaf), the node A4, the collector and code generation read.
         private readonly bool Compares(in MirCallee callee)
         {
             var contract = (ComparisonMode)callee.Arg switch

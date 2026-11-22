@@ -58,7 +58,7 @@ public class LexicalRecoveryTest(ITestOutputHelper output)
     public void RecoveryDoesNotCrossSourceBoundaries(string source, string code)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("first.kimi", source));
         c.Kotonoha.AddSource(new SourceDocument("second.kimi", "let n = (1"));
         c.Bind();

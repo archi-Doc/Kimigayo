@@ -158,7 +158,7 @@ public class LengthCallBindingTest
         var c = MinimalEmissionTest.Analyze(Keep + "let a: [2 of i32] = [1, 2]\nkeep<2, i32>(a)\nkeep(a)");
         Assert.True(c.Binding.Result.IsComplete);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);

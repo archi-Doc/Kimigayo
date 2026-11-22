@@ -75,6 +75,22 @@ public class ConstantLengthBindingTest
         Assert.Empty(writer.ToString());
     }
 
+    // SPEC 4.2, 9.6 (R7-N1 c-b): a length named through a member path is published by the path's one writer, so an inaccessible
+    // member reports its access once with the formation that rests on it (rb40i, rb41i; through a nested group, rb87i), and the public
+    // twins form the length (rb40v, rb88v).
+    [Theory]
+    [InlineData("group Dimensions\n    public let Width: isize = 4\nfunc f<length N>() -> i32 => 0\nfunc g() -> i32 => f<Dimensions.Width>()\n", "")]
+    [InlineData("group Dimensions\n    let Width: isize = 4\nfunc f<length N>() -> i32 => 0\nfunc g() -> i32 => f<Dimensions.Width>()\n", "InaccessibleBinding_Kd Dimensions.Width|InvalidTypeFormation_Kd Dimensions.Width|NoApplicableOverload_Kd f<Dimensions.Width>()")]
+    [InlineData("group Dimensions\n    let Width: isize = 4\nfunc f<length N>() -> i32 => 0\nfunc g() -> i32\n    let h = f<Dimensions.Width>\n    return 0\n", "InaccessibleBinding_Kd Dimensions.Width|InvalidTypeFormation_Kd Dimensions.Width")]
+    [InlineData("group Outer\n    public group Inner\n        let Width: isize = 4\nfunc f(row: [Outer.Inner.Width of u8]) => ()\n", "InaccessibleBinding_Kd Outer.Inner.Width")]
+    [InlineData("group Outer\n    public group Inner\n        public let Width: isize = 4\nfunc f(row: [Outer.Inner.Width of u8]) => ()\n", "")]
+    public void ALengthThroughAMemberPathIsPublishedOnce(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
     [Fact]
     public void AdaptationSyntaxIsNotPartOfLengthExpressions()
     {

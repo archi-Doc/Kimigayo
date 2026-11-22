@@ -47,7 +47,7 @@ internal static partial class NativeToolchain
     {
         LinkManifest.CheckFixed(root);
         if (LinkManifest.Text(root, "optimization") is not ("O0" or "O2") || LinkManifest.Text(root, "outputKind") != "Application" ||
-            LinkManifest.Text(root, "entry") != WindowsProfile.EntrySymbol || LinkManifest.Text(root, "subsystem") != WindowsProfile.Subsystem)
+            LinkManifest.Text(root, "entry") != TargetProfile.Windows.EntrySymbol || LinkManifest.Text(root, "subsystem") != TargetProfile.Windows.Subsystem)
         {
             throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
         }
@@ -116,7 +116,7 @@ internal static partial class NativeToolchain
     private static HashSet<string> CreateAllowedUndefined()
     {
         var allowed = new HashSet<string>(ToolchainIdentity.Backend.Symbols, StringComparer.Ordinal);
-        foreach (var (symbol, _) in WindowsProfile.RuntimeDeclarations)
+        foreach (var (symbol, _) in TargetProfile.Windows.RuntimeDeclarations)
         {
             allowed.Add("__imp_" + symbol);
         }
@@ -172,7 +172,7 @@ internal static partial class NativeToolchain
             this.outputDirectory = Path.GetDirectoryName(paths.Manifest)!;
             this.optimization = optimization;
             this.context = new TataraContext(
-                report, cancellationToken, WindowsProfile.Target, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel);
+                report, cancellationToken, TargetProfile.Windows.Target, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
         }
 
         internal async Task Run()
@@ -244,8 +244,8 @@ internal static partial class NativeToolchain
         private static void CheckSupply(Project project, string name, string? kind, string? hash)
         {
             var settings = project.ProjectFile;
-            var supply = settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
-            var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(settings, WindowsProfile.Target, name, supply);
+            var supply = settings.NativeLibraries.TryGetValue(TargetProfile.Windows.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
+            var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(settings, TargetProfile.Windows.Target, name, supply);
             if (supply is null || expectedKind != kind || (expectedHash is not null && !expectedHash.Equals(hash, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new InvalidDataException($"Native library '{name}' does not match its NativeLibraries Kind or Sha256 assertion.");
@@ -362,7 +362,7 @@ internal static partial class NativeToolchain
                 }
             }
 
-            var markers = facts.DefinedExternal.Count(s => s.Name == WindowsProfile.FloatMarker && s.Kind is 'B' or 'D');
+            var markers = facts.DefinedExternal.Count(s => s.Name == TargetProfile.Windows.FloatMarker && s.Kind is 'B' or 'D');
             if (markers != 1 || !facts.HasUnwind || facts.HasDefaultLibrary)
             {
                 throw new InvalidDataException("Invalid _fltused definition, unwind information or hidden default library.");
@@ -378,8 +378,8 @@ internal static partial class NativeToolchain
             var link = new string[libraries.Count + 6];
             link[0] = obj;
             libraries.CopyTo(link, 1);
-            link[^5] = "/entry:" + WindowsProfile.EntrySymbol;
-            link[^4] = "/subsystem:" + WindowsProfile.Subsystem;
+            link[^5] = "/entry:" + TargetProfile.Windows.EntrySymbol;
+            link[^4] = "/subsystem:" + TargetProfile.Windows.Subsystem;
             link[^3] = "/nodefaultlib";
             link[^2] = "/Brepro";
             link[^1] = "/out:" + executable;

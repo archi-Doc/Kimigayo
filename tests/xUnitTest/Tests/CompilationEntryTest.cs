@@ -17,10 +17,11 @@ namespace XunitTest;
 /// records generates nothing, and <c>kimi test</c> publishes its records as <c>kimi build</c> does.</summary>
 public sealed class CompilationEntryTest
 {
-    // The MIR's one Unsupported record here, at `a == b`, a form the old path's check accepts (its generation refuses it): the tuple operator
-    // without its comparison (MirBuildTest.Unbuilt; PD30's (e) row until R7).
-    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations +
-        $"func same(a: ref/{MirBuildTest.Unbuilt.Tuple}, b: ref/{MirBuildTest.Unbuilt.Tuple}) -> bool => a == b\nlet x = 1\n";
+    // The MIR's one Unsupported record here, at the call `Call`: a default the call's substitution cannot instantiate (MirBuildTest.Unbuilt;
+    // PD30's (e) row, the builder's B3).
+    private static readonly string Call = MirBuildTest.Unbuilt.Callee + "(a)";
+
+    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations + $"func same(a: i32) -> i32 => {Call}\nlet x = 1\n";
 
     // R5 K1, C0b1 (DECISIONS R5-M65, R5-M146): the checked set exists after check; MIR code generation writes the module of each output
     // form, an Application's (with its entry), a test build's (the test runtime's entry; C10a, DECISIONS R5-M136) or a Library's, never
@@ -36,7 +37,7 @@ public sealed class CompilationEntryTest
         var c = Compilation.CreateForTest();
         c.IsTestBuild = test;
         c.Project.ProjectFile.OutputKind = output;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var functions = test ? "#Test\nfunc first() => ()\n#Test\nfunc second() => ()\n" : "func first() => ()\nfunc second() => ()\n";
         var statements = output == OutputKind.Library ? string.Empty : test ? "let x = pick(1)\n" : "first()\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
@@ -67,7 +68,7 @@ public sealed class CompilationEntryTest
         try
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
             Assert.False(Analyze(c, OutputKind.Application));
             Assert.Equal(DiagnosticCode.Unsupported_Kd, Assert.Single(c.Problems).Code);
@@ -99,7 +100,7 @@ public sealed class CompilationEntryTest
         {
             var console = new DiagnosticContractTest.DiagnosticConsole();
             var project = new Project(new Kimigayo(console)) { Name = "wide", Directory = directory };
-            project.ProjectFile.Targets = [WindowsProfile.Target];
+            project.ProjectFile.Targets = [TargetProfile.Windows.Target];
             const string Half = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n";
             project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
             Assert.Null(project.PrepareTests(TestContext.Current.CancellationToken));
@@ -122,7 +123,7 @@ public sealed class CompilationEntryTest
     public void CheckPublishesTheCollectorRecords()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", InstanceCollectorTest.DeepSource("chain20")));
         Assert.False(Analyze(c, OutputKind.Application));
         var problem = Assert.Single(c.Problems);
@@ -157,7 +158,7 @@ public sealed class CompilationEntryTest
         }
 
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Over + "\nlet x = 1\n"));
         Assert.False(Analyze(c, OutputKind.Application));
         var problem = Assert.Single(c.Problems);
@@ -173,7 +174,7 @@ public sealed class CompilationEntryTest
     public void AGateRefusalClearsAnEarlierEmissionRecord()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
@@ -189,18 +190,18 @@ public sealed class CompilationEntryTest
     public void CheckPublishesTheMirRecords()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
         Assert.False(c.Analysis.IsVerified); // Nothing analyzed yet.
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.False(c.Analyze().IsVerified);
         var problem = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, Call), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
         Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
         c.ReportAnalysis();
         var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("Unsupported_Kd", "a == b"), (record.Code, record.Text));
+        Assert.Equal(("Unsupported_Kd", Call), (record.Code, record.Text));
         Assert.False(c.Generate(TextWriter.Null)); // the gate's step 1: the MIR's record, which check published, adds no Emission record
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
     }
@@ -213,7 +214,7 @@ public sealed class CompilationEntryTest
     public void MirRecordsAtOneLocationAreOneProblem()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument(
             "Hello.kimi", "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\npublic func main() => ()\n"));
         Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c));
@@ -239,7 +240,7 @@ public sealed class CompilationEntryTest
     public void TheMirDecidesAcceptance(string source, string? conflict)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
@@ -263,7 +264,7 @@ public sealed class CompilationEntryTest
     public void CodeContextParseParsesOnACompilerThread() // Parentheses 600; the parser overflowed from about 380.
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Parentheses(600));
         AcceptsAndGenerates(c);
     }
@@ -322,7 +323,7 @@ public sealed class CompilationEntryTest
     private static Compilation Source(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Deep.kimi", source));
         return c;
     }

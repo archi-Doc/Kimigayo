@@ -72,6 +72,12 @@ public enum BoundTypeKind : byte
     Array,
     Dictionary,
     FunctionItem,
+
+    // DECISIONS BU-240 (temporary, removed with BU-240's representation (R); the owner's O-428 (a), G812 ruling 143): the canonical case's Type
+    // (its one component) at a position a split binding decides, formed only by a split call's completion (Binding.OpenForm); every
+    // check that reads it rests, as rule W's failed part does. Never a node's published Type (the split call's completion unmarks what
+    // it publishes, CompleteOnSplit; the HIR publisher lists one that holds it as Broken, InternalInvariant_Kd).
+    Open,
 }
 
 /// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.7.2).</summary>
@@ -429,7 +435,7 @@ public sealed class BindingSymbol
     {
         if (this.Declaration.SyntaxOwner is { Frozen: true })
         {
-            if (state == DeclState.Done)
+            if (state is DeclState.Done or DeclState.Error)
             {
                 throw new InvalidOperationException($"A program pass completed the {kind} query of the frozen library declaration `{this.Name}` (InternalInvariant; PLAN G949 S1-1).");
             }
@@ -461,7 +467,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     // The width in bits of isize and usize for every Compilation, with or without a target: the profile's (SPEC 22, O-79 (a); IMPL
     // 21.1.3; DECISIONS BU-130), from IrTarget's row for its triple, read once by Row; every reader of their width asks the Type (Width).
     // A target's own width is only the pointerWidth Condition's (SPEC 19.2). Declared before the static Types, whose rows read it.
-    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).PointerWidth;
+    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(TargetProfile.Windows.Target)).PointerWidth;
 
     private readonly NumericCategory numeric;
     private readonly byte width;
@@ -481,6 +487,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
     private readonly bool containsNested;
+    private readonly bool containsOpen;
     private readonly bool hasAbstractPart;
     private readonly int height;
 
@@ -519,6 +526,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         var stores = found || original;
         var abstractPart = this.IsAbstract;
         var nested = kind == BoundTypeKind.Closure || (kind == BoundTypeKind.FunctionItem && symbol is { Scope.Owner: not DeclarationContainerKoto });
+        var open = kind == BoundTypeKind.Open;
         var height = instanceContext is null ? 0 : instanceContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
@@ -529,6 +537,7 @@ public sealed class BoundType : IEquatable<BoundType?>
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
             nested |= components[i].containsNested;
+            open |= components[i].containsOpen;
             abstractPart |= components[i].hasAbstractPart;
             height = Math.Max(height, components[i].height + 1);
         }
@@ -561,6 +570,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
         this.containsNested = nested;
+        this.containsOpen = open;
         this.hasAbstractPart = abstractPart;
         this.height = height;
     }
@@ -720,6 +730,9 @@ public sealed class BoundType : IEquatable<BoundType?>
     // TyCtxt.EnclosingDeclaration gives an enclosing declaration: a root function's Item passes it and the closing step leaves it as it is.
     internal bool ContainsNested => this.containsNested;
 
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
+    internal bool ContainsOpen => this.containsOpen;
+
     /// <summary>Gets a value indicating whether this Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a
     /// wrapping integer Core (SPEC 3.1.1); no layer is followed. The one definition every phase reads: Binding, the MIR builder's
     /// recorded values, MirValidator's testRecordValue row, A5's pun Types and the Backend's static-storage row.</summary>
@@ -857,6 +870,7 @@ internal sealed class BindingScope(Koto owner)
     private BindingScope? parent;
     private ConstraintEnvironment? constraints;
     private BoundConformancePath? conformancePath;
+    private BindingScope? evaluatedPremises;
 
     // A scope formed for `declaration`'s own premises (Declaration).
     internal BindingScope(Koto owner, Koto declaration)
@@ -922,6 +936,11 @@ internal sealed class BindingScope(Koto owner)
     // its Parent the function's scope; never the body's premises, which the slot's settle point decides.
     internal BindingScope? HeaderPremises { get; set; }
 
+    // A member access's left reading's layer (R7-N1 c-b, Binding.EvaluateProjection; SPEC 8.3.2): its Parent this use scope, it holds
+    // what the Contracts of the left's proved projections supply (AddContractPremises), which the former adds to this scope only once
+    // the reading is decided; kept with this scope and reset with it each pass, so a warm pass forms none.
+    internal BindingScope EvaluatedPremises => this.evaluatedPremises ??= new(this.Owner) { Parent = this, Function = this.Function };
+
     internal BoundConformancePath? ConformancePath
     {
         get => this.conformancePath;
@@ -935,6 +954,7 @@ internal sealed class BindingScope(Koto owner)
         this.Origins?.Clear();
         this.OriginSets?.Clear();
         this.Constraints?.Reset();
+        this.evaluatedPremises?.Reset();
     }
 
     private void Link<T>(ref T? field, T? value)

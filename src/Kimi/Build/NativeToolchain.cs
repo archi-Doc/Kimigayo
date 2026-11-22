@@ -15,7 +15,7 @@
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
 // Compilation.Diagnostics, and its result Compilation.Generated (GeneratedModule: the output kind, the required libraries and the
 // external declarations, each an ExternalFunction read for its Symbol and DllImport; R9-B1); the enum OutputKind, which project
-// configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease; CompilationBuildMetadata, which
+// configuration states too (ProjectFile.OutputKind); the target profile TargetProfile.Windows; CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput; and of Misc JobProcess,
 // Kimi's launcher for the programs it runs, in which the run's program runs (PLAN G1188).
@@ -83,13 +83,15 @@ internal static partial class NativeToolchain
     // the build ends. While another build holds it (IsSharingFailure), the build reports once that it waits and retries every 100 ms.
     // The token is read only in that wait, which it cancels before anything is written: a free lock is taken and the record invalidated
     // under a cancelled token too. Any other failure is the output's; a failed open or invalidation leaves the record as it was, so its
-    // exception says that the build could not begin and names the record, which keeps its last state (IMPL 20.3.2: the earlier success;
-    // PLAN G1205, O-491 (d)). Every exception after the open closes the lock again, so no failed build leaves its output locked in a
-    // long-lived process. O0 and O2 share the record, so they share the lock. Its callers are the two hosts that begin a build of a
-    // record, Project.Build and BuildManifest (test builds into a directory of its own), which read nothing before it but the
-    // configuration.
+    // exception says that the build could not begin and that the record keeps its last state (IMPL 20.3.2: the earlier success; PLAN
+    // G1205, O-491 (d)), and names the record once: the lock's failure names the lock, so the record is named with it, and the
+    // invalidation's names the record (ArtifactFiles.Replace's destination, PLAN G1257) or its temporary beside it. Every exception after
+    // the open closes the lock again, so no failed build leaves its output locked in a long-lived process. O0 and O2 share the record, so
+    // they share the lock. Its callers are the two hosts that begin a build of a record, Project.Build and BuildManifest (test builds
+    // into a directory of its own), which read nothing before it but the configuration.
     internal static async Task<FileStream> Begin(string record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
+        const string NotBegun = "The build could not begin, so its record keeps its last state";
         Directory.CreateDirectory(Path.GetDirectoryName(record)!);
         var path = Path.ChangeExtension(record, ".lock");
         FileStream output;
@@ -111,7 +113,7 @@ internal static partial class NativeToolchain
             }
             catch (Exception ex) when (IsOutputFailure(ex))
             {
-                throw NotBegun(record, ex);
+                throw new IOException($"{NotBegun}: {record}. {ex.Message}", ex);
             }
 
             await Task.Delay(100, cancellationToken);
@@ -126,7 +128,7 @@ internal static partial class NativeToolchain
         }
         catch (Exception ex) when (IsOutputFailure(ex))
         {
-            throw NotBegun(record, ex);
+            throw new IOException($"{NotBegun}. {ex.Message}", ex);
         }
         finally
         {
@@ -135,9 +137,6 @@ internal static partial class NativeToolchain
                 output.Dispose();
             }
         }
-
-        static IOException NotBegun(string record, Exception ex)
-            => new($"The build could not begin, so its record keeps its last state: {record}. {ex.Message}", ex);
     }
 
     // A checked Library's record, with the front end's metadata of its one target, which the project reads (a compiler step's read).

@@ -602,7 +602,7 @@ public class ClosureReceiverClassificationTest
     {
         var source = PairHead + "    " + binding + " h = func [value] () -> ()\n        let o: Option<s/T> = .Some(value)\n        _ = o@move\n    h()\n" + PairMain;
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
@@ -640,7 +640,8 @@ public class ClosureReceiverClassificationTest
         var operations = (BoundArgumentOperation[])typeof(CallPlan).GetField("argumentOperations", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(CallPlan.Of(c.Binding, call))!;
         var use = operations[0].Source!;
         operations[0] = operations[0] with { Source = call.Method };
-        typeof(Binding).GetMethod("BindClosure", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [closure, Binding.KeptScopes.Slot(closure), null, false]);
+        var bindClosure = typeof(Binding).GetMethod("BindClosure", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        bindClosure.Invoke(c.Binding, [closure, Binding.KeptScopes.Slot(closure), null, Activator.CreateInstance(bindClosure.GetParameters()[3].ParameterType)]); // No open part.
         Assert.Equal(BindingFailure.Internal, c.Semantics.FailureOf(use));
     }
 

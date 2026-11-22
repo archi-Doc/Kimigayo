@@ -74,6 +74,17 @@ public class BaseCallBindingTest
         Assert.Equal("Base", call.CallOf()!.DeclaringType!.Symbol!.Name);
     }
 
+    // SPEC 6.4.4, 9.6 (R7-N1 c-b): a base member is published by the path's HiddenMember writer, so a private base function reports one
+    // access failure (rb86i).
+    [Theory]
+    [InlineData("open struct Base\n    public init() => ()\n    func secret(self) -> i32 => 1\nstruct D : Base\n    public init() : base() => ()\n    public func g(self) -> i32 => base.secret()\n", "InaccessibleBinding_Kd base.secret")]
+    public void APrivateBaseMemberReportsOneAccessFailure(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
     [Fact]
     public void ParenthesizedCalleesKeepDirectBaseSelection()
     {

@@ -61,6 +61,23 @@ public sealed partial class Binding
 
     internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
 
+    // SPEC 3.5.2, 8.7.2, 8.7.3: what a set of outer Semantics, other than owner alone, states of an intrinsic capability of a layer
+    // whatever its target: a shared or raw layer Copies and an exclusive or object layer does not; a Sealed or ObjectPayload Type has
+    // an owner case. DECISIONS BU-240 (temporary, removed with (R)): read by the case set of a binding that forms no Type alone
+    // (SplitCases); a formed pair layer is judged over its admitted cases by the engine (the owner's O-417 (a)), which gives these
+    // verdicts case by case.
+    private static ConstraintProof LayerEvidence(IntrinsicKind intrinsic, SemanticsMask mask)
+    {
+        const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
+        const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;
+        return intrinsic switch
+        {
+            IntrinsicKind.Copy => (mask & ~copy) == 0 ? ConstraintProof.Proven : (mask & ~nonCopy) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown,
+            IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload when (mask & SemanticsMask.Owner) == 0 => ConstraintProof.Refuted,
+            _ => ConstraintProof.Unknown,
+        };
+    }
+
     // Whether a binder (an atom's, or a Type parameter's declaration) is inherited by `function`, nested in `body`: it is outside the
     // function and is no Container that the function is a member of below the body.
     private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
