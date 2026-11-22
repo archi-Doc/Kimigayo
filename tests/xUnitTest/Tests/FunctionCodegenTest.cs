@@ -1363,8 +1363,8 @@ public sealed partial class FunctionCodegenTest
     public void AnImportIsCalledByItsCSignature()
     {
         var imported = Compilation.CreateForTest();
-        imported.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-        Assert.True(imported.Prepare(WindowsProfile.Target));
+        imported.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(imported.Prepare(TargetProfile.Windows.Target));
         const string Source =
             "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n    #LibraryImport(\"codec\", \"mix\")\n" +
             "    public unsafe func again(a: i8, b: f64) -> f64\n    #LibraryImport(\"codec\", \"idle\")\n    public unsafe func idle() -> ()\n" +
@@ -1388,8 +1388,8 @@ public sealed partial class FunctionCodegenTest
     public void AnEditedImportKeepsItsSignature()
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         const string Source = "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n" +
             "public func main()\n    var t: f64 = 0.0\n    unsafe => t = Native.mix(-1, t)\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
@@ -1921,7 +1921,7 @@ public sealed partial class FunctionCodegenTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = source.Contains("#Test", StringComparison.Ordinal);
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source, isTestOnly: c.IsTestBuild));
         c.Bind();
         if (!c.IsTestBuild)

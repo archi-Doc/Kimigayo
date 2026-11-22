@@ -332,7 +332,7 @@ public partial class OriginPremiseCatalogTest
     private static (string[] Codes, OriginProofMetrics Metrics, string[] Subjects) Check(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("catalog.kimi", source));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;

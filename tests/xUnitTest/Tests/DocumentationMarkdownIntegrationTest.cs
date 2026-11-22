@@ -94,7 +94,7 @@ public class DocumentationMarkdownIntegrationTest
     {
         var compilation = Compilation.CreateForTest();
         compilation.CollectDocumentation = true;
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n" + Comment("- windows: selected", "        ") + "        func f(windows: i32) => ()\n    #case _\n" + Comment("- other: selected", "        ") + "        func f(other: i32) => ()"));
         Assert.True(compilation.Bind().IsComplete);
         var original = Selected(compilation.Kotonoha);

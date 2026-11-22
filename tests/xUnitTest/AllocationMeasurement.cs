@@ -198,7 +198,7 @@ internal static class AllocationMeasurement
     // measures a compilation for another target forces that target's library itself (the implementation review's N7).
     private static void FreezeLibraries()
     {
-        _ = KimiLibrary.Of(TargetTriple.Parse(WindowsProfile.Target));
+        _ = KimiLibrary.Of(TargetTriple.Parse(TargetProfile.Windows.Target));
         _ = KimiLibrary.Of(TargetTriple.Invalid);
     }
 

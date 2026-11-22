@@ -98,7 +98,7 @@ public class TestExecutionAnalysisTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Helpers.kimi", "func helper<T>(x: T)\n    $expect(false, message: \"shared\")\n    $require(true)\n#Test\nfunc sample() => helper(1)", isTestOnly: true));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.CheckTestStartup();
@@ -116,7 +116,7 @@ public class TestExecutionAnalysisTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Product.kimi", source));
         c.Kotonoha.AddSource(new SourceDocument("Helpers.kimi", "group G\n    public func helper() => ()", isTestOnly: true));
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -171,7 +171,7 @@ public class TestExecutionAnalysisTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Tests.kimi", source));
         c.Bind();
         c.Binding.CheckTestStartup();

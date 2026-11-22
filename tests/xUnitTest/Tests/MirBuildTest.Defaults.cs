@@ -210,6 +210,22 @@ public sealed partial class MirBuildTest
         Assert.Equal(MirBodyKind.DefaultTemplate, Assert.Single(program.Bodies.ToArray(), static x => x.HasConstructionRecord).Key.Kind);
     }
 
+    // DECISIONS R5-M183's GR-1a line: a builder record marks the ordinary function body it lies in alone (MirBody.HasConstructionRecord).
+    // f's call omitting Unbuilt's default (B3) records one located Unsupported_Kd at the call with its Opaque value, and f is marked; g,
+    // calling f, and the callee's bodies are not. Before R7-T1 c4 the deleted ATupleOperatorWithoutItsComparisonIsUnsupported held this row
+    // on the tuple operator without its comparison (fail-before: none).
+    [Fact]
+    public void AConstructionRecordMarksItsOwnBodyAlone()
+    {
+        var c = Compile(Unbuilt.Declarations + $"func f(x: i32) -> i32 => {Unbuilt.Callee}(x)\nfunc g(y: i32) -> i32 => f(y)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var record = Assert.Single(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, $"{Unbuilt.Callee}(x)"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
+        Assert.True(program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" }).HasOpaque);
+        Assert.Equal(["f"], program.Bodies.ToArray().Where(static x => x.HasConstructionRecord && x.Source.Module == 0).Select(static x => x.Key.Decl?.Name));
+    }
+
     // SPEC 23.1.1 (DECISIONS R4-M127): a copy is decided before it is written. A default whose template the call's substitution does not
     // instantiate (a Type the copy folds or a callee substitution it composes: its storage a Limit) is no copy but an Opaque value at the
     // call reading the earlier slots, with the call's Unsupported_Kd: in a complete program past the storage depth, also a closed Type

@@ -28,7 +28,7 @@ public sealed class HoverCollectionTest : IDisposable
     public void OptionalCollectionPreservesCheckRecordsAndOutcome(string extra)
     {
         var path = Path.Combine(this.directory, "App.kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), Callable + extra);
         var plain = Run(path, false);
         var hover = Run(path, true);
@@ -51,7 +51,7 @@ public sealed class HoverCollectionTest : IDisposable
     public void OptionalCollectionKeepsAModuleCountRefusal()
     {
         var root = Path.Combine(this.directory, "App", "App.kimiproj");
-        var target = $"Targets={{\"{WindowsProfile.Target}\"}}";
+        var target = $"Targets={{\"{TargetProfile.Windows.Target}\"}}";
         var files = new Dictionary<string, byte[]>(SourceIdentity.PathComparer);
         var dependencies = new StringBuilder();
         for (var i = 1; i <= SyntaxTable.LibraryModule; i++)
@@ -64,7 +64,7 @@ public sealed class HoverCollectionTest : IDisposable
         files.Add(root, Encoding.UTF8.GetBytes($"OutputKind=\"Library\" {target} Dependencies={{{dependencies}}}"));
         var inputs = new ProjectFiles(files);
         var cancellation = TestContext.Current.CancellationToken;
-        var resolution = DependencyResolver.Resolve(root, WindowsProfile.Target, Compilation.CurrentLanguageVersion, cancellation, null, false, inputs);
+        var resolution = DependencyResolver.Resolve(root, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, cancellation, null, false, inputs);
         files.Add(DependencyLock.PathForProject(root), DependencyLock.Serialize(resolution));
         var plain = Run(root, false, inputs);
         var hover = Run(root, true, inputs);
@@ -88,7 +88,7 @@ public sealed class HoverCollectionTest : IDisposable
         }
 
         var path = Path.Combine(this.directory, "App.kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), doubling + use + "public func main() => ()\n");
         var plain = Run(path, false);
         var hover = Run(path, true);
@@ -103,7 +103,7 @@ public sealed class HoverCollectionTest : IDisposable
     public void OptionalProjectionFailureIsSeparateFromFinalizedRecords()
     {
         var path = Path.Combine(this.directory, "App.kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), Callable + "func broken() -> i32 => true\n");
         var checkedOutput = Run(path, false);
         var original = JsonSerializer.Serialize(checkedOutput);
@@ -229,7 +229,7 @@ public sealed class HoverCollectionTest : IDisposable
     {
         var failed = new SourceDocument("ZFailed.kimi", "/// Lost description.\npublic struct ZFailed\n");
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         CompilationTestHelper.UseEditedLibrary(c, x =>
         {
             x.Kotonoha.AddSource(failed);
@@ -260,7 +260,7 @@ public sealed class HoverCollectionTest : IDisposable
     {
         inputs ??= CheckInputSource.Disk;
         Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, path, inputs, out var project, out _));
-        return CheckService.Run(project, WindowsProfile.Target, CheckMode.Product, false, inputs, TestContext.Current.CancellationToken, collectHover: collect);
+        return CheckService.Run(project, TargetProfile.Windows.Target, CheckMode.Product, false, inputs, TestContext.Current.CancellationToken, collectHover: collect);
     }
 
     private static Compilation Create(bool collect)

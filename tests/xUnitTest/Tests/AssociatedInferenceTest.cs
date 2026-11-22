@@ -322,7 +322,7 @@ public class AssociatedInferenceTest
     {
         const string source = "contract C\n    associate Item\n    func read() -> Self.Item\nstruct S\n    Self is C\n    public func read() -> i32 => 1";
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.CollectHover = true;
         c.Kotonoha.AddSource(new("associated-inference.kimi", source));
         Assert.True(c.Bind().IsComplete, Describe(c));

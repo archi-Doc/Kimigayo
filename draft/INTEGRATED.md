@@ -1761,3 +1761,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   rejected at its declaration); decision 34 gains a closing sentence: its stack sentence stands, stated by SPEC §17.4.3 as the
   freestanding exception; §11: the question before B9-W1 is answered. No other decision changes. No SPEC or IMPL text: B9's
   units carry it, each with K's independent review. Nothing frozen.
+- Revision 13 (2026-11-22, the owner's answer to O-495 (B9c2's record, from B9 design Revision 2 §3.3.1 and §11 item 2) in T's
+  dialog, verbatim 「O-495 a」; T's D-1089): §2 gains decision 46 (decision 45's record is the existing Language code
+  `UnsatisfiedEffectBound_Kd` at the member's declaration with a new requirement `Ownership.PlatformStatic`, `OwnershipRequirement`
+  +1, this answer its approval under the enum's rule; no new code); §11: the question before B9c2 is answered. No other decision
+  changes. No SPEC or IMPL text: B9c2 carries DIAGNOSTICS' requirement row. Nothing frozen.

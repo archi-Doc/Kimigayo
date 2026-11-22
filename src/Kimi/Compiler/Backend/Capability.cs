@@ -4,10 +4,9 @@
 // generate on windows-x64, IMPL 21.3.3's operation rows and the decided D2 rows of the R5 plan's PD27 list, each with its removal condition;
 // the capability check of COMPILER_ARCHITECTURE's closed vocabularies, which the instance collector reads, at the definition stage (A3b) and
 // per instance.
-// Rows: the instance gaps of a requirement call's witness Self nested past Binding's bound (PLAN G128, R5 PD30; Dispatch's Limit target), and of
-// a nested function called without its enclosing instance (until PLAN G149) or a Closure no instance closed (a held instance with an Origin
-// position until PLAN G300's per-use opening, a generic container's group static until P42; DECISIONS R5-M157, BU-60), and of a
-// requirement call whose inherited witness cannot preserve its receiver (OCC-X, DECISIONS R5-M67);
+// Rows: the instance gaps of a nested function called without its enclosing instance (until PLAN G149) or a Closure no instance closed
+// (a held instance with an Origin position until PLAN G300's per-use opening, a generic container's group static until P42; DECISIONS
+// R5-M157, BU-60), and of a requirement call whose inherited witness cannot preserve its receiver (OCC-X, DECISIONS R5-M67);
 // the declaration row of a static whose storage P42 has not brought, a generic
 // container's included (DECISIONS R5-M82, superseding R5-M60's access row); the operation rows of IMPL
 // 21.3.3's 128-bit subset, division and remainder of i128 and u128 (a compound form builds as the same operation) and numeric conversions
@@ -24,11 +23,6 @@ namespace Kimi.Compiler.Backend;
 /// <summary>A row of the capability table: a form or instance the backend does not generate (IMPL 21.3.3).</summary>
 internal enum CapabilityGap : byte
 {
-    // A requirement call whose witness Self's stored Types nest past Binding's bound, so Dispatch gives a Limit target (PLAN G128); the
-    // collector reads no other storage verdict (R7-T1 c3).
-    [Transitional("R7", Reason = "R7-T1 c4: Dispatch stops reading its Self's storage, so no witness target is a Limit (PLAN G128, R5 PD30; the owner's PD27 list, R5-M146).")]
-    StorageNesting,
-
     // A function nested in a body (a block of a generic function, a function nested in one, a method or a specialization of a generic
     // container, or one level into a function with a length slot, whose declaring Type holds no length, PLAN G149-w) called by a
     // substitution that does not carry the enclosing instance, so no key holds the enclosing arguments (SPEC 8.13.3; DECISIONS R5-M40,
@@ -60,7 +54,6 @@ internal static class Capability
     /// <returns>Its code.</returns>
     internal static DiagnosticCode Code(CapabilityGap gap) => gap switch
     {
-        CapabilityGap.StorageNesting => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.EnclosingInstance => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.ExclusiveInheritedWitness => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.StaticStorage => DiagnosticCode.Unsupported_Kd,

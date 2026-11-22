@@ -17,11 +17,11 @@ public sealed class KimiLibraryFreezeCostTest
     [Trait("Purpose", "Allocation")]
     public void TheFreezesCostIsRecorded()
     {
-        var target = TargetTriple.Parse(WindowsProfile.Target);
+        var target = TargetTriple.Parse(TargetProfile.Windows.Target);
         var kimigayo = Compilation.CreateForTest().Kimigayo;
         var (time, allocated, retained) = Measure(() => KimiLibrary.Freeze(KimiLibrary.Unfrozen(target, kimigayo, new Kimi.Project(kimigayo))));
         Assert.True(allocated > 0 && retained > 0, $"allocated {allocated}, retained {retained}");
-        TestContext.Current.TestOutputHelper?.WriteLine($"freeze ({WindowsProfile.Target}): {time.TotalMilliseconds:F1} ms, {allocated} bytes allocated, {retained} bytes retained");
+        TestContext.Current.TestOutputHelper?.WriteLine($"freeze ({TargetProfile.Windows.Target}): {time.TotalMilliseconds:F1} ms, {allocated} bytes allocated, {retained} bytes retained");
     }
 
     private static (TimeSpan Time, long Allocated, long Retained) Measure(Func<KimiLibrary> freeze)

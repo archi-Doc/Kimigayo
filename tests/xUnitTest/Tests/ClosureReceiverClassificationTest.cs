@@ -602,7 +602,7 @@ public class ClosureReceiverClassificationTest
     {
         var source = PairHead + "    " + binding + " h = func [value] () -> ()\n        let o: Option<s/T> = .Some(value)\n        _ = o@move\n    h()\n" + PairMain;
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
