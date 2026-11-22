@@ -20,8 +20,8 @@ namespace Kimi.Compiler;
 //   CompleteQuery, AbandonQuery), FnSig, and the ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are
 //   Binding.ParameterShapes.cs's.
 // - Invariants: a header is its declaration's, never the body that demands it (BindHeader binds it outside any body). FnSig copies
-//   nothing: a function's parameter Types are the ones BindType published on its parameters (each as soon as it is bound, also while a
-//   pending associated Type keeps the header open), its result the symbol's Type (BindType's partial value while the header is open),
+//   nothing: a function's parameter Types are its parameter symbols' (BindFunctionHeader's: the Types BindType published on its
+//   parameters, BindType's partial value while a pending associated Type keeps the header open), its result the symbol's Type (likewise),
 //   its receiver index the declaration's `self` parameter (Binding.Indexing); an accessor's are its BoundAccessor's (BindPropertyHeader).
 // - Prohibitions: no call is selected and no overload ranked here; ValidateSignatures only fails declarations; no signature
 //   comparison reads a function's parameter Types, receiver index, result or generic count other than through FnSig.
@@ -249,6 +249,9 @@ public sealed partial class Binding
 
         internal BoundType? Result => this.function is { } f ? f.BoundSymbol?.Type : this.accessor!.Result;
 
-        internal BoundType? Input(int index) => this.function is { } f ? f.Parameters[index].Type.BoundType : index == 0 ? this.accessor!.Receiver : this.accessor!.Input;
+        // A function's input is its parameter symbol's Type (BindFunctionHeader's): the Type published on the parameter, or while a pending
+        // associated Type keeps the header open its partial value, as Result reads the symbol's (R7-C4 design R4: a run reads the header
+        // bound before its request).
+        internal BoundType? Input(int index) => this.function is { } f ? DeclaredSymbols.Parameter(f, index).Type : index == 0 ? this.accessor!.Receiver : this.accessor!.Input;
     }
 }
