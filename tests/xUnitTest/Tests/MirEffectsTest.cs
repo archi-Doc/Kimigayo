@@ -988,15 +988,17 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     }
 
     // SPEC 15.3.5, 8.15 (DECISIONS R4-M58): a chain that grows through a destructor's composed atom, D's T as G<(U, U)>, terminates:
-    // Binding's storage instantiation bounds the growing instance (TyCtxt.Apply gives none), so the first composition is a limit, the
-    // located Unsupported_Kd where it owes confined.
+    // Binding's storage instantiation bounds the growing instance (TyCtxt.ReadableInstance gives none), so the first composition past it
+    // is A4's Deep, the depth limit where it owes confined (R4-M153, R7-M54; Z25, before: the located Unsupported_Kd).
     [Fact]
-    public void AChainGrowingThroughADestructorIsALimit()
+    public void AChainGrowingThroughADestructorEndsAtTheBound()
     {
         const string Chain = "struct D<T>\n    var value: T\n    drop => ()\nstruct G<U>\n    var next: Option<rc/D<G<(U, U)>>>\n    public init()\n" +
             "        self.next = .None\n";
         Assert.Empty(Problems(Chain + "func release(g: G<i32>) => ()\n"));
-        Assert.Equal(["Unsupported_Kd Self is Sink 18446744073709551615"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
+        Assert.Equal(
+            ["OwnershipDepthLimit_Kd Self is Sink 18446744073709551615"],
+            Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
     // The Z2 DECISIONS draft (PLAN G396 (3), E1): A4's broken contract has one form per place, in a complete compilation. A call Local

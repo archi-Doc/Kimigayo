@@ -3,6 +3,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using System.Text.RegularExpressions;
+using Kimi.Command;
 using Kimi.Testing;
 using Xunit;
 
@@ -145,7 +146,7 @@ public class TestProtocolTest
     [InlineData("--run-diagnostic-bytes", "2147483648")]
     [InlineData("--format", "json", "--format", "text")]
     public void RejectsInvalidOptions(params string[] args)
-        => Assert.Throws<InvalidDataException>(() => TestOptions.Parse(args));
+        => Assert.Throws<CommandInputException>(() => TestOptions.Parse(args));
 
     [Theory]
     [InlineData("Test = { Unknown = 1 }")]

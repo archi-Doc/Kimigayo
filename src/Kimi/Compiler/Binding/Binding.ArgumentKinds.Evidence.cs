@@ -57,12 +57,12 @@ public sealed partial class Binding
         // (Pattern), the pattern's instantiation by the slots solved so far and its part's contribution (PartContribution), a function of
         // the part and the pattern, so every run of the candidate writes the same contribution (DECISIONS BU-99). A Case construction's is
         // the same rule over its payloads (ContributePayloads).
-        internal readonly void Contribute(int[] mapping)
+        internal readonly void Contribute()
         {
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
                 var part = this.Call.ArgumentNodes[i];
-                var pattern = this.Function.Parameters[mapping[i]].Type.BoundType is { } parameter ? this.Pattern(parameter) : null;
+                var pattern = this.Function.Parameters[this.Mapping[i]].Type.BoundType is { } parameter ? this.Pattern(parameter) : null;
                 var type = pattern is null ? null : this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths);
                 this.Rows[i] = new(i, -1, 0, part, pattern, type, this.Binding.PartContribution(part));
             }
@@ -144,14 +144,14 @@ public sealed partial class Binding
         // SPEC 10.8: the Type bound to F also supplies its independently known call signature. This is evidence alongside ordinary
         // inputs, before expected results and literal defaults. An anonymous waiting body is never evidence; its written header is
         // handled separately. The signature's own Origins become open regions.
-        internal readonly bool InferCallableSignatures(int[] mapping, Span<BoundArgumentOperation> operations)
+        internal readonly bool InferCallableSignatures(Span<BoundArgumentOperation> operations)
         {
             var binding = this.Binding;
             var arguments = this.Call.ArgumentNodes;
             for (var i = 0; i < arguments.Count; i++)
             {
                 var source = arguments[i];
-                if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
+                if (this.Function.Parameters[this.Mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
                     binding.KindOf(source) == PartKind.Function || binding.WasDeferred(source) ||
                     this.Binding.ArgumentTypeAt(source) is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
@@ -218,17 +218,17 @@ public sealed partial class Binding
         // literal-only range boundary; a waiting nested call its resolution), recorded for the candidate's checks to run once more. Each
         // part that its default does not fit is bound at it for its own record (SPEC 23.1.2), and one of them is returned; `applied`
         // tells whether any own Type applied.
-        internal readonly Koto? DefaultArguments(int[] mapping, PartKind kind, out bool applied)
+        internal readonly Koto? DefaultArguments(PartKind kind, out bool applied)
         {
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, this.Mapping, ref unsolved);
                 applied = false;
                 Koto? misfit = null;
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
-                    var pattern = this.Function.Parameters[mapping[i]].Type.BoundType!;
+                    var pattern = this.Function.Parameters[this.Mapping[i]].Type.BoundType!;
                     misfit = this.DefaultPart(this.Call.ArgumentNodes[i], pattern, unsolved, kind, ref applied) ?? misfit;
                 }
 

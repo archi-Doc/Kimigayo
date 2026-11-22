@@ -705,7 +705,7 @@ public sealed partial class FunctionCodegenTest
     public void DivisionAndShiftChecksAbortBeforeTheirInstruction(string source, string instruction, string divisor, string condition, int reason)
     {
         var (ir, text) = Parse(source);
-        var operation = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == instruction);
+        var operation = Assert.Single(Internal(ir).SelectMany(static x => x.Instructions), x => x.Shape == instruction);
         var f = Assert.Single(ir.Functions, x => x.Instructions.Contains(operation));
         var check = Assert.Single(f.Blocks, x => x.Successors.Count == 2 && x.Successors[1].Instructions.Contains(operation));
         var abort = AssertAbort(ir, text, check.Successors[0], reason, source, source[(source.IndexOf("=> ", StringComparison.Ordinal) + 3)..]);
@@ -872,6 +872,36 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(2, texts.Length);
         Assert.Single(texts, static x => !x.Contains(" = mul ", StringComparison.Ordinal));
         Assert.Single(texts, static x => Regex.IsMatch(x, @" = mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n"));
+    }
+
+    // SPEC 5.3, 8.15.3 (PLAN G597's L2 U2, B's ruling 14): a Storage over a raw pointer Place, the form MirValidatorTest's rows admit and
+    // Storage.viewStart's call takes, is the pointer's value (Buffer): unkeyed in both instances, and keyed where the instance's key starts
+    // at the storage, the load of p with no stride; keyed where the key displaces, that value plus the start times the element's stride,
+    // Displace's statement. Each instance stores the value it loads through p's home, directly or as the displacement's base (fail-before:
+    // the pointer's home was read as a handle's record, through a `data` word it has no). No producer calls viewStart before U3, so h's
+    // built `p + start` Add is rewritten in place into the Storage over its pointer operand's Place.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AStorageOverARawPointerIsItsValue(bool keyed)
+    {
+        var source = "func h<R>(p: raw/i64, r: R, start: isize) -> raw/i64\n    R is PositionRange\n    unsafe => return p + start\n" +
+            "func x(p: raw/i64) -> raw/i64 => h(p, .., 0)\nfunc y(p: raw/i64) -> raw/i64 => h(p, 1.., 1)\n";
+        var c = Analyze(source, OutputKind.Library);
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "h");
+        var at = Enumerable.Range(0, body.Statements.Length).Single(x => body.Statements[x].Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: (byte)MirBinaryOp.Add });
+        ref readonly var add = ref body.Statements[at];
+        var (pointer, start) = (body.Operands[add.Rvalue.Start], body.Operands[add.Rvalue.Start + 1]);
+        var type = body.TypeOf(pointer.Place)!;
+        var operands = body.AddOperand(start);
+        body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.TypeToken, body.Locals[2].Type!))));
+        Unsafe.AsRef(in add) = add with { Rvalue = keyed ? MirRvalue.Storage(pointer.Place, type, operands) : MirRvalue.Storage(pointer.Place, type) };
+        var texts = ItemTexts(c, "h");
+        Assert.Equal(2, texts.Length);
+        Assert.All(texts, static x => Assert.DoesNotContain("__kimi_abort", x, StringComparison.Ordinal));
+        Assert.All(texts, static x => Assert.Matches(@"(%t\d+) = load ptr, ptr %[\w.]+, align 8\n(?:  .*\n)*?  (?:(%t\d+) = getelementptr i8, ptr \1, i64 %t\d+\n  store ptr \2|store ptr \1), ", x));
+        Assert.Equal(keyed ? 1 : 2, texts.Count(static x => !x.Contains(" = mul ", StringComparison.Ordinal) && !x.Contains("getelementptr", StringComparison.Ordinal)));
+        Assert.Equal(keyed ? 1 : 0, texts.Count(static x => Regex.IsMatch(x, @" = mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n")));
     }
 
     // The place writer (R5 C2a; DECISIONS R5-M83, package C 3.2 I7 and I9): a Place's address is its root's home, then each step at the offset
@@ -1249,6 +1279,43 @@ public sealed partial class FunctionCodegenTest
     public void AnIntrinsicIsWrittenByItsRow(string source, string pattern)
         => Assert.Matches(pattern, Parse(source).Text);
 
+    // SPEC 5.6, IMPL 21.3: Raw.readVolatile and Raw.writeVolatile are one volatile load and store of their integer Type at the storage, with
+    // its alignment, where the call is: a device register polled until its ready bit is set is read in the loop's condition, which every
+    // iteration runs, and acknowledged once after the loop; a u128 is one volatile i128 access, which LLVM splits into two 8-byte accesses
+    // in no fixed order, so no machine order is asserted (keeping each access at O2 is LLVM's volatile guarantee: no O2 run).
+    [Fact]
+    public void AVolatileAccessIsOneVolatileLoadOrStore()
+    {
+        var ir = Parse("func waitReady(status: raw/u32)\n    unsafe\n        while (Raw.readVolatile(status) & 1) == 0 => ()\n        Raw.writeVolatile(status, 1)\n" +
+            "func wide(p: raw/u128) -> u128\n    unsafe => return Raw.readVolatile(p)").Ir;
+        var volatiles = ir.Functions.SelectMany(static x => x.Blocks)
+            .SelectMany(static x => x.Instructions.Where(static y => y.Shape.Contains(" volatile ", StringComparison.Ordinal)).Select(y => (y.Shape, Block: x))).ToArray();
+        string[] expected = ["load volatile i128, ptr %, align 16", "load volatile i32, ptr %, align 4", "store volatile i32 1, ptr %, align 4"];
+        Assert.Equal(expected, volatiles.Select(static x => x.Shape).Order(StringComparer.Ordinal));
+        Assert.Equal((true, false), (Cycles(volatiles.Single(x => x.Shape == expected[1]).Block), Cycles(volatiles.Single(x => x.Shape == expected[2]).Block)));
+
+        // Whether a block reaches itself through its successors: whether it is in a loop.
+        static bool Cycles(IrBlock block)
+        {
+            var seen = new HashSet<IrBlock>();
+            var pending = new Stack<IrBlock>(block.Successors);
+            while (pending.TryPop(out var next))
+            {
+                if (next == block)
+                {
+                    return true;
+                }
+
+                if (seen.Add(next))
+                {
+                    next.Successors.ForEach(pending.Push);
+                }
+            }
+
+            return false;
+        }
+    }
+
     // SPEC 5.1, 5.3 (DECISIONS R5-M92): p + n and p - n displace a raw pointer by n * stride(T) through the place writer's byte offset, a zero
     // stride keeping the pointer; == and != compare addresses, null the one pointer constant.
     [Theory]
@@ -1272,7 +1339,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func same(p: uniq/raw/i32, q: raw/i32) -> bool => p == q", "eq", 2, 0)]
     public void AComparisonReadsEachOperandAtItsTerminal(string source, string predicate, int left, int right)
     {
-        var compare = Assert.Single(Parse(source).Ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == $"icmp {predicate} ptr %, %");
+        var compare = Assert.Single(Internal(Parse(source).Ir).SelectMany(static x => x.Instructions), x => x.Shape == $"icmp {predicate} ptr %, %");
         Assert.Equal([left, right], compare.Operands.Select(Loads));
     }
 
@@ -1335,6 +1402,29 @@ public sealed partial class FunctionCodegenTest
             Assert.Single(Regex.Matches(text, Regex.Escape(definition)));
             Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
             Assert.Contains(text, ir, StringComparison.Ordinal);
+        }
+    }
+
+    // IMPL 21.4.7 (the Tatara plan's decision 24, B7r4): every module, an Application's, a Library's and a test build's, defines the
+    // runtime's memory functions once, from the memory part after the runtime; its only other external definition is an entry (fail-before:
+    // no module defined them, so every link took the backend archive's).
+    [Fact]
+    public void EveryModuleDefinesTheMemoryFunctionsOnce()
+    {
+        var modules = new (string Text, string[] Entry)[]
+        {
+            (Generate("Console.writeLine(\"Hello\")"), [RuntimeAbi.Start.Name]),
+            (Generate(Analyze("func f() => ()", OutputKind.Library)), []),
+            (Generate(Verifications), [RuntimeAbi.Start.Name]),
+        };
+        foreach (var (text, entry) in modules)
+        {
+            var at = text.IndexOf(LlvmModuleText.MemoryRuntime, StringComparison.Ordinal);
+            Assert.InRange(at, 0, text.Length);
+            Assert.Equal(at, text.LastIndexOf(LlvmModuleText.MemoryRuntime, StringComparison.Ordinal));
+            Assert.Equal(
+                [.. TargetProfile.MemorySymbols, .. entry],
+                Regex.Matches(text, @"(?m)^define (?!internal )[^@]*@([\w.]+)\(").Select(static x => x.Groups[1].Value));
         }
     }
 
@@ -1910,6 +2000,10 @@ public sealed partial class FunctionCodegenTest
             return writer.ToString();
         })];
     }
+
+    // The module's internal functions: its generated code and runtime, without the runtime's memory functions, which every module defines
+    // with external linkage (IMPL 21.4.7).
+    private static IEnumerable<IrFunction> Internal(GeneratedIr ir) => ir.Functions.Where(static x => x.Signature.StartsWith("internal ", StringComparison.Ordinal));
 
     // The module's functions that body items' texts define.
     private static IrFunction[] Functions(GeneratedIr ir, string[] items)
