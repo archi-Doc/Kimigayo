@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -591,27 +592,42 @@ public sealed partial class Binding
     /// ConstructorMember, a length argument's group member) and read by the pass's later steps; a row in the access's module's
     /// NodeColumns at its SyntaxId with two slots (PLAN G724, B4): its side, and its lookup's selection, absent for a constructor access,
     /// which has a side and no selection. A row of an earlier pass reads none, and the library's rows are released at its freeze
-    /// (NodeColumns.Freeze). Its selection members keep the names its readers use.</summary>
+    /// (NodeColumns.Freeze). Its selection members keep the names its readers use. The column's slot is the row's index in the pass's
+    /// rows plus 1 (0 absent), since accesses are sparse in a module's ids (about one per page) and a row is 56 bytes.</summary>
     private readonly struct MemberSelectionRows(Binding binding)
     {
+        // The pass's rows in first-publication order (precedent: duplicateOrder). Reset: ResetContracts' Clear, its capacity kept, so a
+        // warm rebind allocates nothing; the column's slots read absent by the pass stamp, so both are empty at a pass's start.
+        // Invariant: a slot is present iff it names a row; one site writes both (Publish).
+        private readonly List<(MemberSide? Side, MemberSelection? Selection)> rows = [];
+
         internal MemberSelection this[MemberAccessKoto member]
-            => Row(member, binding).Selection ?? throw new KeyNotFoundException($"`{member}` has no member selection in this pass.");
+            => this.Row(member).Selection ?? throw new KeyNotFoundException($"`{member}` has no member selection in this pass.");
 
         internal bool TryGetValue(MemberAccessKoto member, out MemberSelection selection)
         {
-            var row = Row(member, binding).Selection;
+            var row = this.Row(member).Selection;
             selection = row.GetValueOrDefault();
             return row.HasValue;
         }
 
-        internal MemberSelection GetValueOrDefault(MemberAccessKoto member) => Row(member, binding).Selection.GetValueOrDefault();
+        internal MemberSelection GetValueOrDefault(MemberAccessKoto member) => this.Row(member).Selection.GetValueOrDefault();
 
-        internal MemberSide? SideOf(MemberAccessKoto member) => Row(member, binding).Side;
+        internal MemberSide? SideOf(MemberAccessKoto member) => this.Row(member).Side;
+
+        internal void Clear() => this.rows.Clear();
 
         // The one writer, PublishPath's MemberAccess step: one side per access in a pass (R7-N1c); a selection replaces the earlier one.
         internal void Publish(MemberAccessKoto access, MemberSide side, MemberSelection? selection)
         {
-            ref var row = ref HirTables.Of(access).Families.MemberSelections.Ref(access.SyntaxId, binding);
+            ref var slot = ref HirTables.Of(access).Families.MemberSelections.Ref(access.SyntaxId, binding);
+            if (slot == 0)
+            {
+                this.rows.Add(default);
+                slot = this.rows.Count;
+            }
+
+            ref var row = ref CollectionsMarshal.AsSpan(this.rows)[slot - 1];
             if (row.Side is { } published && published != side)
             {
                 throw new InvalidOperationException($"`{access}` was published as a {published} member, then as a {side} member (InternalInvariant; R7-N1c).");
@@ -621,7 +637,7 @@ public sealed partial class Binding
             row.Side = side;
         }
 
-        private static (MemberSide? Side, MemberSelection? Selection) Row(MemberAccessKoto member, Binding binding)
-            => member.SyntaxOwner is { } table ? table.Hir.Families.MemberSelections.Get(member.SyntaxId, binding) : default;
+        private (MemberSide? Side, MemberSelection? Selection) Row(MemberAccessKoto member)
+            => member.SyntaxOwner?.Hir.Families.MemberSelections.Get(member.SyntaxId, binding) is > 0 and var slot ? this.rows[slot - 1] : default;
     }
 }

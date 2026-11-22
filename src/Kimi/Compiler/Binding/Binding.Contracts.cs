@@ -136,6 +136,7 @@ public sealed partial class Binding
         this.userIterations.Clear();
         this.associatedApplications.Clear();
         this.ambiguousAssociatedMatches?.Clear();
+        this.memberSelections.Clear();
         this.requirementCursor = 0;
     }
 
