@@ -6,8 +6,11 @@ namespace XunitTest;
 
 // R7-C4 commit 0 (PLAN G172, G955; design `design-g172.md` Revision 2 §2 and §7; the owner's O-484): the coverage table's programs, each labelled
 // from SPEC before any run (the probes' labels.tsv, quoted per program). A row whose verdict dev gives is a guard; a row C4 moves is
-// Explicit until the cutover (commit 3) removes the marker. An invalid guard asserts only its verdict ("*: * | ..."): its records move
-// with the cutover (one record set in every order, design §6).
+// Explicit until the cutover (commit 3) removes the marker. An invalid row asserts its independent records (SPEC 23.1.2) as its label
+// names them, one set in every order (C4 ruling 10 (2)); the records resting on them are left open (`...`): a header's
+// InvalidConstraint_Kd over a failed conformance, a conformance's IncompatibleContractImplementation_Kd over its implementations'
+// headers, a binding's inference failure over a failed binding it reads. They are dev's own, and R7-E5's per-problem inputs (D-924)
+// settle them; C4 suppresses none.
 public partial class AssociatedInferenceTest
 {
     // invalid: 8.5.5 Completion: E.W = Never (w's declared result; holds with D.X and E.V pending), so b supplies Never and a supplies i32: conflicting complete Types at D's conformance.
@@ -116,34 +119,34 @@ public partial class AssociatedInferenceTest
 
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records).
     [Theory]
-    [InlineData("guard", "n1-d", C4N1D, "*: * | ...")]
+    [InlineData("guard", "n1-d", C4N1D, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
     [InlineData("C4", "n1-e", C4N1E, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
     [InlineData("C4", "n1-e-vw", C4N1EVw, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
     [InlineData("C4", "n2-d", C4N2D, "")]
     [InlineData("guard", "n2-e", C4N2E, "")]
-    [InlineData("guard", "n4-def", C4N4Def, "*: * | ...")]
+    [InlineData("guard", "n4-def", C4N4Def, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
     [InlineData("C4", "n4-efd", C4N4Efd, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
-    [InlineData("guard", "n4-fde", C4N4Fde, "*: * | ...")]
-    [InlineData("guard", "c3-abc", C4C3Abc, "*: * | ...")]
-    [InlineData("guard", "c3-bca", C4C3Bca, "*: * | ...")]
-    [InlineData("guard", "c3-cab", C4C3Cab, "*: * | ...")]
+    [InlineData("guard", "n4-fde", C4N4Fde, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
+    [InlineData("guard", "c3-abc", C4C3Abc, "AssociatedTypeInferenceFailed_Kd: Self is HA | ...")]
+    [InlineData("guard", "c3-bca", C4C3Bca, "AssociatedTypeInferenceFailed_Kd: Self is HA | ...")]
+    [InlineData("guard", "c3-cab", C4C3Cab, "AssociatedTypeInferenceFailed_Kd: Self is HA | ...")]
     [InlineData("guard", "c3-x", C4C3X, "")]
     [InlineData("C4", "k1-s", C4K1S, "")]
     [InlineData("guard", "k1-e", C4K1E, "")]
-    [InlineData("guard", "k2-s", C4K2S, "*: * | ...")]
-    [InlineData("guard", "k2-e", C4K2E, "*: * | ...")]
-    [InlineData("guard", "k3-s", C4K3S, "*: * | ...")]
-    [InlineData("guard", "k3-e", C4K3E, "*: * | ...")]
+    [InlineData("guard", "k2-s", C4K2S, "MissingContractImplementation_Kd: Self is C | ...")]
+    [InlineData("guard", "k2-e", C4K2E, "MissingContractImplementation_Kd: Self is C | ...")]
+    [InlineData("guard", "k3-s", C4K3S, "AssociatedTypeInferenceFailed_Kd: Self is C | ...")]
+    [InlineData("guard", "k3-e", C4K3E, "AssociatedTypeInferenceFailed_Kd: Self is C | ...")]
     [InlineData("guard", "k3-x", C4K3X, "")]
     [InlineData("guard", "dr-aef", C4DrAef, "")]
     [InlineData("C4", "dr-fea", C4DrFea, "")]
     [InlineData("C4", "dr-efa", C4DrEfa, "")]
     [InlineData("C4", "ring6", C4Ring6, "")]
-    [InlineData("guard", "prem-own", C4PremOwn, "*: * | ...")]
+    [InlineData("guard", "prem-own", C4PremOwn, "AssociatedTypeInferenceFailed_Kd: Self is Q | ...")]
     [InlineData("C4", "prem-e", C4PremE, "")]
     [InlineData("C4", "prem-p", C4PremP, "")]
-    [InlineData("guard", "b2-012", C4B2012, "*: * | ...")]
-    [InlineData("guard", "b2-210", C4B2210, "*: * | ...")]
+    [InlineData("guard", "b2-012", C4B2012, "AssociatedTypeInferenceFailed_Kd: Self is C0 | ...")]
+    [InlineData("guard", "b2-210", C4B2210, "AssociatedTypeInferenceFailed_Kd: Self is C0 | ...")]
     [InlineData("guard", "ov12", C4Ov12, "")]
     [InlineData("guard", "ov12-r", C4Ov12R, "")]
     [InlineData("C4", "generic", C4Generic, "")]
