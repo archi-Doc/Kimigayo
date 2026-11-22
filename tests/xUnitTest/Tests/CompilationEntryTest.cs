@@ -17,10 +17,11 @@ namespace XunitTest;
 /// records generates nothing, and <c>kimi test</c> publishes its records as <c>kimi build</c> does.</summary>
 public sealed class CompilationEntryTest
 {
-    // The MIR's one Unsupported record here, at `a == b`, a form the old path's check accepts (its generation refuses it): the tuple operator
-    // without its comparison (MirBuildTest.Unbuilt; PD30's (e) row until R7).
-    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations +
-        $"func same(a: ref/{MirBuildTest.Unbuilt.Tuple}, b: ref/{MirBuildTest.Unbuilt.Tuple}) -> bool => a == b\nlet x = 1\n";
+    // The MIR's one Unsupported record here, at the call `Call`: a default the call's substitution cannot instantiate (MirBuildTest.Unbuilt;
+    // PD30's (e) row, the builder's B3).
+    private static readonly string Call = MirBuildTest.Unbuilt.Callee + "(a)";
+
+    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations + $"func same(a: i32) -> i32 => {Call}\nlet x = 1\n";
 
     // R5 K1, C0b1 (DECISIONS R5-M65, R5-M146): the checked set exists after check; MIR code generation writes the module of each output
     // form, an Application's (with its entry), a test build's (the test runtime's entry; C10a, DECISIONS R5-M136) or a Library's, never
@@ -197,11 +198,11 @@ public sealed class CompilationEntryTest
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.False(c.Analyze().IsVerified);
         var problem = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, Call), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
         Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
         c.ReportAnalysis();
         var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("Unsupported_Kd", "a == b"), (record.Code, record.Text));
+        Assert.Equal(("Unsupported_Kd", Call), (record.Code, record.Text));
         Assert.False(c.Generate(TextWriter.Null)); // the gate's step 1: the MIR's record, which check published, adds no Emission record
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
     }
