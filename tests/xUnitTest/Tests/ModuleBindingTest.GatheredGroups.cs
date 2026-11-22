@@ -241,7 +241,7 @@ public partial class ModuleBindingTest
             c.Project.ProjectFile.Alias = defaults.Split(',');
         }
 
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Main.kimi", source + "\nConsole.writeLine(\"ok\")\n"));
         c.Check();
         var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
@@ -257,7 +257,7 @@ public partial class ModuleBindingTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.OutputKind = OutputKind.Application;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Main.kimi", aliases + AGen + BI32 + Reference + "\nConsole.writeLine(\"ok\")\n"));
         c.Check();
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
@@ -290,7 +290,7 @@ public partial class ModuleBindingTest
             c.Project.ProjectFile.Alias = defaults.Split(',');
         }
 
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Main.kimi", source + "Console.writeLine(\"ok\")\n"));
         c.Check();
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);

@@ -60,7 +60,7 @@ public class GenericBorrowedElementTest
         // SPEC 3.3 and 13.4: each `inferred == 10` check reads the returned element borrow as its i32 referent;
         // the whole Milestone 21 source binds: inferred length/Type/Origin, ordinary defaults and dependent forwarding.
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Program21Source));
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code} ({x.Node.GetType().Name}): {x.Node}")));
     }

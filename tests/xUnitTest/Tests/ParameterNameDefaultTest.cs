@@ -151,7 +151,7 @@ public class ParameterNameDefaultTest
         Assert.True(c.Binding.Result.IsComplete);
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         TinyhandSerializer.DeserializeObject(bytes, ref tree);
         Assert.NotNull(tree);

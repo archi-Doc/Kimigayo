@@ -1616,9 +1616,13 @@ public sealed class MirInitTest
     // moved receiver through a runtime Index once, at the element (fail-before: also at the site). A located part through a constant
     // Index or a Field is its own Move Path, so the sibling of a moved element read by a derived write or a rejected jump reports nothing
     // (fail-before: MovedPlace_Kd at the site), and the moved element itself is reported at its node (fail-before: at the site). A kept
-    // operand of a failed call, operation or construction is an undecided use at the site, the operation its decided twin evaluates it at
-    // (also below a constant Index; below a runtime Index at the selection, once), and an undecided use of replaced syntax or an unresolved
-    // call's receiver stays at the site (PLAN G121, G1172).
+    // operand of a failed call, operation or construction is read as the call builder reads an operand (DECISIONS Z17c): a Copy part the
+    // form reads at the site where no later kept part builds code (missing(x), missing(a[0])), at its own node where a later one does
+    // (a later kept Error builds its Opaque value: g(x, missing), (x, missing), x + missing, x == missing, missing(x + missing2) and
+    // g(a[0], missing) at the part; fail-before: at the site, P7's record moves), below a runtime Index at the selection, once; a Copy
+    // part read before a later kept part moves it is read there, so the move is no use of it (missing(y, g(y@move)), SPEC 12.2;
+    // fail-before: a false MovedPlace_Kd at the site); an undecided use of replaced syntax or an unresolved call's receiver stays at the
+    // site (PLAN G121, G1172).
     [Theory]
     [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    missing = p.n\n", "")]
     [InlineData("func g(n: i32, m: i32) -> i32 => n\nfunc f() -> i32\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    return g(p.n, missing)\n", "")]
@@ -1627,15 +1631,16 @@ public sealed class MirInitTest
     [InlineData("func f() -> i32\n    var x: i32\n    missing(x)\n    return 1\n", "UninitializedPlace_Kd missing(x) 1")]
     [InlineData("func f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    let t = a[0]@move\n    missing(a[i])\n", "MovedPlace_Kd a[i] 1")]
     [InlineData("func inspect(v: ref/string) => ()\nfunc f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    let t = a[0]@move\n    inspect(a[i])\n", "MovedPlace_Kd a[i] 1")]
-    [InlineData(Callees + "func f()\n    var x: i32\n    let z = g(x, missing)\n", "UninitializedPlace_Kd g(x, missing) 1")]
+    [InlineData(Callees + "func f()\n    var x: i32\n    let z = g(x, missing)\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let z = missing(y, g(y@move))\n", "")]
     [InlineData(Callees + "func f()\n    var x: i32\n    let z = g(x, 1)\n", "UninitializedPlace_Kd g(x, 1) 1")]
-    [InlineData(Callees + "func f()\n    var x: i32\n    missing(x + missing2)\n", "UninitializedPlace_Kd x + missing2 1")]
+    [InlineData(Callees + "func f()\n    var x: i32\n    missing(x + missing2)\n", "UninitializedPlace_Kd x 1")]
     [InlineData(Callees + "func f()\n    var x: i32\n    k(x + 1)\n", "UninitializedPlace_Kd x + 1 1")]
-    [InlineData("func f()\n    var x: i32\n    let t = (x, missing)\n", "UninitializedPlace_Kd (x, missing) 1")]
+    [InlineData("func f()\n    var x: i32\n    let t = (x, missing)\n", "UninitializedPlace_Kd x 1")]
     [InlineData("func f()\n    var x: i32\n    let t = (x, 1)\n", "UninitializedPlace_Kd (x, 1) 1")]
-    [InlineData("func f() -> i32\n    var x: i32\n    return x + missing\n", "UninitializedPlace_Kd x + missing 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    return x + missing\n", "UninitializedPlace_Kd x 1")]
     [InlineData("func f() -> i32\n    var x: i32\n    return x + 1\n", "UninitializedPlace_Kd x + 1 1")]
-    [InlineData("func f() -> i32\n    var x: i32\n    if x == missing => return 1\n    return 0\n", "UninitializedPlace_Kd x == missing 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    if x == missing => return 1\n    return 0\n", "UninitializedPlace_Kd x 1")]
     [InlineData("func f() -> i32\n    var x: i32\n    if x == 1 => return 1\n    return 0\n", "UninitializedPlace_Kd x == 1 1")]
     [InlineData("func use(s: string) -> i32 => 0\nfunc f() -> i32\n    var s = \"a\"\n    let t = use(s@move)\n    return missing(s)\n", "MovedPlace_Kd missing(s) 1")]
     [InlineData("func use(s: string) -> i32 => 0\nfunc f() -> i32\n    var s = \"a\"\n    let t = use(s@move)\n    return use(s)\n", "MovedPlace_Kd use(s) 1")]
@@ -1648,7 +1653,7 @@ public sealed class MirInitTest
     [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    k(a[0])\n", "UninitializedPlace_Kd k(a[0]) 1")]
     [InlineData(Callees + "func f(i: isize)\n    var a: [2 of i32]\n    missing(a[i])\n", "UninitializedPlace_Kd a[i] 1")]
     [InlineData(Callees + "func f(i: isize)\n    var a: [2 of i32]\n    k(a[i])\n", "UninitializedPlace_Kd a[i] 1")]
-    [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    let z = g(a[0], missing)\n", "UninitializedPlace_Kd g(a[0], missing) 1")]
+    [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    let z = g(a[0], missing)\n", "UninitializedPlace_Kd a[0] 1")]
     [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    let z = g(a[0], 1)\n", "UninitializedPlace_Kd g(a[0], 1) 1")]
     [InlineData(Callees + "func f(i: isize)\n    var a: [2 of i32]\n    let z = g(a[i], missing)\n", "UninitializedPlace_Kd a[i] 1")]
     [InlineData(Callees + "func f(i: isize)\n    var a: [2 of i32]\n    let z = g(a[i], 1)\n", "UninitializedPlace_Kd a[i] 1")]
