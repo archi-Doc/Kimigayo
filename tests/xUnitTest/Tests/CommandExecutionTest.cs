@@ -362,6 +362,88 @@ public sealed class CommandExecutionTest : IDisposable
             Assert.Equal(2, exit);
         }
 
+        // kimi test's failures (IMPL 20.6.4; DECISIONS R9-M12; PLAN G1012), the expected outcome first. Exit 2 with its message: an empty
+        // selection (O2); two projects with one identity, the later one's line, the loop going on to the next project, whose case is
+        // listed (O3); an empty --results-dir, an option error at Parse before any project is prepared, also where no run follows (O5,
+        // O5b). Exit 3 with its message: a results directory that cannot be created, a file in its place (R1, the runner's storage).
+        // Exit 2, the command's own fault (DIAGNOSTICS rule 9): one CheckFaulted_Kd rendered and its code and message as the result's one
+        // errors entry, for the host's console throwing at the "Project: " line (F1, in text and in the document) and at the native
+        // build's "Built: " report (F2). No production seam: the console is the host's.
+        [Theory]
+        [InlineData("project", 2, "No test cases match the selection.", "--list", "--filter", "zzz")]
+        [InlineData("identity", 2, "B: Conflicting project identity; configure distinct TestProjectId values: Same", "--list")]
+        [InlineData("project", 2, "Invalid path: --results-dir: ", "--results-dir", "")]
+        [InlineData("project", 2, "Invalid path: --results-dir: ", "--list", "--results-dir", "")]
+        [InlineData("project", 2, "Invalid path: --results-dir: ", "--allow-empty", "--filter", "zzz", "--results-dir", "")]
+        [InlineData("results file", 3, null)]
+        [InlineData("Project: ", 2, null, "--list")]
+        [InlineData("Project: ", 2, null, "--list", "--format", "json")]
+        [InlineData("Built: ", 2, null)]
+        public async Task TestFailsByItsInputItsRunnerOrItsOwnFault(string origin, int expected, string? message, params string[] options)
+        {
+            Assert.SkipUnless(origin != "Built: " || OperatingSystem.IsWindows(), "The native build runs on Windows.");
+            var input = WriteTests(Path.Combine(this.directory, "A", "A.kimiproj"), origin == "identity" ? "TestProjectId = \"Same\"\n" : string.Empty);
+            if (origin == "identity")
+            {
+                WriteTests(Path.Combine(this.directory, "B", "B.kimiproj"), "TestProjectId = \"Same\"\n");
+                WriteTests(Path.Combine(this.directory, "C", "C.kimiproj"), string.Empty);
+                input = Path.Combine(this.directory, "S.kimisln");
+                File.WriteAllText(input, "Projects = { \"A/A.kimiproj\", \"B/B.kimiproj\", \"C/C.kimiproj\" }\n");
+            }
+            else if (origin == "results file")
+            {
+                options = ["--results-dir", Path.Combine(this.directory, "A", "tests.kimi")];
+            }
+
+            var console = new DiagnosticContractTest.DiagnosticConsole { LineAction = origin.EndsWith(": ", StringComparison.Ordinal) ? (origin, DiagnosticContractTest.DiagnosticConsole.Fail) : null };
+            var kimigayo = new Kimigayo(console);
+            var (output, error) = (Console.Out, Console.Error);
+            using var stdout = new StringWriter();
+            using var stderr = new StringWriter();
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            try
+            {
+                Environment.ExitCode = 0;
+                await new TestCommand(kimigayo, new Solution(kimigayo)).Execute([input, .. options], TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                Console.SetOut(output);
+                Console.SetError(error);
+            }
+
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            Assert.Equal(expected, exit);
+            using var document = options.Contains("json") ? JsonDocument.Parse(stdout.ToString()) : null;
+            var errors = document?.RootElement.GetProperty("errors").EnumerateArray().Select(x => x.GetString()!).ToArray() ??
+                stderr.ToString().Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (origin.EndsWith(": ", StringComparison.Ordinal))
+            {
+                Assert.Equal(2, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length);
+                Assert.Equal(nameof(DiagnosticCode.CheckFaulted_Kd) + ": " + DiagnosticFaults.MessagePrefix + DiagnosticFaults.Describe(DiagnosticFault.Exception), Assert.Single(errors));
+            }
+            else
+            {
+                Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Text + stderr, StringComparison.Ordinal);
+                Assert.StartsWith(message ?? string.Empty, errors[0], StringComparison.Ordinal);
+                Assert.True(message is null || errors.Length == 1);
+            }
+
+            Assert.True(message?.StartsWith("Invalid path", StringComparison.Ordinal) != true || console.Text.Length == 0, console.Text);
+            Assert.Equal(origin == "identity", stdout.ToString().Contains(" C.kimiproj::passes", StringComparison.Ordinal));
+
+            // A Windows x64 library project with one passing test case, its own settings after the target's.
+            static string WriteTests(string project, string settings)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+                File.WriteAllText(Path.Combine(Path.GetDirectoryName(project)!, "tests.kimi"), "#Test\nfunc passes()\n    $require(1 == 1)\n");
+                File.WriteAllText(project, $"Targets = {{ \"{TargetProfile.Windows.Target}\" }}\nOutputKind = \"Library\"\nTestSources = {{ \"tests.kimi\" }}\n" + settings);
+                return project;
+            }
+        }
+
         // kimi test takes its arguments from the command line as every command does (PLAN G1214): the parser splits the line and unwraps
         // a quoted argument, so a quoted input, with a space or without, and a quoted option value arrive without their quotes, a bare
         // --locked arrives as --locked true (KimiOptions.ExpandFlags) and --locked false is the Boolean option's value, not the input

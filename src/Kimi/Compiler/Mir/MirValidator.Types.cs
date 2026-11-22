@@ -222,9 +222,10 @@ internal sealed partial class MirValidator
                     _ => MirTypes.Agrees(types, body, first, second),
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
-                // O-92 (a): exactly the built-in range-selection receivers, never through a reference; a raw pointer to their element.
+                // O-92 (a): exactly the built-in range-selection receivers, never through a reference, and a raw pointer, whose elements
+                // start at its value (SPEC 5.3; Storage.viewStart's form, MirBuilder.Calls); a raw pointer to their element.
                 MirRvalueKind.Storage => (rvalue.Type, place is null ||
-                    (place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice &&
+                    ((place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice || place.IsPointer) &&
                     rvalue.Type is { IsPointer: true, Components: [var element] } &&
                     MirTypes.Agrees(types, body, element, place.Components[0]) && this.Keyed(operands, first))),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),

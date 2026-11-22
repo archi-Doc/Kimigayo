@@ -325,7 +325,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var use = $"InvalidConstraint_Kd HA<{subject}>";
         Assert.Equal(
             [.. specifications.Split(',').SelectMany(static x => (string[])[$"InvalidConstraint_Kd associate HasItem.Item is {x}", $"InvalidConstraint_Kd {x}"]),
-                use, use, $"NoApplicableOverload_Kd HA<{subject}>.init(null)", use],
+                use, $"NoApplicableOverload_Kd HA<{subject}>.init(null)", use],
             c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
         Assert.Empty(c.Problems);
         Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
@@ -353,7 +353,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var derived = derivations.Split(':', ',');
         string[] records = specification.Length == 0 ? [] :
             [$"InvalidConstraint_Kd associate HasItem.Item is {specification}", $"InvalidConstraint_Kd {specification}",
-                .. derived.Chunk(2).SelectMany(static x => (string[])[$"InvalidTypeFormation_Kd struct {x[0]}", $"InvalidConstraint_Kd {x[1]}"]), use, use];
+                .. derived.Chunk(2).SelectMany(static x => (string[])[$"InvalidTypeFormation_Kd struct {x[0]}", $"InvalidConstraint_Kd {x[1]}"]), use];
         Assert.Equal(records, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
         Assert.Empty(c.Problems);
         Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
