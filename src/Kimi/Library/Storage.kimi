@@ -30,9 +30,9 @@ internal group Storage
         internal var count: isize
         internal let loan: Loan<uniq/E during source>
 
-        /// The caller's obligations, which the signature cannot state: `storage` addresses `count` elements in what
-        /// `source` covers, with read and write authority, and the function that returns this remainder states `source`
-        /// as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
+        /// Transfers an exclusive borrow to `count` elements. The caller's obligations, which the signature cannot
+        /// state: `storage` addresses them in what `source` covers, with read and write authority, and the function
+        /// that returns this remainder states `source` as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
         internal init(storage: raw/E during source, count: isize)
             self.storage = storage
             self.count = count
