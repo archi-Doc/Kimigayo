@@ -1778,6 +1778,16 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 14 (2026-11-22, T's D-1115; a wording correction): §7's B10 row names the six units of B10's accepted design (Revision
   2.1 §11.1, C-457 ACCEPT) where it named five: OSF3a interrupt declarations, OSF3b interrupt entries, OSF3c the interrupt run under
   QEMU (after B9h and OSF3b), and cites the design's revision. No decision changes (36-43 stand). No SPEC or IMPL text. Nothing frozen.
+- Revision 15 (2026-11-23, T's D-1123; a wording addition): §8's later candidate 2 (reuse of library check results within an
+  interactive session) gains its outcome, examined in the LC2 design's Revision 0: the Kimi library's parse, Binding, HIR and
+  library layer are already reused once per process and target; the MIR work a `kimi tatara` line still repeats is estimated at
+  or below 2% of a Milestone30 session line at O2, below the 3% gate, so the owner's O-381 (b) stands; no unit now. No decision
+  changes. No SPEC or IMPL text. Nothing frozen.
+- Revision 16 (2026-11-23, T's D-1125; an order update): §7's B7 row lands W4 as B7b2a1, B7b2a2, B7b6, B7b2b and B7b5 (design
+  Revision 2.5, C-445 ACCEPT): B7b2 splits into B7b2a (B7b2a1 the frame per row, behaviour-preserving, Windows alone; B7b2a2 the
+  Linux row) and B7b2b (the import side), which follows B7b6 because before B7b6 puts the Kimi library's kernel32 imports under
+  `#if windows` every Linux module would require `kernel32`. The owner's O-504 (Q1 (a), Q2 (i)): each call writes its own import's
+  extension; B7b2a and B7b6 proceed while B7b2b's reading was open. No other decision changes. No SPEC or IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 
