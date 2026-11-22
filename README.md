@@ -245,9 +245,10 @@ While `KIMI_TOOLCHAIN_ROOT` is set they fail naming its removal; unset it. Relat
 directory. An explicit root does not fall back if missing. No script searches `PATH`; adding LLVM to `PATH` is only
 for direct tool use.
 
-A native build selects no root: it loads the `tatara.dll` beside the compiler (LLVM and LLD in one
-library), never one on `PATH`, and checks its ABI and LLVM version before generating; it starts no
-LLVM executable. A project's `LlvmBin` setting and a link manifest's
+A native build selects no root: it runs Tatara (LLVM and LLD in one library), which the published
+`kimi.exe` carries linked in and a development `Kimi.dll` loads from the `tatara.dll` beside it, never one
+on `PATH`; it checks Tatara's ABI and LLVM version before generating and starts no LLVM executable.
+A project's `LlvmBin` setting and a link manifest's
 `toolchain.llvmBin` are errors (Kimi carries its toolchain): remove the setting, and re-emit such a manifest.
 The reserved libraries are the compiler's: a build stages them under `<output>.native/<sha256>.lib`
 and records their hashes; a link manifest whose backend entry names an input asks for a re-emit.
@@ -265,11 +266,13 @@ For a permanent setting, open Windows **Environment Variables**, edit your user
 
 ## Development and verification
 
-To publish a Windows x64 NativeAOT Release build, run `./scripts/build-kimi.ps1`.
-It requires the .NET SDK and Windows NativeAOT build prerequisites, and writes to
-`artifacts/packages/kimi/win-x64/` with debug symbols and XML documentation disabled; `kimi.exe` needs the
-`tatara.dll` the publish copies beside it.
-Both build scripts resolve paths from their own location and stop on command failures.
+To publish the Windows x64 NativeAOT Release `kimi.exe`, run
+`./scripts/build-kimi.ps1 -LlvmRoot 'C:/path/to/clang+llvm-22.1.8-x86_64-pc-windows-msvc'` (the extracted archive setup uses;
+a relative path uses the current directory). It requires the .NET SDK, Visual Studio's C++ x64 tools and the DIA SDK, and
+writes to `artifacts/packages/kimi/win-x64/` with debug symbols and XML documentation disabled. The published folder is
+`Kimi.exe` alone: it links Tatara on the static UCRT, and the script checks that product (one file, no CRT DLL import,
+`kimi toolchain verify` reporting this checkout's Tatara).
+Both build scripts resolve their own paths from their own location and stop on command failures.
 
 Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout or a project change. During edits, use an incremental test-project build and selected methods for feedback. Use the verification script at Unit completion; a direct `dotnet build` is not completion evidence. Unit builds Kimi + tests, while Session builds the whole solution. See [the verification workflow](docs/dev/VERIFICATION.md) for commands and the three test purposes.
 
