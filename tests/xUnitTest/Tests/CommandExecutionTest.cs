@@ -28,8 +28,8 @@ public sealed class CommandExecutionTest : IDisposable
     // first:
     // - The message, no code: a missing input (build, check, restore), a directory without projects, the usage errors (build, toolchain,
     //   check's format, restore's input, an unknown command), run's selection, the toolchain's calls (a missing manifest, run --no-build
-    //   without a build, a missing executable), restore's lock write (an output failure), a malformed solution
-    //   file and two files nested deeper than the configuration reader reads (the parse of a user's file is the file's failure).
+    //   without a build, a missing executable), restore's lock write (an output failure naming the lock: PLAN G1257), a malformed
+    //   solution file and two files nested deeper than the configuration reader reads (the parse of a user's file is the file's failure).
     // - CheckFaulted_Kd: the host's console throwing at the selected project's line (build with a type the toolchain's classification
     //   lists, which printed as a plain failure, and with one it does not, which escaped the command; check and emit), at the line after
     //   the projects (printed as a plain failure), at restore's lock line, and at the line that renders a toolchain failure (escaped).
@@ -42,7 +42,7 @@ public sealed class CommandExecutionTest : IDisposable
     [InlineData("run selection", null, false, "Run requires exactly one")]
     [InlineData("manifest", null, false, "missing.link.json")]
     [InlineData("no build", null, false, "No built Application is available.")]
-    [InlineData("restore output", null, false, "Access to the path is denied.")]
+    [InlineData("restore output", null, false, "Hello.kimi.lock.json. Access to the path is denied.")]
     [InlineData("malformed solution", null, false, "Cannot load solution")]
     [InlineData("deep solution", null, false, "Cannot load solution")]
     [InlineData("deep project", null, false, "indentation depth")]
@@ -210,7 +210,7 @@ public sealed class CommandExecutionTest : IDisposable
     private string Write(string name)
     {
         var file = Path.Combine(this.directory, name + ".kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/{name}.ll\"");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/{name}.ll\"");
         File.WriteAllText(Path.Combine(this.directory, name + ".kimi"), "::Kimi.Console.writeLine(\"Hello\")");
         return file;
     }
@@ -377,7 +377,7 @@ public sealed class CommandExecutionTest : IDisposable
             var project = Path.Combine(this.directory, folder, "Tests.kimiproj");
             Directory.CreateDirectory(Path.GetDirectoryName(project)!);
             File.WriteAllText(Path.Combine(this.directory, folder, "tests.kimi"), "#Test\nfunc passes()\n    $require(1 == 1)\n");
-            File.WriteAllText(project, $"Targets = {{ \"{WindowsProfile.Target}\" }}\nOutputKind = \"Library\"\nTestSources = {{ \"tests.kimi\" }}\n");
+            File.WriteAllText(project, $"Targets = {{ \"{TargetProfile.Windows.Target}\" }}\nOutputKind = \"Library\"\nTestSources = {{ \"tests.kimi\" }}\n");
             var product = TataraCommandTest.Unit(new());
             var console = Console.Out;
             using var output = new StringWriter();

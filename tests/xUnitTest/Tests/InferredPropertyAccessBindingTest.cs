@@ -102,7 +102,7 @@ public class InferredPropertyAccessBindingTest
         var c = Check("enum Hidden\n    A\ncontract C\n    associate Element\nstruct Source\n    Self is C\n    associate C.Element is Hidden\npublic group Api\n    " + access + " let item = " + expression + "\n    private func make() -> Source.(C).Element => Hidden.A\n    private func makeArray() -> [2 of Hidden] => [Hidden.A, Hidden.A]", valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);

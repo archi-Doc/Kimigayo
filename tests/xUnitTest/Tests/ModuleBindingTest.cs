@@ -678,7 +678,7 @@ public partial class ModuleBindingTest
         var node = new DependencyNode("root", new(Path.Combine(root, "App.kimiproj"), project.ProjectFile, [], []), -1, string.Empty);
         var dependency = new DependencyNode("library@1", new(file, new() { OutputKind = OutputKind.Library }, [], []), 0, "Lib");
         node.Edges.Add("Lib", dependency.Key);
-        Assert.True(compilation.Prepare(WindowsProfile.Target, new([node, dependency])));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target, new([node, dependency])));
         return compilation;
     }
 
@@ -705,7 +705,7 @@ public partial class ModuleBindingTest
             nodes = [root, library, child];
         }
 
-        Assert.True(compilation.Prepare(WindowsProfile.Target, new(nodes)));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target, new(nodes)));
         compilation.SourceModules[0].AddSource(new SourceDocument("root.kimi", rootSource));
         compilation.SourceModules[1].AddSource(new SourceDocument("library.kimi", librarySource));
         if (childSource is not null)

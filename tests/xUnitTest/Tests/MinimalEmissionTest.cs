@@ -240,12 +240,12 @@ public class MinimalEmissionTest
     {
         var file = new ProjectFile
         {
-            Targets = [WindowsProfile.Target],
+            Targets = [TargetProfile.Windows.Target],
             OutputPath = "bin/Hello.ll",
             Optimization = "O0",
             NativeLibraries = new()
             {
-                [WindowsProfile.Target] = new()
+                [TargetProfile.Windows.Target] = new()
                 {
                     ["kernel32"] = new() { Name = "kernel32", Kind = "import", Input = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin/kernel32.lib" },
                 },
@@ -254,7 +254,7 @@ public class MinimalEmissionTest
         var read = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(TinyhandSerializer.SerializeToUtf8(file))!;
         Assert.Equal(file.OutputPath, read.OutputPath);
         Assert.Equal(file.Optimization, read.Optimization);
-        Assert.Equal(file.NativeLibraries[WindowsProfile.Target]["kernel32"], read.NativeLibraries[WindowsProfile.Target]["kernel32"]);
+        Assert.Equal(file.NativeLibraries[TargetProfile.Windows.Target]["kernel32"], read.NativeLibraries[TargetProfile.Windows.Target]["kernel32"]);
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class MinimalEmissionTest
     {
         var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../docs/examples/Hello/Hello.kimiproj"));
         var read = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(File.ReadAllBytes(path))!;
-        Assert.Equal(WindowsProfile.Target, Assert.Single(read.Targets));
+        Assert.Equal(TargetProfile.Windows.Target, Assert.Single(read.Targets));
         Assert.Empty(read.NativeLibraries);
     }
 
@@ -294,7 +294,7 @@ public class MinimalEmissionTest
     internal static Compilation Analyze(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Bind();
         c.Binding.CheckStartup(output);
@@ -308,7 +308,7 @@ public class MinimalEmissionTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.OutputKind = output;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Check();
         Assert.Equal(0, c.Binding.IdlessFactSites);

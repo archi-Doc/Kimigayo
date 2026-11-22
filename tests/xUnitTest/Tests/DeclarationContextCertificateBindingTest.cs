@@ -79,7 +79,7 @@ public class DeclarationContextCertificateBindingTest
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\n#Unknown\ngroup Outer\n    struct S\n        Self is Marker\n    let value: i32 = 1");
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);

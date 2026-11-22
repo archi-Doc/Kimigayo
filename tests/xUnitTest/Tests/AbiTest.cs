@@ -78,8 +78,8 @@ public class AbiTest
     {
         // SPEC 22.6: a raw pointer and a borrow pass an address, a scalar its value; nothing is a slot, and a Unit result is void.
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Import));
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         var import = Assert.Single(c.Binding.LibraryImports, x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha);

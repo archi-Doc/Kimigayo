@@ -146,6 +146,7 @@ public sealed partial class Binding
         this.signatureWalks = 0;
         this.duplicateSteps = 0;
         this.memberWalks = 0;
+        this.unreadIdentityWork = 0;
         this.termWalks = 0;
         this.slotWalks = 0;
         this.slotVariables = 0;

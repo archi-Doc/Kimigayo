@@ -16,7 +16,7 @@ public class UnresolvedCapabilityProofBindingTest
     public void PendingTypeConditionsCannotSupplyCapabilityProofs(string type, bool copy)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source\npublic struct Target\n    Source is Origin\n    Self is Copy\ngroup G\n    func inspect(value: " + type + ") => ()"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
@@ -117,7 +117,7 @@ public class UnresolvedCapabilityProofBindingTest
     private static Compilation Parse(string type, string generics = "", string body = " => ()")
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source\npublic struct Target\n    Source is Origin\n    Self is Copy\ngroup G\n    func inspect" + generics + "(value: " + type + ")" + body));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         return c;

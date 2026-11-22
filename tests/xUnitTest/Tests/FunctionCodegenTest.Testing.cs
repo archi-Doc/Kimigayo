@@ -258,7 +258,7 @@ public sealed partial class FunctionCodegenTest
         var c = Compilation.CreateForTest();
         c.Project.Directory = Path.GetFullPath("catalog-relative");
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("tests/Named.kimi", "#Test\nfunc tvNamed() => $expect(1 == 2)\n", isTestOnly: true));
         Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
         c.Tests.Discover(c);
@@ -274,7 +274,7 @@ public sealed partial class FunctionCodegenTest
         var c = Compilation.CreateForTest();
         c.Project.Directory = Path.GetFullPath("catalog-moved-root");
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var library = Path.GetFullPath("catalog-moved-library");
         var other = new Kotonoha(c, "Other", Path.Combine(library, "Other.kimiproj"));
         other.AddSource(new SourceDocument(Path.Combine(library, "src", "Moved.kimi"), "#Test\nfunc tvMoved() => $expect(1 == 2)\n", isTestOnly: true));
@@ -345,7 +345,7 @@ public sealed partial class FunctionCodegenTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         foreach (var (file, source) in sources)
         {
             c.Kotonoha.AddSource(new SourceDocument(file, source, isTestOnly: true));
