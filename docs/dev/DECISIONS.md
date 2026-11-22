@@ -1922,6 +1922,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptance). The root flags only select the accesses checked.
   - Publication: R4-M71 places the merge across bodies by (code, subject, Reason) at publication. R4 publishes no MIR problem (R4-M1),
     so R4 asks that H3, the first publisher, does it, and hands it to H0 through AR-4 (the step-2 plan's X-3 list).
+  - Superseded in part by R4-M236 (Z19, Q-679, 2026-11-22): the Merge item's "completed by 2g-5" (PD11's second sentence); nothing is
+    dropped, and where rule W derives it R26-borrow's `DefaultArgumentBorrow_Kd` is derived from the Refuted relation.
 - **R4-M73** (2026-10-19; superseded in part by R4-M177; owner, PLAN G148, R4-M76; P13's interim by the owner, below; A3 §12 E16)
   A Call's store row reaches every holder its argument reaches: ret(i, κ) joins every holder of W(val(a_j)) (A3 E16, rule G: SPEC
   15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store target, refs(val(a_j)) (A3 E14), and A3 §5's Calls
@@ -2252,6 +2254,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Inlined rule replaced for A5 (A1/A2 follow in 2e-4 if 2x-R7 and a `MirDrops.cs` response are ready, else in 2g-6), R4-M73's
     "R4-M69 governs inline default copies" sub-bullet and R4-M72's Defaults bullet superseded, and R4-M72's A6 table gains the row
     above; the rolled-back M69 plan's exclusion of that relocation is not in force.
+  - Superseded in part by R4-M236 (Z19, Q-679, 2026-11-22): the package's row "R26-borrow vs the Origin stratum"; nothing is
+    dropped, and where rule W derives it R26-borrow's `DefaultArgumentBorrow_Kd` is derived from the Refuted relation.
 - **R4-M91 A4's key row and its per-view query** (2026-10-21; under R4-M89; supersedes R4-M38's `(Field, Write)` list and its `bool`,
   the classes as R4-M74 OQ6 (a) confirmed)
   - `MirEffects.Keys(body, view, block, out classes)` returns the site's key row: ⌈2F/64⌉ words over the version's F mutable static
@@ -2621,6 +2625,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `Unsupported_Kd` (R4-M198's undecided class).
   - Superseded in part by R4-M203 (the A5 value redesign U9, 2026-11-14): D3's record is at each storing operation and at the site
     the result keeps; D4 (2) takes an exclusive Loan that R26-borrow does not report at its site.
+  - Superseded in part by R4-M236 (Z19, Q-679, 2026-11-22): "2g-5 drops an Origin-stratum problem whose chain end R26-borrow
+    reported"; nothing is dropped, and where rule W derives it R26-borrow's `DefaultArgumentBorrow_Kd` is derived from the Refuted
+    relation.
 - **R4-M99 Closure calls follow the receiver rules** (integrated by R4-M123 with the owner's D1, D2 and F3) (owner, 2026-10-21, on the
   proposal written at the owner's instruction 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals
   に提案書として書いてください。」; answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Changes/2026-10-21 Closure Calls as Receiver Calls.md`.
@@ -2777,6 +2784,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a general definition in 23.1.2 (required failures made optional, cycles); an arrival test by Origins (fixed Origins are
     shared names and regions are flow-insensitive); calls without the call clause (`return id(local@ref)` and `rv-g-param` would stay
     independent); R, the same rule as an implementation contract only; H, rules 1 and 2 as approved.
+  - Superseded in part by R4-M236 (Z19, Q-679, 2026-11-22): "The PreparedInput pair stays grouping"; where rule W derives it
+    R26-borrow's `DefaultArgumentBorrow_Kd` is derived from the Refuted relation.
 - **R4-M105 Raw pointer rules left open by G160** (owner, 2026-10-22, verbatim 「以下で決定します」 with OQ-R1 「(a) 逆参照を通らない 書き込みは null だけ許す」,
   OQ-R2 「(a)」, OQ-R3 「(b) Warning」 and OQ-R4 「(a) drop で解放する Field への Information の診断」; the proposal
   `draft/Changes/2026-10-22 Raw Pointer Rules Left Open by G160.md`)
@@ -3991,6 +4000,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - 2026-11-05 (PLAN G263): the indirect markers above are interned by `MirLoanSets.Add(set, run)` in one pass and one node per
     `Marked` (`MirLoanSets.Of` is deleted), the same Loan sets as sets. `MirBorrows.Covers` is a pure query and `Gather` the update (no
     mode flag). The text above is otherwise unchanged.
+  - Superseded in part by R4-M236 (Z19, Q-679, 2026-11-22): "2g-5's PreparedInput rule never drops a problem another names as a
+    cause (failing closed)"; nothing is dropped, and where rule W derives it R26-borrow's `DefaultArgumentBorrow_Kd` is derived from
+    the Refuted relation.
 - **R4-M134 SPEC rest: the later SPEC session's items after N2** (owner, 2026-10-25, verbatim: RZ1 「(a) 借用のモードで (推奨)」, RZ3 「(a) その場で破棄
   (推奨)」, RZ5 「(b) 閉じた一覧 (推奨)」, RZ7 「(a) 宣言された型に合わせる (推奨)」, element storage 「(a) 集合型の Loan も及ぶ (推奨)」, G86 「(a) 場合ごとに (推奨)」, G159 (2)
   「(b) 部分ごとに (推奨)」, §15.4.2 「(a) 明示が必要 (推奨)」, closures 「(a) はい (推奨)」, F2 「(a) 呼び出し先に入る前 (推奨)」, O1 「(a) 要素ごとに (推奨)」; Q8, Q10 and Q12
@@ -7824,6 +7836,29 @@ and migration obligations remain in force; no numeric cap changes are authorized
     keeps the mark until Z5-R2.
   - Rejected: dropping a parent's Loan by its position (Revision 0's `Lending`: SPEC 15.6 Holders, R4-M191); the Type match (Z5-M1,
     B1-B3); the limit by the parents' Loans (E3); the limit on every "none" read (pa, tw). Z5-F's per-entry position is not published.
+- **R4-M236 Z19 (G396 (4) 2g-5): R26-borrow takes rule W's derivation; a case-decided borrow layer makes a Ref's own atom
+  inferred** (Middle, 2026-11-22; the owner's O-496, verbatim 「O-496 a」; stream Z's Z19, PLAN G396 (4); Q-679, D-1128; design
+  `middle\notes\z19-design.md` Revision 1 + (A), the repeated review's ACCEPT WITH CONDITIONS)
+  - (1) A `DefaultArgumentBorrow_Kd` whose slot-rooted Loan is a W element no carrier keeps at any of the view's Returns or stores
+    (W's `Kept` for every candidate of every Return, the indirect marker in every arrival of every store: `HeldIndirect`) carries the
+    element's causes as Cause facts and is published derived (`MirBorrows.DefaultCauses`): the failure's one record is the Refuted
+    relation. SPEC 23.1.2 licenses the grouping (an implementation-defined grouping of one failure); no SPEC change. Where W does not
+    derive, both records stay: an aggregate (f9e2: not a Copy, R4-M104), a generic receiving Type (f9m, r9, r13: `ref/T` fails Fixed
+    closed, R4-M132), a raw or non-Fixed store (r7); a Reborrow with no Refuted chain (f9b) stays direct; `DefaultArgumentAccess_Kd`
+    and limit records carry no cause.
+  - (2) Rule (A), staged: a Ref's own Finite atom is Inferred in a class of views exactly when each Ref whose own atom it is has a
+    containment edge in that class and lacks one in some class of the body (a class whose views do not reach the Ref's statement has
+    none): SPEC 15.6.5's Borrow reached through a borrow where the Semantics case decides the layer (B1 of review 1: r6's uniq case
+    lost its R26 to an S that named both cases). Judge's chains and Outlives' Bounds read the class's kinds (`MirOrigins.KindOf`,
+    formed by `Promote` in `ClassEdges`); a reader of Fixed alone (Fixed's index `Pin`, W's `IsFixed`) reads the view's; the per-Ref
+    class count is formed once per Judge (`Reaching`). Removal condition: design (B) (`middle\notes\z19-design.md`, "Revision 2 needed
+    for B1"), which promotes in every class.
+  - Supersedes PD11's second sentence (the step-2 plan, R4-M74; R4-M72's Merge item "completed by 2g-5"), R4-M90's 2e-D row
+    "R26-borrow vs the Origin stratum", R4-M98's "2g-5 drops an Origin-stratum problem whose chain end R26-borrow reported", R4-M104's
+    "The PreparedInput pair stays grouping" and R4-M132's clause "2g-5's PreparedInput rule never drops a problem another names as a
+    cause (failing closed)", because since R4-M104 and R4-M132 nothing is dropped and the Origin stratum judges before the Loan
+    stratum, so only R26-borrow reads the other's record and is the dependent check; amends `BorrowedDefaultTest`'s 11-19 class (iii)
+    pin (one failure, not two). 2g-5 is closed: F4 and F7's escape went with W (R4-M104); F9's PreparedInput pair goes here.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
