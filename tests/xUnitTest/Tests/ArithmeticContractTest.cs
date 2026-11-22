@@ -113,7 +113,8 @@ public class ArithmeticContractTest(ITestOutputHelper output)
     }
 
     // SPEC 13.3.3 under an identity premise (`T is U`): the record names the Type the conformance binds Rhs to, as the conformance
-    // writes it (R7-E3 E3c-1: the Instance at the Contract's Type parameter), with the Contract's declaration related.
+    // writes it (R7-E3 E3c-1: the argument of the Contract instance it states, the Instance at the Contract's declaration), with the
+    // Contract's declaration related.
     [Fact]
     public void AnIdentityPremiseKeepsTheConformancesCounterpart()
     {

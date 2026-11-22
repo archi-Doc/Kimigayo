@@ -49,13 +49,13 @@ public sealed partial class Binding
 
     // SPEC 13.3.3: an explicitly declared arithmetic conformance whose Self or counterpart is not eligible, at the conformance, from its
     // facts (ValidArithmeticConformance): the cause, the Contract declaration (Related, role 0, "contract": the arithmetic Contract the
-    // conformance declares) and a counterpart's Type (Instance at the Contract's Type parameter: the Type the conformance binds it to); a
-    // Self cause, which no source reaches, names Self.
+    // conformance declares) with, for a counterpart cause, the Contract instance the conformance states (Instance), whose argument is the
+    // counterpart; a Self cause, which no source reaches, names Self.
     private void ReportArithmeticConformance(Koto use, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
         var cause = (ArithmeticConformanceCause)this.FactOf(index, ProblemFactKind.Reason)!.Value.Value;
         var contract = this.compilation.SyntaxOf(this.FactOf(index, ProblemFactKind.Related)!.Value.Site);
-        var type = this.FactOf(index, ProblemFactKind.Instance) is { } bound ? DiagnosticTypeName(this.report.Value(bound)) : "Self";
+        var type = this.FactOf(index, ProblemFactKind.Instance) is { } bound ? DiagnosticTypeName(this.report.Value(bound).Components[0]) : "Self";
         var note = cause switch
         {
             ArithmeticConformanceCause.NotUserProvider => "Self must be an ordinary outer-owner struct or enum, not a built-in or compiler-closed Type",
@@ -153,8 +153,8 @@ public sealed partial class Binding
 
     // Each available arithmetic row `X is Op<Y>` of `seed` in the view (not Negatable) with its opposite premise (OppositeRow); the
     // first pair that first meets here (not MetInParent) fails the owner, unless the owner holds its one record already (a later round of
-    // the pass finds the pair again and writes nothing). The record names the ordinary premise's Types as its row gives them (its written
-    // fact's subject, else the seed it was asked for, and its argument) and each premise's use (ArithmeticRowUse).
+    // the pass finds the pair again and writes nothing). The record relates each premise's use (ArithmeticRowUse) with the Contract
+    // instance it states; the adapter reads the pair from the two instances' arguments.
     private (PremiseRow Row, PremiseRow Other)? ValidateArithmeticRows(BoundType seed, BindingScope scope)
     {
         this.DirectionSeeds++;
@@ -288,7 +288,7 @@ public sealed partial class Binding
     // instance it states as its Instance), in the route's order. A failure path only.
     private BoundType? RecordArithmeticSelection(Koto use, BoundType self, BoundType? counterpart, KimiDeclarationId id, ArithmeticSelectionCause cause, BoundArithmetic? plan)
     {
-        var contract = counterpart is null || id == KimiDeclarationId.Negatable ? this.Library.GetSymbol(id)! : this.ArithmeticReference(id, counterpart);
+        var contract = counterpart is null ? this.Library.GetSymbol(id)! : this.ArithmeticReference(id, counterpart);
         var at = SourceRef.Of(use);
         var count = plan?.Candidates.Count ?? 0;
         var facts = new ProblemFact[2 + (2 * count)];

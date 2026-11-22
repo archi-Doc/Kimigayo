@@ -28,10 +28,10 @@
 // parameter and as its Value an index in BindingReport's kept sides, the Type at which two parameter shapes' matching keys overlap (SPEC
 // 7.4), neither side of a mismatch (R7-E2), and an Instance fact (R7-E2 E2-5b) as its Value an index in BindingReport's kept sides, a
 // Type its location does not determine, read by its site: at the preceding Related fact's own site, the instance that party is (a related
-// Contract's or associated declaration's declaring instance, or a construction's constructed Type), and at a member or Type parameter
-// declaration of that party, the Type that instance binds it to; a kind that names no value has -1; a problem has at most one fact of
-// each kind but its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order
-// its site records them, and its Count and Instance facts, in their row's order.
+// Contract's or associated declaration's declaring instance, or a construction's constructed Type), and at a member declaration of that
+// party, the Type that instance binds the member to; a kind that names no value has -1; a problem has at most one fact of each kind but
+// its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order its site
+// records them, and its Count and Instance facts, in their row's order.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
@@ -73,7 +73,7 @@ internal enum ProblemFactKind : byte
     Count, // Binding: the subject, a count its requirement states, such as an arity (Value, the count; in its code's row order).
     Reason, // Binding: the subject, a row of the closed enumeration its requirement names, or its code's packed rows (Value; text the adapter's).
     Key, // Binding: the conflicting parameter, the Type at which its matching key overlaps an earlier one's (Value, a kept side's index; SPEC 7.4).
-    Instance, // Binding: at the preceding Related fact's site, the instance that party is; at a member or Type parameter declaration of that party, the Type that instance binds it to (Value, a kept side's index; SPEC 8.4.3, 8.9.2, 13.3.3).
+    Instance, // Binding: at the preceding Related fact's site, the instance that party is; at a member declaration of that party, the Type that instance binds the member to (Value, a kept side's index; SPEC 8.4.3, 8.9.2).
 }
 
 /// <summary>A fact of a problem (R4-M3a, R4-M132): a site it relates and, for a kind that names one, its typed value.</summary>
