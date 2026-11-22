@@ -177,12 +177,16 @@ public partial class ModuleBindingTest
     [InlineData("c4v", "Kimi.Console", "func g() => writeLine(\"ok\")", null)]
     public void ADefaultAliasResolvesByThePathWalk(string row, string alias, string use, string? code)
     {
-        const string Declarations = "public struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\n" +
-            "public open struct Base\n    public init() => ()\n    public struct Node\n        public init() => ()\n        public func make() -> i32 => 1\n" +
-            "public struct Derived : Base\n    public init() : base() => ()\n" +
-            "public struct A<T>\n    public group B\n        public func helper() -> i32 => 1\n" +
-            "public struct A<T, U>\n    public group B\n        public func helper() -> i32 => 1\n";
-        var compilation = Create(Declarations + use, "public group Api", configure: (root, _) => root.Alias = [alias]);
+        // Each row's own declarations, as its probe's.
+        var declarations = alias switch
+        {
+            "Derived.Node" => "public open struct Base\n    public init() => ()\n    public struct Node\n        public init() => ()\n        public func make() -> i32 => 1\n" +
+                "public struct Derived : Base\n    public init() : base() => ()\n",
+            "A.B" => "public struct A<T>\n    public group B\n        public func helper() -> i32 => 1\n" +
+                "public struct A<T, U>\n    public group B\n        public func helper() -> i32 => 1\n",
+            _ => "public struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\n",
+        };
+        var compilation = Create(declarations + use, "public group Api", configure: (root, _) => root.Alias = [alias]);
         Assert.True((code is null) == compilation.Bind().IsComplete, row + ": " + string.Join("; ", compilation.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         if (code is not null)
         {
