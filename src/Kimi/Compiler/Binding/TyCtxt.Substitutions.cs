@@ -78,8 +78,9 @@ internal sealed partial class TyCtxt
         => HeldType(nested) is { } held && HasOriginPosition(held) ? null : nested.InstanceContext;
 
     // DECISIONS R4-M139: a declared Type in the instance a substitution makes, as every reader of an instance's storage reads one
-    // (retention, A4, MirCases): Instance, then Binding.Readable (Prepared or Rejected, not a Limit; Rejected in a complete compilation
-    // throws, a broken contract); null where it refuses (a Limit) or the substitution does not complete, throwing where it throws.
+    // (retention, Binding.CapabilityParts, Binding.ClosureInstances, A4, A5's call rows, MirCases): Instance, then Binding.Readable
+    // (Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract); null where it refuses (a Limit)
+    // or the substitution does not complete, throwing where it throws.
     internal BoundType? ReadableInstance(BoundType type, Subst subst)
         => this.Instance(type, subst) is ({ } instance, var storage) && binding.Readable(instance, storage) ? instance : null;
 

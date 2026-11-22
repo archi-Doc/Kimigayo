@@ -130,14 +130,16 @@ public sealed partial class InstanceCollectorTest
     }
 
     // The commit rule's other half (the Middle's review N2, its RV-C and RV-A): a construction record of a body built during a round that
-    // misses is added at once and stays. Labels (SPEC): valid (7.2.3: each default fits its parameter Type; 7.7.4; RV-A 8.11.2, 8.11.4: g
-    // allocates and adds only, so the confined bound holds); the records are implementation limits, equal in both builds: the construction
-    // ExpansionLimit_Kd in the template of one of Lib's defaults that copy the one below twice (the body budget, IMPL 21.3.2;
-    // MirBuildTest.DefaultExpansionStopsAtTheLimit), built with g, the collection records of the deep erased Type at main's site (K 4.9)
-    // and A4's limit records. Lib's g is first demanded inside a round that misses: the collector's first run (an erasure's adapter) or
-    // A4's first round (an obligation's argument). Before PLAN G396 (3)'s B3 the record was B3's Unsupported_Kd at Lib's `f(b)`, a
-    // default over Bx^65, which is now built; g is a non-generic function item, so MirBuildTest.Unbuilt's selection through an identity
-    // premise, a generic body's, cannot stand in g. Fail-before (every problem held while a round is open): the construction record is lost.
+    // misses is added at once and stays. Labels (SPEC): valid (8.2.3: h's selection on its T, which the identity premise makes the Tuple
+    // (Pair, i32), DECISIONS BU-72; 9.4.4: h is private, as Pair is; 10.2: g's p shared-borrowed at h's ref/T; 7.7.4; RV-A 8.11.2,
+    // 8.11.4: g and h construct and read only, so the confined bound holds); the records are implementation limits, equal in both builds:
+    // the construction Unsupported_Kd at h's `x.0` (MirBuildTest.Unbuilt, the builder's located Unsupported_Kd, PLAN G168b) in both forms,
+    // and in the a4 form A4's OwnershipDepthLimit_Kd at the obligation `apply(Lib.Api.g)` (its argument's deep Type, R4-M153); the collector
+    // records none (the deep erased Type is an instance, R7-M54). Lib's g, and h, which g calls, are first demanded and built inside a
+    // round that misses: the collector's first run (an erasure's adapter) or A4's first round (an obligation's argument). Before PLAN G396
+    // (3)'s B3 the record was B3's Unsupported_Kd at g's `f(b)`, a default over Bx^65, which is now built, and a default template's record
+    // is made before any round (MirBuilder.Build); g is a non-generic function item, so Unbuilt's selection, a generic body's, stands in
+    // the generic h. Fail-before (every problem held while a round is open): the construction record is lost.
     [Theory]
     [InlineData("collector", 2)]
     [InlineData("a4", 1)]
@@ -146,13 +148,13 @@ public sealed partial class InstanceCollectorTest
         var root = round == "collector" ? $"public func main() -> ()\n    let action: (ref/{Deep("Lib.Bx")}) -> () = Lib.Api.g\n    return\n"
             : $"func apply<F>(action: ref/F) -> ()\n    F is Callable<(ref/{Deep("Lib.Bx")}) -> ()>\n        effect confined\n    return\n" +
                 "public func main() -> ()\n    apply(Lib.Api.g)\n    return\n";
-        var lib = "public struct Bx<T>\n    public var v: T\npublic group Api\n    public func f0(x: i32 = 1) -> i32 => x\n" +
-            string.Concat(Enumerable.Range(1, 16).Select(static i => $"    public func f{i}(x: i32 = Api.f{i - 1}() + Api.f{i - 1}()) -> i32 => x\n")) +
-            $"    public func g(b: ref/{Deep("Bx")}) -> ()\n        _ = f16()\n";
+        var lib = MirBuildTest.Unbuilt.Declarations + "public struct Bx<T>\n    public var v: T\npublic group Api\n" +
+            $"    func h<T>(x: ref/T) -> i32\n        {MirBuildTest.Unbuilt.Premise}\n        return x.0.a\n" +
+            $"    public func g(b: ref/{Deep("Bx")}) -> ()\n        let p = (Pair.init(), 1)\n        _ = h(p)\n";
         var eager = TwoModule(root, lib, SyntaxTable.LibraryModule + 1);
         var lazy = TwoModule(root, lib, 1);
         Assert.Equal(runs, lazy.Works.Length);
-        Assert.Contains(lazy.FirstRows, static x => x.StartsWith("construction ExpansionLimit_Kd Api.f", StringComparison.Ordinal));
+        Assert.Contains("construction Unsupported_Kd x.0", lazy.FirstRows);
         Assert.Equal(eager.Rows, lazy.Rows);
         Assert.Equal(eager.Items, lazy.Items);
 

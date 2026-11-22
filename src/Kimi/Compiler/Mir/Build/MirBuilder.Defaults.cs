@@ -107,7 +107,7 @@ internal sealed partial class MirBuilder
     // (every slot, its arguments), or an Opaque value reading those slots where its template failed (no record), the body budget refuses
     // the copy (Refuses: the call's Resource record) or the call's substitution does not form it (Instantiates, decided before a copy is
     // written: a formation that fails after Binding's run, PLAN G651's height refusal or BU-36's; the call's Unsupported_Kd, SPEC 23.1.1,
-    // through Unsupported, until G651 U2, the Back's; over storage Binding rejected or past its storage bound the copy is built, as the
+    // through Unsupported, until G651 U2c, the Back's; over storage Binding rejected or past its storage bound the copy is built, as the
     // written call is, DECISIONS R4-M139, PLAN G396 (3)). A default that does not complete reaches no later default and no callee at run
     // time (SPEC 15.6.7); building goes on for the checks.
     private void Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)

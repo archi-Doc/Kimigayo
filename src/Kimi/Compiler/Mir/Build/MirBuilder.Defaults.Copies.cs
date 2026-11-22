@@ -22,9 +22,10 @@ internal sealed partial class MirBuilder
     // Length constant's term (TyCtxt.InstanceLength) and each callee's substitution, in the call's instance as the written call forms it
     // (the collector's formation, R7-M54: TyCtxt.Apply's Type, TyCtxt.Compose's Subst, whatever the instance's storage verdict, Rejected or
     // past Binding's storage bound), each kept for Inline, which folds by them. It is false only where a formation fails (Incomplete):
-    // after Binding's run outside the collector's frame, a Type past IMPL A.4's height that Binding records itself (PLAN G651's site-less
-    // record), or BU-36's contract substitution that does not complete (no reproducer; the collector reads it as a broken contract,
-    // R5-M151): Defaults' located Unsupported_Kd until G651 U2 (the Back's) gives the copy a formation owning its refusal.
+    // after Binding's run, a Type past IMPL A.4's height that Binding records itself (PLAN G651's site-less record, at once outside the
+    // collector's answer frame, at the frame's close for a body built lazily inside it), or BU-36's contract substitution that does not
+    // complete (no reproducer; the collector reads it as a broken contract, R5-M151): Defaults' located Unsupported_Kd until G651
+    // U2c (the Back's; U2b gives the copy a formation owning its height refusal, U2c removes this arm with the Incomplete row).
     private bool Instantiates(MirBody template, Subst subst)
     {
         this.instances.Clear();
