@@ -241,11 +241,16 @@ public class ArrayMembersTest
     }
 
     // SPEC 4.9.3, 11.3.1: first and last are computed Properties whose getter reads a shared receiver and lends an element
-    // during it, through a safe reference and for a generic element Type.
+    // during it, through a safe reference, for a generic element Type, and through an object handle, which stops selection at its
+    // View Target's declarations (SPEC 3.4.3): an `objref` receiver (a shared dereference) and an owned `obj/` one (an own step).
     [Theory]
     [InlineData("func f(p: ref/Array<i32>) -> Option<ref/i32> => p.first")]
     [InlineData("func f(p: uniq/Array<i32>) -> Option<ref/i32> => p.last")]
     [InlineData("func f<T>(p: ref/Array<T>) -> Option<ref/T> => p.last")]
+    [InlineData("func f(p: objref/Array<i32>) -> Option<ref/i32> => p.first")]
+    [InlineData(
+        "func some<T>(x: Option<ref/T during a>) -> bool\n    match x\n        .Some(_) => return true\n        .None => return false\n\n" +
+            "func f(h: obj/Array<i32>) -> bool\n    let t = h.first\n    return some(t)")]
     public void EndsLendAnElementDuringTheArray(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -253,11 +258,16 @@ public class ArrayMembersTest
     }
 
     // SPEC 15, 15.6: the element first or last lends keeps its loan on the Array while the result lives, so an exclusive call, an
-    // element write or a Move of the Array meanwhile conflicts with it.
+    // element write or a Move of the Array meanwhile conflicts with it, and so does a Move of an owned object handle whose payload
+    // lent it (SPEC 15.6.2: a Move reaches the loan across the own step).
     [Theory]
     [InlineData("var values: Array<i32> = [1]\nlet head = values.first\nvalues.append(2)\nlet n = head", "CallActivationConflict_Kd")]
     [InlineData("var values: Array<i32> = [1]\nlet head = values.first\nvalues[0] = 2\nlet n = head", "ComparisonLoanConflict_Kd")]
     [InlineData("var values: Array<i32> = [1]\nlet tail = values.last\nlet moved = values@move\nlet n = tail", "ComparisonLoanConflict_Kd")]
+    [InlineData(
+        "func some<T>(x: Option<ref/T during a>) -> bool\n    match x\n        .Some(_) => return true\n        .None => return false\n\n" +
+            "func f(h: obj/Array<i32>) -> bool\n    let t = h.first\n    let g = h@move\n    return some(t)\nlet done = 0",
+        "ComparisonLoanConflict_Kd")]
     public void EndsHeldAcrossAWriteReportTheLoanConflict(string source, string code)
         => Assert.Equal(code, string.Join(", ", DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code)));
 }
