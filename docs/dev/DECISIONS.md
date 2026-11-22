@@ -29776,3 +29776,21 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     design's first reading: no managed path would link an ELF, and a test calling the export directly would bypass Tatara's lock,
     against `tatara.h`'s "callers serialize calls"); the flavor chosen from the target triple inside Tatara (a consumer deciding by
     syntax what the row publishes, B7b7's `Format`).
+- **T-M23 (OSF2): volatile access is two Raw intrinsics.** `Raw.readVolatile<T>(storage: raw/T) -> T` and
+  `Raw.writeVolatile<T>(storage: raw/T, value: T)`, `unsafe`, `T is PrimitiveInteger`, on every target (the owner's O-489 (a), plan
+  decisions 36-43; design B10 Revision 2.1 §5; Q-678, D-1127). `IntrinsicId` +2 (`VolatileRead`, `VolatileWrite`; limit 27 → 29
+  under O-489's approval of OSF's four ids); `IntrinsicWriter` +2 (`VolatileRead`, `VolatileWrite`): each writes `load volatile` /
+  `store volatile` of the integer's storage Type with its alignment through the access text `LoadAt` and `StoreAt` share
+  (`FunctionCodegen.WriteAccess`), the word from the two writers, no flag on the ordinary path. Both Backend rows are Target None
+  and **Need None**: T is the call's by-value result or operand, which `LayoutNeed`'s statement does not cover (the `RawInitialize`
+  precedent). MIR's rows are `Intrinsic(None, 1)` and `Intrinsic(None, 2)`, raw accesses through the arguments (SPEC §8.11.2); no
+  MIR reader removes or duplicates a call by its effect row (B N5, confirmed by the Middle in C-457). Binding's
+  `IntrinsicDisposition.WritesThrough` gains `VolatileWrite => parameter == 0` (the closure classifier, SPEC §7.7.3).
+  `KimiDeclarationId.RawReadVolatile` (+1, `#Lang("RawReadVolatile")` on the declaration, a recognition entry) carries the NoStore
+  row `(RawReadVolatile, 0b1)`: its storage receives no store (call retention and A5's pun rule, C-189; without the row A5 gives a
+  valid read a pun verdict, the mutant run). `writeVolatile` has no catalog id and no NoStore row: it stores through its storage,
+  and nothing is stored through its integer value. Rejected (design §5.2): a `volatile raw/T` Type qualifier (a keyword and a Type
+  layer), an Attribute on a Field (`AttributeKind` 8 of 8, a Place-level fact through every projection), x86 instruction rows (not
+  generic). Open (C-479, the Front's C1): `WritesThrough` (Binding's closure classifier) and the NoStore rows (retention and A5) are
+  two answers of one per-input access kind of a library operation (read, store, Take, destroy), not one meaning; PLAN G1290 proposes
+  one total per-input row.
