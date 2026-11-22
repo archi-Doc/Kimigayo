@@ -1,0 +1,108 @@
+; windows-x64-v1 platform layer over kernel32: the routines through which the common runtime (Runtime.ll.in) writes, exits and takes
+; and returns heap blocks, and the Abort report's OS-error prefix. Every kernel32 call of a module lies in these definitions.
+declare dllimport ptr @GetProcessHeap()
+declare dllimport ptr @HeapAlloc(ptr, i32, i64)
+declare dllimport i32 @HeapFree(ptr, i32, ptr)
+declare dllimport ptr @GetStdHandle(i32)
+declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
+declare dllimport i32 @GetLastError()
+declare dllimport void @ExitProcess(i32) noreturn
+
+@__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
+
+; Compiler-facing definitions are expanded from RuntimeAbi FunctionAbi records.
+{{__kimi_exit}}
+entry:
+  call void @ExitProcess(i32 %code)
+  unreachable
+}
+
+; Stream 1 or 2 is GetStdHandle's -11 or -12. The common part's checks hold: a nonempty range of at most isize's bytes whose last
+; address is representable. -1 = written; {{no_os_error}} = failure without an OS error; otherwise a zero-extended DWORD error.
+{{__kimi_write}}
+entry:
+  %written_slot = alloca i32, align 4
+  %which = sub i32 -10, %stream
+  %out = call ptr @GetStdHandle(i32 %which)
+  %null_handle = icmp eq ptr %out, null
+  %invalid_handle = icmp eq ptr %out, inttoptr (i64 -1 to ptr)
+  %bad_handle = or i1 %null_handle, %invalid_handle
+  br i1 %bad_handle, label %failure, label %loop
+loop:
+  %cursor = phi ptr [ %data, %entry ], [ %next, %advance ]
+  %remaining = phi i64 [ %length, %entry ], [ %rest, %advance ]
+  %large = icmp ugt i64 %remaining, 4294967295
+  %chunk64 = select i1 %large, i64 4294967295, i64 %remaining
+  %chunk = trunc i64 %chunk64 to i32
+  store i32 0, ptr %written_slot, align 4
+  %ok = call i32 @WriteFile(ptr %out, ptr %cursor, i32 %chunk, ptr %written_slot, ptr null)
+  %failed = icmp eq i32 %ok, 0
+  br i1 %failed, label %os_failure, label %progress
+progress:
+  %written = load i32, ptr %written_slot, align 4
+  %zero = icmp eq i32 %written, 0
+  %excess = icmp ugt i32 %written, %chunk
+  %bad_progress = or i1 %zero, %excess
+  br i1 %bad_progress, label %failure, label %completed
+completed:
+  %count = zext i32 %written to i64
+  %rest = sub i64 %remaining, %count
+  %done = icmp eq i64 %rest, 0
+  br i1 %done, label %success, label %advance
+advance:
+  ; The checked last address bounds every advance; do not compute a pointer after completion.
+  %next = getelementptr i8, ptr %cursor, i64 %count
+  br label %loop
+os_failure:
+  %error = call i32 @GetLastError()
+  %error64 = zext i32 %error to i64
+  ret i64 %error64
+failure:
+  ret i64 {{no_os_error}}
+success:
+  ret i64 -1
+}
+
+; Temporary until Kimi's allocator (the Tatara plan's B7r2): blocks of the process heap, a zero-byte request taking one byte; null
+; without a process heap or on failure.
+{{__kimi_heap_allocate}}
+entry:
+  %process_heap = call ptr @GetProcessHeap()
+  %no_heap = icmp eq ptr %process_heap, null
+  br i1 %no_heap, label %failed, label %allocate
+allocate:
+  %zero = icmp eq i64 %bytes, 0
+  %actual = select i1 %zero, i64 1, i64 %bytes
+  %memory = call ptr @HeapAlloc(ptr %process_heap, i32 0, i64 %actual)
+  ret ptr %memory
+failed:
+  ret ptr null
+}
+
+; Temporary until B7r2: a block back to the process heap; -1 = released, otherwise a zero-extended DWORD error.
+{{__kimi_heap_release}}
+entry:
+  %process_heap = call ptr @GetProcessHeap()
+  %result = call i32 @HeapFree(ptr %process_heap, i32 0, ptr %block)
+  %failed = icmp eq i32 %result, 0
+  br i1 %failed, label %failure, label %done
+failure:
+  %error = call i32 @GetLastError()
+  %error64 = zext i32 %error to i64
+  ret i64 %error64
+done:
+  ret i64 -1
+}
+
+; Temporary until B7r2 removes the reason: KIMI_E_PROCESS_HEAP at the location when there is no process heap.
+{{__kimi_check_process_heap}}
+entry:
+  %process_heap = call ptr @GetProcessHeap()
+  %no_heap = icmp eq ptr %process_heap, null
+  br i1 %no_heap, label %heap_failure, label %done
+heap_failure:
+  call void @__kimi_abort(i32 {{reason_heap}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
+  unreachable
+done:
+  ret void
+}

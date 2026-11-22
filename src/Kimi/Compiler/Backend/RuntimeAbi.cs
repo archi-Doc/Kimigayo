@@ -2,15 +2,17 @@
 
 // Owns the runtime ABI of the windows-x64-v1 profile (SPEC 21.3.1, 22.1-22.7; DECISIONS R5-M15): the representations of Unit,
 // string values and string handles, the string release kinds, the zero-sized buffer address, and the FunctionAbi of each
-// runtime routine that generated code defines or calls, with the routines whose template definitions are spliced from them, and the
-// text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes (the zero-sized buffer address at
+// runtime routine that generated code defines or calls, the platform layer's routines (PlatformRoutines, which the common runtime calls
+// and the layer template defines; the Tatara plan's decision 22), with the routines whose template definitions are spliced from them, and
+// the text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes (the zero-sized buffer address at
 // `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at `{{static_release_kind}}`
-// and `{{heap_release_kind}}`, and TargetProfile.Windows's unmapped bound at `{{unmapped_bound}}`).
+// and `{{heap_release_kind}}`, TargetProfile.Windows's unmapped bound at `{{unmapped_bound}}`, and the layer's OS-error prefix at
+// `{{os_prefix}}` with its length at `{{os_prefix_length}}`).
 // Input: none; the entry symbol and the unmapped bound come from TargetProfile.Windows; a marker's name and the expanded text being written.
 // Output: the records, read by code generation and by LlvmModuleText's runtime splice; a constant marker's text appended.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
-// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once; a template spells a
-// marker's constant only through its marker, and a writer through the constant.
+// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime templates (the common part and the layer) hold exactly
+// once; a template spells a marker's constant only through its marker, and a writer through the constant.
 // Must not take BoundType, syntax or MIR types, or hold a per-module record.
 
 using System.Globalization;
@@ -36,6 +38,11 @@ internal static class RuntimeAbi
     /// <summary>The runtime Abort's os_error for a failure without an operating system error, which the runtime does not print (it prints
     /// only an os_error of 0 or more).</summary>
     internal const long NoOsError = -2;
+
+    /// <summary>The Abort report's OS-error prefix, windows-x64's platform layer's (IMPL 21.5.4): the layer template defines
+    /// <c>@__kimi_os_prefix</c> from it and the common runtime writes its length from it, so a layer's prefix of another length changes
+    /// no common rule (the Tatara plan's B7b revision 2.2). A <c>c"..."</c> literal spells it as is.</summary>
+    internal const string OsErrorPrefix = " (win32=";
 
     internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
 
@@ -124,6 +131,24 @@ internal static class RuntimeAbi
 
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
+    // The platform layer's write (IMPL 21.4.2): a nonempty checked range to standard output (stream 1) or error (2); -1 when written,
+    // else the OS error or NoOsError.
+    internal static readonly FunctionAbi Write = new("__kimi_write", "i64", [new("i32", "stream"), new("ptr", "data"), new("i64", "length")]);
+
+    // The layer's heap blocks (IMPL 21.4.3), temporary over the process heap until Kimi's allocator (the Tatara plan's B7r2): a block of a
+    // byte size, null on failure; a block's release, -1 when released, else the OS error.
+    internal static readonly FunctionAbi HeapAllocate = new("__kimi_heap_allocate", "ptr", [new("i64", "bytes")]);
+
+    internal static readonly FunctionAbi HeapRelease = new("__kimi_heap_release", "i64", [new("ptr", "block")]);
+
+    // Temporary (removal: the Tatara plan's B7r2, with KIMI_E_PROCESS_HEAP): the null process heap's Abort at an allocation's or
+    // release's location, which the blocks' other callers (the nullable Alloc, the test runtime) do not have.
+    internal static readonly FunctionAbi CheckProcessHeap = new("__kimi_check_process_heap", Unit.ComputationType, [Location, LocationLength]);
+
+    /// <summary>Gets the platform layer's routines, which the common runtime calls and only the layer template defines; every OS call of
+    /// a module lies in their definitions (NativeAllocationAudit.AssertOsCallsInLayer), the process exit in Exit's.</summary>
+    internal static readonly FunctionAbi[] PlatformRoutines = [Exit, Write, HeapAllocate, HeapRelease, CheckProcessHeap];
+
     // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue
     // from its condition and the site's number in the test catalog and sends the values held for it; the issue's message, a borrowed string;
     // a $require's Abort of the case; a compared value held until the observation, by its side, its frame kind and width and its bits.
@@ -146,14 +171,16 @@ internal static class RuntimeAbi
         "void",
         [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
-    /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, Abort, AbortMessage];
+    /// <summary>Gets the runtime definitions expanded into the runtime (Runtime.ll.in and WindowsPlatform.ll.in): the layer's routines,
+    /// then the common part's compiler-facing ones.</summary>
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [.. PlatformRoutines, DestroyString, Abort, AbortMessage];
 
-    // The constants a runtime template spells through a marker, by the marker's name (Expand).
-    private static readonly (string Name, long Value)[] Constants =
+    // The constants a runtime template spells through a marker, by the marker's name (Expand), each as its text.
+    private static readonly (string Name, string Text)[] Constants =
     [
-        ("zero_sized_buffer", ZeroSizedBuffer), ("no_os_error", NoOsError), ("static_release_kind", StaticReleaseKind),
-        ("heap_release_kind", HeapReleaseKind), ("unmapped_bound", TargetProfile.Windows.UnmappedBound),
+        ("zero_sized_buffer", Number(ZeroSizedBuffer)), ("no_os_error", Number(NoOsError)), ("static_release_kind", Number(StaticReleaseKind)),
+        ("heap_release_kind", Number(HeapReleaseKind)), ("unmapped_bound", Number(TargetProfile.Windows.UnmappedBound)),
+        ("os_prefix", OsErrorPrefix), ("os_prefix_length", Number(OsErrorPrefix.Length)),
     ];
 
     /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>
@@ -162,18 +189,20 @@ internal static class RuntimeAbi
     /// <summary>Gets the byte length parameter of the hidden diagnostic location.</summary>
     internal static AbiParameter LocationLength => new("i64", "location_length", AbiParameterKind.LocationLength);
 
-    // Appends the text of a runtime template's ABI constant marker, the constant's number; false for any other marker.
+    // Appends the text of a runtime template's ABI constant marker; false for any other marker.
     internal static bool Expand(ReadOnlySpan<char> marker, StringBuilder runtime)
     {
-        foreach (var (name, value) in Constants)
+        foreach (var (name, text) in Constants)
         {
             if (marker.SequenceEqual(name))
             {
-                runtime.Append(value.ToString(CultureInfo.InvariantCulture));
+                runtime.Append(text);
                 return true;
             }
         }
 
         return false;
     }
+
+    private static string Number(long value) => value.ToString(CultureInfo.InvariantCulture);
 }
