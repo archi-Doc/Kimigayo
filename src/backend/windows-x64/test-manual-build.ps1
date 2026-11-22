@@ -1,21 +1,20 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $Manifest,
-    [string] $ToolchainRoot = '', [string] $LlvmBin = '',
-    [string] $MismatchedLlvmBin = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
 )
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'toolchain.ps1')
-$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
-if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 $manifestPath = (Resolve-Path -LiteralPath $Manifest).Path
 $original = Get-Content -LiteralPath $manifestPath -Raw
 $testPath = Join-Path (Split-Path -Parent $manifestPath) ('negative-' + [guid]::NewGuid().ToString('N') + '.link.json')
-function Expect-Failure([object] $data, [string] $bin, [string] $message) {
+# A renamed pair: build --Manifest builds the Name.ll beside Name.link.json (Tatara G1203), so each row's manifest names a copy of the IR.
+$testStem = $testPath.Substring(0, $testPath.Length - '.link.json'.Length)
+Copy-Item -LiteralPath ([IO.Path]::GetFullPath(($original | ConvertFrom-Json).irFile, (Split-Path -Parent $manifestPath))) -Destination "$testStem.ll"
+function Expect-Failure([object] $data, [string] $message) {
+    $data.irFile = Split-Path -Leaf "$testStem.ll"
     $data | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $testPath -Encoding utf8
     $failed = $false
-    try { & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -ToolchainRoot $ToolchainRoot -LlvmBin $bin -Configuration $Configuration | Out-Null }
+    try { & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -Configuration $Configuration | Out-Null }
     catch {
         if ($_.Exception.Message -notmatch $message) { throw "Unexpected rejection: $($_.Exception.Message)" }
         $failed = $true
@@ -25,57 +24,51 @@ function Expect-Failure([object] $data, [string] $bin, [string] $message) {
 try {
     $data = $original | ConvertFrom-Json
     $data.schemaVersion = 3
-    Expect-Failure $data $LlvmBin "'schemaVersion' is not this compiler's"
+    Expect-Failure $data "'schemaVersion' is not this compiler's"
     $data.schemaVersion = 4.5
-    Expect-Failure $data $LlvmBin "'schemaVersion' is not this compiler's"
+    Expect-Failure $data "'schemaVersion' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.externalDeclarations = @(@{ symbol = 'observer_notify'; dllimport = 'yes' })
-    Expect-Failure $data $LlvmBin "'externalDeclarations.dllimport' is missing or not a JSON Boolean"
+    Expect-Failure $data "'externalDeclarations.dllimport' is missing or not a JSON Boolean"
     $data = $original | ConvertFrom-Json
     $data.PSObject.Properties.Remove('externalDeclarations')
-    Expect-Failure $data $LlvmBin "'externalDeclarations' is missing or not a JSON Array"
+    Expect-Failure $data "'externalDeclarations' is missing or not a JSON Array"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kimi_backend') | Add-Member -NotePropertyName input -NotePropertyValue 'override.lib'
-    Expect-Failure $data $LlvmBin "'libraries' entry 'kimi_backend' is not this compiler's"
+    Expect-Failure $data "'libraries' entry 'kimi_backend' is not this compiler's"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kimi_backend').resolution = 'unknown'
-    Expect-Failure $data $LlvmBin "'libraries' entry 'kimi_backend' is not this compiler's"
+    Expect-Failure $data "'libraries' entry 'kimi_backend' is not this compiler's"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kernel32').definitionSha256 = '0' * 64
-    Expect-Failure $data $LlvmBin "'libraries' entry 'kernel32' is not this compiler's"
+    Expect-Failure $data "'libraries' entry 'kernel32' is not this compiler's"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kernel32') | Add-Member -NotePropertyName input -NotePropertyValue 'kernel32.lib'
-    Expect-Failure $data $LlvmBin "'libraries' entry 'kernel32' is not this compiler's"
+    Expect-Failure $data "'libraries' entry 'kernel32' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.irSha256 = '0' * 64
-    Expect-Failure $data $LlvmBin 'IR/manifest SHA-256.*mismatch'
+    Expect-Failure $data 'IR/manifest SHA-256.*mismatch'
     $data = $original | ConvertFrom-Json
     $data.backendSupport.artifactSha256 = '0' * 64
-    Expect-Failure $data $LlvmBin "'backendSupport.artifactSha256' is not this compiler's"
+    Expect-Failure $data "'backendSupport.artifactSha256' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.backendSupport.packageVersion = 'unreviewed'
-    Expect-Failure $data $LlvmBin "'backendSupport.packageVersion' is not this compiler's"
+    Expect-Failure $data "'backendSupport.packageVersion' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.codegen.cpu = 'native'
-    Expect-Failure $data $LlvmBin "'codegen.cpu' is not this compiler's"
+    Expect-Failure $data "'codegen.cpu' is not this compiler's"
     # A removed member (Tatara B6b5): a manifest an older emit wrote for a project's LlvmBin asks to re-emit.
     $data = $original | ConvertFrom-Json
     $data | Add-Member -NotePropertyName toolchain -NotePropertyValue @{ llvmBin = '../tools' }
-    Expect-Failure $data $LlvmBin "'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest."
+    Expect-Failure $data "'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest."
     $data = $original | ConvertFrom-Json
     $data.optimization = 'O3'
-    Expect-Failure $data $LlvmBin 'supported Windows Application profile'
-    if ($MismatchedLlvmBin) {
-        $data = $original | ConvertFrom-Json
-        $data.irSha256 = '0' * 64
-        Expect-Failure $data $MismatchedLlvmBin 'IR/manifest SHA-256.*mismatch'
-        $record = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($testPath, '.build.json')) -Raw | ConvertFrom-Json
-        if ($record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Incorrect unverified build record' }
-    }
+    Expect-Failure $data 'supported Windows Application profile'
     Write-Output 'Manual-build integrity and toolchain rejection tests passed.'
 }
 finally {
-    # Both paths are exact files derived from a fresh GUID alongside the explicit manifest.
-    Remove-Item -LiteralPath $testPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath ([IO.Path]::ChangeExtension($testPath, '.build.json')) -Force -ErrorAction SilentlyContinue
+    # Every path is derived from a fresh GUID alongside the explicit manifest: the pair, its record and lock, and the staged libraries.
+    foreach ($path in @($testPath, "$testStem.ll", "$testStem.link.build.json", "$testStem.link.build.lock", "$testStem.O0.native", "$testStem.O2.native")) {
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

@@ -6,6 +6,14 @@ namespace Kimi.Command;
 
 public class KimiOptions
 {
+    // The removed options, each with the text a command naming it fails with, whatever its value (Tatara B6b4, decision 20). A later
+    // removal adds a row.
+    private static readonly (string Name, string Text)[] Removed =
+    [
+        ("ToolchainRoot", "--ToolchainRoot was removed: Kimi carries its toolchain."),
+        ("LlvmBin", "--LlvmBin was removed: Kimi carries its toolchain."),
+    ];
+
     [SimpleOption("locked")]
     public bool Locked { get; set; }
 
@@ -15,15 +23,35 @@ public class KimiOptions
     [SimpleOption("Debug")]
     public bool Debug { get; set; } = false;
 
-    [SimpleOption("LlvmBin")]
-    public string? LlvmBin { get; set; }
-
-    [SimpleOption("ToolchainRoot")]
-    public string? ToolchainRoot { get; set; }
-
     /// <summary>Gets or sets the output form of <c>kimi check</c>: <c>text</c> renders the records, <c>json</c> writes the document of SPEC 23.3.</summary>
     [SimpleOption("Format")]
     public string Format { get; set; } = "text";
+
+    /// <summary>Reads one of a command's arguments, as the parser handed it to the command, for a removed option: the reader of an
+    /// invalid option (<see cref="CommandExecution"/> for every command but <c>test</c> and <c>lsp</c>, <c>TestOptions</c> for
+    /// <c>test</c>) reports the text. The argument names one by SimpleCommandLine's own lookup of an option (<c>OptionSet.ParseCore</c>,
+    /// internal to the parser): an option word, <see cref="SimpleParserHelper.IsOptionName"/>, whose name after its leading '-' equals
+    /// the option's, ignoring case, so every spelling the parser binds as an option is named (and a quoted word, which the parser
+    /// hands on unwrapped).</summary>
+    /// <param name="argument">The argument.</param>
+    /// <returns>The removal's text, or null when the argument names no removed option.</returns>
+    internal static string? RemovedOption(string argument)
+    {
+        var name = argument.AsSpan();
+        if (name.IsOptionName())
+        {
+            name = name.TrimStart('-');
+            foreach (var (removed, text) in Removed)
+            {
+                if (name.Equals(removed, StringComparison.OrdinalIgnoreCase))
+                {
+                    return text;
+                }
+            }
+        }
+
+        return null;
+    }
 
     // SimpleCommandLine requires values for Boolean options. Preserve the specified
     // bare --locked and --no-build spellings while retaining explicit Boolean values and other options.

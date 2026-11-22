@@ -16,6 +16,22 @@ public sealed partial class Binding
 
     private (int Slot, ReferenceSlotFailure Failure) referenceSlotFailure;
 
+    // DECISIONS BU-240 (temporary, removed with (R)): a frame's first `count` slot bindings, each slot's Type, length and selector, by
+    // which a part of a split search that bound one is told (InferReferencePart compares the references).
+    private static object?[] SlotBindings(SlotFrame frame, int count)
+    {
+        count = Math.Min(count, frame.Types.Length);
+        var bindings = new object?[3 * count];
+        for (var i = 0; i < count; i++)
+        {
+            bindings[3 * i] = frame.Types[i];
+            bindings[(3 * i) + 1] = frame.Lengths[i];
+            bindings[(3 * i) + 2] = frame.Selectors[i];
+        }
+
+        return bindings;
+    }
+
     // Ordinary members of Origin-bearing containers remain limited; constrained requirements use RequirementItems.
     // An instance member is referenced unbound through its Type (SPEC 7.3).
     private static bool UnsupportedReference(BindingSymbol candidate, bool unbound, BoundType? declaringType)
@@ -76,7 +92,7 @@ public sealed partial class Binding
 
         // SPEC 10.5.3: the one candidate's trial binds its slots here, so that its record reads the signature the trial substituted.
         var slots = only?.Declaration is FunctionKoto one ? one.GenericArguments.Count : 0;
-        SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots, scope);
+        SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots, use, scope);
         BindingSymbol selected;
         (int Slot, ulong Parameters)? perCall = null;
         (int Slot, ReferenceSlotFailure Failure) slotFailure = default;
@@ -88,6 +104,7 @@ public sealed partial class Binding
             var pendingProof = false;
             Koto? invalid = null;
             var error = false;
+            var resting = false;
             this.failedCause = null;
             foreach (var candidate in group)
             {
@@ -100,6 +117,7 @@ public sealed partial class Binding
                 this.perCallReferenceSlot = null;
                 this.referenceSlotFailure = default;
                 ReferenceConstraintFailure? constraint = null;
+                var unformedMark = this.unformedWrites;
                 var state = this.Accessible(candidate, scope)
                     ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out constraint, operations.AsSpan(index * stride, stride - 1), trial)
                     : CandidateApplicability.Inapplicable;
@@ -112,6 +130,15 @@ public sealed partial class Binding
                 {
                     perCall = this.perCallReferenceSlot;
                     slotFailure = this.referenceSlotFailure;
+                }
+
+                if (this.UnformedSince(unformedMark))
+                {
+                    // DECISIONS BU-240: the candidate's own run left its unformed parts unknown, so its state, and a Constraint fact its
+                    // proof left over an unformed Type, are the split's: the combinations decide (SplitState).
+                    state = this.SplitState(use, candidate, required, scope, unformedMark, state);
+                    resting |= state == CandidateApplicability.Pending;
+                    constraint = state == CandidateApplicability.Inapplicable ? null : constraint;
                 }
 
                 evaluated[index++] = new(candidate, state, null, 0, ConstraintFailure: constraint);
@@ -137,6 +164,20 @@ public sealed partial class Binding
             {
                 return (invalid ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(use, cause)
                     : this.Fail(use, BindingFailure.InvalidConstraint);
+            }
+
+            if (resting)
+            {
+                // DECISIONS BU-240 (temporary, PLAN G886): a candidate rests on a Type no binding represents (SplitState's Pending), so the reference
+                // is one located Unsupported_Kd, whatever the other candidates (SPEC 10.1's unproven candidate). Its erasure's Owned
+                // proof reads only its bound Type arguments, so it is still judged (FailUnformedOwned), and a reference resting on a
+                // failed argument is no record of its own (SPEC 23.1.2).
+                if (erase)
+                {
+                    this.FailUnformedOwned(use, required, trial);
+                }
+
+                return this.Fail(use, BindingFailure.Unsupported);
             }
 
             if (pendingProof)
@@ -169,7 +210,19 @@ public sealed partial class Binding
                     var bound = slotFailure.Failure == ReferenceSlotFailure.None && (trial is not { } complete || ReferenceSlotsComplete(function, complete.Types, complete.Lengths));
                     var candidateItem = bound ? this.FunctionItemType(single, trial is { } solved ? solved.Types[..slots] : default, this.ReferenceContainer(use, single), trial is { } solvedLengths ? solvedLengths.Lengths[..slots] : default)
                         : this.FunctionItemType(single, default);
-                    if (this.FunctionItemSignature(candidateItem) is { } actual)
+                    var signatureMark = this.unformedWrites;
+                    var candidateSignature = this.FunctionItemSignature(candidateItem);
+                    if (this.UnformedSince(signatureMark))
+                    {
+                        // DECISIONS BU-240 (temporary, PLAN G886): the bound Item's signature forms no Type, and no combination of its split
+                        // cases meets S (SplitState): the record names the Item, its Note the erasure's part, decided from that
+                        // search's verdict (DecideErasure; no second search).
+                        this.unformedWrites = signatureMark;
+                        _ = this.DecideErasure(use, candidateItem, required, fits: false, default);
+                        return this.FailMismatch(use, use, candidateItem, required, default);
+                    }
+
+                    if (candidateSignature is { } actual)
                     {
                         var contract = ComparisonFailure.Shape;
                         var structure = bound && TyCtxt.StorageMatches(required, actual);
@@ -215,7 +268,7 @@ public sealed partial class Binding
         if (target.GenericArguments.Count != 0)
         {
             // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.7.4).
-            var frame = this.infer.Rent(target.GenericArguments.Count, scope);
+            var frame = this.infer.Rent(target.GenericArguments.Count, use, scope);
             try
             {
                 if (!this.FunctionReferenceFits(use, selected, target, required, scope, boundFrame: frame))
@@ -286,32 +339,67 @@ public sealed partial class Binding
             }
 
             this.referenceSlotFailure = default;
-            if (this.Accessible(candidate, scope) && (this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) != CandidateApplicability.Inapplicable ||
-                this.referenceSlotFailure.Failure == ReferenceSlotFailure.SlotVariables))
+            var unformedMark = this.unformedWrites;
+            var state = this.Accessible(candidate, scope)
+                ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) : CandidateApplicability.Inapplicable;
+            if (this.referenceSlotFailure.Failure == ReferenceSlotFailure.SlotVariables)
             {
                 return true;
+            }
+
+            if (this.UnformedSince(unformedMark))
+            {
+                state = this.SplitState(use, candidate, required, scope, unformedMark, state);
+            }
+
+            if (state != CandidateApplicability.Inapplicable)
+            {
+                return true; // One that rests on the split leaves its writes: the trial that fits this part rests on it too.
             }
         }
 
         return false;
     }
 
+    // DECISIONS BU-240 with rule W (BU-79; C-359 C1, E2; temporary, PLAN G886): the state of a candidate whose check at S formed a Type no
+    // binding represents (a write since `mark`). A reference's binder is fixed before any evidence, so the same check is judged in
+    // each combination of split cases (RestsOnSplitCases), whatever its own run gave: that run left its unformed parts unknown. A
+    // candidate inapplicable in every combination is inapplicable by itself, its Language record the reference's (SPEC 23.1.2);
+    // one whose own check was an Error and is one in every combination keeps it; any other rests on the split: Pending.
+    private CandidateApplicability SplitState(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability state)
+    {
+        if (!this.SplitStateRests(use, candidate, required, scope, mark, CandidateApplicability.Inapplicable))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
+        return state == CandidateApplicability.Error && !this.SplitStateRests(use, candidate, required, scope, mark, state) ? state : CandidateApplicability.Pending;
+    }
+
+    private bool SplitStateRests(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability failing)
+        => this.RestsOnSplitCases(
+            mark,
+            (use, candidate, required, scope, failing),
+            static (binding, check) => binding.FunctionReferenceApplicability(
+                check.use, check.candidate, (FunctionKoto)check.candidate.Declaration, check.required, check.scope, out _) == check.failing);
+
     // SPEC 10.5: a generic candidate's own slots are bound by matching its parameter Types against those of S and its result
     // against the result of S, without adaptations; it applies when every slot is bound and its Constraints are Proven.
     // Origins are left to the per-call solver, and a per-call Origin of S never becomes part of a bound argument. Explicit Type
-    // arguments are compared with that binding as normalized Types, so equivalent Function Types with distinct binders agree.
+    // arguments bind first (InferReferenceSlots) and are then compared with the binding as normalized Types, so equivalent Function
+    // Types with distinct binders agree.
     private bool BindReferenceArguments(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BindingScope scope, GenericsKoto? explicitReference, BoundType? container, out ConstraintProof proof)
     {
         proof = ConstraintProof.Proven;
         var count = function.GenericArguments.Count;
-        if (!this.InferReferenceSlots(symbol, function, required, frame, container, false, true, true) ||
+        if (!this.InferReferenceSlots(symbol, function, required, frame, container, false, true, explicitReference) ||
             (explicitReference is not null && !this.ExplicitReferenceAgrees(explicitReference, frame, count, false, function, scope)))
         {
             // SPEC 10.8, 15.3.6: bindings of one slot that differ only in their Origins are an Origin failure, not a structural one;
             // when only per-call Origins of S would satisfy the slot, the reference's record names that slot and those parameters.
             // A Constraint that the met binding does not prove is judged first, as for a binding without a conflict, since neither an Origin
             // of the slot nor a wrapper would repair it.
-            if (this.InferReferenceSlots(symbol, function, required, frame, container, true, true, true) &&
+            if (this.InferReferenceSlots(symbol, function, required, frame, container, true, true, explicitReference) &&
                 (explicitReference is null || this.ExplicitReferenceAgrees(explicitReference, frame, count, true, function, scope)))
             {
                 if (ReferenceSlotsComplete(function, frame.Types, frame.Lengths) && (proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths)) != ConstraintProof.Proven)
@@ -386,31 +474,82 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 10.8: binds a reference's slots from the parameters of S and, with `result`, from its result; `commonOrigins` meets
-    // the Origins that two positions give one slot, as a call's inference would.
-    private bool InferReferenceSlots(BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BoundType? container, bool commonOrigins, bool result, bool lengths)
+    // the Origins that two positions give one slot, as a call's inference would. Explicit arguments bind first, as a call's
+    // (FixCallSlots): a written Type argument is its slot's binding before S is matched, so S's parts are matched against it and are no
+    // evidence for a binder it fixes (IsSource); one that omits an Origin is the binding from S, which solves that Origin (SPEC 15.4.4),
+    // so its slot is bound from S and compared after (ExplicitReferenceAgrees), as a written length is.
+    private bool InferReferenceSlots(BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BoundType? container, bool commonOrigins, bool result, GenericsKoto? explicitReference)
     {
         frame.ClearTypes(function.GenericArguments.Count);
-        if (lengths)
+        frame.ClearLengths(function.GenericArguments.Count);
+        for (var i = 0; explicitReference is not null && i < function.GenericArguments.Count; i++)
         {
-            frame.ClearLengths(function.GenericArguments.Count);
-        }
-
-        var parameters = required.Components[0];
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter ||
-                !this.Infer(parameter, parameters.Components[i], new(function), frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+            if (function.GenericArguments[i] is not LengthParameterKoto && explicitReference.TypeArguments[i].BoundType is { } written && !OmitsOrigins(written))
             {
-                return false;
+                frame.SetType(i, written);
             }
         }
 
-        return !result || (symbol.Type is { } writtenResult && this.MemberType(writtenResult, container) is { } bound &&
-            this.Infer(bound, required.Components[1], new(function), frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
+        // SPEC 10.8 (two phases): a structured application of a pair binder is formed after the binder's exact sources, wherever S
+        // writes them, so the signature is matched again while a pass that met an open application fixed something.
+        var parameters = required.Components[0];
+        var binder = new SolveBinder(function);
+        bool open;
+        int sourced;
+        do
+        {
+            open = false;
+            sourced = SourcedSlots(frame);
+            for (var i = 0; i < function.Parameters.Count + (result ? 1 : 0); i++)
+            {
+                // DECISIONS BU-240 with rule W (BU-79; C-359 E2): each parameter and the result is a part of the check a split search
+                // judges. One whose own Type or match formed no Type is unknown, and the next part is judged, so that a part
+                // which reads no unformed formation still fails by itself.
+                var last = i == function.Parameters.Count;
+                this.EnterSplitPart();
+                if ((last ? symbol.Type : function.Parameters[i].Type.BoundType) is not { } written || this.MemberType(written, container) is not { } part)
+                {
+                    if (this.SplitPartUnknown())
+                    {
+                        continue;
+                    }
+
+                    return false;
+                }
+
+                open |= this.HasOpenApplication(part, binder.SlotOwner, frame);
+                if (!this.InferReferencePart(part, last ? required.Components[1] : parameters.Components[i], binder, frame, commonOrigins))
+                {
+                    return false;
+                }
+            }
+        }
+        while (open && SourcedSlots(frame) != sourced);
+
+        this.EnterJointSplitPart(); // What follows the parts (the written arguments' agreement, the proof, the contract) reads them all.
+        return true;
+    }
+
+    // SPEC 10.5, 10.8: one part of a reference's signature matched against its part of S (InferReferenceSlots), as a part of the
+    // check a split search judges (DECISIONS BU-240): unknown, so true, where its match formed no Type; one that bound a slot, or an
+    // Origin in one, in its case hands its reads to the later parts, which read that binding (CarrySplitPart).
+    private bool InferReferencePart(BoundType part, BoundType actual, SolveBinder binder, SlotFrame frame, bool commonOrigins)
+    {
+        var stamp = this.splitPartStamp;
+        var count = CallSlotCount(binder.Declaration);
+        var bound = this.splitOpen ? SlotBindings(frame, count) : null;
+        var matched = this.Infer(part, actual, binder, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true);
+        if (bound is not null && !bound.AsSpan().SequenceEqual(SlotBindings(frame, count), ReferenceEqualityComparer.Instance))
+        {
+            this.CarrySplitPart(stamp);
+        }
+
+        return matched || this.SplitPartUnknown();
     }
 
     // SPEC 10.5: explicit Type arguments agree with the binding from S when they are the same normalized Type: identical, or equivalent
-    // in both directions, as two spellings of one Function Type are. With `commonOrigins`, they may differ in covariant Origins only.
+    // in both directions, as two spellings of one Function Type are (one that bound first, InferReferenceSlots, is its own binding unless
+    // S met it). With `commonOrigins`, they may differ in covariant Origins only.
     // An agreeing argument replaces the binding, so the Item keeps the written Type; one that differs only in Origins it omits keeps
     // the binding, since local inference solves those Origins from S (SPEC 15.4.4).
     private bool ExplicitReferenceAgrees(GenericsKoto explicitReference, SlotFrame frame, int count, bool commonOrigins, FunctionKoto function, BindingScope scope)
@@ -504,11 +643,11 @@ public sealed partial class Binding
             return null;
         }
 
-        var frame = this.infer.Rent(count, scope);
-        var fromResult = this.infer.Rent(count, scope);
+        var frame = this.infer.Rent(count, use, scope);
+        var fromResult = this.infer.Rent(count, use, scope);
         try
         {
-            if (!this.InferReferenceSlots(symbol, function, required, frame, container, true, false, true))
+            if (!this.InferReferenceSlots(symbol, function, required, frame, container, true, false, explicitReference))
             {
                 return null;
             }
@@ -641,7 +780,7 @@ public sealed partial class Binding
 
         var generic = function.GenericArguments.Count;
         var container = this.ReferenceContainer(use, symbol);
-        SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic, scope);
+        SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic, use, scope);
         var origins = this.originScratch.Rent(function.Origins.Count);
         var inputCount = InputOriginCount(function);
         var inputs = this.originScratch.Rent(inputCount);

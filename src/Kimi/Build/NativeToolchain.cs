@@ -5,10 +5,10 @@
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
 // pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the compiler's Tatara: linked into
 // kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root; the built Application's run;
-// toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs: its Tatara, its supplies' bytes and
-// kernel32's definition against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
+// toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs, two steps: its Tatara's start check and
+// its supplies' bytes against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
 // toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is;
-// ToolchainIdentity); kernel32's definition (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
+// ToolchainIdentity, with Kernel32Imports' DLL and generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
 // development toolchain's tools and files are checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the compiler's Tatara and embedded supplies (toolchain verify).
@@ -23,7 +23,9 @@
 // replacement, the executable last: linked to a private name, it moves into place after the success record that names its hash, and a
 // failed move invalidates the record again, so its path keeps the previous executable until a build succeeds (IMPL 20.3.2; Tatara
 // decision 18; NativeBuild: in the two windows IMPL 20.3.2 states, decision 19, the attempt's success record names a hash no file at
-// the path has, and run --no-build runs only an executable whose hash the record names); and, from publication only, records in the
+// the path has, and run --no-build runs only an executable whose hash the record names). Every record names its input, the project's
+// selected file (IMPL 20.3.1): a Library's from its project, an Application's from its pair's manifest, which publication writes from
+// the project, so build --Manifest of a project's emitted pair names that project (PLAN G1256); and, from publication only, records in the
 // compiler's Emission partition (ArtifactPublicationFailed_Kd and InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other
 // failure is an exception: one IsToolchainFailure classifies is the toolchain's, which its host renders as a message; any other ends the
 // result it interrupted as Faulted (CheckFaulted_Kd): under Project.Build the build's (R9-B2), under a command the command's own
@@ -31,7 +33,9 @@
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders). A build of a record (Project.Build, build --Manifest) holds the record's lock
-// (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave.
+// (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave; a build's files are
+// named from its record's Name (ArtifactPaths), a --Manifest build's IR included, so the lock covers every file it writes. A native build
+// holds its IR, with read sharing only, from the pair's hash to its end, so it compiles the bytes its record names.
 // Must not: check source semantics, or read compiler state outside the list above.
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
 // The link manifest's fixed fields (one table), the compiler's supplies' entries (their rows) and its readers are LinkManifest's: no
@@ -45,18 +49,15 @@
 // remedy; a failed call (return 1, or 2 after which every later call in the process fails naming the first cause) an IOException
 // "Tatara failed: <operation>" with LLVM's or LLD's text, as a tool's failure is.
 // The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
-// toolchain verify states the catalog's invariants (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256 is the
-// toolchain's InvalidDataException; an embedded kernel32 definition that differs from the catalog's is Kernel32Imports' initializer's
-// fault.
+// toolchain verify states the catalog's invariant (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256 is the
+// toolchain's InvalidDataException.
 
 using System.ComponentModel;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
-using Microsoft.Win32.SafeHandles;
 using static Kimi.Build.ArtifactFiles;
 
 namespace Kimi.Build;
@@ -79,12 +80,16 @@ internal static partial class NativeToolchain
     // (Name.link.build.lock, opened without sharing and kept on disk), and then invalidates the record; the caller holds the lock until
     // the build ends. While another build holds it (IsSharingFailure), the build reports once that it waits and retries every 100 ms.
     // The token is read only in that wait, which it cancels before anything is written: a free lock is taken and the record invalidated
-    // under a cancelled token too. Any other failure is the output's. Every exception after the open closes the lock again, so no failed
-    // build leaves its output locked in a long-lived process. O0 and O2 share the record, so they share the lock. Its callers are the
-    // two hosts that begin a build of a record, Project.Build and BuildManifest (test builds into a directory of its own), which read
-    // nothing before it but the configuration.
+    // under a cancelled token too. Any other failure is the output's; a failed open or invalidation leaves the record as it was, so its
+    // exception says that the build could not begin and that the record keeps its last state (IMPL 20.3.2: the earlier success; PLAN
+    // G1205, O-491 (d)), and names the record once: the lock's failure names the lock, so the record is named with it, and the
+    // invalidation's names the record (ArtifactFiles.Replace's destination, PLAN G1257) or its temporary beside it. Every exception after
+    // the open closes the lock again, so no failed build leaves its output locked in a long-lived process. O0 and O2 share the record, so
+    // they share the lock. Its callers are the two hosts that begin a build of a record, Project.Build and BuildManifest (test builds
+    // into a directory of its own), which read nothing before it but the configuration.
     internal static async Task<FileStream> Begin(string record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
+        const string NotBegun = "The build could not begin, so its record keeps its last state";
         Directory.CreateDirectory(Path.GetDirectoryName(record)!);
         var path = Path.ChangeExtension(record, ".lock");
         FileStream output;
@@ -104,6 +109,10 @@ internal static partial class NativeToolchain
                     waiting = true;
                 }
             }
+            catch (Exception ex) when (IsOutputFailure(ex))
+            {
+                throw new IOException($"{NotBegun}: {record}. {ex.Message}", ex);
+            }
 
             await Task.Delay(100, cancellationToken);
         }
@@ -114,6 +123,10 @@ internal static partial class NativeToolchain
             Invalidate(record);
             begun = true;
             return output;
+        }
+        catch (Exception ex) when (IsOutputFailure(ex))
+        {
+            throw new IOException($"{NotBegun}. {ex.Message}", ex);
         }
         finally
         {
@@ -129,7 +142,7 @@ internal static partial class NativeToolchain
     {
         var record = new JsonObject
         {
-            ["status"] = "checked", ["outputKind"] = "Library", ["input"] = project.FilePath,
+            ["status"] = "checked", ["outputKind"] = "Library", ["input"] = project.Input,
             ["target"] = metadata.TargetTriple, ["debug"] = metadata.Debug, ["optimization"] = project.ProjectFile.Optimization,
             ["languageVersion"] = metadata.LanguageVersion, ["compilerVersion"] = metadata.CompilerVersion,
         };
@@ -137,6 +150,9 @@ internal static partial class NativeToolchain
         WriteRecord(paths.Record, record);
     }
 
+    // run --no-build (IMPL 20.3): the executable runs only when the latest record succeeded at the project's optimization, names the
+    // executable's hash and names the project's input (IMPL 20.3.1; PLAN G1256), compared as Windows compares paths (ignoring case; G1202's
+    // ruling Q3). A record that names no input (an earlier compiler's) is refused for every project that names one.
     internal static async Task<int> RunProject(Project project, CancellationToken cancellationToken)
     {
         var paths = ArtifactPaths.Create(project);
@@ -154,16 +170,22 @@ internal static partial class NativeToolchain
             throw new InvalidDataException("The latest build failed or the binary was changed. Run 'kimi build' first.");
         }
 
+        var input = Text(Member(root, "input"));
+        if (!string.Equals(input, project.Input, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException($"The latest build record names {(input is null ? "no input" : "another input: " + input)}. Run 'kimi build' first.");
+        }
+
         return await RunExecutable(paths.Executable, Path.GetFullPath(project.Directory.Length == 0 ? "." : project.Directory), cancellationToken);
     }
 
     // Runs a program and returns its exit code. The program runs in a job of its own (JobProcess), so its whole tree ends with the run:
     // after the program's exit its remaining descendants (as a test case's do), on cancellation the program with them, and when Kimi's
     // process ends (a second Ctrl+C included) with the job's last handle (PLAN G1188). It shares Kimi's standard input (Tatara decision
-    // 15; when Kimi has none, StandardInput, the program reads end of input); its output is copied to Kimi's raw standard streams and
-    // is complete when this returns or throws: the copies take no token and are awaited after the job's end, so the pipes reach their
-    // end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome and the
-    // cancellation is rethrown. The exit is awaited on a thread of its own.
+    // 15: JobProcess's sharesInput; when Kimi has none, the program reads end of input); its output is copied to Kimi's raw standard
+    // streams and is complete when this returns or throws: the copies take no token and are awaited after the job's end, so the pipes
+    // reach their end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome
+    // and the cancellation is rethrown. The exit is JobProcess's (Exited).
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -172,19 +194,18 @@ internal static partial class NativeToolchain
             throw new FileNotFoundException("Executable not found: " + executable);
         }
 
-        using var program = new JobProcess(executable, workingDirectory, null, StandardInput());
+        using var program = new JobProcess(executable, workingDirectory, null, sharesInput: true);
         var output = Task.WhenAll(
             program.Stdout.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
             program.Stderr.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
-        var exit = Task.Factory.StartNew(() => program.Wait(Timeout.Infinite), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            await exit.WaitAsync(cancellationToken);
+            await program.Exited.WaitAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
             program.Kill();
-            await exit;
+            await program.Exited;
             await output.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             throw;
         }
@@ -250,17 +271,7 @@ internal static partial class NativeToolchain
     private static JsonObject CreateBuildRecord() => new()
     {
         ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
-        ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
-
-    // Kimi's own standard input for run's program (Tatara decision 15), which the caller does not own; null when Kimi has none: no handle,
-    // or a value that is no open handle of this process (one its parent passed without letting it inherit), so the program gets
-    // JobProcess's closed input and reads end of input.
-    private static SafeFileHandle? StandardInput()
-    {
-        var input = new SafeFileHandle(GetStdHandle(-10), ownsHandle: false);
-        return !input.IsInvalid && GetHandleInformation(input.DangerousGetHandle(), out _) ? input : null;
-    }
 
     // The record's invalidation: the incomplete record a build writes first (Begin) and again after a failed move of its executable.
     private static void Invalidate(string record) => WriteRecord(record, CreateBuildRecord());
@@ -278,11 +289,4 @@ internal static partial class NativeToolchain
             File.Delete(temporary);
         }
     }
-
-    [DllImport("kernel32.dll")]
-    private static extern nint GetStdHandle(int kind);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetHandleInformation(nint handle, out uint flags);
 }

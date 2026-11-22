@@ -27,15 +27,15 @@ public sealed partial class MirBuildTest
     // Building goes on after each. A Field Binding failed whose own Type is valid (a struct with a misplaced `length` slot) has its
     // initializer published (PLAN G1071's gate 1, F's C2 ruling 261 (3)), so each constructor builds it, with no Opaque, record or finding
     // (it was an Opaque in each constructor while only a Resolved definition's parts were published). The unbuilt form is the tuple
-    // operator without its comparison (Unbuilt); its Opaque names the roots of its operands.
+    // default the call's substitution cannot instantiate (Unbuilt); its Opaque names the roots of the slots before the default.
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = CompilationTestHelper.Parse(
             "struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            Unbuilt.Declarations + $"func f(a: i32, x: ref/{Unbuilt.Tuple}, y: ref/{Unbuilt.Tuple}) -> i32\n    let c = x == y\n    return a\n" +
-            $"func g() -> i32 => missing\nfunc h(a: i32, c: bool, u: ref/{Unbuilt.Tuple}, v: ref/{Unbuilt.Tuple}) -> i32\n    defer\n" +
-            "        let d = u == v\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
+            Unbuilt.Declarations + $"func f(a: i32, x: i32) -> i32\n    let c = {Unbuilt.Callee}(x)\n    return a\n" +
+            $"func g() -> i32 => missing\nfunc h(a: i32, c: bool, u: i32) -> i32\n    defer\n" +
+            $"        let d = {Unbuilt.Callee}(u)\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
         Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
         c.Bind();
         _ = c.Binding.CheckStartup(OutputKind.Application);
@@ -44,11 +44,11 @@ public sealed partial class MirBuildTest
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g" or "h" or "k").ToDictionary(static x => x.Key.Decl!.Name);
         var unbuilt = bodies["f"];
         Assert.True(unbuilt.HasOpaque);
-        Assert.Equal(new[] { 2, 3 }, unbuilt.OpaqueUses.ToArray().Select(static x => x.Root));
+        Assert.Equal(new[] { 4 }, unbuilt.OpaqueUses.ToArray().Select(static x => x.Root)); // take's argument slot before the default.
         Assert.Contains(unbuilt.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
         var records = program.Records(MirRecordClass.Construction).Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
-        Assert.Equal(["u == v", "x == y"], records);
-        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "u == v"));
+        Assert.Equal([$"{Unbuilt.Callee}(u)", $"{Unbuilt.Callee}(x)"], records);
+        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == $"{Unbuilt.Callee}(u)"));
 
         Assert.Equal(0, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
@@ -57,16 +57,26 @@ public sealed partial class MirBuildTest
 
     // DECISIONS Z17: an Opaque site names only what it does not decide, and a part its consumer reads is read at its own node, as the dump
     // prints them: a derived write's located right side its consumer acquires is read by a FakeRead of its Place (p.n, _1.1) and is no use,
-    // a failed call's kept part stays undecided at its Place, a failed jump's operand is located and read (x at each exit its defer body is
-    // built at), a constant operand gives no read and no use (N8), a part of no Type, a failed slot's, is undecided, and a right side that
-    // is a Temporary (the failed slot's name, an Error's derived value) is its built value, no use. Each site's uses, in order, then the
-    // reads.
+    // a failed jump's operand is located and read (x at each exit its defer body is built at), a constant operand gives no read and no use
+    // (N8), a part of no Type, a failed slot's, is undecided, and a right side that is a Temporary (the failed slot's name, an Error's
+    // derived value) is its built value, no use. DECISIONS Z17c (SPEC 12.2, 15.6.7): a failed call's kept part is evaluated as the call
+    // builder evaluates an operand, and the site names its Place first, counted as kept: p.n, read whole, secured by its Copy into a temp
+    // (fail-before: _1.1 undecided, kept 0); a kept invocation argument's written exclusive borrow is two-phase, while a tuple's element
+    // and a Case payload stay Uniq (B6; fail-before: all Uniq); nested Errors keep their own parts (missing2's site none, the inner
+    // Error's x and missing2's temp, the outer's the inner's temp); a failed default's site after an Error site keeps none (C2: its earlier
+    // slot only, a pending slot its call's entry activates). Each site's kept count and uses, in order, then the reads, then the exclusive
+    // borrows.
     [Theory]
-    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing = p.n\n", " / FakeRead(_1.1)")]
-    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing(p.n)\n", "_1.1 / ")]
-    [InlineData("func f() -> i32\n    var x: i32\n    defer => return x\n    return 1\n", " |  / FakeRead(_1) FakeRead(_1)")]
-    [InlineData("func f()\n    defer => return 1\n", " / ")]
-    [InlineData("func f()\n    var q = missing2\n    missing = q\n", " | _2 |  |  / ")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing = p.n\n", "0: / FakeRead(_1.1) / ")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing(p.n)\n", "1: _3 /  / ")]
+    [InlineData("func f() -> i32\n    var x: i32\n    defer => return x\n    return 1\n", "0: | 0: / FakeRead(_1) FakeRead(_1) / ")]
+    [InlineData("func f()\n    defer => return 1\n", "0: /  / ")]
+    [InlineData("func f()\n    var q = missing2\n    missing = q\n", "0: | 1: _2 | 0: | 0: /  / ")]
+    [InlineData("func f()\n    var y = 1\n    let q = 2\n    let a = missing(y@uniq, q)\n", "2: _5 _6 | 1: _4 /  / &uniq two-phase")]
+    [InlineData("func f()\n    var y = 1\n    let t = (y@uniq, missing)\n", "0: | 2: _4 _5 | 1: _3 /  / &uniq")]
+    [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let e: Option<uniq/i32> = .Some(y@uniq, g(y))\n", "2: _3 _4 /  / &uniq")]
+    [InlineData("func f()\n    var x = 1\n    missing(x + missing2)\n", "0: | 2: _4 _5 | 1: _3 /  / ")]
+    [InlineData("func h(x: i32, y: i32 = missing) -> i32 => y\nfunc f()\n    let q = 2\n    let a = missing(q)\n    let b = h(1)\n", "1: _4 | 1: _3 | 0: _6 /  / ")]
     public void AnOpaqueSiteNamesOnlyWhatItDoesNotDecide(string source, string expected)
     {
         var program = Compile("struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n" +
@@ -75,9 +85,10 @@ public sealed partial class MirBuildTest
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
-        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?:(.*)$").Select(static x => x.Groups[1].Value.Trim());
+        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?(?: kept (\d+))?:(.*)$").Select(static x => $"{(x.Groups[1].Success ? x.Groups[1].Value : "0")}: {x.Groups[2].Value.Trim()}".Trim());
         var reads = Regex.Matches(dump, @"FakeRead\([^)]*\)").Select(static x => x.Value);
-        Assert.Equal(expected, $"{string.Join(" | ", sites)} / {string.Join(" ", reads)}");
+        var borrows = Regex.Matches(dump, @"&uniq(?: two-phase)?").Select(static x => x.Value);
+        Assert.Equal(expected, $"{string.Join(" | ", sites)} / {string.Join(" ", reads)} / {string.Join(" ", borrows)}");
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M70): where Binding or control flow published that it formed no value, the MIR forms none from facts

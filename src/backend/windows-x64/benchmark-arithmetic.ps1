@@ -1,7 +1,6 @@
 # Matched native arithmetic measurements; timing is opt-in and never a normal Verify assertion.
 [CmdletBinding()]
 param(
-    [string] $ToolchainRoot = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [ValidateRange(1, 99)] [int] $Samples = 7,
     [string] $Name = ''
@@ -17,7 +16,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Arithmetic source generation failed.' }
 $results = [Collections.Generic.List[object]]::new()
 foreach ($source in Get-ChildItem -LiteralPath $sources -Filter '*.kimi' -File | Sort-Object Name) {
     $work = Join-Path $root "work/$($source.BaseName)"
-    & (Join-Path $PSScriptRoot 'milestone-harness.ps1') -Milestone 0 -Source $source.FullName -WorkRoot $work -Runs ($Samples + 1) -Expected "ok`n" -Configuration $Configuration -ToolchainRoot $ToolchainRoot | Out-Null
+    & (Join-Path $PSScriptRoot 'milestone-harness.ps1') -Milestone 0 -Source $source.FullName -WorkRoot $work -Runs ($Samples + 1) -Expected "ok`n" -Configuration $Configuration | Out-Null
     $record = Get-ChildItem -LiteralPath $work -Recurse -Filter verification.json -File | Select-Object -First 1
     $report = Get-Content -LiteralPath $record.FullName -Raw | ConvertFrom-Json
     if ($report.status -cne 'passed') { throw "Native workload failed: $($source.Name)" }

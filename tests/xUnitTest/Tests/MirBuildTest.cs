@@ -61,13 +61,15 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         "    public func put(a: i32, self: ref/Self) => ()\nstruct Gauge\n    public var level: i32 = 0\n        set(value: i32) -> ()\n" +
         "            storage = value\n    public init() => ()\nfunc f(x: i32, box: ref/Box)\n    var y: i32 = 0\n    var gauge = Gauge.init()\n";
 
-    // An unbuilt form of a valid program: a tuple operator over two values of Tuple, whose leaf's storage nests past Binding's bound, has
-    // no comparison (a Limit of TyCtxt.Comparison, DECISIONS R5-M75), so the MIR records one located Unsupported_Kd at the operator.
-    // Declarations declares the leaf's Type. Since PLAN G167 the other unbuilt form is the second limit past that bound, a default template
-    // the call's substitution cannot instantiate (MirBuilder.Defaults.cs, R4-M127); both are PD30's (e) row until R7.
-    internal static (string Declarations, string Tuple) Unbuilt { get; } = (
-        "struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n",
-        "(" + string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80) + ", i32)");
+    // An unbuilt form of a valid program: a call of Callee omitting its default, a template the call's substitution cannot instantiate (its
+    // zero<T> over Bx^65<i32>, whose storage nests past Binding's bound: MirBuilder.Defaults.cs, DECISIONS R4-M127), so the MIR records one
+    // located Unsupported_Kd at the call, an Opaque value reading the slots of the arguments before the default. Declarations declares the
+    // callee; a caller holding no Loan meets no limit of A5's. PD30's (e) row (the builder's B3, PLAN G396 (3)); its tests need another
+    // unbuilt form when B3's stage removes it. Before R7-T1 c4 it was the tuple operator over a leaf past the bound, which now builds its
+    // comparison (ATupleOperatorBuildsItsComparisonWhateverItsStorage).
+    internal static (string Declarations, string Callee) Unbuilt { get; } = (
+        "struct Bx<T>\n    public var v: T\nfunc zero<T>() -> i32 => 0\nfunc take<T>(a: i32, k: i32 = zero<T>()) -> i32 => a + k\n",
+        "take<" + string.Concat(Enumerable.Repeat("Bx<", 65)) + "i32" + new string('>', 65) + ">");
 
     // PLAN G949 S1-r1b (review-s1r1 Re-check 3, RB1; F's rulings 153, 156 and 158): the library's bodies built after a Provisional Bind
     // are the ones built after a Final Bind: the MIR builder reads the library's published HIR whatever the Bind's mode, and the HIR is

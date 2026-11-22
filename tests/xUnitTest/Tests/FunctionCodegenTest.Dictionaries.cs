@@ -102,6 +102,7 @@ public sealed partial class FunctionCodegenTest
 
     // DECISIONS R8-M2, R8-M18 (PLAN G693): a slot's offset (slotOffset), a remainder's count and the capacity arithmetic are bounded by the
     // slot invariant or a dominating guard, so those bodies check no arithmetic; the slot rule's sums over the Types' strides stay checked.
+    // The doubling is Storage.growthTarget's, the growth target grow shares with growArray (PLAN G970).
     [Fact]
     public void SlotBodiesCheckNoBoundedArithmetic()
     {
@@ -117,7 +118,7 @@ public sealed partial class FunctionCodegenTest
             "func slDrain(d: Dictionary<i32, i32>) -> i32\n    var sum: i32 = 0\n    for (k, v) in d@move => sum += v\n    return sum\n";
         var c = Analyze(Source, OutputKind.Library);
         AssertNoCheckedArithmetic(c, "slotOffset", "splitFirst", "takeFirst", "tryGet", "destroyDictionaryEntries", "clearEntries");
-        AssertNoCheckedArithmetic(c, "removeEntry", "replaceValue", "reserve", "grow", "shrinkToFit", "compact", "appendSlot", "unlink");
+        AssertNoCheckedArithmetic(c, "removeEntry", "replaceValue", "reserve", "grow", "growthTarget", "shrinkToFit", "compact", "appendSlot", "unlink");
     }
 
     // SPEC 4.7.3, 22.2 (DECISIONS R5-M124, R8-K1a): the storage bodies read the Handle's words: borrowStorage and borrowStorageUniq the

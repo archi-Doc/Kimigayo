@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'kernel32.ps1')
 . (Join-Path $PSScriptRoot 'expected-output.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
@@ -35,7 +36,6 @@ function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    $start.Environment['KIMI_TOOLCHAIN_ROOT'] = $ToolchainRoot
     if (-not $NativeCompiler) { $start.ArgumentList.Add($compiler) }
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::Start($start)
@@ -58,16 +58,19 @@ Write-Project 'O2' ''
 '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 $output = Invoke-Kimi @('run', $project)
 if (-not $output.Contains('Hello, world!')) { throw "Automatic toolchain resolution failed: $output" }
-# IMPL 20.3.2, 20.4 (Tatara B6b1): a native build runs no LLVM tool, links the compiler's own libraries and reads no toolchain root.
-# With --ToolchainRoot naming a missing directory (accepted and not read until B6b4), Hello builds and runs, and build --Manifest and a
-# test project's build do too.
+# IMPL 20.3.2, 20.4 (Tatara B6b1): a native build runs no LLVM tool, links the compiler's own libraries and reads no toolchain root,
+# so build --Manifest and a test project's build need none either. The options --ToolchainRoot and --LlvmBin were removed (Tatara
+# B6b4): a command naming either among its arguments, in any spelling the parser binds, fails as its input error before its work,
+# with each text on standard error and nothing on standard output (check --Format json writes no document); test, as its invalid
+# option (exit 2).
 $missingRoot = Join-Path $work 'missing toolchain'
-$output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $missingRoot)
+foreach ($row in @(@('--ToolchainRoot', 'build', $project, '--ToolchainRoot', $missingRoot), @('--LlvmBin', 'check', $project, '--Format', 'json', '-llvmbin', $missingRoot))) {
+    $output = Invoke-Kimi $row[1..($row.Count - 1)] 1
+    if ($childStdout.Length -ne 0 -or $utf8.GetString($childStderr).Trim() -cne "$($row[0]) was removed: Kimi carries its toolchain.") { throw "A removed option must fail the line on standard error: $output" }
+}
+$output = Invoke-Kimi @('build', '--Manifest', (Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.link.json'))
 $output = Invoke-Kimi @('run', $project, '--no-build')
-if (-not $output.Contains('Hello, world!')) { throw "A native build read the toolchain root: $output" }
-$output = Invoke-Kimi @('build', '--Manifest', (Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.link.json'), '--ToolchainRoot', $missingRoot)
-$output = Invoke-Kimi @('run', $project, '--no-build')
-if (-not $output.Contains('Hello, world!')) { throw "A manifest build read the toolchain root: $output" }
+if (-not $output.Contains('Hello, world!')) { throw "A manifest build failed: $output" }
 # kimi test takes a path with spaces as every command does (PLAN G1214): its project has spaces, beside the work folder.
 $testDirectory = Join-Path (Split-Path $work) 'test project'
 New-Item -ItemType Directory -Path $testDirectory | Out-Null
@@ -77,7 +80,7 @@ func passes()
     $require(1 == 1)
 '@ | Set-Content -LiteralPath (Join-Path $testDirectory 'tests.kimi') -Encoding utf8
 "Targets = { `"x86_64-pc-windows-msvc`" }`nOutputKind = `"Library`"`nTestSources = { `"tests.kimi`" }" | Set-Content -LiteralPath (Join-Path $testDirectory 'Tests.kimiproj') -Encoding utf8
-$output = Invoke-Kimi @('test', (Join-Path $testDirectory 'Tests.kimiproj'), '--ToolchainRoot', (Join-Path (Split-Path $work) 'missing-toolchain'))
+$output = Invoke-Kimi @('test', (Join-Path $testDirectory 'Tests.kimiproj'))
 # The managed form loads only the tatara.dll beside Kimi.dll, never one on PATH: a copy of the compiler's folder without it, with the
 # compiler's own folder (which holds one) first on the child's PATH, fails the build naming setup and Kimi's rebuild.
 if (-not $NativeCompiler) {
@@ -118,10 +121,10 @@ $output = Invoke-Kimi @('run', $project, '--no-build')
 if (-not $output.Contains('Hello, world!')) { throw "The build failed: $output" }
 foreach ($level in @('O0', 'O2')) {
     Write-Project $level ''
-    $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)
+    $output = Invoke-Kimi @('build', $project)
     if ($output -match '(?m)^Hello, world!') { throw 'Build executed the Application' }
     $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
-    if ($record.status -cne 'linked' -or $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Invalid successful build record' }
+    if ($record.status -cne 'linked') { throw 'Invalid successful build record' }
     # The record's libraries are the compiler's, each its staged snapshot (<stem>.native/<hash>.lib) with the catalog's hash.
     $libraries = @($record.libraries | ForEach-Object { "$($_.name) $($_.sha256) $($_.path.Replace('\', '/').EndsWith(".native/$($_.sha256).lib"))" }) -join ','
     if ($null -ne $record.kernel32 -or $libraries -cne "kernel32 $($catalog.kernel32.sha256) True,kimi_backend $($catalog.artifactSha256) True") {
@@ -141,29 +144,27 @@ foreach ($level in @('O0', 'O2')) {
         throw 'Direct binary execution stdout mismatch'
     }
     '::Kimi.Console.writeLine("Updated source")' | Set-Content -LiteralPath $source -Encoding utf8
-    $output = Invoke-Kimi @('run', $project, '--LlvmBin', $LlvmBin)
+    $output = Invoke-Kimi @('run', $project)
     if ($output -notmatch '(?m)^Updated source\r?$' -or $output -match '(?m)^Hello, world!\r?$') { throw 'Run did not build the current source' }
     $hash = (Get-FileHash $exe).Hash
     'let broken =' | Set-Content -LiteralPath $source
     $output = Invoke-Kimi @('run', $project, '--no-build')
     if ($output -notmatch '(?m)^Updated source\r?$') { throw 'Run --no-build compiled modified sources' }
-    $output = Invoke-Kimi @('run', $project, '--LlvmBin', $LlvmBin) 1
+    $output = Invoke-Kimi @('run', $project) 1
     if ($output -match '(?m)^Updated source\r?$') { throw 'Run executed a stale binary after build failure' }
     $output = Invoke-Kimi @('run', $project, '--no-build') 1
     if ((Get-FileHash $exe).Hash -cne $hash) { throw 'Failed build overwrote the last executable' }
     '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 }
 # toolchain verify is a self-check of what the compiler carries (Tatara B6b3): a copy of the compiler's folder outside any checkout, with
-# KIMI_TOOLCHAIN_ROOT a missing directory and PATH only dotnet's directory and System32, reads no root and runs no tool, so it passes
-# and its report says so; without tatara.dll beside it, it fails naming the load, and its report is failed with that error.
+# PATH only dotnet's directory and System32, reads no root and runs no tool, so it passes and its report says so; without tatara.dll
+# beside it, it fails naming the load, and its report is failed with that error.
 if (-not $NativeCompiler) {
     $alone = Join-Path ([IO.Path]::GetTempPath()) ('kimi-verify-' + [guid]::NewGuid().ToString('N'))
     Copy-Item -LiteralPath (Split-Path $compiler) -Destination $alone -Recurse
     $managed = $compiler
-    $root = $ToolchainRoot
     $path = $env:Path
     $compiler = Join-Path $alone 'Kimi.dll'
-    $ToolchainRoot = Join-Path $alone 'missing toolchain'
     $env:Path = "$(Split-Path (Get-Command dotnet).Source);$env:SystemRoot\System32"
     try {
         $verifyReport = Join-Path $work 'verify-alone.json'
@@ -181,17 +182,10 @@ if (-not $NativeCompiler) {
     }
     finally {
         $compiler = $managed
-        $ToolchainRoot = $root
         $env:Path = $path
         Remove-Item -LiteralPath $alone -Recurse -Force
     }
 }
-# A build accepts the command line's LlvmBin and does not read it (until Tatara B6b4): a bin without tools builds.
-$noTools = Join-Path $work 'no tools'
-New-Item -ItemType Directory -Path $noTools | Out-Null
-$output = Invoke-Kimi @('build', $project, '--LlvmBin', $noTools)
-$output = Invoke-Kimi @('run', $project, '--no-build')
-if (-not $output.Contains('Hello, world!')) { throw "A bin without tools failed the build: $output" }
 $exitIr = Join-Path $work 'exit.ll'
 @'
 target triple = "x86_64-pc-windows-msvc"
@@ -203,20 +197,20 @@ define void @entry() noreturn {
 '@ | Set-Content -LiteralPath $exitIr -Encoding utf8
 & (Join-Path $LlvmBin 'llc.exe') -filetype=obj $exitIr -o "$exitIr.obj"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture object generation failed' }
-$kernel32 = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
-& (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" $kernel32 /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
+& (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" (Get-KimiKernel32) /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture link failed' }
 $output = Invoke-Kimi @('run', "$exitIr.exe") 37
 $output = Invoke-Kimi @('run', (Join-Path $work 'missing.exe')) 1
 $output = Invoke-Kimi @('build', (Join-Path $work 'missing.kimiproj')) 1
 $output = Invoke-Kimi @('emit', (Join-Path $work 'missing.kimisln')) 1
 $output = Invoke-Kimi @('build', $project, '--LlvmBin') 1
+if (-not $output.Contains('--LlvmBin was removed: Kimi carries its toolchain.')) { throw "A removed option without a value must name the removal: $output" }
 
 # Shared input resolution and an implicit Application must work through the real CLI.
 $output = Invoke-Kimi @('emit-llvm', $project) 1
 $projectStem = [IO.Path]::ChangeExtension($project, $null)
 $output = Invoke-Kimi @('emit', $projectStem)
-$output = Invoke-Kimi @('build', $projectStem, '--LlvmBin', $LlvmBin)
+$output = Invoke-Kimi @('build', $projectStem)
 $output = Invoke-Kimi @('run', $projectStem, '--no-build')
 if (-not $output.Contains('Hello, world!')) { throw 'Extensionless project lookup failed' }
 $singleDirectory = Join-Path $work 'single source'
@@ -231,7 +225,7 @@ $singleIr = Join-Path $singleDirectory 'bin/x86_64-pc-windows-msvc/Single.ll'
 $singleRecordPath = [IO.Path]::ChangeExtension($singleIr, '.link.build.json')
 $output = Invoke-Kimi @('run', $singleStem, '--no-build') 1
 if (Test-Path $singleIr) { throw 'Implicit run --no-build generated LLVM inputs' }
-$output = Invoke-Kimi @('emit', $singleStem, '--ToolchainRoot', (Join-Path $work 'missing toolchain'))
+$output = Invoke-Kimi @('emit', $singleStem)
 if (-not (Test-Path $singleIr) -or (Test-Path $singleRecordPath) -or (Test-Path $singleProject)) { throw 'Implicit emit must only publish LLVM inputs' }
 $output = Invoke-Kimi @('run', $singleStem)
 if (-not $output.Contains('Single source')) { throw 'Implicit source build/run failed' }
@@ -276,6 +270,10 @@ $abortStderr = $utf8.GetBytes("Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n")
 # A source or project run may print build lines first, so its stdout ends with the child's.
 $output = Invoke-Kimi @('run', $abortSource) 1
 if (-not (Test-KimiExpectedOutput $abortStdout ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($childStdout, $abortStdout.Length)))) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Source run lost child output/error: $output" }
+# The record names Abort.kimi, so the project's run without a build needs the project's build (IMPL 20.3.1, PLAN G1256).
+$output = Invoke-Kimi @('run', $abortProject, '--no-build') 1
+if (-not $output.Contains('The latest build record names another input:') -or -not $output.Contains('Abort.kimi.')) { throw "A project run without a build ran the source's build: $output" }
+$output = Invoke-Kimi @('build', $abortProject)
 $output = Invoke-Kimi @('run', $abortProject, '--no-build') 1
 if (-not (Test-KimiExpectedOutput $abortStdout ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($childStdout, $abortStdout.Length)))) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Project run lost child output/error: $output" }
 $output = Invoke-Kimi @('run', (Join-Path $abortDirectory 'bin/x86_64-pc-windows-msvc/Abort.O2.exe'), '--no-build') 1
@@ -340,7 +338,7 @@ foreach ($level in @('O0', 'O2')) {
     $output = Invoke-Kimi @('build', '--Manifest', $manifestPath)
     $output = Invoke-Kimi @('run', $foreignProject, '--no-build')
     if (-not $output.Contains('foreign ok')) { throw "Manifest static supply failed at $level" }
-    & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $manifestPath -ToolchainRoot $ToolchainRoot -Compiler $compiler -Run
+    & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $manifestPath -Compiler $compiler -Run
 
 }
 $foreignRecord = Get-Content -LiteralPath (Join-Path $foreignDirectory 'bin/x86_64-pc-windows-msvc/Foreign.link.build.json') -Raw | ConvertFrom-Json
@@ -394,7 +392,7 @@ Console.writeLine("clock ok")
 '@ | Set-Content -LiteralPath $clockSource -Encoding utf8
 $output = Invoke-Kimi @('emit', $clockSource)
 $clockManifest = Join-Path $work 'bin/x86_64-pc-windows-msvc/Clock.link.json'
-& (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $clockManifest -ToolchainRoot $ToolchainRoot -Compiler $compiler -Run
+& (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $clockManifest -Compiler $compiler -Run
 
 Write-ForeignProject 'O0' ($foreignSupply.Replace('Input=', 'Sha256="' + ('0' * 64) + '" Input='))
 $output = Invoke-Kimi @('build', $foreignProject) 1
@@ -403,5 +401,5 @@ Write-ForeignProject 'O0' "NativeRequirements=`n  `"x86_64-pc-windows-msvc`"=`n 
 $output = Invoke-Kimi @('emit', $foreignProject) 1
 if (-not $output.Contains('has no NativeLibraries supply')) { throw "A required foreign supply was not diagnosed: $output" }
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler','project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler', 'removed options', 'project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"

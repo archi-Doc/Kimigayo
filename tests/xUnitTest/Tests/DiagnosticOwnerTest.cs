@@ -145,7 +145,7 @@ public sealed partial class DiagnosticOwnerTest
         var owner = new DiagnosticOwner();
         var document = new SourceDocument("main.kimi", "let x = 1\n");
         owner.GetOrAddCollection("main.kimi").For(document).Add(new SourceSpan(4, 1), DiagnosticCode.InvalidCharacter_Kd, "x");
-        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, "detail", "App.kimiproj", owner.Finalize());
+        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, new InvalidOperationException("detail"), "App.kimiproj", owner.Finalize());
         Assert.Equal(["App.kimiproj", "main.kimi"], result.Sources.Select(static x => x.Path));
         Assert.Equal(["CheckFaulted_Kd", "InvalidCharacter_Kd"], result.Diagnostics.Select(static x => x.Code));
         Assert.Equal([0, 1], result.Diagnostics.Select(static x => x.Source));
@@ -167,15 +167,15 @@ public sealed partial class DiagnosticOwnerTest
         Assert.Equal(new DiagnosticParameter("fault", DiagnosticValueKind.Enumeration, false), Assert.Single(entry.ArgumentSchema));
         foreach (var fault in Enum.GetValues<DiagnosticFault>())
         {
-            var record = Assert.Single(DiagnosticFaults.Create(fault, "detail", "App.kimiproj").Diagnostics);
+            var record = Assert.Single(DiagnosticFaults.Create(fault, new InvalidOperationException("detail"), "App.kimiproj").Diagnostics);
             Assert.Equal(entry.FormatMessage(DiagnosticFaults.Describe(fault), null), record.Message);
             Assert.Equal(new DiagnosticValue("fault", DiagnosticValueKind.Enumeration, fault.ToString()), Assert.Single(record.Reason!));
-            Assert.Equal("detail", record.Note);
+            Assert.Equal("System.InvalidOperationException: detail", record.Note);
         }
 
         var owner = new DiagnosticOwner();
         owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "kept");
-        var kept = DiagnosticFaults.Create(DiagnosticFault.Exception, new string('x', 1000), "App.kimiproj", owner.Finalize());
+        var kept = DiagnosticFaults.Create(DiagnosticFault.Exception, new InvalidOperationException(new string('x', 1000)), "App.kimiproj", owner.Finalize());
         // Whole-input records at the same source follow code order, including an appended analysis fault.
         Assert.Equal(["CheckFaulted_Kd", "ProjectPreparationFailed_Kd"], kept.Diagnostics.Select(static x => x.Code));
         // One phase-neutral text for every phase's fault, generation included (DECISIONS R5-M169).
@@ -185,12 +185,31 @@ public sealed partial class DiagnosticOwnerTest
         Assert.True(kept.Diagnostics[0].Note!.Length <= DiagnosticLimits.NoteLength);
     }
 
+    // DIAGNOSTICS §6 (PLAN G1014): a fault's Note is its exception's chain, each link its type's full name and message, outer first,
+    // joined as the framework joins inner exceptions, a contract fault's like every other; the head is kept under the Note limit, so the
+    // outer type always shows.
+    [Fact]
+    public void AFaultsNoteIsItsExceptionsChain()
+    {
+        static string Note(DiagnosticFault fault, Exception exception) => Assert.Single(DiagnosticFaults.Create(fault, exception, null).Diagnostics).Note!;
+
+        Assert.Equal(
+            "System.InvalidOperationException: outer ---> System.IO.IOException: inner",
+            Note(DiagnosticFault.Exception, new InvalidOperationException("outer", new IOException("inner"))));
+        Assert.Equal(
+            "Kimi.Diagnostics.DiagnosticContractException: Diagnostic contract violation (UnknownCode): x",
+            Note(DiagnosticFault.UnknownCode, new DiagnosticContractException(DiagnosticFault.UnknownCode, "x")));
+        var bounded = Note(DiagnosticFault.Exception, new InvalidOperationException(new string('x', 1000), new IOException("inner")));
+        Assert.StartsWith("System.InvalidOperationException: xx", bounded, StringComparison.Ordinal);
+        Assert.True(bounded.Length <= DiagnosticLimits.NoteLength);
+    }
+
     [Fact]
     public void TheJsonFormKeepsEveryField()
     {
         var owner = new DiagnosticOwner();
         owner.GetOrAddCollection("main.kimi").For(new SourceDocument("main.kimi", "let ok = a < b < c\n")).Add(new(9, 9), DiagnosticCode.ChainedComparison_Kd);
-        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, "detail", "App.kimiproj", owner.Finalize());
+        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, new InvalidOperationException("detail"), "App.kimiproj", owner.Finalize());
 
         var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
         Assert.Contains("\"category\":\"Language\"", json, StringComparison.Ordinal);

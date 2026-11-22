@@ -399,8 +399,9 @@ internal sealed class MirBody
     /// <summary>Adds the site of an Opaque value.</summary>
     /// <param name="source">The syntax it replaces.</param>
     /// <param name="uses">The uses of that syntax: Places of locals or statics, each undecided.</param>
+    /// <param name="kept">The count of the leading uses that are its kept parts' (<see cref="MirOpaque.Kept"/>).</param>
     /// <returns>The site.</returns>
-    internal int AddOpaque(SourceRef source, ReadOnlySpan<MirPlace> uses)
+    internal int AddOpaque(SourceRef source, ReadOnlySpan<MirPlace> uses, int kept)
     {
         var start = this.opaqueUseCount;
         foreach (var use in uses)
@@ -408,7 +409,7 @@ internal sealed class MirBody
             Add(ref this.opaqueUses, ref this.opaqueUseCount, use);
         }
 
-        return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, uses.Length));
+        return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, uses.Length, kept));
     }
 
     internal void AddMustNotComplete(in MirMustNotComplete row) => Add(ref this.ends, ref this.endCount, row);

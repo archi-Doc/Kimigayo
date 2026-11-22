@@ -340,7 +340,7 @@ public sealed partial class Binding
         // composed comparison holds by its parts (R7-C9's Prove).
         if (this.contractHeadersReady && this.BuiltinConformance(type, contract, scope) is { Kind: not ImplTable.BuiltinKind.None } builtin)
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
+            return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error
                 : builtin.Kind == ImplTable.BuiltinKind.Absent ? ConstraintProof.Refuted
                 : builtin.Kind == ImplTable.BuiltinKind.Composed ? this.ComparisonProof(type, contract, scope, false, out _) : ConstraintProof.Proven;
         }
@@ -351,7 +351,7 @@ public sealed partial class Binding
         if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive &&
             contract.Intrinsic == IntrinsicKind.None)
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Refuted;
+            return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error : ConstraintProof.Refuted;
         }
 
         // SPEC 22.1: the standard collections declare their conformances in Kimigayo behind their compiler-managed kinds.
@@ -360,7 +360,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (this.OperandContexts(type).Invalid || contract.Declaration.BindingState == BindingState.Invalid)
+        if (this.OperandContexts(type).Invalid || this.DeclarationFailed(contract.Declaration))
         {
             return ConstraintProof.Error;
         }
@@ -453,7 +453,7 @@ public sealed partial class Binding
     // (`i32 is Addable<U.(HasItem).Item>` with SrcI for U); an Entailed row applies when its subject is proven PrimitiveInteger.
     private ImplTable.BuiltinRow BuiltinConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
-        if (ArithmeticContractSyntax.Identity(contract) is { } id && !ArithmeticContracts.IsLeft(id) && id != KimiDeclarationId.Negatable &&
+        if (ArithmeticContractSyntax.Identity(contract) is { } id && !KimiLibraryCatalog.IsLeftContract(id) && id != KimiDeclarationId.Negatable &&
             (contract.Type is not { Components: [var counterpart] } || !this.SameConformanceType(counterpart, type, scope)))
         {
             return default;

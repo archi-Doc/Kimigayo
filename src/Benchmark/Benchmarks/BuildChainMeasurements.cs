@@ -13,7 +13,7 @@ namespace Benchmark;
 /// inside a job object from its first instruction; per run the wall time, the job's CPU time, peak committed memory and TotalProcesses.
 /// One compiler, or two interleaved A, B, A, ..., A from one folder under neutral names (the same compiler twice is the A=A pass), or
 /// with <c>--tatara</c> one compiler whose B side is <c>kimi tatara</c> reading the row's command from standard input.
-/// Run with <c>--build-chain &lt;name&gt; &lt;Kimi.dll folder A&gt; [&lt;folder B&gt; | --tatara] [--rounds n] [--toolchain root]</c>.
+/// Run with <c>--build-chain &lt;name&gt; &lt;Kimi.dll folder A&gt; [&lt;folder B&gt; | --tatara] [--rounds n]</c>.
 /// </summary>
 internal static partial class BuildChainMeasurements
 {
@@ -44,7 +44,6 @@ internal static partial class BuildChainMeasurements
 
         var positional = new List<string>();
         var rounds = 20;
-        string? toolchainOption = null;
         var tatara = false;
         for (var i = 0; i < args.Length; i++)
         {
@@ -52,9 +51,6 @@ internal static partial class BuildChainMeasurements
             {
                 case "--rounds" when i + 1 < args.Length:
                     rounds = int.Parse(args[++i], CultureInfo.InvariantCulture);
-                    break;
-                case "--toolchain" when i + 1 < args.Length:
-                    toolchainOption = args[++i];
                     break;
                 case "--tatara":
                     tatara = true;
@@ -66,7 +62,6 @@ internal static partial class BuildChainMeasurements
         }
 
         var repository = FindRepository();
-        var toolchain = Path.GetFullPath(toolchainOption ?? Path.Combine(repository, "toolchain"));
         // The name is one plain path segment, so the output and work folders stay where they are declared.
         var name = positional.FirstOrDefault() ?? string.Empty;
         var output = Path.Combine(repository, "artifacts", "benchmarks", name);
@@ -74,7 +69,7 @@ internal static partial class BuildChainMeasurements
         if (positional.Count is < 2 or > 3 || positional.Any(p => p.StartsWith('-')) || rounds < 1 || (tatara && positional.Count != 2) || Directory.Exists(output) || Directory.Exists(work) ||
             name is "." or ".." || name.IndexOfAny([.. Path.GetInvalidFileNameChars(), Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0)
         {
-            throw new ArgumentException("Use --build-chain <new run name> <Kimi.dll folder A> [<folder B> | --tatara] [--rounds n] [--toolchain root]; the name is one plain path segment, unused under artifacts/benchmarks and temp/build-chain.");
+            throw new ArgumentException("Use --build-chain <new run name> <Kimi.dll folder A> [<folder B> | --tatara] [--rounds n]; the name is one plain path segment, unused under artifacts/benchmarks and temp/build-chain.");
         }
 
         var dotnet = Environment.GetEnvironmentVariable("PATH")!.Split(Path.PathSeparator).Select(d => Path.Combine(d, "dotnet.exe")).FirstOrDefault(File.Exists) ?? throw new FileNotFoundException("dotnet.exe is not on PATH.");
@@ -97,7 +92,6 @@ internal static partial class BuildChainMeasurements
             ["rounds"] = rounds,
             ["order"] = variants.Length == 1 && !tatara ? "A per round" : "A, B, A, ..., A per row (rounds + 1 runs of A, rounds runs of B)",
             ["tatara"] = tatara ? "B: kimi tatara, the row's command as its one line on standard input, then end of input; session rows k1, k10: k lines" : null,
-            ["toolchainRoot"] = toolchain,
             ["compilers"] = variants.Select(v => new
             {
                 v.Name,
@@ -144,16 +138,15 @@ internal static partial class BuildChainMeasurements
                     var sourceProject = WriteInput(Path.Combine(work, "in", $"{input}-{level}", "source"), input, level, text);
                     var pairProject = WriteInput(Path.Combine(work, "in", $"{input}-{level}", "pair"), input, level, text);
                     var log = Path.Combine(work, "in", $"{input}-{level}", "emit.log");
-                    Measure(dotnet, [Path.Combine(variants[0].Copy, "Kimi.dll"), "emit", pairProject, "--ToolchainRoot", toolchain], Path.GetDirectoryName(pairProject)!, log, "NUL");
+                    Measure(dotnet, [Path.Combine(variants[0].Copy, "Kimi.dll"), "emit", pairProject], Path.GetDirectoryName(pairProject)!, log, "NUL");
                     var manifest = Path.Combine(Path.GetDirectoryName(pairProject)!, "bin", Target, $"{input}.link.json");
                     var kimi = Path.Combine(variants[0].Copy, "Kimi.dll");
-                    foreach (var (kind, arguments) in new[] { ("source", new[] { "build", sourceProject }), ("manifest", new[] { "build", "--Manifest", manifest }) })
+                    foreach (var (kind, command) in new[] { ("source", new[] { "build", sourceProject }), ("manifest", new[] { "build", "--Manifest", manifest }) })
                     {
-                        string[] command = [.. arguments, "--ToolchainRoot", toolchain];
                         var lines = Path.Combine(work, "in", $"{input}-{level}", kind);
                         (string Name, string[] Command, string? Lines)[] sides = tatara ? [("A", [kimi, .. command], null), ("B", [kimi, "tatara"], Lines(lines, command, 1))] :
                             [.. variants.Select(v => (v.Name, (string[])[Path.Combine(v.Copy, "Kimi.dll"), .. command], (string?)null))];
-                        var (record, figures) = MeasureRow($"{input} {level} {kind}", sides, dotnet, Path.GetDirectoryName(arguments[^1])!, rounds, summary);
+                        var (record, figures) = MeasureRow($"{input} {level} {kind}", sides, dotnet, Path.GetDirectoryName(command[^1])!, rounds, summary);
                         rows.Add(record);
                         compared = figures.Length == 2;
                         if (compared)
