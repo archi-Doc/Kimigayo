@@ -26447,10 +26447,17 @@ R8-M* and R9-M* by the stage of the recording unit.
       synthesized nodes have equal ids in every program and compare by id (c17, `TheLibraryPassNumbersEveryLibraryNode`, checks them
       one by one over the ten programs and the corpus). `KimiLibraryShapeTest.SynthesizedNodes` and the Milestone27 row's assertion
       that its ids differ are deleted.
-  - **Temporary 2: no library parameter default** (`TheLibraryDeclaresNoParameterDefault`; M-N4, R2-N5).
+  - **Temporary 2, now a lasting library rule: no library parameter default** (`TheLibraryDeclaresNoParameterDefault`; M-N4,
+    R2-N5; the owner's O-486 3 (a)).
     - The test checks three places, for functions and `init`: the declarations, `Hir.Defaults` after the Final Bind, and default
       templates in the library MIR.
-    - Removal: U5b or a later unit freezes the templates' omission facts (`Recursive`, `Failed`, `Reads`).
+    - Lasting by the owner's O-486 3 (a) (R8-X1, 2026-11-22, verbatim 「3a 4a（推奨）」); its removal condition (U5b or a later
+      unit freezes the templates' omission facts) passed without removing it. The library declares no parameter default. Reason:
+      no SPEC or LIBRARY declaration has one, and the frozen library refuses a program pass's write of a default template's
+      omission facts (`Recursive`, `Failed`, `Reads`); R7-N5 B2b-1's premise and the codegen gate's location rule (R5's
+      `InstanceCollector.Subject` overload: an inlined default template outside the root modules is unreachable) rest on it. A
+      SPEC revision adding a defaulted library parameter carries the unit that freezes those facts with the library and revisits
+      both.
   - Rejected: comparing synthesized nodes by id now. It fails today (R5-M168), and only U2's freeze removes the cause. (Amended by
     PLAN G949 S1-e: the cause, a program's uses ordering the ids, is gone before U2's freeze, so this reason no longer holds.)
 - **R8-M33 One MIR ordinal space with a library prefix, owned by `MirProgram`** (Back, 2026-11-11; R8-L1 U5a-1; the design

@@ -1452,6 +1452,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   records D3-1 as landed in W-309: ClosureType's `FixedAtoms` walk no longer crosses a Closure's signature, so a closure chain's
   formations are linear (DECISIONS BU-73's R7-D3 D3-1 amendment; PLAN G348 F1); D3-2 takes `UnimagedClosure` and
   `ClosureArgumentVariance`. Nothing frozen.
+- Revision 110 (2026-11-22, plan §14; the Back's D-1063, the owner's O-486 1 (a) and 2 (b), R8-X1's review of exceptions):
+  §10.2 item 3 excepts Array `appendAll` from the A4-summary agreement, R8's decided exception at X1 (PLAN G400); §5.2's X1 row
+  names L2 (PLAN G597) as R8's exit work before X1's exit run. Nothing frozen.
 - Revision 111 (2026-11-22, plan §14; the Front's Q-646 and D-1058, F's V2e rulings 1-3, R7-V2e's landing): V2's row
   records V2e as landed in W-310: SPEC 9.1's duplicate check compares only functions of one `SignatureHash` over `FnSig`
   (DECISIONS R7-M77, superseding R7-M37's `SignatureKey` clause: no key type); the group checks left pairwise are PLAN

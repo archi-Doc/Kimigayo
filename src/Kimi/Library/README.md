@@ -70,6 +70,7 @@ embedded and implemented.
   order of its entries, the internal declarations last); never derive them from source order. Ordinary helper
   declarations need no ID. A catalog entry without its declaration, or a `#Lang` that names no member or names one
   twice, fails library construction.
+- The library declares no parameter default, a lasting rule (DECISIONS R8-M32; `KimiLibraryShapeTest.TheLibraryDeclaresNoParameterDefault`).
 - Preserve reference identity through binding. Call lowering must use the
   recognized symbol (its lang item or its `Definition`), never a user-visible spelling.
 
