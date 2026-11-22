@@ -121,7 +121,7 @@ internal sealed unsafe partial class Tatara
     internal ObjectFacts Inspect(TataraContext context, string obj)
         => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result));
 
-    // Links with the linker's arguments, as NativeBuild builds them.
+    // Links with LLD's arguments, as NativeBuild builds them: arguments[0] names the flavor, lld-link or ld.lld (tatara.h).
     internal void Link(TataraContext context, IReadOnlyList<string> arguments)
         => this.Call("link", context, [.. arguments], (texts, result) => NativeLink(texts, (nuint)arguments.Count, result));
 
