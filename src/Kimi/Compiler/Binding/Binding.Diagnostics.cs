@@ -733,6 +733,14 @@ public sealed partial class Binding
             return;
         }
 
+        // SPEC 23.1.1, 23.1.2 (rule W; R7-C3 b, F's ruling 5): a cause whose failure rests on a part that is missing information (a
+        // conformance on its unsupported specification, RestOnSpecification) carries that part's record, which this record then rests on.
+        if (!IsMissingInformation(diagnosticCause) && diagnosticCause is not null && this.partPrerequisites.TryGetValue(diagnosticCause, out var part) &&
+            IsMissingInformation(part))
+        {
+            diagnosticCause = part;
+        }
+
         if (!IsMissingInformation(diagnosticCause) && use is IsKoto clause && this.FindMissingConformanceName(clause) is { } missing)
         {
             diagnosticCause = missing; // What the outcome rests on is consulted; the record explains itself by missing information.
