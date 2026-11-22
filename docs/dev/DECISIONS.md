@@ -30205,3 +30205,42 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     XML text of the rows (C-482 C2: a split row, a property or an imported row would stop the scan silently); `test-cli.ps1
     -NativeCompiler` in the job (it needs the managed `Kimi.dll` and a toolchain root; O4, not now); `--version` and `check` rows
     (verify starts the image; `build` runs every check `check` runs).
+- **T-M26 The runtime over the platform layer** (Tatara, 2026-11-22; the plan's unit B7r1, decisions 22 and 23, Q-695, D-1146; Major;
+  design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.2 §3.2, §7.3; implementation review C-468, the Middle's ACCEPT
+  WITH CONDITIONS and the Back's CONSENT WITH CONDITIONS). Lands in window W3 with T-M27 and T-M28 (all or none).
+  - **The templates:** the windows-x64 runtime template, which called kernel32 inside each routine, is two templates that
+    `LlvmModuleText` reads as one text and expands in one scan (one builder, one marker check): the platform layer
+    `WindowsPlatform.ll.in` (kernel32's declarations and every kernel32 call) and the common part `Runtime.ll.in`
+    (`__kimi_write_bytes`'s checks, `__kimi_try_stderr`, `__kimi_abort`, `__kimi_abort_message`, `__kimi_stdout`, `__kimi_alloc`,
+    `__kimi_raw_allocate`, `__kimi_free`, `__kimi_destroy_string`).
+  - **The layer's routines** are `RuntimeAbi.PlatformRoutines`, each one `FunctionAbi` spliced at its marker (R5-M15): `__kimi_exit`
+    `void (i32) noreturn`; `__kimi_write` `i64 (i32 stream, ptr, i64)` (stream 1 standard output, 2 standard error; -1 written, else
+    the OS error or `no_os_error`; Windows maps the stream to `GetStdHandle`'s -11/-12); the temporary `__kimi_heap_allocate` `ptr
+    (i64)` (null on failure; the process heap, a zero-byte request taking one byte), `__kimi_heap_release` `i64 (ptr)` (-1, else the
+    OS error) and `__kimi_check_process_heap` `void (ptr location, i64 location_length)` (`KIMI_E_PROCESS_HEAP` at the location on a
+    null process heap, the base's check moved). `__kimi_alloc` and `__kimi_free` call the check with their location, then the block
+    routine; `__kimi_try_allocate` and the test runtime's two buffers call `__kimi_heap_allocate` (null on a null heap, as the base;
+    the test runtime now exits 125 where it passed a null heap to `HeapAlloc`).
+  - **The OS-error prefix:** the Abort report's prefix is `RuntimeAbi.OsErrorPrefix` (` (win32=`): the layer defines
+    `@__kimi_os_prefix` from it at `{{os_prefix}}`/`{{os_prefix_length}}` and the common part writes its length at
+    `{{os_prefix_length}}` (revision 2.2: no constant 8 in the common part; a row's prefix of another length changes only the prefix
+    its layer is given, never the common part).
+  - **Class:** a generated-code change with equal observable results (not VERIFICATION's behaviour-preserving restructuring): every
+    program's output, exit code, Abort report (the adapter suite's every mode, 16 and 19 reporting `KIMI_E_PROCESS_HEAP` as on the
+    base) and audit counts equal to the base; IR and executables differ (calls between the common part and the layer), and with them
+    the build record's `irSha256`, `executableSha256` and `objectUndefinedSymbols` (where `__chkstk` was needed only by the write's old
+    slot; the record's other fields were not compared), measured in window W3 (R7).
+  - **The call-site rule** (§5 row 43): `NativeAllocationAudit.AssertOsCallsInLayer` replaces `AssertExitsThroughHook`: in an audited
+    module every mention of a runtime kernel32 function (`TargetProfile.Windows.RuntimeDeclarations`) but its one declaration lies
+    inside a layer routine's definition, `ExitProcess`'s inside `__kimi_exit`'s; it failed on the base (`__kimi_alloc`, `__kimi_free`,
+    `__kimi_write_bytes`, `__kimi_try_allocate`). The audits and failure tests interpose `__kimi_heap_allocate`/`__kimi_heap_release`
+    instead of `HeapAlloc`/`HeapFree` with every bound unchanged.
+  - **Temporary:** `__kimi_heap_allocate`'s and `__kimi_heap_release`'s process-heap bodies and `__kimi_check_process_heap` (removal:
+    B7r2, T-M27, in window W3 with B7r1, so they never reach dev and the ledger carries no line).
+  - Rejected: a `{{platform}}` include marker (a second composition rule); Revision 0's `PlatformRuntime.ll.in` copy (a second copy of
+    each common rule); location parameters on the block routines (the nullable form would Abort, or need a mode); the null-heap check
+    in the common part (a kernel32 call outside the layer); the prefix's length restated beside a literal text in the layer (two
+    copies of one fact); Windows' handle codes (-11/-12) as the common part's stream argument (an OS constant outside the layer).
+  - Observed: the layer's write keeps its slot alloca in the entry block (the base's in a later block, a dynamic alloca at O0), so
+    Hello's O0 object no longer calls the archive's `__chkstk` (TataraExecutorTest's undefined-symbol link now omits kernel32
+    instead).
