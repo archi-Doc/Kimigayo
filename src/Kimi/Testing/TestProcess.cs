@@ -10,7 +10,7 @@ namespace Kimi.Testing;
 internal sealed class TestProcess : JobProcess
 {
     private TestProcess(string executable, string directory, string environment, nint channel, Stream result)
-        : base(executable, directory, environment, null, channel)
+        : base(executable, directory, environment, sharesInput: false, channel)
         => this.Result = result;
 
     internal Stream Result { get; }
