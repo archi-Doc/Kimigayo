@@ -1,6 +1,6 @@
 # S3 Closure Origin Publication Plan
 
-Status: 一部取り込み (open); option 3, one body-relative Origin contract; adopted for implementation on 2026-10-20 (PLAN), first
+Status: 完了 (closed 2026-11-22, withdrawn by the owner; nothing integrated into SPEC or IMPL; INTEGRATED 2026-11-22); option 3, one body-relative Origin contract; adopted for implementation on 2026-10-20 (PLAN), first
 unit S3-0 (gate R); adoption establishes no support. Inspected at `f373cd67`, revised at `338831f7` (§8); line numbers name both.
 This S3 is the closure publication gap in 2a0-D/C2, not the SPEC 15.3.6 clarification also called S3 (OQ12).
 

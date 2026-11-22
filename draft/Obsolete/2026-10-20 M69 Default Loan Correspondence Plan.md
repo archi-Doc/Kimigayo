@@ -1,6 +1,6 @@
 # M69 Default Loan Correspondence Plan
 
-Status: 一部取り込み (open). Selected direction: option 3, producer-owned template coverage.
+Status: 完了 (closed 2026-11-22, withdrawn by the owner; nothing integrated into SPEC or IMPL; INTEGRATED 2026-11-22). Selected direction: option 3, producer-owned template coverage.
 Adoption: the owner adopted this plan for implementation on 2026-10-20 (PLAN). M69-1 landed as DECISIONS R4-M84 (`37184417`);
 M69-0, M69-2 and M69-3 keep the gates below. Adoption establishes no support.
 Baselines: inspected at `f373cd67`; revised at `338831f7` against the Principles (§9). Line numbers name `338831f7`.
