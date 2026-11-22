@@ -22,6 +22,18 @@ internal static class AssociatedInferenceWorkloads
                 "    public func c(self: ref/Self) -> i32 => 0\n" +
                 $"    public func d(self: ref/Self) -> R{(i + 1) % n}.(RC).X => $abort(\"d\")\n")) + "()";
 
+    // R7-C4 (C4 ruling 11): a two-value chain of n definitions (valid by SPEC 8.5.5: every X and Y is i32), the model's `two_chain`.
+    internal static string TwoValueChain(int n)
+        => "contract TC\n    associate X\n    associate Y\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\n" +
+            "    func c(self: ref/Self) -> Self.Y\n    func d(self: ref/Self) -> Self.Y\n" +
+            string.Concat(Enumerable.Range(0, n).Select(static i => $"struct C{i}\n    Self is TC\n" +
+                $"    public func a(self: ref/Self) -> C{i + 1}.(TC).X => $abort(\"a\")\n" +
+                $"    public func b(self: ref/Self) -> C{i + 1}.(TC).Y => $abort(\"b\")\n" +
+                $"    public func c(self: ref/Self) -> C{i + 1}.(TC).Y => $abort(\"c\")\n" +
+                "    public func d(self: ref/Self) -> i32 => 0\n")) +
+            $"struct C{n}\n    Self is TC\n    public func a(self: ref/Self) -> i32 => 0\n    public func b(self: ref/Self) -> i32 => 0\n" +
+            "    public func c(self: ref/Self) -> i32 => 0\n    public func d(self: ref/Self) -> i32 => 0\n()";
+
     internal static string Create(string axis, int size, bool explicitBinding)
     {
         var text = new StringBuilder();

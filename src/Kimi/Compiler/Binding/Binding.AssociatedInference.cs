@@ -661,6 +661,10 @@ public sealed partial class Binding
         Ambiguous,
     }
 
+    // A projection a member's written Type makes on an inferring definition (Discovery): the definition, the associated name, and whether it
+    // is the subject of another projection (value-dependent: `E.(EC).W.(FC).U`).
+    internal readonly record struct MemberRead(FunctionKoto Member, AssociatedInference Read, string? Name, bool Dependent);
+
     internal readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
 
     // An inference source, one extraction position (ExtractAssociatedEvidence): the hole's normal part (Type) of Source's result, what Source
@@ -746,6 +750,14 @@ public sealed partial class Binding
 
         internal List<AssociatedInference> Dependent { get; } = new();
 
+        // Each projection on an inferring definition its members' written Types make, per member (Discovery: a binding's reads are its
+        // sources' candidates'), and, while its component's request is open, its bindings' range in the request's entries.
+        internal List<MemberRead> MemberReads { get; } = new();
+
+        internal int FirstEntry { get; set; }
+
+        internal int EntryEnd { get; set; }
+
         internal int Index { get; set; }
 
         internal int Low { get; set; }
@@ -763,6 +775,12 @@ public sealed partial class Binding
         internal int Hold { get; set; }
 
         internal bool Records { get; set; }
+
+        // The binding whose own run this is (its sources only; C4 ruling 11), or -1 for the definition's run; the definition's run of
+        // the same hold with the definition's bindings held, which normalizes the requirements' Types (itself for a definition's run).
+        internal int Owner { get; set; } = -1;
+
+        internal AssociatedInference? Frozen { get; set; }
 
         internal Dictionary<AssociatedBinding, List<(AssociatedEvidence Source, BoundType Type)>> Usable { get; } = new(ReferenceEqualityComparer.Instance);
 

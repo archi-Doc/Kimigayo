@@ -33,6 +33,31 @@ public sealed partial class Binding
 
     private readonly Stack<AssociatedInference> inferenceTarjan = new();
 
+    // Per binding of the component under request, by its entry (DiscoverValues; C4 ruling 11): its sources and its direct reads (canonical
+    // entries) in two arenas, the strongly connected components of the bindings under those reads (Tarjan's state per entry), and each such
+    // component's Reach as sorted entries in an arena, made at its first need. Request-local, capacity kept.
+    private readonly List<(BoundConformancePath Path, BoundRequirement Requirement)> inferenceSources = new();
+
+    private readonly List<int> inferenceEdges = new();
+
+    private readonly List<(int Sources, int SourceCount, int Edges, int EdgeCount)> inferenceFacts = new();
+
+    private readonly List<int> inferenceValueIndex = new();
+
+    private readonly List<int> inferenceValueLow = new();
+
+    private readonly List<int> inferenceValueScc = new();
+
+    private readonly List<int> inferenceValueVisit = new();
+
+    private readonly List<(int Entry, int Cursor)> inferenceValueWork = new();
+
+    private readonly List<int> inferenceValueStack = new();
+
+    private readonly List<int> inferenceReachArena = new();
+
+    private readonly List<(int Start, int Count)> inferenceReachOf = new();
+
     private int inferenceVisit;
 
     // Reads the batches made outside the reader's Reach in this compilation (the validator's count until the cutover enforces it).
@@ -48,6 +73,7 @@ public sealed partial class Binding
                 batch.Heads.Clear();
                 batch.Reads.Clear();
                 batch.Dependent.Clear();
+                batch.MemberReads.Clear();
                 batch.Index = -1;
                 batch.Component = -1;
                 var container = (DeclarationContainerKoto)batch.Type.Declaration;
@@ -92,12 +118,12 @@ public sealed partial class Binding
             case FunctionKoto function when this.scopes.TryGetValue(function, out var scope):
                 if (function.ReturnType is { } result)
                 {
-                    this.DiscoverWritten(batch, result, scope, false);
+                    this.DiscoverWritten(batch, function, result, scope, false);
                 }
 
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
-                    this.DiscoverWritten(batch, function.Parameters[i].Type, scope, false);
+                    this.DiscoverWritten(batch, function, function.Parameters[i].Type, scope, false);
                 }
 
                 break;
@@ -117,8 +143,10 @@ public sealed partial class Binding
     // inferred binding. Every named definition is a Head; a projection reads its receiver's definition; one inside another projection's
     // receiver (`subject`: `S.(EC).W.(FC).U`, `Option<S.(EC).W>.(FC).U`) makes the reader value-dependent on it. The walk takes the Type
     // forms' own Type parts (a length or an Origin argument is no Type) and looks up only the uses the Type binder looks up, in its order (a
-    // path, then a projection's receiver). Returns the definition a name, generic or path use selects (a projection's receiver), or none.
-    private BindingSymbol? DiscoverWritten(AssociatedInference batch, Koto? syntax, BindingScope scope, bool subject)
+    // path, then a projection's receiver). Each projection on an inferring definition is also kept as the member's read (MemberReads, the
+    // definition's own included: a binding's Reach reads it). Returns the definition a name, generic or path use selects (a projection's
+    // receiver), or none.
+    private BindingSymbol? DiscoverWritten(AssociatedInference batch, FunctionKoto source, Koto? syntax, BindingScope scope, bool subject)
     {
         var use = syntax is null ? null : UseNode(syntax);
         if (use is MemberAccessKoto { Right: not ParenthesizedTypeKoto } or GenericsKoto || (use is not null && TypeSpelling(use) is not null))
@@ -127,12 +155,16 @@ public sealed partial class Binding
             if (use is MemberAccessKoto member && path.End == PathEnd.Projection)
             {
                 var receiver = member.Left is MemberAccessKoto { Right: ParenthesizedTypeKoto } qualified ? qualified.Left : member.Left;
-                if (this.InferringDefinition(this.DiscoverWritten(batch, receiver, scope, true)) is { } read && !ReferenceEquals(read, batch))
+                if (this.InferringDefinition(this.DiscoverWritten(batch, source, receiver, scope, true)) is { } read)
                 {
-                    AddOnce(batch.Reads, read);
-                    if (subject)
+                    batch.MemberReads.Add(new(source, read, TypeSpelling(member.Right), subject));
+                    if (!ReferenceEquals(read, batch))
                     {
-                        AddOnce(batch.Dependent, read);
+                        AddOnce(batch.Reads, read);
+                        if (subject)
+                        {
+                            AddOnce(batch.Dependent, read);
+                        }
                     }
                 }
 
@@ -142,7 +174,7 @@ public sealed partial class Binding
             this.AddHead(batch, path.Symbol);
             for (var i = 0; use is GenericsKoto generic && i < generic.TypeArguments.Count; i++)
             {
-                this.DiscoverWritten(batch, generic.TypeArguments[i], scope, subject);
+                this.DiscoverWritten(batch, source, generic.TypeArguments[i], scope, subject);
             }
 
             // A nested Type's qualifiers write Types of their own (`Outer<E.(EC).W>.Inner`), each bound by BindContainerReference: their
@@ -152,7 +184,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; qualifier is GenericsKoto written && i < written.TypeArguments.Count; i++)
                 {
-                    this.DiscoverWritten(batch, written.TypeArguments[i], scope, subject);
+                    this.DiscoverWritten(batch, source, written.TypeArguments[i], scope, subject);
                 }
             }
 
@@ -164,25 +196,25 @@ public sealed partial class Binding
             case TupleTypeKoto tuple:
                 for (var i = 0; i < tuple.ElementNodes.Count; i++)
                 {
-                    this.DiscoverWritten(batch, tuple.ElementNodes[i], scope, subject);
+                    this.DiscoverWritten(batch, source, tuple.ElementNodes[i], scope, subject);
                 }
 
                 break;
             case FunctionTypeKoto function:
-                this.DiscoverWritten(batch, function.Parameters, scope, subject);
-                this.DiscoverWritten(batch, function.ReturnType, scope, subject);
+                this.DiscoverWritten(batch, source, function.Parameters, scope, subject);
+                this.DiscoverWritten(batch, source, function.ReturnType, scope, subject);
                 break;
             case OptionalTypeKoto optional:
-                this.DiscoverWritten(batch, optional.Type, scope, subject);
+                this.DiscoverWritten(batch, source, optional.Type, scope, subject);
                 break;
             case FixedArrayTypeKoto array:
-                this.DiscoverWritten(batch, array.ElementType, scope, subject);
+                this.DiscoverWritten(batch, source, array.ElementType, scope, subject);
                 break;
             case OriginApplicationKoto application:
-                this.DiscoverWritten(batch, application.Type, scope, subject);
+                this.DiscoverWritten(batch, source, application.Type, scope, subject);
                 break;
             case TypeSemanticsKoto { Type: { } layer }:
-                this.DiscoverWritten(batch, layer, scope, subject);
+                this.DiscoverWritten(batch, source, layer, scope, subject);
                 break;
         }
 
@@ -296,6 +328,275 @@ public sealed partial class Binding
             tarjan.Push(entered);
             stack.Add(entered);
         }
+    }
+
+    // Per binding of a component, before its request (the owner's O-484 (1 a); C4 ruling 11; BindBeforeRequest has bound the requirement
+    // headers): its sources, the function requirements of the definition's paths whose required Type names its associated name (SPEC 8.5.5
+    // Extraction: a source is a requirement's identified implementation), and its direct reads, the component's bindings its sources'
+    // candidates' written Types name (MemberReads by the requirement's name; a value-dependent read reads every binding of the definitions
+    // its subject's definition can name, as Reads does); then the bindings' components (Tarjan, iterative), each after those it reads.
+    // Reach(v) is v's binding component and every one it reads (ValueReaches). A requirement whose header is not bound names every binding.
+    private void DiscoverValues(int component)
+    {
+        var entries = this.inferenceBindings;
+        this.inferenceSources.Clear();
+        this.inferenceEdges.Clear();
+        this.inferenceFacts.Clear();
+        this.inferenceReachArena.Clear();
+        this.inferenceReachOf.Clear();
+        for (var e = 0; e < entries.Count; e++)
+        {
+            var (sources, edges) = (this.inferenceSources.Count, this.inferenceEdges.Count);
+            if (this.inferenceBindingIndex[entries[e].Binding] == e)
+            {
+                this.DiscoverSources(entries[e], edges, component);
+            }
+
+            this.inferenceFacts.Add((sources, this.inferenceSources.Count - sources, edges, this.inferenceEdges.Count - edges));
+        }
+
+        this.ConnectValues();
+    }
+
+    private void DiscoverSources(InferenceEntry entry, int edges, int component)
+    {
+        var batch = entry.Batch;
+        for (var p = 0; p < batch.Paths.Count; p++)
+        {
+            var path = batch.Paths[p];
+            if (path.InheritedFrom is not null)
+            {
+                continue;
+            }
+
+            foreach (var identity in path.Contract.Contract!.RequirementStorage)
+            {
+                if (identity.Contract == path.Contract && identity.Symbol.Declaration is FunctionKoto requirement &&
+                    (requirement.BoundSymbol?.Type is not { } required || NamesAssociated(required, entry.Identity.Symbol.Name)))
+                {
+                    this.inferenceSources.Add((path, identity));
+                    this.AddValueReads(batch, requirement.Name, edges, component);
+                }
+            }
+        }
+
+        static bool NamesAssociated(BoundType type, string name)
+        {
+            if (type.Kind == BoundTypeKind.AssociatedProjection && type.Symbol?.Name == name)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (NamesAssociated(type.Components[i], name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    // The reads of `batch`'s members named `name` (a requirement's candidates).
+    private void AddValueReads(AssociatedInference batch, string name, int edges, int component)
+    {
+        for (var r = 0; r < batch.MemberReads.Count; r++)
+        {
+            if (batch.MemberReads[r].Member.Name == name)
+            {
+                this.AddValueReads(batch.MemberReads[r], edges, component);
+            }
+        }
+    }
+
+    private void AddValueReads(MemberRead read, int edges, int component)
+    {
+        if (!read.Dependent)
+        {
+            this.AddValueEdges(read.Read, read.Name, edges, component);
+            return;
+        }
+
+        this.AddValueEdges(read.Read, null, edges, component);
+        for (var i = 0; i < read.Read.Heads.Count; i++)
+        {
+            if (this.associatedInference.TryGetValue(read.Read.Heads[i], out var head))
+            {
+                this.AddValueEdges(head, null, edges, component);
+            }
+        }
+
+        for (var i = 0; i < read.Read.Reads.Count; i++)
+        {
+            this.AddValueEdges(read.Read.Reads[i], null, edges, component);
+        }
+    }
+
+    // The bindings of `batch` named `name` (every one for none) in the component under request, as canonical entries, once each.
+    private void AddValueEdges(AssociatedInference batch, string? name, int edges, int component)
+    {
+        for (var x = batch.FirstEntry; batch.Component == component && x < batch.EntryEnd; x++)
+        {
+            var entry = this.inferenceBindings[x];
+            var canonical = this.inferenceBindingIndex[entry.Binding];
+            if ((name is null || entry.Identity.Symbol.Name == name) && this.inferenceEdges.IndexOf(canonical, edges) < 0)
+            {
+                this.inferenceEdges.Add(canonical);
+            }
+        }
+    }
+
+    // Tarjan's algorithm over the canonical entries under their direct reads, iterative on the work list; the binding components are
+    // numbered in emission order (each after every one it reads).
+    private void ConnectValues()
+    {
+        var (index, low, scc) = (this.inferenceValueIndex, this.inferenceValueLow, this.inferenceValueScc);
+        index.Clear();
+        low.Clear();
+        scc.Clear();
+        for (var e = 0; e < this.inferenceBindings.Count; e++)
+        {
+            index.Add(-1);
+            low.Add(-1);
+            scc.Add(-1);
+        }
+
+        var (work, stack) = (this.inferenceValueWork, this.inferenceValueStack);
+        var counter = 0;
+        for (var root = 0; root < this.inferenceBindings.Count; root++)
+        {
+            if (index[root] >= 0 || this.inferenceBindingIndex[this.inferenceBindings[root].Binding] != root)
+            {
+                continue;
+            }
+
+            Enter(root, ref counter);
+            while (work.Count > 0)
+            {
+                var (e, cursor) = work[^1];
+                var facts = this.inferenceFacts[e];
+                if (cursor < facts.EdgeCount)
+                {
+                    work[^1] = (e, cursor + 1);
+                    var x = this.inferenceEdges[facts.Edges + cursor];
+                    if (index[x] < 0)
+                    {
+                        Enter(x, ref counter);
+                    }
+                    else if (scc[x] == -2)
+                    {
+                        low[e] = Math.Min(low[e], index[x]);
+                    }
+
+                    continue;
+                }
+
+                work.RemoveAt(work.Count - 1);
+                if (work.Count > 0)
+                {
+                    low[work[^1].Entry] = Math.Min(low[work[^1].Entry], low[e]);
+                }
+
+                if (low[e] == index[e])
+                {
+                    var id = this.inferenceReachOf.Count;
+                    this.inferenceReachOf.Add((-1, 0));
+                    int member;
+                    do
+                    {
+                        member = stack[^1];
+                        stack.RemoveAt(stack.Count - 1);
+                        scc[member] = id;
+                    }
+                    while (member != e);
+                }
+            }
+        }
+
+        void Enter(int entry, ref int next)
+        {
+            index[entry] = low[entry] = next++;
+            scc[entry] = -2; // on Tarjan's stack
+            stack.Add(entry);
+            work.Add((entry, 0));
+        }
+    }
+
+    // Whether the binding `to` (a canonical entry) is in `from`'s Reach: the same binding component, or one it reads (an earlier one, by
+    // Tarjan's emission order), from the reading component's Reach made at its first need.
+    private bool ValueReaches(int from, int to)
+    {
+        var (a, b) = (this.inferenceValueScc[from], this.inferenceValueScc[to]);
+        if (a == b)
+        {
+            return true;
+        }
+
+        if (b > a)
+        {
+            return false;
+        }
+
+        var (start, count) = this.inferenceReachOf[a];
+        if (start < 0)
+        {
+            var (arena, work, visit) = (this.inferenceReachArena, this.inferenceValueStack, this.inferenceValueVisit);
+            while (visit.Count < this.inferenceBindings.Count)
+            {
+                visit.Add(0);
+            }
+
+            var stamp = ++this.inferenceVisit;
+            start = arena.Count;
+            for (var e = 0; e < this.inferenceBindings.Count; e++)
+            {
+                if (this.inferenceValueScc[e] == a)
+                {
+                    visit[e] = stamp;
+                    work.Add(e);
+                }
+            }
+
+            while (work.Count > 0)
+            {
+                var e = work[^1];
+                work.RemoveAt(work.Count - 1);
+                arena.Add(e);
+                var facts = this.inferenceFacts[e];
+                for (var i = 0; i < facts.EdgeCount; i++)
+                {
+                    var x = this.inferenceEdges[facts.Edges + i];
+                    if (visit[x] != stamp)
+                    {
+                        visit[x] = stamp;
+                        work.Add(x);
+                    }
+                }
+            }
+
+            count = arena.Count - start;
+            arena.Sort(start, count, null);
+            this.inferenceReachOf[a] = (start, count);
+        }
+
+        return this.inferenceReachArena.BinarySearch(start, count, to, null) >= 0;
+    }
+
+    // Whether `owner`'s sources include the requirement named `requirement` on `path` (the own run's filter, the definition run's validator).
+    private bool SourceOf(int owner, BoundConformancePath path, string requirement)
+    {
+        var (sources, count) = (this.inferenceFacts[owner].Sources, this.inferenceFacts[owner].SourceCount);
+        for (var i = sources; i < sources + count; i++)
+        {
+            if (ReferenceEquals(this.inferenceSources[i].Path, path) && this.inferenceSources[i].Requirement.Symbol.Name == requirement)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The validator (counted until the cutover): a batch collecting its evidence reads another inferring definition's binding only within its

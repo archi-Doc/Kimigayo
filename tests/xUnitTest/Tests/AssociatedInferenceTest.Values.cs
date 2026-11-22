@@ -190,6 +190,7 @@ public partial class AssociatedInferenceTest
     [InlineData("C4GenericConflict", C4GenericConflict)]
     [InlineData("C4NestedPath", C4NestedPath)]
     [InlineData("C4ParamPending", C4ParamPending)]
+    [InlineData("Mutual", Mutual + MutualUses)]
     public void EveryReadLiesInTheReadersReach(string form, string program)
         => Assert.Equal((form, 0), (form, MinimalEmissionTest.Analyze(program).Binding.InferenceReachMisses));
 }

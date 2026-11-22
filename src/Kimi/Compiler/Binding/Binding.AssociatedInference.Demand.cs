@@ -30,7 +30,7 @@ public sealed partial class Binding
 
     private readonly Dictionary<(AssociatedBinding Binding, int Hold), HeldAnswer> inferenceValues = new();
 
-    private readonly Dictionary<(AssociatedInference Batch, int Hold), AssociatedInference> inferenceRuns = new();
+    private readonly Dictionary<(AssociatedInference Batch, int Hold, int Owner), AssociatedInference> inferenceRuns = new();
 
     private Dictionary<HoldKey, int>? inferenceHoldIds;
 
@@ -191,6 +191,7 @@ public sealed partial class Binding
         for (var b = start; b < end; b++)
         {
             var batch = this.inferenceComponents[b];
+            batch.FirstEntry = this.inferenceBindings.Count;
             foreach (var path in batch.Paths)
             {
                 if (path != path.RootPath || path.InheritedFrom is not null)
@@ -219,9 +220,12 @@ public sealed partial class Binding
                     }
                 }
             }
+
+            batch.EntryEnd = this.inferenceBindings.Count;
         }
 
         this.BindBeforeRequest(start, end);
+        this.DiscoverValues(component);
         this.inferenceRequest = component;
         var empty = this.InternHold(this.inferenceHoldArena.Count);
         try
@@ -249,7 +253,8 @@ public sealed partial class Binding
     }
 
     // Value(v | P) (design §3.1): pending when v is held; else a source position supplies its Type when the run with v held and the run
-    // with v's definition's bindings held give it the same complete Type; none: missing; two Types: conflict; else the Type.
+    // with v's definition's bindings held give it the same complete Type; none: missing; two Types: conflict; else the Type. The state is
+    // (v, P n Reach(v)) (design §3.3; C4 ruling 11): v's answer reads nothing outside its Reach, so the rest of the hold is not its key.
     private HeldAnswer HeldValue(AssociatedBinding binding, int hold)
     {
         var index = this.inferenceBindingIndex[binding];
@@ -258,16 +263,18 @@ public sealed partial class Binding
             return new(null, HeldState.Pending);
         }
 
+        hold = this.HoldMeet(hold, index);
         if (this.inferenceValues.TryGetValue((binding, hold), out var known))
         {
-            return known;
+            // Each step of a request adds its binding to the hold, and a binding that reads v keeps v in its Reach: a state open here was
+            // reached by a read outside a Reach (the validator's broken contract).
+            return known.State != HeldState.Open ? known : throw new InvalidOperationException("A held state reads itself: a read lies outside its reader's Reach (InternalInvariant; R7-C4).");
         }
 
+        this.inferenceValues[(binding, hold)] = new(null, HeldState.Open);
         var entry = this.inferenceBindings[index];
-        var own = this.HoldWith(hold, index, null);
-        var frozen = this.HoldWith(hold, -1, entry.Batch);
-        var ownRun = this.InferenceRun(entry.Batch, own);
-        var frozenRun = this.InferenceRun(entry.Batch, frozen);
+        var ownRun = this.InferenceRun(entry.Batch, this.HoldWith(hold, index, null), index);
+        var frozenRun = this.InferenceRun(entry.Batch, this.HoldWith(hold, -1, entry.Batch), -1);
         BoundType? found = null;
         var conflict = false;
         if (ownRun.Usable.TryGetValue(binding, out var owned) && frozenRun.Usable.TryGetValue(binding, out var held))
@@ -354,19 +361,24 @@ public sealed partial class Binding
 
     // A collection of `batch`'s evidence under `hold` (a run), once per request: identification, extraction and each hole's usable
     // positions (SPEC 8.5.5 Completion: the source path's premises proven under the run's hold), with every read of another binding of
-    // the component answered under the hold (ResolveAssociated).
-    private AssociatedInference InferenceRun(AssociatedInference batch, int hold)
+    // the component answered under the hold (ResolveAssociated). An own run (`owner`, a binding's entry; C4 ruling 11) collects only that
+    // binding's sources (DiscoverValues); the definition's run (-1) collects every source, and the root's records the problems. Both read
+    // the requirements' Types in the definition's run of the hold with the definition's bindings held (as dev's batch held them).
+    private AssociatedInference InferenceRun(AssociatedInference batch, int hold, int owner)
     {
-        if (this.inferenceRuns.TryGetValue((batch, hold), out var run))
+        if (this.inferenceRuns.TryGetValue((batch, hold, owner), out var run))
         {
             return run;
         }
 
+        var frozen = owner < 0 ? null : this.InferenceRun(batch, this.HoldWith(hold, -1, batch), -1);
         run = batch.RentRun();
         run.Hold = hold;
-        run.Records = hold == this.HoldWith(this.inferenceEmptyHold, -1, batch); // the root's frozen run records the problems
+        run.Owner = owner;
+        run.Frozen = frozen ?? run;
+        run.Records = owner < 0 && hold == this.HoldWith(this.inferenceEmptyHold, -1, batch); // the root's frozen run records the problems
 
-        this.inferenceRuns[(batch, hold)] = run;
+        this.inferenceRuns[(batch, hold, owner)] = run;
         var previous = this.collectingAssociated;
         this.collectingAssociated = run;
         var formation = this.BeginFormation(); // SPEC 8.5.5, 8.6.3: the inferred bindings are formed from the signatures, whatever the reader.
@@ -412,14 +424,15 @@ public sealed partial class Binding
             var self = this.ConformanceSelf(path);
             foreach (var identity in path.Contract.Contract!.RequirementStorage)
             {
-                if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement)
+                if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement ||
+                    (run.Owner >= 0 && !this.SourceOf(run.Owner, path, identity.Symbol.Name)))
                 {
                     continue;
                 }
 
                 this.BindHeader(identity.Symbol);
                 var match = this.IdentifyRequirement(path, identity);
-                if (match.State != RequirementMatchState.Unique && identity.Symbol.Type is { } waitingResult)
+                if (match.State != RequirementMatchState.Unique && run.Records && identity.Symbol.Type is { } waitingResult)
                 {
                     run.Pairs.Clear();
                     Koto? input = null;
@@ -445,7 +458,9 @@ public sealed partial class Binding
                     continue;
                 }
 
+                this.collectingAssociated = run.Frozen; // the requirement's Type reads none of the definition's bindings (C4 ruling 11)
                 required = this.ContractType(required, path.Scope, self);
+                this.collectingAssociated = run;
                 var written = this.MemberType(this.AsWritten(implementation.ReturnType, this.scopes[implementation], actual), match.Selection.DeclaringType)!;
                 actual = this.ContractType(this.MemberType(actual, match.Selection.DeclaringType)!, path.Scope);
                 run.Pairs.Clear();
@@ -470,6 +485,12 @@ public sealed partial class Binding
 
                 // Per binding (its root path and identity), never per associated symbol: `C<i32> and C<bool>` are two bindings.
                 var binding = this.AssociatedBindingOf(path, identity)!;
+                var index = this.inferenceBindingIndex[binding];
+                if (run.Owner >= 0 && index != run.Owner)
+                {
+                    continue;
+                }
+
                 if (!run.Usable.TryGetValue(binding, out var usable))
                 {
                     run.Usable.Add(binding, usable = new());
@@ -477,6 +498,11 @@ public sealed partial class Binding
 
                 foreach (var source in evidence)
                 {
+                    if (run.Owner < 0 && !this.SourceOf(index, source.Path, source.Source.Name))
+                    {
+                        this.InferenceReachMisses++; // the validator: a position outside its binding's sources (DiscoverValues)
+                    }
+
                     // SPEC 8.5.5 Completion: evidence from another path is usable when the destination's premises prove the source's; the
                     // proof is one of the source's reads, under the run's hold (design §3.1, B3).
                     if (this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) &&
@@ -494,8 +520,9 @@ public sealed partial class Binding
     {
         var binding = entry.Binding;
         var answer = this.inferenceValues[(binding, empty)];
-        var frozen = this.InferenceRun(entry.Batch, this.HoldWith(empty, -1, entry.Batch));
-        var own = this.InferenceRun(entry.Batch, this.HoldWith(empty, this.inferenceBindingIndex[binding], null));
+        var index = this.inferenceBindingIndex[binding];
+        var frozen = this.InferenceRun(entry.Batch, this.HoldWith(empty, -1, entry.Batch), -1);
+        var own = this.InferenceRun(entry.Batch, this.HoldWith(empty, index, null), index);
         if (frozen.Usable.TryGetValue(binding, out var usable) && own.Usable.TryGetValue(binding, out var owned))
         {
             for (var i = 0; i < owned.Count; i++)
@@ -589,6 +616,29 @@ public sealed partial class Binding
         return this.InternHold(start);
     }
 
+    // `hold` n Reach(`index`), interned (design §3.3: the key of a held state).
+    private int HoldMeet(int hold, int index)
+    {
+        var arena = this.inferenceHoldArena;
+        var start = arena.Count;
+        var (from, length) = this.inferenceHolds[hold];
+        for (var i = 0; i < length; i++)
+        {
+            if (this.ValueReaches(index, arena[from + i]))
+            {
+                arena.Add(arena[from + i]);
+            }
+        }
+
+        if (arena.Count - start == length)
+        {
+            arena.RemoveRange(start, length);
+            return hold;
+        }
+
+        return this.InternHold(start);
+    }
+
     private bool HoldContains(int hold, int index)
     {
         var (start, length) = this.inferenceHolds[hold];
@@ -601,6 +651,9 @@ public sealed partial class Binding
         Pending,
         Missing,
         Conflict,
+
+        // A state under evaluation (HeldValue's entry): read again only by a read outside its reader's Reach.
+        Open,
     }
 
     // A held state's answer (design §3.1): a Type, or pending, missing or a conflict.

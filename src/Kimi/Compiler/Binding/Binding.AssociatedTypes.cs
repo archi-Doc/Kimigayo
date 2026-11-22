@@ -686,10 +686,16 @@ public sealed partial class Binding
                 // sources wrote it (InferredEvidence). SPEC 6.2, DECISIONS BU-128: one on an inline cycle names no Type to either reader
                 // after the failed Binding, as a written one does (its failed specification fails the conformance's environment, so its
                 // path's conditions are Error).
-                if (this.inferenceRequest >= 0 && batch.Component == this.inferenceRequest && this.inferenceBindingIndex.ContainsKey(binding))
+                if (this.inferenceRequest >= 0 && batch.Component == this.inferenceRequest && this.inferenceBindingIndex.TryGetValue(binding, out var heldIndex))
                 {
                     // R7-C4 (SPEC 8.5.5, 8.3.3): a binding of the component under request is its answer under the reading run's hold, a
-                    // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending).
+                    // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending). An own run
+                    // reads only within its binding's Reach (the validator, counted).
+                    if (this.collectingAssociated is { Owner: >= 0 } own && !this.ValueReaches(own.Owner, heldIndex))
+                    {
+                        this.InferenceReachMisses++;
+                    }
+
                     return this.HeldValue(binding, this.collectingAssociated?.Hold ?? this.inferenceEmptyHold) is { State: HeldState.Type } held ? held.Type : null;
                 }
 
