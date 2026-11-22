@@ -174,8 +174,13 @@ when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrot
 (`supportingDlls: {}`); a base before Tatara B6b3 still verifies such a root (its verify reads the empty object). After
 B6b6, a newly made root serves only bases from B6a on (builds) and from B6b3 on (verify). Existing roots keep their
 files. `src/backend/windows-x64/test-toolchain-verification.ps1` tests `check-toolchain.ps1` and takes no `-Configuration`
-(it runs no compiler); its rows check a root of its own, whose tools and DLLs are hard links to the toolchain's (never
-written; a hard link needs the toolchain's volume) and whose `installation.json` and `windows_x64` are copies.
+(it runs no compiler); its rows check, in turn, one root it makes (`artifacts/verify/toolchain/<guid>/toolchain`, removed at
+the end), whose tools and DLLs are hard links to the toolchain's (never written; a hard link needs the toolchain's volume) and
+whose `installation.json` and `windows_x64` are copies, the only files the rows change.
+
+`scripts/build-kimi.ps1 -LlvmRoot <the pinned archive, extracted>` publishes `kimi.exe` with Tatara linked in and checks the
+product (PLAN G1245 says when a unit runs it). Tatara's objects embed the archive's absolute path, so the bytes of `tatara.dll`
+and `kimi.exe` depend on where the archive is extracted: byte comparisons and start-cost runs extract it at one path.
 
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start
 from: `diagnostic-snapshot.json` (the snapshot step checks its fixed corpus whatever the selection, so

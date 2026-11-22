@@ -11204,6 +11204,12 @@ resumed by R4-M86 (2026-10-20).
     Item's bound arguments, a requirement Contract's inherited Origins included.
   - Amended by BU-215 (PLAN G904): a Function Type's `CallSignature` row reads its `BoundType.Binder` (the declaring syntax), not a
     binder guessed from an input's Origin.
+  - Amended by R7-D3 D3-1 (Q-645, 2026-11-22): for `EnclosingAnonymous` the walk reads a Closure part's Origin arguments and
+    components, never its signature (the descent added nothing; nor does the part's closure context, which the walk never visits: a
+    held context erases Origins, BU-60, and a function's instance is a context only of Types naming its nested definitions, which no
+    Type at a formation outside the function names), so ClosureType's walk follows only the parts `BoundType.Height` counts. Only
+    `EnclosingContainer` (`UnimagedClosure`) crosses the signature edge, with `ClosureArgumentVariance`: both are R7-D3 D3-2 (PLAN
+    G348).
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; the owner's 「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds
   publishes a part's relation to its call as one fact, and no consumer infers that relation from BoundType or BindingState. G1b B4 (a
@@ -16727,6 +16733,34 @@ resumed by R4-M86 (2026-10-20).
     contextual Case's lookup without writes; `InferredCase` publishes it), `PayloadTypeAt` (a payload's Type in the constructed
     Type) and `FormReference` (a container reference's one formation from its own arguments and its environment, pure;
     `BindContainerReference` keeps the walk and the writes).
+- **BU-245 Comparisons of two Types outside the identity judge stay at reviewed sites, one reason each** (Front, 2026-11-22;
+  Binding; R7-C3 C3c, the plan's §5.0 C3 part c, RP6, Q-623, D-1040; Minor, tests and a behaviour-preserving move; design
+  `...\front\notes\C3\design-c3c.md`; F's C2/C3 rulings 319 and 323; the independent code review ACCEPT WITH CONDITIONS) SPEC 8.2.3.
+  Amends R7-M63.
+  - Rule: Binding.TypeIdentity decides SPEC 8.2.3's identity in a view (IdentityProven, IdentityRefuted, ClassForm at the judgments'
+    intakes). Types are interned, so every other comparison of two Types in Binding is an equality as written: `==`, `!=`,
+    `ReferenceEquals` and `Equals` over two Types (a conditional access's included), SameCompleteType, and a library search of Types
+    for a Type. Each stands at one row `File:Member=n reason` of ArchitectureRulesTest's
+    TypeComparisonsOutsideTheJudgeStayAtTheirSites, under one of the closed reasons kind, unchanged, key, sufficient, formed, declared,
+    representation, record and finding (the test's legend). Read by Roslyn's semantic model over the compiler's sources; the judge's
+    files (`Binding.TypeIdentity.cs` and its `Binding.TypeIdentity.<Concern>.cs`) are exempt. A candidate the model does not resolve
+    (an error-typed operand, or an Equals, ReferenceEquals or search call without its method) fails the test, naming its site.
+  - `finding`: an operand that is not what its owner publishes, a defect found and not fixed by the row's unit; the row's comment names
+    its PLAN open issue, and the reason changes when that issue's fix lands. The first: BindConversion's typed-borrow target (PLAN
+    G1240, D-1036).
+  - A later unit that adds or removes such a comparison updates its row with its reason. A comparison no reason covers is routed
+    through the judge as its own unit (an acceptance mover), never whitelisted. The test checks each member's sum of rows, so a change
+    inside a member with two or more reasons is reviewed against the reasons file (`...\front\notes\C3\c3c\reasons.tsv`, one line per
+    site).
+  - Deleted: `Binding.SameType`, a second spelling of `ReferenceEquals` under SPEC's word for identity; its reads spell
+    `ReferenceEquals` (reason declared). Moved: `Binding.CompleteTypeIdentity.cs` to `Binding.TypeIdentity.Complete.cs` (the judge's
+    complete-Type disjunct; behaviour-preserving).
+  - Not seen (review reads them): a Type as a key (a Dictionary's or HashSet's lookup, a tuple's or record's generated equality), an
+    equality through a comparer, an `object`-typed operand.
+  - Rejected: a regex census (plan §8.1's text census), a syntax count by name (ReferenceEquals compares Types at 390 of its 1,036
+    Binding sites), an IL read (operands are `object` and `==` is `ceq`), one production spelling for every Type equality (a wrapper
+    without semantics, still needing the semantic census); for C1, landing the typed-borrow fix first (it would hold the guard behind
+    an acceptance mover's whole cycle; ruling 323).
 - **BU-246 A kept operand's take and input by its Error's form: `PlanRow.KeptAdjust` and `PlanRow.KeptInput`** (Front,
   2026-11-22; Binding; Z17c-F, Q-638, D-1047, for stream Z's Z17c (C-448, the Middle's design Revision 1, K4); Major,
   behaviour-preserving alone; F's ruling on the design check `front\notes\Z17c\design-facts.md`; the code review ACCEPT WITH
@@ -22632,6 +22666,14 @@ R8-M* and R9-M* by the stage of the recording unit.
   `PublishedBindingTypes` is unchanged). R2b-D3 still holds for `UniversalRelations`, `EffectBoundTable` (R7-V2f decides) and
   `AvailableBounds` (R7-C7). Demand-built paths come with R7-D2 d3. Rejected: keeping the fields in Registration (the readers would
   change again in V2b, V2c and D2b); renaming the record in V2a (it is renamed in V2b, the part that changes its meaning).
+  Amended by R7-V2a2 (Q-643, 2026-11-22): `Find` and `TryPath` hand out only what the running pass registered, as it reads it (an
+  identity with a path, `PathsOf`, rule (a) included; an `Active` path), as `OfType`'s lists already did, so their readers test for
+  no registration; `Path` and `Identities` still hand out what a registration names, which may not be registered yet
+  (`ValidateConformances`' test over `Identities` stays). Before, a key's object came back whether or not the pass had registered it:
+  after an edit that removed or replaced a Self clause, the next Bind read the removed clause's identity, emptied by its reset, as the
+  solver's exact-key answer and skipped its other lookups, rejecting a valid program a fresh Bind accepts (e6, t1; N2d: a Bind's
+  records are a function of the source and mode). Rejected: a stale identity reset on read (a cold Bind never keys it); a
+  registration test at each reader (eight copies of one fact, deleted).
 - **R7-M17 R4-M118's chain judgment is one TyCtxt function family, `TyCtxt.OriginChains`, read by A5's Origin stratum and the
   declaration judge** (2026-11-10; PLAN G318, the Middle's under plan revision 50, DECISIONS Q18; design review 1 REVISE (B1-B3),
   repeated review ACCEPT; the Front's consent on C-197; supersedes BU-62's staged move and its
@@ -24304,6 +24346,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     ruling 272); a whole-environment flag or a fourth view state; a mode on the consult; an arm per premise structure emulating its key
     (FailedPremiseRead's arms, where ruling 271's holes fell); a projection's path read as a fourth Failed fact
     (`ProjectionOutcome.Failed`, ruling 296; withdrawn: the capture's dependent record is G1169's memo cause).
+  - Guarded by BU-245 (R7-C3 C3c): every other comparison of two Types in Binding stands at a reviewed row.
 - **R7-M64 A failed slot is a MIR local of no Type** (Middle, 2026-11-21; PLAN G1073, D-834's MIR half, Q-578, a joint unit with
   BU-234; Major; design `...\2026-11-16-pause\middle\notes\d834-mir-design.md` Revision 1; the Middle's ruling 291b) SPEC 23.1.2,
   9.2, 10.5.4, 8.15.3.
@@ -28232,6 +28275,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Removed by unit A4 (T-M6, 2026-11-21): the private toolchain root as a requirement (setup installs `tatara.dll` into every
     root; a root of one's own stays the ordinary selection, `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT`) and `Explicit` on the tests
     that load `tatara.dll`.
+  - Amended by T-M14 (unit B6b2, 2026-11-22): decision 20 Q1 (a) (the owner, O-469) answers the owner question of B6: rpmalloc
+    becomes `kimi.exe`'s process allocator, the .NET runtime included (`kimi.exe` links Tatara on the static UCRT).
 - **T-M4 A2's temporary structures and the executor's four calls** (Tatara, 2026-11-20; the plan's unit A2, Q-574, D-928; Major;
   design review C-423; implementation review C-424, ACCEPT WITH CONDITIONS, its fix round re-checked).
   - `NativeBuild` runs its tool work through `NativeExecutor`: optimize, emit, inspect, link. The steps, the verdicts, the redaction
@@ -28450,6 +28495,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `--ToolchainRoot` nor `--LlvmBin` and hashes no `tatara.dll` (`check-toolchain.ps1` hashes the root's); `ToolchainResolver`
     is removed, and Kimi reads `KIMI_TOOLCHAIN_ROOT` nowhere. The build's interim (the options accepted and read by no build)
     stays until B6b4 (PLAN G1224, G1173).
+  - Amended by T-M14 (unit B6b2, 2026-11-22): the published form is one file: `kimi.exe` links Tatara's objects, the managed copy
+    reaches no NativeAOT publish (its item is conditioned on `'$(PublishAot)' != 'true'`), and the published folder is `Kimi.exe`
+    alone (PLAN G1225 closed).
 - **T-M10 `LlvmBin` removed from projects and manifests** (Tatara, 2026-11-21; the plan's unit B6b5, Q-627, D-1022; Major;
   design `artifacts\handoff\tatara\units\B6\design-b6b.md` §6; design review C-437; implementation review C-443, ACCEPT;
   the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line.
@@ -28578,3 +28626,54 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     design's record move (Revision 1, row 4c) does not exist, so its split into two commits was withdrawn.
   - Rejected: the join as a second statement of the providing library; a capturing lookup; an enum for Kind; material paired by
     position; the rows in Build.
+- **T-M14 The published `kimi.exe` links Tatara on the static UCRT** (Tatara, 2026-11-22; the plan's unit B6b2, PLAN G1225,
+  Q-642, D-1052; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §3 and §13 (C2, C3); design review C-437; the
+  Middle's implementation review C-447, review 2 ACCEPT; the owner's decision 20 (O-469 Q1 (a)) and O-485 (a)). Amends T-M3's
+  allocator and T-M9's published folder; closes PLAN G1225.
+  - **The link:** the NativeAOT publish (`Kimi.csproj` under `PublishAot`, run by `scripts/build-kimi.ps1 -LlvmRoot <the pinned
+    archive>`) links Tatara into `kimi.exe`: `DirectPInvoke` of `tatara`, `src/Tatara/build.ps1`'s checked objects as
+    `NativeLibrary` and its `link.rsp` lines as `LinkerArg` (target `TataraLink`). One link description serves `tatara.dll` and
+    `kimi.exe`, read from the archive as LLVM's own tools link (T-M3). `tatara.h` is unchanged (the ABI hash and every root's
+    `tatara.dll` stay valid; one object set for both links); in `kimi.exe` the nine `tatara_*` exports have no reader. The managed
+    copy (T-M9) reaches no NativeAOT publish: the published folder is `Kimi.exe` alone.
+  - **The CRT:** NativeAOT's default is the hybrid CRT, the static VC runtime with the UCRT linked dynamically
+    (`/NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib`, `Microsoft.NETCore.Native.Windows.targets`; no property switches it).
+    `TataraLink` removes those two arguments, so the whole image is on the static UCRT: `malloc`, `free`, `_malloc_base` and
+    `_free_base` are rpmalloc's (selected by the link interface's `/include:malloc`), as in LLVM's own `/MT` tools and in
+    `tatara.dll`. Under the hybrid CRT the UCRT's own allocations inside `ucrtbase.dll` (`_wcsdup`, which MSVC STL's `libcpmt`
+    references) come from ucrtbase's heap while the image's `free` is rpmalloc's. Decision 20 Q1 (a) answers T-M3's owner question
+    of B6: rpmalloc is `kimi.exe`'s process allocator, the .NET runtime included.
+  - **The guard:** removing two exact `LinkerArg` values would fail silently under an ILCompiler that renamed them, so every
+    publish reads `Kimi.exe`'s imports (`llvm-readobj --coff-imports`) and fails on a CRT DLL (`api-ms-win-crt-*`, `ucrtbase.dll`,
+    `ucrtbased.dll`, `vcruntime*`, `msvcp*`, `msvcr*` with `msvcrt.dll`, `concrt*`), on a `HeapAlloc` or `HeapFree` import, and
+    when it read no `KERNEL32.dll` symbol line (a changed listing form cannot pass vacuously). A refused `Kimi.exe` stays in the
+    output folder until the next run empties it.
+  - **The package DLLs:** `KimiOneFile` (after `ComputeResolvedFilesToPublishList`) removes exactly two native assets by package
+    and name, Arc.Crypto's `blake3_dotnet.dll` and libsodium's `libsodium.dll` (Arc.Crypto 2.0.0 through Tinyhand; Kimi calls
+    neither); any other native asset reaches the folder and fails the one-file check (C-437 C2: a whitelist, never every native
+    asset). Decision 20 leaves them out on the premise that they do not load (whether a loaded one stays beside `kimi.exe` is a
+    later owner question), so every publish checks that premise: the script fails when the image names `blake3_dotnet` or
+    `libsodium` (ASCII or UTF-16LE, any case; NativeAOT's P/Invoke cells carry the module name), naming that question. The scan
+    costs about 0.2 s.
+  - **The publish's checks** (`build-kimi.ps1`): it first empties its outputs (the objects folder, the published folder and the
+    verify report), so `kimi.exe` links exactly this run's `build.ps1` objects (`$(TataraObjects)*.obj`: one per checkout `*.cpp`,
+    the list `tatara.dll` links) and a deleted or renamed Tatara source leaves no object behind (C-447 B1). It builds the objects
+    with `build.ps1` (which links and checks them as `tatara.dll`: identity, ABI, exports), publishes, and checks the product:
+    `Kimi.exe` alone; the imports and names above; `Kimi.exe toolchain verify --Report` passes (T-M11), and its `tatara.build`
+    equals this checkout's build identity from `src/Tatara/identity.ps1`'s `Get-TataraBuildIdentity` (the rule `build.ps1` uses;
+    T-M3). It reads the archive and no toolchain root; a relative `-LlvmRoot` is relative to the caller's location, as
+    `setup.ps1`'s. `TataraObjects` takes its trailing separator in MSBuild (`EnsureTrailingSlash`, a `TreatAsLocalProperty` of the
+    project), never in the argument (a trailing backslash before a closing quote escapes the quote). A NativeAOT publish without
+    `TataraObjects` fails: "kimi.exe links Tatara: publish it with scripts/build-kimi.ps1."
+  - **The start cost (O-485 (a)):** the one file starts about 4 ms slower than B6b1's pair (`kimi.exe` 31.1 MB + `tatara.dll`
+    68.6 MB): `--version` 32.2 → 36.5 ms, `check docs/examples/Hello` 70.2 → 74.6 ms (medians of 20 A/B/A' rounds, quiet; the
+    control A'/A within 0.6%; `artifacts\tatara\b6b2\one-unit\start-cost.txt`), per process start and constant. Design §3.2's
+    gate sent the cost, above the noise, to the owner (decision 20 Q1 (a)'s facts said "unchanged within the noise"), who accepted
+    it, verbatim 「O-485 受け入れます」. `Kimi.exe` is 99.7 MB; `build-kimi.ps1` took 114 to 181 s (not quiet).
+  - Rejected: the static link's libraries listed in `Kimi.csproj` (a second copy of `build.ps1`'s reading of the archive); the
+    hybrid CRT (the heap split); removing every package's native asset (C2); `lld-link` as NativeAOT's linker (MSVC `link.exe`,
+    the ILCompiler's default, links it); dropping the exports from `tatara.h` (two object sets, a new ABI); a CI publish (C-447
+    R5: the archive's `lib` and `include` are about a gigabyte; a later release workflow, PLAN G1245); reading the identity from
+    `build.ps1`'s report table (a formatted table; `identity.ps1` is the one rule both read); `build.ps1` publishing its object
+    list for both links (it changes `src/Tatara` and its build identity, while the emptied folder gives the same list); O-485 (b),
+    the pair kept, and (c), B6b2 held for a unit that measures where the 4 ms go.
