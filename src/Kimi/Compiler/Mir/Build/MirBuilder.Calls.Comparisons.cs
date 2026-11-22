@@ -125,7 +125,7 @@ internal sealed partial class MirBuilder
         var (left, right, self) = (call.ArgumentOperations[0], call.ArgumentOperations[1], call.ConformingType!);
         var start = this.arguments.Count;
         var view = this.Operand(left.Source!, left.AdaptedType ?? left.ParameterType);
-        this.arguments.Add(Builds(right.Source!) ? this.Secure(view, left.Source!) : view);
+        this.arguments.Add(Builds(right.Source!, HirTables.AdjustOf(right.Source!)) ? this.Secure(view, left.Source!) : view);
         this.inspections.Add(start); // SPEC 13.4, 14.10.3: an inspection while the right operand is evaluated.
         view = this.Operand(right.Source!, right.AdaptedType ?? right.ParameterType);
         this.inspections.RemoveAt(this.inspections.Count - 1);

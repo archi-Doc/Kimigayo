@@ -30,7 +30,7 @@ public class RunCommand : ISimpleCommand<RunCommand.Options>
         {
             try
             {
-                if (args.Length == 1 && Path.GetExtension(args[0]).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+                if (args.Length == 1 && Path.GetExtension(args[0]).Equals(Constants.ExecutableExtension, StringComparison.OrdinalIgnoreCase))
                 {
                     return await CommandExecution.Toolchain(this.kimigayo, () => Build.NativeToolchain.RunExecutable(Path.GetFullPath(args[0]), Directory.GetCurrentDirectory(), cancellationToken));
                 }

@@ -278,7 +278,7 @@ public sealed partial class InstanceCollectorTest
             const string NoType = HasItem + "struct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\n";
             const string BaseA = HasItem + "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
             const string Inherited = "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd " +
-                "InvalidConstraint_Kd InvalidConstraint_Kd";
+                "InvalidConstraint_Kd";
             const string Holder = "contract Holder<K>\n    associate Item\nstruct HB<S>\n    S is Holder<i32>\n    var x: S.Item\n";
             const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
             const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
@@ -303,29 +303,29 @@ public sealed partial class InstanceCollectorTest
                 { "replace", Bad + "func g(slot: uniq/Option<Bad>) => Kimi.Intrinsics.replace(slot, with: .None)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
-                { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
-                { "closedPrimitive", HasItem + "func g(h: HA<i32>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
-                { "closedTuple", HasItem + "func g(h: HA<(i32, u8)>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
-                { "closedArray", HasItem + "func g(h: HA<[2 of i32]>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
+                { "closedPrimitive", HasItem + "func g(h: HA<i32>) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedTuple", HasItem + "func g(h: HA<(i32, u8)>) => ()\n", "UnprovenConstraint_Kd", string.Empty },
+                { "closedArray", HasItem + "func g(h: HA<[2 of i32]>) => ()\n", "UnprovenConstraint_Kd", string.Empty },
                 {
                     "closedProjection", HasItem + "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\nfunc g(h: HA<Src.Item>) => ()\n",
-                    "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty
+                    "UnprovenConstraint_Kd", string.Empty
                 },
-                { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
                 { "closedOutputValid", HAdd + "func g(h: HAdd<i32>) -> i32 => h.x\n", string.Empty, string.Empty },
                 {
                     "closedRefuted", SrcC.Replace("Item is T", "Item is i32", StringComparison.Ordinal) + "func g(h: HA<SrcC<string>>) => ()\n",
-                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                    "UnsatisfiedConstraint_Kd", string.Empty
                 },
                 {
                     "closedPayload", HasItem + "enum EW<S>\n    S is HasItem\n    A(S.Item)\n    B\nfunc g(e: EW<i32>) => ()\n",
-                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                    "UnsatisfiedConstraint_Kd", string.Empty
                 },
                 { "inherited", BaseA + "struct DerA : BaseA\n    var m: i32\nfunc g(b: HA<DerA>) => ()\n", Inherited, string.Empty },
                 {
                     "inheritedTwice", BaseA + "open struct DerA : BaseA\n    var m: i32\nstruct DerB : DerA\n    var n: i32\nfunc g(b: HA<DerB>) => ()\n",
                     "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd " +
-                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "inheritedGeneric", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n" +
@@ -334,28 +334,28 @@ public sealed partial class InstanceCollectorTest
                 {
                     "sourcesDisagree", Holder + "contract Sub<A, B> : Holder<A>, Holder<B>\nopen struct BaseP<T, U>\n    Self is Sub<T, U>\n" + Bindings +
                     "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
-                    "IncompatibleContractImplementation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "IncompatibleContractImplementation_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "pathsDisagree", Holder + "open struct BaseP<T, U>\n    Self is Holder<T>\n    Self is Holder<U>\n" + Bindings +
                     "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
-                    "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "refinedDisagree", HasItem + "contract HasMore: HasItem\n    associate Elem\n    associate HasItem.Item is Elem\nstruct Src\n" +
                     "    Self is HasMore\n    associate HasMore.Elem is i32\nstruct WB<S>\n    S is HasItem\n    Self is HasItem\n    associate HasItem.Item is u8\n" +
                     "    Self is HasMore when S is HasMore\n        associate HasMore.Elem is i32\nfunc g(h: HA<WB<Src>>) => ()\n",
-                    "InvalidConstraint_Kd InvalidAssociatedType_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidConstraint_Kd InvalidAssociatedType_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "noConformance", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
                     "struct DerX : BaseG\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
-                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "noConformanceArity", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
                     "struct DerX : BaseG<i32, u8>\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
-                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "virtualClause", VirtualBase + Slot + "\n        T is Missing\n        return value@follow\n" + Create,
@@ -2492,7 +2492,7 @@ public sealed partial class InstanceCollectorTest
         var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).Order().ToArray();
         Assert.Equal(expected, c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())).Order());
         var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin);
-        Assert.Equal(refused.Length == 0, shims.Any(static x => ArithmeticContracts.IsArithmetic(TyCtxt.Contract(x.Key.Symbol!).LibraryDeclaration)));
+        Assert.Equal(refused.Length == 0, shims.Any(static x => KimiLibraryCatalog.IsArithmeticContract(TyCtxt.Contract(x.Key.Symbol!).LibraryDeclaration)));
     }
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
@@ -3084,7 +3084,7 @@ public sealed partial class InstanceCollectorTest
         {
             KimiDeclarationId.Equatable => "BuiltinEquals",
             KimiDeclarationId.Comparable => "BuiltinCompare",
-            var contract when ArithmeticContracts.IsArithmetic(contract) => "BuiltinArithmetic",
+            var contract when KimiLibraryCatalog.IsArithmeticContract(contract) => "BuiltinArithmetic",
             var contract => throw new InvalidOperationException($"{function.Name} of {contract} is no shim."),
         };
     }

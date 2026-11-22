@@ -1588,12 +1588,15 @@ public sealed partial class MirBorrowsTest
                     inspect(slot@ref)
                 """));
 
-    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple or fixed-array Place
-    // enclosing one inline (also inside a nested Tuple), and a Copy read of such a Place, are located Unsupported_Kd until the Loan records
-    // the layer's own-step entry; a Borrow of the holder, a read of the layer through it, a read of an element and of a scalar beside the
-    // layer are precise.
+    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2), narrowed by Z5-R1: a Copy read of a Tuple or fixed-array Place enclosing a
+    // `during self` layer inline (also inside a nested Tuple) is a located Unsupported_Kd until Z5-R2 (R-A); a Borrow of a layer's Place or
+    // of an enclosing one issues its Loan, and a read through it is placed by its exact lent position (layerRef, enclosingRef; arrayRef
+    // reads none), carrying its parents whole (SPEC 15.6 Holders): layerRef's read carries y's Loan, which b holds, into the generic
+    // call, so y's end conflicts as for the same read through no dereference or through the holder's borrow (the base's CLC on those
+    // twins; the Middle's ruling on Z5-R1, 11-22 13:0x); a Borrow of the holder, a read of the layer through it, a read of an element and
+    // of a scalar beside the layer are precise.
     [Fact]
-    public void ABorrowOfADuringSelfLayerIsUnsupported()
+    public void ACopyOfADuringSelfLayersEnclosingPlaceIsUnsupported()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + """
             struct Arrs
@@ -1650,10 +1653,45 @@ public sealed partial class MirBorrowsTest
                 return s.nest.1
             """);
         Assert.Equal(
-            ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd",
-                "enclosingOnly: s.pair Unsupported_Kd", "arrayCopy: a.arr Unsupported_Kd", "arrayRef: a.arr@ref Unsupported_Kd",
-                "nestedCopy: s.nest Unsupported_Kd"],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            "layerRef: var y: i32 = 1 | enclosingCopy: s.pair Unsupported_Kd | enclosingOnly: s.pair Unsupported_Kd | arrayCopy: a.arr Unsupported_Kd | " +
+                "nestedCopy: s.nest Unsupported_Kd",
+            string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd])));
+    }
+
+    // Z5-R1 (SPEC 15.6 Holders, 15.6 Addresses, 5.7 Reading a Field through a dereference, 5.2.1 (3); PQ-10 narrowed): a read of a
+    // `during self` layer or an enclosing Place through a dereference carries its owner's own-step entry at its exact lent position
+    // (MirBorrows.Lent) with every Loan its parents carry, so the owner's Move under it conflicts (and departs the owner's own step where the
+    // position names the owner from its root); where the read's own steps name the owner past the dereference, the base's row (g1, g2, g5,
+    // ix2: the owner the lender's Place or past it); where no run names one, in a view whose borrow the base marked, the read's located
+    // Unsupported_Kd (n2: an owner past an E3 Reborrow; tw3: a reference stored twice). Labels from SPEC (Z5-R1 design section 5).
+    [Theory]
+    [InlineData("t5c", "let t = (b.pair@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
+    [InlineData("mx", "let t = (b.data@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
+    [InlineData("mxi", "let t = (b.data@ref, d.pair@ref)|let x = t.1@follow.0|let m = d@move|usep(x)", "", "d|d OwnStepDeparture_Kd")]
+    [InlineData("h1", "let t = (b@ref, d@ref)|let x = t.1@follow.pair.0|let m = b@move|usep(x)", "", "b")]
+    [InlineData("h1v", "let t = (b@ref, d@ref)|let x = t.1@follow.pair.0|usep(x)|let m = b@move", "", "")]
+    [InlineData("n1", "let o = Outer.init()|let r = o.inner.pair@ref|let x = r@follow.0|let m = o@move|usep(x)", "", "o|o OwnStepDeparture_Kd")]
+    [InlineData("n1v", "let o = Outer.init()|let r = o.inner.pair@ref|let x = r@follow.0|usep(x)|let m = o@move", "", "")]
+    [InlineData("ix1", "var i: isize = 1|let r = b.arr@ref|let x = r@follow[i]|let m = b@move|usep(x)", "", "b|b OwnStepDeparture_Kd")]
+    [InlineData("ix1v", "var i: isize = 1|let r = b.arr@ref|let x = r@follow[i]|usep(x)|let m = b@move", "", "")]
+    [InlineData("s2c", "let r = b.pair@ref|let r2 = r|let c = r2@follow|let m = b@move|usep(c.0)", "", "b|b OwnStepDeparture_Kd")]
+    [InlineData("g1", "let o = Outer.init()|let r = o.inner@ref|let x = r@follow.data|let m = o@move|usep(x)", "", "o")]
+    [InlineData("g1v", "let o = Outer.init()|let r = o.inner@ref|let x = r@follow.data|usep(x)|let m = o@move", "", "")]
+    [InlineData("g2", "let o = Outer.init()|let r = o@ref|let x = r@follow.inner.pair.0|let m = o@move|usep(x)", "", "o")]
+    [InlineData("g5", "let u = Duo.init()|let r = u.duo@ref|let x = r@follow.0.pair.0|let m = u@move|usep(x)", "", "u")]
+    [InlineData("ix2", "var i: isize = 1|let a = Arr2.init()|let r = a.ps[i]@ref|let x = r@follow.pair.0|let m = a@move|usep(x)", "", "a")]
+    [InlineData("t9", "let o = Outer.init()|let t = (b@ref, o.inner@ref)|let x = t.1@follow.data|let m = b@move|usep(x)", "", "b")]
+    [InlineData("cg1", "let x = gt(b.pair@ref)|usep(x)", "func gt(r: ref/(raw/u8, i32)) -> raw/u8 => r@follow.0\n", "")]
+    [InlineData("cg1m", "let x = gt(b.pair@ref)|let m = b@move|usep(x)", "func gt(r: ref/(raw/u8, i32)) -> raw/u8 => r@follow.0\n", "b")]
+    [InlineData("n2", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner.pair@ref|let x = q@follow.0|let m = o@move|usep(x)", "", "q@follow.0 Unsupported_Kd")]
+    [InlineData("tw3", "var r = b.pair@ref|r = d.pair@ref|let x = r@follow.0|usep(x)", "", "r@follow.0 Unsupported_Kd")]
+    public void ALayerReadThroughADereferenceCarriesItsOwnersEntryAndItsParents(string id, string lines, string declarations, string expected)
+    {
+        var c = MirBuildTest.Compile(LentShapes + declarations + $"func {id}(fresh: raw/u8)\n    let b = Packet.init()\n    let d = Packet.init()\n" +
+            string.Concat(lines.Split('|').Select(static x => "    " + x + "\n")));
+        Assert.Equal(
+            expected.Length == 0 ? string.Empty : string.Join(" | ", expected.Split('|').Select(x => $"{id}: {x}").Order(StringComparer.Ordinal)),
+            string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]).Order(StringComparer.Ordinal)));
     }
 
     // V16 (SPEC 15.6 Addresses; DECISIONS R4-M116): the address pre-pass walks a view's uses only where a raw Ref was issued or a projection

@@ -40,16 +40,23 @@ internal static class TestWorker
             var channel = Receive(child.Result, outcome, settings, budget, ioCancellation.Token);
             var stdout = Drain(child.Stdout, output, settings.LogBytes, budget, ioCancellation.Token);
             var stderr = Drain(child.Stderr, error, settings.LogBytes, budget, ioCancellation.Token);
-            var deadline = TestSettings.Duration(settings.Timeout);
-            while (!child.Wait(0))
-            {
-                if (cancellationToken.IsCancellationRequested || Stopwatch.GetElapsedTime(started) >= deadline || channel.IsFaulted || stdout.IsFaulted || stderr.IsFaulted)
-                {
-                    outcome.Termination = cancellationToken.IsCancellationRequested ? "cancelled" : Stopwatch.GetElapsedTime(started) >= deadline ? "timeout" : "runnerError";
-                    break;
-                }
 
-                await Task.Delay(10, CancellationToken.None).ConfigureAwait(false);
+            // The case runs until its exit, else until a stream fails, the run is cancelled or its deadline passes (IMPL 20.6.3: from
+            // launch to exit), by the Stopwatch: a wait whose timer ends it early waits again for the rest. The rest is rounded up to a
+            // whole millisecond, WaitAsync's unit, which completes at once for less than one, so the loop never spins.
+            var deadline = TestSettings.Duration(settings.Timeout);
+
+            // A Task, not WhenAny's Task<Task>: SuppressThrowing throws on a Task<TResult> (CA2261).
+            var wait = (Task)Task.WhenAny(child.Exited, Failure(channel, stdout, stderr));
+            TimeSpan remaining;
+            while (!wait.IsCompleted && !cancellationToken.IsCancellationRequested && (remaining = deadline - Stopwatch.GetElapsedTime(started)) > TimeSpan.Zero)
+            {
+                await wait.WaitAsync(TimeSpan.FromMilliseconds(Math.Ceiling(remaining.TotalMilliseconds)), cancellationToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
+
+            if (!child.Exited.IsCompleted)
+            {
+                outcome.Termination = cancellationToken.IsCancellationRequested ? "cancelled" : Stopwatch.GetElapsedTime(started) >= deadline ? "timeout" : "runnerError";
             }
 
             if (outcome.Termination == "notStarted")
@@ -57,7 +64,7 @@ internal static class TestWorker
                 outcome.Termination = child.ExitCode == 0 ? "normal" : "crash";
             }
 
-            if (child.Wait(0))
+            if (child.Exited.IsCompleted)
             {
                 outcome.NativeExitCode = child.ExitCode;
             }
@@ -343,6 +350,18 @@ internal static class TestWorker
         }
 
         return omitted;
+    }
+
+    // A task that completes at the first failure of the tasks, and never when none fails.
+    private static Task Failure(params ReadOnlySpan<Task> tasks)
+    {
+        var failed = new TaskCompletionSource();
+        foreach (var task in tasks)
+        {
+            _ = task.ContinueWith(static (_, state) => ((TaskCompletionSource)state!).TrySetResult(), failed, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
+        return failed.Task;
     }
 
     private static string Phase(int phase) => (TestRuntime.Phase)phase switch

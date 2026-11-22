@@ -35,7 +35,7 @@ fn fill @16
   opaque 2 @28:
   opaque 3 @26:
   opaque 4 @31:
-  opaque 5 @29: _7
+  opaque 5 @29 kept 1: _7
   opaque 6 @33:
   bb0:
       StorageLive(_2) @20 s1

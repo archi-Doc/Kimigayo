@@ -20,11 +20,26 @@ internal sealed partial class MirBorrows
     private Entry[] entries = [];
     private int entryCount;
 
+    // E's stores by location (SPEC 7.2.3's stores into storage the body does not own; DIAGNOSTICS' `Store`): what its entries put into
+    // E, their sets that do not rest (Sure) and those that rest on an undecided write (Unsure: Φ_M, Φ_U), from its last plan, gathered
+    // where every entry is added (AddSlot), so a plan pays only its entries at E. A location's last plan in the forward solve is on its
+    // converged state, as the replay's is, so from the solve's end every reached location holds the replay's sets. The transfer is
+    // monotone in what a location stores into E (W's targets and received values grow with the state; Keep's covered-only stores are a
+    // subset of its referents), so an element that entered a head's state from an earlier carry of a predecessor is in that
+    // predecessor's converged stores too. Read by R26-borrow's place (MirBorrows.Defaults' DefaultStores, Sure) and by the Store witness
+    // of what a check found in E (MirBorrows.Witnesses' EStore, both).
+    private (int Sure, int Unsure)[] eStores = [];
+
+    // E's stores with a set added: to Unsure where it rests (MirBorrows.Puns' Resting), else to Sure.
+    private (int Sure, int Unsure) Into((int Sure, int Unsure) stored, int set)
+        => this.Resting(set) ? (stored.Sure, this.sets.Union(stored.Unsure, set)) : (this.sets.Union(stored.Sure, set), stored.Unsure);
+
     // The entries of a location on the state: a statement's storage end, or its rvalue's value stored into its Place after the Moves it
     // makes; a Call's.
     private void Plan(ulong[] state, int block, int index, bool checks)
     {
-        (this.entryCount, this.planLocation, this.mustValue, this.mustKept) = (0, this.Location(block, index), 0, 0);
+        (this.entryCount, this.planLocation, this.mustValue, this.mustKept, this.limit) = (0, this.Location(block, index), 0, 0, false);
+        this.eStores[this.planLocation] = (0, 0);
         foreach (var set in this.read)
         {
             this.reads[set] = default;
@@ -116,6 +131,11 @@ internal sealed partial class MirBorrows
     {
         MirDataflow.Grow(ref this.entries, this.entryCount + 1);
         this.entries[this.entryCount++] = new(slot, value, own, op, issue);
+        if (slot == Escaped)
+        {
+            this.eStores[this.planLocation] = this.Into(this.Into(this.eStores[this.planLocation], value), own);
+            this.Work++;
+        }
     }
 
     // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k Derefs every holder refs^k names joined (P10; past a
