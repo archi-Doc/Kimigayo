@@ -259,11 +259,18 @@ public sealed partial class Binding
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
                 // One no lookup selects is the resolver's miss, which an inaccessible qualifier explains (FailMissing, SPEC 9.4, 9.5; PLAN
-                // G1207); a selected declaration that is no Contract is no parent (SPEC 8.4.3).
+                // G1207), at the site a Type use's miss takes (UnselectedTypeSite), on which the Name rests; a selected declaration that is
+                // no Contract is no parent (SPEC 8.4.3).
                 this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
                 if (parent is null)
                 {
-                    this.FailMissing(name, this.scopes[contract], BindingFailure.MissingType);
+                    var site = UnselectedTypeSite(name, parentPath);
+                    this.FailMissing(site, this.scopes[contract], BindingFailure.MissingType);
+                    if (!ReferenceEquals(name, site))
+                    {
+                        this.CompleteDependent(name, site);
+                    }
+
                     if (!ReferenceEquals(syntax, name))
                     {
                         this.CompleteDependent(syntax, name); // A transparent wrapper rests on its Name.

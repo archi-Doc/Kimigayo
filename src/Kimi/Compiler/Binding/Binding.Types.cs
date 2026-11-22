@@ -28,10 +28,10 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 23.1.2: where a Type use that selected nothing fails, at every Type position (BindNamedType, BindConstructedType): a generic at
-    // its Name (its arguments keep their own records); an unresolved walk at its failing step when that step is a qualifier of the path,
-    // as `S.Missing` of `S.Missing.X`; else the use, where an ambiguity or a qualification stop keeps its own record. A generic's site reads
-    // no walk, so BindConstructedType passes none.
+    // SPEC 23.1.2: where a Type use that selected nothing fails, at every Type position (BindNamedType, BindConstructedType) and a
+    // Contract's parent (BuildContract): a generic at its Name (its arguments keep their own records); an unresolved walk at its failing
+    // step when that step is a qualifier of the path, as `S.Missing` of `S.Missing.X`; else the use, where an ambiguity or a qualification
+    // stop keeps its own record. A generic's site reads no walk, so BindConstructedType passes none.
     private static Koto UnselectedTypeSite(Koto syntax, ResolvedPath path)
         => syntax is GenericsKoto generic ? generic.Identifier!
             : path.End == PathEnd.Unresolved && StoppedAtQualifier(path.Use, syntax) ? path.Use : syntax;

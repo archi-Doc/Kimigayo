@@ -753,12 +753,17 @@ public class ContractBindingTest
     // SPEC 9.4, 9.5, 23.1.2 (PLAN G1207; R7-E2 E2-4b, probes x1, x1s, x1t, x2): a parent no lookup selects is the resolver's miss, explained
     // by an inaccessible qualifier where one is: a qualified parent naming a private Contract or struct records InaccessibleBinding_Kd at
     // its reference relating it, a missing one UnresolvedBinding_Kd; the Contract keeps its own record over its failed parent. Before E2-4b
-    // the reference recorded InvalidConstraint_Kd (another requirement's record). The twin is valid.
+    // the reference recorded InvalidConstraint_Kd (another requirement's record). The twin is valid. The miss sits where a Type use's does
+    // (C-405 C1, probes x5, x2g with their Type-position twins x5t, x2gt): a walk at its failing qualifier step, a generic at its Name.
     [Theory]
     [InlineData("group G\n    contract P\ncontract A: G.P\n", "InvalidConstraint_Kd 3:1 contract|InaccessibleBinding_Kd 3:13 G.P, inaccessible declaration 'P'")] // x1
     [InlineData("group G\n    struct S\ncontract A: G.S\n", "InvalidConstraint_Kd 3:1 contract|InaccessibleBinding_Kd 3:13 G.S, inaccessible declaration 'S'")] // x1s
     [InlineData("group G\n    public contract P\ncontract A: G.P\n", "")] // x1t
     [InlineData("contract A: Nope\n", "InvalidConstraint_Kd 1:1 contract|UnresolvedBinding_Kd 1:13 Nope")] // x2
+    [InlineData("group G\n    public contract Q\ncontract A: G.Missing.P\n", "InvalidConstraint_Kd 3:1 contract|UnresolvedBinding_Kd 3:13 G.Missing")] // x5
+    [InlineData("group G\n    public contract Q\nfunc f(x: ref/G.Missing.P) -> () => ()\n", "UnresolvedBinding_Kd 3:15 G.Missing")] // x5t
+    [InlineData("contract A: Nope<i32>\n", "InvalidConstraint_Kd 1:1 contract|UnresolvedBinding_Kd 1:13 Nope")] // x2g
+    [InlineData("func f(x: ref/Nope<i32>) -> () => ()\n", "UnresolvedBinding_Kd 1:15 Nope")] // x2gt
     public void AParentNoLookupSelectsIsTheResolversMiss(string source, string records)
         => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
 
