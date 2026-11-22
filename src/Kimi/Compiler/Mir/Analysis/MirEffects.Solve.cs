@@ -182,7 +182,7 @@ internal sealed partial class MirEffects
         for (var i = item; i < itemEnd; i++)
         {
             var local = items[i];
-            this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Call);
+            this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Call, local.Signature);
         }
 
         for (var e = edge; e < edgeEnd; e++)
@@ -250,17 +250,21 @@ internal sealed partial class MirEffects
             {
                 var atom = this.atoms[a];
                 // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
-                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
+                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit, also where its call's signature has
+                // none (the signature stays in the premises' terms, no case Type: SPEC 8.11.4 matches it with the premises).
                 var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
-                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Call);
+                var signature = subst is null || atom.Signature is null ? atom.Signature : types.ReadableInstance(atom.Signature, subst);
+                var formed = type is not null && (signature is not null || atom.Signature is null);
+                this.Process(formed ? cases.Type(type!) : null, atom.Kind, atom.Requirement, atom.Contract, atom.Call, signature);
             }
         }
     }
 
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
-    // (Require), or a call through a Callable value (SPEC 8.11.4): a Closure's or a function item's body entered through its substitution,
-    // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises.
-    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null)
+    // (Require), or a call through a Callable value with its signature (SPEC 8.11.4): a Closure's or a function item's body entered through
+    // its substitution, a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises with the
+    // call's signature.
+    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null, BoundType? signature = null)
     {
         if (type is not null && kind == Requires)
         {
@@ -279,13 +283,20 @@ internal sealed partial class MirEffects
         var receiver = (SemanticsKind)(kind - 1);
         if (type.IsAbstract)
         {
-            // A call through an abstract input: none where the premises declare confined, a limit where it has several signatures (the
-            // call's choice among them is not kept), else the summary's atom.
-            var bounds = types.CallableBounds(this.definition, type, receiver);
-            this.found |= bounds is null ? Limit : (byte)0;
-            if (bounds == false)
+            // A call through an abstract input: none where the premises with the call's signature declare confined, else the summary's
+            // atom with its signature. Every call through an abstract Type carries the signature it selected (Atom.Signature's producers);
+            // Obligations' Callable row reaches here only with a concrete Type (Binding.AddCallableObligation decides an abstract one).
+            if (signature is null)
             {
-                this.AddAtom(type, kind);
+                this.found |= types.BindingComplete ? throw new InvalidOperationException(
+                    $"A call through `{type}` reaches A4 without the signature it selected: every call through an abstract Type carries one (InternalInvariant).")
+                    : Derived;
+                return;
+            }
+
+            if (!types.CallableBounds(this.definition, type, signature, receiver))
+            {
+                this.AddAtom(type, kind, signature: signature);
             }
 
             return;
@@ -334,7 +345,8 @@ internal sealed partial class MirEffects
             if (row.Calls >= 0)
             {
                 var callable = this.Below(symbol, subst, row.Calls); // SPEC 4.9.6, 8.11.4: its Callable input, called then destroyed.
-                this.Process(callable, Shared);
+                var signature = this.CallsSignature(symbol, subst, row.Calls);
+                this.Process(signature is null ? null : callable, Shared, signature: signature);
                 this.Process(callable, Drop);
             }
 
@@ -426,7 +438,7 @@ internal sealed partial class MirEffects
     // Type is a projection with a recursive base, which a summary never keeps (SPEC 15.6.4; TyCtxt.RecursiveBase): a destroyed abstract part
     // proven Copy does nothing (SPEC 16.3.3 "unless the Type is Copy", 8.11.2 "not proven Copy"), any other is unknown (a call through an
     // input reaches here only without confined).
-    private void AddAtom(BoundType type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null)
+    private void AddAtom(BoundType type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, BoundType? signature = null)
     {
         if (this.reader < 0 || types.RecursiveBase(this.definition, type))
         {
@@ -434,7 +446,7 @@ internal sealed partial class MirEffects
             return;
         }
 
-        var atom = new Atom(type, kind, requirement, contract);
+        var atom = new Atom(type, kind, requirement, contract, Signature: signature);
         for (var i = 0; i < this.scratchCount; i++)
         {
             if (ReferenceEquals(this.scratch[i].Type, type) && this.scratch[i] == atom)
