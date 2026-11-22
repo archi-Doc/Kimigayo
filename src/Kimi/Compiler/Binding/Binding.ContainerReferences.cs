@@ -419,8 +419,9 @@ public sealed partial class Binding
 
         if (symbol.Declaration is ContractKoto)
         {
-            // SPEC 8.4, 18.2.1: a Contract reference has no Type role either; the bound Contract reference is formed where every other is.
-            return this.BindContractReference(syntax, symbol, scope)?.Type;
+            // SPEC 8.4, 18.2.1: a Contract reference has no Type role either; the bound Contract reference is formed where every other is,
+            // and the qualifier completes with it, as a group's does (a Contract without arguments forms no Type there).
+            return this.BindContractReference(syntax, symbol, scope) is { } contract ? Complete(syntax, contract.Type) : null;
         }
 
         return this.BindType(syntax, scope, context with { SuppressOuter = true });
