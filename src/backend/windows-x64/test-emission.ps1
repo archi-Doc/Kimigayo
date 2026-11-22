@@ -24,7 +24,7 @@ foreach ($name in @('clang', 'opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj'
     $tools[$name] = Join-Path $LlvmBin "$name.exe"
     $identities[$name] = Get-KimiLlvmToolIdentity $tools[$name] $expectedVersion
 }
-@{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
+@{ status = 'incomplete'; llvmVersion = $expectedVersion; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
 # The libraries the compiler carries (Tatara B6b6).
 $Kernel32 = Get-KimiKernel32
 $archive = Get-KimiBackendArchive
@@ -151,5 +151,5 @@ foreach ($level in @('O0', 'O2')) {
         $testResults += "runtime.$mode.$level"
     }
 }
-@{ status = 'passed'; compilerConfiguration = $Configuration; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities; kernel32Sha256 = Get-KimiSha256 $Kernel32; archiveSha256 = Get-KimiSha256 $archive; tests = $testResults } | ConvertTo-Json -Depth 5 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
+@{ status = 'passed'; compilerConfiguration = $Configuration; llvmVersion = $expectedVersion; tools = $identities; kernel32Sha256 = Get-KimiSha256 $Kernel32; archiveSha256 = Get-KimiSha256 $archive; tests = $testResults } | ConvertTo-Json -Depth 5 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
 Write-Output "Passed $($testResults.Count) native executions ($Configuration): $report"
