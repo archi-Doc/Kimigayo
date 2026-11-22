@@ -690,8 +690,10 @@ public sealed partial class Binding
                 {
                     // R7-C4 (SPEC 8.5.5, 8.3.3): a binding of the component under request is its answer under the reading run's hold, a
                     // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending). An own run
-                    // reads only within its binding's Reach (the validator, counted).
-                    if (this.collectingAssociated is { Owner: >= 0 } own && !this.ValueReaches(own.Owner, heldIndex))
+                    // reads a binding it does not hold only within its binding's Reach (the validator, counted): a held one answers pending
+                    // from the run's own additions (its binding, or the definition's bindings the requirements' Types are read with, C4
+                    // ruling 11), never from the outer hold, which the state's key keeps only within Reach.
+                    if (this.collectingAssociated is { Owner: >= 0 } own && !this.ValueReaches(own.Owner, heldIndex) && !this.HoldContains(own.Hold, heldIndex))
                     {
                         this.InferenceReachMisses++;
                     }
