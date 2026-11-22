@@ -144,8 +144,10 @@ public sealed partial class Binding
     // BindCall judges it, as a query that does not publish (BeginSelectionQuery): the evaluation BindCall makes (NamedCandidates,
     // RentEvaluation, BindExplicitArguments, SelectAt), its classification (ClassifySelection's outcome, which BindCall
     // dispatches on) and winner, the candidates that applied (bits of their indices: an ambiguity's, CompleteAmbiguous) and whether a
-    // pending candidate's Unknown premise reads the split (PremiseReadsSplit). A callee that names no function group, or explicit
-    // arguments it does not choose, select nothing to judge (Selected, -1).
+    // pending candidate's Unknown premise reads the split (PremiseReadsSplit). Where every Pending candidate of an Unproven selection is
+    // unproven only by an Unknown premise, the candidates compared as though applicable (SPEC 10.1, PremisedBest: Premised); whether
+    // the final winner (Winner, else Premised) returns an owner value (OwnerResultAt). A callee that names no function group, or
+    // explicit arguments it does not choose, select nothing to judge (Selected, -1).
     private ProbedSelection ProbeSelection(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         var callee = CheckedCallee(call, out var generic);
@@ -169,7 +171,10 @@ public sealed partial class Binding
             }
 
             var (kind, winner) = this.SelectAt(ref evaluation, candidates);
-            return new(kind, winner, AppliedCandidates(in evaluation), evaluation.PremiseReadsSplit);
+            int? premised = kind == CallSelection.Unproven && evaluation.FailedPendingSignature is null && evaluation.PremisesOnly
+                ? this.PremisedBest(call, evaluation.Evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride) : null;
+            var final = kind == CallSelection.Selected ? winner : premised ?? -1;
+            return new(kind, winner, AppliedCandidates(in evaluation), evaluation.PremiseReadsSplit, premised, final >= 0 && this.OwnerResultAt(evaluation, final));
         }
         finally
         {
@@ -342,51 +347,24 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1, 10.1-10.4 (PLAN G924 AF-3b; design-af3 R1.3, R2.6): a nested call's selection at an expected Type, as a query that
-    // publishes nothing (Binding.ArgumentKinds.Checked). It reads what the argument probe published (the callee's group, a member's
-    // selection, the prepared arguments, the explicit arguments' bound Types) and evaluates and classifies at `expected` (SelectAt);
-    // BeginSelectionQuery and EndSelectionQuery keep every state outside the evaluation's scratch. The shape contracts are the publishing call's
-    // (BindCallCore): a correlation failure is the nested call's own error. Selected: kept, with its winner's class. NoneApplicable or
-    // Ambiguous: the check fails. Unproven (Rd6'): where every Pending candidate is unproven only by an Unknown premise, the candidates
-    // are compared as though applicable (SPEC 10.1, PremisedBest): kept with the strictly best one's class, or Ambiguous with none;
-    // any other Pending candidate (BU-86's environment result, an open signature) keeps it unranked (O-335 (a): never Pending). A failed
-    // declaration or signature is the nested call's own error: kept.
+    // publishes nothing (Binding.ArgumentKinds.Checked): the verdict of its probed selection there (ProbeSelection, which reads what the
+    // argument probe published: the callee's group, a member's selection, the prepared arguments, the explicit arguments' bound Types).
+    // The shape contracts are the publishing call's (BindCallCore): a correlation failure is the nested call's own error. Selected:
+    // kept, with its winner's class. NoneApplicable or Ambiguous: the check fails. Unproven (Rd6'): where every Pending candidate is
+    // unproven only by an Unknown premise, the candidates compared as though applicable (Premised): kept with the strictly best one's
+    // class, or Ambiguous with none; any other Pending candidate (BU-86's environment result, an open signature) keeps it unranked
+    // (O-335 (a): never Pending). A failed declaration or signature is the nested call's own error, and explicit arguments the probe
+    // failed (Unsupported, Selected with no winner) a failed part, never queried: kept. The raw classification is the verdict's too.
     private CheckedVerdict SelectCallAt(InvocationKoto call, BoundType expected, BindingScope scope)
     {
-        var callee = CheckedCallee(call, out var generic);
-        var group = callee.BoundSymbol!;
-        var candidates = this.GroupOf(callee, group);
-        var (evaluated, self, shape) = this.NamedCandidates(callee, group, candidates, scope);
-        var query = this.BeginSelectionQuery();
-        var evaluation = this.RentEvaluation(call, callee, generic, scope, expected, shape);
-        evaluation.Evaluated = evaluated;
-        evaluation.Self = self;
-        evaluation.Requirements = candidates.Requirements;
-        try
+        var probed = this.ProbeSelection(call, scope, expected);
+        var selection = probed is { Kind: CallSelection.Unproven, Premised: { } premised } ? (premised < 0 ? CallSelection.Ambiguous : CallSelection.Selected) : probed.Kind;
+        return selection switch
         {
-            if (!this.BindExplicitArguments(ref evaluation, shape.Count))
-            {
-                return new(null, ArgumentAdaptation.ExpectedTypeFitting); // The probe failed the call (Unsupported): a failed part, never queried.
-            }
-
-            var (selection, winner) = this.SelectAt(ref evaluation, candidates);
-            if (selection == CallSelection.Unproven && evaluation.FailedPendingSignature is null && evaluation.PremisesOnly)
-            {
-                winner = this.PremisedBest(call, evaluation.Evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride);
-                selection = winner < 0 ? CallSelection.Ambiguous : CallSelection.Selected;
-            }
-
-            return selection switch
-            {
-                CallSelection.Selected => new(null, this.CheckedClass(expected, this.OwnerResultAt(evaluation, winner))),
-                CallSelection.NoneApplicable or CallSelection.Ambiguous => new(selection, default),
-                _ => new(null, ArgumentAdaptation.ExpectedTypeFitting),
-            };
-        }
-        finally
-        {
-            this.EndSelectionQuery(query);
-            this.ReturnEvaluation(evaluation);
-        }
+            CallSelection.Selected when probed.Winner >= 0 || probed.Premised >= 0 => new(null, this.CheckedClass(expected, probed.OwnsResult), Selection: probed.Kind),
+            CallSelection.NoneApplicable or CallSelection.Ambiguous => new(selection, default, Selection: probed.Kind),
+            _ => new(null, ArgumentAdaptation.ExpectedTypeFitting, Selection: probed.Kind),
+        };
     }
 
     // SPEC 3.4.1, 10.2.2 item 2: whether a candidate's result, substituted by its solution, is an owner value (OwnerResult); a bare slot
@@ -724,9 +702,10 @@ public sealed partial class Binding
         }
     }
 
-    // A named call's selection probed as a query (ProbeSelection): its classification and winner, the candidates that applied, and
-    // whether a pending candidate's Unknown premise reads the split.
-    private readonly record struct ProbedSelection(CallSelection Kind, int Winner, ulong Applied, bool PremiseReadsSplit);
+    // A named call's selection probed as a query (ProbeSelection): its classification and winner, the candidates that applied,
+    // whether a pending candidate's Unknown premise reads the split, the premise-only comparison's winner (-1 none; null where the
+    // selection is not Unproven by Unknown premises only) and whether the final winner returns an owner value.
+    private readonly record struct ProbedSelection(CallSelection Kind, int Winner, ulong Applied, bool PremiseReadsSplit, int? Premised = null, bool OwnsResult = false);
 
     private struct CandidateShape
     {

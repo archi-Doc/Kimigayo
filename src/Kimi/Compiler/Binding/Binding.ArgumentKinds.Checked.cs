@@ -53,7 +53,7 @@ public sealed partial class Binding
         }
 
         operation = new(part, null, type, ArgumentOperationKind.Value, verdict.Class);
-        this.waitingParts.Add(new(part, type, default));
+        this.waitingParts.Add(new(part, type, default, verdict.Selection, verdict.Misfit));
         return CandidateApplicability.Waiting;
     }
 
@@ -111,8 +111,12 @@ public sealed partial class Binding
     // SPEC 10.5.1: the outcome of a part's check against an expected Type: Failure, the part's own resolution there has no applicable
     // candidate or is ambiguous (NoneApplicable, Ambiguous), or null with the class its resolution gives (SPEC 10.4 step 1); for a
     // qualified Case construction, the enum Type its qualifier fixes there (Owner), which its publisher must reach too
-    // (BindEnumConstruction).
-    private readonly record struct CheckedVerdict(CallSelection? Failure, ArgumentAdaptation Class, BoundType? Owner = null);
+    // (BindEnumConstruction). Selection is the resolution's own classification before Rd6' compares unproven candidates (SelectCallAt):
+    // Unproven where the selected candidate's obligation is unproven (SPEC 10.1), a construction's where a part below it is; Misfit the
+    // components from the part down to its failure or to that unproven part (ComponentPath: AtShape where the Case does not resolve or
+    // take its arguments at the Type; a payload's within its slot of the enum; none where the failure is the part's own).
+    private readonly record struct CheckedVerdict(
+        CallSelection? Failure, ArgumentAdaptation Class, BoundType? Owner = null, CallSelection Selection = CallSelection.Selected, ComponentPath Misfit = default);
 
     // SPEC 10.5.1 (design-af3 R1.5): the part checked against its expected Type that made a candidate inapplicable, that Type and its own
     // resolution's outcome there (NoneApplicable or Ambiguous), diagnostic payload only (RejectedCandidate.CheckedPart).

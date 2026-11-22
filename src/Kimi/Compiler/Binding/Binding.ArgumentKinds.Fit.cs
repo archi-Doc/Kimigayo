@@ -41,10 +41,10 @@ public sealed partial class Binding
         return -1;
     }
 
-    // The component of `type` (an instance of the Case's enum) that payload `i` of Case `ordinal` takes: its slot where the payload's
+    // The component of `type` (an instance of the Case's enum) that payload `i` of Case `found` takes: its slot where the payload's
     // declared Type is the enum's slot, else -1 (the position no component path names: ComponentPath).
-    private static int PayloadSlot(BoundType type, int ordinal, int i)
-        => AdtDef.Case(type, ordinal) is { } found && i < found.Payload.Length && found.Payload[i].BoundType is { Kind: BoundTypeKind.Parameter, Symbol: { } slot }
+    private static int PayloadSlot(BoundType type, BoundEnumCase found, int i)
+        => i < found.Payload.Length && found.Payload[i].BoundType is { Kind: BoundTypeKind.Parameter, Symbol: { } slot }
             ? ContainerSlot(type.Symbol!.Declaration, slot) : -1;
 
     // SPEC 10.4 step 1 (PLAN G924, G916): the class of a part checked against its expected Type, by its Materialization there: its one
@@ -61,6 +61,21 @@ public sealed partial class Binding
         {
             this.waitingParts[i] = this.waitingParts[i] with { Path = index < 0 ? default : this.waitingParts[i].Path.Within(index) };
         }
+    }
+
+    // SPEC 10.1 (ArgFlow ruling 146): the first waiting part the current fit kept (from waitingBase) whose selection at its Type is
+    // Unproven, its own or a part's below it (CheckedVerdict.Selection): an obligation of the selected candidate there; else null.
+    private WaitingPart? UnprovenWaiting()
+    {
+        for (var i = this.waitingBase; i < this.waitingParts.Count; i++)
+        {
+            if (this.waitingParts[i].Selection == CallSelection.Unproven)
+            {
+                return this.waitingParts[i];
+            }
+        }
+
+        return null;
     }
 
     // SPEC 3.8 (G812 ruling 116): whether a literal's or a join position's own shape fits its Type; a shape that does not is the
@@ -157,7 +172,7 @@ public sealed partial class Binding
         {
             var met = this.waitingParts.Count;
             var fit = this.FitArgumentPart(call.ArgumentNodes[i], payloads![ordinal]!.Components[i], scope, call, out _);
-            var index = PayloadSlot(type, ordinal, i);
+            var index = PayloadSlot(type, found!, i);
             this.WaitingWithin(met, index);
             if (fit == CandidateApplicability.Inapplicable)
             {
@@ -493,6 +508,11 @@ public sealed partial class Binding
         return CandidateApplicability.Applicable;
     }
 
-    // A part awaiting its call that a fit met: the part, the Type at its position and the components down to it.
-    private readonly record struct WaitingPart(Koto Part, BoundType Type, ComponentPath Path);
+    // A part awaiting its call that a fit met: the part, the Type at its position and the components down to it, with its checked
+    // verdict's classification there and the components from it down to an unproven part (CheckedVerdict.Selection, Misfit).
+    private readonly record struct WaitingPart(Koto Part, BoundType Type, ComponentPath Path, CallSelection Selection = CallSelection.Selected, ComponentPath Misfit = default)
+    {
+        // The components from the fitted argument down to the unproven part.
+        internal ComponentPath Unproven => this.Misfit.Within(this.Path);
+    }
 }

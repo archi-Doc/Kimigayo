@@ -331,7 +331,7 @@ public sealed partial class Binding
     // expected Type, as a query that writes nothing (Binding.ArgumentKinds.Checked): at the construction's expected result (U at
     // `ref/U`, 10.8.1) its target (CaseAt, QualifiedEnumAt), its arguments (CaseTakes), its result formed from the fixed slots
     // (FixConstructionSlots, FormConstruction) and fitted structurally, and each payload fitted at its payload Type (PayloadTypeAt,
-    // FitArgument: a payload awaiting its own call recurses through the memo). Origin relations, the payloads' own errors and the
+    // FitArgumentPart: a payload awaiting its own call recurses through the memo). Origin relations, the payloads' own errors and the
     // Constraints are judged by the selected candidate's completion (SPEC 10.1, 15.6.1). A Case construction is an owner value: its class
     // is a borrowed temporary at `ref/U`, else Expected-Type fitting.
     private CheckedVerdict FitConstructionAt(Koto node, BoundType expected, BindingScope scope)
@@ -349,9 +349,14 @@ public sealed partial class Binding
         var query = this.BeginSelectionQuery(); // A payload's fit may defer an acquisition or query its own parts.
         try
         {
-            var fits = target is { } found && this.CaseTakes(reference, found.Case, call) && this.FitsConstructionAt(found, call, result, scope, node);
-            return fits ? new(null, this.CheckedClass(expected, ownerResult: true), reference is MemberAccessKoto ? target!.Value.Owner : null)
-                : new(CallSelection.NoneApplicable, default);
+            var misfit = ComponentPath.AtShape; // SPEC 6.5.2: the Case does not resolve in the Type's enum or take its arguments.
+            if (target is not { } found || !this.CaseTakes(reference, found.Case, call) || !this.FitsConstructionAt(found, call, result, scope, node, out misfit))
+            {
+                return new(CallSelection.NoneApplicable, default, Selection: CallSelection.NoneApplicable, Misfit: misfit);
+            }
+
+            var (selection, below) = this.UnprovenWaiting() is { } unproven ? (CallSelection.Unproven, unproven.Unproven) : default;
+            return new(null, this.CheckedClass(expected, ownerResult: true), reference is MemberAccessKoto ? found.Owner : null, selection, below);
         }
         finally
         {
@@ -359,9 +364,12 @@ public sealed partial class Binding
         }
     }
 
-    // The result and payload steps of FitConstructionAt, over a rented frame returned before it returns.
-    private bool FitsConstructionAt(in ConstructionTarget target, InvocationKoto? call, BoundType result, BindingScope scope, Koto use)
+    // The result and payload steps of FitConstructionAt, over a rented frame returned before it returns: `misfit` the components down to
+    // a failing payload's failure, within its slot of the enum (PayloadSlot), else none (the formed result's own). The waiting parts the
+    // payloads' fits meet are kept (FitArgumentPart) within their payload's slot, for the obligations below the Case (UnprovenWaiting).
+    private bool FitsConstructionAt(in ConstructionTarget target, InvocationKoto? call, BoundType result, BindingScope scope, Koto use, out ComponentPath misfit)
     {
+        misfit = default;
         var enumeration = target.Case.EnumCase!;
         var schema = enumeration.Owner.Schema!;
         var frame = this.infer.Rent(schema.GenericSlots.Count, use, scope);
@@ -383,9 +391,15 @@ public sealed partial class Binding
             for (var i = 0; i < enumeration.Payload.Length; i++)
             {
                 var source = call!.ArgumentNodes[i];
+                var met = this.waitingParts.Count;
+                var fit = this.FitArgumentPart(source, this.PayloadTypeAt(enumeration.Payload[i], formed, scope, out _), scope, source, out _);
+                var index = PayloadSlot(formed, enumeration, i);
+                this.WaitingWithin(met, index);
+
                 // Only a misfit fails the check (Rd1); a payload whose Type is not yet known (Pending) keeps it, as at a call argument.
-                if (this.FitArgument(source, this.PayloadTypeAt(enumeration.Payload[i], formed, scope, out _), scope, source, out _) == CandidateApplicability.Inapplicable)
+                if (fit == CandidateApplicability.Inapplicable)
                 {
+                    misfit = index >= 0 ? this.argumentMisfit.Within(index) : default;
                     return false;
                 }
             }
