@@ -356,8 +356,9 @@ internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases c
         this.Incomplete(problem.Code, source);
     }
 
-    /// <summary>Marks the body with an A1 problem that reaches MirReport directly, its broken contract or its storage limit, where its rule
-    /// records it: the first A1 or A2 problem is the body's <see cref="MirDropTable.Incomplete"/> (R4-M102, R4-M132).</summary>
+    /// <summary>Marks the body with an A1 or A2 problem where its rule records it: every mark goes through it, from Problem for each
+    /// Language problem and from A1's broken contract and storage limit, which reach MirReport directly; the first is the body's
+    /// <see cref="MirDropTable.Incomplete"/> (R4-M102, R4-M132).</summary>
     /// <param name="code">The problem's code.</param>
     /// <param name="source">Its subject in its location's scope (the default for the body).</param>
     internal void Incomplete(DiagnosticCode code, in SourceInfo source) => this.incomplete ??= (code, source);
