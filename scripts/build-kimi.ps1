@@ -13,6 +13,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 $output = Join-Path $repo 'artifacts/packages/kimi/win-x64'
 $objects = Join-Path $repo 'artifacts/packages/kimi/tatara'
 $verifyReport = Join-Path $repo 'artifacts/packages/kimi/verify.json'
+$hello = Join-Path $repo 'artifacts/packages/kimi/hello'
 
 # NativeAOT's findvcvarsall.bat finds vswhere.exe by its path, but vcvarsall.bat runs it from PATH.
 $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
@@ -22,8 +23,8 @@ Push-Location $repo
 try {
     # 1. The script's outputs start empty, so no earlier run's file reaches this run's link or checks: kimi.exe links every .obj in
     # the objects folder, which are then exactly build.ps1's objects of this run (one per checkout *.cpp, the list tatara.dll links);
-    # the folder check sees this publish alone; the identity check reads this run's verify report.
-    foreach ($earlier in $objects, $output, $verifyReport) {
+    # the folder check sees this publish alone; the identity check reads this run's verify report; this run's Kimi.exe builds Hello.
+    foreach ($earlier in $objects, $output, $verifyReport, $hello) {
         if (Test-Path -LiteralPath $earlier) { Remove-Item -LiteralPath $earlier -Recurse -Force }
     }
 
@@ -43,7 +44,7 @@ try {
 
     # 4. The product: kimi.exe alone; on the static CRT with one allocator (no CRT DLL, no HeapAlloc or HeapFree import, read from
     # KERNEL32.dll's symbol lines); naming no package DLL the publish leaves out (KimiOneFile's list); its self-check passes and
-    # reports the Tatara of this checkout.
+    # reports the Tatara of this checkout; it builds docs/examples/Hello, whose program writes exactly its 14 bytes (Hello's README).
     $files = @(Get-ChildItem -LiteralPath $output -Force | ForEach-Object Name)
     if (($files -join ', ') -cne 'Kimi.exe') { throw "The published folder holds $($files -join ', '), not Kimi.exe alone: $output" }
     $exe = Join-Path $output 'Kimi.exe'
@@ -83,6 +84,20 @@ try {
     $verified = Get-Content -LiteralPath $verifyReport -Raw | ConvertFrom-Json
     if ($verified.status -cne 'passed' -or $verified.tatara.build -cne $identity) {
         throw "Kimi.exe carries Tatara build $($verified.tatara.build) (verify $($verified.status)); this checkout's is $identity"
+    }
+    New-Item -ItemType Directory -Path $hello | Out-Null
+    Copy-Item -Path (Join-Path $repo 'docs/examples/Hello/Hello.kimi*') -Destination $hello
+    & $exe build (Join-Path $hello 'Hello.kimiproj')
+    if ($LASTEXITCODE -ne 0) { throw "Kimi.exe build of docs/examples/Hello failed with exit code $LASTEXITCODE" }
+    $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $hello 'bin/x86_64-pc-windows-msvc/Hello.O2.exe'))
+    $start.RedirectStandardOutput = $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+    $program = [Diagnostics.Process]::Start($start)
+    $printed = $program.StandardOutput.ReadToEndAsync()
+    $errors = $program.StandardError.ReadToEndAsync()
+    if (-not $program.WaitForExit(60000)) { $program.Kill(); throw 'Hello built by Kimi.exe did not exit within 60 s' }
+    if ($program.ExitCode -ne 0 -or $printed.Result -cne "Hello, world!`n" -or $errors.Result -cne '') {
+        throw "Hello built by Kimi.exe exited $($program.ExitCode) with stdout '$($printed.Result)' and stderr '$($errors.Result)', not exactly 'Hello, world!\n'"
     }
     Write-Host "Kimi published to $output (Kimi.exe, $((Get-Item -LiteralPath $exe).Length) bytes, Tatara build $identity)"
 }
