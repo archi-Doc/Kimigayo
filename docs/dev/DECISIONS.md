@@ -24371,8 +24371,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     the eight array + stride slices (O-4 (a): `SelectBest`, `PremisesCannotAffect`, `ComparableCallableSlots` and `CandidateOrder`
     serve four selections, P3's input); row copies of `premiseReadsSplit` and `refusedOnSplit` (O-5: BU-240 temporaries with G886's
     removal); commit 4 as a pure move before E3b-1 (O-2 (b)). **Evidence:** P-1's A6, A7, A8 and C2 (corpus reading; 0 FAIL lines;
-    the reference null at every SelectAt entry); snapshot 0, semantic HIR+MIR 0. **Cost:** its T slot after T-333 (A a21eb286f, B
-    0ee8b22fd; c34p2-c34-timing.ps1).
+    the reference null at every SelectAt entry); snapshot 0, semantic HIR+MIR 0. **Cost:** its slot T-334 (A 07878c04f, B
+    69431a0a5; `c34\p2-c34-timing.ps1`), within.
   - **The NoneApplicable record reads the rows** (commit 4, O-2 (a)): written by R7-M75 (R7-E3b-1) as
     `RecordNoneApplicable(in CallEvaluation)`, the NoneApplicable writer, which reads the rows, the operation columns and
     `LastAcquisition` and runs no fit, inference or proof.
