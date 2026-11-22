@@ -17,12 +17,14 @@ internal sealed partial class MirBuilder
     private readonly Dictionary<BoundType, BoundType> instances = []; // Each Type a copy folds, in the call's instance (Instantiates).
     private readonly Dictionary<Subst, Subst> compositions = []; // Each callee substitution a copy holds, composed (Instantiates).
 
-    // SPEC 23.1.1 (DECISIONS R4-M127, R4-M139): whether the call's substitution instantiates a copy of the template, decided before any of
-    // it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's), each Length
-    // constant's term (TyCtxt.InstanceLength) and each
-    // callee's substitution, in the call's instance as every reader of an instance reads it (TyCtxt.ReadableInstance, a composition by
-    // Readable over its deciding part: Prepared or Rejected, whose rejected parts hold nothing, never a Limit), each kept for Inline, which
-    // folds by them.
+    // SPEC 7.2.3, 23.1.1 (DECISIONS R4-M127; PLAN G396 (3)): whether the call's substitution forms a copy of the template, decided before
+    // any of it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's), each
+    // Length constant's term (TyCtxt.InstanceLength) and each callee's substitution, in the call's instance as the written call forms it
+    // (the collector's formation, R7-M54: TyCtxt.Apply's Type, TyCtxt.Compose's Subst, whatever the instance's storage verdict, Rejected or
+    // past Binding's storage bound), each kept for Inline, which folds by them. It is false only where a formation fails (Incomplete):
+    // after Binding's run outside the collector's frame, a Type past IMPL A.4's height that Binding records itself (PLAN G651's site-less
+    // record), or BU-36's contract substitution that does not complete (no reproducer; the collector reads it as a broken contract,
+    // R5-M151): Defaults' located Unsupported_Kd until G651 U2 (the Back's) gives the copy a formation owning its refusal.
     private bool Instantiates(MirBody template, Subst subst)
     {
         this.instances.Clear();
@@ -56,9 +58,7 @@ internal sealed partial class MirBuilder
         {
             if (block.Terminator.Callee.Subst is { } inner && !this.compositions.ContainsKey(inner))
             {
-                // A composition's verdict is its parts' (TyCtxt.Compose); the guard reads the part deciding it, none when Prepared.
-                if (compilation.Types.Compose(inner, subst) is not ({ } composed, _, var storage, var part) ||
-                    (part is not null && !compilation.Types.Readable(part, storage)))
+                if (compilation.Types.Compose(inner, subst).Subst is not { } composed)
                 {
                     return false;
                 }
@@ -97,7 +97,7 @@ internal sealed partial class MirBuilder
             return true;
         }
 
-        if (compilation.Types.ReadableInstance(type, subst) is not { } instance)
+        if (compilation.Types.Apply(type, subst).Type is not { } instance)
         {
             return false;
         }

@@ -17,11 +17,12 @@ namespace XunitTest;
 /// records generates nothing, and <c>kimi test</c> publishes its records as <c>kimi build</c> does.</summary>
 public sealed class CompilationEntryTest
 {
-    // The MIR's one Unsupported record here, at the call `Call`: a default the call's substitution cannot instantiate (MirBuildTest.Unbuilt;
-    // PD30's (e) row, the builder's B3).
-    private static readonly string Call = MirBuildTest.Unbuilt.Callee + "(a)";
+    // The MIR's one Unsupported record here, at the selection `Call`: a selection through an identity premise (MirBuildTest.Unbuilt;
+    // PLAN G168b).
+    private const string Call = "s.0";
 
-    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations + $"func same(a: i32) -> i32 => {Call}\nlet x = 1\n";
+    private static readonly string Unbuilt = MirBuildTest.Unbuilt.Declarations +
+        $"func same<T>(s: ref/T) -> i32\n    {MirBuildTest.Unbuilt.Premise}\n    return {Call}.a\nlet x = 1\n";
 
     // R5 K1, C0b1 (DECISIONS R5-M65, R5-M146): the checked set exists after check; MIR code generation writes the module of each output
     // form, an Application's (with its entry), a test build's (the test runtime's entry; C10a, DECISIONS R5-M136) or a Library's, never
@@ -184,8 +185,8 @@ public sealed class CompilationEntryTest
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
     }
 
-    // DECISIONS R5-M156 (superseding R3-1): check publishes the MIR's construction records, here the unbuilt tuple operator's (PD30's (e)
-    // row), as the analysis's problems, control-flow Errors that reject the program and block generation.
+    // DECISIONS R5-M156 (superseding R3-1): check publishes the MIR's construction records, here the unbuilt selection's (Unbuilt), as the
+    // analysis's problems, control-flow Errors that reject the program and block generation.
     [Fact]
     public void CheckPublishesTheMirRecords()
     {

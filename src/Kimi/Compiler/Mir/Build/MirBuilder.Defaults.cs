@@ -105,10 +105,11 @@ internal sealed partial class MirBuilder
     // SPEC 7.2.3: the omitted defaults of a call, each into a pending slot of its parameter's Type in parameter order, from shared borrows
     // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
     // (every slot, its arguments), or an Opaque value reading those slots where its template failed (no record), the body budget refuses
-    // the copy (Refuses: the call's Resource record) or the call's substitution does not instantiate it (Instantiates, decided before a
-    // copy is written, a Limit only: the call's Unsupported_Kd, SPEC 23.1.1, through Unsupported; over storage Binding rejected the copy
-    // is built, as a non-generic template over it is, DECISIONS R4-M139). A default that does not complete reaches no later
-    // default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
+    // the copy (Refuses: the call's Resource record) or the call's substitution does not form it (Instantiates, decided before a copy is
+    // written: a formation that fails after Binding's run, PLAN G651's height refusal or BU-36's; the call's Unsupported_Kd, SPEC 23.1.1,
+    // through Unsupported, until G651 U2, the Back's; over storage Binding rejected or past its storage bound the copy is built, as the
+    // written call is, DECISIONS R4-M139, PLAN G396 (3)). A default that does not complete reaches no later default and no callee at run
+    // time (SPEC 15.6.7); building goes on for the checks.
     private void Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
     {
         foreach (ref readonly var omitted in call.DefaultArguments)

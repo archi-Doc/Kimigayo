@@ -69,4 +69,29 @@ public sealed partial class MirEffectsTest
             Assert.Empty(Problems(c, program));
         }
     }
+
+    // SPEC 7.2.3 ¶2, 8.11.2 (PLAN G396 (3)): a copy over an instance past Binding's storage bound inside a confined witness contributes its
+    // default's effects as its written twin does (`IncompatibleContractImplementation_Kd` at `Self is Sink`, Failed): H.takeLoud<Bx^65>'s
+    // default prints (wit), in a closure literal called there (clo), and through the conforming Self's requirement (self: Ld<Bx^64>'s
+    // zero prints), each beside its written twin. Fail-before: no A4 problem, B3's Opaque value hiding the effect behind the call's
+    // Unsupported_Kd record (the design's b3-wit-loud, the reviewers' r-clo-loud and f-self-loud).
+    [Theory]
+    [InlineData("_ = H.takeLoud<B65>(value)")]
+    [InlineData("_ = H.takeLoud<B65>(value, H.loud<B65>())")]
+    [InlineData("let f = func (x: i32) -> i32 => H.takeLoud<B65>(x)\n        _ = f(value)")]
+    [InlineData("let f = func (x: i32) -> i32 => H.takeLoud<B65>(x, H.loud<B65>())\n        _ = f(value)")]
+    [InlineData("_ = H.takeSelf<Ld<B64>>(value)")]
+    [InlineData("_ = H.takeSelf<Ld<B64>>(value, Ld<B64>.zero())")]
+    public void ACopyPastTheBoundInAConfinedWitnessIsItsDefaultsEffect(string statement)
+        => Assert.Equal(
+            [Failed],
+            Problems(Sink + "contract Zero\n    func zero() -> i32\nstruct Bx<T>\n    public var v: T\nstruct Ld<T>\n    public var v: T\n    Self is Zero\n" +
+                "    public func zero() -> i32\n        Console.writeLine(\"loud\")\n        return 0\ngroup H\n    public func loud<T>() -> i32\n" +
+                "        Console.writeLine(\"loud\")\n        return 0\n    public func takeLoud<T>(a: i32, k: i32 = H.loud<T>()) -> i32 => a + k\n" +
+                "    public func takeSelf<T>(a: i32, k: i32 = T.zero()) -> i32\n        T is Zero\n        return a + k\nstruct S\n    Self is Sink\n" +
+                Put + "        " + statement.Replace("B65", BoxNest(65), StringComparison.Ordinal).Replace("B64", BoxNest(64), StringComparison.Ordinal) +
+                "\n        return .Ok(())\n"));
+
+    // Bx nested n times over i32.
+    private static string BoxNest(int n) => string.Concat(Enumerable.Repeat("Bx<", n)) + "i32" + new string('>', n);
 }
