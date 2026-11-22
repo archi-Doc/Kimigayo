@@ -36,10 +36,21 @@ public sealed partial class Binding
     private readonly Stack<Koto> prerequisitePending = new();
     private readonly Stack<Koto> derivationInputs = new();
 
+    // R7-E5 c1: each problem's inputs by its report index, what its check read: the reads of the frame it was recorded in (a range in
+    // prerequisiteStore) and the part that frame named at its node; Start -1, no row: recorded with no frame of its node open, it reads
+    // its node's rest. Grows only with problems; cleared with the report (ResetPrerequisites).
+    private readonly List<(int Start, int Count, Koto? Part)> problemInputs = [];
+
+    // The problems recorded while a frame of their node was open (ChecksOwnSite), by report index, each frame's from its Problems on.
+    private readonly List<int> framedProblems = [];
+
     // The running walk's number (PrerequisiteVisitRows): a row carrying it is a node this walk visited, any other row one it did not.
     private uint prerequisiteWalk = FirstQuery;
     private int consultationStart = -1;
     private Koto? consultationNode;
+
+    // The part the open frame's checks named at its node (AddPrerequisite, AddPendingPrerequisite), null for none.
+    private Koto? consultationPart;
 
     // The pass's change signal (ValidateConstraintEnvironments): advanced by every write of what an environment's judgment reads, in the
     // step that writes it: each Fail call, whether or not the node held a failure already (a conformance's, an identity's or an Access
@@ -346,7 +357,7 @@ public sealed partial class Binding
         this.Invalidated();
 
         // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
-        if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
+        if (this.consultationStart >= 0 && !this.ChecksOwnSite(node))
         {
             this.consulted.Add(node);
         }
@@ -429,40 +440,50 @@ public sealed partial class Binding
     private bool BuiltOn(Koto parent, Koto place)
         => IsGroup(parent) || (this.NextPathStep(parent, out var next) is not (PathStep.Root or PathStep.Candidate or PathStep.Receiver) && ReferenceEquals(next, place));
 
-    private (int Start, Koto? Node) BeginConsultation(Koto node)
+    // A frame's begin: the enclosing frame's state, with the count of problems recorded at the open frames' nodes before it (Problems:
+    // the ones from there on are this frame's).
+    private (int Start, Koto? Node, int Problems, Koto? Part) BeginConsultation(Koto node)
     {
-        var parent = (this.consultationStart, this.consultationNode);
+        var parent = (this.consultationStart, this.consultationNode, this.framedProblems.Count, this.consultationPart);
         this.consultationStart = this.consulted.Count;
         this.consultationNode = node;
+        this.consultationPart = null;
         return parent;
     }
 
-    private void EndConsultation(Koto node, (int Start, Koto? Node) parent)
+    private void EndConsultation(Koto node, (int Start, Koto? Node, int Problems, Koto? Part) parent)
     {
         var start = this.consultationStart;
         var count = this.consulted.Count - start;
-        if (count != 0)
+        if (count != 0 && node.BindingState != BindingState.Resolved)
         {
-            if (node.BindingState != BindingState.Resolved)
+            this.prerequisites[node] = (this.prerequisiteStore.Count, count);
+            for (var i = start; i < start + count; i++)
             {
-                this.prerequisites[node] = (this.prerequisiteStore.Count, count);
-                for (var i = start; i < start + count; i++)
-                {
-                    this.prerequisiteStore.Add(this.consulted[i]);
-                }
+                this.prerequisiteStore.Add(this.consulted[i]);
             }
-
-            this.consulted.RemoveRange(start, count);
         }
 
-        (this.consultationStart, this.consultationNode) = parent;
+        this.CloseConsultation(parent);
     }
 
     // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame, a site frame): nothing becomes its prerequisite.
-    private void DropConsultation((int Start, Koto? Node) parent)
+    private void DropConsultation((int Start, Koto? Node, int Problems, Koto? Part) parent) => this.CloseConsultation(parent);
+
+    // A frame's end: its reads leave the collector, the problems it recorded leave the list, and the enclosing frame is open again.
+    private void CloseConsultation((int Start, Koto? Node, int Problems, Koto? Part) parent)
     {
-        this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
-        (this.consultationStart, this.consultationNode) = parent;
+        if (this.framedProblems.Count != parent.Problems)
+        {
+            this.framedProblems.RemoveRange(parent.Problems, this.framedProblems.Count - parent.Problems);
+        }
+
+        if (this.consulted.Count != this.consultationStart)
+        {
+            this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
+        }
+
+        (this.consultationStart, this.consultationNode, this.consultationPart) = (parent.Start, parent.Node, parent.Part);
     }
 
     // SPEC 23.1.2: a check whose result the node being checked does not read runs with no frame open, so nothing it fails becomes that
@@ -470,18 +491,20 @@ public sealed partial class Binding
     // own is read by no check of that call (CompleteUnselected; DECISIONS U4b), and the binding result of a declaration that a container
     // or a Property contains is read by no verdict of it (BindContainedDeclarations, BindVariableCore; DECISIONS G52-1). ResumeConsultation
     // reopens the frame.
-    private (int Start, Koto? Node) SuspendConsultation()
+    private (int Start, Koto? Node, int Problems, Koto? Part) SuspendConsultation()
     {
-        var parent = (this.consultationStart, this.consultationNode);
-        (this.consultationStart, this.consultationNode) = (-1, null);
+        var parent = (this.consultationStart, this.consultationNode, this.framedProblems.Count, this.consultationPart);
+        (this.consultationStart, this.consultationNode, this.consultationPart) = (-1, null, null);
         return parent;
     }
 
-    private void ResumeConsultation((int Start, Koto? Node) parent) => (this.consultationStart, this.consultationNode) = parent;
+    private void ResumeConsultation((int Start, Koto? Node, int Problems, Koto? Part) parent)
+        => (this.consultationStart, this.consultationNode, this.consultationPart) = (parent.Start, parent.Node, parent.Part);
 
-    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2): whether the open consultation is `site`'s own check. A failure's own
-    // checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity premise
-    // error (IdentityPremiseErrorRead).
+    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2), R7-E5 c1: whether the open consultation is `site`'s own check, the one
+    // test of "framed". A failure's own checks are its sites, never its readers: the one rule for a named unproven input
+    // (UnprovenInputRead) and an identity premise error (IdentityPremiseErrorRead); a failure (Fail) or a read (Consulted) of the frame's
+    // own node is no prerequisite of it.
     private bool ChecksOwnSite(Koto site) => ReferenceEquals(site, this.consultationNode);
 
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
@@ -489,7 +512,7 @@ public sealed partial class Binding
     /// <param name="dependency">The node whose result was read.</param>
     private void Consulted(Koto dependency)
     {
-        if (this.consultationStart >= 0 && this.RecordedState(dependency) != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode) &&
+        if (this.consultationStart >= 0 && this.RecordedState(dependency) != BindingState.Resolved && !this.ChecksOwnSite(dependency) &&
             !this.IsWaitingPart(dependency))
         {
             this.consulted.Add(dependency);
@@ -515,12 +538,13 @@ public sealed partial class Binding
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
     // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
-    // requirement judged: the caller passes the problem's (CollectIssue: the node's recorded failure).
-    private bool IsDerived(Koto node, BindingFailure failure)
-        => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node))) ||
+    // requirement judged and `problem` its problem (CollectProblem: the slot's, -1 for a slot without one, or a further one); the first
+    // three rows read the problem's inputs (PushInputs, PartOf), the others its node's part.
+    private bool IsDerived(Koto node, BindingFailure failure, int problem)
+        => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node, problem))) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
-            this.RestsOnReported(node)) ||
-            (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
+            this.RestsOnReported(node, problem)) ||
+            (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.PartOf(node, problem) is { } part &&
             (this.RecordedState(part) == BindingState.Invalid || this.HasFailureCauses(part))) ||
             (failure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
             this.formationCauses.ContainsKey(occurrence)) ||
@@ -534,18 +558,18 @@ public sealed partial class Binding
     // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
     // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any
     // other, from that record and adds none; a refusal at its own site stays its own record. The one place of the rule; the walk
-    // reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
-    private bool RestsOnRecoveryOrLimit(Koto node)
+    // reuses the prerequisite storage of PrerequisiteKeys; both run only at publication. The walk starts from the problem's inputs
+    // (PushInputs); an input's own rest is the input's (PushPrerequisites).
+    private bool RestsOnRecoveryOrLimit(Koto node, int problem)
     {
-        if (!this.prerequisites.ContainsKey(node) && !this.partPrerequisites.ContainsKey(node))
+        var pending = this.prerequisitePending;
+        if (!this.PushInputs(node, problem, pending))
         {
             return false;
         }
 
         var visits = this.prerequisiteVisits;
-        var pending = this.prerequisitePending;
         visits.Add(node);
-        this.PushPrerequisites(node, pending);
         var found = false;
         var limit = !this.ResourceFailed(node);
         while (pending.TryPop(out var cause))
@@ -672,12 +696,12 @@ public sealed partial class Binding
         return reported;
     }
 
-    // Whether a record at `node` rests on an input whose own record, or the record it rests on, is reported (FailureReported, read for
-    // each unresolved input PushPrerequisites names): IsDerived's test of a missing-information record.
-    private bool RestsOnReported(Koto node)
+    // Whether a problem at `node` rests on an input whose own record, or the record it rests on, is reported (FailureReported, read for
+    // each unresolved input PushInputs names): IsDerived's test of a missing-information record.
+    private bool RestsOnReported(Koto node, int problem)
     {
         var inputs = this.derivationInputs;
-        this.PushPrerequisites(node, inputs);
+        this.PushInputs(node, problem, inputs);
         var reported = false;
         while (inputs.TryPop(out var input))
         {
@@ -718,27 +742,45 @@ public sealed partial class Binding
         return keys;
     }
 
+    // A node's rest: its unresolved part and reads. True when it pushed one.
     private bool PushPrerequisites(Koto node, Stack<Koto> pending)
     {
-        var count = pending.Count;
-        if (this.UnresolvedPart(node) is { } part)
+        _ = this.prerequisites.TryGetValue(node, out var range); // Count 0: none.
+        return this.PushUnresolved(this.partPrerequisites.TryGetValue(node, out var part) ? part : null, range.Start, range.Count, pending);
+    }
+
+    // R7-E5 c1 (DIAGNOSTICS 4.3, a problem's inputs): what a problem's check read, as PushPrerequisites pushes a node's rest: its row's
+    // part and reads when it has a row, else its node's rest. IsDerived's first two rows start from it. True when it pushed one.
+    private bool PushInputs(Koto node, int problem, Stack<Koto> pending)
+        => this.InputRow(problem) is { } row ? this.PushUnresolved(row.Part, row.Start, row.Count, pending) : this.PushPrerequisites(node, pending);
+
+    // The part a problem's check named: its row's (null: none) when it has a row, else its node's.
+    private Koto? PartOf(Koto node, int problem)
+        => this.InputRow(problem) is { } row ? row.Part : this.partPrerequisites.TryGetValue(node, out var part) ? part : null;
+
+    // A problem's row, or null: no problem (-1), or one recorded with no frame of its node open (Start -1).
+    private (int Start, int Count, Koto? Part)? InputRow(int problem)
+        => (uint)problem < (uint)this.problemInputs.Count && this.problemInputs[problem] is { Start: >= 0 } row ? row : null;
+
+    // The unresolved ones of a part and a range of prerequisiteStore, the part first and the range's first on top.
+    private bool PushUnresolved(Koto? part, int start, int count, Stack<Koto> pending)
+    {
+        var pushed = pending.Count;
+        if (part is not null && this.IsUnresolvedPrerequisite(part))
         {
             pending.Push(part);
         }
 
-        if (this.prerequisites.TryGetValue(node, out var range))
+        for (var i = start + count - 1; i >= start; i--)
         {
-            for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
+            var cause = this.prerequisiteStore[i];
+            if (this.IsUnresolvedPrerequisite(cause))
             {
-                var cause = this.prerequisiteStore[i];
-                if (this.IsUnresolvedPrerequisite(cause))
-                {
-                    pending.Push(cause);
-                }
+                pending.Push(cause);
             }
         }
 
-        return pending.Count != count;
+        return pending.Count != pushed;
     }
 
     // R7-N5 E (DECISIONS BU-220 as R7-N5 B2a-2 and B4 amend it): the Prerequisites family's one accessor, a node's consultation range in
