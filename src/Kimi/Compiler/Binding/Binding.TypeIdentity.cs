@@ -372,9 +372,11 @@ public sealed partial class Binding
     // R7-C3 C3d (F's C2/C3 ruling 331 (B)): the site a declaration's premise error stands at when no record stands at the declaration
     // itself (its first own clause's record or its supplier), while that site is not resolved: the published cause of the declaration's
     // Invalid state, which the cause queries read (HasFailureCauses and the prerequisite walk, PushPrerequisites). The context reader
-    // (InvalidDeclarationCause) reads no site, so the declaration keeps its context (KeepsPremiseErrorContext), as on dev.
+    // (InvalidDeclarationCause) reads no site, so the declaration keeps its context (KeepsPremiseErrorContext), as on dev. A declaration
+    // that records a failure of its own later (another check's) has that record as its cause: its own record's derivation reads its own
+    // inputs (RestsOnReported), not the site.
     private Koto? IdentityErrorSite(Koto declaration)
-        => this.identityRecorded.Count != 0 && this.scopes.TryGetValue(declaration, out var scope) &&
+        => this.identityRecorded.Count != 0 && this.RecordedFailure(declaration) == BindingFailure.None && this.scopes.TryGetValue(declaration, out var scope) &&
             this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Site is { } site && this.IsUnresolvedPrerequisite(site) ? site : null;
 
     // R7-C3 C3d (PLAN G830): an own error group's clause, the last of the owner's premise clauses (its own facts) with a Type in the group.
