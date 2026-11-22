@@ -115,7 +115,7 @@ public class LibraryAbortContextTest
         Assert.True(valid);
     }
 
-    // A program whose every release fails (the platform layer's release returns the OS error 5): its first release Aborts with KIMI_E_FREE.
+    // A program whose every release fails (the allocator's release returns the OS error 5): its first release Aborts with KIMI_E_FREE.
     private static void ReleaseFails(string name, string source, string location)
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source))

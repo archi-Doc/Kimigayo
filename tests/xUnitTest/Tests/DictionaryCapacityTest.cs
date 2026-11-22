@@ -64,7 +64,7 @@ public class DictionaryCapacityTest
               %capacity = load i64, ptr %capacity_ptr, align 8
               %same_buffer = icmp eq ptr %buffer, @probe_memory
               %same_capacity = icmp eq i64 %capacity, 4
-              %allocation = icmp eq i32 %reason, 3
+              %allocation = icmp eq i32 %reason, 2
               %same = and i1 %same_buffer, %same_capacity
               %valid = and i1 %same, %allocation
               br i1 %valid, label %passed, label %failed

@@ -33,8 +33,7 @@ public sealed class Kernel32ImportsTest
         Assert.Equal(ToolchainIdentity.Kernel32DefinitionSha256, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(definition))));
         var exports = definition.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal);
         Assert.True(exports.SetEquals(TargetProfile.Windows.Supply("kernel32")!.Symbols));
-        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsPlatform.ll.in"));
-        foreach (Match match in Regex.Matches(runtime, @"declare dllimport .*?@(\w+)\("))
+        foreach (Match match in Regex.Matches(RuntimeTemplates(), @"declare dllimport .*?@(\w+)\("))
         {
             Assert.Contains(match.Groups[1].Value, exports);
         }
@@ -65,7 +64,7 @@ public sealed class Kernel32ImportsTest
     [Theory]
     [InlineData("{{__kimi_exit}}\r\n  unreachable\n}\n", "  unreachable\n}\n")]
     [InlineData("{{__kimi_exit}}\n  ret\r void\r\r\n}\r", "  ret\r void\r\n}\r")]
-    [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1912\n")]
+    [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_alloc}}\n", "1812\n")]
     [InlineData("{{__kimi_exit}}\n  ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)\n", "  ret ptr inttoptr (i64 4096 to ptr)\n")]
     [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
     [InlineData("{{__kimi_exit}}\n[{{os_prefix_length}} x i8] c\"{{os_prefix}}\"\n", "[8 x i8] c\" (win32=\"\n")]
@@ -96,7 +95,7 @@ public sealed class Kernel32ImportsTest
     }
 
     // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, the runtime's (the
-    // platform layer and the common part), the Array runtime's or the test runtime's (the definitions, the reason indices, the reason
+    // platform layer, the common part and the allocator) or the test runtime's (the definitions, the reason indices, the reason
     // table and its count, the ABI constants), by its text throughout the whole text wrote.
     [Theory]
     [InlineData("Runtime")]
@@ -169,14 +168,12 @@ public sealed class Kernel32ImportsTest
         Assert.True(allocated <= 11L * chars, $"runtime texts allocation {allocated} for {chars} chars");
     }
 
+    // Every runtime template's kernel32 declaration (C-468's N3) is a row of the table, with its signature, and each row is declared once.
     [Fact]
     public void RuntimeDeclarationTableMatchesTheEmittedDeclarations()
     {
-        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsPlatform.ll.in")) +
-            File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll"));
         var declared = new List<string>();
-        foreach (Match match in Regex.Matches(runtime, @"(?m)^declare dllimport (\S+) @(\w+)\(([^)]*)\)(.*)$"))
+        foreach (Match match in Regex.Matches(RuntimeTemplates(), @"(?m)^declare dllimport (\S+) @(\w+)\(([^)]*)\)(.*)$"))
         {
             var symbol = match.Groups[2].Value;
             declared.Add(symbol);
@@ -194,7 +191,7 @@ public sealed class Kernel32ImportsTest
             Assert.Equal(codes, entry.Signature);
         }
 
-        Assert.Equal(declared, TargetProfile.Windows.RuntimeDeclarations.Select(x => x.Symbol));
+        Assert.Equal(TargetProfile.Windows.RuntimeDeclarations.Select(static x => x.Symbol).Order(StringComparer.Ordinal), declared.Order(StringComparer.Ordinal));
 
         static string Code(string type) => type switch
         {
@@ -259,5 +256,20 @@ public sealed class Kernel32ImportsTest
         Assert.Equal(
             $"The link manifest's 'libraries' entry '{name}' is not this compiler's. Re-emit the manifest.",
             Assert.Throws<InvalidDataException>(() => LinkManifest.CheckCompilerSupply(invalid.RootElement, supply)).Message);
+    }
+
+    // Every runtime template's text (C-468's N3): the Backend's embedded templates in name order, then the test runtime's.
+    private static string RuntimeTemplates()
+    {
+        var assembly = typeof(LlvmModuleText).Assembly;
+        var text = new StringBuilder();
+        foreach (var name in assembly.GetManifestResourceNames().Where(static x => x.StartsWith("Kimi.Compiler.Backend.", StringComparison.Ordinal) &&
+            x.EndsWith(".ll.in", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+        {
+            using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+            text.Append(reader.ReadToEnd()).Append('\n');
+        }
+
+        return text.Append(TestRuntime.Text).ToString();
     }
 }

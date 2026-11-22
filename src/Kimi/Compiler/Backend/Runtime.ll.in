@@ -1,5 +1,6 @@
 ; The common internal runtime of every target: output, Abort, allocation and string release over the platform layer's routines
-; (WindowsPlatform.ll.in on windows-x64), which own every operating system call. Definitions receive the Backend's common #0 profile.
+; (WindowsPlatform.ll.in on windows-x64), which own every operating system call of the runtime, and Kimi's allocator (HeapRuntime.ll.in).
+; Definitions receive the Backend's common #0 profile.
 ; No buffer allocation, encoding conversion, CRT startup or exception unwinding.
 @__kimi_lf = private constant [1 x i8] c"\0A"
 @__kimi_abort_prefix = private constant [8 x i8] c": abort "
@@ -131,13 +132,12 @@ done:
   ret void
 }
 
-; A block of the layer's heap; the layer reports an unavailable heap at the location first.
+; A block of the allocator; no pages for it Aborts at the location without an OS error.
 define internal ptr @__kimi_alloc(i64 %size, ptr %location, i64 %location_length) #0 {
 entry:
   %invalid = icmp ugt i64 %size, 9223372036854775807
   br i1 %invalid, label %size_failure, label %allocate
 allocate:
-  call void @__kimi_check_process_heap(ptr %location, i64 %location_length)
   %memory = call ptr @__kimi_heap_allocate(i64 %size)
   %failed = icmp eq ptr %memory, null
   br i1 %failed, label %alloc_failure, label %done
@@ -182,12 +182,11 @@ argument_failure:
 
 define internal void @__kimi_free(ptr %memory, ptr %location, i64 %location_length) #0 {
 entry:
-  ; Null and the zero-sized-element buffer substitute lie below the unmapped bound, where the layer never places a block.
+  ; Null and the zero-sized-element buffer substitute lie below the unmapped bound, where the layer's pages never lie.
   %address = ptrtoint ptr %memory to i64
   %reserved = icmp ult i64 %address, {{unmapped_bound}}
   br i1 %reserved, label %done, label %release
 release:
-  call void @__kimi_check_process_heap(ptr %location, i64 %location_length)
   %error = call i64 @__kimi_heap_release(ptr %memory)
   %failed = icmp ne i64 %error, -1
   br i1 %failed, label %free_failure, label %done

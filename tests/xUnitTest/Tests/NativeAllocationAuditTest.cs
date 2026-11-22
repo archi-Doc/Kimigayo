@@ -21,12 +21,14 @@ public class NativeAllocationAuditTest
     // Two Dictionary storages (96 and 192 bytes); the growth transfers the four occupied slots (96 bytes).
     private const string Entries = "var entries: Dictionary<i32, i32> = [:]\nvar i = 0\nwhile i < 5\n    _ = entries.tryInsert(i, i)\n    i += 1";
 
-    // An exit that bypasses __kimi_exit, as a generator calling the import directly would write it.
+    // An exit that bypasses __kimi_exit, as a generator calling the import directly would write it: no import shares ExitProcess's
+    // declaration (SPEC 21.2), so no program definition may mention it.
     private const string DirectExit = "define internal void @audit_direct_exit() {\nentry:\n  call void @ExitProcess(i32 0)\n  unreachable\n}\n";
 
-    // A block taken from the process heap outside the platform layer, as the runtime took it before the layer (the Tatara plan's B7r1).
-    private const string DirectAllocation =
-        "define internal ptr @audit_direct_alloc() {\nentry:\n  %heap = call ptr @GetProcessHeap()\n  %data = call ptr @HeapAlloc(ptr %heap, i32 0, i64 1)\n  ret ptr %data\n}\n";
+    // The program's own page mapping, through its import that shares the runtime's VirtualAlloc declaration (ForeignEmissionTest.Pages):
+    // outside the layer, which owns only the runtime's calls.
+    private const string ImportedPages =
+        "define internal ptr @audit_imported_pages() {\nentry:\n  %data = call ptr @VirtualAlloc(ptr null, i64 4096, i32 12288, i32 4)\n  ret ptr %data\n}\n";
 
     [Theory]
     [InlineData("Control", "call ptr @__kimi_heap_allocate(")]
@@ -55,13 +57,40 @@ public class NativeAllocationAuditTest
         Assert.Throws<DoesNotContainException>(() => Audit("Stray", Append, 1, 16, transformIr: ir => ir + stray));
     }
 
-    // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1): a kernel32 call outside the platform layer's routines, the exit's outside __kimi_exit,
-    // fails the audit before any run.
+    // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1, B7r2): a kernel32 call in a runtime routine other than the layer routine that owns it
+    // fails the audit before any run: the common part on the process heap, as the runtime took it before the layer (B7r1); the allocator
+    // mapping pages itself, beside the layer (B7r2); and C-468's N2, a heap call in the exit or a page mapping in the write.
     [Theory]
-    [InlineData(DirectExit)]
-    [InlineData(DirectAllocation)]
-    public void AnOsCallOutsideTheLayerFails(string definition)
-        => Assert.Throws<EmptyException>(() => Audit("OsCall", Append, 1, 16, transformIr: ir => ir + definition));
+    [InlineData("__kimi_alloc", "call ptr @GetProcessHeap()")]
+    [InlineData("__kimi_heap_allocate", "call ptr @VirtualAlloc(ptr null, i64 4096, i32 12288, i32 4)")]
+    [InlineData("__kimi_exit", "call ptr @GetProcessHeap()")]
+    [InlineData("__kimi_write", "call ptr @VirtualAlloc(ptr null, i64 4096, i32 12288, i32 4)")]
+    public void AnOsCallOutsideItsLayerRoutineFails(string routine, string call)
+    {
+        var entry = new Regex(@"(?m)^define [^\n]*@" + Regex.Escape(routine) + @"\([^\n]*\nentry:\n");
+        Assert.Throws<EmptyException>(() => Audit("OsCall", Append, 1, 16, transformIr: ir =>
+        {
+            Assert.Single(entry.Matches(ir));
+            return entry.Replace(ir, "$0  %stray = " + call + "\n");
+        }));
+    }
+
+    // The program's own definitions call kernel32 only through their imports, outside the layer: an imported VirtualAlloc passes the rule,
+    // an exit around __kimi_exit does not.
+    [Theory]
+    [InlineData(DirectExit, true)]
+    [InlineData(ImportedPages, false)]
+    public void AProgramCallsOnlyItsImportsOutsideTheLayer(string definition, bool fails)
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Append)) + definition;
+        if (fails)
+        {
+            Assert.Throws<EmptyException>(() => NativeAllocationAudit.AssertOsCallsInLayer(ir));
+            return;
+        }
+
+        NativeAllocationAudit.AssertOsCallsInLayer(ir);
+    }
 
     // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1): Hello's module and a Dictionary program's, which also defines the nullable Alloc, call
     // kernel32 only inside the platform layer's routines and exit only through __kimi_exit.
@@ -77,7 +106,7 @@ public class NativeAllocationAuditTest
 
     [Theory]
     [InlineData("declare dllimport ptr @HeapReAlloc(ptr, i32, ptr, i64)")]
-    [InlineData("declare dllimport ptr @VirtualAlloc(ptr, i64, i32, i32)")]
+    [InlineData("declare dllimport ptr @VirtualQuery(ptr, ptr, i64)")]
     [InlineData("declare dllimport ptr @RtlAllocateHeap(ptr, i32, i64)")]
     [InlineData("declare extern_weak dllimport ptr @HeapReAlloc(ptr, i32, ptr, i64)")]
     [InlineData("declare ptr @HeapReAlloc(ptr, i32, ptr, i64)")]
