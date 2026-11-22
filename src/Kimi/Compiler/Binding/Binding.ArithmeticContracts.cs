@@ -45,7 +45,7 @@ public sealed partial class Binding
         }
 
         var counterpart = this.ContractType(path.Contract.Type!.Components[0], path.Scope);
-        if (ArithmeticContracts.IsLeft(id))
+        if (KimiLibraryCatalog.IsLeftContract(id))
         {
             return this.BuiltinNumeric(counterpart, path.Scope) || Fail(counterpart, ArithmeticConformanceCause.LhsNotNumeric);
         }

@@ -4,7 +4,7 @@
 
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes, a body's identity premises (the compilation's TyCtxt.Premised, read through Premised), Binding's Copy and
-// Sealed proofs and the Type statements the operator domain composes (ArithmeticContracts.Supports, TyCtxt.OperatorCompares,
+// Sealed proofs and the Type statements the operator domain composes (TyCtxt.HasBuiltinArithmetic, TyCtxt.OperatorCompares,
 // BoundType.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
 // (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
 // operator-domain facts (Operates, the operator table's domain, which the Backend's operator columns read too), and the pairing of the
@@ -178,8 +178,8 @@ internal static partial class MirTypes
 
     /// <summary>Gets whether a MIR operator's built-in operation takes an operand's terminal Type (SPEC 13.2-13.4): the operator table's
     /// domain, the one statement MirValidator's operator rvalues and the Backend's operator columns (FunctionCodegen.Column) read, keyed by
-    /// MIR's operator over the root statements. + - * / % and unary - where the operator's arithmetic Contract has a built-in witness
-    /// (ArithmeticContracts.Supports, SPEC 13.3.3, by ArithmeticOperations), + and - a raw pointer too (its displacement, SPEC 5.3); &amp; | ^
+    /// MIR's operator over the Type statements. + - * / % and unary - where the operator's arithmetic Contract has a built-in witness
+    /// (TyCtxt.HasBuiltinArithmetic, SPEC 13.3.3, by ArithmeticOperations), + and - a raw pointer too (its displacement, SPEC 5.3); &amp; | ^
     /// and a shift's left operand an integer or wrapping integer Type (SPEC 13.3.1); not bool; a comparison a Type the operator table
     /// compares (TyCtxt.OperatorCompares). An abstract Type's on Binding's proof of its instance, which MIR trusts by the shape:
     /// a PrimitiveInteger T's or Wrapping over one's every binary operator (SPEC 13.3.3, 3.5.3), Wrapping over one's negation (SPEC 3.1.1); a
@@ -335,14 +335,14 @@ internal static partial class MirTypes
     private static bool IsBitwiseOrShift(MirBinaryOp op)
         => op is MirBinaryOp.Shl or MirBinaryOp.Shr || op is MirBinaryOp.BitAnd or MirBinaryOp.BitOr or MirBinaryOp.BitXor;
 
-    // Whether an arithmetic operator's Contract has a built-in witness at a Type (ArithmeticOperations; ArithmeticContracts.Supports).
+    // Whether an arithmetic operator's Contract has a built-in witness at a Type (ArithmeticOperations; TyCtxt.HasBuiltinArithmetic).
     private static bool Conforms(MirRvalueKind kind, byte op, BoundType type)
     {
         foreach (var row in ArithmeticOperations)
         {
             if (row.Kind == kind && row.Op == op)
             {
-                return ArithmeticContracts.Supports(type, row.Contract);
+                return TyCtxt.HasBuiltinArithmetic(type, row.Contract);
             }
         }
 
