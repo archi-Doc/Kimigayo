@@ -53,7 +53,11 @@ public partial class TypeDagScalingTest
     // Error that stands is its conformance's own record beside it (std9: R0.Z's constant sources i32 and i64; conf9: R5.X's), whichever
     // of the contract's values or the sources is declared first; no other definition reports a Language record for a Resource failure.
     // Each entry names a record's code and the definition whose `Self is RC` holds it; the headers' records over a failed conformance stay
-    // open (dependent).
+    // open (dependent). C4 ruling 19 D1 (the delta read's lim-dup, lim-layout and lim-dup-r1, labelled before any run by SPEC 8.3.3 Limits,
+    // 23.1.1-23.1.2): std9-ok whose least definition's declaration fails (R0's header `{h, h}`: DuplicateBinding_Kd; R0 holding
+    // `var next: Option<R0>`: InvalidInlineLayout_Kd) still holds the component's one AnalysisLimit_Kd, written on every path of R0's
+    // conformance check, its early exit included, and no other definition reports a Language record for its Resource failure; the twin
+    // fails R1's header instead.
     [Theory]
     [InlineData("std9-z1", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R0")]
     [InlineData("std9-z2", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R0")]
@@ -62,13 +66,20 @@ public partial class TypeDagScalingTest
     [InlineData("conf9-fe", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R5")]
     [InlineData("nest9-ab", "AnalysisLimit_Kd@struct GA")]
     [InlineData("nest9-ba", "AnalysisLimit_Kd@struct GA")]
+    [InlineData("lim-dup", "AnalysisLimit_Kd@struct R0 {h, h}")]
+    [InlineData("lim-layout", "AnalysisLimit_Kd@struct R0")]
+    [InlineData("lim-dup-r1", "AnalysisLimit_Kd@struct R0")]
     public void TheLimitRecordIsTheComponentsOneAndAStandingErrorStays(string form, string records)
     {
+        var ok = Verification.AssociatedInferenceWorkloads.RingWithZ(true, "i32");
         var program = form switch
         {
             "std9-z1" => Verification.AssociatedInferenceWorkloads.RingWithZ(true, "i64"),
             "std9-z2" => Verification.AssociatedInferenceWorkloads.RingWithZ(false, "i64"),
-            "std9-ok" => Verification.AssociatedInferenceWorkloads.RingWithZ(true, "i32"),
+            "std9-ok" => ok,
+            "lim-dup" => ok.Replace("struct R0\n", "struct R0 {h, h}\n", StringComparison.Ordinal),
+            "lim-layout" => ok.Replace("struct R0\n", "struct R0\n    var next: Option<R0>\n", StringComparison.Ordinal),
+            "lim-dup-r1" => ok.Replace("struct R1\n", "struct R1 {h, h}\n", StringComparison.Ordinal),
             "conf9-ef" => Verification.AssociatedInferenceWorkloads.RingWithConflict(true),
             "conf9-fe" => Verification.AssociatedInferenceWorkloads.RingWithConflict(false),
             _ => Verification.AssociatedInferenceWorkloads.NestedRing(form == "nest9-ab"),

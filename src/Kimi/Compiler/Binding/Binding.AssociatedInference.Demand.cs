@@ -615,11 +615,11 @@ public sealed partial class Binding
     // value there (a Type, missing or a conflict, as Value(v | {}) gives it); another is a conflict when two supplying sources differ (an
     // Error that stands), else a Resource failure (InferenceProblem.Limit). The component's one Resource record is decided here, where
     // the limit is reached (C4 ruling 17 B2): at the conformance use of its least definition by full name (SPEC 8.3.3: "may depend on
-    // declaration names"), every Resource binding's ProblemDetail; VerifyConformance writes it as that conformance's first record (the
-    // use is the conformance's declaration: a record written here would fail it before its verification, and the conformance's own
-    // Error would be lost), every Resource binding's use rests on it, and a standing binding's Error stays its conformance's record
-    // (SPEC 23.1.2). A run records no problem here; every state's runs are back in the pools (ruling 15 (a)), and each binding's run
-    // goes back after it.
+    // declaration names"), every Resource binding's ProblemDetail; VerifyConformance writes it at its single exit, on every path of that
+    // conformance's check (C4 ruling 19; the use is the conformance's declaration: a record written here would fail it before its
+    // verification, and the conformance's own Error would be lost), every Resource binding's use rests on it, and a standing binding's
+    // Error stays its conformance's record (SPEC 23.1.2). A run records no problem here; every state's runs are back in the pools
+    // (ruling 15 (a)), and each binding's run goes back after it.
     private void DecideAtLimit()
     {
         // The hold of every binding, formed in order-number order (each member newer than the last, one node each; in entry order each

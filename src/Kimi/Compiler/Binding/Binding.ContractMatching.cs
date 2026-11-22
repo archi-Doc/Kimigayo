@@ -100,9 +100,23 @@ public sealed partial class Binding
 
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (its open
     // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
-    // its published source state.
+    // its published source state. SPEC 8.3.3 Limits, 23.1.1-23.1.2 (C4 rulings 17-19): every exit of the check passes here, its single
+    // exit after its own judgment, where the component's one Resource record is written when this conformance's use holds it
+    // (DecideAtLimit's decision, read by HoldsInferenceLimit), so the record depends on nothing the check found (an early exit over a
+    // failed declaration context included), every Resource binding's use rests on it, and the check's own records stay beside it (one
+    // written before the check would fail the declaration it reads and drop them).
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
-        => this.CheckConformance(conformance, inheritedProof);
+    {
+        var proof = this.CheckConformance(conformance, inheritedProof);
+        if (!this.HoldsInferenceLimit(conformance))
+        {
+            return proof;
+        }
+
+        conformance.Invalid = true;
+        this.RecordNumbered(conformance.Use, BindingFailure.AnalysisLimit, [new(ProblemFactKind.Reason, this.FactSite(conformance.Use), (long)AnalysisBound.InferenceStates)]);
+        return ConstraintProof.Error;
+    }
 
     // The conformance's check (VerifyConformance's): its own judgment, every exit returning its verdict.
     private ConstraintProof CheckConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof)
@@ -169,15 +183,6 @@ public sealed partial class Binding
         try
         {
             var shape = conformance.Contract.Contract!;
-            if (this.HoldsInferenceLimit(conformance, shape))
-            {
-                // SPEC 8.3.3 Limits, 23.1.1-23.1.2 (C4 ruling 17 B2): the component's one Resource record, decided by DecideAtLimit, is this
-                // conformance's first record whatever else it fails for: every Resource binding's use rests on it, and the conformance's
-                // own failing hole is recorded beside it.
-                conformance.Invalid = true;
-                this.RecordNumbered(conformance.Use, BindingFailure.AnalysisLimit, [new(ProblemFactKind.Reason, this.FactSite(conformance.Use), (long)AnalysisBound.InferenceStates)]);
-            }
-
             var scope = conformance.Scope;
             var self = this.ConformanceSelf(conformance);
             var declarationProof = this.ReadSourceState(conformance.Type, out _);
@@ -268,7 +273,7 @@ public sealed partial class Binding
             {
                 if (ReferenceEquals(limit.Use, conformance.Use))
                 {
-                    return ConstraintProof.Error; // its use holds the component's one record (HoldsInferenceLimit)
+                    return ConstraintProof.Error; // its use holds the component's one record (VerifyConformance writes it)
                 }
 
                 this.AddPendingPrerequisite(conformance.Use, limit.Use); // a pending part: its state is read at publication
@@ -479,13 +484,19 @@ public sealed partial class Binding
         }
     }
 
-    // Whether the conformance's use holds its component's one inference-limit record (DecideAtLimit: a Resource binding's ProblemDetail).
-    private bool HoldsInferenceLimit(BoundConformancePath conformance, BoundContract shape)
+    // Whether the conformance's use holds its component's one inference-limit record (DecideAtLimit: a Resource binding's ProblemDetail),
+    // the published fields read first, since every exit of a check asks it; a Contract without a shape has no hole.
+    private bool HoldsInferenceLimit(BoundConformancePath conformance)
     {
+        if (conformance.Contract.Contract is not { } shape)
+        {
+            return false;
+        }
+
         for (var i = 0; i < shape.AssociatedTypes.Count; i++)
         {
-            if (this.InferenceHole(conformance, shape.AssociatedTypes[i]) && this.AssociatedBindingOf(conformance.RootPath, shape.AssociatedTypes[i]) is
-                { Problem: InferenceProblem.Limit } binding && ReferenceEquals(binding.ProblemDetail, conformance.Use))
+            if (this.AssociatedBindingOf(conformance.RootPath, shape.AssociatedTypes[i]) is { Problem: InferenceProblem.Limit } binding &&
+                ReferenceEquals(binding.ProblemDetail, conformance.Use) && this.InferenceHole(conformance, shape.AssociatedTypes[i]))
             {
                 return true;
             }
