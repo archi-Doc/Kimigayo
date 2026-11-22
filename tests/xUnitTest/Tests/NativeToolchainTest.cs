@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -761,6 +762,40 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(executable, ArtifactFiles.Hash(paths.Executable));
     }
 
+    // IMPL 21.4, read as the ABI's unwind information (T's ruling): an entry for each function that allocates stack, saves a nonvolatile
+    // register or calls, none for a frameless leaf; so the object inspection judges no unwind entry and keeps its other refusals. Each row
+    // builds at O2: forever's loop folds __kimi_start into a frameless leaf, whose executable has no exception table, and it builds (dev
+    // 9ec1e3d02 refused it: "Invalid _fltused definition, unwind information or hidden default library."); its twin that calls builds
+    // with entries; that twin's IR naming a default library (a linker option, the manifest's irSha256 updated), built from its manifest,
+    // is refused before the link. On the installed toolchain.
+    [Theory]
+    [InlineData("leaf")]
+    [InlineData("call")]
+    [InlineData("default library")]
+    public async Task TheObjectInspectionJudgesNoUnwindEntry(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var token = TestContext.Current.CancellationToken;
+        var project = row == "leaf" ? this.Main("func forever(a: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)\n") : this.Hello("Hello");
+        var paths = ArtifactPaths.Create(project);
+        if (row != "default library")
+        {
+            Assert.True(await project.Build(token), this.console.Text);
+            using var executable = new PEReader(File.OpenRead(paths.Executable));
+            Assert.Equal(row == "call", executable.PEHeaders.PEHeader!.ExceptionTableDirectory.Size != 0);
+            return;
+        }
+
+        Assert.True(await project.Generate(token), this.console.Text);
+        File.AppendAllText(paths.Ir, "\n!llvm.linker.options = !{!9000}\n!9000 = !{!\"/DEFAULTLIB:libcmt.lib\"}\n");
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+        manifest["irSha256"] = ArtifactFiles.Hash(paths.Ir);
+        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, token));
+        Assert.Equal("Invalid _fltused definition or hidden default library.", error.Message);
+        Assert.False(File.Exists(paths.Executable));
+    }
+
     // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
     // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member;
     // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. The success
@@ -937,11 +972,14 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // Hello.kimiproj at O2 into out/Hello.ll, its main.kimi writing the text, on the test's console.
-    private Project Hello(string text)
+    private Project Hello(string text) => this.Main($"::Kimi.Console.writeLine(\"{text}\")");
+
+    // Hello.kimiproj at O2 into out/Hello.ll with this main.kimi, on the test's console.
+    private Project Main(string source)
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
         File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\"");
-        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), $"::Kimi.Console.writeLine(\"{text}\")");
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
         Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
         return project;
     }

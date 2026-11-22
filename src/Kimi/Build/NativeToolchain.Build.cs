@@ -337,8 +337,11 @@ internal static partial class NativeToolchain
         }
 
         // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the module
-        // declares (the manifest's) in the same form; one _fltused definition, unwind information and no default library. Returns the
-        // record's form of the undefined symbols: llvm-nm's posix lines, in which an undefined symbol's value and size are 0.
+        // declares (the manifest's) in the same form; one _fltused definition and no default library. Unwind information is not judged
+        // here: IMPL 21.4's is the ABI's, which every definition's uwtable attribute (the profile's UnwindTables) asks of LLVM, an entry
+        // for each function that allocates stack, saves a nonvolatile register or calls, and none for a frameless leaf, so an object
+        // whose functions are all leaves has none. Returns the record's form of the undefined symbols: llvm-nm's posix lines, in which an
+        // undefined symbol's value and size are 0.
         private string Inspect(Tatara tatara, string obj)
         {
             var facts = tatara.Inspect(this.context, obj);
@@ -363,9 +366,9 @@ internal static partial class NativeToolchain
             }
 
             var markers = facts.DefinedExternal.Count(s => s.Name == TargetProfile.Windows.FloatMarker && s.Kind is 'B' or 'D');
-            if (markers != 1 || !facts.HasUnwind || facts.HasDefaultLibrary)
+            if (markers != 1 || facts.HasDefaultLibrary)
             {
-                throw new InvalidDataException("Invalid _fltused definition, unwind information or hidden default library.");
+                throw new InvalidDataException("Invalid _fltused definition or hidden default library.");
             }
 
             return string.Join('\n', lines);
