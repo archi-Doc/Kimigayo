@@ -48,7 +48,7 @@ public partial class Project
                 target = this.ProjectFile.Targets[0];
             }
 
-            if (target != WindowsProfile.Target || !this.ProjectFile.Targets.Contains(target, StringComparer.Ordinal))
+            if (target != TargetProfile.Windows.Target || !this.ProjectFile.Targets.Contains(target, StringComparer.Ordinal))
             {
                 throw new InvalidDataException("Testing requires a configured Windows x64 target.");
             }

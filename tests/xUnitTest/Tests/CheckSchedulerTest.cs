@@ -336,7 +336,7 @@ public sealed class CheckSchedulerTest : IDisposable
         var directory = this.PathOf(name);
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, name + ".kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Library\" Targets={{\"{WindowsProfile.Target}\"}} {settings}");
+        File.WriteAllText(path, $"OutputKind=\"Library\" Targets={{\"{TargetProfile.Windows.Target}\"}} {settings}");
         return path;
     }
 
@@ -358,7 +358,7 @@ public sealed class CheckSchedulerTest : IDisposable
             this.Sender = new(this.output);
             this.Session = new(this.Sender, this.Start, item => this.posted.Writer.TryWrite(item)) { Runner = this.Run };
             var period = quietPeriod is { } value ? $"\"checkQuietPeriodMs\":{value}," : string.Empty;
-            this.Message($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"capabilities\":{{}},\"initializationOptions\":{{{period}\"target\":\"{WindowsProfile.Target}\"}}}}}}");
+            this.Message($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"capabilities\":{{}},\"initializationOptions\":{{{period}\"target\":\"{TargetProfile.Windows.Target}\"}}}}}}");
             this.Message("{\"jsonrpc\":\"2.0\",\"method\":\"initialized\",\"params\":{}}");
         }
 

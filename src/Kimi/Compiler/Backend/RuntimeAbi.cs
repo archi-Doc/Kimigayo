@@ -5,8 +5,8 @@
 // runtime routine that generated code defines or calls, with the routines whose template definitions are spliced from them, and the
 // text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes (the zero-sized buffer address at
 // `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at `{{static_release_kind}}`
-// and `{{heap_release_kind}}`, and WindowsProfile's unmapped bound at `{{unmapped_bound}}`).
-// Input: none; the entry symbol and the unmapped bound come from WindowsProfile; a marker's name and the expanded text being written.
+// and `{{heap_release_kind}}`, and TargetProfile.Windows's unmapped bound at `{{unmapped_bound}}`).
+// Input: none; the entry symbol and the unmapped bound come from TargetProfile.Windows; a marker's name and the expanded text being written.
 // Output: the records, read by code generation and by LlvmModuleText's runtime splice; a constant marker's text appended.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
 // RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once; a template spells a
@@ -30,7 +30,7 @@ internal static class RuntimeAbi
     internal const int HeapReleaseKind = 1;
 
     /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
-    /// element, and below WindowsProfile.UnmappedBound, so it is never allocated or released (__kimi_free skips it).</summary>
+    /// element, and below TargetProfile.Windows.UnmappedBound, so it is never allocated or released (__kimi_free skips it).</summary>
     internal const int ZeroSizedBuffer = 4096;
 
     /// <summary>The runtime Abort's os_error for a failure without an operating system error, which the runtime does not print (it prints
@@ -46,7 +46,7 @@ internal static class RuntimeAbi
     internal static readonly ValueLowering StringReference = new(new("ptr", 8, 8, 8, ReadOnlyMemory<int>.Empty), "ptr", "ptr");
 
     internal static readonly FunctionAbi Entry = new("__kimi_entry_body", Unit.ComputationType, []);
-    internal static readonly FunctionAbi Start = new(WindowsProfile.EntrySymbol, Unit.ComputationType, []) { NoReturn = true };
+    internal static readonly FunctionAbi Start = new(TargetProfile.Windows.EntrySymbol, Unit.ComputationType, []) { NoReturn = true };
     internal static readonly FunctionAbi Exit = new("__kimi_exit", Unit.ComputationType, [new("i32", "code")]) { NoReturn = true };
 
     internal static readonly FunctionAbi Abort = new(
@@ -153,7 +153,7 @@ internal static class RuntimeAbi
     private static readonly (string Name, long Value)[] Constants =
     [
         ("zero_sized_buffer", ZeroSizedBuffer), ("no_os_error", NoOsError), ("static_release_kind", StaticReleaseKind),
-        ("heap_release_kind", HeapReleaseKind), ("unmapped_bound", WindowsProfile.UnmappedBound),
+        ("heap_release_kind", HeapReleaseKind), ("unmapped_bound", TargetProfile.Windows.UnmappedBound),
     ];
 
     /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>

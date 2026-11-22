@@ -177,7 +177,7 @@ public class AssociatedOriginBindingTest
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during a) -> S.Item(a) => 42");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);

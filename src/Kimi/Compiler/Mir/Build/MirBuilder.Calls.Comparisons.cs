@@ -9,18 +9,11 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     // SPEC 13.4.1: the call of a comparison operator, a tuple operator's Composite call, any other the Contract call Binding selected; ==
-    // gives equals' bool, != its negation and another compare's i32 compared with zero by the relation. A tuple operator whose Self has no
-    // comparison (TyCtxt.Comparison's Limit, null) is a located Unsupported (PD30), its operands not built.
+    // gives equals' bool, != its negation and another compare's i32 compared with zero by the relation.
     private void Compare(MirPlace destination, CallPlan call, Koto node, MirBinaryOp relation)
     {
         var equality = relation is MirBinaryOp.Eq or MirBinaryOp.Ne;
         var contract = compilation.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-        if (call.TupleOperator && compilation.Types.Comparison(contract, call.ConformingType!, operators: true) is null)
-        {
-            this.Unsupported(node, destination);
-            return;
-        }
-
         var result = relation == MirBinaryOp.Eq ? destination : this.Hold(call.ReturnType, node);
         if (call.TupleOperator)
         {

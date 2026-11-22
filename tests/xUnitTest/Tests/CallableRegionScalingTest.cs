@@ -105,7 +105,7 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     private static long PremiseWork(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;
