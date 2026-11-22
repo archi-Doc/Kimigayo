@@ -6,7 +6,7 @@
 // Owns: a child created inside a job of its own before its first instruction (PROC_THREAD_ATTRIBUTE_JOB_LIST), so every descendant is
 // in the job and none can leave it (no breakaway); the job ends them all at Kill and when its last handle closes
 // (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE): at Dispose, and when this process ends, by TerminateProcess too (a second Ctrl+C). The host
-// rule of the programs Kimi runs: a Windows x64 host, as WindowsProfile's target (IMPL 20.3, 20.6.1).
+// rule of the programs Kimi runs: a Windows x64 host, as TargetProfile.Windows's target (IMPL 20.3, 20.6.1).
 // Readers: Testing's TestProcess (a test case, IMPL 20.6.3) and Build's NativeToolchain.RunExecutable (run's program, IMPL 20.3).
 // Input: the executable, its working directory, its environment block (null: this process's), its standard input (an open handle of
 // this process, of which the child gets an inheritable duplicate, or null: none, whether a reader has one being the reader's decision)

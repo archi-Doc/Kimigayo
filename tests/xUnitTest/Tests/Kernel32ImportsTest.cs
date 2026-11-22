@@ -32,7 +32,7 @@ public sealed class Kernel32ImportsTest
         var definition = File.ReadAllText(Path.Combine(repo, "src/backend/windows-x64/kernel32.def")).Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() + "\n";
         Assert.Equal(ToolchainIdentity.Kernel32DefinitionSha256, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(definition))));
         var exports = definition.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal);
-        Assert.True(exports.SetEquals(WindowsProfile.Supply("kernel32")!.Symbols));
+        Assert.True(exports.SetEquals(TargetProfile.Windows.Supply("kernel32")!.Symbols));
         var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
         foreach (Match match in Regex.Matches(runtime, @"declare dllimport .*?@(\w+)\("))
         {
@@ -77,7 +77,7 @@ public sealed class Kernel32ImportsTest
     public void TheRuntimeTemplatesUnmarkedFactsHold()
     {
         Assert.Equal((0, 1), (RuntimeAbi.StaticReleaseKind, RuntimeAbi.HeapReleaseKind));
-        Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, WindowsProfile.UnmappedBound - 1);
+        Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, TargetProfile.Windows.UnmappedBound - 1);
     }
 
     // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, the Windows runtime's,
@@ -166,7 +166,7 @@ public sealed class Kernel32ImportsTest
         {
             var symbol = match.Groups[2].Value;
             declared.Add(symbol);
-            var entry = Assert.Single(WindowsProfile.RuntimeDeclarations, x => x.Symbol == symbol);
+            var entry = Assert.Single(TargetProfile.Windows.RuntimeDeclarations, x => x.Symbol == symbol);
 
             // A noreturn declaration is unshareable; otherwise the recorded import-ABI codes must agree.
             if (match.Groups[4].Value.Contains("noreturn", StringComparison.Ordinal))
@@ -180,7 +180,7 @@ public sealed class Kernel32ImportsTest
             Assert.Equal(codes, entry.Signature);
         }
 
-        Assert.Equal(declared, WindowsProfile.RuntimeDeclarations.Select(x => x.Symbol));
+        Assert.Equal(declared, TargetProfile.Windows.RuntimeDeclarations.Select(x => x.Symbol));
 
         static string Code(string type) => type switch
         {

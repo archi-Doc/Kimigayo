@@ -59,7 +59,7 @@ public partial class KimiLibraryShapeTest
         static Compilation Hello()
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
             return c;
         }
@@ -86,7 +86,7 @@ public partial class KimiLibraryShapeTest
         static Compilation Hello(BindingMode mode)
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
             Assert.Equal(mode, c.Binding.Bind(mode).Mode);
             return c;
@@ -108,7 +108,7 @@ public partial class KimiLibraryShapeTest
     public void TheLibrarysImportsAreListedAfterEachBind()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
         for (var bind = 0; bind < 2; bind++)
         {
@@ -129,7 +129,7 @@ public partial class KimiLibraryShapeTest
     public void ALibrarySlotsKeepersAreCurrentAfterEachBind()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         var layer = c.Library.Layer.Part;

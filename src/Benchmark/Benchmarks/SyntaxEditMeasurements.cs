@@ -29,10 +29,10 @@ internal static class SyntaxEditMeasurements
                 {
                     var recipient = Compilation.CreateForTest();
                     var donor = scope == "same-module" ? recipient : Compilation.CreateForTest();
-                    Require(recipient.Prepare(WindowsProfile.Target));
+                    Require(recipient.Prepare(TargetProfile.Windows.Target));
                     if (!ReferenceEquals(recipient, donor))
                     {
-                        Require(donor.Prepare(WindowsProfile.Target));
+                        Require(donor.Prepare(TargetProfile.Windows.Target));
                     }
 
                     recipient.Kotonoha.AddSource(new SourceDocument("target.kimi", "func target() => ()"));

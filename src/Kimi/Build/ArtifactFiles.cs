@@ -47,6 +47,12 @@ internal static class ArtifactFiles
     internal static string Hash(string path)
     {
         using var stream = File.OpenRead(path);
+        return Hash(stream);
+    }
+
+    // The SHA-256 (lower-case hex) of a stream's remaining bytes.
+    internal static string Hash(Stream stream)
+    {
         Span<byte> hash = stackalloc byte[32];
         SHA256.HashData(stream, hash);
         return Convert.ToHexStringLower(hash);

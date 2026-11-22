@@ -15,7 +15,7 @@
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
 // Compilation.Diagnostics, and its result Compilation.Generated (GeneratedModule: the output kind, the required libraries and the
 // external declarations, each an ExternalFunction read for its Symbol and DllImport; R9-B1); the enum OutputKind, which project
-// configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease; CompilationBuildMetadata, which
+// configuration states too (ProjectFile.OutputKind); the target profile TargetProfile.Windows; CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput; and of Misc JobProcess,
 // Kimi's launcher for the programs it runs, in which the run's program runs (PLAN G1188).
@@ -31,7 +31,9 @@
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders). A build of a record (Project.Build, build --Manifest) holds the record's lock
-// (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave.
+// (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave; a build's files are
+// named from its record's Name (ArtifactPaths), a --Manifest build's IR included, so the lock covers every file it writes. A native build
+// holds its IR, with read sharing only, from the pair's hash to its end, so it compiles the bytes its record names.
 // Must not: check source semantics, or read compiler state outside the list above.
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
 // The link manifest's fixed fields (one table), the compiler's supplies' entries (their rows) and its readers are LinkManifest's: no

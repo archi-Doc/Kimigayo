@@ -73,9 +73,9 @@ internal sealed partial class FunctionCodegen
         Value left = new('p', 0);
         Value right = new('p', 1);
         var node = this.collector.Comparison(this.item);
-        if (node?.Kind != ComparisonKind.Composite)
+        if (node.Kind != ComparisonKind.Composite)
         {
-            if (node?.Kind == ComparisonKind.Builtin)
+            if (node.Kind == ComparisonKind.Builtin)
             {
                 return this.Leaf(self, contract, mode, left, right);
             }

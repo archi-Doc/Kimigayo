@@ -50,7 +50,7 @@ public partial class Project
             return null;
         }
 
-        if (targets[0] != WindowsProfile.Target)
+        if (targets[0] != TargetProfile.Windows.Target)
         {
             this.Fail(diagnostics, "Testing requires a configured Windows x64 target.");
             return null;

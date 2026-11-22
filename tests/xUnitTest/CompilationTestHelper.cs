@@ -31,7 +31,7 @@ internal static class CompilationTestHelper
     internal static Compilation Parse(string source, string? path = null)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         if (path is null)
         {
             c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
@@ -49,7 +49,7 @@ internal static class CompilationTestHelper
     internal static string[] BindInEveryTargetMode(string source)
     {
         string[]? profile = null;
-        foreach (var target in new[] { WindowsProfile.Target, null, "i686-pc-windows-msvc", "avr-unknown-unknown" })
+        foreach (var target in new[] { TargetProfile.Windows.Target, null, "i686-pc-windows-msvc", "avr-unknown-unknown" })
         {
             var c = Compilation.CreateForTest();
             Assert.True(target is null || c.Prepare(target));
@@ -81,7 +81,7 @@ internal static class CompilationTestHelper
     {
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         TinyhandSerializer.DeserializeObject(bytes, ref tree);
         Assert.NotNull(tree);

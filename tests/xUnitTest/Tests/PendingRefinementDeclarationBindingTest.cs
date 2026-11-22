@@ -18,7 +18,7 @@ public class PendingRefinementDeclarationBindingTest
         const string child = "public contract Child: Marker\n";
         var marker = "public contract Marker\n    Source is " + (missing ? "Future" : "Origin") + "\n";
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source\n" + (reverse ? child + marker : marker + child) + "group G\n    func take<T>()\n        T is Child\n        ()\n    func inspect<T>(value: T)\n        T is Child\n        take<T>()"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);

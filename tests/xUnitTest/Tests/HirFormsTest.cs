@@ -1135,7 +1135,7 @@ public sealed partial class HirFormsTest
     {
         const string Source = "func x() -> i32 => 1\nfunc g() -> ()\n    let x = 2\n    x\nfunc donor() -> ()\n    let z = 3\npublic func main() => ()\n";
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source));
         c.Bind();
         HirTables.Publish(c);

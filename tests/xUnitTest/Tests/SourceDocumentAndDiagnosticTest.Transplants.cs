@@ -86,7 +86,7 @@ public partial class SourceDocumentAndDiagnosticTest
     public void ARecoveredRootTransfersItsCauseToTheActualCustomDiagnosticOwner(bool sameCompilation)
     {
         var recipient = Compilation.CreateForTest();
-        Assert.True(recipient.Prepare(WindowsProfile.Target));
+        Assert.True(recipient.Prepare(TargetProfile.Windows.Target));
         var owner = new DiagnosticOwner();
         recipient.Kotonoha.CreateCodeContext(owner.GetOrAddCollection("custom.kimi"))
             .Parse(recipient.Kotonoha.RootKoto, new SourceDocument("custom.kimi", "let target = 0"));

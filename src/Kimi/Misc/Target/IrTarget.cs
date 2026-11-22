@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Target;
 
 /// <summary>
 /// The IR-level target description derived from a parsed triple: the pointer width in bits, 0 when the triple has no IR target
-/// (<see cref="Invalid"/>). The one executable profile's data layout is <c>WindowsProfile.DataLayout</c> (DECISIONS R5-M174).
+/// (<see cref="Invalid"/>). The one executable profile's data layout is <c>TargetProfile.Windows.DataLayout</c> (DECISIONS R5-M174).
 /// </summary>
 public sealed record class IrTarget(int PointerWidth)
 {
