@@ -1029,7 +1029,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
 - **R4-M25** (owner, 2026-10-12) Area caps rebalanced within the R4 stage ceiling: superseded by Q5 (2026-10-16); full text:
   c4b48f11c.
-- **R4-M22** (2026-10-12; U6; superseded in part by R4-M153: a part past the depth bound is the class Deep; amended 2026-11-03, H3b
+- **R4-M22** (2026-10-12; U6; superseded in part by R4-M153: a part past the depth bound is the class Deep; superseded in part by
+  R7-M84 (Z3, 2026-11-23): an abstract Callable input is read through the signature its call selected; amended 2026-11-03, H3b
   T32b, unit U-B2, by the planning session with BU's consent C-11) A4, `MirEffects`, decides `confined` (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4). Per body view a
   union summary: the classes Environment, Unknown, Limit and Derived and atoms Drop(T) and Call(T, receiver) over the definition's
   abstract Types. Local facts come from `MirUses` (a mutable static's access, an environment effect, an integer made a pointer and a
@@ -24567,7 +24568,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     in the frame that no formation owns is the frame's: `CloseAnswer` records G651's site-less `InternalInvariant_Kd` at the frame's
     close, never silent. `Apply` reads no storage: Binding's closing step (`ClosePartCore`) reads the closure result's formation, not
     its storage verdict, so a storage bound no longer makes a substitution Incomplete (the Front's B1) and a height refusal no longer
-    makes a storage verdict Rejected (B2). Row: `InstanceCollectorTest.OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal`. Outside
+    makes a storage verdict Rejected (B2). Row: `InstanceCollectorTest.OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal`. Outside
     both formations until c4 (behind the Dispatch gate, B's ruling 17 O1): `Agrees`' `Signature(requirement, subst)` and
     `TyCtxt.Dispatch.Resolve`'s `InstanceContract` and `ResolveRequirementWitness`, where a refusal would be the frame's record;
     superseded by the c4 part.
@@ -24706,6 +24707,19 @@ R8-M* and R9-M* by the stage of the recording unit.
       vocabulary beside `TyCtxt.Formation`; B's ruling 2); a refused `NamesReference` candidate read as "does not name" (a silent
       default over a refusal); a two-pass `NamesReference` inside c4 (the Front's C1c: naming by 8.9.1's head unification before
       forming is PLAN G1269, not c4's).
+  - Amended by G651 U2a (Back, 2026-11-23; Q-689, D-1137; C-485 B1, agreed by F, M and B): the instance's stored-Types formation
+    (`Binding.Instance`), one of the three formation owners, owns a refusal past IMPL A.4's height after Binding's run (`producing`
+    over) in every frame, not only inside the collector's answer frame (`Binding.OpenStorageFormation`), unless a consultation frame
+    open after the run fails its node first (G881b N6; U2c): the refusal is published as the instance's `HeightLimit`, never a null
+    part with `HeightLimit` false that Layout read as Rejected. So `answer.Open` is also set outside the collector's run,
+    transiently, by this opener, which `Binding.Instance` closes in a `finally` (the Front's C-489 C1), where the answer frame's
+    bullet has `InstanceCollector.Run` alone open it. Outside the collector's frame the formation closes to no frame and G651's
+    site-less record is still made beside it until every after-run former outside the frame records at its own site (G651 U2b). The
+    Temporary bullet's answer frame carries this formation too: a1's site kind covers it, else it goes with U2b. Row:
+    `InstanceCollectorTest.AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame`. Rejected: (A) dropping that
+    record now, since an uninstantiated generic body's open instance past H would be accepted (IMPL A.4: never acceptance); a
+    reader-side rule in Layout, since the cause is the producer's published fact (one owner); making `OpenFormation` own after the
+    run for all three owners, since `Answered`'s and `Witness`'s callers outside the frame record nothing yet (U2b).
 - **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
   D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
   CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
@@ -25797,6 +25811,45 @@ R8-M* and R9-M* by the stage of the recording unit.
   Unsupported records (a second rule over every check, deriving independent failures too), resting the use on the conformance as a
   part (it would also derive the use of a conformance with its own record, beyond the ruled forms) and a cause type naming a
   specification (a new representation for an input the conformance publishes).
+- **R7-M83 An instantiated premise keeps its Statements (Z3-B1)** (Middle, 2026-11-23; stream Z's Z3, PLAN G396 (3), Q-691, D-1139;
+  Major, an acceptance mover; designs `middle\notes\z3-design.md` Revision 1 and Z3-B1, O-502's split; the Front's repeated read on
+  C-475, C5 and C6) SPEC 6.4.2 step 3, 8.11.4.
+  - **Rule.** A writer that holds another declaration's premise under a substitution records its Statement (the declaration and the
+    premise as written there); a fact's Statements are its in-place one (the scope's owner writing the fact itself) and every recorded
+    one, a set (`ConstraintEnvironment.AddStatement`, cleared by `Reset`, no Version change; `States(fact, scopeOwner, owner,
+    written)`). The two writers are `InheritVirtualConstraints` (an override's inherited premises, SPEC 6.4.2 step 3) and
+    `CompatibleRequirement` (a requirement's premises at Self), pinned by ArchitectureRulesTest's "Writers of a premise's Statements".
+    The 8.11.4 evidence of a leaf row is the union of the bounds of the clauses of its fact's Statements, and names the clause's
+    declaration and written premise; Hover prints a public guarantee only for the slot's own evidence (no premise, no clause). The
+    header view (`PrepareVirtualHeaderPremises`) records none: no bound is read there, and a bound reader added there is a located
+    `Unsupported_Kd`.
+  - **Rejected.** (a) A clause in `AvailableCallableEffects` for overrides (a second rule for one form); (b) bounds on interned facts
+    (EffectDeclarations' prohibition); (c) inherited premises as derived facts (`DerivedFacts` changes availability and `Declares`);
+    (d) re-substituting the slot's clauses at the reader (a second statement of the substitution); (e) one Statement per fact, the
+    first recorded (order-dependent: the Front's B-1, ovr-alias-r); (f) a header Statement.
+  - **Pins.** Both owner tests of `States` (the Front's C5 mutants M1, M2:
+    `CallableEffectBoundTest.ABoundAnotherDeclarationWritesIsNotInherited`).
+- **R7-M84 A call through an abstract Callable input uses the bounds of the signature its call selected** (Middle, 2026-11-23; stream
+  Z's Z3-E5, PLAN G396 (3) E5, Q-691, D-1139; Major, an acceptance mover; design `middle\notes\z3-design.md` Revision 1, the Middle's
+  repeated review C1-C4; the implementation review `z3-impl-review.md`, C2 applied) SPEC 8.10, 8.11.4.
+  - **Rule.** A4's call atom carries the signature its call selected: a value call's `CallPlan.DeclaredSignature` (Binding's
+    selection, SPEC 8.10), which the MIR builder carries as the Value callee's TypeToken (R4-M41), or a published row's Callable
+    input's one signature (`Binding.OneCallable` through `TyCtxt.CallsSignature`, which `CheckCallsRows` guarantees); `Compose`
+    instantiates it through the call's substitution with the atom's Type (in the premises' terms: no case Type);
+    `TyCtxt.CallableBounds(definition, input, signature, receiver)` reads `AvailableCallableEffects` over the definition's premises
+    and never selects again. A call through an abstract Type without a signature is a broken contract (the solve's throw form, BU-102;
+    Derived in an incomplete compilation).
+  - **Supersedes in part** R4-M22's abstract-input clause, "an abstract input is nothing where its one Callable signature's premises
+    declare confined (`TyCtxt.CallableBounds`), a Limit where it has several signatures (Binding chose among them by the call's
+    arguments, which MIR does not keep)": A4 now reads the selected signature's premises. That producer of A4's Limit class (E5) is
+    gone; the class stays for E7 (R7-P5; E3 and E4 left it with Z25, R4-M237, and E6 with Q-688, R7-M57).
+  - **Rejected.** (a) A new Binding column (DeclaredSignature already is the choice); (b) re-running the selection in MIR (a second
+    owner of SPEC 8.10's choice); (c) the case Type of the signature (the premises are not case-instantiated); (d) a located
+    `Unsupported_Kd` for the override path alone (a clause for one form; Z3-B1, R7-M83, fixes its cause).
+  - **Note.** A concrete Type can satisfy several Callable signatures (SPEC 10.7: a Closure `(i32) -> Never` satisfies `(i32) -> i32`
+    and `(i32) -> bool`), so a body with several signatures can have an instance; A4 reads a concrete callee's body, never the
+    signature (Z3-E5's repeated review C4). Measurement open (R1.5 N1): `CallsSignature` runs one `TryCallable` per published-row
+    call; if the window's RP8 shows a cost, the published row carries the signature as a column (never a side cache).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
