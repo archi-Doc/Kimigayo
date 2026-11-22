@@ -308,7 +308,7 @@ public sealed partial class Binding
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
         // Per candidate and slot: bits 1, 2 and 4 the collected modes, 8 differing witnesses, 16 the expected result's fill reached it.
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
-        var bindings = this.infer.Rent(slotStride, scope);
+        var bindings = this.infer.Rent(slotStride, call, scope);
         var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
         var savedAcquisition = this.acquisitionFailure;
         try
@@ -354,7 +354,9 @@ public sealed partial class Binding
                 bindings.Types[..count].CopyTo(types.AsSpan(c * slotStride));
 
                 // Collects the open slots' evidence (CollectTypes skips a fixed slot, whose mode FixCallSlots gives); the argument is
-                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings, as in its trial.
+                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings (FixedPattern).
+                // Its trial's AdaptationPattern also forms the structured applications whose binder a source fixed; here no source has
+                // fixed one and CollectTypes enters no application (CollectionEnters), so a formed application is no evidence either way.
                 void CollectArgument(BoundType pattern, Koto source, in FixedSlots candidateSlots)
                 {
                     source = KotoHelper.UnwrapParentheses(source);

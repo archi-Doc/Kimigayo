@@ -537,8 +537,9 @@ public sealed class NativeToolchainTest : IDisposable
 
     // A build that cannot begin (NativeToolchain.Begin; PLAN G1205, O-491 (d)): after a successful v1, a v2 whose first invalidation
     // cannot replace the record (read-only, or held without delete sharing) or whose lock cannot be opened (read-only) fails saying that
-    // the build could not begin and that its record, which it names, keeps its last state; the record is v1's success (IMPL 20.3.2: "the
-    // earlier success when the first invalidation fails"), so run --no-build runs v1's executable. On the installed toolchain.
+    // the build could not begin and that its record keeps its last state, naming the record once: with the lock's failure, which names
+    // the lock, and through the replacement's failure, which names its destination (PLAN G1257). The record is v1's success (IMPL 20.3.2:
+    // "the earlier success when the first invalidation fails"), so run --no-build runs v1's executable. On the installed toolchain.
     [Theory]
     [InlineData("record read-only")]
     [InlineData("record held")]
@@ -566,7 +567,9 @@ public sealed class NativeToolchainTest : IDisposable
             File.SetAttributes(file, FileAttributes.Normal); // Before Dispose deletes the directory.
         }
 
-        Assert.Contains($"The build could not begin, so its record keeps its last state: {paths.Record}. ", this.console.Text, StringComparison.Ordinal);
+        var named = row == "lock read-only" ? $": {paths.Record}. " : $". The file could not be replaced: {paths.Record}. ";
+        Assert.Contains("The build could not begin, so its record keeps its last state" + named, this.console.Text, StringComparison.Ordinal);
+        Assert.Equal(1, this.console.Text.Split(paths.Record).Length - 1);
         Assert.Equal(record, File.ReadAllText(paths.Record));
         Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
         Assert.Equal(0, await project.Run(TestContext.Current.CancellationToken));
