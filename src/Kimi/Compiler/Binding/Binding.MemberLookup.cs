@@ -392,6 +392,11 @@ public sealed partial class Binding
             // access with its own cause, TypePath, its Container the Type declaring the member, with no qualifying repair (the use is qualified).
             this.qualificationFailures[member] = new(selected.Scope, scope, selected, selected.Name, LookupRole.Value, 0, member, Cause: QualificationCause.TypePath);
         }
+        else if (failure == BindingFailure.Access)
+        {
+            this.RecordAccess(member, selected, null); // SPEC 9.4: the use located, the selected member related.
+            return null;
+        }
 
         if (failure != BindingFailure.None)
         {

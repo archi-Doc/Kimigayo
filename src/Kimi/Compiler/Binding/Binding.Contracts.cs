@@ -258,8 +258,22 @@ public sealed partial class Binding
             if (parent is not { IsContract: true } || parent.Contract is not { } inherited)
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
+                // One no lookup selects is the resolver's miss, which an inaccessible qualifier explains (FailMissing, SPEC 9.4, 9.5; PLAN
+                // G1207); a selected declaration that is no Contract is no parent (SPEC 8.4.3).
                 this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
-                this.Record(syntax, BindingFailure.InvalidConstraint, []);
+                if (parent is null)
+                {
+                    this.FailMissing(name, this.scopes[contract], BindingFailure.MissingType);
+                    if (!ReferenceEquals(syntax, name))
+                    {
+                        this.CompleteDependent(syntax, name); // A transparent wrapper rests on its Name.
+                    }
+                }
+                else
+                {
+                    this.Record(syntax, BindingFailure.InvalidConstraint, []);
+                }
+
                 valid = false;
                 continue;
             }

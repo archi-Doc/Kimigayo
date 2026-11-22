@@ -453,13 +453,13 @@ public sealed partial class Binding
     }
 
     // SPEC 9.4: a member access whose lookup selected nothing but met an inaccessible member: that member is its failure's evidence,
-    // published by the HiddenMember step, and the access records InaccessibleBinding_Kd.
+    // published by the HiddenMember step, and the access records InaccessibleBinding_Kd relating it (RecordAccess: a use is its own location).
     private void PublishHiddenMember(MemberAccessKoto member, BindingSymbol hidden)
     {
         var mark = this.nameSteps.Count;
         this.nameSteps.Add(new(NameStepKind.HiddenMember, member, hidden, null, default, default, default, null));
         this.PublishPath(new(PathEnd.Unresolved, null, member), mark);
-        this.Fail(member, BindingFailure.Access);
+        this.RecordAccess(member, hidden, null);
     }
 
     // An unqualified value Name completed (SPEC 9.5 in the Value namespace): judged (Supported) as Lookup reads it and ReadAgain reads it again.
