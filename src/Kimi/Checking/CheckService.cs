@@ -45,11 +45,6 @@ internal static class CheckService
                 ? project.Check(context, cancellationToken)
                 : project.PrepareTests(cancellationToken, context) is not null;
         }
-        catch (InvalidDataException ex) when (context.Compilation is null)
-        {
-            // Test preparation reports an invalid configuration as an exception before the front end (SPEC 23.2.2: Blocked).
-            context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: ex.Message);
-        }
         catch (DiagnosticContractException ex)
         {
             // SPEC 23.2.2: a violated contract discards every partial record.
@@ -57,7 +52,7 @@ internal static class CheckService
         }
         catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
         {
-            failure = ex; // Analysis threw while collection stayed intact: the valid records are kept.
+            failure = ex; // The check threw, before its front end or in it, while collection stayed intact: the valid records are kept.
         }
 
         DiagnosticResult result;
