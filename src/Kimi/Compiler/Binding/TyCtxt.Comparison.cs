@@ -2,9 +2,9 @@
 
 // Owns how a comparison runs on a Type in MIR terms (Comparison; DECISIONS R5-M68; R5 package F 4.6, 4.7, S2-S4 F 2, F 5, X25), by
 // Binding's one composition rule (Binding.ComparisonKindOf, shared with the legacy plan) with its closed leaves from Witness
-// (TyCtxt.Dispatch.cs).
+// (TyCtxt.Dispatch.cs); and the operator table's statements of a Type under a Contract, comparison and built-in arithmetic (below).
 // Input: Equatable or Comparable, a Type and the mode (source operators, IEEE for floats, or the Contract's mapping, whose equals is
-// NaN-reflexive).
+// NaN-reflexive); for the statements, a Type and a comparison or arithmetic Contract.
 // Output: a ComparisonNode tree: Composite over its parts, Builtin, Witness (a closed leaf, string's among them: Witness's Body at its
 // instance without its Origins, a library witness's at the Self's arguments), Requirement (a leaf with an abstract part: the Contract's own requirement on the leaf in every
 // instance, Synthesized on a Self) or None (no answer, a broken contract for a closed accepted Self that its reader records as
@@ -14,9 +14,12 @@
 // OperandTerminal: a comparison operand's node and Type to the Type it compares, a read of Binding's decision in that node's scope
 // (Binding.OperandTerminal: the scope's premises by CallableContractType, then each qualifying pair layer, then the ref and uniq layers),
 // the one Binding view the MIR builder's Witnessed asks before Comparison; it resolves nothing.
-// The operator table's comparison statements, pure functions of a Type and a Contract that Binding and MIR read: IsComposite (a Tuple
-// or a ref layer composes), OperatorTableRuns (the table runs a Type's comparison under a Contract) and OperatorCompares (the comparison
-// rows of the operator table's domain, MirTypes.Operates; DECISIONS R8-M20).
+// The operator table's statements, pure functions of a Type and a Contract that Binding and MIR read: IsComposite (a Tuple or a ref
+// layer composes), OperatorTableRuns (the table runs a Type's comparison under a Contract), OperatorCompares (the comparison rows of the
+// operator table's domain, MirTypes.Operates; DECISIONS R8-M20) and HasBuiltinArithmetic (SPEC 13.3.3's built-in arithmetic
+// conformances: the domain's arithmetic rows and ImplTable.Builtin's Target rows; DECISIONS R8-M25). Each is independent of a bound
+// Contract's own Symbol and of user spelling (Binding's token and method pairing is ArithmeticContractSyntax), names no MIR operator
+// (MIR's operator pairing is MirTypes.ArithmeticOperations) and proves no generic Type's conformance (Binding's).
 // Must not: create a bridge or a CallPlan, write a diagnostic, HIR or pass state, or prove on an erased value.
 
 using Kimi.Compiler.Parsing;
@@ -63,6 +66,13 @@ internal sealed partial class TyCtxt
     internal static bool OperatorCompares(BoundType? type, KimiDeclarationId contract)
         => OperatorTableRuns(type, contract) || type is { IsFloatingPoint: true } || ReferenceEquals(type, BoundType.Never) ||
             (contract == KimiDeclarationId.Equatable && type is { IsPointer: true });
+
+    // SPEC 13.3.3: the built-in conformances, whose witnesses behave as SPEC 13.3.1's operators: the operator table's domain of + - * / %
+    // and unary - (MirTypes.Operates) and Binding's conformance (ImplTable.Builtin).
+    internal static bool HasBuiltinArithmetic(BoundType type, KimiDeclarationId contract)
+        => type.IsNumeric && (contract == KimiDeclarationId.Negatable ? !type.IsUnsignedInteger
+            : contract is >= KimiDeclarationId.Addable and <= KimiDeclarationId.RemainderProvider &&
+                (contract != KimiDeclarationId.RemainderProvider || !type.IsFloatingPoint));
 
     // SPEC 13.4, 13.4.1, 12.4.3: how a comparison of Self under Equatable or Comparable runs, as source operators or the Contract's mapping
     // compare it.
