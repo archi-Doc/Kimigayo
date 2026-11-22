@@ -29910,6 +29910,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     control A'/A within 0.6%; `artifacts\tatara\b6b2\one-unit\start-cost.txt`), per process start and constant. Design §3.2's
     gate sent the cost, above the noise, to the owner (decision 20 Q1 (a)'s facts said "unchanged within the noise"), who accepted
     it, verbatim 「O-485 受け入れます」. `Kimi.exe` is 99.7 MB; `build-kimi.ps1` took 114 to 181 s (not quiet).
+  - Amended by T-M25 (PLAN G1245, 2026-11-23): its Rejected "a CI publish" is adopted. The size fact stands; the premise "a later
+    release workflow" failed. CI's `kimi` job publishes and checks `kimi.exe` on every `main` push. The left-out package DLLs are
+    `Kimi.csproj`'s `KimiLeftOut` items: `KimiOneFile` removes them with `MatchOnMetadata`, and the script's scan reads the list as
+    MSBuild evaluates it. The product check also builds `docs/examples/Hello` and requires its 14 bytes.
   - Rejected: the static link's libraries listed in `Kimi.csproj` (a second copy of `build.ps1`'s reading of the archive); the
     hybrid CRT (the heap split); removing every package's native asset (C2); `lld-link` as NativeAOT's linker (MSVC `link.exe`,
     the ILCompiler's default, links it); dropping the exports from `tatara.h` (two object sets, a new ABI); a CI publish (C-447
@@ -30210,3 +30214,42 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     every supplied archive (a second inspection for one form, while LLD reports the duplicate exactly when a second definition would
     enter the program); musl's functions; `memcpy` as an alias of `memmove` (not the archive's algorithm); internal or `linkonce`
     linkage; `rep movsb` (adopted only if the measurement shows the IR slower than the `.S` on large copies, decision 24's allowance).
+- **T-M25 CI publishes and checks `kimi.exe`** (Tatara, 2026-11-23; PLAN G1245, Q-699, D-1150; Major; design
+  `artifacts\handoff\tatara\units\G1245\design.md` Revision 0, option (J); the Middle's design review C-482 ACCEPT WITH CONDITIONS and
+  its implementation review on C-482, ACCEPT). Amends T-M14. G1245 closes at the first green hosted `kimi` job.
+  - **The superseded premise (C1):** T-M14 rejected "a CI publish" because of the size: the archive's `lib` and `include` are about a
+    gigabyte, so it left the publish to "a later release workflow, PLAN G1245". The size fact still stands. The premise no longer
+    holds: a dispatched release workflow runs only when someone acts, so it cannot remove G1245, which is about a break that nobody
+    sees.
+  - **The job:** `test.yml` gains a `kimi` job (windows-latest, 45 minutes) beside `managed` and `windows`, on the workflow's
+    unchanged trigger (pushes to `main`; SETTLED's CI entry untouched). It runs `scripts/build-kimi.ps1 -LlvmRoot <the action's
+    root>`. Nothing is uploaded or released; distribution remains R5-M13 (c)'s matter. Accepted cost: every run downloads the
+    862,053,924 B archive and extracts about 3.9 GB (estimated 10-15 minutes per `main` push). The first hosted run measures the
+    duration, which is then recorded here.
+  - **The archive's one owner:** the composite action `.github/actions/llvm-archive` holds the URL, the SHA-256, the profile version
+    guard and the extraction, and publishes the extracted root as its output `root` (C-482 N3: the path is written once). The
+    `windows` job runs it on a toolchain-cache miss, as before; `kimi` runs it on every run.
+  - **The one list (C-482 C2):** `Kimi.csproj`'s `KimiLeftOut` items (a native asset by `NuGetPackageId` and file name). `KimiOneFile`
+    removes `@(KimiLeftOut)` with `MatchOnMetadata="AssetType;NuGetPackageId;Filename;Extension"`, case-insensitive.
+    `build-kimi.ps1`'s module scan reads the same items as MSBuild evaluates them (`dotnet msbuild Kimi.csproj -getItem:KimiLeftOut`,
+    each item's `Filename`): evaluation-time items, without the publish's own global properties. A split row, a property or an
+    imported row is therefore scanned as it is removed; a row under a publish-only condition or added by a target would be removed but
+    not scanned, and none exists (the implementation review's N1). An evaluation failure or an empty list fails the script's product
+    check. C-447 R2-1's second copy is gone.
+  - **The Hello row:** after verify, the published `Kimi.exe` builds a copy of `docs/examples/Hello` in
+    `artifacts/packages/kimi/hello` (emptied first). The program must exit 0 within 60 s, write exactly `Hello, world!\n` to stdout
+    and leave stderr empty. This exercises the static image's in-process opt, llc and lld, its static CRT and its embedded libraries,
+    none of which `toolchain verify` runs.
+  - **NativeAOT (C-482 N1):** AGENTS' "Run NativeAOT tests only on explicit instruction" governs the checks an agent runs. The `kimi`
+    job runs on the owner's `main` push, so that rule does not cover it. A configured job does not authorize anything: a unit's local
+    publish still needs its brief's explicit instruction, both the unit's own run and the tooling-row runs below.
+  - **After closure (T's O3):** a unit changing `build-kimi.ps1` or `Kimi.csproj`'s publish items still runs the publish under
+    VERIFICATION's tooling row, with the instruction in its brief. A unit changing only `src/Tatara` relies on the `kimi` job.
+  - Rejected: (W) steps in the `windows` job (+10-15 minutes in sequence on an unmeasured 90-minute job, and an earlier failure there
+    would skip the publish); (R) a `workflow_dispatch` release workflow (the superseded premise above; a manual trigger is what
+    SETTLED refuses for the test workflow); (D) a path-filtered `dev` workflow (a `dev` trigger reopens SETTLED and needs the owner;
+    path filters cannot see the SDK input); (C) caching the extracted archive (3.9 GB) or a subset of it (a second copy of the
+    script's inputs); `AnyHaveMetadataValue` in `KimiOneFile`'s condition (the probe showed it removes nothing); the scan reading the
+    XML text of the rows (C-482 C2: a split row, a property or an imported row would stop the scan silently); `test-cli.ps1
+    -NativeCompiler` in the job (it needs the managed `Kimi.dll` and a toolchain root; O4, not now); `--version` and `check` rows
+    (verify starts the image; `build` runs every check `check` runs).
