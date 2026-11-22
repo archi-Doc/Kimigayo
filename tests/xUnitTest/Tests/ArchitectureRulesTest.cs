@@ -164,6 +164,7 @@ public class ArchitectureRulesTest
         "Binding.AsWritten.cs:WrittenProjection=1 kind",
         "Binding.AsWritten.cs:WrittenProjection=2 unchanged",
         "Binding.AssociatedFormation.cs:StoresTypeArgument=2 declared",
+        "Binding.AssociatedInference.Demand.cs:DecideAtLimit=1 declared",
         "Binding.AssociatedInference.Demand.cs:HeldValue=1 declared",
         "Binding.AssociatedInference.Demand.cs:PublishInferred=1 declared",
         "Binding.AssociatedInference.Demand.cs:SuppliesInBoth=1 declared",
