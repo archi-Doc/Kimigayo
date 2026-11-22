@@ -19,12 +19,14 @@ public sealed partial class Binding
     private int aliasResolutionDepth;
     private ImportedOriginVisitor? importedOriginVisitor;
 
-    // A pass-local selected import: AliasTarget completed before construction, so Declaration.BoundType is its stable environment.
+    // A pass-local selected import: AliasTarget completed before construction, so Declaration.BoundType is stable. Its environment (SPEC
+    // 9.7.1, 18.2.1; F's ruling N1-5 (2)) is that Type when it binds Type or Origin arguments, its outer chain's included; a target binding
+    // none carries no environment, so two opened targets binding nothing never differ by environment, and no use records one.
     // Same-candidate/environment merges retain the first actual witness; replacement candidates replace provenance as well.
     // ResetAliases clears every consumer before the next pass or source invalidation. Normalized Type identity carries no syntax.
     internal readonly record struct AliasImport(AliasKoto? Declaration, Koto? WrittenOrigin)
     {
-        internal BoundType? Environment => this.Declaration?.BoundType;
+        internal BoundType? Environment => this.Declaration?.BoundType is { } target && (target.Components.Count > 0 || target.OriginArguments.Count > 0) ? target : null;
 
         // The caller has kept the same selection and environment; only the first actual witness may be added.
         internal AliasImport MergeWitness(AliasImport other) => this with { WrittenOrigin = this.WrittenOrigin ?? other.WrittenOrigin };
@@ -72,7 +74,7 @@ public sealed partial class Binding
             if (this.namedAliases.TryGetValue((document, name), out var previous))
             {
                 if (!ReferenceEquals(previous.Declaration!.BoundSymbol, alias.BoundSymbol) ||
-                    !ReferenceEquals(previous.Environment, alias.BoundType) || previous.Declaration!.BindingState == BindingState.Invalid)
+                    !ReferenceEquals(previous.Environment, import.Environment) || previous.Declaration!.BindingState == BindingState.Invalid)
                 {
                     this.FailDuplicate(previous.Declaration!, alias, true);
                 }
@@ -150,10 +152,17 @@ public sealed partial class Binding
         {
             var originDeclaration = this.BeginOriginDeclaration(alias, scope);
             var symbol = this.TypeName(targetSyntax, scope);
-            if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
-                this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
+            if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto))
             {
                 this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
+                RestPendingOn(originDeclaration, alias);
+                return null;
+            }
+
+            if (this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
+            {
+                // SPEC 23.1.2 (rule W; F's ruling N1-5 (4)): the target's formation failed with its own record, which the alias reads directly.
+                this.CompleteDependent(alias, targetSyntax);
                 RestPendingOn(originDeclaration, alias);
                 return null;
             }
