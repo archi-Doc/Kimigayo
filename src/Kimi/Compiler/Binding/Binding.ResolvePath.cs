@@ -1144,10 +1144,10 @@ public sealed partial class Binding
             return new(PathEnd.Selected, this.Library.Module, syntax);
         }
 
-        var candidates = default(TypeCandidates);
         if (syntax is MemberAccessKoto member && this.ResolveRootPath(member.Left, root, UseRow(UseNode(member.Left))) is { Symbol: { } qualifier } &&
             this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName)
         {
+            var candidates = default(TypeCandidates);
             this.AddTypeCandidates(ref candidates, MemberTypes(members, rightName), root, role, arity);
             var selected = candidates.Ambiguous ? null : candidates.Match ?? candidates.First;
             this.nameSteps.Add(new(NameStepKind.RootMember, member, selected, qualifier, default, default, default, null));
@@ -1161,15 +1161,16 @@ public sealed partial class Binding
 
         if (TypeSpelling(syntax) is { } name)
         {
-            this.AddTypeCandidates(ref candidates, root.Types.GetValueOrDefault(name), root, role, arity);
-            if (candidates.Ambiguous)
+            // The root's own stage, then a module reference; no import reaches the root (9.6), so the stage records no Head step (-1).
+            var stage = this.TypeStage(root, root, syntax, name, role, arity, step: -1);
+            if (stage.End != PathEnd.Unresolved)
             {
-                return new(PathEnd.Ambiguous, null, syntax);
+                return stage;
             }
 
-            var target = candidates.Match ?? candidates.First ?? this.ModuleReference(syntax, name);
-            var eligible = target is not null && HasLookupRole(target, role) && this.Accessible(target, root);
-            return new(eligible ? PathEnd.Selected : PathEnd.Unresolved, eligible ? target : null, syntax);
+            var reference = this.ModuleReference(syntax, name);
+            var eligible = reference is not null && HasLookupRole(reference, role) && this.Accessible(reference, root);
+            return new(eligible ? PathEnd.Selected : PathEnd.Unresolved, eligible ? reference : null, syntax);
         }
 
         return new(PathEnd.Unresolved, null, syntax);
