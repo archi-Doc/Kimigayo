@@ -177,21 +177,56 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.False(File.Exists(source));
     }
 
-    [Fact]
-    public void ReplaceReportsAPersistentHoldAndKeepsBothFiles()
+    // A replacement that keeps failing (ArtifactFiles.Replace; PLAN G1257) is one IOException naming its destination once, with the
+    // system's message and the move's failure inside, and keeps both files: a destination held with or without delete sharing, read-only,
+    // a directory, or in a missing directory (the move names no path on Windows, so every caller's message gains it here).
+    [Theory]
+    [InlineData("held", typeof(UnauthorizedAccessException))]
+    [InlineData("held without delete sharing", typeof(UnauthorizedAccessException))]
+    [InlineData("read-only", typeof(UnauthorizedAccessException))]
+    [InlineData("a directory", typeof(UnauthorizedAccessException))]
+    [InlineData("in a missing directory", typeof(DirectoryNotFoundException))]
+    public void ReplaceReportsAPersistentFailureNamingItsDestinationAndKeepsBothFiles(string row, Type failure)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows rename semantics test.");
-        var destination = Path.Combine(this.directory, "Hello.link.build.json");
-        var source = destination + ".tmp";
-        File.WriteAllText(destination, "old");
+        var destination = Path.Combine(this.directory, row == "in a missing directory" ? "missing" : string.Empty, "Hello.link.build.json");
+        var source = Path.Combine(this.directory, "Hello.link.build.json.tmp");
+        var old = row is "a directory" or "in a missing directory" ? null : "old";
         File.WriteAllText(source, "new");
-        using (new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+        if (old is not null)
         {
-            Assert.Throws<UnauthorizedAccessException>(() => ArtifactFiles.Replace(source, destination));
+            File.WriteAllText(destination, old);
+        }
+        else if (row == "a directory")
+        {
+            Directory.CreateDirectory(destination);
         }
 
-        Assert.Equal("old", File.ReadAllText(destination));
+        var sharing = row == "held" ? FileShare.Read | FileShare.Delete : FileShare.Read;
+        using var held = row.StartsWith("held", StringComparison.Ordinal) ? new FileStream(destination, FileMode.Open, FileAccess.Read, sharing) : null;
+        if (row == "read-only")
+        {
+            File.SetAttributes(destination, FileAttributes.ReadOnly);
+        }
+
+        IOException ex;
+        try
+        {
+            ex = Assert.Throws<IOException>(() => ArtifactFiles.Replace(source, destination));
+        }
+        finally
+        {
+            held?.Dispose();
+            if (row == "read-only")
+            {
+                File.SetAttributes(destination, FileAttributes.Normal); // Before Dispose deletes the directory.
+            }
+        }
+
+        Assert.IsType(failure, ex.InnerException);
+        Assert.Equal($"The file could not be replaced: {destination}. {ex.InnerException!.Message}", ex.Message);
         Assert.Equal("new", File.ReadAllText(source));
+        Assert.Equal(old, File.Exists(destination) ? File.ReadAllText(destination) : null);
     }
 
     [Fact]

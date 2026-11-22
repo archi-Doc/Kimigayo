@@ -35,6 +35,20 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
     }
 
+    // R7-N1 c-b (F's N1c ruling 28: K2): a member access's left read through a proved projection supplies its premises to its use scope's
+    // kept layer (BindingScope.EvaluatedPremises), so a warm Bind of a Case through a concrete receiver's projection (rb47v) and through a
+    // nested projection a Contract clause normalizes (dq7v) allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> i32 => S.(C<i32>).Item.A.f()\n")]
+    [InlineData("enum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\n    public func make() -> i32 => 7\ncontract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n")]
+    public void WarmBindOfAProjectionLeftAllocatesNothing(string source)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
+    }
+
     [Fact]
     public void PipelineBindsExistingNodesAndRetainsCallPlans()
     {
@@ -117,23 +131,128 @@ public class BindingTest
     }
 
     // SPEC 11.6, 23.1.2 (DECISIONS BU-105): a cycle of inferred Properties is recorded once, at the declaration whose header started
-    // first; each other declaration on it, and a dependent beside it, rests on that record. The query state of a header lives one pass,
-    // so binding again gives the same records.
+    // first; each other declaration on it, and a dependent beside it, rests on that record (the Signature query's Error, R7-D2 d2), so
+    // their derived records (DerivedIssues) are not shown beside it. The query state of a header lives one pass, so binding again gives
+    // the same records.
     [Theory]
-    [InlineData("group Values\n    var a = b\n    var b = a", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a")]
-    [InlineData("group Values\n    var a = Values.b\n    var b = a", "CyclicBinding_Kd var a = Values.b|PrerequisiteUnavailable_Kd var b = a")]
-    [InlineData("group Values\n    var a = b\n    var b = c\n    var c = a", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = c|PrerequisiteUnavailable_Kd var c = a")]
-    [InlineData("group Values\n    var a = b\n    var b = a\n    var c = a + 1", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a|PrerequisiteUnavailable_Kd var c = a + 1")]
-    [InlineData("group Values\n    var a = b\n    var b = a\n    var c: i32 = 1", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a")]
-    [InlineData("group Values\n    var a: i32 = b\n    var b = a", "")]
-    [InlineData("group Values\n    var a: i32 = b\n    var b = c\n    var c = a", "")]
-    public void APropertyCycleIsRecordedOnceAtItsFirstHeaderInEveryPass(string source, string records)
+    [InlineData("group Values\n    var a = b\n    var b = a", "CyclicBinding_Kd var a = b", "var b = a")]
+    [InlineData("group Values\n    var a = Values.b\n    var b = a", "CyclicBinding_Kd var a = Values.b", "var b = a")]
+    [InlineData("group Values\n    var a = b\n    var b = c\n    var c = a", "CyclicBinding_Kd var a = b", "var b = c|var c = a")]
+    [InlineData("group Values\n    var a = b\n    var b = a\n    var c = a + 1", "CyclicBinding_Kd var a = b", "var b = a|var c = a + 1")]
+    [InlineData("group Values\n    var a = b\n    var b = a\n    var c: i32 = 1", "CyclicBinding_Kd var a = b", "var b = a")]
+    [InlineData("group Values\n    let c = b + 1\n    let a = b\n    let b = a", "CyclicBinding_Kd let b = a", "let c = b + 1|let a = b")]
+    [InlineData("func useB() -> i32\n    let x = Values.b\n    return x\ngroup Values\n    public let a = b\n    public let b = a", "CyclicBinding_Kd let a = b", "let x = Values.b|public let b = a")]
+    [InlineData("group Values\n    var a: i32 = b\n    var b = a", "", "")]
+    [InlineData("group Values\n    var a: i32 = b\n    var b = c\n    var c = a", "", "")]
+
+    // G812 ruling 173 (SPEC 11.6 with 9.6): a Name left of both readings whose value path needs the Property's own Type is a cycle, though
+    // the Type path forms that Type; an annotation breaks it (the value path then fails over i32 and the Type path is the sole success).
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = T.b", "CyclicBinding_Kd let T = T.b", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    var T = T.b", "CyclicBinding_Kd var T = T.b", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = U\n    let U = T.b", "CyclicBinding_Kd let T = U", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    var T = U\n    var U = T.b", "CyclicBinding_Kd var T = U", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T: i32 = T.b", "", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    var T: i32 = T.b", "", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = U\n    let U: i32 = T.b", "", "")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let c = 2\n    let T = c\n    let d = T.b", "", "")]
+    public void APropertyCycleIsRecordedOnceAtItsFirstHeaderInEveryPass(string source, string records, string derived)
     {
         var compilation = CompilationTestHelper.ParseSuccess(source);
         for (var pass = 0; pass < 2; pass++)
         {
             Assert.Equal(records.Length == 0, compilation.Bind().IsComplete);
             Assert.Equal(records, string.Join('|', CompilationTestHelper.BindingErrors(compilation).OrderBy(static x => x.Span.Start).Select(static x => $"{x.Code} {x.Text}")));
+            Assert.Equal(derived, string.Join('|', compilation.Binding.DerivedIssues.OrderBy(static x => x.Node.Span.Start).Select(static x => x.Node.ToString())));
+        }
+    }
+
+    // G812 ruling 174 (SPEC 7.7.1, 10.5.4, 11.6): typing an initializer needs an anonymous function's Type, which its header gives (a
+    // written result, or the expected signature's), not its body, which the variable binding checks with the Property's parts; so a use
+    // of the Property in that body is no cycle in either pass. A Closure in static storage and its call stay located limits. Its
+    // environment is empty: a written `[]`, or no runtime binding visible at the literal (SPEC 9.3: a local only after its declaration,
+    // so neither the local whose initializer holds the literal nor a later one; G812 ruling 182).
+    [Theory]
+    [InlineData("group V\n    let f = func () -> i32 => V.a\n    let a = f()")]
+    [InlineData("group V\n    let a = f()\n    let f = func () -> i32 => V.a")]
+    [InlineData("group G\n    public let f = func () -> i32 => G.f()")]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = func () -> i32 => T.b")]
+    [InlineData("group V\n    let f = func () -> i32 => V.g()\n    let g = f")]
+    [InlineData("group V\n    let a = run(func () => V.b)\n    let b = a\n    func run(f: () -> i32) -> i32 => f()")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func [] () -> i32 => V.b)()\n        .None => 0\n    let b = a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => x\n        .None\n            let r = (func () -> i32 => V.b)()\n            yield r\n    let b = a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => x\n        .None\n            _ = (func () -> i32 => V.b)()\n            let z = 1\n            yield z\n    let b = a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => x\n        .None\n            yield (func () -> i32 => V.b)()\n    let b = a")]
+    public void AnAnonymousHeaderTypesItsPropertyWithoutItsBody(string source)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            compilation.Bind();
+            Assert.All(CompilationTestHelper.BindingErrors(compilation), static x => Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), x.Code));
+        }
+    }
+
+    // G812 rulings 174, 176 (SPEC 23.1.2): the body the header left keeps its own records, bound once with the Property's parts, in a cycle
+    // too (the drain on the Error path), the literal before the re-entry or after it in the same computation.
+    [Theory]
+    [InlineData("group V\n    let f = func () -> i32 => V.g\n    let g: bool = true", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("group V\n    let a = (b, func () -> i32 => nosuch)\n    let b = a", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("group V\n    let a = (func () -> i32 => nosuch, b)\n    let b = a", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("group V\n    let a = (func () -> i32 => V.g, b)\n    let b = a\n    let g: bool = true", DiagnosticCode.TypeMismatch_Kd)]
+    public void ABodyTheHeaderLeftKeepsItsRecords(string source, DiagnosticCode code)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            compilation.Bind();
+            Assert.Single(CompilationTestHelper.BindingErrors(compilation), x => x.Code == code.ToString());
+        }
+    }
+
+    // G812 rulings 178, 181 (the owner's O-472 (a), widened by O-475 (a); a Q13 rule 2 exception): a capturing closure literal of an
+    // inferred Property's initializer (a written capture list, or none and a runtime binding visible at it) keeps its body in the header
+    // frame, since its receiver is its body's (ruling 179), so a re-entry through that body is the interim CyclicBinding_Kd at the first
+    // header, on programs valid by SPEC 11.6 that dev rejects too. These rows go with the exception: when D-1007 (PLAN G1217) publishes
+    // the literal's captures and receiver mode without binding its body, they expect acceptance.
+    [Theory]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func () -> i32 => x + V.b)()\n        .None => 0\n    let b = a", "let a")]
+    [InlineData("group V\n    let b = a\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func () -> i32 => x + V.b)()\n        .None => 0", "let b")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func [x] () -> i32 => x + V.b)()\n        .None => 0\n    let b = a", "let a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => (func [var x] () -> i32 => x + V.b)()\n        .None => 0\n    let b = a", "let a")]
+    [InlineData("group V\n    let a = (func (y: i32) => (func () -> i32 => V.b)())(1)\n    let b = a", "let a")]
+    [InlineData("group V\n    let a = match Option.Some(1)\n        Option.Some(let x) => x\n        .None\n            let z = 1\n            let r = (func () -> i32 => V.b)()\n            yield r + z\n    let b = a", "let a")]
+    public void ACapturingLiteralKeepsTheInterimCycleUntilItsCapturesArePublished(string source, string declaration)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            compilation.Bind();
+            var cycle = Assert.Single(CompilationTestHelper.BindingErrors(compilation), static x => x.Code == nameof(DiagnosticCode.CyclicBinding_Kd));
+            Assert.StartsWith(declaration, cycle.Text, StringComparison.Ordinal);
+        }
+    }
+
+    // G812 ruling 179 (SPEC 7.7.3, 7.7.4): a literal with a written non-empty capture list keeps its body in the header frame, as every
+    // capturing literal does (a body moving a capture makes the call Consuming), so the checks the header runs read the classified
+    // receiver: an Exclusive Closure (`var y`) is not erased to `() -> ()`, and a Consuming call of a Copy Closure is accepted.
+    [Theory]
+    [InlineData("group V\n    let a = (func (y: i32) => run(func [var y] () -> () => y += 1))(1)\n    func run(f: () -> ()) => f()", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("group V\n    let a = (func (y: i32) => (func [y] () -> i32 => y@move)())(1)", null)]
+    public void AWrittenCaptureListKeepsTheReceiverItsBodyGives(string source, DiagnosticCode? code)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            compilation.Bind();
+            var errors = CompilationTestHelper.BindingErrors(compilation);
+            if (code is { } expected)
+            {
+                Assert.Contains(errors, x => x.Code == expected.ToString());
+            }
+            else
+            {
+                Assert.Empty(errors);
+            }
         }
     }
 

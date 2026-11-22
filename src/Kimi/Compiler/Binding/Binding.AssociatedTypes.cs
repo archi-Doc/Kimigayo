@@ -32,6 +32,12 @@ public sealed partial class Binding
         return contract.ContractSelf = symbol.Type;
     }
 
+    // SPEC 8.3.2, 8.5.2: a projection's Contract evidence, its written Contract, else the associated Type's declaring reference, else its
+    // declaring Contract; where `type is evidence` is proved (SuppliesPremises), that Contract supplies its premises for `type`
+    // (AddContractPremises). The former adds them to the use's scope; the evaluation (ResolvePath's EvaluateProjection) to its own layer.
+    private static BindingSymbol ProjectionEvidence(BindingSymbol associated, BindingSymbol? reference, BindingSymbol? qualifier)
+        => qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
+
     // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the one
     // conformance that reference names at `type`'s Self in the clause's scope (SPEC 8.5.1, 8.5.5: a qualifier is a direct conformance,
     // normalized), so to a path whose Contract or one of its ancestors is a candidate of that selection (IsSelectionCandidate: every
@@ -340,10 +346,22 @@ public sealed partial class Binding
         {
             this.NoteEarlyProjection(syntax, type, scope, name, qualifier);
 
-            // F3 (PLAN G724): a Name after a projection that names a member Type of the projection's normal form (SPEC 9.6) is a selection
-            // not implemented yet: a located Unsupported_Kd, never a missing name. One the normal form does not declare stays missing.
-            return receiverPath.End == PathEnd.Projection && this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is not null
-                ? this.Fail(syntax, BindingFailure.Unsupported, true) : null;
+            // SPEC 9.6, 8.5.2 (PLAN G724 (b)): a Name after a projection that names a member Type of the projection's normal form selects
+            // it, formed in that normal form (BindContainerReference reads the projection qualifier's formed Type as its environment).
+            // One the normal form does not declare stays missing.
+            var member = receiverPath.End == PathEnd.Projection ? this.LookupMember(type, name, scope, LookupRole.Qualifier) : default;
+            if (member.Member is not { } nested)
+            {
+                if (member.Hidden is { } hidden)
+                {
+                    this.PublishHiddenMember(syntax, hidden); // SPEC 9.4: a member Type of the normal form inaccessible from the use.
+                }
+
+                return null;
+            }
+
+            this.PublishProjectionMember(syntax, nested);
+            return this.BindContainerReference(syntax, nested, scope, this.TypeContext(syntax, scope), []) is { } nestedType ? Complete(syntax.Right, nestedType) : null;
         }
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
@@ -351,19 +369,17 @@ public sealed partial class Binding
             return this.Record(syntax, BindingFailure.InvalidAssociatedType, []);
         }
 
-        var evidence = qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
+        var evidence = ProjectionEvidence(associated, reference, qualifier);
         this.projectionUses.Add((syntax, type, evidence));
-        if (!this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope) == ConstraintProof.Proven)
+        if (this.SuppliesPremises(type, evidence, scope))
         {
             // Expand only a referenced receiver's proved contract. This avoids eagerly generating
             // an unbounded chain for recursive associated requirements such as E is SelfContract.
             this.AddContractPremises(evidence.Contract!, type, scope);
         }
 
-        // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
-        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
-        syntax.BoundSymbol = associated;
-        syntax.Right.BoundSymbol = associated;
+        var projection = this.ProjectionIdentity(type, associated, reference, qualifier);
+        this.PublishProjectionMember(syntax, associated);
         Complete(syntax.Right, projection);
         if (!ReferenceEquals(receiver, syntax.Left))
         {
@@ -372,6 +388,15 @@ public sealed partial class Binding
 
         return this.NormalizedProjection(projection, scope, applyingOrigins);
     }
+
+    // SPEC 8.6.1: a projection's Type, an associated Type identified by its receiver and its declaring Contract reference: the one identity
+    // the former (BindAssociatedProjection) and the evaluation (ResolvePath's EvaluateProjection) form, before NormalizedProjection.
+    private BoundType ProjectionIdentity(BoundType type, BindingSymbol associated, BindingSymbol? reference, BindingSymbol? qualifier)
+        => this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
+
+    // SPEC 8.3.2: whether `type is evidence` (ProjectionEvidence) is proved in `scope`, so the Contract supplies its premises for `type`.
+    private bool SuppliesPremises(BoundType type, BindingSymbol evidence, BindingScope scope)
+        => !this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope) == ConstraintProof.Proven;
 
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
     private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;

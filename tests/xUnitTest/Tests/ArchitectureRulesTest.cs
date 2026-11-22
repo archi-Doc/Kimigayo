@@ -41,17 +41,17 @@ public class ArchitectureRulesTest
     private const string DocumentationReaders = "Checking/Hover/HoverBuilder.cs;Checking/HoverFacts.cs;Checking/HoverPlacement.cs;Lsp/HoverRenderer.cs";
 
     // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
-    private const string NameEvaluations = "ResolvePath|ResolveName|ResolveValue|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|ReadAgain|PublishPath";
+    private const string NameEvaluations = "ResolvePath|ResolveName|ResolveValue|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|ReadAgain|PublishPath|EvaluateUse|EvaluateName";
 
-    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=21;" +
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=28;" +
         "Binding.Types.cs=2";
 
-    private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
+    private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget|PublishLookup|ReadLeft|MayBeValueQualifier";
 
     private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedTypes.cs=3;" +
         "Binding.Constraints.Requirements.cs=1;Binding.Constraints.cs=2;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;" +
         "Binding.Conversions.cs=1;Binding.Diagnostics.cs=1;Binding.EffectDeclarations.cs=1;" +
-        "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
+        "Binding.Lengths.cs=1;Binding.MemberLookup.cs=1;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=4;Binding.ResultSurvey.cs=1;" +
         "Binding.Structs.cs=1;Binding.Types.cs=3";
 
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE. R6-check H14 (D7): the names
@@ -143,6 +143,7 @@ public class ArchitectureRulesTest
         "Binding.ArgumentKinds.Evidence.cs:InferPosition=1 kind",
         "Binding.ArgumentKinds.Fit.cs:ProbeRangeBoundary=1 formed",
         "Binding.ArgumentKinds.Fit.cs:ProbeRangeBoundary=1 kind",
+        "Binding.ArgumentKinds.Positions.cs:LiteralInputType=1 unchanged",
         "Binding.ArgumentKinds.Solution.cs:RestoreSlotValues=1 unchanged",
         "Binding.ArgumentKinds.Wholes.cs:BindWholes=1 key",
         "Binding.ArgumentKinds.Wholes.cs:HoldsNeverPart=1 kind",
@@ -181,10 +182,17 @@ public class ArchitectureRulesTest
         "Binding.BoundContracts.cs:SubstituteRequirementContract=1 unchanged",
         "Binding.CallRelations.cs:CollectCallRelations=1 sufficient",
         "Binding.CallRelations.cs:JudgeCallFit=1 sufficient",
-        "Binding.CallSelection.Candidates.cs:TryCandidateCore=1 unchanged",
+        "Binding.CallSelection.Candidates.cs:InferExpectedResult=1 unchanged",
+        "Binding.CallSlots.cs:FittedPattern=1 unchanged",
+        "Binding.CallSlots.cs:FormedApplication=1 unchanged",
         "Binding.CallSlots.cs:Infer=4 formed",
         "Binding.CallSlots.cs:Infer=1 sufficient",
         "Binding.CallSlots.cs:Infer=1 unchanged",
+        "Binding.CallSlots.cs:IsFormedLayer=1 finding", // PLAN G898 (D-next): a layer of a pair admitting only owner is its target by the pair row, read as written
+        "Binding.CallSlots.cs:IsSource=1 finding", // PLAN G898 (D-next): two formed layers whose pairs admit one Semantics have one head, compared as written
+        "Binding.CallSlots.cs:IsSource=1 formed",
+        "Binding.CallSlots.cs:IsSource=1 kind",
+        "Binding.CallSlots.cs:LayerTarget=1 finding", // PLAN G898 (D-next): two pairs' wholes compared as written where one single-Semantics head is one layer
         "Binding.CallableContracts.cs:CompareCallableContracts=1 declared",
         "Binding.CallableEffects.cs:CheckCallableEffectUses=2 key",
         "Binding.CallableEffects.cs:CollectCallableEffectUses=2 key",
@@ -287,6 +295,7 @@ public class ArchitectureRulesTest
         "Binding.Lints.cs:HasValue=2 kind",
         "Binding.Materialization.cs:Materialization=1 unchanged",
         "Binding.MemberLookup.cs:LookupMember=1 unchanged",
+        "Binding.MemberLookup.cs:SuppliesIdentity=1 declared",
         "Binding.NumericConversions.cs:BindBitConversion=3 kind",
         "Binding.NumericConversions.cs:BindWrapConversion=1 kind",
         "Binding.NumericConversions.cs:BitWidth=2 kind",
@@ -371,7 +380,9 @@ public class ArchitectureRulesTest
         "Binding.Retention.cs:Handed=2 key",
         "Binding.RuntimeTypeTests.cs:BindRuntimeTypeTest=3 kind",
         "Binding.SemanticsAdaptations.cs:AdaptedType=1 kind",
-        "Binding.SemanticsAdaptations.cs:FamilyApplication=2 unchanged",
+        "Binding.SemanticsAdaptations.cs:FamilyApplication=1 unchanged",
+        "Binding.SemanticsAdaptations.cs:PairApplication=1 unchanged",
+        "Binding.SemanticsAdaptations.cs:SplitIndex=1 key",
         "Binding.Sequences.cs:BeginIterationStep=1 formed",
         "Binding.Sequences.cs:IterationEntry=1 unchanged",
         "Binding.ShapeEvidence.cs:SameArgumentEvidence=1 kind",
@@ -391,6 +402,7 @@ public class ArchitectureRulesTest
         "Binding.TypeRelations.Origins.cs:CommonOriginType=2 sufficient",
         "Binding.TypeRelations.Walk.cs:Discharged=1 formed",
         "Binding.TypeRelations.Walk.cs:FunctionFits=1 formed",
+        "Binding.TypeRelations.Walk.cs:Names=1 unchanged",
         "Binding.TypeRelations.Walk.cs:Relate=1 formed",
         "Binding.TypeRelations.cs:CompatibleResult=1 kind",
         "Binding.TypeRelations.cs:CompatibleSignature=1 unchanged",
@@ -533,11 +545,12 @@ public class ArchitectureRulesTest
     // R6-check H14 (D7): Parsing reads the Koto semantic slots only in their declarations' bodies and on their write paths (a replaced
     // child's reset, the views and synthetic Kotos Binding builds), which R7 removes with the slots (DECISIONS R5-M9).
     [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]
-    // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions, and is read outside the component
-    // only at its two interims: BindReference's cycle record (Names, until R7-D2 d2) and BindVariableCore's guard (Variables, until d4).
-    // PLAN G949 S1-1 (B4): the freeze's verify half reads the library's states in the component (LibraryQueryFault, three reads).
-    [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
-    [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=7;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
+    // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions (R7-D2 d2's FailQuery the fourth),
+    // and is read outside the component only at its interim: BindVariableCore's guard (Variables, until d4). PLAN G949 S1-1 (B4): the
+    // freeze's verify half reads the library's states in the component (LibraryQueryFault, three reads); CompleteQuery and FailQuery
+    // read the prior state, QueryRecord the failed answer, HeaderRunningOrFailed the frame fact (G812 rulings 174, 176: TypedByHeader's).
+    [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=4")]
+    [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=10;Binding/Binding.Variables.cs=1")]
     // R7-V1 (PLAN G375): a declared signature's walk is the row's, computed at the row and outside it, for a requirement's call and (PLAN
     // G949 S1-r2, DECISIONS BU-120's line) a demand before the gate; the walk's declaration is the third count. All three go at R7-C2
     // (PLAN G375). A conformance computes none (the owner's O-44).
@@ -597,9 +610,10 @@ public class ArchitectureRulesTest
     // bound-slot branch; J4's parameter side, a pattern's Type parameter that is no slot of the solve, a nested callee's enclosing
     // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
     // input (Expressions.cs: the expected and the bound Type; Variables.cs; Conversions.cs: a conversion's written target,
-    // BindConversionTarget, PLAN G1240); Keys.cs is
-    // ClassForm's own recursion. J2 reads the classes, no form. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
+    // BindConversionTarget, PLAN G1240), and (iii) a member step's receiver (R7-N1 c-b: MemberLookup.cs, QualifierSelection's
+    // receiver Type; ResolvePath.cs, EvaluateProjection's normal form); Keys.cs is ClassForm's own recursion. J2 reads the classes,
+    // no form. A further reader fails here until its row is reviewed.
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.MemberLookup.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
