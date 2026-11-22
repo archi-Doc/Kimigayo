@@ -23,7 +23,10 @@ namespace Kimi.Compiler;
 // - Invariants: dependentChecks keys a part by its core's syntax identity (SourceRef, argumentParts' key) and E by reference (an
 //   interned Type); it lives for one pass (ResetPass) and a query starts only on a miss, so each part is checked once per distinct E;
 //   the queries one outermost resolution starts are counted (resolutionWork) and past ResolutionWorkLimit (IMPL A.4) no query runs:
-//   the part is kept unchecked and the outermost call is refused (ResolutionWorkLimit_Kd, BindCallCore), never selected.
+//   the part is kept unchecked and the outermost call is refused (ResolutionWorkLimit_Kd, BindCallCore), never selected. A verdict is
+//   a function of (part, E) only: one whose query read a split layer (ReadSplitSince: a binding of the open combination, or a
+//   formation that formed none) is its run's, which E does not hold, and is not kept (DECISIONS BU-240, removed with its (R); ArgFlow
+//   ruling 152 C1), so a later run at the same E queries again.
 // - Prohibitions: no binding, record or node write; no reader decides a checked part's fit but through FitArgument.
 public sealed partial class Binding
 {
@@ -88,6 +91,7 @@ public sealed partial class Binding
         }
 
         CheckedVerdict verdict;
+        var (stamp, mark) = (this.splitReads, this.unformedWrites);
         this.candidateTrials++;
         try
         {
@@ -99,7 +103,11 @@ public sealed partial class Binding
             this.candidateTrials--;
         }
 
-        this.dependentChecks[key] = verdict;
+        if (!this.ReadSplitSince(stamp, mark))
+        {
+            this.dependentChecks[key] = verdict;
+        }
+
         return verdict;
     }
 
