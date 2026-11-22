@@ -144,8 +144,8 @@ public class GenericFunctionReferenceTest
     {
         string Nest(string inner) => new string('(', depth) + inner + string.Concat(Enumerable.Repeat(", i32)", depth));
         var reference = $"let f: ({Nest(terminal)}) -> {Nest(terminal)} = identity" + (written is null ? string.Empty : $"<{Nest(written)}>");
-        CompilationTestHelper.AssertBindingRecordsAtLines($"reference-{depth}-{written}", Identity + reference + "\n",
-            valid ? string.Empty : $"{nameof(DiagnosticCode.TypeMismatch_Kd)}: {reference}");
+        var records = valid ? string.Empty : $"{nameof(DiagnosticCode.TypeMismatch_Kd)}: {reference}";
+        CompilationTestHelper.AssertBindingRecordsAtLines($"reference-{depth}-{written}", Identity + reference + "\n", records);
     }
 
     // SPEC 10.6, 15.3.6: a slot that only a per-call Origin of the fixed expected call signature would satisfy is one
