@@ -128,9 +128,9 @@ public sealed partial class Binding
     //   walk's root with a use (RelationWalk.Fits), CallableContractType, and a failed fit's record (RecordMismatch: its structure
     //   gate and Origin search read the pair the walk compared, F's C2 ruling 307 (2)). J4, a slot's bindings agree (10.8 Solving): Infer's
     //   bound-slot branch, in SlotFrame.View. (ii), a use's binding input: BindAndAdaptNode (the expected and the bound Type, BU-72),
-    //   BindVariableCore, BindConversion and BindWrapConversion. The inline walk (VisitInlineProjection, SPEC 6.2) reads a by-value
-    //   projection's form in the walking node's scope, a judgment of that scope's storage (F's C2 ruling 304). J2, the identity
-    //   proposition, reads the classes (IdentityProven, among
+    //   BindVariableCore and a conversion's written target (BindConversionTarget: a Type target, a typed borrow's, @wrap's and @bits' U;
+    //   PLAN G1240). The inline walk (VisitInlineProjection, SPEC 6.2) reads a by-value projection's form in the walking node's scope, a
+    //   judgment of that scope's storage (F's C2 ruling 304). J2, the identity proposition, reads the classes (IdentityProven, among
     //   others ResolveAssociated's candidate agreement), no form. Every comparison of identical Types whose inputs are formed is one of
     //   J1-J4; one input is not formed: an anonymous function's written header Types, which the unifier's decomposition, Infer's
     //   TargetProjection and array-length-hole branches and 10.7's fixed parts compare as written (open issue D-779, PLAN G999:
