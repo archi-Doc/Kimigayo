@@ -173,10 +173,11 @@ public class ClosureReceiverClassificationTest
         Assert.Equal("InvalidAssignment_Kd f", Records(head + "let " + Closure));
     }
 
-    // SPEC 7.7.3, 5.2.1 condition 3, 5.3, 5.4 (DECISIONS R4-M134; PLAN G251 (1); the owner's O-76 (c) (i)): an access that needs write
-    // capability through a raw pointer read from the environment, through a raw Place it reaches included, or a pointer derived from one
-    // (a displacement, a raw pointer conversion), a write, a Take or an in-place destruction, makes the call Exclusive; a read leaves it
-    // Shared. Labels from SPEC: each `true` row's `let` call is invalid, its `var` twin valid.
+    // SPEC 7.7.3, 5.2.1 condition 3, 5.3, 5.4, 5.6 (DECISIONS R4-M134; PLAN G251 (1); the owner's O-76 (c) (i)): an access that needs
+    // write capability through a raw pointer read from the environment, through a raw Place it reaches included, or a pointer derived
+    // from one (a displacement, a raw pointer conversion), a write (a volatile one included, 5.6), a Take or an in-place destruction,
+    // makes the call Exclusive; a read, a volatile one included, leaves it Shared. Labels from SPEC: each `true` row's `let` call is
+    // invalid, its `var` twin valid.
     [Theory]
     [InlineData(RawProbe + "    let f = func [p] () => unsafe => consume((*p)@move)\n    f()\n", true)]
     [InlineData(RawProbe + "    let f = func [p] () => unsafe => _ = (*p)@move\n    f()\n", true)]
@@ -193,6 +194,8 @@ public class ClosureReceiverClassificationTest
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp, Probe.init(2))\n    f()\n", true)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp + 0, Probe.init(2))\n    f()\n", true)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*(pp + 0), Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.writeVolatile(p@raw/i32, 5)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return Raw.readVolatile(p@raw/i32)\n    let v = f()\n", false)]
     [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (*p).v\n    let v = f()\n", false)]
     [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (p + 0)[0].v\n    let v = f()\n", false)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () -> i32\n        unsafe => return (*pp)[0].v\n    let v = f()\n", false)]
