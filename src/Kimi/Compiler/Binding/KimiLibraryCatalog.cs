@@ -25,6 +25,12 @@ internal static partial class KimiLibraryCatalog
     // The lang item a `#Lang` Name names, or null when the Name is no KimiDeclarationId member.
     internal static KimiDeclarationId? LangItem(string name) => LangItems.TryGetValue(name, out var id) ? id : null;
 
+    // SPEC 13.3.3: whether a lang item is an arithmetic Contract, ordinary, Left or Negatable (the range KimiDeclarationId keeps), and
+    // whether it is a Left one. The Types' built-in conformances are TyCtxt.HasBuiltinArithmetic's.
+    internal static bool IsArithmeticContract(KimiDeclarationId? id) => id is >= KimiDeclarationId.Addable and <= KimiDeclarationId.Negatable;
+
+    internal static bool IsLeftContract(KimiDeclarationId id) => id is >= KimiDeclarationId.LeftAddable and <= KimiDeclarationId.LeftRemainderProvider;
+
     // SPEC 22.1: a Kimi Type whose representation the compiler manages has exactly the constructors its declaration declares.
     internal static bool ManagesRepresentation(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].ManagedRepresentation;

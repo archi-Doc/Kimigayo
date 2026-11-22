@@ -808,7 +808,7 @@ public sealed partial class Binding
             // construction Resolved (JudgeHolderAccess).
             if (this.HoldsHolder(stored))
             {
-                this.JudgeHolderAccess(stored, HolderAccess.Write, source, source);
+                this.JudgeHolderAccess(stored, source, source);
             }
 
             if (completed is null || this.PartFailed(source) ||
