@@ -24,15 +24,21 @@ public sealed partial class Binding
 
     private readonly List<InferenceEntry> inferenceBindings = new();
 
-    private readonly List<int> inferenceHoldArena = new();
+    // The request's holds (HoldAdd): each its parent and its newest member's order number; interned by both, so a set is one id.
+    private readonly List<(int Parent, int Top)> inferenceHolds = new();
 
-    private readonly List<HoldKey> inferenceHolds = new();
+    private readonly Dictionary<(int Parent, int Top), int> inferenceHoldIds = new();
+
+    // Per entry its order number (when first held, else -1), and per order number its entry; HoldAdd's and HoldMeet's work list.
+    private readonly List<int> inferenceHoldOrder = new();
+
+    private readonly List<int> inferenceHoldEntry = new();
+
+    private readonly List<(int Top, int Hold)> inferenceHoldWork = new();
 
     private readonly Dictionary<(AssociatedBinding Binding, int Hold), HeldAnswer> inferenceValues = new();
 
     private readonly Dictionary<(AssociatedInference Batch, int Hold, int Owner), AssociatedInference> inferenceRuns = new();
-
-    private Dictionary<HoldKey, int>? inferenceHoldIds;
 
     // The held states the requests evaluated in this compilation (design §6, D2-C3: the cost per state is the time over this count).
     internal int InferenceStates { get; private set; }
@@ -185,9 +191,10 @@ public sealed partial class Binding
         this.inferenceRuns.Clear();
         this.inferenceBindingIndex.Clear();
         this.inferenceBindings.Clear();
-        this.inferenceHoldArena.Clear();
         this.inferenceHolds.Clear();
-        (this.inferenceHoldIds ??= new(new HoldComparer(this.inferenceHoldArena))).Clear();
+        this.inferenceHoldIds.Clear();
+        this.inferenceHoldOrder.Clear();
+        this.inferenceHoldEntry.Clear();
         for (var b = start; b < end; b++)
         {
             var batch = this.inferenceComponents[b];
@@ -227,7 +234,12 @@ public sealed partial class Binding
         this.BindBeforeRequest(start, end);
         this.DiscoverValues(component);
         this.inferenceRequest = component;
-        var empty = this.InternHold(this.inferenceHoldArena.Count);
+        for (var i = 0; i < this.inferenceBindings.Count; i++)
+        {
+            this.inferenceHoldOrder.Add(-1);
+        }
+
+        var empty = this.inferenceEmptyHold = this.HoldNode(-1, -1);
         try
         {
             for (var i = 0; i < this.inferenceBindings.Count; i++)
@@ -555,96 +567,116 @@ public sealed partial class Binding
         }
     }
 
-    // Holds: sorted lists of the component's binding indices interned in the request's arena; a hold's id indexes inferenceHolds.
-    private int InternHold(int start)
+    // Holds (C4 ruling 13 (3); one owner of the hold form): a hold is a set of the component's canonical entries, stored as its parent plus
+    // its newest member, the parent being the hold without that member. A member's order number is given when it is first held
+    // (inferenceHoldOrder), and each hold is interned by (parent, newest), so a set is one id whichever order formed it (the key compares
+    // ids) and a hold that grows by a binding held for the first time, or by one newer than its members, is one node over its parent
+    // (structural sharing). Adding an older member, or dropping members (HoldMeet), forms again only the nodes of the newer members.
+    private int HoldNode(int parent, int top)
     {
-        var length = this.inferenceHoldArena.Count - start;
-        var key = new HoldKey(start, length);
-        if (this.inferenceHoldIds!.TryGetValue(key, out var id))
+        if (!this.inferenceHoldIds.TryGetValue((parent, top), out var id))
         {
-            this.inferenceHoldArena.RemoveRange(start, length);
-            return id;
-        }
-
-        id = this.inferenceHolds.Count;
-        this.inferenceHolds.Add(key);
-        this.inferenceHoldIds.Add(key, id);
-        if (length == 0)
-        {
-            this.inferenceEmptyHold = id;
+            id = this.inferenceHolds.Count;
+            this.inferenceHolds.Add((parent, top));
+            this.inferenceHoldIds.Add((parent, top), id);
         }
 
         return id;
     }
 
-    // `hold` with the binding `index` (when >= 0) and every binding of `batch` (when given), interned.
+    // `hold` with the binding `index` (when >= 0) and every binding of `batch` (when given).
     private int HoldWith(int hold, int index, AssociatedInference? batch)
     {
-        var arena = this.inferenceHoldArena;
-        var start = arena.Count;
-        var (from, length) = this.inferenceHolds[hold];
-        for (var i = 0; i < length; i++)
-        {
-            arena.Add(arena[from + i]);
-        }
-
         if (index >= 0)
         {
-            arena.Add(index);
+            hold = this.HoldAdd(hold, index);
         }
 
-        if (batch is not null)
+        for (var x = batch?.FirstEntry ?? 0; batch is not null && x < batch.EntryEnd; x++)
         {
-            for (var i = 0; i < this.inferenceBindings.Count; i++)
-            {
-                if (ReferenceEquals(this.inferenceBindings[i].Batch, batch))
-                {
-                    arena.Add(this.inferenceBindingIndex[this.inferenceBindings[i].Binding]);
-                }
-            }
+            hold = this.HoldAdd(hold, this.inferenceBindingIndex[this.inferenceBindings[x].Binding]);
         }
 
-        arena.Sort(start, arena.Count - start, null);
-        var write = start;
-        for (var read = start; read < arena.Count; read++)
-        {
-            if (write == start || arena[write - 1] != arena[read])
-            {
-                arena[write++] = arena[read];
-            }
-        }
-
-        arena.RemoveRange(write, arena.Count - write);
-        return this.InternHold(start);
+        return hold;
     }
 
-    // `hold` n Reach(`index`), interned (design §3.3: the key of a held state).
-    private int HoldMeet(int hold, int index)
+    private int HoldAdd(int hold, int index)
     {
-        var arena = this.inferenceHoldArena;
-        var start = arena.Count;
-        var (from, length) = this.inferenceHolds[hold];
-        for (var i = 0; i < length; i++)
+        var order = this.inferenceHoldOrder[index];
+        if (order < 0)
         {
-            if (this.ValueReaches(index, arena[from + i]))
-            {
-                arena.Add(arena[from + i]);
-            }
+            this.inferenceHoldOrder[index] = order = this.inferenceHoldEntry.Count;
+            this.inferenceHoldEntry.Add(index);
         }
 
-        if (arena.Count - start == length)
+        var work = this.inferenceHoldWork;
+        work.Clear();
+        var at = hold;
+        while (this.inferenceHolds[at].Top > order)
         {
-            arena.RemoveRange(start, length);
+            work.Add((this.inferenceHolds[at].Top, at));
+            at = this.inferenceHolds[at].Parent;
+        }
+
+        if (this.inferenceHolds[at].Top == order)
+        {
             return hold;
         }
 
-        return this.InternHold(start);
+        at = this.HoldNode(at, order);
+        for (var i = work.Count - 1; i >= 0; i--)
+        {
+            at = this.HoldNode(at, work[i].Top);
+        }
+
+        return at;
+    }
+
+    // `hold` n Reach(`index`) (design §3.3: the key of a held state): the members below the lowest one outside Reach stay shared.
+    private int HoldMeet(int hold, int index)
+    {
+        if (this.ReachCoversComponent(index))
+        {
+            return hold;
+        }
+
+        var work = this.inferenceHoldWork;
+        work.Clear();
+        var dropped = -1;
+        for (var at = hold; this.inferenceHolds[at].Top >= 0; at = this.inferenceHolds[at].Parent)
+        {
+            var top = this.inferenceHolds[at].Top;
+            dropped = this.ValueReaches(index, this.inferenceHoldEntry[top]) ? dropped : work.Count;
+            work.Add((top, at));
+        }
+
+        if (dropped < 0)
+        {
+            return hold;
+        }
+
+        var result = this.inferenceHolds[work[dropped].Hold].Parent;
+        for (var i = dropped - 1; i >= 0; i--)
+        {
+            if (this.ValueReaches(index, this.inferenceHoldEntry[work[i].Top]))
+            {
+                result = this.HoldNode(result, work[i].Top);
+            }
+        }
+
+        return result;
     }
 
     private bool HoldContains(int hold, int index)
     {
-        var (start, length) = this.inferenceHolds[hold];
-        return this.inferenceHoldArena.BinarySearch(start, length, index, null) >= 0;
+        var order = this.inferenceHoldOrder[index];
+        var at = hold;
+        while (order >= 0 && this.inferenceHolds[at].Top > order)
+        {
+            at = this.inferenceHolds[at].Parent;
+        }
+
+        return order >= 0 && this.inferenceHolds[at].Top == order;
     }
 
     internal enum HeldState : byte
@@ -663,39 +695,4 @@ public sealed partial class Binding
 
     // A binding of the component under request, numbered for holds: its batch, root path and identity.
     internal readonly record struct InferenceEntry(AssociatedBinding Binding, AssociatedInference Batch, BoundConformancePath Path, BoundRequirement Identity);
-
-    internal readonly record struct HoldKey(int Start, int Length);
-
-    // A hold's identity is its sorted indices in the arena.
-    private sealed class HoldComparer(List<int> arena) : IEqualityComparer<HoldKey>
-    {
-        public bool Equals(HoldKey x, HoldKey y)
-        {
-            if (x.Length != y.Length)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < x.Length; i++)
-            {
-                if (arena[x.Start + i] != arena[y.Start + i])
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        public int GetHashCode(HoldKey key)
-        {
-            var hash = key.Length;
-            for (var i = 0; i < key.Length; i++)
-            {
-                hash = (hash * 31) + arena[key.Start + i];
-            }
-
-            return hash;
-        }
-    }
 }

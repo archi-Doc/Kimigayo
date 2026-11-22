@@ -63,6 +63,9 @@ public sealed partial class Binding
 
     private int inferenceVisit;
 
+    // The component's canonical entries (ConnectValues), so a Reach of that many covers it.
+    private int inferenceCanonicalCount;
+
     // Reads the batches made outside the reader's Reach in this compilation (the validator's count until the cutover enforces it).
     internal int InferenceReachMisses { get; private set; }
 
@@ -562,6 +565,8 @@ public sealed partial class Binding
             }
         }
 
+        this.inferenceCanonicalCount = counter;
+
         void Enter(int entry, ref int next)
         {
             index[entry] = low[entry] = next++;
@@ -581,54 +586,62 @@ public sealed partial class Binding
             return true;
         }
 
-        if (b > a)
-        {
-            return false;
-        }
+        var (start, count) = b > a ? (0, 0) : this.ReachOf(a);
+        return count > 0 && this.inferenceReachArena.BinarySearch(start, count, to, null) >= 0;
+    }
 
+    // Whether `index`'s Reach is every binding of the component (one binding component, as a ring's, or one reading all the others):
+    // a hold's meet with it is the hold (HoldMeet).
+    private bool ReachCoversComponent(int index)
+        => this.inferenceReachOf.Count == 1 || this.ReachOf(this.inferenceValueScc[index]).Count == this.inferenceCanonicalCount;
+
+    // The binding component `a`'s Reach as sorted entries in the arena, made at its first need.
+    private (int Start, int Count) ReachOf(int a)
+    {
         var (start, count) = this.inferenceReachOf[a];
-        if (start < 0)
+        if (start >= 0)
         {
-            var (arena, work, visit) = (this.inferenceReachArena, this.inferenceValueStack, this.inferenceValueVisit);
-            while (visit.Count < this.inferenceBindings.Count)
-            {
-                visit.Add(0);
-            }
-
-            var stamp = ++this.inferenceVisit;
-            start = arena.Count;
-            for (var e = 0; e < this.inferenceBindings.Count; e++)
-            {
-                if (this.inferenceValueScc[e] == a)
-                {
-                    visit[e] = stamp;
-                    work.Add(e);
-                }
-            }
-
-            while (work.Count > 0)
-            {
-                var e = work[^1];
-                work.RemoveAt(work.Count - 1);
-                arena.Add(e);
-                var facts = this.inferenceValueFacts[e];
-                for (var i = 0; i < facts.EdgeCount; i++)
-                {
-                    var x = this.inferenceEdges[facts.Edges + i];
-                    if (visit[x] != stamp)
-                    {
-                        visit[x] = stamp;
-                        work.Add(x);
-                    }
-                }
-            }
-
-            count = arena.Count - start;
-            arena.Sort(start, count, null);
-            this.inferenceReachOf[a] = (start, count);
+            return (start, count);
         }
 
-        return this.inferenceReachArena.BinarySearch(start, count, to, null) >= 0;
+        var (arena, work, visit) = (this.inferenceReachArena, this.inferenceValueStack, this.inferenceValueVisit);
+        while (visit.Count < this.inferenceBindings.Count)
+        {
+            visit.Add(0);
+        }
+
+        var stamp = ++this.inferenceVisit;
+        start = arena.Count;
+        for (var e = 0; e < this.inferenceBindings.Count; e++)
+        {
+            if (this.inferenceValueScc[e] == a)
+            {
+                visit[e] = stamp;
+                work.Add(e);
+            }
+        }
+
+        while (work.Count > 0)
+        {
+            var e = work[^1];
+            work.RemoveAt(work.Count - 1);
+            arena.Add(e);
+            var facts = this.inferenceValueFacts[e];
+            for (var i = 0; i < facts.EdgeCount; i++)
+            {
+                var x = this.inferenceEdges[facts.Edges + i];
+                if (visit[x] != stamp)
+                {
+                    visit[x] = stamp;
+                    work.Add(x);
+                }
+            }
+        }
+
+        count = arena.Count - start;
+        arena.Sort(start, count, null);
+        this.inferenceReachOf[a] = (start, count);
+        return (start, count);
     }
 
     // Whether `owner`'s sources include the requirement named `requirement` on `path` (the own run's filter, the definition run's validator).
