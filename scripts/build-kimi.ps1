@@ -33,21 +33,17 @@ try {
     $identity = Get-TataraBuildIdentity
 
     # 3. Publish.
-    & dotnet publish (Join-Path $repo 'src/Kimi/Kimi.csproj') `
-        -c Release -r win-x64 `
-        -p:PublishAot=true `
-        "-p:TataraObjects=$objects" `
-        -p:DebugType=None `
-        -p:GenerateDocumentationFile=false `
-        -p:PublishDocumentationFiles=false `
-        -o $output
+    $project = Join-Path $repo 'src/Kimi/Kimi.csproj'
+    $properties = '-p:PublishAot=true', "-p:TataraObjects=$objects", '-p:DebugType=None', '-p:GenerateDocumentationFile=false',
+        '-p:PublishDocumentationFiles=false'
+    & dotnet publish $project -c Release -r win-x64 @properties -o $output
     if ($LASTEXITCODE -ne 0) {
         throw "Kimi publish failed with exit code $LASTEXITCODE."
     }
 
     # 4. The product: kimi.exe alone; on the static CRT with one allocator (no CRT DLL, no HeapAlloc or HeapFree import, read from
-    # KERNEL32.dll's symbol lines); naming no package DLL the publish leaves out; its self-check passes and reports the Tatara of
-    # this checkout.
+    # KERNEL32.dll's symbol lines); naming no package DLL the publish leaves out (KimiOneFile's list); its self-check passes and
+    # reports the Tatara of this checkout.
     $files = @(Get-ChildItem -LiteralPath $output -Force | ForEach-Object Name)
     if (($files -join ', ') -cne 'Kimi.exe') { throw "The published folder holds $($files -join ', '), not Kimi.exe alone: $output" }
     $exe = Join-Path $output 'Kimi.exe'
@@ -67,9 +63,14 @@ try {
         })
     if ($kernelSymbols -eq 0) { throw "llvm-readobj listed no KERNEL32.dll symbol (an unread listing): $exe" }
     if ($refused.Count -ne 0) { throw "Kimi.exe is not on the static CRT with one allocator; it imports $($refused -join ', ')" }
-    # NativeAOT's P/Invoke cells carry the module name (ASCII or UTF-16LE).
+    # NativeAOT's P/Invoke cells carry the module name (ASCII or UTF-16LE). The modules are the file names of Kimi.csproj's
+    # KimiLeftOut items as MSBuild evaluates them with the publish's properties, the list KimiOneFile removes.
+    $evaluated = & dotnet msbuild $project -p:Configuration=Release -p:RuntimeIdentifier=win-x64 @properties -getItem:KimiLeftOut
+    if ($LASTEXITCODE -ne 0) { throw "Evaluating Kimi.csproj's KimiLeftOut items failed with exit code ${LASTEXITCODE}: $evaluated" }
+    $leftOut = @(($evaluated -join "`n" | ConvertFrom-Json).Items.KimiLeftOut | ForEach-Object Filename)
+    if ($leftOut.Count -eq 0) { throw 'Kimi.csproj evaluates no KimiLeftOut item (an unread list).' }
     $image = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($exe))
-    foreach ($name in 'blake3_dotnet', 'libsodium') {
+    foreach ($name in $leftOut) {
         foreach ($form in $name, [Text.Encoding]::Latin1.GetString([Text.Encoding]::Unicode.GetBytes($name))) {
             if ($image.IndexOf($form, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
                 throw "Kimi.exe names $name, a package DLL the publish leaves out (decision 20 Q1 (a)); whether the package DLLs stay beside kimi.exe is decision 20's later question for the owner."

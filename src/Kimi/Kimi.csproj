@@ -79,12 +79,17 @@
     </ItemGroup>
   </Target>
 
-  <!-- The published folder is kimi.exe alone: the two package DLLs Kimi never calls (Arc.Crypto's blake3_dotnet.dll, libsodium's
-       libsodium.dll; decision 20 Q1 (a)) are left out by name, so any other native asset reaches the folder and fails the one-file
-       check. -->
+  <!-- The published folder is kimi.exe alone: KimiLeftOut lists the package DLLs Kimi never calls, each a native asset by package and
+       file name (decision 20 Q1 (a)), and only those are left out, so any other native asset reaches the folder and fails the one-file
+       check. The one list: build-kimi.ps1 reads it as MSBuild evaluates it for the publish and refuses an image naming one of its
+       modules. -->
+  <ItemGroup>
+    <KimiLeftOut Include="blake3_dotnet.dll" AssetType="native" NuGetPackageId="Arc.Crypto" />
+    <KimiLeftOut Include="libsodium.dll" AssetType="native" NuGetPackageId="libsodium" />
+  </ItemGroup>
   <Target Name="KimiOneFile" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(PublishAot)' == 'true'">
     <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.AssetType)' == 'native' and ('%(ResolvedFileToPublish.NuGetPackageId)/%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'Arc.Crypto/blake3_dotnet.dll' or '%(ResolvedFileToPublish.NuGetPackageId)/%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libsodium/libsodium.dll')" />
+      <ResolvedFileToPublish Remove="@(KimiLeftOut)" MatchOnMetadata="AssetType;NuGetPackageId;Filename;Extension" MatchOnMetadataOptions="CaseInsensitive" />
     </ItemGroup>
   </Target>
 
