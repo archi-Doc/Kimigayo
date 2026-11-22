@@ -1249,6 +1249,43 @@ public sealed partial class FunctionCodegenTest
     public void AnIntrinsicIsWrittenByItsRow(string source, string pattern)
         => Assert.Matches(pattern, Parse(source).Text);
 
+    // SPEC 5.6, IMPL 21.3: Raw.readVolatile and Raw.writeVolatile are one volatile load and store of their integer Type at the storage, with
+    // its alignment, where the call is: a device register polled until its ready bit is set is read in the loop's condition, which every
+    // iteration runs, and acknowledged once after the loop; a u128 is one volatile i128 access, which LLVM splits into two 8-byte accesses
+    // in no fixed order, so no machine order is asserted (keeping each access at O2 is LLVM's volatile guarantee: no O2 run).
+    [Fact]
+    public void AVolatileAccessIsOneVolatileLoadOrStore()
+    {
+        var ir = Parse("func waitReady(status: raw/u32)\n    unsafe\n        while (Raw.readVolatile(status) & 1) == 0 => ()\n        Raw.writeVolatile(status, 1)\n" +
+            "func wide(p: raw/u128) -> u128\n    unsafe => return Raw.readVolatile(p)").Ir;
+        var volatiles = ir.Functions.SelectMany(static x => x.Blocks)
+            .SelectMany(static x => x.Instructions.Where(static y => y.Shape.Contains(" volatile ", StringComparison.Ordinal)).Select(y => (y.Shape, Block: x))).ToArray();
+        string[] expected = ["load volatile i128, ptr %, align 16", "load volatile i32, ptr %, align 4", "store volatile i32 1, ptr %, align 4"];
+        Assert.Equal(expected, volatiles.Select(static x => x.Shape).Order(StringComparer.Ordinal));
+        Assert.Equal((true, false), (Cycles(volatiles.Single(x => x.Shape == expected[1]).Block), Cycles(volatiles.Single(x => x.Shape == expected[2]).Block)));
+
+        // Whether a block reaches itself through its successors: whether it is in a loop.
+        static bool Cycles(IrBlock block)
+        {
+            var seen = new HashSet<IrBlock>();
+            var pending = new Stack<IrBlock>(block.Successors);
+            while (pending.TryPop(out var next))
+            {
+                if (next == block)
+                {
+                    return true;
+                }
+
+                if (seen.Add(next))
+                {
+                    next.Successors.ForEach(pending.Push);
+                }
+            }
+
+            return false;
+        }
+    }
+
     // SPEC 5.1, 5.3 (DECISIONS R5-M92): p + n and p - n displace a raw pointer by n * stride(T) through the place writer's byte offset, a zero
     // stride keeping the pointer; == and != compare addresses, null the one pointer constant.
     [Theory]

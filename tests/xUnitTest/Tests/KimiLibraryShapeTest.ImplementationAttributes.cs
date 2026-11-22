@@ -40,7 +40,7 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(sourced.Order(), declared.Keys.Order());
         Assert.Equal(declared.Count, declared.Values.Distinct().Count());
-        Assert.Equal((120, 137), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names; G1-3b-2: Weak's.
+        Assert.Equal((121, 138), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names; G1-3b-2: Weak's.
     }
 
     // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the Definition the registration gives the declaration's symbol;
@@ -61,7 +61,7 @@ public partial class KimiLibraryShapeTest
 
         var once = named.Where(static x => x != IntrinsicId.Fail).ToArray();
         Assert.Equal(once.Distinct(), once);
-        Assert.Equal((18, 6), (once.Length, named.Count - once.Length)); // Fail: the Time unit's Storage.clockFailure is the sixth.
+        Assert.Equal((20, 6), (once.Length, named.Count - once.Length)); // Fail: the Time unit's Storage.clockFailure is the sixth.
         Assert.Equal(
             [
                 IntrinsicId.None, IntrinsicId.Abort, IntrinsicId.TypeTest, IntrinsicId.TestObserve, IntrinsicId.TestMessage, IntrinsicId.TestRequireAbort,

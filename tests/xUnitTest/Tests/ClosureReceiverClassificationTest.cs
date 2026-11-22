@@ -193,6 +193,8 @@ public class ClosureReceiverClassificationTest
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp, Probe.init(2))\n    f()\n", true)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp + 0, Probe.init(2))\n    f()\n", true)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*(pp + 0), Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.writeVolatile(p@raw/i32, 5)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return Raw.readVolatile(p@raw/i32)\n    let v = f()\n", false)]
     [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (*p).v\n    let v = f()\n", false)]
     [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (p + 0)[0].v\n    let v = f()\n", false)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () -> i32\n        unsafe => return (*pp)[0].v\n    let v = f()\n", false)]

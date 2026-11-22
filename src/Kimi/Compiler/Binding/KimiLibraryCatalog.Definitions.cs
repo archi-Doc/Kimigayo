@@ -155,6 +155,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ArraySwapPositions, Row: None),
         new(KimiDeclarationId.ArraySwapRemove, Row: None),
         new(KimiDeclarationId.ArrayReverse, Row: None),
+        new(KimiDeclarationId.RawReadVolatile), // SPEC 5.6: its storage's NoStore row (KimiLibraryCatalog.Rows.cs).
     ];
 
     // The public declaration of each linked implementation, by ID; -1 elsewhere.

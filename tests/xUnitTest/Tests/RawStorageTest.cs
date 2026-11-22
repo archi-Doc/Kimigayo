@@ -212,6 +212,8 @@ public class RawStorageTest
     [InlineData("Raw.release(null@raw/i32)", false)]
     [InlineData("Raw.initialize(null@raw/i32, 1)", false)]
     [InlineData("let view: Slice<i32> = Raw.slice(null@raw/i32, 0)", false)]
+    [InlineData("let bits = Raw.readVolatile(null@raw/u32)", false)]
+    [InlineData("Raw.writeVolatile(null@raw/u32, 1)", false)]
     public void OnlyReleaseAndInitializeNeedAnUnsafeContext(string statement, bool valid)
     {
         var diagnostics = DiagnosticCorpus.Check("public func main()\n    " + statement + "\n").Diagnostics;
@@ -225,13 +227,25 @@ public class RawStorageTest
         }
     }
 
-    // SPEC 5.6, 8.11.2: allocate is an allocation and release and initialize are raw accesses; none is an environment effect.
+    // SPEC 5.6, 8.7.4, 10.1: the volatile pair's `T is PrimitiveInteger` (the twelve integer Types), so at a float or bool Place the one
+    // candidate's Constraint fails and the call has no applicable candidate.
+    [Theory]
+    [InlineData("func f(p: raw/f64) -> f64\n    unsafe => return Raw.readVolatile(p)", "NoApplicableOverload_Kd: Raw.readVolatile(p)")]
+    [InlineData("func f(p: raw/bool)\n    unsafe => Raw.writeVolatile(p, true)", "NoApplicableOverload_Kd: Raw.writeVolatile(p, true)")]
+    public void AVolatileAccessIsOfAPrimitiveInteger(string declarations, string record)
+        => Assert.Equal([record], RawPointerSyntaxTest.Records(declarations));
+
+    // SPEC 5.6, 8.11.2: allocate is an allocation and release, initialize and the volatile pair are raw accesses; none is an environment
+    // effect, a volatile read through an input included (Probe, OSF2's row 25).
     [Fact]
     public void RawOperationsAreNoEnvironmentEffects()
     {
         const string Source = "contract Sink\n    func put(self: uniq/Self, value: i32)\n        effect confined\n" +
             "struct RawSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32)\n        let storage = Raw.allocate<i32>(1)\n" +
-            "        unsafe\n            Raw.initialize(storage, value)\n            Raw.release(storage)\npublic func main() => ()\n";
+            "        unsafe\n            Raw.initialize(storage, value)\n            Raw.writeVolatile(storage, value)\n            Raw.release(storage)\n" +
+            "contract Probe\n    func read(self: uniq/Self) -> u32\n        effect confined\n" +
+            "struct Register\n    Self is Probe\n    internal let p: raw/u32\n    public init(p: raw/u32) => self.p = p\n" +
+            "    public func read(self: uniq/Self) -> u32\n        unsafe => return Raw.readVolatile(self.p)\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }

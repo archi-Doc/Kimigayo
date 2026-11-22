@@ -1,6 +1,6 @@
-/// Operations on raw storage (SPEC 5.6). `allocate` is safe; `release`, `initialize` and `slice` carry the obligations their
-/// contracts state. Elements are taken and destroyed with `@move` on raw Places (SPEC 5.2.3), and none of these operations is an
-/// environment effect (SPEC 8.11.2).
+/// Operations on raw storage (SPEC 5.6). `allocate` is safe; `release`, `initialize`, `slice`, `readVolatile` and `writeVolatile`
+/// carry the obligations their contracts state. Elements are taken and destroyed with `@move` on raw Places (SPEC 5.2.3), and none
+/// of these operations is an environment effect (SPEC 8.11.2).
 public group Raw
     /// Allocates raw storage for `count` elements; it holds no value.
     ///
@@ -39,3 +39,20 @@ public group Raw
     #Lang("RawSlice")
     #Intrinsic("RawSlice")
     public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s
+    /// Reads the value of `T` at `storage` with a volatile access (SPEC 5.6), which the compiler never merges, splits, removes,
+    /// duplicates or reorders with another volatile access.
+    ///
+    /// - safety: The read meets the raw access conditions (SPEC 5.2.1): `storage` is live, aligned for `T` and readable, it holds
+    ///   a valid, initialized value of `T` within its provenance, and no live Loan conflicts.
+    #Lang("RawReadVolatile")
+    #Intrinsic("VolatileRead")
+    public unsafe func readVolatile<T>(storage: raw/T) -> T
+        T is PrimitiveInteger
+    /// Writes `value` to the Place of `T` at `storage` with a volatile access (SPEC 5.6), ordered as `readVolatile`'s; the Place
+    /// may hold a value or none.
+    ///
+    /// - safety: The write meets the raw access conditions (SPEC 5.2.1): `storage` is live, aligned for `T` and writable, the
+    ///   Place lies within its provenance, and no live Loan conflicts.
+    #Intrinsic("VolatileWrite")
+    public unsafe func writeVolatile<T>(storage: raw/T, value: T)
+        T is PrimitiveInteger
