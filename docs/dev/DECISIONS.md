@@ -29625,3 +29625,17 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     20.3.1 lists); accepting a record without the member (keeps the hole for every earlier record); an absolute manifest path (an
     equal pair in two folders differs); a second `Project` member holding the input (equal to `FilePath` for every `.kimiproj`
     project; C1).
+- **T-M21 The native build's object inspection judges no unwind entry** (Tatara, 2026-11-22; PLAN G1271, Q-666, D-1101; design
+  `artifacts\handoff\tatara\units\UNWIND\design.md` Revision 0; C-474: the Middle's review, ACCEPT WITH CONDITIONS; T took C1 and
+  N1). Closes PLAN G1271, whose row keeps the staged removal.
+  - IMPL 21.4's "Windows x64 unwind information" is the ABI's (T's ruling): an entry for each function that allocates stack, saves a
+    nonvolatile register or calls, none for a frameless leaf. Its owner is the profile: `TargetProfile.Windows.UnwindTables` on every
+    definition (`LlvmModuleText`'s `uwtable(async)`, asserted by `GeneratedIrTest.OneRequirementHoldsForTheGeneratedText`; the
+    manifest's `codegen.unwindTables` checked by `LinkManifest.CheckFixed`), with LLVM's frame lowering placing the entries.
+    `NativeBuild.Inspect`'s "the object has an entry" (4e6c6fd87's script check) refused every leaf-only object and never checked the
+    per-function meaning, so it is removed; the `_fltused` and default-library refusals stay.
+  - The leaf row relies on O2 folding `__kimi_start` into a frameless leaf; if a later LLVM keeps a frame there, the row builds with
+    entries and fails its "no exception table" assertion, and the next LLVM update's gate meets it first (C-474 N1).
+  - Rejected: an exact object check (leafness needs disassembly; a copy of LLVM's decision), a forced entry for leaves (O2 cost), an
+    IR `uwtable` check in the build (a second copy of the emitter's rule). The fact's removal is staged as PLAN G1271 states
+    (removal condition: Tatara B7b7 lands).
