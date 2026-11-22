@@ -8,13 +8,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
-    private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
-
-    // The side of each member access whose member was selected (PLAN G724, B4): published by PublishPath's MemberAccess step of the former
-    // that selected it (SelectMember, BaseMember, ConstructorMember, a length argument's group member), its own fact beside the lookup's
-    // selection, since a constructor access has a side and no selection.
-    private readonly Dictionary<MemberAccessKoto, MemberSide> memberSides = new(ReferenceEqualityComparer.Instance);
-
+    private readonly MemberSelectionRows memberSelections;
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
     private int unreadIdentityWork;
@@ -571,7 +565,7 @@ public sealed partial class Binding
     private readonly record struct SideSelection(BindingSymbol? Member, MemberSelection Selection, BoundType? Over = null);
 
     // A member access's side (PLAN G724, B4): its qualifier is a Type, with no receiver, or a value, the call's receiver.
-    private enum MemberSide : byte
+    internal enum MemberSide : byte
     {
         Type,
         Value,
@@ -579,7 +573,7 @@ public sealed partial class Binding
 
     // The published side of a member access whose member was selected; a reader of one without it breaks the formers' contract.
     private MemberSide MemberSideOf(MemberAccessKoto member)
-        => this.memberSides.TryGetValue(member, out var side) ? side : throw new UnreachableException("A member access without a published side.");
+        => this.memberSelections.SideOf(member) ?? throw new UnreachableException("A member access without a published side.");
 
     private BoundMemberPath MemberPath(BoundMemberPath? parent, Koto syntax, BoundType type)
     {
@@ -590,5 +584,44 @@ public sealed partial class Binding
         }
 
         return path;
+    }
+
+    /// <summary>The `memberSelections` family's one accessor (DECISIONS BU-220): a working-state family, each member access whose member
+    /// was selected, published by PublishPath's MemberAccess step of the former that selected it (SelectMember, BaseMember,
+    /// ConstructorMember, a length argument's group member) and read by the pass's later steps; a row in the access's module's
+    /// NodeColumns at its SyntaxId with two slots (PLAN G724, B4): its side, and its lookup's selection, absent for a constructor access,
+    /// which has a side and no selection. A row of an earlier pass reads none, and the library's rows are released at its freeze
+    /// (NodeColumns.Freeze). Its selection members keep the names its readers use.</summary>
+    private readonly struct MemberSelectionRows(Binding binding)
+    {
+        internal MemberSelection this[MemberAccessKoto member]
+            => Row(member, binding).Selection ?? throw new KeyNotFoundException($"`{member}` has no member selection in this pass.");
+
+        internal bool TryGetValue(MemberAccessKoto member, out MemberSelection selection)
+        {
+            var row = Row(member, binding).Selection;
+            selection = row.GetValueOrDefault();
+            return row.HasValue;
+        }
+
+        internal MemberSelection GetValueOrDefault(MemberAccessKoto member) => Row(member, binding).Selection.GetValueOrDefault();
+
+        internal MemberSide? SideOf(MemberAccessKoto member) => Row(member, binding).Side;
+
+        // The one writer, PublishPath's MemberAccess step: one side per access in a pass (R7-N1c); a selection replaces the earlier one.
+        internal void Publish(MemberAccessKoto access, MemberSide side, MemberSelection? selection)
+        {
+            ref var row = ref HirTables.Of(access).Families.MemberSelections.Ref(access.SyntaxId, binding);
+            if (row.Side is { } published && published != side)
+            {
+                throw new InvalidOperationException($"`{access}` was published as a {published} member, then as a {side} member (InternalInvariant; R7-N1c).");
+            }
+
+            row.Selection = selection ?? row.Selection;
+            row.Side = side;
+        }
+
+        private static (MemberSide? Side, MemberSelection? Selection) Row(MemberAccessKoto member, Binding binding)
+            => member.SyntaxOwner is { } table ? table.Hir.Families.MemberSelections.Get(member.SyntaxId, binding) : default;
     }
 }

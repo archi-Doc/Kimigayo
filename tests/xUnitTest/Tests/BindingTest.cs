@@ -22,8 +22,8 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
     }
 
-    // PLAN G724, B4: a member access's side is published beside its selection in a table cleared each pass, so a warm Bind of Type-side,
-    // value-side, constructor and Case accesses allocates nothing.
+    // PLAN G724, B4: a member access's side is published beside its selection in a pass family (MemberSelections, R7-N5 B1b-2), so
+    // a warm Bind of Type-side, value-side, constructor and Case accesses allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindOfMemberSidesAllocatesNothing()

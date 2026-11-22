@@ -381,23 +381,13 @@ public sealed partial class Binding
                     break;
                 case NameStepKind.MemberAccess:
                     var access = (MemberAccessKoto)step.Use;
-                    var side = step.Role == LookupRole.Value ? MemberSide.Value : MemberSide.Type;
-                    if (this.memberSides.TryGetValue(access, out var publishedSide) && publishedSide != side)
-                    {
-                        throw new InvalidOperationException($"`{access}` was published as a {publishedSide} member, then as a {side} member (InternalInvariant; R7-N1c).");
-                    }
-
-                    if (step.Selection is { } selection)
-                    {
-                        this.memberSelections[access] = selection;
-                    }
-
-                    this.memberSides[access] = side;
                     if (step.Qualifier is not null)
                     {
                         PublishQualifier(access.Left, step.Qualifier);
                     }
 
+                    // After the left's qualifier, so a synthetic access over a synthetic left keeps dev's id order.
+                    this.memberSelections.Publish(access, step.Role == LookupRole.Value ? MemberSide.Value : MemberSide.Type, step.Selection);
                     access.BoundSymbol = step.Symbol;
                     access.Right.BoundSymbol = step.Symbol;
                     access.Right.BindingState = BindingState.Resolved;

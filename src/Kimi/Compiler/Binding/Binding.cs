@@ -111,6 +111,7 @@ public sealed partial class Binding
         this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);
+        this.memberSelections = new(this);
         this.formationCauses = new(this);
         this.knownBases = new(this);
         this.earlyReads = new(this);

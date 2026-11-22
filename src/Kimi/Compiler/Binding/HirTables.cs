@@ -360,6 +360,7 @@ internal struct NodeColumns
     internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
+    internal StampedColumn<(Binding.MemberSide? Side, Binding.MemberSelection? Selection), Binding.PassCounter> MemberSelections; // Work: a member access's published side and lookup selection, the running pass's working state, released at the freeze (Binding.MemberLookup.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> ResultCompletions; // Work: Binding's result, conversion and fallthrough checks' (Binding.ResultStructure) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
@@ -442,6 +443,7 @@ internal struct NodeColumns
         this.UnboundSlots.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
+        this.MemberSelections.Grow(length);
         this.ResultCompletions.Grow(length);
         this.GuessedCompletions.Grow(length);
         this.PublishedCompletions.Grow(length);
@@ -501,6 +503,7 @@ internal struct NodeColumns
         this.UnboundSlots.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
+        this.MemberSelections.Release();
         this.ResultCompletions.Release();
         this.GuessedCompletions.Release();
         this.PublishedCompletions.Release();
@@ -584,6 +587,7 @@ internal struct NodeColumns
             UnboundSlots = this.UnboundSlots.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),
+            MemberSelections = this.MemberSelections.Renumbered(length),
             ResultCompletions = this.ResultCompletions.Renumbered(length),
             GuessedCompletions = this.GuessedCompletions.Renumbered(length),
             PublishedCompletions = this.PublishedCompletions.Renumbered(length),
