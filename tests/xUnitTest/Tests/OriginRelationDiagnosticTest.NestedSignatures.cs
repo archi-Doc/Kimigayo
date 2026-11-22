@@ -176,8 +176,9 @@ public partial class OriginRelationDiagnosticTest
     // R7-SP1's T4 (SPEC 15.3.7 "Compatibility", 15.6.1, as D-1042 states them; R7-P1's T rows): in a whole-contract comparison a body
     // inference variable (15.3.4 "Nested signatures") is solved on either side, never judged from premises. t4-short, the text's
     // example, converts a literal whose aggregate input's inner Origin w is one on the implementation's side (p outlives w: w is
-    // solved); dev judges it from premises, so the row is Explicit until P4's T4 lands. Its twins hold on dev: g's omitted Origin on the
-    // required side (t4-long), two separate variables (t4-two), and fixed Origins (t4-fixed: q outlives p is not proven).
+    // solved); dev judges it from premises, so the row is Explicit until P4's T4 lands (no existing row pins its form). Its twins hold
+    // on dev: g's omitted Origin on the required side (t4-long), two separate variables (t4-two), and fixed Origins (t4-fixed: q
+    // outlives p is not proven).
     [Theory]
     [InlineData("P4", "t4-short", "func use(p: ref/i32) -> i32\n    let h = func [] (o: Option<ref/i32>) -> i32 => 0\n    let k: (Option<ref/i32 during p>) -> i32 = h@move\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "t4-long", "func use(p: ref/i32) -> i32\n    let f = func [] (o: Option<ref/i32 during p>) -> i32 => 0\n    let g: (Option<ref/i32>) -> i32 = f@move\n    return 0\n", "")]

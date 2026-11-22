@@ -160,8 +160,9 @@ public class InferenceSlotScalingTest
     // level one call of the form, valid (SPEC 10.1, 10.4, 10.5.1): a Function-typed value (vc), an overloaded Function Item selected at a
     // parameter's Function Type (fi), an implicit constructor whose omitted base clause selects its base's (ic, a chain of derived structs,
     // SPEC 6.3.6) and an enum Case whose payload is a direct call's result (ec). The work is the shared pipeline's count, as in the rows above;
-    // a form whose own path that count does not see today is Explicit until P3 routes it through the pipeline: on dev 1c6bc5939 the value
-    // call's count is 0 at every depth, while fi, ic and ec grow linearly.
+    // a form whose own path that count does not see today is Explicit until P3 routes it through the pipeline: on dev 1c6bc5939 fi, ic
+    // and ec grow linearly, while value calls are not counted at all (vc's count is 0 at every depth, and a check at depths 10 to 80
+    // shows no growth in time either), so vc states that P3's pipeline counts them. No existing row pins vc's form.
     [Theory]
     [InlineData("P3", "vc", Explicit = true)]
     [InlineData("guard", "fi")]

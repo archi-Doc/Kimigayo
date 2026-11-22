@@ -682,6 +682,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 
     // SPEC 10.5.3, 10.8, 10.3, 10.2 (PLAN G356 it1, R7-P1): a lone non-generic Item needs no S, so it is independently typable and binds T
     // to its Function Item Type; the expected result fills no bound slot, and the declaration erases the Item Type (10.2's erasure row).
+    // No existing row pins it1's form.
     [Theory]
     [InlineData("I3", "it1", ItemIdentity + "    let v: (i64) -> i64 = identity(twice)\n    _ = v(1)\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "it1i", ItemIdentity + "    let v = identity(twice)\n    _ = v(1)\n    return 0\n", "")]
