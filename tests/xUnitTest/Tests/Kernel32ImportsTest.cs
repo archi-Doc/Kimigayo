@@ -2,6 +2,7 @@
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -29,9 +30,9 @@ public sealed class Kernel32ImportsTest
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
         var definition = File.ReadAllText(Path.Combine(repo, "src/backend/windows-x64/kernel32.def")).Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() + "\n";
-        Assert.Equal(definition, Kernel32Imports.Definition);
+        Assert.Equal(ToolchainIdentity.Kernel32DefinitionSha256, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(definition))));
         var exports = definition.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal);
-        Assert.True(exports.SetEquals(WindowsProfile.Kernel32Symbols));
+        Assert.True(exports.SetEquals(WindowsProfile.Supply("kernel32")!.Symbols));
         var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
         foreach (Match match in Regex.Matches(runtime, @"declare dllimport .*?@(\w+)\("))
         {
@@ -214,7 +215,7 @@ public sealed class Kernel32ImportsTest
     [InlineData("kimi_backend", "input", "\"override.lib\"")]
     public void ACompilerSupplysEntryIsAcceptedOnlyAsWritten(string name, string field, string? value)
     {
-        var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Name == name)!;
+        var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name)!;
         var written = new ArrayBufferWriter<byte>();
         using (var json = new Utf8JsonWriter(written))
         {

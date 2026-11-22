@@ -249,8 +249,8 @@ foreach ($line in ((Get-KimiKernel32Definition) -split [char]10 | Select-Object 
     if ($symbol) { $null = $allowed.Add($symbol); $null = $allowed.Add("__imp_$symbol") }
 }
 $context = @{
-    tools = $workerTools; fixtures = $valid; output = $chainWork; kernel = (Get-KimiInstalledKernel32 $tools)
-    archive = Join-Path $tools 'windows_x64/kimi_backend_windows_x64_v1.lib'
+    tools = $workerTools; fixtures = $valid; output = $chainWork; kernel = Get-KimiKernel32
+    archive = Get-KimiBackendArchive
     allowedSymbols = [string[]]@($allowed); logs = $chainLogs; executionDeadlineMilliseconds = 30000
 }
 $worker = Join-Path $repo 'src/backend/windows-x64/test-scalar-fixture.ps1'

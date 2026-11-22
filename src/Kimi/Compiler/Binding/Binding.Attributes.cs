@@ -108,24 +108,16 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 20.4/20.8.2.4: the Kind of the defining module's requirement, after self-targeted
-            // supply expansion, decides dllimport generation; reserved supplies have their fixed kinds.
+            // IMPL 20.4/21.4.7: a reserved supply has its fixed kind and provides only its symbol set; any other library's Kind is the
+            // defining module's requirement's, after self-targeted supply expansion (IMPL 20.4), and decides dllimport generation.
             string? kind = null;
-            if (name is WindowsProfile.Kernel32Library)
+            var reserved = WindowsProfile.Supply(name);
+            var provided = reserved is not null && Array.IndexOf(reserved.Symbols, symbol) >= 0;
+            if (reserved is not null)
             {
-                kind = "import"; // The generated kernel32 import library (SPEC 20.4).
-                if (Array.IndexOf(WindowsProfile.Kernel32Symbols, symbol) < 0)
+                kind = reserved.Kind;
+                if (!provided)
                 {
-                    // SPEC 20.4: the reserved supply exports only the reviewed project-owned definition.
-                    this.Record(attribute, BindingFailure.UnavailableReservedImport, []);
-                }
-            }
-            else if (name is WindowsProfile.BackendLibrary)
-            {
-                kind = "static"; // The compiler-managed backend archive (SPEC 20.4).
-                if (Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) < 0)
-                {
-                    // SPEC 21.4.7: the backend archive supplies only its catalog, whose names are reserved above.
                     this.Record(attribute, BindingFailure.UnavailableReservedImport, []);
                 }
             }
@@ -149,10 +141,10 @@ public sealed partial class Binding
             var signature = this.ImportAbi(attribute, function, ordinal++);
             if (signature is not null)
             {
-                // SPEC 21.2/22.5.6: the runtime's own kernel32 declarations share the same final symbol
-                // table; an import joins one only through the reserved kernel32 supply with an equal
-                // physical Type, and never a declaration carrying an inexpressible ABI attribute.
-                if (IsRuntimeDeclaration(symbol, out var declared) && (name != WindowsProfile.Kernel32Library || declared != signature))
+                // IMPL 21.2, SPEC 22.5.6: the runtime's own kernel32 declarations share the same final symbol table; an import joins
+                // one only through the reserved supply providing its symbol (its one providing library: the supplies' symbol sets are
+                // disjoint) with an equal physical Type, and never a declaration carrying an inexpressible ABI attribute.
+                if (IsRuntimeDeclaration(symbol, out var declared) && (!provided || declared != signature))
                 {
                     this.Record(attribute, BindingFailure.ConflictingRuntimeSymbol, []);
                 }
@@ -173,9 +165,9 @@ public sealed partial class Binding
                 }
             }
 
-            // A dependency module's supplies are not linked yet, but the reserved kernel32 one: the import's limit, the located
-            // Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92).
-            if (name is not WindowsProfile.Kernel32Library && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha))
+            // A dependency module's supplies are not linked yet, but the reserved ones, which the compiler links for every module (IMPL 20.4):
+            // the import's limit, the located Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92).
+            if (reserved is null && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha))
             {
                 this.Fail(attribute, BindingFailure.Unsupported);
             }
@@ -250,11 +242,11 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 21.2 reserves compiler, LLVM and profile-supply external names; the supply names
-        // are the profile's own catalog, so the two cannot drift apart.
+        // IMPL 21.2 reserves the compiler's and LLVM's external names and the profile's (its float marker and the backend supply's
+        // catalog, ReservedSymbols), so the profile's names and its supply cannot drift apart.
         static bool IsReservedExternalName(string symbol)
             => symbol.StartsWith("__kimi_", StringComparison.Ordinal) || symbol.StartsWith("llvm.", StringComparison.Ordinal) ||
-                symbol == WindowsProfile.FloatMarker || Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) >= 0;
+                Array.IndexOf(WindowsProfile.ReservedSymbols, symbol) >= 0;
 
         static bool IsImportName(InvocationKoto call, int index, out string value)
         {

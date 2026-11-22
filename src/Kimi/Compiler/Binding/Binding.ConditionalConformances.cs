@@ -346,7 +346,7 @@ public sealed partial class Binding
         // composed comparison holds by its parts (R7-C9's Prove).
         if (this.contractHeadersReady && this.BuiltinConformance(type, contract, scope) is { Kind: not ImplTable.BuiltinKind.None } builtin)
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
+            return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error
                 : builtin.Kind == ImplTable.BuiltinKind.Absent ? ConstraintProof.Refuted
                 : builtin.Kind == ImplTable.BuiltinKind.Composed ? this.ComparisonProof(type, contract, scope, false, out _) : ConstraintProof.Proven;
         }
@@ -357,7 +357,7 @@ public sealed partial class Binding
         if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive &&
             contract.Intrinsic == IntrinsicKind.None)
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Refuted;
+            return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error : ConstraintProof.Refuted;
         }
 
         // SPEC 22.1: the standard collections declare their conformances in Kimigayo behind their compiler-managed kinds.
@@ -366,7 +366,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (this.OperandContexts(type).Invalid || contract.Declaration.BindingState == BindingState.Invalid)
+        if (this.OperandContexts(type).Invalid || this.DeclarationFailed(contract.Declaration))
         {
             return ConstraintProof.Error;
         }
@@ -395,7 +395,7 @@ public sealed partial class Binding
             }
         }
 
-        if (identity is null || this.impls.PathsOf(identity).Count == 0)
+        if (identity is null)
         {
             return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
