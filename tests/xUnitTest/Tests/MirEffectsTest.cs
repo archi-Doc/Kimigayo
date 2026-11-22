@@ -669,7 +669,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument(
             "Tests.kimi",
             "open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + body + "        return 1\n#Test\nfunc sample() => ()\n",

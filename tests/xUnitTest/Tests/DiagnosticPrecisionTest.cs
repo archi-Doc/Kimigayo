@@ -582,7 +582,7 @@ public class DiagnosticPrecisionTest
     public void AnUnsupportedDeclarationIsRefusedWhereItIsHandedOn(string row, string library, string source, params string[] expected)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + library));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         c.Bind();
@@ -601,7 +601,7 @@ public class DiagnosticPrecisionTest
     public void ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
         Assert.Equal(default, c.Bind());

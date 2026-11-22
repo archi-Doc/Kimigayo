@@ -47,7 +47,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheFrozenLibraryKeepsTheFreezesRules()
     {
-        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         _ = KimiLibrary.Freeze(freeze);
         var counters = Counters(freeze).ToArray();
         Assert.True(counters.Length == 0, string.Join('\n', counters));
@@ -63,7 +63,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheFrozenLibrarysEagerFactsAreOnlyRead()
     {
-        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         freeze.Bind();
         var constraints = freeze.Library.Layer.Constraints.Values.Where(static x => x.Kind != ConstraintKind.Not).ToArray();
         Assert.NotEmpty(constraints);
@@ -91,7 +91,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void AFrozenLibraryReachesNoCompilationStore()
     {
-        var library = KimiLibrary.Freeze(Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false));
+        var library = KimiLibrary.Freeze(Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false));
         Type[] stores = [typeof(Compilation), typeof(Binding), typeof(TyCtxt), typeof(Kimi.Diagnostics.DiagnosticOwner), typeof(Kimi.Diagnostics.DiagnosticCollection)];
         var fields = new Dictionary<Type, FieldInfo[]>();
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -159,7 +159,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void ADetachedSyntaxRecordMovesWholeToAnotherSourceTable()
     {
-        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         freeze.Kotonoha.CreateCodeContext().Parse(freeze.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
         freeze.Library.Kotonoha.CreateCodeContext().Parse(freeze.Library.Kotonoha.RootKoto, "public group ZSyntax\n    public func f(x: i32 -> i32 => x\n");
         var library = KimiLibrary.Freeze(freeze);
@@ -265,7 +265,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void ALibrarysDetachedDataAreReadOnlyAfterItsFreeze()
     {
-        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         var library = freeze.Library;
         Refused(() => library.DocumentationFailures);
         Refused(() => library.HoverAnchors);
@@ -310,9 +310,9 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void AReaderAfterTheFreezeFillsNoLazyField()
     {
-        var library = KimiLibrary.Freeze(Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false));
+        var library = KimiLibrary.Freeze(Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false));
         var reader = Compilation.CreateForTest();
-        Assert.True(reader.Prepare(WindowsProfile.Target));
+        Assert.True(reader.Prepare(TargetProfile.Windows.Target));
         reader.UseLibrary(library);
         Assert.True(reader.Bind().IsComplete);
         var nodes = library.Kotonoha.Syntax.Nodes.ToArray().OfType<Koto>().ToArray();
@@ -367,7 +367,7 @@ public partial class KimiLibraryShapeTest
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (KimiLibrary Library, WeakReference Freeze) FrozenAndForgotten()
     {
-        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         return (KimiLibrary.Freeze(freeze), new WeakReference(freeze));
     }
 }
