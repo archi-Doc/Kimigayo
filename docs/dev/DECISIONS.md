@@ -26664,6 +26664,30 @@ R8-M* and R9-M* by the stage of the recording unit.
     and displaces), either one a second predicate beside the rule; a position-range check in the validator (the Middle's C-196).
   - **Dump** (the Middle's review of U1, N3). The keyed form is spelled with its operands after the Place: `storage(_n, copy _start,
     const type Kimi.Range<S, Kimi.End>)`; the unkeyed `storage(_n)` is unchanged.
+- **R8-M58 A library call the builder writes as a MIR form: `DispositionKind.Form`, and the raw pointer Storage** (Back,
+  2026-11-22; PLAN G597's L2 U2, Q-671, D-1108; Major; the owner's O-490 (a), verbatim 「O-490 a」: encoding (L)) SPEC 5.3, 8.15.3.
+  - **Adopted.** `Storage.viewStart<P, R>(storage: P, start: isize) -> P`, `R is PositionRange`, is a bodyless `#Lang("ViewStart")`
+    declaration. The MIR builder writes its call as the view's first element's address (`MirBuilder.Calls.Form` through `Refirst`
+    and `First`): `Storage(p)` where R starts at the storage, `Storage(p)` plus the proven raw `Add` where it displaces, and the
+    keyed `Storage(p, start, R)` where R is open. `First` keeps one statement of the form, with three producers (the selection, a
+    default copy's fold, this call). Three vocabulary entries, the owner's approval O-490 (a): `DispositionKind.Form` ("a call the
+    builder writes as a MIR form, never a Call"), `BodylessKind.Form` (`TyCtxt.Bodyless`), and `KimiDeclarationId.ViewStart` with its
+    catalog row (`KimiLibraryCatalog.Entry.Form`, which the registration reads as a table row). `IntrinsicId` and R8's exit-gate
+    item 3 are unchanged. `FunctionKoto.OmitsBody` lets any library `#Lang` function omit its Body; KimiLibraryShapeTest's row L2
+    keeps a bodyless library function an intrinsic, a linked constructor or a Form row.
+  - **The validator.** A Call of a Form function is an Operation finding (`MirValidator.Calls`), so A4 and the instance collector,
+    which trust validated MIR, never read `BodylessKind.Form`. `Storage`'s admitted Places are O-92 (a)'s list plus a raw pointer
+    `raw/E`, whose elements start at its value (SPEC 5.3), its result's element the pointee (`MirValidator.Types`).
+  - **A5 (the Middle's C-459 ruling).** A raw pointer Place's element step is its raw referent: one row of `MirSteps.Index`'s table
+    (`{ IsPointer: true } => Raw`), the reading the builder gives `p[n]` (`*(p + n)`). Every A5 site keeps R8-M13's one reading of a
+    Storage (a raw borrow of P's element); for a raw P it is no Loan of P's own storage. **Unpinned until U3** (removal condition: U3
+    lands): twins r4, r5 and r5r are valid-program controls that pass under both readings; U3's body-level twin, with
+    `Storage.sliceUniq`'s producer, carries the fail-before (B's L2 rulings 15 and 16).
+  - **Codegen (B's ruling 14).** The validator's admission and its lowering land together: `Buffer` loads a raw pointer's value (a
+    pointer has no `data` word), and one `RecordOf` owns "a handle's record, or none" (a fixed array's, a raw pointer's) for both
+    `Sequence` and `Element`. The keyed and displaced forms are as in R8-M27.
+  - **Units.** U2 (this) is behaviour-preserving: no producer calls `viewStart`. U3 routes `Storage.sliceUniq` through it (the
+    acceptance mover) with the natives.
 - **R8-M28 The library's size is stated once: `KimiLibrarySize`** (Back for the Front, 2026-11-10; R8-W1c-2a; the owner's O-136 (a)
   and O-139 (a)). Superseded by R8-M55's U6 line (PLAN G949 Stage 2 U6, 2026-11-19): after R8-L1 U3 a compilation's tables hold only
   its program's entries, so the statement, its two tests and its RP8 exception are deleted. Full text: dev 8a1d8cff6 (first landed in
