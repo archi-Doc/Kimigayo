@@ -240,7 +240,15 @@ public sealed partial class Binding
                 return this.Fail(call, BindingFailure.Unsupported, true);
             }
 
+            var outermost = this.candidateTrials == 0;
             var (selection, winnerIndex) = this.SelectAt(ref evaluation, candidates);
+            if (outermost && this.resolutionLimited)
+            {
+                // SPEC 10.6 (the owner's O-351 (a)): the queries of this resolution passed the limit; no candidate is selected, and the
+                // call's waiting parts rest on its record.
+                return this.FailWaitingSelection(call, BindingFailure.ResolutionWorkLimit);
+            }
+
             var count = evaluation.Count;
             if (selection == CallSelection.InvalidDeclaration)
             {
@@ -309,7 +317,7 @@ public sealed partial class Binding
                     var start = this.rejectedRows.Count;
                     for (var i = 0; i < count; i++)
                     {
-                        var rejected = new RejectedCandidate((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ConstraintFailure: evaluated[i].ConstraintFailure);
+                        var rejected = new RejectedCandidate((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ConstraintFailure: evaluated[i].ConstraintFailure, CheckedPart: evaluated[i].CheckedFailure);
                         var rejectedReceiver = operations[(i * operationStride) + operationStride - 1];
                         if (rejectedReceiver.SourceType is { } receiverActual && rejectedReceiver.ParameterType is { } receiverExpected && SharedObjectAuthorityMismatch(receiverActual, receiverExpected))
                         {

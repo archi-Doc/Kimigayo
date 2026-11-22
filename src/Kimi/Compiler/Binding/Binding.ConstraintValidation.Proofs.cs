@@ -59,6 +59,11 @@ public sealed partial class Binding
     // it (EvaluateCallCandidate).
     private PendingJudgment? trialPending;
 
+    // SPEC 10.5.1 (PLAN G924 AF-3b): the part checked against its expected Type that made a candidate trial inapplicable (FitChecked),
+    // the first of its frame, diagnostic payload only; its selection reads it (EvaluateCallCandidate), a value call per Callable row
+    // (SelectValueCall), a construction's completion for its record (CompletePayloads); a late fit's is dropped (TryPropagate).
+    private CheckedPartFailure? trialChecked;
+
     // SPEC 10.1, 8.3.3 (the owner's O-335 (a)): the first refusal a candidate trial read while a selection evaluates its candidates
     // (candidateTrials), held unsettled (Refusal.Settle), so the trial's judgment is the Unknown 10.1 ranks; the trial frame carries it
     // to its selection as its other facts (CloseTrial), which takes it per candidate (TakeTrialRefusal) and settles only the selected
@@ -258,6 +263,11 @@ public sealed partial class Binding
             this.trialRefusal = null;
         }
 
+        if (this.trialChecked.HasValue && this.trialChecked.GetValueOrDefault().Epoch == epoch)
+        {
+            this.trialChecked = null;
+        }
+
         this.frameEpoch = enclosing;
     }
 
@@ -268,6 +278,7 @@ public sealed partial class Binding
         this.trialClause = null;
         this.trialPending = null;
         this.trialRefusal = null;
+        this.trialChecked = null;
         return this.OpenFrame();
     }
 
@@ -279,6 +290,7 @@ public sealed partial class Binding
         var clause = enclosing != 0 ? this.trialClause : null;
         var pending = enclosing != 0 ? this.trialPending : null;
         var refusal = enclosing != 0 ? this.trialRefusal : null;
+        var checkedPart = enclosing != 0 ? this.trialChecked : null;
         this.CloseFrame(enclosing);
         if (unknown is not null)
         {
@@ -289,6 +301,26 @@ public sealed partial class Binding
         this.trialClause = clause is { } kept ? kept with { Epoch = enclosing } : null;
         this.trialPending = pending is { } judged ? judged with { Epoch = enclosing } : null;
         this.trialRefusal = refusal is { } held ? held with { Epoch = enclosing } : null;
+        this.trialChecked = checkedPart is { } failed ? failed with { Epoch = enclosing } : null;
+    }
+
+    // SPEC 10.5.1: the failed check of a part against its expected Type, left under the innermost open frame unless that frame already
+    // holds one (the first decides the candidate).
+    private void LeaveChecked(CheckedPartFailure failure)
+    {
+        if (this.trialChecked is not { } held || held.Epoch != this.frameEpoch)
+        {
+            this.trialChecked = failure with { Epoch = this.frameEpoch };
+        }
+    }
+
+    // The take of a trial's failed check (EvaluateCallCandidate, SelectValueCall, CompletePayloads), under the consumer rule; null
+    // drops it.
+    private CheckedPartFailure? TakeTrialChecked(Koto use)
+    {
+        var fact = this.trialChecked;
+        this.trialChecked = null;
+        return this.OwnFrame(use, fact?.Epoch) ? fact : null;
     }
 
     // The selection's take of its candidate trial's pending judgment (EvaluateCallCandidate, DECISIONS BU-86), under the consumer rule.
@@ -460,6 +492,7 @@ public sealed partial class Binding
         this.failedClause = null;
         this.trialClause = null;
         this.trialPending = null;
+        this.trialChecked = null;
         this.frameEpoch = 0;
         this.proofNesting = 0;
     }

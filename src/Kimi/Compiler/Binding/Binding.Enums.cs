@@ -119,6 +119,24 @@ public sealed partial class Binding
         return unbound;
     }
 
+    // SPEC 6.5.2 steps 2-3, 9.7: whether a construction qualifier omits its own Type-argument list (no list, no parentheses, no Semantics,
+    // not `Self`), so the expected owned Type of the same enum supplies it.
+    private static bool OmitsOwnList(Koto qualifier)
+        => qualifier is not (ParenthesizedTypeKoto or TypeSemanticsKoto { Type: not null } or GenericsKoto) &&
+            !(qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto) &&
+            TypeSpelling(qualifier) != "Self";
+
+    // SPEC 9.7, 9.7.1: whether such a qualifier keeps an environment from its path (ConstructionTargetType): a structure, a member access,
+    // or a nested Container with slots or Origins; otherwise it is the supplied Type or, open in every slot, its declaration Type.
+    private static bool FormedByPath(Koto qualifier, BindingSymbol symbol)
+        => symbol.Declaration is StructKoto || qualifier is MemberAccessKoto ||
+            (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false });
+
+    // SPEC 6.5.2 item 2, 9.7.1, 10.8.1: the owned Type of `symbol` that an expected Type supplies to a construction qualifier (U at an
+    // expected `ref/U`), or null.
+    private BoundType? SuppliedOwner(BindingSymbol symbol, BoundType? expected)
+        => this.ExpectedTypeOf(expected) is { Semantics: SemanticsKind.Owner } result && ReferenceEquals(result.Symbol, symbol) ? result : null;
+
     private BoundType? EnumQualifierType(Koto qualifier, BindingSymbol symbol, BindingScope scope, BoundType? expected)
     {
         BoundType? type;
@@ -126,13 +144,13 @@ public sealed partial class Binding
         {
             type = this.BindType(qualifier, scope, this.TypeContext(qualifier, scope) with { SuppressOuter = true });
         }
-        else if (qualifier is GenericsKoto || (qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto))
+        else if (!OmitsOwnList(qualifier) && TypeSpelling(qualifier) != "Self")
         {
             // Only nested complete Type arguments carry annotations here. Enum Origin slots
             // are determined by the construction's expected Type and payloads.
             type = this.BindTypeStructure(qualifier, scope, this.TypeContext(qualifier, scope));
         }
-        else if (TypeSpelling(qualifier) == "Self")
+        else if (!OmitsOwnList(qualifier))
         {
             type = this.SelfType(symbol);
         }
@@ -141,15 +159,51 @@ public sealed partial class Binding
             // SPEC 6.5.2 steps 2-3, 9.7: an omitted own list takes the expected owned Type of the same enum. A top-level enum is that Type
             // or, open in every slot, its declaration Type; a nested one (or a structure, which reaches here without own slots) keeps its
             // environment from the path (ConstructionTargetType).
-            var expectedResult = this.ExpectedTypeOf(expected); // SPEC 10.8.1: a Case construction is an owner value, so U at an expected `ref/U`.
-            var supplied = expectedResult?.Semantics == SemanticsKind.Owner && ReferenceEquals(expectedResult.Symbol, symbol) ? expectedResult : null;
-            type = symbol.Declaration is StructKoto || qualifier is MemberAccessKoto ||
-                (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
-                ? this.ConstructionTargetType(qualifier, symbol, scope, supplied) : supplied ?? symbol.Type;
+            var supplied = this.SuppliedOwner(symbol, expected);
+            type = FormedByPath(qualifier, symbol) ? this.ConstructionTargetType(qualifier, symbol, scope, supplied) : supplied ?? symbol.Type;
         }
 
         qualifier.BoundSymbol = symbol;
         return Complete(qualifier, type);
+    }
+
+    // SPEC 6.5.2 step 2, 9.7.1 (PLAN G924 AF-3b, design-casepath 1): the enum Type a qualified Case construction's qualifier fixes at an
+    // expected Type, read without a write: the qualifier's published Type, which the probe bound once with no expectation, where it
+    // depends on no expected Type; for an omitted own list the supplied Type (top-level) or the published open reference with its own
+    // arguments from the supplied Type (formed by its path, FormReference). Reads neither memberSelections nor
+    // inferredConstructionTargets (C3).
+    private BoundType? QualifiedEnumAt(Koto qualifier, BindingSymbol symbol, BoundType expected)
+    {
+        var published = qualifier.BoundType;
+        if (!OmitsOwnList(qualifier) || this.SuppliedOwner(symbol, expected) is not { } supplied)
+        {
+            return published;
+        }
+
+        var declaration = (DeclarationContainerKoto)symbol.Declaration;
+        var own = declaration.GenericParameterNodes.Count;
+        if (!FormedByPath(qualifier, symbol))
+        {
+            return supplied;
+        }
+
+        if (published is null || own == 0)
+        {
+            return published;
+        }
+
+        // N3: the probe's open reference keeps the declaration's own parameters; a stale Type (a completion's) is a broken contract.
+        var open = this.SelfType(symbol).Components;
+        for (var i = 0; i < own; i++)
+        {
+            if (!ReferenceEquals(published.Components[i], open[i]))
+            {
+                throw new InvalidOperationException("A queried construction qualifier lost its open own arguments (InternalInvariant; PLAN G924 AF-3b).");
+            }
+        }
+
+        var origins = published.OriginArguments.Count == 0 ? default : ((BoundOrigin[])published.OriginArguments).AsSpan(declaration.OriginNames.Count);
+        return this.FormReference(symbol, ((BoundType[])supplied.Components).AsSpan(0, own), ((BoundType[])published.Components).AsSpan(own), origins);
     }
 
     private BindingSymbol? InferredCase(SyntaxFormKoto reference, BindingScope scope, BoundType? expected)
@@ -193,16 +247,175 @@ public sealed partial class Binding
     private ConstructionTarget PublishedTarget(Koto reference, BindingSymbol symbol, BoundType? expected)
         => new(symbol, reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : this.ExpectedTypeOf(expected));
 
+    // SPEC 6.5.1, 6.5.2 (design-casepath 2.2 step 2): whether a referenced Case takes a construction's arguments: its arity, its and its
+    // enum's declarations not invalid, a qualified reference's member on the Type side, no labelled argument and every payload Type
+    // bound. E-free; the publisher's TypeMismatch otherwise.
+    private bool CaseTakes(Koto reference, BindingSymbol symbol, InvocationKoto? call)
+    {
+        var enumeration = symbol.EnumCase!;
+        var payload = enumeration.Payload;
+        if (!EnumArityMatches(payload.Length, call) || symbol.Declaration.BindingState == BindingState.Invalid ||
+            enumeration.Owner.Declaration.BindingState == BindingState.Invalid || (reference is MemberAccessKoto member && this.MemberSideOf(member) != MemberSide.Type))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < payload.Length; i++)
+        {
+            if (call!.GetArgumentLabel(i) is not null || payload[i].BoundType is null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // SPEC 6.5.2 item 2, 10.8, 10.8.1 (DECISIONS BU-2 U5; design-casepath 2.2 step 3): the slots a construction's qualifier and expected
+    // Type fix before any evidence: the owner's components (an inferred qualifier's own slots left open), then every slot still open and
+    // the Origins from the expected Type, an owned Type of the enum (none at no expected Type or Never). A qualifier's explicit argument
+    // is kept and the expected Type fills only the open slots; the result's fit judges the kept argument (a structure or Semantics
+    // difference is its Type mismatch, an Origin-only difference its Origin relation). False when the expected Type is no owned Type of
+    // the enum or too short.
+    private bool FixConstructionSlots(in ConstructionTarget target, bool inferred, BoundType? expected, SlotFrame frame, BoundOrigin[] origins)
+    {
+        var enumeration = target.Case.EnumCase!;
+        var declaration = (EnumKoto)enumeration.Owner.Declaration;
+        var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
+        if (target.Owner is { } owner)
+        {
+            for (var i = 0; i < Math.Min(slots, owner.Components.Count); i++)
+            {
+                if (!OpenConstructionSlot(declaration, owner, inferred, i))
+                {
+                    frame.SetType(i, owner.Components[i]);
+                }
+            }
+        }
+
+        if (expected is null || ReferenceEquals(expected, BoundType.Never))
+        {
+            return true;
+        }
+
+        if (ExpectedConstructionOrigins(expected, enumeration.Owner) is not { } supplied || expected.Components.Count < slots)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < slots; i++)
+        {
+            if (frame.Types[i] is null)
+            {
+                frame.SetType(i, expected.Components[i]);
+            }
+        }
+
+        for (var i = 0; i < Math.Min(declaration.BoundSymbol.Schema.Origins.Count, supplied.Count); i++)
+        {
+            origins[i] = supplied[i];
+        }
+
+        return true;
+    }
+
+    // SPEC 6.5.2: the constructed Type of an enum from its solved slots and Origins.
+    private BoundType FormConstruction(BindingSymbol enumeration, SlotFrame frame, BoundOrigin[] origins)
+    {
+        var schema = enumeration.Schema!;
+        var slots = schema.GenericSlots.Count;
+        return this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration, SemanticsKind.Owner, frame.Types[..slots]!, originArguments: origins.AsSpan(0, schema.Origins.Count));
+    }
+
+    // SPEC 6.5.2, 10.5.1, 10.2 (PLAN G924 AF-3b; design-casepath 2): whether a Case construction that awaits its call checks at an
+    // expected Type, as a query that writes nothing (Binding.ArgumentKinds.Checked): at the construction's expected result (U at
+    // `ref/U`, 10.8.1) its target (CaseAt, QualifiedEnumAt), its arguments (CaseTakes), its result formed from the fixed slots
+    // (FixConstructionSlots, FormConstruction) and fitted structurally, and each payload fitted at its payload Type (PayloadTypeAt,
+    // FitArgument: a payload awaiting its own call recurses through the memo). Origin relations, the payloads' own errors and the
+    // Constraints are judged by the selected candidate's completion (SPEC 10.1, 15.6.1). A Case construction is an owner value: its class
+    // is a borrowed temporary at `ref/U`, else Expected-Type fitting.
+    private CheckedVerdict FitConstructionAt(Koto node, BoundType expected, BindingScope scope)
+    {
+        var result = this.ExpectedTypeOf(expected);
+        var call = node as InvocationKoto;
+        var reference = KotoHelper.UnwrapParentheses(call?.Method ?? node);
+        var target = reference switch
+        {
+            SyntaxFormKoto { Akind: KotoKind.InferredCase } contextual when this.CaseAt(contextual, scope, result, out _) is { } member => new ConstructionTarget(member, result),
+            MemberAccessKoto { BoundSymbol.EnumCase: not null } qualified when qualified.Left.BoundSymbol is { } enumeration =>
+                new ConstructionTarget(qualified.BoundSymbol!, this.QualifiedEnumAt(qualified.Left, enumeration, result)),
+            _ => default(ConstructionTarget?),
+        };
+        var query = this.BeginSelectionQuery(); // A payload's fit may defer an acquisition or query its own parts.
+        try
+        {
+            var fits = target is { } found && this.CaseTakes(reference, found.Case, call) && this.FitsConstructionAt(found, call, result, scope, node);
+            return fits ? new(null, this.CheckedClass(expected, ownerResult: true), reference is MemberAccessKoto ? target!.Value.Owner : null)
+                : new(CallSelection.NoneApplicable, default);
+        }
+        finally
+        {
+            this.EndSelectionQuery(query);
+        }
+    }
+
+    // The result and payload steps of FitConstructionAt, over a rented frame returned before it returns.
+    private bool FitsConstructionAt(in ConstructionTarget target, InvocationKoto? call, BoundType result, BindingScope scope, Koto use)
+    {
+        var enumeration = target.Case.EnumCase!;
+        var schema = enumeration.Owner.Schema!;
+        var frame = this.infer.Rent(schema.GenericSlots.Count, use, scope);
+        var origins = this.originScratch.Rent(schema.Origins.Count);
+        Array.Clear(origins, 0, schema.Origins.Count);
+        try
+        {
+            if (!this.FixConstructionSlots(target, inferred: false, result, frame, origins))
+            {
+                return false;
+            }
+
+            var formed = this.FormConstruction(enumeration.Owner, frame, origins);
+            if (!this.FitsType(formed, result) && !this.FitsStructurallyAt(formed, result, use))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < enumeration.Payload.Length; i++)
+            {
+                var source = call!.ArgumentNodes[i];
+                // Only a misfit fails the check (Rd1); a payload whose Type is not yet known (Pending) keeps it, as at a call argument.
+                if (this.FitArgument(source, this.PayloadTypeAt(enumeration.Payload[i], formed, scope, out _), scope, source, out _) == CandidateApplicability.Inapplicable)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            this.originScratch.Return(origins, clearArray: true);
+            this.infer.Return(frame);
+        }
+    }
+
     private BoundType? BindEnumConstruction(Koto use, Koto reference, in ConstructionTarget target, InvocationKoto? call, BindingScope scope, BoundType? expected)
     {
         var symbol = target.Case;
         var enumeration = symbol.EnumCase!;
+        if (reference is MemberAccessKoto && expected is not null && this.dependentChecks.TryGetValue((SourceRef.Written(use), expected), out var queried) &&
+            queried.Owner is { } queriedOwner && !ReferenceEquals(queriedOwner, target.Owner))
+        {
+            // design-casepath B4: the query of this qualified construction at this expected Type fixed another enum Type than its
+            // publisher reaches: a broken contract between the two, never a second answer.
+            return this.Fail(use, BindingFailure.Internal);
+        }
+
         expected = this.ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: a Case construction is an owner value; its expected result at `ref/U` is U.
         var declaration = (EnumKoto)enumeration.Owner.Declaration;
         var payload = enumeration.Payload;
         var count = call?.ArgumentNodes.Count ?? 0;
-        if (!EnumArityMatches(payload.Length, call) || symbol.Declaration.BindingState == BindingState.Invalid || declaration.BindingState == BindingState.Invalid ||
-            (reference is MemberAccessKoto member && this.MemberSideOf(member) != MemberSide.Type))
+        if (!this.CaseTakes(reference, symbol, call))
         {
             return this.Fail(use, BindingFailure.TypeMismatch);
         }
@@ -225,44 +438,9 @@ public sealed partial class Binding
         Array.Clear(origins, 0, originCount);
         try
         {
-            if (owner is not null)
+            if (!this.FixConstructionSlots(target, inferred, expected, frame, origins))
             {
-                for (var i = 0; i < Math.Min(slots, owner.Components.Count); i++)
-                {
-                    if (!OpenConstructionSlot(declaration, owner, inferred, i))
-                    {
-                        frame.SetType(i, owner.Components[i]);
-                    }
-                }
-            }
-
-            if (expected is not null && !ReferenceEquals(expected, BoundType.Never))
-            {
-                if (ExpectedConstructionOrigins(expected, enumeration.Owner) is not { } supplied)
-                {
-                    return this.Fail(use, BindingFailure.TypeMismatch);
-                }
-
-                // SPEC 6.5.2 item 2, 10.8, 10.8.1 (DECISIONS BU-2 U5): a qualifier's explicit argument is kept and the expected Type fills
-                // only the open slots; the result's fit judges the kept argument (a structure or Semantics difference is its Type mismatch,
-                // an Origin-only difference its Origin relation).
-                for (var i = 0; i < slots; i++)
-                {
-                    if (i >= expected.Components.Count)
-                    {
-                        return this.Fail(use, BindingFailure.TypeMismatch);
-                    }
-
-                    if (frame.Types[i] is null)
-                    {
-                        frame.SetType(i, expected.Components[i]);
-                    }
-                }
-
-                for (var i = 0; i < Math.Min(originCount, supplied.Count); i++)
-                {
-                    origins[i] = supplied[i];
-                }
+                return this.Fail(use, BindingFailure.TypeMismatch);
             }
 
             // SPEC 6.5.2 step 2, 9.7.1, 10.8: the slots the qualifier and the expected Type fix before any evidence; each payload's adaptation
@@ -332,7 +510,7 @@ public sealed partial class Binding
                 }
             }
 
-            var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, frame.Types[..slots]!, originArguments: origins.AsSpan(0, originCount));
+            var result = this.FormConstruction(enumeration.Owner, frame, origins);
             if (expected is not null && !this.FitsType(result, expected))
             {
                 // SPEC 15.6.1, 10.8: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch, its
@@ -441,12 +619,6 @@ public sealed partial class Binding
     {
         for (var i = 0; i < payload.Length; i++)
         {
-            if (solution.Call.GetArgumentLabel(i) is not null || payload[i].BoundType is null)
-            {
-                this.Fail(use, BindingFailure.TypeMismatch);
-                return false;
-            }
-
             // Before any evidence the frame holds exactly the fixed bindings, an open slot unbound: a payload is settled when they complete it.
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
                 !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.Slice(0, solution.OriginCount)))
@@ -454,8 +626,9 @@ public sealed partial class Binding
                 settled.Add(i);
                 _ = this.RecordsWaitingForm(solution.Call.ArgumentNodes[i]); // Recorded as a named call's argument is (P1), unbound.
             }
-            else if (!this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, default, callableContext: true))
+            else if (!this.AwaitsCall(solution.Call.ArgumentNodes[i]) && !this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, default, callableContext: true))
             {
+                // A payload a probe left awaiting its call is prepared already (design-casepath R4).
                 Complete(use, null); // The payload's own failure, on which the construction rests.
                 return false;
             }
@@ -614,8 +787,13 @@ public sealed partial class Binding
         {
             var source = ((InvocationKoto)use).ArgumentNodes[i];
             var type = this.PayloadTypeAt(payload[i], result, scope, out var stored);
+            // SPEC 10.5.1: a payload checked against the expected Type that a probe prepared (a nested call or Case awaiting its call) is
+            // checked at its payload Type, settled or not; any other settled payload is bound at it below (its independent binding with
+            // no expected Type would publish other Origins: Kimi's `.Ok(WriteWindow.init(..))`, AF-3b phase 2).
             var fitted = default(BoundArgumentOperation);
-            var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
+            var fit = settled.Contains(i) && this.AwaitedKind(source) is not (PartKind.Call or PartKind.Case) ? CandidateApplicability.Applicable
+                : this.FitArgument(source, type, scope, source, out fitted);
+            _ = this.TakeTrialChecked(use); // A failed check is the construction's misfit below.
             if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
             {
                 this.Fail(use, BindingFailure.TypeMismatch);

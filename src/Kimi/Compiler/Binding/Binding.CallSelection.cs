@@ -122,6 +122,15 @@ public sealed partial class Binding
         return null;
     }
 
+    // The callee a call's probe resolved and published its group on (BindCallCore): the method through parentheses, a generic's
+    // identifier, with that generic.
+    private static Koto CheckedCallee(InvocationKoto call, out GenericsKoto? generic)
+    {
+        var inner = KotoHelper.UnwrapParentheses(call.Method);
+        generic = inner as GenericsKoto;
+        return generic?.Identifier ?? inner;
+    }
+
     // A named call's candidate rows (RentCandidates, rented before the set is measured), its Self (its requirements' or a requirement
     // callee's) and the measured shape: what RentEvaluation leaves to its caller, shared by BindCall and ProbeSelection. The rows go
     // into the evaluation RentEvaluation rents (returned with it by ReturnEvaluation), or are returned alone before it is rented.
@@ -139,8 +148,7 @@ public sealed partial class Binding
     // arguments it does not choose, select nothing to judge (Selected, -1).
     private ProbedSelection ProbeSelection(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
-        var method = KotoHelper.UnwrapParentheses(call.Method);
-        var callee = method is GenericsKoto { Identifier: { } identifier } ? identifier : method;
+        var callee = CheckedCallee(call, out var generic);
         if (callee.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
             return new(CallSelection.Selected, -1, 0, false);
@@ -149,7 +157,7 @@ public sealed partial class Binding
         var candidates = this.GroupOf(callee, group);
         var (evaluated, self, shape) = this.NamedCandidates(callee, group, candidates, scope);
         var query = this.BeginSelectionQuery();
-        var evaluation = this.RentEvaluation(call, callee, method as GenericsKoto, scope, expected, shape);
+        var evaluation = this.RentEvaluation(call, callee, generic, scope, expected, shape);
         evaluation.Evaluated = evaluated;
         evaluation.Self = self;
         evaluation.Requirements = candidates.Requirements;
@@ -170,10 +178,32 @@ public sealed partial class Binding
         }
     }
 
-    // The state a selection's evaluation touches beside its scratch: the obligations its trials add, the acquisition and cause facts,
-    // the active requirement contract and the inference counters; a query that must not publish saves it and restores it after.
+    // A query's entry (a selection that must not publish, SPEC 10.1: nothing of a candidate that is not selected is reported): the
+    // state its evaluation touches outside its own scratch, saved here and restored by EndSelectionQuery at its exit whatever the
+    // outcome: the obligations its trials add, the deferred acquisition and failed cause SelectAt clears, the requirement reference
+    // each candidate sets (null on entry: the arguments are the caller's expressions, as in BindCall), the inference counters, an
+    // enclosing trial's facts and the proofs' single-slot facts, which its trials replace (OpenTrial), the walk's open positions, and
+    // the waiting parts the enclosing fit met (its own fits start theirs above them: waitingBase). The one owner of that set for every
+    // query (ProbeSelection, SelectedCandidate, OpenForm, SelectOmittedBaseConstructor; a part checked against its expected Type,
+    // SelectCallAt and FitConstructionAt).
     private SelectionQuery BeginSelectionQuery()
-        => new(this.obligations.Count, this.acquisitionFailure, this.failedCause, this.activeRequirementContract, (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks));
+    {
+        var query = new SelectionQuery(this.obligations.Count, this.acquisitionFailure, this.failedCause, this.activeRequirementContract, (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks))
+        {
+            TrialUnknown = this.trialUnknown,
+            TrialClause = this.trialClause,
+            TrialPending = this.trialPending,
+            TrialRefusal = this.trialRefusal,
+            TrialChecked = this.trialChecked,
+            FailedUnknown = this.failedUnknown,
+            FailedClause = this.failedClause,
+            PositionParts = this.positionParts.Count,
+            Waiting = (this.waitingBase, this.waitingParts.Count),
+        };
+        this.activeRequirementContract = null;
+        this.waitingBase = this.waitingParts.Count;
+        return query;
+    }
 
     private void EndSelectionQuery(in SelectionQuery query)
     {
@@ -187,6 +217,11 @@ public sealed partial class Binding
         this.failedCause = query.Cause;
         this.activeRequirementContract = query.Contract;
         (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = query.Counters;
+        (this.trialUnknown, this.trialClause, this.trialPending, this.trialRefusal, this.trialChecked) = (query.TrialUnknown, query.TrialClause, query.TrialPending, query.TrialRefusal, query.TrialChecked);
+        (this.failedUnknown, this.failedClause) = (query.FailedUnknown, query.FailedClause);
+        this.ClosePosition(query.PositionParts);
+        this.waitingParts.RemoveRange(query.Waiting.Count, this.waitingParts.Count - query.Waiting.Count);
+        this.waitingBase = query.Waiting.Base;
     }
 
     // SPEC 10.1, 9.4.1: a candidate set's rows, rented before the set is measured. Each candidate's accessibility is decided once, into
@@ -299,10 +334,69 @@ public sealed partial class Binding
     // ClassifySelection through SelectBest and PremisesCannotAffect); the caller acts on the outcome.
     private (CallSelection Kind, int Winner) SelectAt(ref CallEvaluation evaluation, in FunctionGroup candidates)
     {
+        this.BeginResolution();
         this.acquisitionFailure = null;
         this.failedCause = null;
         this.EvaluateCallCandidates(ref evaluation, candidates);
         return this.ClassifySelection(ref evaluation);
+    }
+
+    // SPEC 10.5.1, 10.1-10.4 (PLAN G924 AF-3b; design-af3 R1.3, R2.6): a nested call's selection at an expected Type, as a query that
+    // publishes nothing (Binding.ArgumentKinds.Checked). It reads what the argument probe published (the callee's group, a member's
+    // selection, the prepared arguments, the explicit arguments' bound Types) and evaluates and classifies at `expected` (SelectAt);
+    // BeginSelectionQuery and EndSelectionQuery keep every state outside the evaluation's scratch. The shape contracts are the publishing call's
+    // (BindCallCore): a correlation failure is the nested call's own error. Selected: kept, with its winner's class. NoneApplicable or
+    // Ambiguous: the check fails. Unproven (Rd6'): where every Pending candidate is unproven only by an Unknown premise, the candidates
+    // are compared as though applicable (SPEC 10.1, PremisedBest): kept with the strictly best one's class, or Ambiguous with none;
+    // any other Pending candidate (BU-86's environment result, an open signature) keeps it unranked (O-335 (a): never Pending). A failed
+    // declaration or signature is the nested call's own error: kept.
+    private CheckedVerdict SelectCallAt(InvocationKoto call, BoundType expected, BindingScope scope)
+    {
+        var callee = CheckedCallee(call, out var generic);
+        var group = callee.BoundSymbol!;
+        var candidates = this.GroupOf(callee, group);
+        var (evaluated, self, shape) = this.NamedCandidates(callee, group, candidates, scope);
+        var query = this.BeginSelectionQuery();
+        var evaluation = this.RentEvaluation(call, callee, generic, scope, expected, shape);
+        evaluation.Evaluated = evaluated;
+        evaluation.Self = self;
+        evaluation.Requirements = candidates.Requirements;
+        try
+        {
+            if (!this.BindExplicitArguments(ref evaluation, shape.Count))
+            {
+                return new(null, ArgumentAdaptation.ExpectedTypeFitting); // The probe failed the call (Unsupported): a failed part, never queried.
+            }
+
+            var (selection, winner) = this.SelectAt(ref evaluation, candidates);
+            if (selection == CallSelection.Unproven && evaluation.FailedPendingSignature is null && evaluation.PremisesOnly)
+            {
+                winner = this.PremisedBest(call, evaluation.Evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride);
+                selection = winner < 0 ? CallSelection.Ambiguous : CallSelection.Selected;
+            }
+
+            return selection switch
+            {
+                CallSelection.Selected => new(null, this.CheckedClass(expected, this.OwnerResultAt(evaluation, winner))),
+                CallSelection.NoneApplicable or CallSelection.Ambiguous => new(selection, default),
+                _ => new(null, ArgumentAdaptation.ExpectedTypeFitting),
+            };
+        }
+        finally
+        {
+            this.EndSelectionQuery(query);
+            this.ReturnEvaluation(evaluation);
+        }
+    }
+
+    // SPEC 3.4.1, 10.2.2 item 2: whether a candidate's result, substituted by its solution, is an owner value (OwnerResult); a bare slot
+    // still unbound counts as one (its value is what U fills).
+    private bool OwnerResultAt(in CallEvaluation evaluation, int index)
+    {
+        ref readonly var row = ref evaluation.Evaluated[index];
+        var function = (FunctionKoto)row.Symbol!.Declaration;
+        var pattern = function.IsConstructor && row.DeclaringType is not null ? this.SelfType(row.DeclaringType.Symbol!) : function.BoundSymbol!.Type;
+        return pattern is null || OwnerResult(this.Solution(evaluation, index, function, row.DeclaringType).Type(pattern) ?? pattern);
     }
 
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
@@ -386,6 +480,7 @@ public sealed partial class Binding
 
         // The refusal the trial held (the owner's O-335 (a)): settled only if this candidate is selected (Binding.Calls).
         var held = this.TakeTrialRefusal(call);
+        var checkedPart = this.TakeTrialChecked(call); // SPEC 10.5.1: the reason of an inapplicable candidate only.
         ref var row = ref evaluation.Evaluated[index]; // Its Symbol and Accessible are RentCandidates'.
         row.State = state;
         row.DeclaringType = declaringType;
@@ -399,6 +494,7 @@ public sealed partial class Binding
         row.PremiseUnknown = premiseUnknown;
         row.PremiseReadsMark = this.premiseReadsSplit && HoldsMark(evaluation.Frames[index].Types); // DECISIONS BU-240 (G812 ruling 159)
         row.HeldRefusal = held;
+        row.CheckedFailure = state == CandidateApplicability.Inapplicable ? checkedPart : null;
         var saved = evaluation.SavedCandidates != 0;
         var argumentCount = call.ArgumentNodes.Count;
         if (saved)
@@ -645,7 +741,27 @@ public sealed partial class Binding
 
     // What BeginSelectionQuery saves (see there).
     private readonly record struct SelectionQuery(
-        int Obligations, AcquisitionFailure? Acquisition, ICheckCause? Cause, BindingSymbol? Contract, (long, long, long) Counters);
+        int Obligations, AcquisitionFailure? Acquisition, ICheckCause? Cause, BindingSymbol? Contract, (long, long, long) Counters)
+    {
+        internal CallableUnknown? TrialUnknown { get; init; }
+
+        internal ClauseFact? TrialClause { get; init; }
+
+        internal PendingJudgment? TrialPending { get; init; }
+
+        internal (Refusal Held, long Epoch)? TrialRefusal { get; init; }
+
+        internal CheckedPartFailure? TrialChecked { get; init; }
+
+        internal CallableUnknown? FailedUnknown { get; init; }
+
+        internal ClauseFact? FailedClause { get; init; }
+
+        internal int PositionParts { get; init; }
+
+        // The enclosing fit's waiting parts: their base and count (waitingBase, waitingParts).
+        internal (int Base, int Count) Waiting { get; init; }
+    }
 
     // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. Each candidate's
     // slots are its own frame (Frames, R7-I2 c); the saved arrays retain each applicable candidate's mapping, Origins and input Origins

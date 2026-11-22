@@ -174,6 +174,7 @@ internal enum BindingFailure : byte
     CaseLimit,
     TypeHeightLimit,
     PremiseClosureLimit,
+    ResolutionWorkLimit,
     InvalidAssignment,
     InvalidLiteral,
     Access,

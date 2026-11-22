@@ -51,6 +51,12 @@ public sealed partial class Binding
     // premise-unproven candidate ranked as applicable; no judgment of those premises then changes the winner. The ordinary comparison
     // decides, so a tie or an incomparable pair still defers.
     private bool PremisesCannotAffect(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+        => this.PremisedBest(call, candidates, operations, stride) is var best && best >= 0 &&
+            candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+
+    // SPEC 10.1, 8.3.3: the candidate strictly best with every premise-unproven candidate ranked as the applicable candidate it would be
+    // (compared as though applicable), or -1 when none is, or when candidates holding waiting callables are not comparable.
+    private int PremisedBest(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
         foreach (ref readonly var candidate in candidates)
         {
@@ -58,15 +64,14 @@ public sealed partial class Binding
             {
                 if (!this.ComparableCallableSlots(call, candidates, operations, stride, true))
                 {
-                    return false;
+                    return -1;
                 }
 
                 break;
             }
         }
 
-        var best = StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
-        return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+        return StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
     }
 
     // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent), keyed by the solve's node and judged in the use's
@@ -335,7 +340,7 @@ public sealed partial class Binding
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
-            if (this.IsWaitingPart(argument))
+            if (this.IsCheckedCall(argument))
             {
                 this.CompleteDependent(argument, call);
             }
@@ -353,6 +358,9 @@ public sealed partial class Binding
     private record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false, bool PremiseReadsMark = false)
     {
         internal Refusal? HeldRefusal { get; set; }
+
+        // SPEC 10.5.1: an inapplicable candidate's failed check of a part against its expected Type (TakeTrialChecked).
+        internal CheckedPartFailure? CheckedFailure { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.

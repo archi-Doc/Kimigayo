@@ -141,6 +141,7 @@ public sealed partial class Binding
                 {
                     var map = MapValueCallArguments(call, candidates[i].Signature);
                     var state = map.Valid ? this.ProbeValueCall(call, scope, candidates[i].Signature, expected, operations.AsSpan(i * stride, stride)) : CandidateApplicability.Inapplicable;
+                    candidates[i] = candidates[i] with { CheckedPart = this.TakeTrialChecked(call) }; // SPEC 10.5.1: the row's reason (R2.4).
                     evaluated[i] = new(null, state, null, 0, ArgumentMap: map);
                     if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                     {
@@ -476,7 +477,11 @@ public sealed partial class Binding
     private bool WaitingPartFails(BindingScope scope)
     {
         var first = this.judgedParts.Count;
-        this.judgedParts.AddRange(this.waitingParts);
+        for (var i = this.waitingBase; i < this.waitingParts.Count; i++)
+        {
+            this.judgedParts.Add(this.waitingParts[i]);
+        }
+
         try
         {
             for (var i = first; i < this.judgedParts.Count; i++)
@@ -537,7 +542,7 @@ public sealed partial class Binding
         var parameters = signature.Components[0].Components;
         for (var i = 0; i < parameters.Count; i++)
         {
-            // SPEC 10.5.1: each argument fits its parameter as a call argument does; a waiting nested call is checked by the selected signature.
+            // SPEC 10.5.1: each argument fits its parameter as a call argument does, a nested call or Case checked against it (FitChecked).
             var state = this.FitArgument(call.ArgumentNodes[i], parameters[i], scope, call, out var operation);
             if (state is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
             {
@@ -587,7 +592,8 @@ public sealed partial class Binding
                 }
             }
 
-            related[i] = ("candidate", at, $"Callable<{candidate.Receiver.ToString().ToLowerInvariant()}, {DiagnosticTypeName(candidate.Signature)}>");
+            var label = $"Callable<{candidate.Receiver.ToString().ToLowerInvariant()}, {DiagnosticTypeName(candidate.Signature)}>";
+            related[i] = ("candidate", at, candidate.CheckedPart is { } checkedPart ? $"{label}: {CheckedPartText(checkedPart)}" : label);
         }
 
         if (code == DiagnosticCode.ParameterShapeMismatch_Kd)
@@ -631,7 +637,8 @@ public sealed partial class Binding
             => (failure = binding.RecordedFact(call, Family)).Failed;
     }
 
-    private readonly record struct CallableCandidate(BoundType Signature, SemanticsKind Receiver, BoundConstraint Fact, Koto Context);
+    // CheckedPart: SPEC 10.5.1, the argument checked against the row's parameter Type whose own resolution there failed (FitChecked).
+    private readonly record struct CallableCandidate(BoundType Signature, SemanticsKind Receiver, BoundConstraint Fact, Koto Context, CheckedPartFailure? CheckedPart = null);
 
     private readonly record struct SplitPart(bool Prepared, BoundType? Parameter, bool Split, bool Fails, Koto? Waiting, BoundType? Type);
 }

@@ -490,7 +490,7 @@ public sealed partial class Binding
     private void Consulted(Koto dependency)
     {
         if (this.consultationStart >= 0 && this.RecordedState(dependency) != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode) &&
-            !this.IsWaitingPart(dependency))
+            !this.IsCheckedCall(dependency))
         {
             this.consulted.Add(dependency);
         }

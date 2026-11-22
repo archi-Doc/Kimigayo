@@ -191,7 +191,7 @@ public sealed partial class Binding
     // unbound (PLAN R1e); no candidate is selected again (SPEC 10.1); a deferred call is completed by its outer call.
     private BoundType? CompleteUnselected(InvocationKoto call, BindingScope scope, BoundType? type)
     {
-        if (type is not null || this.IsWaitingPart(call))
+        if (type is not null || this.IsCheckedCall(call))
         {
             return type;
         }
