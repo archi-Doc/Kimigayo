@@ -254,19 +254,22 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void AResultOnlyUniversalIsInstantiatedToTheOpenRegion(string name, string body)
         => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceResultOnly" + name, "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc constantOf(n: ref/i32) -> ref/i32 during s => $abort(\"never\")\n" + body + "\nrequire r == 7 else => $abort(\"result only\")", string.Empty);
 
-    // DECISIONS BU-175 (R7-C8 U-D3): an input nested past 64 levels does not make the universal one it mentions. `Mentions` had a count
-    // of 64 and took any deeper part as mentioning it, so `s` was no result-only Origin and `make(constantOf)` had no applicable overload.
+    // DECISIONS BU-175 (R7-C8 U-D3r): the Input row with its input nested in Tuples past 64 levels; `s` is still result-only. On
+    // `2f7d4a10d^` this valid form fails by Mentions' count of 64 (NoApplicableOverload_Kd). Today it guards the form's acceptance,
+    // not Mentions: with that count put back, or with Mentions answering "mentioned" at every depth, no row of this class changes,
+    // since FitOrigin proves the result's relation that IsResultOnlyOrigin would decide. No invalid twin: the cut only answered
+    // "mentioned", which an input naming the universal already is.
     [Theory]
     [InlineData(65)]
     [InlineData(130)]
     public void AResultOnlyUniversalBesideADeepInputIsInstantiatedToTheOpenRegion(int depth)
     {
-        // A nested borrow names its Origin (SPEC 15.4.4): `t` in the Item, `static` in the expected signature.
+        // A nested borrow names its Origin (SPEC 15.4.2): `t` in the Item, `static` in the expected signature.
         string Nest(string terminal) => new string('(', depth) + terminal + string.Concat(Enumerable.Repeat(", i32)", depth));
         var source = $"func constantOf(n: {Nest("ref/i32 during t")}) -> ref/i32 during s => $abort(\"never\")\n" +
             $"func make<T>(f: ({Nest("ref/i32 during static")}) -> T) -> i32 => 7\n" +
             "let r = make(constantOf)\nrequire r == 7 else => $abort(\"result only\")\n";
-        CompilationTestHelper.AssertBindingRecordsAtLines($"result-only-{depth}", source, string.Empty); // Binding's walk; see AReferenceBindsASlotOfAnyHeight.
+        CompilationTestHelper.AssertBindingRecordsAtLines($"result-only-{depth}", source, string.Empty); // Binding's records; see AReferenceBindsASlotOfAnyHeight.
     }
 
     // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.

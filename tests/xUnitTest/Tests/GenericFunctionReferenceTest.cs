@@ -125,6 +125,29 @@ public class GenericFunctionReferenceTest
         Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), reference), (error.Code, error.Text));
     }
 
+    // SPEC 10.5.3, 15.4.4 (DECISIONS BU-175, R7-C8 U-D3r): a reference binds its slot to a Type of any height: OmittedWrittenOrigin
+    // and the `ref/i64` row above nested in Tuples (no generic instance a level). Two walks had counts on `2f7d4a10d^`, and each count
+    // put back alone fails these valid rows with its TypeMismatch_Kd: InputOrigins took a part past 64 levels for a per-call Origin,
+    // and SameExceptOmittedOrigins took a written argument past 32 levels, whose omitted Origins S fills, for another Type
+    // (SolveOmittedOrigins' count of 32 changes no row: reading only). The invalid twins guard SameExceptOmittedOrigins' other
+    // direction. InputOrigins has none: its cut only refused, and a refused slot's per-call Origin is a direct input's own, at the
+    // slot's top (APerCallOriginLeavesTheReferenceSlotUnsolved). Binding's records: past height 64 the instance collector's own
+    // GenerationResourceLimit_Kd records these programs.
+    [Theory]
+    [InlineData(65, "i32", null, true)]
+    [InlineData(130, "i32", null, true)]
+    [InlineData(33, "ref/i32 during static", "ref/i32", true)]
+    [InlineData(66, "ref/i32 during static", "ref/i32", true)]
+    [InlineData(33, "ref/i32 during static", "ref/i64", false)]
+    [InlineData(66, "ref/i32 during static", "ref/i64", false)]
+    public void AReferenceBindsASlotOfAnyHeight(int depth, string terminal, string? written, bool valid)
+    {
+        string Nest(string inner) => new string('(', depth) + inner + string.Concat(Enumerable.Repeat(", i32)", depth));
+        var reference = $"let f: ({Nest(terminal)}) -> {Nest(terminal)} = identity" + (written is null ? string.Empty : $"<{Nest(written)}>");
+        CompilationTestHelper.AssertBindingRecordsAtLines($"reference-{depth}-{written}", Identity + reference + "\n",
+            valid ? string.Empty : $"{nameof(DiagnosticCode.TypeMismatch_Kd)}: {reference}");
+    }
+
     // SPEC 10.6, 15.3.6: a slot that only a per-call Origin of the fixed expected call signature would satisfy is one
     // MissingOriginBinding_Kd at the reference, showing the slot and that parameter.
     [Theory]

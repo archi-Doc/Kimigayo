@@ -181,24 +181,6 @@ public class CompilerFunctionReferenceTest
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
-    // SPEC 7.7.4, 10.5, 15.4.4 (DECISIONS BU-175, R7-C8 U-D3): a generic function reference binds its slot to a Type of any height. The
-    // walks over the bound Type had counts: InputOrigins took any part below 64 levels as naming a foreign Origin, refusing the slot,
-    // and SameExceptOmittedOrigins and SolveOmittedOrigins stopped at 32, leaving a written argument's omitted Origins unsolved.
-    [Theory]
-    [InlineData(65, "i32", "")]
-    [InlineData(130, "i32", "")]
-    [InlineData(33, "ref/i32 during static", "<@written>")]
-    [InlineData(66, "ref/i32 during static", "<@written>")]
-    public void AReferenceBindsASlotOfAnyHeight(int depth, string terminal, string arguments)
-    {
-        string Nest(string inner) => new string('(', depth) + inner + string.Concat(Enumerable.Repeat(", i32)", depth)); // No generic instance a level.
-        var type = Nest(terminal);
-        var source = "func id<T>(v: T) -> T => v@move\nlet f: (" + type + ") -> " + type + " = id" +
-            arguments.Replace("@written", Nest("ref/i32"), StringComparison.Ordinal) + "\n";
-        // Binding's records: the walks are Binding's; past height 64 the instance collector's own limit records the program (R5-M170).
-        CompilationTestHelper.AssertBindingRecordsAtLines($"reference-{depth}", source, string.Empty);
-    }
-
     [Theory]
     [InlineData("let f = Raw.release<u8>")]
     [InlineData("let f = Raw.initialize<u8>")]
