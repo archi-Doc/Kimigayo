@@ -28,7 +28,7 @@ public class ArchitectureRulesTest
         "Binding/Binding.PlaceAuthority.Raw.cs=1;" +
         "Binding/Binding.RawOrigins.Borrows.cs=2;Binding/Binding.RawOrigins.Holder.cs=4;Binding/Binding.RawOrigins.Steps.cs=3;Binding/Binding.RawOrigins.cs=4;" +
         "Binding/Binding.Storage.cs=3;Binding/Binding.TypeOrigins.cs=3;" +
-        "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
+        "Binding/Binding.TypeRelations.Origins.cs=5;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
     // The R7-R9 plan's unit M2 (ComponentIsReadOnlyByItsReaders): Build's readers, Project and the commands, the hosts that call it, and

@@ -410,15 +410,24 @@ public sealed partial class Binding
 
     // A published conversion's limit mark, one row per named limit (LimitMarks): Claimed, a claim's Origin (ClaimedOrigin);
     // SharedAddress, an address's whose authority is shared: its Place's path, folded once (PathFold), is reached through shared (SPEC
-    // 15.6.2) or passes a conformance selection, through which the address selects `index` (SPEC 5.4). Its atoms, as its Type states
-    // them (each operand of a meet), are marked in the running part.
+    // 15.6.2) or passes a conformance selection, through which the address selects `index` (SPEC 5.4).
     private void MarkLimits(ConversionKoto conversion)
     {
-        var (stated, mark) = ClaimedOrigin(conversion) is { } claimed ? (claimed, LimitMarks.Claimed)
-            : conversion is { ConversionBinding: ConversionBinding.Address, BoundType.RawOrigin: { } address } &&
-                this.PathFold(conversion.Left, []) is { Access: SemanticsKind.Ref } or { Conformance: true } ? (address, LimitMarks.SharedAddress)
-            : ((BoundOrigin?)null, LimitMarks.None);
-        for (var i = 0; stated is not null && i < (stated.Kind == OriginKind.Intersection ? stated.Operands.Count : 1); i++)
+        if (ClaimedOrigin(conversion) is { } claimed)
+        {
+            this.Mark(claimed, LimitMarks.Claimed);
+        }
+        else if (conversion is { ConversionBinding: ConversionBinding.Address, BoundType.RawOrigin: { } address } &&
+            this.PathFold(conversion.Left, []) is { Access: SemanticsKind.Ref } or { Conformance: true })
+        {
+            this.Mark(address, LimitMarks.SharedAddress);
+        }
+    }
+
+    // The one writer of the marks: `mark` on each atom `stated` names (each operand of a meet), in the running part.
+    private void Mark(BoundOrigin stated, LimitMarks mark)
+    {
+        for (var i = 0; i < (stated.Kind == OriginKind.Intersection ? stated.Operands.Count : 1); i++)
         {
             this.BorrowRow(stated.Kind == OriginKind.Intersection ? stated.Operands[i] : stated).Marks |= mark;
         }

@@ -227,7 +227,8 @@ public sealed partial class Binding
         }
 
         // A value's fit is judged at its use, in no comparison (default).
-        switch (this.FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter, default))
+        var (outer, longer, shorter) = this.FitOuterOrigins(actual, expected, use, default);
+        switch (outer)
         {
             case OuterOriginFit.Mismatch:
                 return rested;

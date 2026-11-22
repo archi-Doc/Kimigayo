@@ -282,7 +282,7 @@ public sealed partial class Binding
         }
 
         // A call's fit is judged at the call, in no comparison (default).
-        if (this.FitOuterOrigins(actual, expected, this, context.At, out var longer, out var shorter, default) == OuterOriginFit.Relation)
+        if (this.FitOuterOrigins(actual, expected, context.At, default) is (OuterOriginFit.Relation, var longer, var shorter))
         {
             // SPEC 8.1.2, 15.6.5: a pair layer's slot, `o` included, exists only in its binder's borrow cases.
             this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At, default));

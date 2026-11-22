@@ -349,7 +349,7 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = this.owner.FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
+                (outer, longer, shorter) = this.owner.FitOuterOrigins(actual, expected, this.use, instance);
             }
 
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;
