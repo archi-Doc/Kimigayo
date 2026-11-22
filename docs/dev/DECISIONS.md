@@ -29776,9 +29776,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     design's first reading: no managed path would link an ELF, and a test calling the export directly would bypass Tatara's lock,
     against `tatara.h`'s "callers serialize calls"); the flavor chosen from the target triple inside Tatara (a consumer deciding by
     syntax what the row publishes, B7b7's `Format`).
-- **T-M23 (OSF2): volatile access is two Raw intrinsics.** `Raw.readVolatile<T>(storage: raw/T) -> T` and
-  `Raw.writeVolatile<T>(storage: raw/T, value: T)`, `unsafe`, `T is PrimitiveInteger`, on every target (the owner's O-489 (a), plan
-  decisions 36-43; design B10 Revision 2.1 §5; Q-678, D-1127). `IntrinsicId` +2 (`VolatileRead`, `VolatileWrite`; limit 27 → 29
+- **T-M23 Volatile access is two Raw intrinsics** (Tatara, 2026-11-23; OSF2). `Raw.readVolatile<T>(storage: raw/T) -> T` and
+  `Raw.writeVolatile<T>(storage: raw/T, value: T)`, `unsafe`, `T is PrimitiveInteger`, on every target (the owner's O-489 (d) (a),
+  plan decisions 36-43; design B10 Revision 2.1 §5; Q-678, D-1127). `IntrinsicId` +2 (`VolatileRead`, `VolatileWrite`; limit 27 → 29
   under O-489's approval of OSF's four ids); `IntrinsicWriter` +2 (`VolatileRead`, `VolatileWrite`): each writes `load volatile` /
   `store volatile` of the integer's storage Type with its alignment through the access text `LoadAt` and `StoreAt` share
   (`FunctionCodegen.WriteAccess`), the word from the two writers, no flag on the ordinary path. Both Backend rows are Target None
