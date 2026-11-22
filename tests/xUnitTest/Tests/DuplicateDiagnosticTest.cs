@@ -211,15 +211,25 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
             var group = string.Concat(Enumerable.Range(0, overloads).Select(static i => $"func pick(value: S{i}) -> i32 => {i}\n"));
             var c = CompilationTestHelper.ParseSuccess(types + group + "func pick(other: S0) -> i32 => 0\n");
             c.Bind();
-            var work = c.Binding.DuplicateCheckWork;
+            var count = c.Binding.DuplicateCheckWork;
             c.Binding.ReportDiagnostics();
             var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
             Assert.Equal(nameof(DiagnosticCode.DuplicateBinding_Kd), error.Code);
             Assert.Equal(2 * overloads, error.Display!.Range!.Value.Start.Line);
             Assert.Equal(overloads, Assert.Single(error.Related!).Range!.Value.Start.Line);
-            return work;
+            return count;
         }
     }
+
+    // SPEC 9.1 (R7-V2e): a function is compared with every later function of its SignatureHash, past an unequal one too. The four `d`
+    // differ only at their parameter Type's third layer, so all share one hash; d1 and d3, d2 and d4 have one Signature each (the
+    // review's q4). A slot inside a direct part hashes by its slot number under each binder, so `Array<T>` and `Array<U>` of two
+    // one-parameter generics are one Signature (q7).
+    [Theory]
+    [InlineData("func d(a: Array<Array<Array<i32>>>) => ()\nfunc d(a: Array<Array<Array<i64>>>) => ()\nfunc d(b: Array<Array<Array<i32>>>) => ()\nfunc d(b: Array<Array<Array<i64>>>) => ()\n", "2*DuplicateBinding_Kd")] // q4
+    [InlineData("func g<T>(a: Array<T>) => ()\nfunc g<U>(b: Array<U>) => ()\n", "1*DuplicateBinding_Kd")] // q7
+    public void EveryLaterFunctionOfOneSignatureHashIsCompared(string functions, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(functions + "public func main() => ()\n", "Application"));
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
