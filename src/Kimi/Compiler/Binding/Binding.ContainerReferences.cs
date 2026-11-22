@@ -417,6 +417,12 @@ public sealed partial class Binding
             return result is null ? null : Complete(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
         }
 
+        if (symbol.Declaration is ContractKoto)
+        {
+            // SPEC 8.4, 18.2.1: a Contract reference has no Type role either; the bound Contract reference is formed where every other is.
+            return this.BindContractReference(syntax, symbol, scope)?.Type;
+        }
+
         return this.BindType(syntax, scope, context with { SuppressOuter = true });
     }
 

@@ -112,6 +112,38 @@ public class ContainerNestingTest
         Assert.Equal(name, issue.Node.ToString());
     }
 
+    // SPEC 18.2.1, 8.4 (PLAN G656): an opening alias opens any fully bound Declaration Container, a Contract too, whose reference is
+    // formed as every bound Contract reference is: with its own arguments, under a bound parent, from the library, twice. A Contract
+    // without all its arguments, a wrong or missing argument, an unmet input condition, a member path, a named alias and an
+    // unqualified use of an opened requirement (no receiver, SPEC 9.5) stay invalid.
+    [Theory]
+    [InlineData("alias C<i32>", true)]
+    [InlineData("alias C<i32>\nalias C<i32>", true)]
+    [InlineData("alias C<i32>\nalias C<i64>", true)]
+    [InlineData("alias D<Marked>", true)]
+    [InlineData("alias Kimi.Addable<i32>", true)]
+    [InlineData("alias Outer<i32>.Sink", true)]
+    [InlineData("alias Outer<i32>.Pair<i64>", true)]
+    [InlineData("alias C", false)]
+    [InlineData("alias C<i32, i64>", false)]
+    [InlineData("alias C<Missing>", false)]
+    [InlineData("alias D<Plain>", false)]
+    [InlineData("alias Outer.Sink", false)]
+    [InlineData("alias C<i32>.m", false)]
+    [InlineData("alias K => C<i32>", false)]
+    [InlineData("alias C<i32>\nfunc g() -> i32 => m(1)", false)]
+    [InlineData("alias C<i32>\nfunc g() -> i32 => make()", false)]
+    [InlineData("alias P\nfunc g() -> i32 => make()", false)]
+    public void AnOpeningAliasOpensAFullyBoundContract(string aliases, bool valid)
+    {
+        var c = CompilationTestHelper.Parse(aliases + "\ncontract Marker\nstruct Plain\nstruct Marked\n    Self is Marker\n" +
+            "contract C<T>\n    func m(self: ref/Self, x: T) -> i32\n    func make() -> T\ncontract P\n    func make() -> i32\n" +
+            "contract D<T>\n    T is Marker\nstruct Outer<T>\n" +
+            "    public contract Sink\n        func write(self: ref/Self, value: T)\n    public contract Pair<U>\n        func write(self: ref/Self, a: T, b: U)");
+        Assert.True(valid == (c.Bind().IsComplete && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha)), Describe(c));
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.InternalInvariant_Kd);
+    }
+
     // SPEC 23.1.2, 9.1, 9.4.1, 9.7.1 (PLAN G250 (4)): the qualifier of an inaccessible member is bound in its container role, so its own
     // failures, independent of the access, are reported beside the member's: an arity mismatch, omitted outer arguments and an
     // inaccessible argument.
