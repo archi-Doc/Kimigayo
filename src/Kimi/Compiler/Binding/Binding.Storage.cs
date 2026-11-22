@@ -26,7 +26,8 @@ public sealed partial class Binding
     // after Binding's run, in every frame (PLAN G651 U2a): a stored Type past IMPL A.4's height leaves its part null and the instance's
     // HeightLimit set, the cause every reader of the instance reads (Binding's storage walk a limit, Layout its HeightLimit), so no record
     // is made here inside the frame and none at a second reader; after the run outside the frame G651's site-less record is made beside
-    // it (U2b gives those readers a site). During the run the refusal is recorded at its site and HeightLimit stays false.
+    // it (U2b gives those readers a site). During the run the refusal is recorded at its site, or site-less in a pass not yet framed
+    // (a1-a4), and HeightLimit stays false.
     internal AdtDef.InstanceStorage Instance(BoundType type)
     {
         var adt = type.Symbol!.Adt;
@@ -40,8 +41,15 @@ public sealed partial class Binding
             // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
             // refreshes it in this run) is never current, so the refreshed ADT forms it again.
             var formation = this.OpenStorageFormation();
-            this.Substitute(type, adt, instance);
-            instance.HeightLimit = this.CloseAnswer(formation);
+            try
+            {
+                this.Substitute(type, adt, instance);
+            }
+            finally
+            {
+                instance.HeightLimit = this.CloseAnswer(formation); // No throw leaves it open (as InstanceCollector.Run's frame).
+            }
+
             instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
         }
 

@@ -969,13 +969,15 @@ public sealed partial class InstanceCollectorTest
         Assert.All(records, static x => Assert.StartsWith("let ", x.Text, StringComparison.Ordinal));
     }
 
-    // R7-T1 (N1; PLAN G651): only the collector's run answers a height refusal after Binding's run, to the formation owning it. On chain20,
-    // f19's call composed with f19's instance (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding
-    // nothing. In the collector's answer frame, TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns
-    // no refusal, gives Incomplete and the frame records Binding's site-less broken contract at its close; outside the frame Answered owns
-    // nothing either (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
+    // R7-T1 (N1; PLAN G651): only the collector's run answers a requesting site's height refusal after Binding's run (TyCtxt.Answered),
+    // to the formation owning it (an instance's stored Types are answered in every frame after the run, PLAN G651 U2a:
+    // AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame). On chain20, f19's call composed with f19's instance
+    // (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing. In the collector's answer frame,
+    // TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the
+    // frame records Binding's site-less broken contract at its close; outside the frame Answered owns nothing either
+    // (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
     [Fact]
-    public void OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal()
+    public void OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal()
     {
         var c = MirBuildTest.Compile(DeepSource("chain20"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
@@ -1006,8 +1008,8 @@ public sealed partial class InstanceCollectorTest
     // site-less InternalInvariant_Kd at the project stays beside it until U2b gives the after-run readers a site. The default's copy
     // (copy250, f-stored), built since PLAN G396 (3)'s B3, records the same at its least uses, the copy's `.None` at its operation in the
     // template (before B3 it was B3's Unsupported_Kd at the omitting call). In a Closure literal's body (clo250) the same records (beside
-    // A4's own limit at the lifted locals). The Front's f-stored and f-stored-direct (C-485 B1). Fail-before: dev gives
-    // InternalInvariant_Kd at each use.
+    // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1).
+    // Fail-before: dev gives InternalInvariant_Kd at each use.
     [Theory]
     [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
     [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
@@ -1026,7 +1028,8 @@ public sealed partial class InstanceCollectorTest
             _ => "_ = count(noneD(p40))",
         };
         var c = MinimalEmissionTest.Check(Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement));
-        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), TestDiagnostics.Of(c).Where(static x => x.Code != nameof(DiagnosticCode.OwnershipDepthLimit_Kd)).Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
+        var seen = TestDiagnostics.Of(c).Where(x => name != "clo" || x.Code != nameof(DiagnosticCode.OwnershipDepthLimit_Kd)); // A4's own, clo250's alone.
+        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
 
         // W^8000<i32> by 40 lifts of 200 levels, each within the height and within its frame.
         static string Lifted(string stored, string statement)
