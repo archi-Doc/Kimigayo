@@ -22349,6 +22349,9 @@ structure is recorded here by the unit that first implements it.
     `Kernel32Library`, `BackendLibrary`, `Kernel32Symbols` and `ProvidedSymbols` are deleted. The split stands.
   - Amended by T-M18 (B7a2): `WindowsProfile` is `TargetProfile.Windows`, the first row of Core's target table `TargetProfile.Rows`
     (`Core/TargetProfile.cs`); the split stands.
+  - Amended by T-M27 (B7r2): `VirtualAlloc` and `VirtualFree` are runtime declarations, so the kernel32 supply's symbols are the
+    runtime declarations' symbols, then `VirtualProtect`, `QueryPerformanceCounter` and `QueryPerformanceFrequency`, each once
+    (`VirtualFree` now precedes `VirtualProtect`; no reader reads the order).
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -30244,3 +30247,51 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Observed: the layer's write keeps its slot alloca in the entry block (the base's in a later block, a dynamic alloca at O0), so
     Hello's O0 object no longer calls the archive's `__chkstk` (TataraExecutorTest's undefined-symbol link now omits kernel32
     instead).
+- **T-M27 Kimi's allocator, the minimal form** (Tatara, 2026-11-22; the plan's unit B7r2, decisions 23 and 27, Q-696, D-1146; Major;
+  design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.3 §3.3, §7.1-§7.3; implementation review C-478, ACCEPT: the
+  Middle, the Back after B1's fix 9942a889f, the Front on the Binding test hunks; decision 27 is the owner's O-478 (iii) (a)). Lands in
+  window W3 with T-M26 and T-M28 (all or none). Amends SPEC 22.5.2 (the `KIMI_E_PROCESS_HEAP` row), IMPL 21.4.3 and 21.4.7, and
+  R5-M174's order sentence.
+  - **The allocator:** every heap block of every row comes from one allocator in the common runtime, `HeapRuntime.ll.in`
+    (`RuntimeAbi.HeapAllocate`/`HeapRelease`, `__kimi_heap_allocate` `ptr (i64)` and `__kimi_heap_release` `i64 (ptr)`, the routines
+    B7r1 made the only callers of the OS for blocks), over the platform layer's pages (`RuntimeAbi.Pages`/`ReleasePages`:
+    `__kimi_pages` `ptr (i64 bytes)`, null or a page-aligned readable and writable run of at least `bytes` at or above
+    `UnmappedBound`; `__kimi_release_pages` `i64 (ptr, i64 bytes)`, -1 or the OS error; windows-x64 over `VirtualAlloc(null, bytes,
+    MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)` and `VirtualFree(p, 0, MEM_RELEASE)` with `GetLastError`).
+  - **Algorithm:** single-threaded; three internal globals (14 list heads, the current region's next and end); a 16-byte header (word
+    0 the class k or a large run's byte length, word 1 the free-list link) before the payload; `size = n + 16`; size ≤ 262,144: blocks
+    of 2^k bytes, k = max(5, 64 − ctlz(size − 1)), 5..18 (32 B .. 256 KiB), popped LIFO from the class's list, else carved by bump
+    from the current 1 MiB region, a new region mapped when the rest is too small (the rest abandoned); release pushes on the class's
+    list; never split, merged or returned. size > 262,144: its own run of size rounded up to 4,096, the run's length in word 0 (> 18,
+    never a class), released at release. Regions and runs are page-aligned and every class size a multiple of 32, so every payload is
+    16-aligned. Zero bytes take the smallest block (a fresh start). Failures keep their texts: no pages is `KIMI_E_ALLOC` without an
+    OS error, a refused release `KIMI_E_FREE` with the OS error, `__kimi_try_allocate` null where `__kimi_alloc` Aborts.
+  - **Why IR, not Kimigayo:** its state would be static slots, which SPEC 22.4.3 makes Finished during shutdown while shutdown's
+    destructors still release memory (SPEC 17.4.3), and Kimigayo has no form for the layer's calls.
+  - **Why this form:** one rule over decision 23's whole small range (16-byte steps would need 16,384 classes to 256 KiB, or a second
+    rule); 14 classes by `llvm.ctlz`; no boundary tags, coalescing, splitting or trimming; up to 2× internal fragmentation, freed small
+    memory kept per class and a 1 MiB commit for the first small block are measured costs (RP8 and decision 28's memory gate in window
+    W3), each improvement a later candidate (PLAN G1306).
+  - **Decision 27 (O-478 (iii) (a)):** `KIMI_E_PROCESS_HEAP` goes in the same commit: B7r1's `__kimi_check_process_heap` and its two
+    calls, `AbortReasons`' `ProcessHeap` row (every later reason's index one lower: `Allocation` 2 ... `Clock` 17; 18 reasons), the
+    adapter suite's modes 16 and 19 with the `GetProcessHeap` fake, and SPEC 22.5.2's row.
+  - **Change W3b (decision 23):** `VirtualAlloc` "pp844" and `VirtualFree` "4p84" join `TargetProfile.Windows.RuntimeDeclarations`
+    after `SetHandleInformation`, so an import of either with another physical signature is `ConflictingRuntimeSymbol_Kd` (accepted
+    before); the agreeing import shares the runtime's declaration. R5-M174's order sentence restated: the `kernel32` supply's symbols
+    are the runtime declarations' symbols, then the rest (`VirtualProtect`, `QueryPerformanceCounter`, `QueryPerformanceFrequency`),
+    each once; `VirtualFree` now precedes `VirtualProtect`, the members unchanged (no reader reads the order; `kernel32.def` and
+    `kernel32.lib` unchanged until B7r3).
+  - **The audit (C-468's N2):** `NativeAllocationAudit.AssertOsCallsInLayer` pins each layer routine's kernel32 calls (`__kimi_exit`:
+    `ExitProcess`; `__kimi_write`: `GetStdHandle`, `WriteFile`, `GetLastError`; `__kimi_pages`: `VirtualAlloc`;
+    `__kimi_release_pages`: `VirtualFree`, `GetLastError`); a runtime declaration no routine names (the process heap's three until
+    B7r3) may be called nowhere; the counts stay the allocator's block requests (B7r1's anchors). Each audit owns its OS-call rule: the
+    allocation audit only the layer routines (C-478 B1: any other definition mentioning a runtime kernel32 function fails it, a
+    program's own import included, as §3.3 states), the string lifetime audit the exit hook (`ExitProcess` only in `__kimi_exit`, so
+    ForeignEmissionTest's raw-pointer programs, which call their own `VirtualAlloc`/`VirtualFree` imports, stay its subjects). A
+    runtime template's `llvm.*` declaration and a program part declaring the same intrinsic would be a duplicate declaration, which
+    LLVM rejects ("invalid redefinition of function"); today no program part declares `llvm.ctlz.i64` or `llvm.cttz.i64`.
+  - **Temporary:** the unused `GetProcessHeap`/`HeapAlloc`/`HeapFree` declarations and their `RuntimeDeclarations` rows (removal:
+    B7r3, T-M28, in W3, so they never reach dev and the ledger carries no line). B7r1's three temporary routines are removed.
+  - **Class:** a behaviour change, measured in W3 (RP8 and the memory gate).
+  - Rejected: Revision 0's 16-byte classes (above); location parameters or a null-heap check (the reason is gone); the allocator in
+    Kimigayo (above); a second copy of the adapter's heap fakes (N11: the fakes move in the commit that first calls `VirtualAlloc`).
