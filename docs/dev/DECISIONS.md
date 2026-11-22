@@ -26676,13 +26676,17 @@ R8-M* and R9-M* by the stage of the recording unit.
     item 3 are unchanged. `FunctionKoto.OmitsBody` lets any library `#Lang` function omit its Body; KimiLibraryShapeTest's row L2
     keeps a bodyless library function an intrinsic, a linked constructor or a Form row.
   - **The validator.** A Call of a Form function is an Operation finding (`MirValidator.Calls`), so A4 and the instance collector,
-    which trust validated MIR, never read `BodylessKind.Form`. `Storage`'s admitted Places are O-92 (a)'s list plus a raw pointer
-    `raw/E`, whose elements start at its value (SPEC 5.3), its result's element the pointee (`MirValidator.Types`).
+    which trust validated MIR, never read `BodylessKind.Form`. No value of a Form function reaches MIR either: every Form function is
+    `unsafe` (its KimiLibraryShapeTest row), and Binding acquires such a function only as a direct callee (SPEC 7.6,
+    `Binding.DirectCallOnly`); a Form function that is not `unsafe` would add the validator's `MirConstKind.FnItem` row in its own
+    unit (`BodylessKind.Form`'s summary; the Middle's RP17 C1). `Storage`'s admitted Places are O-92 (a)'s list plus a raw pointer
+    `raw/E`, whose elements start at its value (SPEC 5.3), its result's element the pointee (`MirValidator.Types`; `MirForms.Storage`'s
+    contract says the same, C2).
   - **A5 (the Middle's C-459 ruling).** A raw pointer Place's element step is its raw referent: one row of `MirSteps.Index`'s table
     (`{ IsPointer: true } => Raw`), the reading the builder gives `p[n]` (`*(p + n)`). Every A5 site keeps R8-M13's one reading of a
-    Storage (a raw borrow of P's element); for a raw P it is no Loan of P's own storage. **Unpinned until U3** (removal condition: U3
-    lands): twins r4, r5 and r5r are valid-program controls that pass under both readings; U3's body-level twin, with
-    `Storage.sliceUniq`'s producer, carries the fail-before (B's L2 rulings 15 and 16).
+    Storage (a raw borrow of P's element); for a raw P it is no Loan of P's own storage. Twins r4, r5 and r5r are valid-program
+    controls that pass under both readings (B's L2 rulings 15 and 16). **The `MirSteps.Index` raw row is unpinned in U2; U3's RP17
+    decides its pin (B's ruling 22 names U3's r8)** (the Middle's RP17 C4).
   - **Codegen (B's ruling 14).** The validator's admission and its lowering land together: `Buffer` loads a raw pointer's value (a
     pointer has no `data` word), and one `RecordOf` owns "a handle's record, or none" (a fixed array's, a raw pointer's) for both
     `Sequence` and `Element`. The keyed and displaced forms are as in R8-M27.
