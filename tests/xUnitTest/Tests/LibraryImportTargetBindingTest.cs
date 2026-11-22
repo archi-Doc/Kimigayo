@@ -387,6 +387,7 @@ public class LibraryImportTargetBindingTest
     [InlineData("kernel32", "VirtualFree", "(address: raw/u8, size: u64, kind: u32)", "i32", null, false)]
     [InlineData("kimi_backend", "GetLastError", "()", "i32", null, true)]
     [InlineData("codec", "GetLastError", "()", "i32", "codec", true)]
+    [InlineData("codec", "HeapAlloc", "(heap: raw/u8, flags: u32, bytes: u64)", "raw/u8", "codec", false)] // B7r3: no longer a runtime declaration.
     [InlineData("codec", "symbol", "()", "i32", "codec", false)]
     public void RuntimeDeclarationsAreSharedOnlyByAgreeingImports(string library, string symbol, string parameters, string result, string? requirement, bool conflict)
     {
