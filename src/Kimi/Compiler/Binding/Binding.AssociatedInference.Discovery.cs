@@ -155,16 +155,29 @@ public sealed partial class Binding
             if (use is MemberAccessKoto member && path.End == PathEnd.Projection)
             {
                 var receiver = member.Left is MemberAccessKoto { Right: ParenthesizedTypeKoto } qualified ? qualified.Left : member.Left;
-                if (this.InferringDefinition(this.DiscoverWritten(batch, source, receiver, scope, true)) is { } read)
+                var read = this.InferringDefinition(this.DiscoverWritten(batch, source, receiver, scope, true));
+                if (read is not null)
                 {
                     batch.MemberReads.Add(new(source, read, TypeSpelling(member.Right), subject));
-                    if (!ReferenceEquals(read, batch))
+                }
+
+                if (read is not null && !ReferenceEquals(read, batch))
+                {
+                    AddOnce(batch.Reads, read);
+                    if (subject)
                     {
-                        AddOnce(batch.Reads, read);
-                        if (subject)
-                        {
-                            AddOnce(batch.Dependent, read);
-                        }
+                        AddOnce(batch.Dependent, read);
+                    }
+                }
+
+                // The qualifier's Contract use writes Types of its own (`S.(K<E.(EC).V>).Out`, SPEC 8.6.1): its arguments select the
+                // conformance the projection reads, so they are the source's reads.
+                if (member.Left is MemberAccessKoto { Right: ParenthesizedTypeKoto contract } && WrittenReference(contract) is { } written &&
+                    ContractApplication(UnwrapTransparentType(written)!) is { } arguments)
+                {
+                    for (var i = 0; i < arguments.TypeArguments.Count; i++)
+                    {
+                        this.DiscoverWritten(batch, source, arguments.TypeArguments[i], scope, subject);
                     }
                 }
 

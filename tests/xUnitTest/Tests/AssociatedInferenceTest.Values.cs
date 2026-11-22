@@ -115,6 +115,11 @@ public partial class AssociatedInferenceTest
     // valid: SPEC 8.5.5 (C4 ruling 8, labelled before any run): S.Other = i32 (other, unique); read's identification is pending (its key
     // reads the missing Other) and is identified again after completion: PA<i32> and PA<i32> are compatible. The candidate's parameter
     // holds the pending projection inside a generic argument, so its header is bound partially while Other is pending.
+    // valid: SPEC 8.5.5, 8.6.1 (C4 ruling 10 (3), labelled before any run): a pending projection inside a Contract use's argument. E and PB
+    // read each other (one component), so w's header is bound partially before the request with E.V pending in `K<E.(EC).V>`; E.V = i64 is
+    // E's constant (not inferred from PB), so PB.W = S.(K<i64>).Out = bool; PB.Y = i64; E.U = PB.Y = i64.
+    private const string C4ContractArgument = "contract K<T>\n    associate Out\n    func out(self: ref/Self) -> Self.Out\ncontract Q\n    associate Y\n    associate W\n    func y(self: ref/Self) -> Self.Y\n    func w(self: ref/Self) -> Self.W\ncontract EC\n    associate V\n    associate U\n    func v(self: ref/Self) -> Self.V\n    func u(self: ref/Self) -> Self.U\nstruct S\n    public init() => ()\n    Self is K<i64>\n    public func out(self: ref/Self) -> bool => true\nstruct PB\n    public init() => ()\n    Self is Q\n    public func y(self: ref/Self) -> i64 => 0\n    public func w(self: ref/Self) -> S.(K<E.(EC).V>).Out => $abort(\"w\")\nstruct E\n    public init() => ()\n    Self is EC\n    public func v(self: ref/Self) -> i64 => 0\n    public func u(self: ref/Self) -> PB.(Q).Y => $abort(\"u\")\n()\n";
+
     private const string C4ParamPending = "contract C\n    associate Other\n    func read(self: ref/Self, p: PA<Self.Other>)\n    func other(self: ref/Self) -> Self.Other\nstruct PA<T>\n    public init() => ()\nstruct S\n    public init() => ()\n    Self is C\n    public func read(self: ref/Self, p: PA<Self.(C).Other>) => ()\n    public func other(self: ref/Self) -> i32 => 0\n()\n";
 
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records).
@@ -153,6 +158,7 @@ public partial class AssociatedInferenceTest
     [InlineData("C4", "generic-conflict", C4GenericConflict, "AssociatedTypeInferenceFailed_Kd: Self is MC | ...")]
     [InlineData("guard", "nested-path", C4NestedPath, "")]
     [InlineData("C4", "param-pending", C4ParamPending, "")]
+    [InlineData("C4", "contract-argument", C4ContractArgument, "")]
     public void EveryValueFollowsItsEvidenceInEveryOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program, records);
 
@@ -194,6 +200,7 @@ public partial class AssociatedInferenceTest
     [InlineData("C4NestedPath", C4NestedPath)]
     [InlineData("C4ParamPending", C4ParamPending)]
     [InlineData("Mutual", Mutual + MutualUses)]
+    [InlineData("C4ContractArgument", C4ContractArgument)]
     public void EveryReadLiesInTheReadersReach(string form, string program)
         => Assert.Equal((form, 0), (form, MinimalEmissionTest.Analyze(program).Binding.InferenceReachMisses));
 }
