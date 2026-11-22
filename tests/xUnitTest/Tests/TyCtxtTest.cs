@@ -1514,8 +1514,8 @@ public sealed partial class TyCtxtTest
     }
 
     // DECISIONS R5-M61, R7-M54 (R7-T1 c4): Witness reads no storage verdict, so a Self whose storage nests past Binding's depth bound has
-    // what its conformance gives, here none: Wrap^80<i32> is no Shape, so area's target is None, not an exception (fail-before: the Limit
-    // target, before any conformance was read); a conforming deep Self has its witness's Body (ARejectedSelfRunsItsWitness's deep rows). A
+    // what its conformance gives, here none: Wrap^80<i32> is no Shape, so area's target is None, the whole target default (Cause Formed,
+    // so no refused resolution), not an exception (fail-before: the Limit target, before any conformance was read); a conforming deep Self has its witness's Body (ARejectedSelfRunsItsWitness's deep rows). A
     // caller's instance that makes a requirement call's Self nest past it composes the substitution, its Self formed, with the Limit
     // verdict, so no substitution without its Self reaches Witness (PLAN G157 (4)).
     [Fact]
@@ -1532,7 +1532,7 @@ public sealed partial class TyCtxtTest
 
         var call = new CallPlan();
         call.Set(c.Binding, inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
-        Assert.Equal(RequirementTargetKind.None, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!).Kind);
+        Assert.Equal(default, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!));
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
 
         // Option^40<i32> (storage height 80) is past the bound whatever Witness prepared before it (Wrap^80, whose Type argument no Field
@@ -2200,8 +2200,8 @@ public sealed partial class TyCtxtTest
     private static RequirementTarget Witness(Compilation c, (CallPlan Inner, CallPlan Outer) call)
         => c.Types.Witness(call.Inner.Target, call.Inner.RequirementContract, Composed(c, call)!);
 
-    // Counts each Witness of RequirementCalls by kind, which the caller pins (Refused, None and Limit occur for no closed Self of an
-    // accepted program), and the bound Contract references, each the substitution's declaring Type. The views leave Binding's records and
+    // Counts each Witness of RequirementCalls by kind, which the caller pins (Refused and None occur for no closed Self of an accepted
+    // program), and the bound Contract references, each the substitution's declaring Type. The views leave Binding's records and
     // the HIR version unchanged.
     private static void WitnessProblems(Compilation c, Kotonoha module, string label, IDictionary<string, int> kinds, List<string> problems)
     {

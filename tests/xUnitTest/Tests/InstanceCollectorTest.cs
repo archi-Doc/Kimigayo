@@ -1073,18 +1073,24 @@ public sealed partial class InstanceCollectorTest
     public void ATwinMeetingA5sOwnLimitKeepsItsRecord(string shape, string records)
         => Assert.Equal(records, ErrorsUpToTheType(shape));
 
-    // R7-T1 c4 (IMPL A.4, 21.3.2; SPEC 8.6.1, 8.9.1; c4\labels.tsv; the Front's review C1a, C2; B's review C1): a requirement call's witness
-    // resolution is the call's formation. After f19's chain (T = Box^8100<i32>), U.get() through `U is C<i32>` at S<Box^90<T>>, whose S
-    // declares `Self is C<Box<Box<T>>>` first, forms that other conformance's formal past the height (8,193): one TypeHeightLimit_Kd at
-    // the call (names), also at a requirement Item's call (namesItem: `let f = U.get`, at `f`), and none in the other clause order, which forms
-    // only the matching formal (namesSwap) (fail-before: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's
-    // formation, the frame's site-less InternalInvariant_Kd). A standard property witness over Ph<Box^90<T>> agrees with no refusal and
-    // meets R5-M170's type-driven key limit at the call (prop90; fail-before: the gate's Unsupported_Kd); one level deeper the receiver
-    // refuses at the receiver `x` before any witness (prop91, as before).
+    // R7-T1 c4 (IMPL A.4, 21.3.2; SPEC 8.6.1, 8.8.2, 8.9.1; c4\labels.tsv, c4-fix\labels.tsv; the Front's design review C1a, C2 and its
+    // implementation review C1, C2; B's review C1): a requirement call's witness resolution is the call's formation. After f19's chain (T = Box^8100<i32>), U.get()
+    // through `U is C<i32>` at S<Box^90<T>>, whose S declares `Self is C<Box<Box<T>>>` first, forms that other conformance's formal past
+    // the height (8,193): one TypeHeightLimit_Kd at the call (names), and none in the other clause order, which forms only the matching
+    // formal (namesSwap); w == w over W<Box^90<T>>, Equatable when T is Eqv<Box^8<T>>, forms that conditional conformance's premise past
+    // the height (8,198) with its operands within (8,192): one TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80)
+    // (fail-before of all four: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's formation, names' record is
+    // the frame's site-less InternalInvariant_Kd). Through a requirement Item (namesItem: `let f = U.get`) the record at `f` is the Item's own Type
+    // formation's (In, through TyCtxt.Answered, before Callee's Witness), on dev too: a control, no fail-before of Callee's reading. A
+    // standard property witness over Ph<Box^90<T>> agrees with no refusal and meets R5-M170's type-driven key limit at the call (prop90;
+    // fail-before: the gate's Unsupported_Kd); one level deeper the receiver refuses at the receiver `x` before any witness (prop91, as
+    // before).
     [Theory]
     [InlineData("names90", "TypeHeightLimit_Kd U.get()")]
     [InlineData("namesItem90", "TypeHeightLimit_Kd f")]
     [InlineData("namesSwap90", "")]
+    [InlineData("premise90", "TypeHeightLimit_Kd w == w")]
+    [InlineData("premise80", "")]
     [InlineData("prop90", "GenerationResourceLimit_Kd x.n")]
     [InlineData("prop91", "TypeHeightLimit_Kd x")]
     public void AWitnessResolutionIsTheCallsFormation(string shape, string records)
@@ -2858,7 +2864,8 @@ public sealed partial class InstanceCollectorTest
     // Array<Box^n<T>> with a capacity, the library's Array.initCapacity (capacity); growth by 2n layers a generation, grow -> mid -> grow
     // (grow); R7-T1 c4's: a requirement call U.tag() at Wrap^n<i32> (req), a Tuple of Wrap<T> compared at T = Wrap^n<i32> (cmpGen) and
     // nested in a Tuple (cmpNest), and after f19's chain U.tag() at Ph<Box^n<T>> (dispatch), U.get() at S<Box^n<T>> by its call (names,
-    // namesSwap: the clause orders) or its Item (namesItem), and a property witness's x.n at Ph<Box^n<T>> (prop).
+    // namesSwap: the clause orders) or its Item (namesItem), w == w at W<Box^n<T>> under a conditional conformance's premise (premise), and
+    // a property witness's x.n at Ph<Box^n<T>> (prop).
     internal static string DeepSource(string shape)
     {
         const string Box = "struct Box<T>\n    public let value: T\n";
@@ -2901,6 +2908,7 @@ public sealed partial class InstanceCollectorTest
             "names" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<Box<Box<T>>>", "C<i32>", Get)),
             "namesSwap" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<i32>", "C<Box<Box<T>>>", Get)),
             "namesItem" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<Box<Box<T>>>", "C<i32>", "    let f = U.get\n    return f()\n")),
+            "premise" => Chain(last, $" => if h<{Nest("Box", n, "T")}>() => 0 else => 1\n", Premise()),
             "prop" => Chain(last, $"\n    return g<Ph<{Nest("Box", n, "T")}>>(Ph<{Nest("Box", n, "T")}>.init()) - 1\n", HasN),
             "nest" => Chain(last, $"\n    func inner() -> i32\n        let y: Option<raw/{Nest("Box", n, "T")}> = .None\n        return 0\n    return inner()\n"),
             "cap" => Chain(last, $"\n    let h = H<{Nest("Box", n, "T")}>.init()\n    return h.run()\n", H),
@@ -2925,6 +2933,13 @@ public sealed partial class InstanceCollectorTest
         static string Names(string first, string second, string call)
             => $"contract C<X>\n    func get() -> i32\nstruct S<T>\n    Self is {first}\n    Self is {second}\n    public var n: i32 = 1\n" +
                 $"    public init() => ()\n    public func get() -> i32 => 1\nfunc g<U>() -> i32\n    U is C<i32>\n{call}";
+
+        // Box's conformance to Eqv<Box^8<Self>>, in Box's body (Chain's declarations follow Box), and W<T>, Equatable when T is
+        // Eqv<Box^8<T>> (its equals false), compared in h<T> under that premise: `not (w == w)` holds where W's equals runs.
+        static string Premise()
+            => $"    Self is Eqv<{Nest("Box", 8, "Self")}>\ncontract Eqv<X>\nstruct W<T>\n    Self is Equatable when T is Eqv<{Nest("Box", 8, "T")}>\n" +
+                "        public func equals(self: ref/Self, other: ref/Self) -> bool => false\n    public init() => ()\n" +
+                $"func h<T>() -> bool\n    T is Eqv<{Nest("Box", 8, "T")}>\n    let w = W<T>.init()\n    return not (w == w)\n";
 
         // A generic struct's Field and a generic enum's Case payload over Box^n of the parameter, behind raw (R7-T1: an instance's stored
         // Types).

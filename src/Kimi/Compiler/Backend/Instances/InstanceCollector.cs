@@ -53,8 +53,8 @@
 // storage verdict (Binding's bound is retention's and A4's, not the collector's: a finite Type past it is generated, its growth R5-M170's
 // rule). Each run is Binding's one answer frame (TyCtxt.OpenAnswer, closed in a finally, so no throw leaves it open), so every Type the
 // run causes Binding to form answers a refusal past IMPL A.4's height to the formation owning it, of three: a substitution at a site, an
-// instance's stored Types, and a requirement's witness resolution (TyCtxt.Witness: the Contract instance and the conformances it forms,
-// SPEC 8.6.1, its target's Cause). Every row reads a Type of an instance at its site, a local of a new key's body and a call's composed
+// instance's stored Types, and a requirement's witness resolution (TyCtxt.Witness: the Contract instance, the conformances it forms and
+// the selected conformance's premises, SPEC 8.6.1, 8.8.2, its target's Cause). Every row reads a Type of an instance at its site, a local of a new key's body and a call's composed
 // substitution through TyCtxt's formation query (TyCtxt.Answered), and a witness target where it calls Witness, whose cause the collector
 // reads once, at its requesting site (Formed): Formed makes it; HeightLimit is TypeHeightLimit_Kd (Resource, IMPL 21.3.2) at the site (a local's at the local, the Type it writes
 // forming it), once per requesting declaration and forming site at its least use, as a Layout limit is (DECISIONS R5-M171); Incomplete is

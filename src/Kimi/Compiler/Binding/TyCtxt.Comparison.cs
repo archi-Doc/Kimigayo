@@ -84,8 +84,8 @@ internal sealed partial class TyCtxt
 
     // Binding's composition rule over the leaves: a closed one runs what the Contract's requirement on it runs (Witness's Body), one with an
     // abstract part that requirement on it in every instance. Any other target is None, the broken contract its reader records: Compose
-    // composes a template or a Type a site formed within IMPL A.4's height, and Equatable and Comparable take no Type arguments, so the
-    // resolution forms no Type and no HeightLimit target reaches it (R7-T1 c4).
+    // composes a template or a Type a site formed within IMPL A.4's height, whose conformance Binding proved at that site, and a refusal of
+    // a resolution is reported where the call forms (Witness's HeightLimit at its requesting site), so none reaches it (R7-T1 c4).
     private ComparisonNode Compose(BindingSymbol contract, BoundType self, bool operators)
     {
         var kind = Binding.ComparisonKindOf(self, contract.LibraryDeclaration, operators);

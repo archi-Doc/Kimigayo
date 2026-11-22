@@ -22,8 +22,8 @@
 // a Self whose storage rests on a part Binding rejected or nests past Binding's bound has its witness's target, and the instance the
 // target needs is its reader's to admit (DECISIONS BU-38, R7-M54 c4).
 // Cause: the resolution's formation (TyCtxt.Formation), Formed but for a resolution that formed a Type past IMPL A.4's height inside the
-// collector's answer frame (a Contract instance's other conformance, SPEC 8.6.1): HeightLimit with no target, which the caller records at
-// its requesting site (InstanceCollector.Formed).
+// collector's answer frame (another conformance's formal, SPEC 8.6.1, or a conditional conformance's premise, 8.8.2): HeightLimit with no
+// target, which the caller records at its requesting site (InstanceCollector.Formed).
 // Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance, but for a
 // resolution refused in the collector's frame, which the materializer, outside it, records itself (InstanceCollectorTest's K 4.5 rows,
 // TyCtxtTest's direct Witness assertions, the native fixtures); no receiver projection is returned,
@@ -78,10 +78,11 @@ internal sealed partial class TyCtxt
     {
         if (!this.witnesses.TryGetValue((requirement, contract, subst), out var target))
         {
-            // R7-T1 c4: the resolution is a formation in the collector's answer frame (Binding.OpenFormation): the Contract instance and
-            // the conformance it selects can form a Type no site formed (another bound reference of the same Contract, SPEC 8.6.1: the
-            // conformances are formed in declaration order up to the one naming the reference, the only one by 8.9.1), whose refusal is
-            // the call's HeightLimit, recorded by its reader at the requesting site; outside the frame it owns nothing.
+            // R7-T1 c4: the resolution is a formation in the collector's answer frame (Binding.OpenFormation): it forms the conformances
+            // of Self's Type to the Contract in declaration order up to the one naming the reference (SPEC 8.6.1; the only one by 8.9.1)
+            // and the premises of the conformance it selects (8.8.2), so it can form a Type no site formed (another conformance's formal
+            // or a conditional conformance's premise), whose refusal is the call's HeightLimit, recorded by its reader at the requesting
+            // site; outside the frame it owns nothing.
             var formation = binding.OpenFormation();
             target = this.Resolve(requirement, contract, subst);
             if (binding.CloseAnswer(formation))
