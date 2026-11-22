@@ -135,8 +135,11 @@ public partial class ApplicabilityChainRegressionTest
     // 13.6.2: "the input Type is fixed independently of the target ... `1@obj/i64` is an error; write `1@i64@obj`"), a range's
     // boundary (4.6.2: a value of a Position Type), a substitution (12.4.2: it needs Utf8Format), a comparison (4.6.2's
     // `(0..3) == (0..=2)`: different range Types cannot be compared) and iteration (14.6.2: a missing conformance is an error; 4.6.2's
-    // `0@i32..2@i64` is not iterable). Object creation has no tie: `@` cannot be overloaded and never reselects (13.5, 13.5.2).
+    // `0@i32..2@i64` is not iterable), and a view's key (4.7.1 step 1: on a UniqSlice the key is a position typed by 4.6.2). Object
+    // creation has no tie: `@` cannot be overloaded and never reselects (13.5, 13.5.2).
     [Theory]
+    [InlineData("guard", "vw-mis", "func k() -> ()\n    var values: [3 of i32] = [1, 2, 3]\n    var view = values.sliceUniq()\n    let x = view[true]\n", "TypeMismatch_Kd: let x = view[true]")]
+    [InlineData("guard", "vw-ok", "func k() -> ()\n    var values: [3 of i32] = [1, 2, 3]\n    var view = values.sliceUniq()\n    let x = view[0]\n", "")]
     [InlineData("guard", "obj-mis", "func k() -> ()\n    let o = 1@obj/i64\n", "TypeMismatch_Kd: let o = 1@obj/i64")]
     [InlineData("guard", "obj-ok", "func k() -> ()\n    let o = 1@i64@obj\n", "")]
     [InlineData("guard", "rg-mis", "func k() -> ()\n    let r = true..false\n", "TypeMismatch_Kd: let r = true..false")]
