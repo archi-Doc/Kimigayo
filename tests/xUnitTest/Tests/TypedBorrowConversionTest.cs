@@ -8,6 +8,9 @@ namespace XunitTest;
 public class TypedBorrowConversionTest
 {
     private const string Counter = "struct Counter\n    public var value: i32 = 0\n";
+    private const string Cell = "struct Cell\n    public let value: i32\n    public init(value: i32) => self.value = value\n";
+    private const string Tree = "open struct Base\n    public let legs: i32 = 4\n    protected init() => ()\nstruct Leaf : Base\n    public init() : base() => ()\n" +
+        "struct Other : Base\n    public init() : base() => ()\n";
 
     [Theory]
     [InlineData("Shared", Counter + "func read(c: ref/Counter) -> i32 => c.value\nlet c = Counter.init()\nrequire read(c@ref/Counter) == 0 else => $abort(\"value\")")]
@@ -30,6 +33,30 @@ public class TypedBorrowConversionTest
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
+
+    // SPEC 8.2.3 with 13.5.6 (PLAN G1240): a written V identical to the stored Type by an identity premise names exactly that Type, for
+    // each borrow kind and an object upcast (13.6.1, ObjectUpcastFits); a premise naming another Type is still a mismatch at the borrow,
+    // and a Place that cannot lend exclusively keeps its own record.
+    [Theory]
+    [InlineData("func f<T>() -> i32\n    T is i32\n    let v: i32 = 1\n    let r = v@ref/T\n    return r@follow\n", "")]
+    [InlineData("func f<T>() -> i32\n    T is i64\n    let v: i32 = 1\n    let r = v@ref/T\n    return 0\n", "TypeMismatch_Kd@4")]
+    [InlineData("func f<T>() -> i32\n    T is i32\n    let v: [2 of i32] = [1, 2]\n    let r = v@ref/[2 of T]\n    return 0\n", "")]
+    [InlineData("func f<T>() -> i32\n    T is i32\n    var v: i32 = 1\n    let r = v@uniq/T\n    r@follow = 2\n    return v\n", "")]
+    [InlineData("func f<T>() -> i32\n    T is i32\n    let v: i32 = 1\n    let r = v@uniq/T\n    return 0\n", "InvalidAssignment_Kd@4")]
+    [InlineData(Cell + "func f<T>(h: obj/Cell) -> i32\n    T is Cell\n    let r = h@objref/T\n    return 0\n", "")]
+    [InlineData(Cell + "func f<T>() -> i32\n    T is Cell\n    var h = Cell.init(1)@obj\n    let r = h@objuniq/T\n    return 0\n", "")]
+    [InlineData(Tree + "func f<T>(h: obj/Leaf) -> i32\n    T is Base\n    let b = h@objref/T\n    return 0\n", "")]
+    [InlineData(Tree + "func f<T>(h: obj/Leaf) -> i32\n    T is Other\n    let b = h@objref/T\n    return 0\n", "TypeMismatch_Kd@10")]
+    public void AWrittenTypeIdenticalByAPremiseIsTheStoredType(string source, string records)
+        => Assert.Equal(records, TypeIdentityTest.PremiseRecords(source));
+
+    // SPEC 14.9.2 with 8.2.3 (PLAN G1240): a join's conversion source supplies its written target as the conversion forms it, so a
+    // Type target or a typed borrow identical by a premise with the other source's Type gives the join one Type.
+    [Theory]
+    [InlineData("func f<T>(c: bool, a: i64, b: i64) -> i32\n    T is i32\n    let r = if c => a@T else => b@i32\n    return r\n")]
+    [InlineData("func f<T>(c: bool) -> i32\n    T is i32\n    let v: i32 = 1\n    let w: i32 = 2\n    let r = if c => v@ref/T else => w@ref/i32\n    return r@follow\n")]
+    public void AJoinedConversionSuppliesItsFormedTarget(string source)
+        => Assert.Equal(string.Empty, TypeIdentityTest.PremiseRecords(source));
 
     [Fact]
     public void GenericFieldOriginComesFromReceiver()

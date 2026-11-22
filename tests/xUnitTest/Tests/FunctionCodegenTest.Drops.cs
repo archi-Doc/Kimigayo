@@ -68,7 +68,7 @@ public sealed partial class FunctionCodegenTest
     private const string WholeIncomplete =
         "func f()\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n    for i in a.indices\n        Console.writeLine(\"i\")\nf()\n";
 
-    // The same form in a default, expanded inline into its caller f, where MirReport drops the copy's problem as its template's (R4-M69).
+    // The same form in a default, expanded inline into its caller f; MirDrops.Problem omits the copy's problem as its template's (R4-M69).
     private const string CopiedIncomplete =
         "func g(n: i32 = (label v: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n    var c: i32 = 0\n" +
         "    for i in a.indices\n        c += 1\n    exit to v c\n)) -> i32 => n\nfunc f() -> i32\n    let k = \"kept\"\n    return g()\nlet r = f()\n";
@@ -382,8 +382,8 @@ public sealed partial class FunctionCodegenTest
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
     }
 
-    // R4-M102, R4-M69: a problem found in an inline default copy, which MirReport drops as its template's, marks the caller; check rejects the
-    // program with the template's code at the template's subject, and generation adds no record.
+    // R4-M102, R4-M69: a problem found in an inline default copy, which MirDrops.Problem omits as its template's, marks the caller; check
+    // rejects the program with the template's code at the template's subject, and generation adds no record.
     [Fact]
     public void ACopysProblemRefusesItsCaller()
     {

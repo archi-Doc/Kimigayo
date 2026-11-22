@@ -238,8 +238,7 @@ public class ArchitectureRulesTest
         "Binding.ControlFlow.cs:ReadTypeUnification=1 formed",
         "Binding.ControlFlow.cs:SelectCommonType=2 kind",
         "Binding.Conversions.Raw.cs:CompletePointerConversion=2 kind",
-        "Binding.Conversions.cs:BindConversion=9 formed",
-        "Binding.Conversions.cs:BindConversion=3 finding", // PLAN G1240 (D-1036): the typed-borrow target compared as written
+        "Binding.Conversions.cs:BindConversion=12 formed",
         "Binding.Conversions.cs:BindConversion=2 kind",
         "Binding.Conversions.cs:IsNeverValue=1 kind",
         "Binding.Conversions.cs:IsRuntimeRecordType=3 kind",
@@ -294,7 +293,7 @@ public class ArchitectureRulesTest
         "Binding.NumericConversions.cs:TryFloatLiteral=1 kind",
         "Binding.ObjectViews.cs:FindObjectErasure=1 declared",
         "Binding.ObjectViews.cs:FindObjectErasure=2 key",
-        "Binding.ObjectViews.cs:ObjectUpcastFits=1 finding", // PLAN G1240 (D-1036): BindConversion's typed-borrow target reaches it as written
+        "Binding.ObjectViews.cs:ObjectUpcastFits=1 formed",
         "Binding.ObjectViews.cs:RequireObjectErasure=1 sufficient",
         "Binding.OpenOrigins.cs:FillOpenOrigins=1 sufficient",
         "Binding.OpenOrigins.cs:FillOpenOrigins=1 unchanged",
@@ -413,8 +412,7 @@ public class ArchitectureRulesTest
         "BindingModel.cs:Equals=1 representation",
         "BindingModel.cs:IsScalar=2 kind",
         "BindingModel.cs:IsWrappingInteger=1 representation",
-        "ExplicitAdaptationPlan.cs:Select=5 formed",
-        "ExplicitAdaptationPlan.cs:Select=2 finding", // PLAN G1240 (D-1036): BindConversion's typed-borrow target reaches the borrow arms as written
+        "ExplicitAdaptationPlan.cs:Select=7 formed",
         "ExplicitAdaptationPlan.cs:Select=2 kind",
         "TyCtxt.Comparison.cs:OperatorCompares=1 kind",
         "TyCtxt.Comparison.cs:OperatorTableRuns=2 kind",
@@ -600,9 +598,10 @@ public class ArchitectureRulesTest
     // 315), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
     // bound-slot branch; J4's parameter side, a pattern's Type parameter that is no slot of the solve, a nested callee's enclosing
     // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
-    // input (Expressions.cs: the expected and the bound Type; Variables.cs, Conversions.cs, NumericConversions.cs); Keys.cs is
+    // input (Expressions.cs: the expected and the bound Type; Variables.cs; Conversions.cs: a conversion's written target,
+    // BindConversionTarget, PLAN G1240); Keys.cs is
     // ClassForm's own recursion. J2 reads the classes, no form. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
