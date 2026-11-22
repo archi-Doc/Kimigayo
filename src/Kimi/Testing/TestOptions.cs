@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using Kimi.Checking;
 using Kimi.Command;
 
 namespace Kimi.Testing;
@@ -12,6 +13,9 @@ internal sealed class TestOptions
     internal KimiOptions Compiler { get; } = new();
 
     internal string? Input { get; private set; }
+
+    /// <summary>Gets the full path of <c>--results-dir</c>, or <see langword="null"/> for the input's default.</summary>
+    internal string? ResultsDirectory { get; private set; }
 
     internal bool List => this.values.ContainsKey("--list");
 
@@ -71,6 +75,19 @@ internal sealed class TestOptions
         result.Compiler.Debug = Boolean("--Debug");
         result.Compiler.Locked = Boolean("--locked"); // A bare --locked reaches here as --locked true (KimiOptions.ExpandFlags).
         _ = result.Settings(new());
+        if (result.Get("--results-dir") is { } directory)
+        {
+            // The value is named here, an invalid one an option error before any project is prepared (IMPL 20.6.2, 20.6.4: 2).
+            try
+            {
+                result.ResultsDirectory = Path.GetFullPath(directory);
+            }
+            catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+            {
+                throw new CommandInputException("Invalid path: --results-dir: " + ex.Message);
+            }
+        }
+
         return result;
 
         bool Boolean(string name) => result.Get(name) is not { } value ? false : bool.TryParse(value, out var parsed) ? parsed : throw new CommandInputException("Invalid Boolean: " + name);
