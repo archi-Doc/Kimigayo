@@ -1,13 +1,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
-    [string] $ToolchainRoot = '',
     [string] $ResultRoot = (Join-Path $PSScriptRoot '../../../artifacts/verify/module-verification')
 )
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'toolchain.ps1')
 . (Join-Path $PSScriptRoot 'expected-output.ps1')
-$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $work = Join-Path ([IO.Path]::GetFullPath($ResultRoot)) ([guid]::NewGuid().ToString('N'))
@@ -21,7 +18,6 @@ function Invoke-Kimi([string] $Name, [string[]] $Arguments, [int] $ExpectedExit 
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    $start.Environment['KIMI_TOOLCHAIN_ROOT'] = $ToolchainRoot
     $start.ArgumentList.Add($compiler)
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::Start($start)
@@ -84,7 +80,7 @@ Dependencies={Lib={PackageId="library" PackageVersion="1" Project="../Library/Li
         $null = Invoke-Kimi "$level-build" @('build', $project)
         $recordPath = Join-Path $work 'App/bin/x86_64-pc-windows-msvc/App.link.build.json'
         $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
-        if ($record.status -cne 'linked' -or $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Unverified module native build' }
+        if ($record.status -cne 'linked') { throw 'Unlinked module native build' }
         $expected = $utf8.GetBytes("module`nmodule`n")
         # A project run may print build lines first, so its stdout ends with the program's.
         $output = Invoke-Kimi "$level-run" @('run', $project, '--no-build')

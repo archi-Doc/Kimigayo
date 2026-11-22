@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $ToolchainRoot = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
 )
 $expected = "Row finished.`nRow finished.`nRow finished.`nMatrix total is 42.`nBorrowed row total is 20.`nInferred arrays and noinit writes verified.`n"
-& (Join-Path $PSScriptRoot 'milestone-harness.ps1') -Milestone 7 -ToolchainRoot $ToolchainRoot -Configuration $Configuration -Expected $expected
+& (Join-Path $PSScriptRoot 'milestone-harness.ps1') -Milestone 7 -Configuration $Configuration -Expected $expected
