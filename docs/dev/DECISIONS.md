@@ -28520,6 +28520,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     not read" sentences (`LinkManifest`, `NativeToolchain.Build`).
   - **Interim:** the command line's `--LlvmBin` is accepted and read by no build until B6b4, which also removes
     `toolchain verify`'s reading (PLAN G1173).
+    Amended by T-M15 (unit B6b4, 2026-11-22): the interim ends; `--LlvmBin` is an invalid option naming its removal, and the
+    Rejected line's PLAN open issue is G1253.
   - Rejected: deleting the property alone (the setting would be accepted silently, design B6b fact 3); a clause per removed
     name; a `LinkManifest.Rows` row that `WriteFixed` must skip; the general unknown-setting rule in this unit (pre-existing,
     a PLAN open issue with B6b4's docs).
