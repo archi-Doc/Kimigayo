@@ -66,9 +66,15 @@ public sealed partial class Binding
     private static string PermittedCallsText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
 
-    // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row.
-    private static long? ImplementationLimit(BindingFailure failure)
-        => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
+    // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row;
+    // AnalysisLimit_Kd, OQ1's one shared analysis-limit record (the owner's O-484 (3 ii)), names its bound as its second argument.
+    private static (long Limit, string? Bound)? ImplementationLimit(BindingFailure failure)
+        => failure switch
+        {
+            BindingFailure.TypeHeightLimit => (TypeHeightLimit, null),
+            BindingFailure.AnalysisLimit => (PremiseClosureLimit, "rounds of the premises' closure (a request's extension rounds, or one associated-Type binding's uses along a chain of completed bindings)"),
+            _ => null,
+        };
 
     // SPEC 4.3.4: a noinit directive's closed reason, with the declaration it initializes.
     private static void ReportNoInit(Koto directive, DiagnosticCollection? store, in BindingProblem problem, NoInitProblem reason)
@@ -176,7 +182,7 @@ public sealed partial class Binding
         }
         else if (ImplementationLimit(issue.Failure) is { } limit)
         {
-            issue.Node.ReportIn(store, requirement, issue.Code, limit);
+            issue.Node.ReportIn(store, requirement, issue.Code, limit.Limit, limit.Bound);
         }
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {

@@ -63,7 +63,7 @@ public sealed partial class Binding
             BindingFailure.Cycle => DiagnosticCode.CyclicBinding_Kd,
             BindingFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
             BindingFailure.TypeHeightLimit => DiagnosticCode.TypeHeightLimit_Kd,
-            BindingFailure.PremiseClosureLimit => DiagnosticCode.PremiseClosureLimit_Kd,
+            BindingFailure.AnalysisLimit => DiagnosticCode.AnalysisLimit_Kd,
             BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
             BindingFailure.InvalidLiteral => DiagnosticCode.InvalidNumericLiteral_Kd,
             BindingFailure.Access => DiagnosticCode.InaccessibleBinding_Kd,

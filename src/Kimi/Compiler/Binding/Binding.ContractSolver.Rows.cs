@@ -194,7 +194,7 @@ public sealed partial class Binding
         {
             if (rounds > PremiseClosureLimit || restarts > PremiseClosureLimit)
             {
-                this.RefuseProof(scope, BindingFailure.PremiseClosureLimit);
+                this.RefuseProof(scope, BindingFailure.AnalysisLimit);
                 return false;
             }
 
