@@ -446,37 +446,43 @@ internal group Storage
     #CallerLocation
     internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)
         unsafe
-            let capacity = (*handle).capacity
             let largest: isize = 9223372036854775807
             // SPEC 4.5, 4.9.5: zero-sized elements need no bytes, so every count fits without allocation.
             if stride == 0
                 (*handle).data = Raw.allocate<u8>(0)
                 (*handle).capacity = largest
                 return
-            let maximum = largest / stride
-            if minimum > maximum
-                Storage.allocationSizeExceeded()
-            // SPEC 4.9.8: amortized doubling, clamped; optional rounding never rejects a representable minimum.
-            var target = maximum
-            // `capacity <= maximum / 2` bounds the product.
-            if capacity <= maximum / 2
-                target = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
-            if target < 4
-                target = 4
-            if target < minimum
-                target = minimum
-            if target > maximum
-                target = maximum
-            // `target <= maximum` bounds the product.
+            let target = growthTarget((*handle).capacity, stride, minimum)
+            // `target <= largest / stride` bounds the product.
             let memory = Raw.allocate<u8>((target@Wrapping<isize> * stride@Wrapping<isize>)@isize)
             let buffer = (*handle).data
             let length = (*handle).length
             if length != 0
-                // `length <= capacity < minimum <= maximum` bounds the product.
+                // `length <= capacity < target` bounds the product.
                 Storage.transferBytes(memory, buffer, (length@Wrapping<isize> * stride@Wrapping<isize>)@isize)
             Raw.release(buffer)
             (*handle).data = memory
             (*handle).capacity = target
+
+    /// Returns the capacity that a growth from `capacity` to at least `minimum` elements of `stride` bytes allocates, the
+    /// one growth target of Array and Dictionary storage (SPEC 4.9.8): twice `capacity`, at least 4 and at least
+    /// `minimum`, at most the largest count whose byte size an `isize` holds. Doubling makes repeated growth amortized
+    /// O(1) per element; the rounding never rejects a representable `minimum`. `stride` is positive.
+    ///
+    /// - abort: `minimum` elements of `stride` bytes exceed the maximum object size, at the standard operation's caller
+    ///   location.
+    #CallerLocation
+    internal func growthTarget(capacity: isize, stride: isize, minimum: isize) -> isize
+        let largest: isize = 9223372036854775807
+        let maximum = largest / stride
+        if minimum > maximum => Storage.allocationSizeExceeded()
+        var target = maximum
+        // `capacity <= maximum / 2` bounds the product.
+        if capacity <= maximum / 2 => target = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
+        if target < 4 => target = 4
+        if target < minimum => target = minimum
+        if target > maximum => target = maximum
+        return target
 
     /// Reduces the capacity toward the length (SPEC 4.9.5), one routine for every element Type, as `growArray` is. A
     /// failed allocation leaves the handle unchanged; zero-sized elements keep their buffer and only the recorded

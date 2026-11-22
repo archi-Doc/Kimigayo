@@ -1753,3 +1753,16 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   28 → 32, each raised by its own unit, the documents listed, no download); §7: B10's row names decisions 35-43 and its units
   OSF2, OSF1a, OSF1b, OSF3a and OSF3b; §11: the question before B10's units is answered. No other decision changes. No SPEC, IMPL
   or COMPILER_ARCHITECTURE text: each OSF unit carries its own, with K's independent review. Nothing frozen.
+- Revision 12 (2026-11-22, the owner's answer to O-494 (the Middle's design review of B9, C-458 M1 and M2) in T's dialog,
+  verbatim 「O-494 M1 b, M2 a」 and 「O-494 M1 b が正しいです」, replacing T's first record of 「M1 a, M2 a」, and in K's dialog
+  「O-494 M1 b に修正します」; T's D-1084): §2 gains decisions 44-45 (SPEC §17.4.3's freestanding exception: on
+  `x86_64-unknown-none` stack exhaustion is undefined behaviour, with no stack check or probe, an explicit SPEC revision landed
+  with B9b and K's independent review; a `Platform` member, and every function it calls, must not access static storage,
+  rejected at its declaration); decision 34 gains a closing sentence: its stack sentence stands, stated by SPEC §17.4.3 as the
+  freestanding exception; §11: the question before B9-W1 is answered. No other decision changes. No SPEC or IMPL text: B9's
+  units carry it, each with K's independent review. Nothing frozen.
+- Revision 13 (2026-11-22, the owner's answer to O-495 (B9c2's record, from B9 design Revision 2 §3.3.1 and §11 item 2) in T's
+  dialog, verbatim 「O-495 a」; T's D-1089): §2 gains decision 46 (decision 45's record is the existing Language code
+  `UnsatisfiedEffectBound_Kd` at the member's declaration with a new requirement `Ownership.PlatformStatic`, `OwnershipRequirement`
+  +1, this answer its approval under the enum's rule; no new code); §11: the question before B9c2 is answered. No other decision
+  changes. No SPEC or IMPL text: B9c2 carries DIAGNOSTICS' requirement row. Nothing frozen.

@@ -67,7 +67,7 @@ internal sealed partial class MirBuilder
     {
         var start = this.arguments.Count;
         var left = this.Operand(binary.Left, expected: null);
-        this.arguments.Add(Builds(binary.Right) ? this.Secure(left, binary.Left) : left);
+        this.arguments.Add(Builds(binary.Right, HirTables.AdjustOf(binary.Right)) ? this.Secure(left, binary.Left) : left);
         var open = this.inspections.Count;
         if (BinaryOp(binary.Akind) >= MirBinaryOp.Eq)
         {

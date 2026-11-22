@@ -1,9 +1,10 @@
-// A tuple operator whose leaf nests past an implementation limit is unsupported until R7 (PD30's (e) row; DECISIONS R5-M75).
-struct Wrap<V>
-    Self is Equatable
-    public init() => ()
-    public func equals(self: ref/Self, other: ref/Self) -> bool => true
-func same(a: ref/(Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>, i32), b: ref/(Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>, i32)) -> bool => a == b
+// A call omitting a default its substitution cannot instantiate (zero<T> over Bx^65<i32>, past Binding's storage bound) is
+// unsupported (PD30's (e) row, the builder's B3; DECISIONS R4-M127); before R7-T1 c4 it was a tuple operator over such a leaf.
+struct Bx<T>
+    public var v: T
+func zero<T>() -> i32 => 0
+func pick<T>(a: i32, k: i32 = zero<T>()) -> i32 => a + k
+func same(a: i32) -> i32 => pick<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>(a)
 func fail() -> i32 => missing
 func take(a: string, b: string) -> i32 => 1
 func kept(n: i32, s: string) -> i32

@@ -250,8 +250,10 @@ internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType? Type,
 /// <summary>The site of an Opaque value: the syntax it replaces and the uses of that syntax, <see cref="Count"/> Places of
 /// <see cref="MirBody.OpaqueUses"/> from <see cref="Start"/> (plan 5.4), each undecided (DECISIONS Z17): reported with the Opaque row's
 /// access (<see cref="MirDescriptors.IsUndecided"/>), which only A1 judges at the Place and every other reader at its root
-/// (<see cref="MirDescriptors.Judged"/>).</summary>
-internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count);
+/// (<see cref="MirDescriptors.Judged"/>). The first <see cref="Kept"/> (at most <see cref="Count"/>) are an Error node's kept parts'
+/// Places, which the site takes as the invocation it replaces takes its inputs, so A5 activates the reservations they hold (DECISIONS
+/// Z17c, SPEC 15.6.7); 0 for every other site (a default's, which runs during the reservation, a derived value's, a jump's).</summary>
+internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count, int Kept);
 
 /// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
 /// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure

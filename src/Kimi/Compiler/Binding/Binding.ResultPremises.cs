@@ -118,9 +118,9 @@ public sealed partial class Binding
 
     // The definition a call's callee stands for: a getter's accessor syntax for its execution view (its inputs and its own clauses are
     // there), else the function itself.
-    private static Koto Definition(FunctionKoto function) => (Koto?)function.Accessor?.Declaration ?? function;
+    private static Koto CalleeDefinition(FunctionKoto function) => (Koto?)function.Accessor?.Declaration ?? function;
 
-    private static bool CarriesResultPremises(FunctionKoto function) => AssumedResult(Definition(function)) is { StoresOrigin: true };
+    private static bool CarriesResultPremises(FunctionKoto function) => AssumedResult(CalleeDefinition(function)) is { StoresOrigin: true };
 
     // As SolveOriginInference does for a declared relation, a result premise's relation is a bound, and a signature Origin becomes a
     // variable, also a result-only one. An input's relation shortens only Origins that the call already solves (OriginInference.WellFormed).

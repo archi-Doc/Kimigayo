@@ -138,7 +138,7 @@ public class AbortEmissionTest
     public void AMovedFunctionsLocationKeepsItsDocumentsName()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Project.Directory = Path.GetFullPath("location-moved-root");
         var library = Path.GetFullPath("location-moved-library");
         var other = new Kotonoha(c, "Other", Path.Combine(library, "Other.kimiproj"));
@@ -157,7 +157,7 @@ public class AbortEmissionTest
     {
         var c = Compilation.CreateForTest();
         c.Project.Directory = Path.GetFullPath("location-nul");
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument(Path.Combine(c.Project.Directory, "a\0b.kimi"), "$abort(\"x\")"));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal("a\\u{0}b.kimi:1:1", c.Locations.Text(SourceRef.Of(Abort(c))));

@@ -131,6 +131,20 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Single(notes, static x => x.Contains("'B.kimi', 'b.kimi'", StringComparison.Ordinal));
     }
 
+    // SPEC 23.1.2, 11.6 (DECISIONS G52-1; G812 ruling 174): a Property whose header query failed (its cycle) still binds its accessor
+    // bodies outside its frame, so a getter's own record is reported beside the cycle's and no later phase meets an unbound body.
+    [Theory]
+    [InlineData("group G\n    let a = b\n        get() -> i32\n            return storage\n    let b = a\n", false)]
+    [InlineData("group G\n    let a = b\n        get() -> i32\n            return nosuch\n    let b = a\n", true)]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = T.b\n        get() -> i32\n            return nosuch\n", true)]
+    public void APropertyInACycleKeepsItsAccessorBodiesBound(string source, bool getterRecord)
+    {
+        var output = this.Run(this.WriteProject("Cycle", ("main.kimi", source)));
+        Assert.Contains(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.CyclicBinding_Kd));
+        Assert.DoesNotContain(output.Diagnostics, static x => x.Category == DiagnosticCategory.Internal);
+        Assert.Equal(getterRecord, output.Diagnostics.Any(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd)));
+    }
+
     // SPEC 23.1.2, IMPL 20.1: TestSources entries are compared as resolved paths, and each duplicate is its own record, in a product and
     // a test check alike.
     [Theory]
@@ -230,7 +244,7 @@ public sealed partial class CheckServiceTest : IDisposable
             string.Join(", ", failures));
         loaded.ProjectFile.Alias = [" "];
         loaded.ProjectFile.TestSources = ["*.kimi", "*.kimi"];
-        var output = CheckService.Run(loaded, WindowsProfile.Target, mode, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        var output = CheckService.Run(loaded, TargetProfile.Windows.Target, mode, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.Equal(
             ["Alias requires nonempty Container paths.", "TestSources requires explicit project-relative paths without globs."],
@@ -253,7 +267,7 @@ public sealed partial class CheckServiceTest : IDisposable
             File.WriteAllText(this.PathOf("Lib", "e\u0301.kimi"), "func lib() -> i32 => 4\n");
         }
 
-        var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        var resolution = DependencyResolver.Resolve(project, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
         DependencyLock.Update(DependencyLock.PathForProject(project), resolution, TestContext.Current.CancellationToken);
         var output = this.Run(project);
         if (!invalid)
@@ -323,7 +337,7 @@ public sealed partial class CheckServiceTest : IDisposable
             Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
             string.Join(", ", failures));
         loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "func twin() -> i32 => 2\n");
-        var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        var output = CheckService.Run(loaded, TargetProfile.Windows.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), Assert.Single(output.Diagnostics).Code);
     }
@@ -475,7 +489,7 @@ public sealed partial class CheckServiceTest : IDisposable
             "App",
             ("main.kimi", Valid),
             dependencies: "A={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../LeafA/LeafA.kimiproj\"} B={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../LeafB/LeafB.kimiproj\"}");
-        DependencyLock.Update(DependencyLock.PathForProject(project), DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken), TestContext.Current.CancellationToken);
+        DependencyLock.Update(DependencyLock.PathForProject(project), DependencyResolver.Resolve(project, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken), TestContext.Current.CancellationToken);
         var console = new CapturingConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, project, out var loaded));
         Assert.False(await loaded.Check(TestContext.Current.CancellationToken));
@@ -600,7 +614,7 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failures),
             string.Join(", ", failures));
-        return CheckService.Run(project, target.Length == 0 ? WindowsProfile.Target : target, mode, false, inputs, TestContext.Current.CancellationToken);
+        return CheckService.Run(project, target.Length == 0 ? TargetProfile.Windows.Target : target, mode, false, inputs, TestContext.Current.CancellationToken);
     }
 
     private string PathOf(params string[] parts)
@@ -611,7 +625,7 @@ public sealed partial class CheckServiceTest : IDisposable
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".kimiproj");
-        var targets = settings.Contains("Targets=", StringComparison.Ordinal) ? string.Empty : $"Targets={{\"{WindowsProfile.Target}\"}} ";
+        var targets = settings.Contains("Targets=", StringComparison.Ordinal) ? string.Empty : $"Targets={{\"{TargetProfile.Windows.Target}\"}} ";
         File.WriteAllText(path, $"OutputKind=\"Library\" {targets}Dependencies={{{dependencies}}} {settings}");
         if (source is var (file, text))
         {
@@ -625,7 +639,7 @@ public sealed partial class CheckServiceTest : IDisposable
     {
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
-        File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"1\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"1\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(folder, "main.kimi"), source);
     }
 
@@ -636,7 +650,7 @@ public sealed partial class CheckServiceTest : IDisposable
         var folder = this.PathOf("Leaf");
         Directory.CreateDirectory(folder);
         var tests = leafFails ? " TestSources={\"*.kimi\"}" : string.Empty;
-        File.WriteAllText(Path.Combine(folder, "Leaf.kimiproj"), $"OutputKind=\"Library\" PackageId=\"leaf\" PackageVersion=\"1\" Targets={{\"{WindowsProfile.Target}\"}}{tests}");
+        File.WriteAllText(Path.Combine(folder, "Leaf.kimiproj"), $"OutputKind=\"Library\" PackageId=\"leaf\" PackageVersion=\"1\" Targets={{\"{TargetProfile.Windows.Target}\"}}{tests}");
         File.WriteAllText(Path.Combine(folder, "main.kimi"), Valid);
         return this.WriteProject("App", ("main.kimi", Valid), settings, "Use={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../Leaf/Leaf.kimiproj\"}");
     }
