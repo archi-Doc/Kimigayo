@@ -131,11 +131,10 @@ public sealed partial class Binding
     // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm. The conversion at the value is a
     // reader of its comparison's region conjuncts: it forms them as the body's rows when the signature fits (FormComparisonRows). An Owned
     // part whose proof read a region with no answer yet (ValueIn's deferral fact, while a body is bound) is no verdict: the erasure's
-    // obligation, judged once the body is bound (DeferErasedOwned, JudgePendingErasures; the owner's O-471 (a)), its other parts judged
-    // here; an erasure judged again replaces its obligation.
+    // obligation (BindingObligationKind.Owned), judged once the body is bound (JudgeErasedOwned; the owner's O-471 (a)), its other parts
+    // judged here.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
-        this.ForgetErasedOwned(node);
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
         var rows = this.comparisonRows.Count;
         var fits = this.ErasureFits(actual, expected, node, this.comparisonRows, out var failure);
@@ -155,7 +154,7 @@ public sealed partial class Binding
         this.readsUnboundedRegion = false;
         var part = !SharedReceiver(actual) ? ErasurePart.Receiver
             : shape && !fits ? ErasurePart.Shape
-            : this.ProveErasedOwned(actual, node, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
+            : this.ProveErasedOwned(actual, node, this.formingBody, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
             : ErasurePart.Condition;
         var deferred = part == ErasurePart.Owned && this.readsUnboundedRegion && this.formingBody.IsBody;
         this.readsUnboundedRegion = held;
@@ -173,7 +172,7 @@ public sealed partial class Binding
         {
             if (deferred)
             {
-                this.DeferErasedOwned(node, actual, expected);
+                this.AddObligation(new(BindingObligationKind.Owned, node, BindingDeadline.BodyOrigins, actual));
             }
 
             return true;

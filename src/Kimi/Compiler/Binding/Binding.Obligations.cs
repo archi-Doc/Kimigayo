@@ -5,13 +5,14 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Binding's obligations (DECISIONS BU-85). Responsibility: record each obligation a rule requires (AddObligation), one entry per
-// distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length
-// and call rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at the
-// obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one is a problem of its use, which it
-// leaves Resolved: RecordFurtherOriginRecord); a Definition
-// obligation still recorded at Final fails its use; any other obligation but an Origin relation with both ends is proven or
-// discharged by Final unless it rests on a failed part, and one that is not fails its use as InternalInvariant_Kd. Prohibitions: no
-// consumer decides an obligation's verdict from its own reading; it reads Binding's.
+// distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length,
+// call and erasure rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at
+// the obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one is a problem of its use, which
+// it leaves Resolved: RecordFurtherOriginRecord); a Definition obligation still recorded at Final fails its use; an Owned obligation
+// (an erasure's Owned condition deferred while a body is bound) is judged at Final, its failure the erasure's Language record at its
+// use (JudgeErasedOwned); any other obligation but an Origin relation with both ends is proven or discharged by Final unless it rests
+// on a failed part, and one that is not fails its use as InternalInvariant_Kd. Prohibitions: no consumer decides an obligation's
+// verdict from its own reading; it reads Binding's.
 public sealed partial class Binding
 {
     internal bool IsVerifiedLengthObligation(BindingObligation obligation)
@@ -42,9 +43,10 @@ public sealed partial class Binding
     }
 
     // SPEC 8.1.1, 8.1.2, 23.1.2: the Final pass's verdict on the obligations still recorded. A Definition obligation's use fails with
-    // its Language cause (FailTypeRole); an Origin relation with both ends is the Origin judgment's. Any other obligation is proven
-    // where it forms or discharged when its local binds, so one left over parts that bound is a broken contract at its use
-    // (InternalInvariant_Kd); over a failed part it rests on that failure (rule W, BU-79).
+    // its Language cause (FailTypeRole); an erasure's Owned obligation is judged here (JudgeErasedOwned, SPEC 15.2.3, 8.3.3); an Origin
+    // relation with both ends is the Origin judgment's. Any other obligation is proven where it forms or discharged when its local binds,
+    // so one left over parts that bound is a broken contract at its use (InternalInvariant_Kd); over a failed part it rests on that
+    // failure (rule W, BU-79).
     private void JudgeObligations()
     {
         for (var i = 0; i < this.obligations.Count; i++)
@@ -53,6 +55,10 @@ public sealed partial class Binding
             if (obligation.Deadline == BindingDeadline.Definition)
             {
                 this.FailTypeRole(obligation);
+            }
+            else if (obligation.Kind == BindingObligationKind.Owned)
+            {
+                this.JudgeErasedOwned(obligation);
             }
             else if (this.IsUnjudged(obligation))
             {

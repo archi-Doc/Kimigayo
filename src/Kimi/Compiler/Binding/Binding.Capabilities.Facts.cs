@@ -56,7 +56,7 @@ public sealed partial class Binding
     // as its value read so (ValueIn: a `let` region of that body, a `var` region of it once it is bound, a region the body carries; R7-O2
     // A1+A2), a region a nested signature names staying the region (SPEC 15.3.4); a null Origin argument and an unproven Origin are Unknown.
     // An Unknown whose reading met a region with no answer yet (ValueIn's deferral fact) is no verdict: it depends on the body's binding
-    // (SPEC 8.3.3 Finality: ReadBodyBinding), and the erasure that asked judges its Owned part once the body is bound (JudgePendingErasures;
+    // (SPEC 8.3.3 Finality: ReadBodyBinding), and the erasure that asked judges its Owned part once the body is bound (JudgeErasedOwned;
     // the owner's O-471 (a), O-481 (b)); the fact stays set for that asker. A function's scope judges in its body (JudgedAt): its literal
     // stands in the enclosing body, whose `let` regions are not its values (D-862's e-owsin).
     private ConstraintProof StaticOrigin(BoundOrigin? origin, BindingScope scope)
@@ -144,7 +144,7 @@ public sealed partial class Binding
         // Whether that dependence is the bound body's binding (Binding.BodyBinding: its evaluation read a local region with no answer yet,
         // itself or through a work it read; R7-O2 A1+A2, Revision 3.2): forgotten past the outermost request with its parts kept, only its
         // verdict not cached (Forget), so the erasure's Owned owner classifies its parts as before (OwnedMember: a refuted leaf first) and
-        // its obligation is judged again once the body is bound (JudgePendingErasures).
+        // its obligation is judged again once the body is bound (JudgeErasedOwned).
         internal bool ReadsBodyBinding { get; set; }
 
         internal CapabilityWork? Parent { get; set; }

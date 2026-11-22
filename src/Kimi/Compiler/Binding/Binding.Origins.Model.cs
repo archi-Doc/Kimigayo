@@ -209,6 +209,10 @@ public enum BindingObligationKind : byte
     OriginInference,
     TypeRole,
     TypeFormation,
+
+    /// <summary>An erasure's Owned condition at <c>Use</c>, the converted value, whose proof read a region with no answer yet while a body
+    /// is bound; <c>Type</c> is its subject, judged under Finality at the Final pass (SPEC 7.7.4, 15.8.1, 15.2.3, 8.3.3).</summary>
+    Owned,
 }
 
 public enum BindingDeadline : byte

@@ -626,7 +626,6 @@ public sealed partial class Binding
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
-        this.pendingErasures?.Clear();
         this.pendingJudgments?.Clear();
         this.arithmeticSelectionFailures?.Clear();
         this.arithmeticDirectionFailures?.Clear();

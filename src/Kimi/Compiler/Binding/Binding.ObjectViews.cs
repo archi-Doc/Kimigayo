@@ -25,11 +25,10 @@ public sealed partial class Binding
         => this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
     // SPEC 15.8.1: erasing a payload behind a view needs its complete data Type Owned. An Owned proof that read a region with no answer yet
-    // (ValueIn's deferral fact, while a body is bound) is the erasure's obligation, judged once the body is bound (JudgePendingErasures, the
-    // one deferral path; the owner's O-481 (b), R7-O2 A1+A2's D2): the view's evidence stands until then.
+    // (ValueIn's deferral fact, while a body is bound) is the erasure's obligation (BindingObligationKind.Owned), judged once the body is
+    // bound (JudgeErasedOwned, the one deferral path; the owner's O-481 (b), R7-O2 A1+A2's D2): the view's evidence stands until then.
     private bool RequireObjectErasure(Koto use, Koto operand, BoundType source, BoundType target)
     {
-        this.ForgetErasedOwned(use);
         if (ReferenceEquals(source, target))
         {
             return true;
@@ -52,7 +51,7 @@ public sealed partial class Binding
             this.objectErasures[use] = new(source, target, entry);
             if (deferred)
             {
-                this.DeferErasedOwned(use, source, target);
+                this.AddObligation(new(BindingObligationKind.Owned, use, BindingDeadline.BodyOrigins, source));
             }
 
             return true;

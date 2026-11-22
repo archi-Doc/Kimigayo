@@ -53,8 +53,8 @@ public sealed partial class Binding
     }
 
     // Every failure the pass decides at its end, in the order the nodes were bound. At Final the erasures' Owned obligations are judged in
-    // the prologue (JudgePendingErasures), which reads every region's candidate as complete: a region bound recorded after it is a broken
-    // contract (R7-O2 A1+A2, the Front's D4).
+    // the prologue (JudgeObligations' Owned kind, JudgeErasedOwned), which reads every region's candidate as complete: a region bound
+    // recorded after it is a broken contract (R7-O2 A1+A2, the Front's D4).
     private void ProduceFailures(BindingMode mode)
     {
         var judged = -1;
@@ -62,7 +62,6 @@ public sealed partial class Binding
         {
             this.formationCauses.Empty();
             this.JudgeObligations();
-            this.JudgePendingErasures();
             judged = this.regionVersion;
 
             this.SettleSpecificationLinks();

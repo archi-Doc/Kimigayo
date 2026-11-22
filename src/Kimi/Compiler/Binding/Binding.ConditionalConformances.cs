@@ -10,7 +10,7 @@ public sealed partial class Binding
     // SPEC 8.3.3 Finality, 15.3.6 (R7-O2 A1+A2; the owner's O-471 (a)): the depth of a bound body's binding, below every obligation's: an
     // answer that read a local region with no answer yet (StaticOrigin, through ValueIn's deferral fact) depends on that binding (EndAnswer),
     // so its work is forgotten after its outermost request (ForgetDependentCapabilities) and its asker judges it once the body is bound
-    // (JudgePendingErasures).
+    // (JudgeErasedOwned).
     private const int BodyBinding = -1;
 
     // SPEC 8.3.3 Recursion (R7-C2e2 e2-3b): the obligations being proven, each open at its depth (the number open when it opened; they

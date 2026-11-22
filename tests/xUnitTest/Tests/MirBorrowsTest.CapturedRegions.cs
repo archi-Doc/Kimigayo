@@ -372,7 +372,7 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.2.3, 15.3.6, 7.7.4 (the owner's O-481 (b), verbatim 「O-481 は (b) でよいです」; O-471 (a); R7-O2 A1+A2): an erasure's Owned
     // condition reads a local `var` region as its candidate once its body is bound, its own body's region (A2's half) or one the body
     // carries (O-443 (a), O-466 (b)), in turn: an Owned proof that reads a region with no answer yet while a body is bound is the erasure's
-    // obligation, judged in Binding's Final prologue (JudgePendingErasures). Valid, each `static` through R's one bound: the erasure in the
+    // obligation, judged in Binding's Final prologue (JudgeErasedOwned). Valid, each `static` through R's one bound: the erasure in the
     // region's own body of a literal (s2: through y's `let`; eo0v, eol0v: a later `r = p`, `b = p`) or of a named Closure value (e6v,
     // s2h; dev's O-61 (a) reading superseded for the Owned condition); in a nested body that carries R (c11, c11own0, s2own0), at a
     // `return` (rt1v) and at a call's argument (ag1v: a Closure literal bound at its destination, judged at the literal, not by the
@@ -395,7 +395,7 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.3.6 (a candidate over all of the variable's bounds), 15.2.3, 15.6.5 (R7-O2 A1+A2; the owner's O-471 (a), O-481 (b)): a `var`
     // region's candidate has an answer only once its body is bound (RegionValue's gate, RegionBounded), so an erasure's Owned proof that
-    // reads it while a body is bound is judged at Final (JudgePendingErasures). A bound recorded after the literal (`r = n@ref`; through
+    // reads it while a body is bound is judged at Final (JudgeErasedOwned). A bound recorded after the literal (`r = n@ref`; through
     // `var r = b` in c11b; `b = n@ref` through `let r = b` in eol0n) is in the candidate: rejected. In the region's own body, where `n@ref`
     // is a Borrow local to the body, the chain to `static` is Refuted (SPEC 15.6.5): UnsatisfiedConstraint_Kd (s2own, s2late, eo0n,
     // eol0n; dev's Unknown was judged before the bound existed, a record-kind move under Q13); in a nested body (c11own, c11late, c11b,

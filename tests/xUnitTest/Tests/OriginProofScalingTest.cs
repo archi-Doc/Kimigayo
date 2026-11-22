@@ -160,7 +160,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
     // SPEC 15.2.3, 15.3.6, 15.6.5 (R7-O2 A1+A2; the owner's O-471 (a), O-481 (b); the Front's D6): n nested Closures, each declaring a `var`
     // bound by the captured `var` of the level above (chain), or two, each bound by both above (diamond: two carried paths per level), and
     // the erasure of a Closure over the innermost region, whose Owned is read through each candidate in turn to `static` at Final
-    // (JudgePendingErasures): the walks (one per Closure per region-graph version, CarriedWalk) and the region reads in a body (one per
+    // (JudgeErasedOwned): the walks (one per Closure per region-graph version, CarriedWalk) and the region reads in a body (one per
     // region and body per version, ValueIn) grow linearly with n (asserted; the time is printed). Each is valid. n is 15, 30, 60 for the
     // chain and 10, 20, 40 for the diamond.
     [Theory]
