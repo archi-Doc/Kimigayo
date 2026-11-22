@@ -3,8 +3,8 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's call reservations (A3 5's err(activate) and err(destroy), with E1, E5, E11 and E13 (1b), (3); SPEC 15.6.7): a two-phase Loan in its
-// reservation holder t activates where a Call takes t as an input (an argument, or a Value callee's operand) or the writeback writes through
-// it (R4-M37), checked on the activation's check set (MirBorrows.CheckSets): the holders live after ℓ, the values of the operation's operands
+// reservation holder t activates where a Call takes t as an input (an argument, or a Value callee's operand), where an Opaque site takes t
+// as a kept part (MirOpaque.Kept, DECISIONS Z17c: the invocation it replaces would) or the writeback writes through it (R4-M37), checked on the activation's check set (MirBorrows.CheckSets): the holders live after ℓ, the values of the operation's operands
 // but t's and E, closed through the holders their direct Loans name and seeded by those σ_in(t)'s direct Loans name (E5), t left out, so the
 // inputs of one call are checked against each other, at the reservation's Place and at those of the parent Loans σ_in(t) carries unique
 // (SPEC 15.6.3, 15.6.7: overlap is judged through the Loans the argument carries, so a Loan on what a reference it was Reborrowed through
@@ -26,7 +26,8 @@ internal sealed partial class MirBorrows
     private int throughCount;
 
     // The reservations a location activates, those σ_in(t) carries in t: at a Call's input holders, its argument operands' and a Value
-    // callee's operand's (the receiver an Exclusive call takes, SPEC 7.7.3), and at the writeback's write through a reservation.
+    // callee's operand's (the receiver an Exclusive call takes, SPEC 7.7.3), at an Opaque site's kept uses (KeptUses), and at the
+    // writeback's write through a reservation.
     private void Reserving(ulong[] state, MirLocation at)
     {
         this.reserving.Clear();
@@ -37,6 +38,14 @@ internal sealed partial class MirBorrows
             if (statement.Kind == MirStatementKind.Assign && this.ThroughRoot(statement.Place))
             {
                 this.Reserve(state, statement.Place.Root, DiagnosticCode.PlacementActivationConflict_Kd);
+            }
+
+            foreach (var use in this.KeptUses(statement))
+            {
+                if (use is { Projection: 0, Root: >= 0 })
+                {
+                    this.Reserve(state, use.Root, DiagnosticCode.CallActivationConflict_Kd);
+                }
             }
 
             return;
@@ -51,6 +60,12 @@ internal sealed partial class MirBorrows
             }
         }
     }
+
+    // DECISIONS Z17c (SPEC 15.6.7): the kept uses of the Opaque site a statement assigns (MirOpaque.Kept), the Places of an Error node's
+    // kept parts, which it takes as the invocation it replaces takes its inputs; none for any other statement, so a default's site, which
+    // runs during the reservation, activates nothing.
+    private ReadOnlySpan<MirPlace> KeptUses(in MirStatement statement) => statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque }
+        ? this.body.OpaqueUses.Slice(this.body.OpaqueSites[statement.Rvalue.Arg].Start, this.body.OpaqueSites[statement.Rvalue.Arg].Kept) : default;
 
     // A reservation holder's state, read once per call since the call moves it: an input that holds no reservation is not read.
     private void Reserve(ulong[] state, int local, DiagnosticCode code)

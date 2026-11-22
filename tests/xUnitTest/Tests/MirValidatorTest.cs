@@ -182,7 +182,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0), At));
         Assign(exclusive, MirRvalue.Ref(MirRefKind.Uniq, shared, body.TypeOf(exclusive)!));
         Assign(pointer, MirRvalue.Cast(MirCastKind.IntToPointer, Operands(MirOperand.Copy(index)), body.TypeOf(pointer)!));
-        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [new(array.Root)])));
+        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [new(array.Root)], 1)));
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, payload!)));
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(value), token), value, types.Pair, shorthand: true, input: false));
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
@@ -227,6 +227,16 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     {
         Assert.Empty(Validate(Build(null)));
         Assert.Empty(Validate(Typed(null)));
+    }
+
+    // DECISIONS Z17c: an Opaque site's kept uses are among its uses, so a kept count past them is an Opaque finding; a count equal to
+    // them is valid (the site of ValidBodyHasNoFinding's typed body keeps its one use).
+    [Fact]
+    public void AnOpaqueSiteKeepsNoMoreThanItsUses()
+    {
+        var body = Build(null);
+        body.AddOpaque(default, [], 1);
+        Assert.Equal([MirViolation.Opaque], Validate(body).Select(static x => x.Rule));
     }
 
     [Theory]
@@ -2098,26 +2108,29 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     // ref parameter's or a ref self's Deref, a Slice's Index or an rc payload) is judged at its root by every rule but A1's
     // (MirDescriptors.Judged), so SharedPath reads no write through the layer: no finding and no InternalInvariant_Kd beside Binding's
     // records, also beside a limit on a valid program (downgrade). A group let's static kept is undecided at its Place, and one located is
-    // read by a FakeRead after its ensure (rule (2)), no use.
+    // read by a FakeRead after its ensure (rule (2)), no use. A kept Copy part the form reads is secured by its Copy, an ordinary read, so
+    // its site names the temp (DECISIONS Z17c; fail-before: the projected Place), while a non-Copy part stays undecided at its Place.
     [Theory]
-    [InlineData(StructP + "func g(n: i32, m: i32) -> i32 => n\nfunc f(p: ref/P) -> i32\n    return g(p.n, missing)\n", "UnresolvedBinding_Kd", true)]
-    [InlineData("func f(r: ref/i32)\n    missing(r@follow)\n", "UnresolvedBinding_Kd", true)]
+    [InlineData(StructP + "func g(n: i32, m: i32) -> i32 => n\nfunc f(p: ref/P) -> i32\n    return g(p.n, missing)\n", "UnresolvedBinding_Kd", false)]
+    [InlineData(StructP + "func f(p: ref/P)\n    missing(p.s)\n", "UnresolvedBinding_Kd", true)]
+    [InlineData("func f(r: ref/i32)\n    missing(r@follow)\n", "UnresolvedBinding_Kd", false)]
+    [InlineData("func f(r: ref/string)\n    missing(r@follow)\n", "UnresolvedBinding_Kd", true)]
     [InlineData(
         "func g(n: i32, m: i32) -> i32 => n\nstruct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
         "    public func m(self: ref/Self) -> i32 => g(self.n, missing)\n",
         "UnresolvedBinding_Kd UnresolvedBinding_Kd",
-        true)]
+        false)]
     [InlineData(
         "struct Item\n    public var id: i32\n    public init(id: i32) => self.id = id\nstruct Holder\n    public var item: rc/Item\n" +
         "    public init(item: rc/Item) => self.item = item@move\nfunc f(h: ref/Holder)\n    let w = Kimi.Intrinsics.downgrade(h.item)\n",
         "Unsupported_Kd",
         true)]
-    [InlineData("func f(s: Slice<i32>, i: isize)\n    missing(s[i])\n", "UnresolvedBinding_Kd", true)]
+    [InlineData("func f(s: Slice<i32>, i: isize)\n    missing(s[i])\n", "UnresolvedBinding_Kd", false)]
     [InlineData(
         "struct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc g(n: i32, m: i32) -> i32 => n\nfunc f(h: rc/Q) -> i32\n" +
         "    return g(h.n, missing)\n",
         "UnresolvedBinding_Kd",
-        true)]
+        false)]
     [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing(G.s)\n", "UnresolvedBinding_Kd", false)]
     [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing = G.s\n", "UnresolvedBinding_Kd", false)]
     public void AnUndecidedUseThroughASharedLayerIsJudgedAtItsRoot(string source, string binding, bool projected)
@@ -2184,7 +2197,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(a, MirRvalue.Use(Operands(broken == "assign" ? MirOperand.Copy(flag) : MirOperand.Copy(body.Project(c.Types, pair, MirProjectionKind.Field, 0)))), "assign");
         var lost = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
-        Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [])));
+        Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [], 0)));
         Assign(a, MirRvalue.Use(Operands(MirOperand.Move(lost))), "opaque");
         MirOperand Token(BoundType type) => MirOperand.Const(body.Const(new(MirConstKind.TypeToken, type)));
         var (acquired, payload) = (broken == "token" ? flag : a, body.Project(c.Types, handle, MirProjectionKind.Deref, 0));
@@ -2276,7 +2289,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
-        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root), x]))); // Z17: an undecided use at a Place.
+        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root), x], 0))); // Z17: an undecided use at a Place.
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
         Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));

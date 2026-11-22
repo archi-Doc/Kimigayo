@@ -63,8 +63,8 @@ fn kept @519
   _10: string temp @542 s1
   _11: i32 temp (Result) @519
   s1: lexical in s0 @523
-  opaque 0 @525: _1 _4
-  opaque 1 @536: _8
+  opaque 0 @525 kept 2: _1 _4
+  opaque 1 @536 kept 1: _8
   bb0:
       StorageLive(_3) @525 s1
       StorageLive(_4) @527 s1
