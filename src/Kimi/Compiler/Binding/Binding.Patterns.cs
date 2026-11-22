@@ -26,6 +26,9 @@ public sealed partial class Binding
     /// <returns>Whether the current Binding pass indexed this match.</returns>
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
 
+    // A pattern's syntax node no check typed has the Unit Type (PatternMarker's rule; also the Case Name a member step settles).
+    private static void CompletePatternSyntax(Koto node) => Complete(node, BoundType.Unit);
+
     private void ResetMatches()
     {
         // The pass counter already left the last pass's matches stale, so every kept plan is reset: the last pass's, the same objects, and
@@ -499,15 +502,17 @@ public sealed partial class Binding
             }
         }
 
-        var symbol = this.LookupMember(expected, name, scope, LookupRole.EnumCase).Member;
-        if (symbol is null)
+        var selection = this.LookupMember(expected, name, scope, LookupRole.EnumCase);
+        if (selection.Member is not { } symbol)
         {
             return null;
         }
 
-        // Written here until R7-N1 c3 makes it the member step's (PublishPath's MemberAccess step would mark the Name Resolved before the
-        // pattern's completion gives it its Type, a HIR change).
-        member.BoundSymbol = member.Right.BoundSymbol = symbol;
+        // SPEC 9.6, 14.8.1: the Case is the member access's selection, published by PublishPath's MemberAccess step (the Type side, the
+        // enum qualifier). The step settles the Name, so PatternMarker, which types every pattern node no check typed, would not reach
+        // it: the pattern types its Case Name first, by the marker's own rule.
+        CompletePatternSyntax(member.Right);
+        this.PublishMemberAccess(member, symbol, definition, LookupRole.Qualifier, selection);
         return symbol.EnumCase;
     }
 
@@ -738,7 +743,7 @@ public sealed partial class Binding
             {
                 if (outer is null)
                 {
-                    Complete(node, BoundType.Unit);
+                    CompletePatternSyntax(node);
                 }
                 else
                 {
