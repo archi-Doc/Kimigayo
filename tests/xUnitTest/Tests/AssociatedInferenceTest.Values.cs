@@ -140,8 +140,8 @@ public partial class AssociatedInferenceTest
     [InlineData("C4", "dr-efa", C4DrEfa, "")]
     [InlineData("C4", "ring6", C4Ring6, "")]
     [InlineData("guard", "prem-own", C4PremOwn, "*: * | ...")]
-    [InlineData("C4", "prem-e", C4PremE, "", Explicit = true)]
-    [InlineData("C4", "prem-p", C4PremP, "", Explicit = true)]
+    [InlineData("C4", "prem-e", C4PremE, "")]
+    [InlineData("C4", "prem-p", C4PremP, "")]
     [InlineData("guard", "b2-012", C4B2012, "*: * | ...")]
     [InlineData("guard", "b2-210", C4B2210, "*: * | ...")]
     [InlineData("guard", "ov12", C4Ov12, "")]
@@ -149,7 +149,7 @@ public partial class AssociatedInferenceTest
     [InlineData("C4", "generic", C4Generic, "")]
     [InlineData("C4", "generic-conflict", C4GenericConflict, "AssociatedTypeInferenceFailed_Kd: Self is MC | ...")]
     [InlineData("guard", "nested-path", C4NestedPath, "")]
-    [InlineData("C4", "param-pending", C4ParamPending, "", Explicit = true)]
+    [InlineData("C4", "param-pending", C4ParamPending, "")]
     public void EveryValueFollowsItsEvidenceInEveryOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program, records);
 
