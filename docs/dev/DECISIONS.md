@@ -16213,6 +16213,13 @@ resumed by R4-M86 (2026-10-20).
     `ref/U` (`AmbiguousBinding_Kd` until then, STATUS) and a join's waiting source completed at the step-1 Type (jw1, jw1-1, n6,
     n6-r, q1, x.i3-gen); K's R10-N1 (an `s/T` result whose `s` evidence binds to `owner` while `T` stays unbound) has no row yet.
     PLAN G443 (item (1), the Tuple step-3 path, BU-156's interim), G954, G957, G973, G977-G980 and R1e.
+  - Amended by the owner's O-492 (a) (2026-11-22, verbatim 「O-492 a」; D-1072, SPEC 10.5.1 bullet 2), for AF-3b: a nested call
+    that is ambiguous at a remaining candidate's expected Type does not check there, so that candidate is inapplicable, one rule
+    with a nested call none of whose candidates fits there (P5-3: `ko2(b@ref, pick(1))` selects `ko2` and returns 1, where dev
+    gives `AmbiguousBinding_Kd` at `ko2(`: both `pick` fit `ko2<T>`'s `ref/Option<T>` by structure and neither is better). So a
+    nested call ambiguous at every remaining candidate's expected Type leaves no applicable candidate (`take(q(1))` with
+    `q(x: i32) -> i64`, `q(x: i64) -> i64` and `take(value: i64)`), and `two(1, pick(1))` with `two<T>(first: T, second:
+    Option<T>)` is invalid, since no default breaks the ambiguity (SPEC 10.2.1); `two(1@i32, pick(1))` is valid.
 - **BU-225 What an abstract part hides is writable wherever an input's walk meets it (PLAN G963)** (2026-11-18; Front, Binding; Q17
   class 1; Major, an acceptance mover; design review REVISE (B1), re-check ACCEPT (F's G963 ruling 6); implementation review ACCEPT;
   the Middle's RP17 consent C-386 after F2's fix; W-256) SPEC 15.6.4 (the abstract-Type sentence, route 2), 5.7 Calls. Supersedes
@@ -16747,7 +16754,8 @@ resumed by R4-M86 (2026-10-20).
     (an error-typed operand, or an Equals, ReferenceEquals or search call without its method) fails the test, naming its site.
   - `finding`: an operand that is not what its owner publishes, a defect found and not fixed by the row's unit; the row's comment names
     its PLAN open issue, and the reason changes when that issue's fix lands. The first: BindConversion's typed-borrow target (PLAN
-    G1240, D-1036).
+    G1240, D-1036). G1240's rows became `formed` with its fix (Q-657, `BindConversionTarget`); the reason stays in the closed list
+    with no row.
   - A later unit that adds or removes such a comparison updates its row with its reason. A comparison no reason covers is routed
     through the judge as its own unit (an acceptance mover), never whitelisted. The test checks each member's sum of rows, so a change
     inside a member with two or more reasons is reviewed against the reasons file (`...\front\notes\C3\c3c\reasons.tsv`, one line per
@@ -28446,6 +28454,15 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     the token (read only in the wait), writes the invalidation, and closes the handle on any exception after the open.
     `Project.Build` holds it until `NativeToolchain.Build` or `RecordLibrary` returns; `BuildManifest` to its return; `test` builds
     in private directories and takes none. Keyed by the record, so O0, O2 and `--Manifest` of one `.link.json` exclude each other.
+  - Amended (PLAN G1205; the owner's O-491 (d), 2026-11-22, verbatim 「(d) で」; 85bfb54e2): when a build cannot begin, its lock's
+    open failing (not busy) or its first invalidation not written, the limit stays as IMPL 20.3.2 states it (decision 19: the
+    earlier success stays), and the build says so: `Begin` leaves the record as it was and fails with one `IOException` "The build
+    could not begin, so its record keeps its last state: <record>. <the system's message>" (the cause its inner exception; still an
+    output failure, so exit codes and the classification are unchanged; IMPL unchanged). `Directory.CreateDirectory`'s failure
+    stays as it was (no record can exist then). Rejected: (a) the stated limit with no text (a pathless "Access to the path is
+    denied." that does not say the earlier build stays); (b) a second invalidation channel (a try-then-fallback chain; never closes
+    a held record or a write-denied folder; (b2) departs from decisions 2 and 18); (c) `run --no-build` comparing the inputs'
+    fingerprint (it changes the command's meaning for every edit, a decision of its own).
   - Rejected: O-467 (b) (the record alone); generation directories (decision 2); the report after the move; failing at once when
     busy; the lock in `NativeBuild.Run` only (another build's success could overwrite an invalidation); a delete-on-close lock
     (delete-pending reads as access denied); a reader lock in `run --no-build`; the lock in `emit` (not in B5: it needs the paths
@@ -28588,7 +28605,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     expectedSha256, hashMatched}], error?, seconds}`, written first as `status "incomplete"`; at the end "passed", or "failed"
     with `error` for the toolchain's failure or a cancellation; a fault leaves it incomplete. Gone from it: `root`, `llvmBin`,
     `tools`, `toolchainVerification`, `reportedVersionsMatched`, `unverifiedToolchain`, `backendSha256`, `kernel32`. The build
-    record's three verification fields stay (T's ruling R3; PLAN G1227).
+    record's three verification fields went in G1227 (934a5e1d9): its head is `status`, `compilerVersion`, `llvmVersion`; the
+    backend candidate's `reportedVersionsMatched` and `unverifiedToolchain` (`build.ps1`, read by setup) stay, the candidate's
+    tool pinning.
   - **Reading (R4):** Q3 (a)'s "the embedded libraries' hashes against the catalog" includes kernel32's definition and excludes
     its content inspection (`llvm-dlltool -I`, `llvm-readobj`), which needs a tool: the content is a property of the adopted
     bytes, inspected when they are adopted (setup's `kernel32.ps1`, `test-kernel32.ps1`). B6a's design §6, "B6b's verify keeps
