@@ -53,7 +53,7 @@ internal static class CheckService
         catch (DiagnosticContractException ex)
         {
             // SPEC 23.2.2: a violated contract discards every partial record.
-            return Faulted(ex.Fault, ex.Message, location);
+            return Faulted(ex.Fault, ex, location);
         }
         catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
         {
@@ -69,12 +69,12 @@ internal static class CheckService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return Faulted(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Collection, ex.Message, location);
+            return Faulted(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Collection, ex, location);
         }
 
         if (failure is not null)
         {
-            return Faulted(DiagnosticFault.Exception, failure.Message, location, result);
+            return Faulted(DiagnosticFault.Exception, failure, location, result);
         }
 
         // SPEC 23.2.2: the outcome follows from how the check ended. Inputs that were never established leave no compilation and the
@@ -120,8 +120,8 @@ internal static class CheckService
     }
 
     // SPEC 23.2.2: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.
-    private static CheckOutput Faulted(DiagnosticFault fault, string? detail, string? location, DiagnosticResult? kept = null)
-        => new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(fault, detail, location, kept));
+    private static CheckOutput Faulted(DiagnosticFault fault, Exception exception, string? location, DiagnosticResult? kept = null)
+        => new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(fault, exception, location, kept));
 
     private sealed class MarkerFinder : KotoVisitor
     {

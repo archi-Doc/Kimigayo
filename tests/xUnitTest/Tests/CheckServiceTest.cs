@@ -582,6 +582,24 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Same(exception, thrown);
     }
 
+    // SPEC 23.2.2, DIAGNOSTICS rule 9 and §6 (PLAN G1014): an exception before the front end that no read classifies (the lock's read
+    // classifies only its own failures) is the check's fault at the project file, its Note the exception's chain.
+    [Theory]
+    [InlineData(CheckMode.Product, false)]
+    public void AnExceptionBeforeTheFrontEndIsTheChecksFault(CheckMode mode, bool invalidData)
+    {
+        var project = this.WriteProject("Lock", ("main.kimi", Valid));
+        var inner = new FormatException("inner");
+        Exception exception = invalidData ? new InvalidDataException("outer", inner) : new InvalidOperationException("outer", inner);
+        var output = this.Run(project, mode, inputs: new FailingInputSource(DependencyLock.PathForProject(project), exception));
+
+        Assert.Equal(CheckOutcome.Faulted, output.Outcome);
+        var fault = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.CheckFaulted_Kd), fault.Code);
+        Assert.Equal($"{exception.GetType().FullName}: outer ---> System.FormatException: inner", fault.Note);
+        Assert.Equal(SourceIdentity.FromPath(project), Location(output, fault));
+    }
+
     // SPEC 23.2.1: the scan is syntactic, so a marker on a local function is found; test preparation then explains the invalid definition.
     [Fact]
     public void ATestMarkerOnALocalFunctionIsFoundAndThenRejected()

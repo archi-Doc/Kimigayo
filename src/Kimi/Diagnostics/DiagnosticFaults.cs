@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
+
 namespace Kimi.Diagnostics;
 
 /// <summary>
@@ -29,11 +31,11 @@ internal static class DiagnosticFaults
 
     /// <summary>Creates the Faulted result's diagnostics, keeping earlier valid records when collection stayed intact.</summary>
     /// <param name="fault">The fault.</param>
-    /// <param name="detail">The environment-dependent detail, kept as a bounded Note.</param>
+    /// <param name="exception">The exception that ended the result; its chain is the bounded Note.</param>
     /// <param name="location">The project file, or <see langword="null"/>.</param>
     /// <param name="kept">The valid records to keep, or <see langword="null"/> to discard every earlier record.</param>
     /// <returns>The diagnostics.</returns>
-    internal static DiagnosticResult Create(DiagnosticFault fault, string? detail, string? location, DiagnosticResult? kept = null)
+    internal static DiagnosticResult Create(DiagnosticFault fault, Exception exception, string? location, DiagnosticResult? kept = null)
     {
         var sources = kept?.Sources ?? [];
         var previous = kept?.Diagnostics ?? [];
@@ -54,8 +56,17 @@ internal static class DiagnosticFaults
             }
         }
 
-        // Keep the fault path independent of catalog formatting, with the same presentation limit as ordinary Notes.
-        var note = detail is null ? null : detail.Length <= DiagnosticLimits.NoteLength ? detail :
+        // DIAGNOSTICS §6 (PLAN G1014): the environment-dependent detail is formed only here, never by a caller: the exception's chain, each
+        // link its type's full name and message, outer first, joined as the framework joins inner exceptions. Its head is kept under the
+        // ordinary Note limit, so the outer type always shows; the fault path stays independent of catalog formatting.
+        var chain = new StringBuilder();
+        for (Exception? link = exception; link is not null && chain.Length <= DiagnosticLimits.NoteLength; link = link.InnerException)
+        {
+            chain.Append(chain.Length == 0 ? string.Empty : " ---> ").Append(link.GetType().FullName).Append(": ").Append(link.Message);
+        }
+
+        var detail = chain.ToString();
+        var note = detail.Length <= DiagnosticLimits.NoteLength ? detail :
             string.Concat(detail.AsSpan(0, DiagnosticText.HeadLength(detail, DiagnosticLimits.NoteLength - 1)), DiagnosticText.Elision);
         var record = new CheckDiagnostic(nameof(DiagnosticCode.CheckFaulted_Kd), DiagnosticSeverity.Error, DiagnosticCategory.Internal, MessagePrefix + Describe(fault), source, null)
         {

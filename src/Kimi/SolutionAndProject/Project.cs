@@ -736,14 +736,14 @@ public partial class Project
             try
             {
                 // SPEC 23.2.2: an exception keeps the valid records and adds the fault; a violated contract discards them.
-                result = fault is DiagnosticContractException contract ? DiagnosticFaults.Create(contract.Fault, contract.Message, this.FilePath) :
-                    fault is not null ? DiagnosticFaults.Create(DiagnosticFault.Exception, fault.Message, this.FilePath, diagnostics.Finalize(first, last)) :
+                result = fault is DiagnosticContractException contract ? DiagnosticFaults.Create(contract.Fault, contract, this.FilePath) :
+                    fault is not null ? DiagnosticFaults.Create(DiagnosticFault.Exception, fault, this.FilePath, diagnostics.Finalize(first, last)) :
                     diagnostics.Finalize(first, last, rejected);
             }
             catch (DiagnosticContractException ex)
             {
                 // SPEC 23.2.2: a violated contract discards every partial record and reports the fault.
-                result = DiagnosticFaults.Create(ex.Fault, ex.Message, this.FilePath);
+                result = DiagnosticFaults.Create(ex.Fault, ex, this.FilePath);
             }
 
             this.kimigayo.Render(result, this.Directory);
