@@ -24994,6 +24994,35 @@ R8-M* and R9-M* by the stage of the recording unit.
       record of the same key with other facts: `InternalInvariant_Kd`, round 1's B1); a direct base's reference as role 1 (a
       `contract.Bases` read in the Access check trips R7-N2a's row, and a published base part is a new shape column; O-r2-1); relating
       every uncovered declaration of one part (several role-0 facts and a second walk; C3).
+  - **E2-4b (Q-674; the delta `back\notes\r7-e2\e2-4b-delta.md` with B's rulings 1-9; the Front's agreement on C-405, ruling 6).** The
+    resolver's Access at uses records through `RecordAccess` (a use is its own location, the declaration whose accessibility does not
+    cover it related): ResolvePath's hidden member, SelectMember's computed Access (both sides), Names' absent or inaccessible
+    accessor, ReportUnavailableQualifier's inaccessible qualifier member (the first candidate the walk met). The member-access arm of
+    `ReportIssue` goes: after these sites no slot-only Access issue is a MemberAccess (the owner `Fail`s left are at declarations,
+    clauses and the conformance clause `Self is G.C`, probes p2g, p2cg). The resolver's misses, cycles and ambiguities are fact-less
+    (`Record(node, X, [])`: its lookups keep an ambiguity's flag, not its candidates; UnresolvedBinding_Kd and CyclicBinding_Kd carry
+    no argument). `FailUnselected`'s miss and QualificationRequired keep `Fail` and the stop's one store until R7-E5 (a lookup's
+    fallback after a failure it recorded; the repairs read the stop's scope, role and arity), and so do Aliases' segment miss and
+    Imports' default-alias miss (SelectQualifier records the ambiguity at the same node first) and ArrayInference's
+    independent-literal miss (an empty literal at a place decided later may hold its located Unsupported_Kd). A Contract parent that
+    no lookup selects takes the resolver's miss rule (FailMissing): an inaccessible qualified parent records InaccessibleBinding_Kd,
+    any other unselected parent (a missing one, or a Core declaration its ContractReference role filters) UnresolvedBinding_Kd; a
+    selected non-Contract stays InvalidConstraint_Kd. That miss sits where a Type use's does: one rule in the Types component,
+    `UnselectedTypeSite` (a generic at its Name, an unresolved walk at its failing qualifier step, else the use), read by
+    BindNamedType, BindConstructedType and BuildContract's parent (the Front's C-405 C1, B's ruling 9; not BindType itself, whose
+    EnclosingContractSelf reading would select an associated Type of the parent's Name inside a Contract). `RecordDuplicateGroups`
+    numbers its records (`RecordNumbered`), superseding R2.1 B1 (a), whose reason ("for one site") no longer holds: six sites share
+    the cause. So ValidateInheritedNames' nested Container and Value-role member record at themselves relating the inherited
+    declaration (the struct keeps its `Fail` until R7-E5), and Modules' reserved and reference names, Indexing's Semantics name and
+    Structs' written `self` record fact-less, numbered. R7-E5's inputs (B's ruling 8): d4c's inherited-name record sits at the
+    scope's head (the later `g`), not at the first; MemberLookup's remaining computed `Fail`s for a TypePath failure (Ambiguous,
+    MissingName, Unsupported).
+    - **Rejected.** A fact-less `Record` in FailUnselected (it publishes a dependent miss beside a recorded failure, m2); the
+      resolver's Member publishing "recorded" (N1's API); a guard reading the slot in FailUnselected (a consumer deciding
+      afterwards); the candidates form at MemberLookup's left of both readings (a representation change for one site: B3's rule
+      keeps it fact-less); QualificationRequired's facts in the record beside the stop's store (two stores for one stop); keeping the
+      member-access arm (a reader stating a false relation); a refused Type selection in the resolver for G1207 (a new N1
+      representation).
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
