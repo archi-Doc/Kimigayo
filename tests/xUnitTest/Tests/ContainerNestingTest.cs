@@ -125,8 +125,7 @@ public class ContainerNestingTest
     [InlineData("alias Outer<i32>.Sink", true)]
     [InlineData("alias Outer<i32>.Pair<i64>", true)]
     [InlineData("alias P", true)]
-    [InlineData("alias Marker
-alias P", true)]
+    [InlineData("alias Marker\nalias P", true)]
     [InlineData("alias C", false)]
     [InlineData("alias C<i32, i64>", false)]
     [InlineData("alias C<Missing>", false)]
