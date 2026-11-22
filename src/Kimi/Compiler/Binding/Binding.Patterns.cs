@@ -483,7 +483,7 @@ public sealed partial class Binding
 
         var qualifier = member.Left;
         var definition = this.TypeName(qualifier, scope); // A qualifier's row (SPEC 9.6), as its path walk publishes it.
-        if (definition is null || !ReferenceEquals(definition, expected.Symbol))
+        if (definition is null || !ReferenceEquals(definition.Named, expected.Symbol))
         {
             return null;
         }

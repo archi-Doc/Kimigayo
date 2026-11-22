@@ -45,6 +45,7 @@ public sealed partial class Binding
         ExcludedTest,
         ResetOnly,
         Declare,
+        Self,
         Candidates,
         Arms,
     }
@@ -192,6 +193,9 @@ public sealed partial class Binding
                         var name = (IdentifierNameKoto)entry.Node;
                         this.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, entry.Scope);
                         break;
+                    case IndexEntryKind.Self:
+                        this.DeclareSelf(entry.Node.BoundSymbol!, entry.Scope);
+                        break;
                     case IndexEntryKind.Candidates:
                         this.IndexArmCandidates((MatchKoto)entry.Node, entry.Arm, entry.Scope);
                         break;
@@ -331,6 +335,11 @@ public sealed partial class Binding
                 }
 
                 scope = container.IsRoot ? this.ModuleScope(node) : this.GetScope(node, scope);
+                if (container is not GroupKoto)
+                {
+                    stack.Push(new(node, scope, IndexEntryKind.Self)); // Below the children: popped after the declaration's subtree.
+                }
+
                 break;
             case FunctionKoto function:
                 function.PrepareBaseInitializer();

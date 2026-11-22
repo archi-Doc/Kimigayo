@@ -444,7 +444,7 @@ public sealed partial class Binding
         // and leaves the identity to inference.
         IsKoto? Failed(Koto item)
             => item is IsKoto { IsAssociatedConstraint: true } clause && this.SpecifiesContract(clause, root.RootContract) &&
-                ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol) &&
+                ReferenceEquals((clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol)?.Named, identity.Symbol) &&
                 (clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved ||
                     clause.BoundConstraint is null or { Kind: ConstraintKind.Error or ConstraintKind.Unresolved } ||
                     AssociatedIdentityType(clause.BoundConstraint) is not null)

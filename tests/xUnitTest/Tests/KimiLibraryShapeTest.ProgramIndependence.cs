@@ -231,7 +231,7 @@ public partial class KimiLibraryShapeTest
 
     // A declaration's own symbol state, which each pass rewrites (design C3) and the tree's lines do not print.
     private static string State(BindingSymbol s, Printer printer)
-        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={printer.Type(s.ContractSelf)} receiver={s.ReceiverIndex}" +
+        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={Where(s.SelfSymbol)}:{printer.Type(s.SelfSymbol?.Type)} receiver={s.ReceiverIndex}" +
             $" next={Where(s.Next)} selfOf={Where(s.SelfOf)} pair={Where(s.Pair)} optOut={Where(s.ObjectPayloadOptOut)} scope={Where(s.Scope.Owner)}" +
             $" contract={s.Contract is not null} property={s.Property is not null} case={s.EnumCase?.Ordinal} schema={s.Schema is not null}" +
             $" adt={s.Adt is not null} source={s.SourceState} resolving={s.Resolving} slot={s.Slot}" +

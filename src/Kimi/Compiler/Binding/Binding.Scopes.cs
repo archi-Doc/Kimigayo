@@ -66,6 +66,18 @@ public sealed partial class Binding
     private BindingSymbol Declare(Koto key, string name, BindingSymbolKind kind, Koto node, BindingScope scope)
         => this.DeclareKept(ref DeclaredSymbols.Slot(key), name, kind, node, scope);
 
+    // SPEC 6.1.5, 9.1, 9.5: a Self context declares its Self beside its formal parameters, so the stage walk finds it as it finds them; a
+    // group declares none, so the walk reaches the nearest outer one. A Contract's is its Self Type parameter; a struct's or enum's names
+    // the declaration with all its bindings (Kind Type, its Type set with the schema, BindSchemas), made once. Declared after the
+    // declaration's parameters (the indexing walk's Self entry), whose provisional slots count the table.
+    private void DeclareSelf(BindingSymbol declaration, BindingScope scope)
+    {
+        var self = declaration.IsContract ? this.ContractSelfType(declaration).Symbol! :
+            declaration.SelfSymbol ??= new("Self", BindingSymbolKind.Type, declaration.Declaration, scope) { SelfOf = declaration };
+        self.Scope = scope;
+        scope.AddParameters().Types["Self"] = self;
+    }
+
     private void DeclareParameter(FunctionKoto function, int index, BindingScope scope)
         => this.DeclareKept(ref DeclaredSymbols.ParameterSlot(function, index), function.Parameters[index].InternalName, BindingSymbolKind.Parameter, function, scope).Slot = index;
 

@@ -850,22 +850,6 @@ public sealed partial class Binding
         return path.Symbol;
     }
 
-    // SPEC 6.1.5, 9.1, 9.3: what a written Self selects, decided here for every reader. The first enclosing Container that is no group
-    // is its context: a Contract's Self is the Contract's Self Type parameter (the conforming-Type binder), never the Contract; a
-    // struct's or enum's is the declaration, which Self names with all its bindings.
-    private BindingSymbol? EnclosingSelf(BindingScope scope)
-    {
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Owner is DeclarationContainerKoto and not GroupKoto)
-            {
-                return current.Owner.BoundSymbol is { Declaration: ContractKoto } contract ? this.ContractSelfType(contract).Symbol : current.Owner.BoundSymbol;
-            }
-        }
-
-        return null;
-    }
-
     // A Type path's component, completed: judged (Supported) before ResolveMember hands it on as a qualifier or the path ends with it.
     private ResolvedPath ResolvePath(Koto syntax, BindingScope scope, LookupRole role, int arity = 0)
         => this.Supported(this.EvaluatePath(syntax, scope, role, arity));
@@ -908,12 +892,6 @@ public sealed partial class Binding
             return this.ResolveAdaptationTarget(syntax, scope);
         }
 
-        if (name == "Self" && this.EnclosingSelf(scope) is { } self)
-        {
-            // SPEC 9.7: Self has no Type parameters, so no candidate remains for a Self written with Type arguments.
-            return arity > 0 ? new(PathEnd.Unresolved, null, syntax) : new(PathEnd.Selected, self, syntax);
-        }
-
         return this.ResolveName(name, scope, syntax, role, arity);
     }
 
@@ -923,11 +901,6 @@ public sealed partial class Binding
         if (TypeSpelling(syntax) is not { } name)
         {
             return new(PathEnd.Unresolved, null, syntax);
-        }
-
-        if (name == "Self")
-        {
-            return this.EnclosingSelf(scope) is { } self ? new(PathEnd.Selected, self, syntax) : new(PathEnd.Unresolved, null, syntax);
         }
 
         var target = this.ResolveName(name, scope, syntax, LookupRole.Core, 0);
@@ -1123,7 +1096,7 @@ public sealed partial class Binding
         // they register every one may (G621's early read); a parameter's, a pair target's or `Self`'s candidates are premises, completed
         // later (an override's selection), so its Name stays a projection. The former decides with evidence.
         var associable = IsCore(left) && (left.Declaration is not (StructKoto or EnumKoto) || left.Kind != BindingSymbolKind.Type || !this.impls.Reached(ImplTable.AdmissionPoint.SelfClauses) ||
-            (left.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null).Found is not null));
+            (left.Named.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null).Found is not null));
         return new(associable ? PathEnd.Projection : PathEnd.Unresolved, null, member);
     }
 

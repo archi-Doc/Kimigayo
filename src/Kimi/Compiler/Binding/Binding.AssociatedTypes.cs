@@ -22,14 +22,15 @@ public sealed partial class Binding
     // own Type parameters replaces it; ContractType substitutes it by the conforming Type.
     internal BoundType ContractSelfType(BindingSymbol contract)
     {
-        if (contract.ContractSelf is { } existing)
+        if (contract.SelfSymbol is { } existing)
         {
-            return existing;
+            return existing.Type!;
         }
 
         var symbol = new BindingSymbol("Self", BindingSymbolKind.TypeParameter, contract.Declaration, this.scopes.GetValueOrDefault(contract.Declaration) ?? contract.Scope) { SelfOf = contract, Slot = -1 };
         symbol.WholeType = symbol.Type = this.types.Parameter("Self", BoundTypeKind.Parameter, symbol);
-        return contract.ContractSelf = symbol.Type;
+        contract.SelfSymbol = symbol;
+        return symbol.Type;
     }
 
     // SPEC 8.3.2, 8.5.2: a projection's Contract evidence, its written Contract, else the associated Type's declaring reference, else its

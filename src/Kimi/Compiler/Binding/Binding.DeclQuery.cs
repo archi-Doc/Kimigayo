@@ -155,7 +155,7 @@ public sealed partial class Binding
         foreach (var symbol in this.symbols.Values.In(this.pass))
         {
             symbols.Add(symbol);
-            AddSymbol(symbols, symbol.ContractSelf?.Symbol);
+            AddSymbol(symbols, symbol.SelfSymbol);
             AddAccessor(symbols, symbol.Property?.Getter);
             AddAccessor(symbols, symbol.Property?.Setter);
         }

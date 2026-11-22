@@ -227,7 +227,7 @@ public sealed partial class Binding
 
         if (qualifier.Type is not null)
         {
-            var originQualifier = qualifier.Declaration is not EnumKoto && qualifier.Schema is { Origins.Count: > 0 };
+            var originQualifier = qualifier.Declaration is not EnumKoto && qualifier.Named.Schema is { Origins.Count: > 0 };
             var callQualifier = originQualifier && IsCallee(member);
             if ((qualifier.Declaration is EnumKoto ? this.EnumQualifierType(member.Left, qualifier, scope, expected)
                 : this.BindType(member.Left, scope, this.TypeContext(member.Left, scope) with { CallQualifier = callQualifier })) is not { } qualifiedType)
@@ -266,7 +266,7 @@ public sealed partial class Binding
     private SideSelection QualifierSelection(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? type)
     {
         type = type is null ? null : this.ClassForm(type, scope, out _);
-        var requirementType = qualifier is null ? type : qualifier.IsContract ? null : qualifier.Type;
+        var requirementType = qualifier is null ? type : qualifier.IsContract ? null : qualifier.Named.Type;
         var requirement = requirementType is null ? null : this.RequirementMember(member, scope, requirementType, true);
         if (type is not null && (qualifier is null || qualifier.Type is not null || qualifier.Declaration is GroupKoto))
         {
