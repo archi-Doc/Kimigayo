@@ -323,6 +323,15 @@ public sealed partial class Binding
             case BindingFailure.NotObjectPayload when this.FactOf(index, ProblemFactKind.Related) is { } renouncing: // Role 0: the declaration that opts out, its own or an inherited base's.
                 ReportObjectPayload(node, store, problem, this.compilation.SyntaxOf(renouncing.Site));
                 break;
+            case BindingFailure.ArithmeticSelection when this.FactOf(index, ProblemFactKind.Constraint) is not null:
+                this.ReportArithmeticSelection(node, store, index, problem);
+                break;
+            case BindingFailure.ArithmeticDirection when this.FactOf(index, ProblemFactKind.Related) is not null:
+                this.ReportArithmeticDirection(node, store, index, problem);
+                break;
+            case BindingFailure.ArithmeticConformance when this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportArithmeticConformance(node, store, index, problem);
+                break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
                 break;

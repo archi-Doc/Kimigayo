@@ -23,8 +23,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<BoundType> directionSeeds = new(); // ValidateArithmeticDirections' seeds, a stack of ranges
-    private Dictionary<Koto, ArithmeticSelectionFailure>? arithmeticSelectionFailures;
-    private Dictionary<Koto, ArithmeticDirectionFailure>? arithmeticDirectionFailures;
 
     // SPEC 13.3.4: why the fixed provider route selects no unique requirement, in check order; the adapter explains each (DECISIONS
     // BU-111).
@@ -39,10 +37,6 @@ public sealed partial class Binding
     // The scaling rows' measure: the seeds whose rows this compilation's direction checks asked for (FirstRows), one per seed and view.
     internal int DirectionSeeds { get; private set; }
 
-    private readonly record struct ArithmeticSelectionFailure(BoundArithmetic Plan, BoundType Self, BoundType? Counterpart, KimiDeclarationId Id, ArithmeticSelectionCause Cause);
-
-    private readonly record struct ArithmeticDirectionFailure(BoundType Left, BoundType Right, KimiDeclarationId Id, BindingSymbol Ordinary, BindingSymbol Reverse, Koto OrdinaryUse, Koto ReverseUse);
-
     private static string ArithmeticOperatorText(KotoKind operation) => operation switch
     {
         KotoKind.Plus => "+",
@@ -53,18 +47,23 @@ public sealed partial class Binding
         _ => throw new ArgumentOutOfRangeException(nameof(operation)),
     };
 
-    // SPEC 13.3.3: an explicitly declared arithmetic conformance whose Self or counterpart is not eligible, at the conformance; the
-    // Contract declaration is related.
-    private static void ReportArithmeticConformance(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, ArithmeticConformanceFailure failure)
+    // SPEC 13.3.3: an explicitly declared arithmetic conformance whose Self or counterpart is not eligible, at the conformance, from its
+    // facts (ValidArithmeticConformance): the cause, the Contract declaration (Related, role 0, "contract": the arithmetic Contract the
+    // conformance declares) and a counterpart's Type (Instance at the Contract's Type parameter: the Type the conformance binds it to); a
+    // Self cause, which no source reaches, names Self.
+    private void ReportArithmeticConformance(Koto use, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        var note = failure.Cause switch
+        var cause = (ArithmeticConformanceCause)this.FactOf(index, ProblemFactKind.Reason)!.Value.Value;
+        var contract = this.compilation.SyntaxOf(this.FactOf(index, ProblemFactKind.Related)!.Value.Site);
+        var type = this.FactOf(index, ProblemFactKind.Instance) is { } bound ? DiagnosticTypeName(this.report.Value(bound)) : "Self";
+        var note = cause switch
         {
             ArithmeticConformanceCause.NotUserProvider => "Self must be an ordinary outer-owner struct or enum, not a built-in or compiler-closed Type",
             ArithmeticConformanceCause.LhsNotNumeric => "Every binding must give Lhs a built-in numeric Type",
             ArithmeticConformanceCause.RhsNotOwner => "Every binding must give Rhs outer owner Semantics, excluding string",
             _ => throw new UnreachableException(),
         };
-        use.Report(requirement, code, DiagnosticTypeName(failure.Type), failure.Contract.Name, note: note, evidence: [failure.Cause], related: [("contract", failure.Contract.Declaration, "arithmetic Contract declaration")]);
+        use.ReportIn(store, problem.Requirement, problem.Code, type, contract.BoundSymbol!.Name, note: note, evidence: [cause], related: [("contract", contract, "arithmetic Contract declaration")], condition: problem.Condition);
     }
 
     private Koto ArithmeticFactUse(BoundConstraint fact, BindingScope scope)
@@ -173,17 +172,27 @@ public sealed partial class Binding
 
             var reversed = KimiLibraryCatalog.IsLeftContract(id);
             var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
-            if (this.OppositeRow(counterpart, seed, oppositeId, scope) is not { Symbol: { Type.Components: [var argument] } opposite } other ||
+            if (this.OppositeRow(counterpart, seed, oppositeId, scope) is not { Symbol.Type.Components: [_] } other ||
                 this.MetInParent(seed, counterpart, id, oppositeId, scope))
             {
                 continue;
             }
 
+            // Transitional, R7-E5 (O6 (a), B's E3c-1 ruling): the owner keeps its first failure, its own record of an earlier round or another
+            // check's failure of the owner (probe d5), until R7-E5's per-problem inputs; the record itself is the premises' facts.
             if (this.RecordedFailure(scope.Owner) == BindingFailure.None)
             {
-                var here = this.ArithmeticRowUse(row, scope);
-                var there = this.ArithmeticRowUse(other, scope);
-                this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(other.Raw?.Subject ?? counterpart, argument, oppositeId, opposite, contract, there, here) : new(row.Raw?.Subject ?? seed, counterpart, id, contract, opposite, here, there));
+                var (ordinary, reverse) = reversed ? (other, row) : (row, other);
+                var (here, there) = (this.FactSite(this.ArithmeticRowUse(ordinary, scope)), this.FactSite(this.ArithmeticRowUse(reverse, scope)));
+                this.Record(
+                    scope.Owner,
+                    BindingFailure.ArithmeticDirection,
+                    [
+                        new(ProblemFactKind.Related, here, 0),
+                        new(ProblemFactKind.Instance, here, this.report.Keep(ordinary.Symbol!.Type!)),
+                        new(ProblemFactKind.Related, there, 1),
+                        new(ProblemFactKind.Instance, there, this.report.Keep(reverse.Symbol!.Type!)),
+                    ]);
             }
 
             pair = (row, other);
@@ -273,17 +282,45 @@ public sealed partial class Binding
         return found;
     }
 
-    private void ReportArithmeticSelection(Koto use, DiagnosticCollection? store, DiagnosticRequirement requirement, ArithmeticSelectionFailure failure)
+    // SPEC 13.3.4: a fixed provider route's failed selection, recorded at the operation: the requirement it could not prove by one
+    // conformance (Constraint: the provider is the route's Contract, applied to the counterpart when it has one), the cause (Reason) and
+    // each candidate conformance the route considered (Related, role 0, "conformance": its premise or declaration, then the Contract
+    // instance it states as its Instance), in the route's order. A failure path only.
+    private BoundType? RecordArithmeticSelection(Koto use, BoundType self, BoundType? counterpart, KimiDeclarationId id, ArithmeticSelectionCause cause, BoundArithmetic? plan)
     {
-        var related = new (string Role, Koto Node, string? Message)[failure.Plan.Candidates.Count];
-        for (var i = 0; i < related.Length; i++)
+        var contract = counterpart is null || id == KimiDeclarationId.Negatable ? this.Library.GetSymbol(id)! : this.ArithmeticReference(id, counterpart);
+        var at = SourceRef.Of(use);
+        var count = plan?.Candidates.Count ?? 0;
+        var facts = new ProblemFact[2 + (2 * count)];
+        facts[0] = new(ProblemFactKind.Constraint, at, this.report.Keep(this.InternConstraint(new(ConstraintKind.Contract, self, contract: contract))));
+        facts[1] = new(ProblemFactKind.Reason, at, (long)cause);
+        for (var i = 0; i < count; i++)
         {
-            related[i] = ("conformance", failure.Plan.Sources[i], DiagnosticTypeName(failure.Plan.Candidates[i].Type!));
+            var source = this.FactSite(plan!.Sources[i]);
+            facts[2 + (2 * i)] = new(ProblemFactKind.Related, source, 0);
+            facts[3 + (2 * i)] = new(ProblemFactKind.Instance, source, this.report.Keep(plan.Candidates[i].Type!));
         }
 
-        var counterpartText = failure.Counterpart is { } counterpart ? DiagnosticTypeName(counterpart)
-            : use is UnaryKoto ? "none (unary operation)" : "not independently typed";
-        var note = failure.Cause switch
+        return this.Record(use, BindingFailure.ArithmeticSelection, facts);
+    }
+
+    // The selection's record from its facts (RecordArithmeticSelection): the operator and Contract from the requirement's Contract, the
+    // provider its subject, the counterpart its Contract's argument (none for a unary use; a literal operand is not independently typed).
+    private void ReportArithmeticSelection(Koto use, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var requirement = this.report.Constraint(facts[0]);
+        var cause = (ArithmeticSelectionCause)facts[1].Value;
+        var id = ArithmeticContractSyntax.Identity(requirement.Contract)!.Value;
+        var related = new (string Role, Koto Node, string? Message)[(facts.Length - 2) / 2];
+        for (var i = 0; i < related.Length; i++)
+        {
+            related[i] = ("conformance", this.compilation.SyntaxOf(facts[2 + (2 * i)].Site), DiagnosticTypeName(this.report.Value(facts[3 + (2 * i)])));
+        }
+
+        var counterpartText = !ReferenceEquals(requirement.Contract, this.Library.GetSymbol(id)) && requirement.Contract!.Type is { Components: [var counterpart] }
+            ? DiagnosticTypeName(counterpart) : use is UnaryKoto ? "none (unary operation)" : "not independently typed";
+        var note = cause switch
         {
             ArithmeticSelectionCause.NonNumericLeft => "A right provider requires a built-in numeric left operand",
             ArithmeticSelectionCause.Unproven => "A structurally fitting conditional conformance remains unproven",
@@ -293,12 +330,31 @@ public sealed partial class Binding
         };
         use.ReportIn(
             store,
-            requirement,
-            DiagnosticCode.ArithmeticSelection_Kd,
-            ArithmeticOperatorText(ArithmeticContractSyntax.Operator(failure.Id)),
-            this.Library.GetSymbol(failure.Id)!.Name,
+            problem.Requirement,
+            problem.Code,
+            ArithmeticOperatorText(ArithmeticContractSyntax.Operator(id)),
+            this.Library.GetSymbol(id)!.Name,
             note: note,
-            evidence: [DiagnosticTypeName(failure.Self), counterpartText, failure.Cause],
-            related: related);
+            evidence: [DiagnosticTypeName(requirement.Subject!), counterpartText, cause],
+            related: related,
+            condition: problem.Condition);
+    }
+
+    // SPEC 13.3.4: the direction contradiction from its facts (ValidateArithmeticRows): the ordinary premise (Related, role 0,
+    // "ordinary") and the reverse one (role 1, "reverse"), each with the Contract instance it states (Instance); the pair is the reverse
+    // premise's argument (left) and the ordinary premise's (right).
+    private void ReportArithmeticDirection(Koto owner, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var (ordinary, reverse) = (this.report.Value(facts[1]), this.report.Value(facts[3]));
+        var id = ArithmeticContractSyntax.Identity(ordinary.Symbol)!.Value;
+        owner.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            ArithmeticOperatorText(ArithmeticContractSyntax.Operator(id)),
+            evidence: [DiagnosticTypeName(reverse.Components[0]), DiagnosticTypeName(ordinary.Components[0]), ordinary.Symbol!.Name, reverse.Symbol!.Name],
+            related: [("ordinary", this.compilation.SyntaxOf(facts[0].Site), ordinary.Symbol.Name), ("reverse", this.compilation.SyntaxOf(facts[2].Site), reverse.Symbol.Name)],
+            condition: problem.Condition);
     }
 }
