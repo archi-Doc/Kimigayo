@@ -623,10 +623,14 @@ public sealed partial class Binding
             return true;
         }
 
-        var call = evaluation.Call;
-        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: trial.ConstraintFailure));
-        this.RecordRejected(call, this.rejectedRows.Count - 1);
-        this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
+        // A Pending outcome records no candidate (R7-M62: its record shows none).
+        var pending = state == CandidateApplicability.Pending;
+        if (!pending)
+        {
+            this.CandidateFacts(solution.Function, trial.ConstraintFailure);
+        }
+
+        this.FailWaitingSelection(evaluation.Call, pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         return false;
     }
 

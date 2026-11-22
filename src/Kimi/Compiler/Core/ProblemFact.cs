@@ -23,15 +23,19 @@
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
 // the subject and as its Value an index in the kept Origin records, a Related fact a location the record shows (its own or a related one) and as its Value the
 // role's ordinal in its code's adapter row, a Count fact the subject and as its Value a count the requirement states, in the row's order,
-// a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names (ParameterShapeMismatch_Kd's packs
-// its mode, the other mode and the matching key, a byte each), and a Key fact the conflicting
+// a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names, or its code's packed rows
+// (ParameterShapeMismatch_Kd's packs its mode, the other mode and the matching key, a byte each; a selection's candidate its CandidateFlags
+// and two receivers), and above them an ordinal into its party's own parameters or Type parameters (a candidate's receiver parameter, a
+// correlation's slot, E3c-2's Case index, a Callable call's position in its candidates' common signature), and a Key fact the conflicting
 // parameter and as its Value an index in BindingReport's kept sides, the Type at which two parameter shapes' matching keys overlap (SPEC
 // 7.4), neither side of a mismatch (R7-E2), and an Instance fact (R7-E2 E2-5b) as its Value an index in BindingReport's kept sides, a
 // Type its location does not determine, read by its site: at the preceding Related fact's own site, the instance that party is (a related
 // Contract's or associated declaration's declaring instance, or a construction's constructed Type), and at a member or Type parameter
 // declaration of that party, the Type that instance binds it to; a kind that names no value has -1; a problem has at most one fact of
 // each kind but its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order
-// its site records them, and its Count and Instance facts, in their row's order.
+// its site records them, and its Count and Instance facts, in their row's order; a selection's record is the subject's facts, then per
+// party its Related (role 3 or 5) and that party's entries up to the next party Related, in the order its adapter renders them, read by
+// position, never by a kind's first fact.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.

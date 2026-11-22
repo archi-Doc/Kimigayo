@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -303,15 +304,16 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.UnboundTypeArgument);
         }
 
-        var start = this.rejectedRows.Count;
+        // A reference use, no call: each earlier failure returns, so the record is always written (R7-E3 E3b delta 2.4).
         foreach (var candidate in group)
         {
             var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-            this.rejectedRows.Add(new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), null, UnfixedReference: true));
+            this.CandidateFacts((FunctionKoto)candidate.Declaration, null, CandidateFlags.UnfixedReference, this.FunctionItemSignature(item) is { } signature ? (use, signature, null) : null);
         }
 
-        this.RecordRejected(use, start);
-        return this.Fail(use, BindingFailure.Ambiguous);
+        this.Record(use, BindingFailure.Ambiguous, CollectionsMarshal.AsSpan(this.candidateFacts));
+        this.candidateFacts.Clear();
+        return null;
     }
 
     // SPEC 10.5: a reference whose explicit Type arguments select exactly one candidate does not need the call's signature; it

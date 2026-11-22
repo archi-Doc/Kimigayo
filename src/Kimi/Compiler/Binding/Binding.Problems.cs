@@ -296,6 +296,10 @@ public sealed partial class Binding
             case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportAssociatedAmbiguity(node, store, index, problem);
                 break;
+            case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 3 }:
+                // Role 3, "candidate": a declaration a selection considered and rejected or could not order (CandidateFacts).
+                this.ReportCandidates(node, store, index, problem);
+                break;
             case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportDisagreement(node, store, index, problem);
                 break;

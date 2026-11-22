@@ -561,7 +561,8 @@ public sealed partial class Binding
         }
 
         this.callableSelectionFailures[call] = (start, candidates.Length, position, mode, other);
-        return this.FailWaitingSelection(call, failure);
+        this.MarkWaitingHeaders(call); // As a failed selection (FailWaitingSelection), with its parties in its own store until its form.
+        return this.Fail(call, failure, true);
     }
 
     private bool ReportCallableSelection(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
