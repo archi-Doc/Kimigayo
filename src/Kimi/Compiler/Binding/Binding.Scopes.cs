@@ -8,10 +8,11 @@ namespace Kimi.Compiler;
 // Scopes and symbols: the scope tree and the symbol tables of its scopes.
 // - Responsibility: one scope per key, created once and attached to its parent each pass (GetScope; a source document's execution
 //   scope, which its top-level statements in one module share, DocumentScope); the scope kept for a node (ScopeOf) and the one it
-//   binds in (NodeScope); a symbol's declaration in its scope's Type or value table with the duplicate rule (Declare); a function
-//   parameter's symbol by its function and index, declared (DeclareParameter) and read (ParameterSymbol); the `symbols` and `scopes`
-//   families' accessors (DeclaredSymbols, KeptScopes), the order of any node family's rows over the modules (FamilyRows) and the kept
-//   families' values (KeptValues).
+//   binds in (NodeScope); a symbol's declaration in its scope's Type or value member table, or, for a formal parameter of the scope's
+//   declaration, in its formal-parameter table of that namespace (BindingScope.Parameters), with the duplicate rule across both
+//   (Declare); a Self context's Self in its Type formal-parameter table (DeclareSelf); a function parameter's symbol by its function
+//   and index, declared (DeclareParameter) and read (ParameterSymbol); the `symbols` and `scopes` families' accessors (DeclaredSymbols,
+//   KeptScopes), the order of any node family's rows over the modules (FamilyRows) and the kept families' values (KeptValues).
 // - Inputs: the indexing walk and the declaration steps that declare a symbol. Outputs: scopes, symbols, each declaring node's
 //   BoundSymbol, Duplicate failures.
 // - Invariants: scopes and symbols are kept across passes in their key's module's NodeColumns and reset by ResetPass (DECISIONS
@@ -19,7 +20,7 @@ namespace Kimi.Compiler;
 //   node's SyntaxId, a document's execution scope in the composite column at its module root's id by document, the module the one that
 //   holds the document's top-level items now (AST2), so a document whose items sit in two modules has a scope in each (the owner's
 //   O-380 (a)).
-// - Prohibitions: no name is resolved here (lookup is Binding.Names.cs's and Binding.Types.cs's); Declare reads a scope's table only
+// - Prohibitions: no name is resolved here (lookup is Binding.Names.cs's and Binding.Types.cs's); Declare reads a scope's tables only
 //   to chain a name's symbols (Next) and apply the duplicate rule. No other file keys either family by anything but a node: a
 //   parameter's symbol goes through DeclareParameter and ParameterSymbol, a document's scope through DocumentScope and ScopeOf
 //   (DECISIONS BU-220's key rules).
@@ -94,9 +95,10 @@ public sealed partial class Binding
             return symbol;
         }
 
-        // SPEC 9.1, 4.4.1: a kind's namespace, and whether it is a formal parameter of the scope's declaration (BindingScope.Parameters).
-        var values = kind is not (BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.AssociatedType or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget);
-        var parameter = kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.LengthParameter;
+        // SPEC 9.2, 9.1, 4.4.1: a kind's namespace, and whether it is a formal parameter of the scope's declaration (BindingScope.Parameters).
+        var values = kind is not (BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.AssociatedType or BindingSymbolKind.TypeParameter or
+            BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter);
+        var parameter = kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.LengthParameter;
         var members = values ? scope.Values : scope.Types;
         var declared = parameter ? scope.AddParameters() : scope.Parameters;
         var parameters = !values ? declared?.Types : parameter ? declared!.AddValues() : declared?.Values;

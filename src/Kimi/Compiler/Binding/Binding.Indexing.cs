@@ -13,13 +13,15 @@ namespace Kimi.Compiler;
 //   slot, in one context (IndexEntryKind), and resets it once before the first write to it in the pass (ResetEntry: at its entry,
 //   or, for an attribute of a leading chain, at its chain owner's entry, since the declaration's row judges the Attributes that
 //   attach to it, SPEC 6.7). In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
-//   functions, parameters, locals, generic and length parameters, enum cases, pattern bindings and guard candidates); a test function
+//   functions, parameters, locals, generic and length parameters (in their scope's formal-parameter table, BindingScope.Parameters),
+//   each struct's, enum's and Contract's Self (DeclareSelf), enum cases, pattern bindings and guard candidates); a test function
 //   the build does not include is resolved without indexing its signature or body, which the ExcludedTest context walks for its
 //   Layout and misplaced Test attributes only; a valid one is still declared, so its declaration is judged in every build (SPEC
 //   6.7.2, 18.6), and access keeps it from every product candidate set. A node no context indexes (an effect item's selector and
 //   Name, SPEC 8.11.1; a handled attribute's operand) has only its row reset (ResetOnly). The steps keep each action after the
-//   subtree it follows: a loop binding's declaration after its entry, an arm's candidates after its Pattern's subtree, a match's arms
-//   after its Expression's.
+//   subtree it follows: a loop binding's declaration after its entry, a Self context's Self after its declaration's subtree (so its
+//   parameters' provisional slots do not count it), an arm's candidates after its Pattern's subtree, a match's arms after its
+//   Expression's.
 // - Inputs: the numbered source trees and the restored library (Library.Restore); the scopes and symbols kept across passes.
 // - Outputs: the pass's nodes, pattern nodes, aliases, scopes and symbols, and the failures recorded in this file: Duplicate (Declare,
 //   a repeated Semantics parameter), InvalidTypeFormation (a second self parameter, a property with neither storage nor getter),
@@ -37,7 +39,8 @@ public sealed partial class Binding
 
     // An entry of the walk: a context, in which a node's row runs (Index; Pattern, a match arm's Pattern and its subtree: pattern
     // nodes and their locals; ExcludedTest, an excluded test's subtree; ResetOnly, rows reset and nothing indexed), or a step a row
-    // places after a subtree (Declare, a loop binding's declaration; Candidates, an arm's guard candidates; Arms, a match's arms).
+    // places after a subtree (Declare, a loop binding's declaration; Self, a Self context's Self; Candidates, an arm's guard
+    // candidates; Arms, a match's arms).
     private enum IndexEntryKind : byte
     {
         Index,
