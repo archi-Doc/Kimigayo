@@ -261,8 +261,9 @@ internal sealed partial class MirBorrows
         return data.Terminator.Kind == MirTerminatorKind.Call ? int.MaxValue : 0;
     }
 
-    // A location's operands in operand order (MirUses's): an rvalue's, but a Reborrowing PairAcquire's, which is its Use's borrow; a
-    // SwitchInt's operand; a Call's Value callee, then its arguments.
+    // A location's operands in operand order (MirUses's): an rvalue's, but a Reborrowing PairAcquire's, which is its Use's borrow; an
+    // Opaque site's kept uses' values, its activation's inputs as a Call's operands are (DECISIONS Z17c); a SwitchInt's operand; a Call's
+    // Value callee, then its arguments.
     private void Operating(MirLocation at)
     {
         this.operating.Clear();
@@ -274,6 +275,14 @@ internal sealed partial class MirBorrows
             {
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 this.operating.AddRange(this.body.Operands.Slice(rvalue.Start, rvalue.Count));
+            }
+
+            foreach (var use in this.KeptUses(statement))
+            {
+                if (use is { Projection: 0, Root: >= 0 })
+                {
+                    this.operating.Add(MirOperand.Copy(use));
+                }
             }
 
             return;

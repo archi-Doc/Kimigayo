@@ -992,7 +992,7 @@ fn pair @110
   _1: string temp @113
   _2: (i32, i32) temp @114
   _3: string temp @117
-  opaque 0 @112: _1 _2 _3
+  opaque 0 @112 kept 3: _1 _2 _3
   bb0:
       StorageLive(_1) @113
     * _1 = const "" @113
