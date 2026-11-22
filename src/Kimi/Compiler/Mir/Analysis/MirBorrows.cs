@@ -30,6 +30,8 @@
 // - the effect rule and its initialization proof: MirBorrows.Effects;
 // - a default template's slot-rooted test, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
 // - a Place's steps and their classes, E17's Inline row included: MirSteps (R4-M100);
+// - a Place's and a borrow's exact lent position (the storage past each dereference, by the borrow that formed the reference):
+//   MirBorrows.Lent (Z5-F), over MirBorrows.Loans' store record;
 // - the problems' codes and facts, and PD13's held view: MirBorrows.Reports, its fact MirBorrows.CallRows' (R4-M148);
 // - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
