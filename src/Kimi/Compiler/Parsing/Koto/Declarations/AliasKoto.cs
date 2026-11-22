@@ -19,7 +19,7 @@ public sealed class AliasKoto : DeclarationKoto
     /// <summary>Gets the optional source-local qualifier name.</summary>
     public string? Name { get; }
 
-    /// <summary>Gets a Container path requiring Type arguments or Origin bindings.</summary>
+    /// <summary>Gets the target unless it is a plain Name path (<see cref="QualifiedName"/>): Type arguments, Origin bindings or another Type.</summary>
     public Koto? TargetSyntax { get; }
 
     /// <summary>Initializes a new instance of the <see cref="AliasKoto"/> class.</summary>
@@ -27,7 +27,7 @@ public sealed class AliasKoto : DeclarationKoto
     /// <param name="alias">The qualified name segments.</param>
     /// <param name="name">The optional qualifier name.</param>
     /// <param name="span">The declaration location.</param>
-    /// <param name="targetSyntax">The optional bound Container path.</param>
+    /// <param name="targetSyntax">The target unless it is a plain Name path.</param>
     public AliasKoto(ref TokenReader reader, List<string> alias, string? name = null, SourceSpan span = default, Koto? targetSyntax = null)
         : base(ref reader, span)
     {

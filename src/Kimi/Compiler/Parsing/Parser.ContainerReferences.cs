@@ -361,21 +361,4 @@ public static partial class Parser
 
         return path;
     }
-
-    internal static bool IsBoundContainerReference(ref TokenReader reader)
-    {
-        for (var i = 0; ; i++)
-        {
-            var kind = reader.PeekKind(i);
-            if (kind is TokenKind.Separator or TokenKind.EndBlock or TokenKind.StartBlock or TokenKind.Invalid)
-            {
-                return false;
-            }
-
-            if (kind is TokenKind.LessThan or TokenKind.OpenParenthesis or TokenKind.OpenBrace)
-            {
-                return true;
-            }
-        }
-    }
 }
