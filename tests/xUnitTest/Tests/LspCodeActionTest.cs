@@ -121,7 +121,7 @@ public sealed class LspCodeActionTest : IDisposable
     {
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
-        File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"OutputKind=\"Application\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         var path = Path.Combine(folder, file);
         File.WriteAllText(path, text);
         return path;

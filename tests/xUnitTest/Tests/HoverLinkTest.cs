@@ -111,7 +111,7 @@ public sealed class HoverLinkTest
     public void ARootWithoutADirectoryNamesAndLinksFromTheCurrentDirectoryItsCompilationCaptured()
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         compilation.CollectDocumentation = true;
         const string source = "/// See [peer](B.kimi).\nstruct Value\n";

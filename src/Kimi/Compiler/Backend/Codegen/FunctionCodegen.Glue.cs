@@ -141,7 +141,7 @@ internal sealed partial class FunctionCodegen
 
         if (step.Kind == MirDropStepKind.Run)
         {
-            if (this.NextTarget() is { } glue && step.First <= step.Last && this.Laid(type) is { } element)
+            if (this.NextTarget() is { } glue && this.Laid(type) is { } element)
             {
                 var guard = this.Test(this.Own(step.Parent));
                 // A Run is its elements from Last down to First (MirDropStepKind.Run's definition, Mir's order of a fixed array).

@@ -312,21 +312,38 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     // or a Sealed handle's payload), destroys a Function value, or releases a handle whose payload is not Sealed; an abstract part not
     // proven Copy, whose instance decides, is the Limit (DECISIONS R4-M147); a Sealed recursive handle ends. A part past the walk's depth
     // bound, also below a growing recursive handle, is Deep (DECISIONS R4-M153). An observing part is the decided answer (MirOutcome).
+    // A fixed array of constant length 0 observes nothing (SPEC 4.1: it destroys nothing), one Logger does.
     [Fact]
     public void DestructionObservesUserDropsAndUnknownParts()
     {
         var (body, c) = Probe(
             "func probe<T, C>(holder: Holder, logger: Logger, loggers: Array<Logger>, owned: obj/Logger, shared: rc/Plain, atomic: arc/Plain, " +
             "based: obj/Base, action: () -> (), value: T, copied: C, chain: Chain, tree: Tree, forest: Forest, table: Table, logged: Logged, " +
-            "nest: Nest<i32>)\n    C is Copy\n    return\n");
+            "nest: Nest<i32>, none: [0 of Logger], one: [1 of Logger])\n    C is Copy\n    return\n");
         var entered = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             [("holder", "None"), ("logger", "Decided"), ("loggers", "Decided"),
                 ("owned", "Decided"), ("shared", "None"), ("atomic", "None"),
                 ("based", "Decided"), ("action", "Decided"), ("value", "Limit"),
                 ("copied", "None"), ("chain", "None"), ("tree", "None"), ("forest", "None"),
-                ("table", "None"), ("logged", "Decided"), ("nest", "Deep")],
+                ("table", "None"), ("logged", "Decided"), ("nest", "Deep"), ("none", "None"), ("one", "Decided")],
             Parameters(body).Select(x => (x.Name, MirTypes.Observation(x.Type, c.Types, body.Key.Decl, entered).ToString())).ToArray());
+    }
+
+    // SPEC 4.1, 16.3.2 (R8-X1 U3): a fixed array of constant length 0 has no element, so destroying it destroys nothing whatever its
+    // element is, and a Tuple, an Option or a struct whose only part that may need a drop is one needs none; one element, a symbolic
+    // length (which may be other than 0) and an Array of them (its storage) may.
+    [Fact]
+    public void AFixedArrayWithoutAnElementDestroysNothing()
+    {
+        var (body, c) = Probe(
+            "struct Empty {a}\n    var none: [0 of Logger during a]\n" +
+            "func probe<length N>(none: [0 of Logger], pair: ([0 of Logger], i32), maybe: Option<[0 of Logger]>, empty: Empty, " +
+            "one: [1 of Logger], many: [N of Logger], array: Array<[0 of Logger]>)\n    return\n");
+        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
+        Assert.Equal(
+            [("none", false), ("pair", false), ("maybe", false), ("empty", false), ("one", true), ("many", true), ("array", true)],
+            Parameters(body).Select(x => (x.Name, MirTypes.MayNeedDrop(c.Types, x.Type, seen))).ToArray());
     }
 
     // SPEC 8.11.2 (DECISIONS R4-M58): a value holds raw authority where a part is a raw pointer or an rc handle; each Type is walked once
