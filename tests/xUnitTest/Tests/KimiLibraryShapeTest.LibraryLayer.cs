@@ -155,7 +155,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheCapabilityMemosEndWithTheirEpoch()
     {
-        var c = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var c = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs", "examples", "Hello", "Hello.kimi")));
         c.Bind();
         var binding = c.Binding;
@@ -328,7 +328,7 @@ public partial class KimiLibraryShapeTest
                 "syntax" => DiagnosticCorpus.Syntax(subject).Source,
                 _ => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
             };
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         }
 
@@ -345,7 +345,7 @@ public partial class KimiLibraryShapeTest
         var math = new DependencyNode("math@1", new("math.kimiproj", new() { OutputKind = OutputKind.Library }, [], []), 1, "Math");
         root.Edges.Add("Geometry", geometry.Key);
         geometry.Edges.Add("Math", math.Key);
-        Assert.True(c.Prepare(WindowsProfile.Target, new([root, geometry, math])));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target, new([root, geometry, math])));
         string[] modules = ["Application", "Geometry", "Math"];
         for (var i = 0; i < modules.Length; i++)
         {

@@ -51,7 +51,7 @@ public class CoreModelTest
 
     // SPEC 22 (O-79 (a)): the IR target and the pointerWidth Condition are the target's; isize and usize keep the profile's width.
     [Theory]
-    [InlineData(WindowsProfile.Target, 64)]
+    [InlineData("x86_64-pc-windows-msvc", 64)]
     [InlineData("i686-pc-windows-msvc", 32)]
     [InlineData("avr-unknown-unknown", 16)]
     public void PointerSizedIntegersKeepTheProfileWidth(string target, long width)
@@ -81,33 +81,41 @@ public class CoreModelTest
         Assert.False(compilation.Variables.TryGetValue("pointerWidth", out _));
     }
 
-    // The profile's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's supplies by name),
-    // pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library), kernel32 providing every runtime
+    // The target table (IMPL 21.4): one row today, windows-x64, whose triple is the literal the [InlineData] rows name. Each row's reserved
+    // supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's supplies by name), pairwise disjoint
+    // symbol sets (IMPL 21.2: an external symbol has one providing library). The Windows row: kernel32 providing every runtime
     // declaration (IMPL 21.4.7), and IMPL 21.2's reserved external names.
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
-        var supplies = WindowsProfile.Supplies;
-        Assert.Equal(["kernel32", "kimi_backend"], supplies.Select(static x => x.Name));
-        Assert.Equal(["import", "static"], supplies.Select(static x => x.Kind));
-        for (var i = 1; i < supplies.Length; i++)
+        Assert.Same(TargetProfile.Windows, Assert.Single(TargetProfile.Rows));
+        Assert.Equal("x86_64-pc-windows-msvc", TargetProfile.Windows.Target);
+        foreach (var row in TargetProfile.Rows)
         {
-            Assert.True(string.CompareOrdinal(supplies[i - 1].Name, supplies[i].Name) < 0);
-        }
-
-        for (var i = 0; i < supplies.Length; i++)
-        {
-            Assert.Same(supplies[i], WindowsProfile.Supply(supplies[i].Name));
-            for (var j = i + 1; j < supplies.Length; j++)
+            var supplies = row.Supplies;
+            for (var i = 1; i < supplies.Length; i++)
             {
-                Assert.Empty(supplies[i].Symbols.Intersect(supplies[j].Symbols, StringComparer.Ordinal));
+                Assert.True(string.CompareOrdinal(supplies[i - 1].Name, supplies[i].Name) < 0);
             }
+
+            for (var i = 0; i < supplies.Length; i++)
+            {
+                Assert.Same(supplies[i], row.Supply(supplies[i].Name));
+                for (var j = i + 1; j < supplies.Length; j++)
+                {
+                    Assert.Empty(supplies[i].Symbols.Intersect(supplies[j].Symbols, StringComparer.Ordinal));
+                }
+            }
+
+            Assert.Null(row.Supply("codec"));
+            Assert.Null(row.Supply(null));
         }
 
-        Assert.Null(WindowsProfile.Supply("codec"));
-        Assert.Null(WindowsProfile.Supply(null));
-        var kernel32 = WindowsProfile.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
-        Assert.Subset(kernel32, WindowsProfile.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
-        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], WindowsProfile.ReservedSymbols);
+        var windows = TargetProfile.Windows;
+        Assert.Equal(["kernel32", "kimi_backend"], windows.Supplies.Select(static x => x.Name));
+        Assert.Equal(["import", "static"], windows.Supplies.Select(static x => x.Kind));
+        var kernel32 = windows.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
+        Assert.Subset(kernel32, windows.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
+        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], windows.ReservedSymbols);
     }
 }

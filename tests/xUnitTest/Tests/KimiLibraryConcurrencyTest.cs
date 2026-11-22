@@ -25,7 +25,7 @@ public sealed class KimiLibraryConcurrencyTest
     [Fact]
     public void ConcurrentCompilationsLeaveTheFrozenLibraryUnchanged()
     {
-        var library = KimiLibrary.Of(TargetTriple.Parse(WindowsProfile.Target));
+        var library = KimiLibrary.Of(TargetTriple.Parse(TargetProfile.Windows.Target));
         var probe = Compile(string.Empty);
         Assert.True(probe.Bind().IsComplete);
         Assert.Same(library, probe.Library);
@@ -59,7 +59,7 @@ public sealed class KimiLibraryConcurrencyTest
     private static Compilation Compile(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         return c;
     }

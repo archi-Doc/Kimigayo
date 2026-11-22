@@ -179,7 +179,7 @@ public partial class ImplicitBaseCallTest
     public void TheBaseClauseMayBeInAnotherFragment(bool reversed)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var first = new SourceDocument("leaf.kimi", "struct Leaf\n    public let extra: i32 = 2\nlet leaf = Leaf.init()\nrequire leaf.extra == 2 else => $abort(\"extra\")");
         var second = new SourceDocument("base.kimi", "open struct Base\n    protected init() => ()\nstruct Leaf: Base");
         c.Kotonoha.AddSource(reversed ? second : first);

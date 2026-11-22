@@ -62,8 +62,9 @@ public sealed partial class Binding
         _ => false,
     };
 
-    // A name evaluates what its symbol is; a Property with a custom accessor is its accessor calls.
-    private HirOp NameOp(Koto node) => node.BoundSymbol?.Kind switch
+    // A name evaluates what its symbol is; a Property with a custom accessor is its accessor calls. A projection path (its published
+    // lookup PathEnd.Projection, SPEC 8.5.2, 9.6) names a Type whatever its symbol: a Type reading, which nothing evaluates.
+    private HirOp NameOp(Koto node) => HirTables.LookupOf(node) == PathEnd.Projection ? HirOp.Syntax : node.BoundSymbol?.Kind switch
     {
         null => node is MemberAccessKoto { BindingState: BindingState.Resolved } ? HirOp.PrimitiveOp : HirOp.Name, // The metadata of a sequence.
         BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate or

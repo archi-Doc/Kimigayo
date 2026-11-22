@@ -20,8 +20,8 @@ namespace Kimi.Compiler;
 //   the top two layers of their parameter Types; Signatures that differ only deeper share a hash and are compared pairwise)
 //   and a Contract's same-name requirements with those they inherit (SPEC 8.4.2).
 // - Inputs: the declared symbols and scopes; the bound parameter Types. Outputs: each header's Type, its Signature state (BeginQuery,
-//   CompleteQuery, AbandonQuery), FnSig, and the ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are
-//   Binding.ParameterShapes.cs's.
+//   CompleteQuery, AbandonQuery; FailQuery and the declaration's CyclicBinding_Kd by the kind's re-entry rule, ReenterHeader), FnSig,
+//   and the ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are Binding.ParameterShapes.cs's.
 // - Invariants: a header is its declaration's, never the body that demands it (BindHeader binds it outside any body). FnSig copies
 //   nothing: a function's parameter Types are its parameter symbols' (BindFunctionHeader's: the Types BindType published on its
 //   parameters, BindType's partial value while a pending associated Type keeps the header open), its result the symbol's Type (likewise),
@@ -140,11 +140,19 @@ public sealed partial class Binding
     {
         // Resolving is the variable binding's own Running flag (interim until R7-D2 d4, Binding.DeclQuery). While an associated-inference
         // request is open no header is bound: its runs read the headers bound before it (R7-C4 design R4, ruling 6 (ii)).
-        if (this.inferenceRequest >= 0 || symbol.Declaration is FunctionKoto { IsAnonymous: true } || symbol.Resolving ||
-            this.BeginQuery(symbol, DeclQueryKind.Signature) != DeclState.NotStarted)
+        if (this.inferenceRequest >= 0 || symbol.Declaration is FunctionKoto { IsAnonymous: true } || symbol.Resolving)
         {
             // An anonymous header belongs to its fixed expression context, including on a later binding pass.
             return;
+        }
+
+        switch (this.BeginQuery(symbol, DeclQueryKind.Signature))
+        {
+            case DeclState.Running:
+                this.ReenterHeader(symbol);
+                return;
+            case not DeclState.NotStarted:
+                return;
         }
 
         // A header is its declaration's, never the body that binds it lazily (SPEC 15.6.1; DECISIONS R4-M101 E3).
@@ -173,6 +181,20 @@ public sealed partial class Binding
         finally
         {
             this.formingBody = saved;
+        }
+    }
+
+    // The Signature kind's re-entry rule (Binding.DeclQuery's row; SPEC 11.6 "Cycles between inferred initializers are errors", SPEC 9):
+    // a demand of a Property's header while it is computed and its Type is not yet formed is CyclicBinding_Kd at the declaration, and the
+    // query fails (Error), so a use of the Property in the pass, in the computation the re-entry interrupted too, rests on that record. The
+    // cycle is recorded once per pass, at the header that started first (DECISIONS BU-105). Any other header's re-entry reads its output
+    // as far as formed and records nothing (SPEC 10.5, 10.8).
+    private void ReenterHeader(BindingSymbol symbol)
+    {
+        if (symbol.Property is not null && symbol.Type is null)
+        {
+            this.Fail(symbol.Declaration, BindingFailure.Cycle, true);
+            this.FailQuery(symbol, DeclQueryKind.Signature);
         }
     }
 

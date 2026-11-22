@@ -80,7 +80,7 @@ public class AssociatedSpecificationAccessBindingTest
         var c = Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n" + access + " contract Export\n    associate Item\npublic struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.(Hidden).Element", valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);

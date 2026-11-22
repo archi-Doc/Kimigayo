@@ -153,7 +153,7 @@ public class ProductTestMembershipTest
         var original = MinimalEmissionTest.Analyze("Console.writeLine(\"product\")\n#Test\nfunc test() => Missing.api()");
         var bytes = TinyhandSerializer.Serialize(original.Kotonoha);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var module = restored.Kotonoha;
         TinyhandSerializer.DeserializeObject(bytes, ref module);
         Assert.NotNull(module);

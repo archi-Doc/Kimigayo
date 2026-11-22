@@ -134,7 +134,7 @@ public sealed class LspHoverTest : IDisposable
 
     private string Write(string text)
     {
-        File.WriteAllText(Path.Combine(this.directory, "App.kimiproj"), $"OutputKind=\"Library\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(this.directory, "App.kimiproj"), $"OutputKind=\"Library\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         var path = Path.Combine(this.directory, "main.kimi");
         File.WriteAllText(path, text);
         return path;

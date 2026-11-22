@@ -865,6 +865,38 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]))}]");
     }
 
+    // SPEC 4.1, 15.6.6 (R8-X1 U3): a destruction that observes no Origin adds no requirement. Pair has no drop, and a `[0 of Guard]` it
+    // holds destroys nothing, as its own Field (a5obs), in a Tuple (atup), an Option (aopt) or a Field's struct (awrap): no Guard's drop
+    // observes a at pr's end, so x's Loan ends with pr's last use and `x = 2` is valid. A Guard's drop observes a there (one element:
+    // a5obs1, atup1; a Guard Field beside the empty array: aguard), Pair's own drop observes all it reaches (apdrop), and a later use
+    // keeps the Loan without any destruction (ause): each errs at `x = 2`. A non-regular Type behind an empty array (agrow, agrowq) is
+    // never destroyed: no record at `x = 2`. Their call's OwnershipDepthLimit_Kd, on dev too, rests on the holding guard's walk of the
+    // array's element Type (MirTypes.HoldsLoans, a holding fact, not destruction): a known limit on these valid programs, an open issue.
+    [Theory]
+    [InlineData("a5obs", "    public let gs: [0 of Guard during a]\n", "        self.gs = []\n", "    x = 2\n", "")]
+    [InlineData("atup", "    public let t: (i32, [0 of Guard during a])\n", "        self.t = (1, [])\n", "    x = 2\n", "")]
+    [InlineData("aopt", "    public let o: Option<[0 of Guard during a]>\n", "        self.o = .Some([])\n", "    x = 2\n", "")]
+    [InlineData("awrap", "    public let w: Wrap during a\n", "        self.w = Wrap.init()\n", "    x = 2\n", "")]
+    [InlineData("a5obs1", "    public let gs: [1 of Guard during a]\n", "        self.gs = [Guard.init(p: p)]\n", "    x = 2\n", "a5obs1: x = 2")]
+    [InlineData("atup1", "    public let t: (i32, [1 of Guard during a])\n", "        self.t = (1, [Guard.init(p: p)])\n", "    x = 2\n", "atup1: x = 2")]
+    [InlineData("aguard", "    public let gs: [0 of Guard during a]\n    public let g: Guard during a\n", "        self.gs = []\n        self.g = Guard.init(p: p)\n", "    x = 2\n", "aguard: x = 2")]
+    [InlineData("apdrop", "    public let gs: [0 of Guard during a]\n", "        self.gs = []\n    drop => ()\n", "    x = 2\n", "apdrop: x = 2")]
+    [InlineData("ause", "    public let gs: [0 of Guard during a]\n", "        self.gs = []\n", "    x = 2\n    inspect(pr@ref)\n", "ause: x = 2")]
+    [InlineData("agrow", "    public let kids: [0 of rc/G<(i32, i32)>]\n", "        self.kids = []\n", "    x = 2\n", "agrow: Pair.init(p: x@ref) OwnershipDepthLimit_Kd")]
+    [InlineData("agrowq", "    public let kids: [0 of rc/G<(i32, i32)>]\n", "        self.kids = []\n", "", "agrowq: Pair.init(p: x@ref) OwnershipDepthLimit_Kd")]
+    public void AFixedArrayWithoutAnElementObservesNothing(string form, string fields, string init, string rest, string expected)
+    {
+        var c = MirBuildTest.Compile(
+            "func inspect<T>(value: ref/T) => ()\nstruct G<T>\n    public var kids: [0 of rc/G<(T, T)>]\n    public init() => self.kids = []\n" +
+            "struct Guard {a}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    drop => Console.writeLine(\"g\")\n" +
+            "struct Wrap {a}\n    public let gs: [0 of Guard during a]\n    public init() => self.gs = []\n" +
+            $"struct Pair {{a}}\n    public let p: ref/i32 during a\n{fields}    public init(p: ref/i32 during a)\n        self.p = p\n{init}" +
+            $"func {form}()\n    var x: i32 = 1\n    let pr = Pair.init(p: x@ref)\n{rest}");
+        Assert.Equal(
+            $"{form}: [{expected}]",
+            $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.OwnershipDepthLimit_Kd]))}]");
+    }
+
     // SPEC 15.6.4, 23.1.1, IMPL A.4 (DECISIONS R4-M153, R4-M150; G264 U1's review B1, the planning session's record decision): a declared
     // drop whose Binding retention passes the walk's depth bound (DQ40's Field, a Writer 40 levels down a Tuple, so the retention is
     // Limit) is the located resource limit where the destruction is composed, as its method twin `x.flush()` is on dev: at x's

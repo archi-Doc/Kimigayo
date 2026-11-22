@@ -341,7 +341,7 @@ public sealed class BindingReportTest
     private static Compilation Prepared(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         if (source.Length != 0)
         {
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));

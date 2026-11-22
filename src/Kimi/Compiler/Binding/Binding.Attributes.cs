@@ -111,7 +111,7 @@ public sealed partial class Binding
             // IMPL 20.4/21.4.7: a reserved supply has its fixed kind and provides only its symbol set; any other library's Kind is the
             // defining module's requirement's, after self-targeted supply expansion (IMPL 20.4), and decides dllimport generation.
             string? kind = null;
-            var reserved = WindowsProfile.Supply(name);
+            var reserved = TargetProfile.Windows.Supply(name);
             var provided = reserved is not null && Array.IndexOf(reserved.Symbols, symbol) >= 0;
             if (reserved is not null)
             {
@@ -141,7 +141,7 @@ public sealed partial class Binding
             var signature = this.ImportAbi(attribute, function, ordinal++);
             if (signature is not null)
             {
-                // IMPL 21.2, SPEC 22.5.6: the runtime's own kernel32 declarations share the same final symbol table; an import joins
+                // IMPL 21.2, 21.4.7: the runtime's own kernel32 declarations share the same final symbol table; an import joins
                 // one only through the reserved supply providing its symbol (its one providing library: the supplies' symbol sets are
                 // disjoint) with an equal physical Type, and never a declaration carrying an inexpressible ABI attribute.
                 if (IsRuntimeDeclaration(symbol, out var declared) && (!provided || declared != signature))
@@ -229,7 +229,7 @@ public sealed partial class Binding
         // SPEC 21.4.7 declarations generated beside the runtime; the signature is null when none can agree.
         static bool IsRuntimeDeclaration(string symbol, out string? declared)
         {
-            foreach (var declaration in WindowsProfile.RuntimeDeclarations)
+            foreach (var declaration in TargetProfile.Windows.RuntimeDeclarations)
             {
                 if (string.Equals(declaration.Symbol, symbol, StringComparison.Ordinal))
                 {
@@ -246,7 +246,7 @@ public sealed partial class Binding
         // catalog, ReservedSymbols), so the profile's names and its supply cannot drift apart.
         static bool IsReservedExternalName(string symbol)
             => symbol.StartsWith("__kimi_", StringComparison.Ordinal) || symbol.StartsWith("llvm.", StringComparison.Ordinal) ||
-                Array.IndexOf(WindowsProfile.ReservedSymbols, symbol) >= 0;
+                Array.IndexOf(TargetProfile.Windows.ReservedSymbols, symbol) >= 0;
 
         static bool IsImportName(InvocationKoto call, int index, out string value)
         {

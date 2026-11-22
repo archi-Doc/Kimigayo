@@ -305,7 +305,7 @@ public class ContextualCaptureTest
     internal static TestDiagnostic[] PublishedRecords(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
