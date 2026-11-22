@@ -26195,6 +26195,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Superseded in part by R8-M27 (PLAN G597's generic ranges): its Producer bullet for key selections, its "no LayoutNeeds row" and
     "It projects no element and reads no element layout": an open key gives the keyed `Storage(P, start, key)`, decided per
     instance.
+  - Superseded in part by R8-M59 (PLAN G597's L2 U3): its L1/L2 sentence ("`Storage.sliceUniq` is the one library displacement.
+    L2 ... is the removal condition"): `Storage.sliceUniq` starts its view by `Storage.viewStart`, and no library displacement of a
+    view's start remains.
 - **R8-M14 A sequence handle's layout is its representation struct's placement; `Layout.Rows`' handle rows and `LengthWord` go**
   (Back, 2026-11-09; R8-R1b; Major; design reviews 1 REVISE (B1), 2 ACCEPT; on R8-M1; supersedes in part R5-M19 and R5-M124) SPEC
   4.7.3, 22.2; IMPL 21.1.1-21.1.3.
@@ -27040,6 +27043,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     and displaces), either one a second predicate beside the rule; a position-range check in the validator (the Middle's C-196).
   - **Dump** (the Middle's review of U1, N3). The keyed form is spelled with its operands after the Place: `storage(_n, copy _start,
     const type Kimi.Range<S, Kimi.End>)`; the unkeyed `storage(_n)` is unchanged.
+  - Superseded in part by R8-M59 (PLAN G597's L2 U3): its Remainder bullet ("stays the one library displacement until L2") and
+    U1's "(its raw `Add` stays the one library displacement until U3)": `Storage.sliceUniq` starts its view by `Storage.viewStart`,
+    and no library displacement of a view's start remains.
 - **R8-M58 A library call the builder writes as a MIR form: `DispositionKind.Form`, and the raw pointer Storage** (Back,
   2026-11-22; PLAN G597's L2 U2, Q-671, D-1108; Major; the owner's O-490 (a), verbatim 「O-490 a」: encoding (L)) SPEC 5.3, 8.15.3.
   - **Adopted.** `Storage.viewStart<P, R>(storage: P, start: isize) -> P`, `R is PositionRange`, is a bodyless `#Lang("ViewStart")`
@@ -27061,13 +27067,43 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **A5 (the Middle's C-459 ruling).** A raw pointer Place's element step is its raw referent: one row of `MirSteps.Index`'s table
     (`{ IsPointer: true } => Raw`), the reading the builder gives `p[n]` (`*(p + n)`). Every A5 site keeps R8-M13's one reading of a
     Storage (a raw borrow of P's element); for a raw P it is no Loan of P's own storage. Twins r4, r5 and r5r are valid-program
-    controls that pass under both readings (B's L2 rulings 15 and 16). **The `MirSteps.Index` raw row is unpinned in U2; U3's RP17
-    decides its pin (B's ruling 22 names U3's r8)** (the Middle's RP17 C4).
+    controls that pass under both readings (B's L2 rulings 15 and 16). **The `MirSteps.Index` raw row is pinned at the A5 layer by
+    r8, and no compiled program observes it** (U3; R8-M59's "The raw row's pin"; the Middle's RP17 of U3, C-486 C2).
   - **Codegen (B's ruling 14).** The validator's admission and its lowering land together: `Buffer` loads a raw pointer's value (a
     pointer has no `data` word), and one `RecordOf` owns "a handle's record, or none" (a fixed array's, a raw pointer's) for both
     `Sequence` and `Element`. The keyed and displaced forms are as in R8-M27.
   - **Units.** U2 (this) is behaviour-preserving: no producer calls `viewStart`. U3 routes `Storage.sliceUniq` through it (the
     acceptance mover) with the natives.
+- **R8-M59 `Storage.sliceUniq` starts its view by `Storage.viewStart`: no library displacement of a view's start remains**
+  (Back, 2026-11-22; PLAN G597's L2 U3, Q-677, D-1126, the acceptance mover; the owner's O-486 2 (b)) SPEC 5.3, 8.15.3. Supersedes
+  R8-M13's L1/L2 sentence ("`Storage.sliceUniq` is the one library displacement. L2 ... is the removal condition") and R8-M27's
+  Remainder bullet ("stays the one library displacement until L2"), with U1's "(its raw `Add` stays the one library displacement
+  until U3)"; the reason that no longer holds: the start was a library `Add` the instance could not decide.
+  - **Adopted.** `Storage.sliceUniq<E, R>` starts its view at `Storage.viewStart<raw/E during source, R>(state.storage,
+    selected.start)`, so its body holds the keyed `Storage(state.storage, start, R)` (R8-M27) and each instance of R decides the start:
+    none at a `Start` boundary, the proven `Add` at a position. Every view start in the compiler and the library is MIR's `Storage`.
+    `viewStart`'s `- safety:` adds "where `R`'s start boundary is `Start`, `start` is 0" (the form ignores `start` there).
+  - **The form's operand (the Middle's C-476 C5, B's ruling 24 C2 (a)).** `MirBuilder.Form` builds the Storage over the first
+    argument's Place; an operand that is no Place's copy or move (a constant: `viewStart(null, 0)`, valid by SPEC 5.3) is first held
+    in a temp (`Temporary`), so IMPL 21.3.4's published contract ("the address `storage + start`") needs no argument-form rule. No
+    committed test reaches it: user code cannot name the internal declaration, and the library's one call passes a Place; the
+    reviewer-built m1-null probe observes it (InternalInvariant_Kd before, accepted after, natives O0 and O2). The first library
+    caller that passes a non-Place adds the committed row.
+  - **The raw row's pin.** `MirSteps.Index`'s raw row (R8-M58) is pinned at the A5 layer by r8
+    (`MirBorrowsTest.AStorageOverARawPointerWritesWhereThePointerReaches`, a hand-built body, invalid by SPEC 5.2's `anchored` example
+    and 5.2.2: `ComparisonLoanConflict_Kd` at `y = 5` with the row, nothing without it; its valid counterpart "unread" is accepted
+    under both readings). No compiled program observes the row: A5 judges each body against its callees' signatures, and
+    `Storage.sliceUniq`, the one producer, writes nothing through its view (the 41 labelled probes and the library check give the
+    same result under both readings).
+  - **The Form's observation.** `MirBorrowsTest.SliceUniqsViewStartAddressesTheRemaindersElements` is the committed MIR-layer
+    observation of `MirBuilder.Form`: Storage.sliceUniq's dump holds `storage(_1.0, copy _n.0, const type R)`, the remainder's
+    raw pointer Place, `selected.start` and a Type token of the body's open R (fail-before: without Form's branch the call stays a
+    Call and the body holds no keyed Storage).
+  - **Moves.** Accepted: `sliceUniq(range)` over an element whose C layout fails where the instance's key starts at the storage
+    (`..`, `..e`, `..=e`, `..^x`, a `Range<Start, End>` value or parameter, a fixed array's and a UniqSlice's, a generic body's and a
+    key passed through a generic function): `InvalidCLayout_Kd` at the call removed. Q13, one class: a whole view's record goes, its
+    element's records stay. Unchanged: a written start (`0..`, `1..`, `^x..`, a resolved range) and `tryGetPairUniq` keep
+    `InvalidCLayout_Kd` (OI-1b). Invalid newly accepted: none.
 - **R8-M28 The library's size is stated once: `KimiLibrarySize`** (Back for the Front, 2026-11-10; R8-W1c-2a; the owner's O-136 (a)
   and O-139 (a)). Superseded by R8-M55's U6 line (PLAN G949 Stage 2 U6, 2026-11-19): after R8-L1 U3 a compilation's tables hold only
   its program's entries, so the statement, its two tests and its RP8 exception are deleted. Full text: dev 8a1d8cff6 (first landed in
