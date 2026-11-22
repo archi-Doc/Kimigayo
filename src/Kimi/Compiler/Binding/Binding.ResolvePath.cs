@@ -366,7 +366,7 @@ public sealed partial class Binding
                     step.Use.BindingState = BindingState.Resolved;
                     break;
                 case NameStepKind.AmbiguousRole:
-                    this.Fail(step.Use, BindingFailure.Ambiguous, unresolved: true);
+                    this.Record(step.Use, BindingFailure.Ambiguous, [], unresolved: true);
                     break;
                 case NameStepKind.Unsupported:
                     this.Fail(step.Use, BindingFailure.Unsupported, unresolved: true); // As the base's miss path fails the Name.
@@ -422,7 +422,7 @@ public sealed partial class Binding
             case PathEnd.Selected:
                 return targetFailed ? null : path.Symbol;
             case PathEnd.Ambiguous:
-                this.Fail(path.Use, BindingFailure.Ambiguous, unresolved: true);
+                this.Record(path.Use, BindingFailure.Ambiguous, [], unresolved: true);
                 return null;
             case PathEnd.QualificationStop:
                 this.RecordQualificationStop(path.Use, path.Stop);
@@ -1024,7 +1024,7 @@ public sealed partial class Binding
         this.AddTypeCandidates(ref candidates, head, scope, LookupRole.Qualifier, 0);
         if (candidates.Ambiguous)
         {
-            this.Fail(use, BindingFailure.Ambiguous, unresolved: true);
+            this.Record(use, BindingFailure.Ambiguous, [], unresolved: true);
             return null;
         }
 

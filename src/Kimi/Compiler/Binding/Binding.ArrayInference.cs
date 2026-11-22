@@ -313,7 +313,7 @@ public sealed partial class Binding
 
         if ((established ?? literalDefault) is not { } element)
         {
-            return this.Fail(literal, BindingFailure.MissingType, true);
+            return this.Record(literal, BindingFailure.MissingType, [], unresolved: true);
         }
 
         for (var i = 0; i < literal.Elements.Count; i++)

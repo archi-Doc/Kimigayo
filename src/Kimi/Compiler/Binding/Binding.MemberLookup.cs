@@ -194,7 +194,7 @@ public sealed partial class Binding
                 this.Fail(member, BindingFailure.Unsupported);
                 return null;
             case LeftReading.Ambiguous:
-                this.Fail(member, BindingFailure.Ambiguous, true);
+                this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // ReadLeft keeps the reading, not both members.
                 return null;
             case LeftReading.ValueFailure:
                 return null;
@@ -346,7 +346,7 @@ public sealed partial class Binding
         var valueMember = valueSide.Member;
         if (typeSide.Selection.Ambiguous || valueSide.Selection.Ambiguous)
         {
-            this.Fail(member, BindingFailure.Ambiguous, true);
+            this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // A side's selection keeps a flag, not the candidates.
             return null;
         }
 

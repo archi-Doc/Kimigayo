@@ -113,7 +113,7 @@ public sealed partial class Binding
 
         if (!this.resolvingTypes.Add(syntax))
         {
-            return this.Fail(syntax, BindingFailure.Cycle, true);
+            return this.Record(syntax, BindingFailure.Cycle, [], unresolved: true);
         }
 
         // A Type expression is checked like an expression: the components that failed are its prerequisites.
