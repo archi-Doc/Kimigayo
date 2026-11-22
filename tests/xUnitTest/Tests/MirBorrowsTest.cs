@@ -3668,13 +3668,12 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // DIAGNOSTICS A6 `Store` (Z18b, PLAN G396 (4)'s E1): a problem whose element (a Loan, or for err(ended) the guard value's γ_H) the
     // check found in E names E's store: the nearest location backward from the access, along the edges the forward solve carries a
     // state on (MirDataflow.Carries), whose entries put the element into E (MirBorrows.Flow's eStores), never past one that ends it. An
-    // access: a write and the storage end (also in a closure's body), a call's W, a derived one (Cause, rule W); two stores on disjoint
-    // paths, each access naming its own path's; a loop's back edge; a path whose Loan ended before the access (short = 4) names the
-    // other path's; err(ended) via E, derived (one save) and shown (two); an activation (its Reservation kept); a raw pointer's store
-    // and a destruction's Keep into E; assumed paths (SPEC 14.10.3: after a return, both sides, and a store there that never reaches the
-    // real path, no problem); a nearer store into E without the Loan (.None) skipped; nested loops; the access's own ending read on the
-    // back edge. The effect rule's row: AnEffectOnALoanKeptInEIsWitnessedByItsStore. Fail-before (28ea0beac): each Store was the
-    // access's own subject.
+    // access: a write and the storage end (also in a closure's body), a call's W, a derived one (Cause, rule W); a loop's back edge;
+    // err(ended) via E, derived (one save) and shown (two); an activation (its Reservation kept); a raw pointer's store and a
+    // destruction's Keep into E; assumed paths (SPEC 14.10.3: after a return, both sides, and a store there that never reaches the real
+    // path, no problem); a nearer store into E without the Loan (.None) skipped; nested loops; the access's own ending read on the back
+    // edge. Stores that share their text: ALoanFoundInEIsWitnessedByTheStoreOnItsPath; the effect rule's row:
+    // AnEffectOnALoanKeptInEIsWitnessedByItsStore. Fail-before (28ea0beac): each Store was the access's own subject.
     [Theory]
     [InlineData(
         "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@ref)\n    short = 3\n" +
@@ -3698,21 +3697,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    put(p, short@ref)\n    short = 3\n    return 0\n",
         "short = 3: Anchor short@ref, Store put(p, short@ref), Cause short@ref")]
     [InlineData(
-        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
-        "        p@follow = .Some(r)\n        return 1\n    p@follow = .Some(r)\n    short = 3\n    return 0\n",
-        "short = 3: Anchor short@ref, Store p@follow = .Some(r) | var short = 2: Anchor short@ref, Store p@follow = .Some(r)")]
-    [InlineData(
-        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
-        "        p@follow = .Some(r)\n        short = 3\n        return 1\n    p@follow = .Some(r)\n    return 0\n",
-        "short = 3: Anchor short@ref, Store p@follow = .Some(r) | var short = 2: Anchor short@ref, Store p@follow = .Some(r)")]
-    [InlineData(
         "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    while c\n        short = 3\n" +
         "        p@follow = .Some(short@ref)\n    return 0\n",
         "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref) | var short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
-    [InlineData(
-        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
-        "        p@follow = .Some(r)\n        short = 4\n    else\n        p@follow = .Some(r)\n    short = 3\n    return 0\n",
-        "short = 4: Anchor short@ref, Store p@follow = .Some(r) | short = 3: Anchor short@ref, Store p@follow = .Some(r)")]
     [InlineData(
         "struct Data\n    public var value: i32 = 0\n    public init() => ()\nenum Packet\n    Data(Data)\n    Empty\n" +
         "func save(slot: uniq/(ref/Data during s), value: ref/Data during s) -> bool => true\n" +
@@ -3760,12 +3747,41 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         "func bad(p: uniq/(Option<ref/i32 during q>), c: bool, d: bool) -> i32\n    var short = 2\n    while c\n        short = 3\n" +
         "        while d\n            p@follow = .Some(short@ref)\n    return 0\n",
         "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref) | var short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    public void ALoanFoundInEIsWitnessedByItsStore(string source, string problems)
+        => Assert.Equal(problems.Length == 0 ? [] : problems.Split(" | ").Order(StringComparer.Ordinal), Witnessed(source).Order(StringComparer.Ordinal));
+
+    // The same rule where a Loan's candidate stores share their text, so each problem's subject and Store are named by line (review C1):
+    // two stores on disjoint paths, each access naming its own path's (never the other path's, Revision 0's least location); a path
+    // whose Loan ended before the access (short = 4) names the other path's store, never the ended one; a second uniq Borrow stored in a
+    // loop names the first store (3), never its own (6).
+    [Theory]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        return 1\n    p@follow = .Some(r)\n    short = 3\n    return 0\n",
+        "8: Anchor short@ref, Store 7 | 2: Anchor short@ref, Store 5")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        short = 3\n        return 1\n    p@follow = .Some(r)\n    return 0\n",
+        "6: Anchor short@ref, Store 5 | 2: Anchor short@ref, Store 8")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        short = 4\n    else\n        p@follow = .Some(r)\n    short = 3\n    return 0\n",
+        "6: Anchor short@ref, Store 5 | 9: Anchor short@ref, Store 8")]
     [InlineData(
         "func bad(p: uniq/(Option<uniq/i32 during q>), c: bool) -> i32\n    var short = 2\n    p@follow = .Some(short@uniq)\n" +
         "    while c\n        let a = short\n        p@follow = .Some(short@uniq)\n        short = 4\n    return 0\n",
-        "short: Anchor short@uniq, Store p@follow = .Some(short@uniq) | short@uniq: Anchor short@uniq, Store p@follow = .Some(short@uniq) | short = 4: Anchor short@uniq, Store p@follow = .Some(short@uniq) | var short = 2: Anchor short@uniq, Store p@follow = .Some(short@uniq)")]
-    public void ALoanFoundInEIsWitnessedByItsStore(string source, string problems)
-        => Assert.Equal(problems.Length == 0 ? [] : problems.Split(" | ").Order(StringComparer.Ordinal), Witnessed(source).Order(StringComparer.Ordinal));
+        "5: Anchor short@uniq, Store 3 | 6: Anchor short@uniq, Store 3 | 7: Anchor short@uniq, Store 3 | 2: Anchor short@uniq, Store 3")]
+    public void ALoanFoundInEIsWitnessedByTheStoreOnItsPath(string source, string problems)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = Analyze(c);
+        int At(SourceRef site) => source.AsSpan(0, c.SyntaxOf(site).Span.Start).Count('\n') + 1;
+        string Fact(ProblemFact f) => f.Kind == ProblemFactKind.Store ? $"Store {At(f.Site)}" : $"{f.Kind} {Line(c, f.Site)}";
+        Assert.Equal(
+            problems.Split(" | ").Order(StringComparer.Ordinal),
+            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0)
+                .Select(x => $"{At(x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(Fact))}").Order(StringComparer.Ordinal));
+    }
 
     // V16 (A3 6.3, shapes 1–6): N Copies of one reference, N loops with three live references and N writes through one reference keep the
     // work linear; a straight line of N borrowed locals, N borrow/write pairs of one root and N borrow/write pairs in loops grow it within

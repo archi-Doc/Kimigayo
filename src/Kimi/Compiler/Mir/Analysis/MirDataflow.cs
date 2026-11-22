@@ -8,14 +8,14 @@
 // into it, so a chain shares one stored state, held only at its head. Begin decides each chain's phase: P1 where the runtime edges from the
 // entry reach it, else P2 (SPEC 14.10.3). One edge rule (Flows) serves both directions and Carries, which A5's Store witness reads: under
 // the selected view a CaseSwitch's edge to the side the view selects only (MirUses.Successor), so the other side's heads stay unreached; a
-// state flows along any edge into a P2 head and along a P1 chain's runtime edges into a P1 head, never otherwise into a P1 head. Forward: P1 follows runtime edges from the entry; P2
-// the edges into P2 heads, P1's states frozen. Backward is its transpose: a chain joins the states of the successors its state flows into,
-// from the boundary state (R4-M158). The transfer joins (A1: union). A solve's worklist holds every head at first and takes the pending head
-// first in its direction's order, reverse postorder forward and postorder backward, so growth along a loop's back edge settles the loop
-// before the code after it is applied again (R4-M65). States are word-major (the lanes of 64 paths per word group), and only a problem's
-// first words are stored; the scratch holds the rest. One arena stores both problems' words; its byte size is the one Resource limit of the
-// analyses (OwnershipStorageLimit_Kd), which StorageLimit records for every arena with its arguments as facts (G213, DECISIONS R4-M132).
-// Storage is pooled and reset by counts.
+// state flows along any edge into a P2 head and along a P1 chain's runtime edges into a P1 head, never otherwise into a P1 head. Forward:
+// P1 follows runtime edges from the entry; P2 the edges into P2 heads, P1's states frozen. Backward is its transpose: a chain joins the
+// states of the successors its state flows into, from the boundary state (R4-M158). The transfer joins (A1: union). A solve's worklist
+// holds every head at first and takes the pending head first in its direction's order, reverse postorder forward and postorder backward, so
+// growth along a loop's back edge settles the loop before the code after it is applied again (R4-M65). States are word-major (the lanes of
+// 64 paths per word group), and only a problem's first words are stored; the scratch holds the rest. One arena stores both problems' words;
+// its byte size is the one Resource limit of the analyses (OwnershipStorageLimit_Kd), which StorageLimit records for every arena with its
+// arguments as facts (G213, DECISIONS R4-M132). Storage is pooled and reset by counts.
 // Must not interpret statements, read syntax or HIR, merge a P2 state into a P1 head, or walk all edges in one pass.
 
 #pragma warning disable SA1402 // The transfer's interface and the arenas of the limit belong to the dataflow.
