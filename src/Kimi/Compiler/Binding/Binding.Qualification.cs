@@ -204,8 +204,14 @@ public sealed partial class Binding
         return null;
     }
 
+    // Its repairs locate their edits in the store Core's decision gives (PLAN G1083); a node that records nowhere publishes nothing.
     private void ReportQualification(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
+        if (store is null)
+        {
+            return;
+        }
+
         var fact = this.qualificationFailures[node];
         var container = fact.Container.Owner.BoundSymbol!;
         if (fact.Cause == QualificationCause.TypePath)
@@ -350,7 +356,7 @@ public sealed partial class Binding
 
             var verified = selected ? RepairConditionSet.Selection : RepairConditionSet.None;
             var required = (selected ? RepairConditionSet.None : RepairConditionSet.Selection) | (fact.Type ? RepairConditionSet.None : RepairConditionSet.UsageLegality);
-            (repairs ??= []).Add(new(RepairKind.Qualify, [fact.Name, prefix], [node.Edit(new(fact.At!.Span.Start, 0), prefix)], verified, required));
+            (repairs ??= []).Add(new(RepairKind.Qualify, [fact.Name, prefix], [store!.Edit(new(fact.At!.Span.Start, 0), prefix, fact.At.CodeContext.SourceDocument)], verified, required));
         }
     }
 
