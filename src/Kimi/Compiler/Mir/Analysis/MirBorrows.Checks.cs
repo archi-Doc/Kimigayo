@@ -201,8 +201,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var anchor = this.body.Subject(this.body.Locals[candidate].Source);
         this.EndedCauses(candidate, mark);
-        this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1, null);
+        this.Found(DiagnosticCode.ComparisonLoanConflict_Kd, mark, this.markVia[mark], at, -1, null);
     }
 }
