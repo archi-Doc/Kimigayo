@@ -242,7 +242,7 @@ public sealed partial class TyCtxtTest
     [
         "(*p)@uniq Anchor 0: i32 X",
         "let n = match o@ref Projection 0: i32 S",
-        "let s = w@ref Inference -1:  claimed",
+        "let s = w@ref Inference -1:  Claimed",
         "let view = values[0..2] Projection 0: Slice<i32> S",
         "var b = (0, x@ref) Projection 0: i32 X",
         "var h = 4 Projection 0: i32 S",
@@ -914,6 +914,24 @@ public sealed partial class TyCtxtTest
         var c = MinimalEmissionTest.Analyze(BorrowsPrelude + "func f(x: ref/i64) => ()\nfunc f(x: i32) => ()\nfunc row2()\n    var k = 1\n    f(k)\n    k = 2\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(BorrowRows(c), static x => x.StartsWith("var k", StringComparison.Ordinal));
+    }
+
+    // SPEC 5.2.1 condition 3, 5.4, 5.7 Typed paths (G147 ruling 66, Z6's R6.1): an address taken past a shared path marks the atoms its
+    // Type states SharedAddress. x01's `c@follow@follow@raw` reaches w through c's shared borrow of r and states r's region (the last
+    // borrow it is reached through, a `var` region read as itself); its direct twin `r@follow@raw` reaches w through r's exclusive borrow
+    // alone and marks nothing. The address forms no entry (SPEC 5.4). Labels from SPEC: x01 V (condition 3: the address has no write
+    // authority, so put stores nothing in w); the twin I (5.7 Calls, 15.6.4: put may store z's borrow in w through r's exclusive path,
+    // so `z = 5` conflicts with `inspect(w)`).
+    [Theory]
+    [InlineData("c@follow@follow@raw", true)]
+    [InlineData("r@follow@raw", false)]
+    public void AnAddressPastASharedPathMarksItsAtoms(string address, bool shared)
+    {
+        var c = MinimalEmissionTest.Analyze(BorrowsPrelude + "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
+            "    public func put<U>(self: uniq/Self, v: U) => ()\nfunc x01()\n    var x = 1\n    var z = 3\n    var w: ref/i32 = x@ref\n" +
+            $"    var r = w@uniq\n    let c = r@ref\n    var h = Wrap.init({address}@raw/u8)\n    h.put(z@ref)\n    z = 5\n    inspect(w)\n");
+        string[] marked = shared ? ["var r = w@uniq Inference -1:  SharedAddress"] : [];
+        Assert.Equal(marked, BorrowRows(c).Where(static x => x.EndsWith(nameof(Binding.LimitMarks.SharedAddress), StringComparison.Ordinal)));
     }
 
     // SPEC 8.6.1, 8.2.3, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct
@@ -2230,8 +2248,8 @@ public sealed partial class TyCtxtTest
 
     // The program part's rows with an entry or a mark: the atom's binder (its first line) and kind, then each entry's referent and mode.
     private static string[] BorrowRows(Compilation c) => [.. c.Binding.ProgramBorrows
-        .Where(static x => x.Value.Count > 0 || x.Value.Claimed)
+        .Where(static x => x.Value.Count > 0 || x.Value.Marks != default)
         .Select(static x => $"{x.Key.Binder?.ToString()?.Split('\n')[0].Trim()} {x.Key.Kind} {x.Key.Slot}: " +
-            string.Join(", ", x.Value.Items.ToArray().Select(static m => $"{m.Referent} {(m.Exclusive ? "X" : "S")}")) + (x.Value.Claimed ? " claimed" : string.Empty))
+            string.Join(", ", x.Value.Items.ToArray().Select(static m => $"{m.Referent} {(m.Exclusive ? "X" : "S")}")) + (x.Value.Marks != default ? $" {x.Value.Marks}" : string.Empty))
         .Order(StringComparer.Ordinal)];
 }
