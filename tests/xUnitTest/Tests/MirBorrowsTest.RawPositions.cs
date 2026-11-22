@@ -543,12 +543,13 @@ public sealed partial class MirBorrowsTest
         var block = body.AddBlock();
         body.Push(block, MirStatement.Assign(p, MirRvalue.Use(Constant(pointer, 0)), At(1)));
         body.Push(block, MirStatement.Assign(v, MirRvalue.Storage(p, pointer), At(2)));
-        body.Push(block, form switch
+        var during = form switch
         {
             "move" => MirStatement.Assign(q, MirRvalue.Use(body.AddOperand(MirOperand.Move(p))), At(3)),
             "borrowed" => MirStatement.Assign(r, MirRvalue.Ref(MirRefKind.Shared, p, reference), At(3)),
             _ => MirStatement.Assign(p, MirRvalue.Use(Constant(pointer, 0)), At(3)),
-        });
+        };
+        body.Push(block, during);
         body.Push(block, MirStatement.Assign(body.Project(c.Types, v, MirProjectionKind.Deref, 0), MirRvalue.Use(Constant(BoundType.I32, 5)), At(4)));
         if (form == "borrowed")
         {
