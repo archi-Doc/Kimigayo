@@ -1948,7 +1948,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       last at its converged state, so the fact is a may-fact that includes the fixpoint's, and the replay reports with it known.
     - The grain is (body, view): a view's store changes only that view's states, `MirReport` keys a problem by (code, subject, body)
       so a Language problem and an `Unsupported_Kd` never merge, and the stratum runs each view's solve and replay before the next.
-    - Every Loan-problem producer reports through `MirBorrows.Reports`' common `Report(code, anchor, via, at, reservation)`
+    - Every Loan-problem producer reports through `MirBorrows.Reports`' common `Found(code, found, via, at, reservation, effect)`
       (`Checks.cs` at an access and at err(ended), `Activations.cs` at an activation and err(destroy)), so the hold is one rule there,
       and a future producer (err(effect), 2b; the E7/E12 merge, 2a-2; F6's Φ_c, superseded by R4-M106) must report through it too.
     - R4-M69 governs inline default copies (superseded by R4-M97: the hold applies to every failure a body owns, a copy's at the
@@ -14609,7 +14609,7 @@ resumed by R4-M86 (2026-10-20).
   item's selector and Name are resolved with the item and not indexed, so their rows are reset by `Binding.RowReset` before the item
   is indexed, and the rebind after an append gives the fresh compilation's verdict.
   - Removal: at R7-D2 c, whose pre-order walk reaches every node (COMPILER_ARCHITECTURE's temporaries list).
-  - Removed by R7-M79 (R7-D2 c, Q-667; the landing commit): the indexer's one iterative walk reaches every node in a slot, so
+  - Removed by R7-M79 (R7-D2 c, Q-667; the landing commit 8a90275af): the indexer's one iterative walk reaches every node in a slot, so
     `Binding.RowReset` is deleted.
   - Rejected: clearing each module's base columns at the pass start (R7-D2 c's change); a reset in `EffectTarget` or
     `BindEffectBound` (consumers deciding the indexer's reset).
@@ -25503,6 +25503,46 @@ R8-M* and R9-M* by the stage of the recording unit.
   merges a marker's two writes, a count change); the excluded test's row alone resetting its chain (the narrow (B): misses a nested
   function's marker, a second resetting row and a mode on the entry); a column clear at the pass start (a second reset site);
   `SyntaxTable.Nodes`' id order (a try's deferred arms are no pre-order id range: `TryKoto.SelectOption`).
+- **R7-M80 A written Type occurrence outside a base clause is one Constraint record, at its Type node** (Front, 2026-11-22; R7-V1c,
+  PLAN G373, Q-670, D-1107; Major, a record mover, no acceptance move; F's V1c rulings 1-4; design `front\notes\V1\design-v1c.md`;
+  the implementation review REVISE (B1, B2), fixed by ruling 3, then its delta read ACCEPT, ruling 6) SPEC 8.3.1, 23.1.2.
+  ValidateConstraintUses judged every node whose BoundType is a constructed Type with clauses, and a written Type is several such
+  nodes (the parser's transparent TypeSemanticsKoto wrapper, the parentheses of SPEC 8.3.1, an explicit `owner/`, and the Type node
+  they hold), so each failing clause was recorded once per layer at one occurrence in every Type position. A layer of Type syntax (a
+  TypeKoto with one Type component) whose formed Type is that component's, by the identity judge (SameCompleteType), is that
+  occurrence (`SameTypeOperand`, decided by the Type the layer forms, not by its syntax kind: wrappers, parentheses and `owner/`
+  alike); a layer forming another Type (`ref/`, `uniq/`, a pair layer, `T?`) is not. One predicate, `JudgedOccurrence`, reads it:
+  the walk judges an occurrence once, at its outermost such layer with a constructed Type that has clauses, and skips every other
+  layer. A formed wrapper's Type carries the written Origin arguments (and its inner layers carry the same completed Type), so the
+  clauses are proved under them; a wrapper whose annotation failed has no Type, so it is not the occurrence below it, which is judged
+  at its own node (both independent failures are reported, SPEC 23.1.2). The record is at the Type node, the Type the Constraint is
+  about. Each layer between the judged node and the Type node is that Type (rule W, `RestLayersOnType`: Invalid resting on it through
+  `RestOnPart` with no failure of its own, or Unresolved with it), so readers of a declaration's written Type read a failed Type as
+  before; RestOnPart, rule W's owner, signals its state change (Invalidated). A check that recorded at a node first keeps its record
+  (a written Origin's check at the wrapper). A base clause keeps `ValidateBaseDeclarations`' record beside the walk's (PLAN G1279).
+  Rejected: the record at the wrapper (ruling 2, Q3: the Type node's span is the Type's); dropping duplicates at publication
+  (suppression afterwards); G373's narrow form (ValidateAccessor stops entering Function Types), which leaves every other double; a
+  wrapper-only skip test (phase 3: it lost a failed wrapper's occurrence and kept one record per parenthesis, the two halves reading
+  different nodes); a list of transparent syntax kinds (phase 4: `owner/` kept its own record, one more case of an open family).
+  Records at other nodes resting on the same failure: PLAN G1278.
+- **R7-M81 A Loan found in E is witnessed by its store on a path to the access** (Middle, 2026-11-22; R7 plan stream Z, Z18b (PLAN
+  G396 (4)'s E1; T-29a review N2), Q-675, D-1118; Major; Z18 design review 1's B1-B3) SPEC 15.6.2, 14.8.3, 7.2.3.
+  - **Owner.** `MirBorrows.Flow`'s E stores (`eStores`): per location, from its last plan, the sets its entries put into E, `Sure`
+    (not resting) and `Unsure` (resting on an undecided write, Φ_M or Φ_U), gathered at `AddSlot`, the one entry path. R26-borrow's
+    place reads `Sure` (a resting set places nothing, SPEC 7.2.3); the witness reads both.
+  - **Key.** A Loan problem is recorded through `Found(code, found, ...)`, keyed by the element the check found (a Loan, a guard
+    marker for err(ended), none for a destruction's own hold); its Anchor is derived from it by one rule.
+  - **Witness.** A conflict or err(ended) whose element the check found in E names as its `Store` the nearest location backward from
+    the access along the edges the forward solve carried (`MirDataflow.Carries`, the one edge rule `Flows` and the chain edge), under
+    the run's view, whose E stores hold it, never past an ending of it; none is `InternalInvariant_Kd` (the transfer is monotone in
+    what a location stores into E).
+  - **Records (Q13):** related locations only (each Loan problem via E moves its `Store` from the access to E's store); no record
+    added, lost or moved; no acceptance move. Named record-selection change (Z18b R1.2): R26-borrow's records at one location are added
+    in Loan order, so a merged `DefaultArgumentBorrow_Kd` keeps the Anchor of the location's first Loan in that order, no longer of its
+    first entry.
+  - Rejected: one least location per Loan (it can name a store whose path never reaches the access); a provenance lattice (every body
+    pays for a rejected body's fact); writing the fact after the replay (a second write path into a merged problem); keeping entry
+    order for R26 (a second structure beside the set).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -26642,6 +26682,34 @@ R8-M* and R9-M* by the stage of the recording unit.
     and displaces), either one a second predicate beside the rule; a position-range check in the validator (the Middle's C-196).
   - **Dump** (the Middle's review of U1, N3). The keyed form is spelled with its operands after the Place: `storage(_n, copy _start,
     const type Kimi.Range<S, Kimi.End>)`; the unkeyed `storage(_n)` is unchanged.
+- **R8-M58 A library call the builder writes as a MIR form: `DispositionKind.Form`, and the raw pointer Storage** (Back,
+  2026-11-22; PLAN G597's L2 U2, Q-671, D-1108; Major; the owner's O-490 (a), verbatim 「O-490 a」: encoding (L)) SPEC 5.3, 8.15.3.
+  - **Adopted.** `Storage.viewStart<P, R>(storage: P, start: isize) -> P`, `R is PositionRange`, is a bodyless `#Lang("ViewStart")`
+    declaration. The MIR builder writes its call as the view's first element's address (`MirBuilder.Calls.Form` through `Refirst`
+    and `First`): `Storage(p)` where R starts at the storage, `Storage(p)` plus the proven raw `Add` where it displaces, and the
+    keyed `Storage(p, start, R)` where R is open. `First` keeps one statement of the form, with three producers (the selection, a
+    default copy's fold, this call). Three vocabulary entries, the owner's approval O-490 (a): `DispositionKind.Form` ("a call the
+    builder writes as a MIR form, never a Call"), `BodylessKind.Form` (`TyCtxt.Bodyless`), and `KimiDeclarationId.ViewStart` with its
+    catalog row (`KimiLibraryCatalog.Entry.Form`, which the registration reads as a table row). `IntrinsicId` and R8's exit-gate
+    item 3 are unchanged. `FunctionKoto.OmitsBody` lets any library `#Lang` function omit its Body; KimiLibraryShapeTest's row L2
+    keeps a bodyless library function an intrinsic, a linked constructor or a Form row.
+  - **The validator.** A Call of a Form function is an Operation finding (`MirValidator.Calls`), so A4 and the instance collector,
+    which trust validated MIR, never read `BodylessKind.Form`. No value of a Form function reaches MIR either: every Form function is
+    `unsafe` (its KimiLibraryShapeTest row), and Binding acquires such a function only as a direct callee (SPEC 7.6,
+    `Binding.DirectCallOnly`); a Form function that is not `unsafe` would add the validator's `MirConstKind.FnItem` row in its own
+    unit (`BodylessKind.Form`'s summary; the Middle's RP17 C1). `Storage`'s admitted Places are O-92 (a)'s list plus a raw pointer
+    `raw/E`, whose elements start at its value (SPEC 5.3), its result's element the pointee (`MirValidator.Types`; `MirForms.Storage`'s
+    contract says the same, C2).
+  - **A5 (the Middle's C-459 ruling).** A raw pointer Place's element step is its raw referent: one row of `MirSteps.Index`'s table
+    (`{ IsPointer: true } => Raw`), the reading the builder gives `p[n]` (`*(p + n)`). Every A5 site keeps R8-M13's one reading of a
+    Storage (a raw borrow of P's element); for a raw P it is no Loan of P's own storage. Twins r4, r5 and r5r are valid-program
+    controls that pass under both readings (B's L2 rulings 15 and 16). **The `MirSteps.Index` raw row is unpinned in U2; U3's RP17
+    decides its pin (B's ruling 22 names U3's r8)** (the Middle's RP17 C4).
+  - **Codegen (B's ruling 14).** The validator's admission and its lowering land together: `Buffer` loads a raw pointer's value (a
+    pointer has no `data` word), and one `RecordOf` owns "a handle's record, or none" (a fixed array's, a raw pointer's) for both
+    `Sequence` and `Element`. The keyed and displaced forms are as in R8-M27.
+  - **Units.** U2 (this) is behaviour-preserving: no producer calls `viewStart`. U3 routes `Storage.sliceUniq` through it (the
+    acceptance mover) with the natives.
 - **R8-M28 The library's size is stated once: `KimiLibrarySize`** (Back for the Front, 2026-11-10; R8-W1c-2a; the owner's O-136 (a)
   and O-139 (a)). Superseded by R8-M55's U6 line (PLAN G949 Stage 2 U6, 2026-11-19): after R8-L1 U3 a compilation's tables hold only
   its program's entries, so the statement, its two tests and its RP8 exception are deleted. Full text: dev 8a1d8cff6 (first landed in
@@ -29653,3 +29721,20 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: an exact object check (leafness needs disassembly; a copy of LLVM's decision), a forced entry for leaves (O2 cost), an
     IR `uwtable` check in the build (a second copy of the emitter's rule). The fact's removal is staged as PLAN G1271 states
     (removal condition: Tatara B7b7 lands).
+- **T-M22 Tatara's ELF side: one link export for both LLD drivers, one inspection for COFF and ELF** (Tatara, 2026-11-22; the plan's
+  unit B7b1, Q-665, D-1099; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.1 §3.1; the Middle's reviews, C-445
+  of the design and C-456 of the implementation, ACCEPT WITH CONDITIONS; Major).
+  - `tatara_link`'s `arguments[0]` names the flavor, `lld-link` or `ld.lld`, as an LLD executable's name does; `lld::lldMain` gets
+    both drivers (`lld::coff::link`, `lld::elf::link`); another flavor (or none) is a return of 1 naming it, before LLD runs.
+    `Tatara.Link` passes the arguments through unchanged, and `NativeBuild`'s link names `lld-link` first, beside its other `lld-link`
+    options (B7b7 takes the flavor from the row's `Format`). A COFF link's argv is the base's, so its bytes are unchanged.
+  - `tatara_inspect` reads the format the object has: COFF as before, ELF (`ELFObjectFileBase`) with `llvm-nm`'s ELF letters
+    (`getNMSectionTagAndName`: weak undefined `v`/`w`, IFUNC `i`, weak `V`/`W`, unique `u`); flag 0 is "unwind information" (COFF: a
+    `.pdata` entry; ELF: a non-empty `.eh_frame`), flag 1 "a library the object names for the link" (COFF: `DEFAULTLIB` in a
+    `.drectve`; ELF: an `SHT_LLVM_DEPENDENT_LIBRARIES` section); another format is an error.
+  - `build.ps1` links `lldELF.lib` beside `lldCOFF.lib` and `lldCommon.lib`; its `link.rsp` carries it into the published `kimi.exe`
+    (B6b2's link). `tatara.h`'s ABI changes, so every toolchain is rebuilt by setup; build records differ only in `tools.tatara`.
+  - Rejected: a second export `tatara_link_elf` (two functions for one operation); `Tatara.Link` prepending `lld-link` itself (the
+    design's first reading: no managed path would link an ELF, and a test calling the export directly would bypass Tatara's lock,
+    against `tatara.h`'s "callers serialize calls"); the flavor chosen from the target triple inside Tatara (a consumer deciding by
+    syntax what the row publishes, B7b7's `Format`).
