@@ -58,6 +58,9 @@ public sealed partial class Binding
 
     private readonly List<(int Start, int Count)> inferenceReachOf = new();
 
+    // The published equalities one NamesIdentity walk has read.
+    private readonly List<AssociatedBinding> inferenceEqualities = new();
+
     private int inferenceVisit;
 
     // Reads the batches made outside the reader's Reach in this compilation (the validator's count until the cutover enforces it).
@@ -384,32 +387,63 @@ public sealed partial class Binding
 
             foreach (var identity in path.Contract.Contract!.RequirementStorage)
             {
-                if (identity.Contract == path.Contract && identity.Symbol.Declaration is FunctionKoto requirement &&
-                    (requirement.BoundSymbol?.Type is not { } required || NamesAssociated(required, entry.Identity.Symbol.Name)))
+                if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement)
+                {
+                    continue;
+                }
+
+                this.inferenceEqualities.Clear();
+                if (requirement.BoundSymbol?.Type is not { } required || this.NamesIdentity(path.RootPath, required, entry.Identity.Symbol))
                 {
                     this.inferenceValueSources.Add((path, identity));
                     this.AddValueReads(batch, requirement.Name, edges, component);
                 }
             }
         }
+    }
 
-        static bool NamesAssociated(BoundType type, string name)
+    // Whether `type` names the associated Type `associated` (SPEC 8.5.5 Extraction: a position of the binding in a source's required Type),
+    // by identity, directly or through the definition's published equalities (C4 ruling 13 (1)): a projection on another associated Type of
+    // the root path names what that Type's binding is specified as, its Candidates (PrepareAssociatedBindings, the one published equality:
+    // Iterator's `associate LendingIterator.LentItem(step) is Item` gives LendingIterator's `next` as Item's source). Each equality is read
+    // once (inferenceEqualities, cleared by the caller), so a cycle of specifications ends.
+    private bool NamesIdentity(BoundConformancePath root, BoundType type, BindingSymbol associated)
+    {
+        if (type.Kind == BoundTypeKind.AssociatedProjection && type.Symbol is { } symbol)
         {
-            if (type.Kind == BoundTypeKind.AssociatedProjection && type.Symbol?.Name == name)
+            if (ReferenceEquals(symbol, associated))
             {
                 return true;
             }
 
-            for (var i = 0; i < type.Components.Count; i++)
+            for (var i = 0; root.AssociatedBindings is { } bindings && i < bindings.Count; i++)
             {
-                if (NamesAssociated(type.Components[i], name))
+                var binding = bindings[i].Binding;
+                if (!ReferenceEquals(bindings[i].Associated.Symbol, symbol) || this.inferenceEqualities.Contains(binding))
                 {
-                    return true;
+                    continue;
+                }
+
+                this.inferenceEqualities.Add(binding);
+                for (var c = 0; c < binding.Candidates.Count; c++)
+                {
+                    if (this.NamesIdentity(root, binding.Candidates[c], associated))
+                    {
+                        return true;
+                    }
                 }
             }
-
-            return false;
         }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.NamesIdentity(root, type.Components[i], associated))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The reads of `batch`'s members named `name` (a requirement's candidates).
