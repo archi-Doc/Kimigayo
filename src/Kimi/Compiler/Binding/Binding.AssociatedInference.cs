@@ -789,9 +789,10 @@ public sealed partial class Binding
 
         internal List<AssociatedInference> RunPool { get; } = new();
 
-        internal int RunsRented { get; set; }
+        internal int RunsRented { get; private set; }
 
-        // A run of this batch, from its pool (kept across passes), empty.
+        // A run of this batch, from its pool (kept across passes, at most InferenceRunsKept runs), empty; given back by ReturnRun in the
+        // reverse order of renting (C4 ruling 15 (a)).
         internal AssociatedInference RentRun()
         {
             if (this.RunsRented == this.RunPool.Count)
@@ -818,6 +819,34 @@ public sealed partial class Binding
             }
 
             return run;
+        }
+
+        // The state or publication a run serves is answered (C4 ruling 15 (a)): the run goes back to the pool, then the frozen run it
+        // read when that is another; each is the last rented.
+        internal void ReturnRun(AssociatedInference run)
+        {
+            for (var next = run; next is not null;)
+            {
+                if (this.RunsRented == 0 || !ReferenceEquals(this.RunPool[this.RunsRented - 1], next))
+                {
+                    throw new InvalidOperationException("A run is returned out of its renting order (InternalInvariant; R7-C4).");
+                }
+
+                this.RunsRented--;
+                var frozen = next.Frozen;
+                next.Frozen = null;
+                next = ReferenceEquals(frozen, next) ? null : frozen;
+            }
+        }
+
+        // The request's end (C4 ruling 15 (d)): the pool keeps at most InferenceRunsKept runs for the next pass.
+        internal void KeepRuns()
+        {
+            this.RunsRented = 0;
+            if (this.RunPool.Count > InferenceRunsKept)
+            {
+                this.RunPool.RemoveRange(InferenceRunsKept, this.RunPool.Count - InferenceRunsKept);
+            }
         }
     }
 }

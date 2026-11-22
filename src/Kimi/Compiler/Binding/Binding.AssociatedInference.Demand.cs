@@ -14,14 +14,20 @@ namespace Kimi.Compiler;
 //   collection under a hold is a run (a batch's run object, InferenceRun): identification, extraction and the usable positions, every
 //   read of another binding of the component answered under the run's hold (ResolveAssociated), every answer Provisional.
 // - Invariants: one request per component, none nested in another; a request's tables (values, runs, holds) are request-local and
-//   dropped at its end (capacity kept); a binding is written once, at its request's end; problems are recorded by the root's frozen
-//   run (the hold of the definition's bindings, today's batch hold), never by a held run.
+//   dropped at its end (capacity kept); a state's runs go back to their batch's pool when it is answered, so a request holds about two
+//   runs per open state, and a pool keeps at most InferenceRunsKept runs across requests (C4 ruling 15); a binding is written once, at
+//   its request's end; problems are recorded by the definition's run (the hold of its bindings, made at publication), never by a held run.
 // - Prohibitions: no held answer outside its request; no read of a later component's binding (the validator); no identification cached
 //   inside a request (a held answer is Provisional).
 public sealed partial class Binding
 {
     // OQ2's items limit (BU-29; the owner's O-484 (2 x); SPEC 8.3.3 Limits): a component's request holds at most this many held states.
     internal const int InferenceStateLimit = 65536;
+
+    // C4 ruling 15 (d): a batch's pool keeps at most this many runs once its request ends, the most a request rents of one definition at
+    // once while none of its states reads another binding of the component (publication: the definition's run and one binding's two),
+    // so a warm rebind of such a definition allocates no run; a definition whose states nest rents up to two runs a binding.
+    internal const int InferenceRunsKept = 3;
 
     private readonly Dictionary<AssociatedBinding, int> inferenceBindingIndex = new(ReferenceEqualityComparer.Instance);
 
@@ -40,8 +46,6 @@ public sealed partial class Binding
     private readonly List<(int Top, int Hold)> inferenceHoldWork = new();
 
     private readonly Dictionary<(AssociatedBinding Binding, int Hold), HeldAnswer> inferenceValues = new();
-
-    private readonly Dictionary<(AssociatedInference Batch, int Hold, int Owner), AssociatedInference> inferenceRuns = new();
 
     // The held states the requests evaluated in this compilation (design §6, D2-C3: the cost per state is the time over this count).
     internal int InferenceStates { get; private set; }
@@ -195,7 +199,6 @@ public sealed partial class Binding
     private void RunComponent(int component, int start, int end)
     {
         this.inferenceValues.Clear();
-        this.inferenceRuns.Clear();
         this.inferenceBindingIndex.Clear();
         this.inferenceBindings.Clear();
         this.inferenceHolds.Clear();
@@ -256,13 +259,25 @@ public sealed partial class Binding
 
             if (this.inferenceLimited)
             {
-                this.DecideAtLimit(start, end);
+                this.DecideAtLimit();
             }
             else
             {
-                for (var i = 0; i < this.inferenceBindings.Count; i++)
+                for (var b = start; b < end; b++)
                 {
-                    this.PublishInferred(this.inferenceBindings[i], empty);
+                    var batch = this.inferenceComponents[b];
+                    if (batch.FirstEntry == batch.EntryEnd)
+                    {
+                        continue;
+                    }
+
+                    var definition = this.InferenceRun(batch, this.HoldWith(empty, -1, batch), -1);
+                    for (var i = batch.FirstEntry; i < batch.EntryEnd; i++)
+                    {
+                        this.PublishInferred(this.inferenceBindings[i], definition, empty);
+                    }
+
+                    batch.ReturnRun(definition);
                 }
             }
         }
@@ -274,7 +289,7 @@ public sealed partial class Binding
             {
                 var batch = this.inferenceComponents[b];
                 batch.Published = true;
-                batch.RunsRented = 0;
+                batch.KeepRuns();
             }
         }
     }
@@ -309,7 +324,7 @@ public sealed partial class Binding
         this.inferenceValues[(binding, hold)] = new(null, HeldState.Open);
         var entry = this.inferenceBindings[index];
         var ownRun = this.InferenceRun(entry.Batch, this.HoldWith(hold, index, null), index);
-        var frozenRun = this.InferenceRun(entry.Batch, this.HoldWith(hold, -1, entry.Batch), index);
+        var frozenRun = ownRun.Frozen!;
         BoundType? found = null;
         var conflict = false;
         if (ownRun.Usable.TryGetValue(binding, out var owned) && frozenRun.Usable.TryGetValue(binding, out var held))
@@ -336,6 +351,11 @@ public sealed partial class Binding
         var answer = conflict ? new HeldAnswer(null, HeldState.Conflict) : found is null ? new HeldAnswer(null, HeldState.Missing) : new HeldAnswer(found, HeldState.Type);
         this.inferenceValues[(binding, hold)] = answer;
         this.InferenceStates++;
+
+        // C4 ruling 15 (a): the state's runs go back to the pool now it is answered. The own run serves this state only (its hold is the
+        // state's with v); the frozen run serves only v's states, which never nest (each run of v holds v), so a later state of v
+        // collects its frozen run again, and the two are the last runs rented of the batch.
+        entry.Batch.ReturnRun(ownRun);
         return answer;
     }
 
@@ -394,28 +414,23 @@ public sealed partial class Binding
         }
     }
 
-    // A collection of `batch`'s evidence under `hold` (a run), once per request: identification, extraction and each hole's usable
-    // positions (SPEC 8.5.5 Completion: the source path's premises proven under the run's hold), with every read of another binding of
-    // the component answered under the hold (ResolveAssociated). A held state's two runs (`owner`, its binding's entry; C4 rulings 11 and
-    // 12) collect only that binding's sources (DiscoverValues), as the rule's judgment reads them; the requirements' Types are read in the
-    // run of the hold with the definition's bindings held (as dev's batch held them). The definition's run (-1), made only at publication,
-    // collects every source under the definition's bindings: it records the problems and gives the evidence sources.
+    // A collection of `batch`'s evidence under `hold` (a run, rented for the one state or publication it serves and given back when that
+    // is answered; C4 ruling 15 (a)): identification, extraction and each hole's usable positions (SPEC 8.5.5 Completion: the source
+    // path's premises proven under the run's hold), with every read of another binding of the component answered under the hold
+    // (ResolveAssociated). A held state's two runs (`owner`, its binding's entry; C4 rulings 11 and 12) collect only that binding's
+    // sources (DiscoverValues), as the rule's judgment reads them; the requirements' Types are read in the run of the hold with the
+    // definition's bindings held (as dev's batch held them), rented first. The definition's run (-1), made only at publication, collects
+    // every source under the definition's bindings: it records the problems and gives the evidence sources.
     private AssociatedInference InferenceRun(AssociatedInference batch, int hold, int owner)
     {
-        if (this.inferenceRuns.TryGetValue((batch, hold, owner), out var run))
-        {
-            return run;
-        }
-
         var held = this.HoldWith(hold, -1, batch);
         var frozen = held == hold ? null : this.InferenceRun(batch, held, owner);
-        run = batch.RentRun();
+        var run = batch.RentRun();
         run.Hold = hold;
         run.Owner = owner;
         run.Frozen = frozen ?? run;
         run.Records = owner < 0 && hold == this.HoldWith(this.inferenceEmptyHold, -1, batch); // the root's frozen run records the problems
 
-        this.inferenceRuns[(batch, hold, owner)] = run;
         var previous = this.collectingAssociated;
         this.collectingAssociated = run;
         var formation = this.BeginFormation(); // SPEC 8.5.5, 8.6.3: the inferred bindings are formed from the signatures, whatever the reader.
@@ -552,15 +567,15 @@ public sealed partial class Binding
         }
     }
 
-    // Publication (the request's end): the binding is Value(v | {}); its evidence sources the root's frozen run's positions supplying it.
-    private void PublishInferred(InferenceEntry entry, int empty)
+    // Publication (the request's end): the binding is Value(v | {}); its evidence sources the positions of the definition's run (made after
+    // every root state, C4 ruling 12) supplying it, read against its root state's own run, collected again (ruling 15 (a)).
+    private void PublishInferred(InferenceEntry entry, AssociatedInference definition, int empty)
     {
         var binding = entry.Binding;
         var answer = this.inferenceValues[(binding, empty)];
         var index = this.inferenceBindingIndex[binding];
-        var frozen = this.InferenceRun(entry.Batch, this.HoldWith(empty, -1, entry.Batch), -1);
         var own = this.InferenceRun(entry.Batch, this.HoldWith(empty, index, null), index);
-        if (frozen.Usable.TryGetValue(binding, out var usable) && own.Usable.TryGetValue(binding, out var owned))
+        if (definition.Usable.TryGetValue(binding, out var usable) && own.Usable.TryGetValue(binding, out var owned))
         {
             for (var i = 0; i < owned.Count; i++)
             {
@@ -584,6 +599,7 @@ public sealed partial class Binding
             }
         }
 
+        entry.Batch.ReturnRun(own);
         if (answer.State == HeldState.Conflict && !binding.InferenceConflict)
         {
             throw new InvalidOperationException("A conflict of Value(v | {}) has no two supplying positions (InternalInvariant; R7-C4).");
@@ -596,15 +612,9 @@ public sealed partial class Binding
     // value there (a Type, missing or a conflict, as Value(v | {}) gives it); another is a conflict when two supplying sources differ (an
     // Error that stands), else a Resource failure (InferenceProblem.Limit), whose one record is the component's least definition's by
     // name (SPEC 8.3.3: "may depend on declaration names"), every other definition's failure resting on it (VerifyConformance). A run
-    // records no problem here; the request's runs are dropped first, so the runs reuse their pooled objects.
-    private void DecideAtLimit(int start, int end)
+    // records no problem here; every state's runs are back in the pools (ruling 15 (a)), and each binding's run goes back after it.
+    private void DecideAtLimit()
     {
-        this.inferenceRuns.Clear();
-        for (var b = start; b < end; b++)
-        {
-            this.inferenceComponents[b].RunsRented = 0;
-        }
-
         // The hold of every binding, formed in order-number order (each member newer than the last, one node each; in entry order each
         // older member formed every newer node again: O(m^2) nodes, 13.6 GB on the 10,000-definition ring), the never-held ones last.
         var all = this.inferenceEmptyHold;
@@ -652,6 +662,7 @@ public sealed partial class Binding
                 }
             }
 
+            batch.ReturnRun(run);
             if (!binding.InferenceConflict && this.ReachesAnotherBinding(index))
             {
                 binding.Inferred = null;
