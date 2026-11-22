@@ -8321,6 +8321,8 @@ resumed by R4-M86 (2026-10-20).
     R7 removes storage preparation from `Apply`") for every collector reading but a requirement call's witness: `TyCtxt.Apply` is the
     substitution alone, and the collector reads a substitution's formation, never this walk's verdict; a requirement call's witness
     Limit keeps the clause until R7-T1's c4.
+  - Superseded by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22) for a requirement call's witness too: Dispatch reads no storage, so
+    the interim clause has no reader left; RQ12's G128 interim ends.
 - **BU-13** (2026-10-19; PLAN G147 (2)'s Open; option A of the BU7 diagnosis) A selection that reaches its element through `indexUniq`
   (a user index or an exclusive view; an owned `Array` element, SPEC 4.7.1) needs its receiver exclusively acquired, which storage
   rooted in a `let` binding or an owned parameter, or reached through a shared layer, cannot be (SPEC 15.1.5, 15.6.2). One predicate
@@ -9488,6 +9490,8 @@ resumed by R4-M86 (2026-10-20).
     the rejected option "`Apply` giving Rejected instances to the MIR readers" taken) and the Composition clause's "A Limit has no
     substitution" (`Compose`'s `Subst` is null only where a part or a length does not form). The Dispatch clause stays until R7-T1's
     c4.
+  - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): the Dispatch clause ("`Resolve` refuses a Limit only";
+    "the limit wins" beside a failed part): `TyCtxt.Dispatch.Resolve`'s storage gate and `RequirementTargetKind.Limit` are deleted.
 
 - **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; PLAN G160, unit bu42) R4-M116 (PQ-7): A5 reads neither
   `RawMembers` nor `RawStep(raw)`, only the step of the raw layer an instance stores, so BU-24's signature reader, added on the owner's
@@ -18177,6 +18181,8 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R7-M54 (R7-T1 c3b, 2026-11-19): the admission gap "a substitution or Type whose storage is a limit" (BU-38's
     amendment) goes: `Admit` reads a new key's local Types by their formation, each at its local (`Instantiable` through
     `TyCtxt.Answered`), and the `StorageNesting` row is a requirement call's witness Limit only, until R7-T1's c4.
+  - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): Capability's first row, `StorageNesting`, and "a
+    requirement call's witness Limit only, until R7-T1's c4" go: the row is removed.
 - **R5-M41 Collector records under MIR code generation (OD4)** (2026-10-18; plan K4b; under R5-M18; meets R5-M4's "under sel,
   collector records publish from K4"; its run superseded by BU-48, its records by R5-M156) Under MIR code generation (sel),
   `Compilation.MirRecords` counts and lists the records of the checked set of the program version (R5-M40) with the MIR's
@@ -18468,6 +18474,9 @@ structure is recorded here by the unit that first implements it.
   second copy); a Builtin without the bound reference (the substitution needs it for the signature); a twin over collector sites (no
   mapping from a MIR site back to its CallPlan pair exists); reading a None of the core as Limit (an Unknown proof is no depth
   limit).
+  - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): the definition is `RequirementTarget(Kind, Target, Subst,
+    Access, Cause)`, `Cause` a `TyCtxt.Formation` (default `Formed`; `HeightLimit` where the resolution refused a Type past IMPL A.4's
+    height in the collector's answer frame); its `Limit` kind is deleted.
 - **R5-M64 The generation entry** (2026-10-19; plan C0a, PD12's gate step 1; under R5-M18 and R5-M35; amended by R5-M160, R5-M161,
   R5-M165 and R5-M169) A permanent Core component, the generation entry (`Core/Compilation.Generation.cs`, contract entry), owns the
   one way the latest analysis becomes module text: `Compilation.Generate(TextWriter)` passes the gate, runs the compilation's code
@@ -18704,6 +18713,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R7-M54 (R7-T1 c3b, 2026-11-19): a composed substitution is read by its formation (`InstanceCollector.Formed`), not by a
     verdict (`Made` deleted); the Limit row (Dispatch's Limit target, the storage-nesting row) stays until R7-T1's c4, which
     supersedes it with BU-38's Dispatch clause.
+  - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): the Limit row is deleted with
+    `RequirementTargetKind.Limit` and `CapabilityGap.StorageNesting`.
 - **R5-M63 A failed node keeps the children Binding resolved** (2026-10-19; Q21, PLAN G121, Q8-7 under R5-M23 (DEC Q6 form 1), ask
   A-14; supersedes, for the children below, R4-M61's "which the builder replaces whole" and its "so its children are not published
   as evaluated and a closure inside it is not built"; extended by R5-M84; amended by R4-M88; its residual line superseded for `do`
@@ -18821,6 +18832,9 @@ structure is recorded here by the unit that first implements it.
     mapped from the `CompilerFunctionKind` in the collector (a second copy of `PrepareBuiltinTargets`' table); a column naming
     BufferWriter on the intrinsic rows (one Witness row, whose value already means the writer's witness); a published row for
     `Text.writer` (A4 would read creating the adapter as running `reserve`).
+  - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): the Builtin leaves' "no tree (Limit) the storage-nesting
+    gap, at the item's site" and `Parts`' null row: `TyCtxt.Comparison` is total (no null node), and a Composite part's resolution
+    past the height is `TypeHeightLimit_Kd` at the item's site.
 - **R5-M71 A staticEnsure's operand is its static's slot** (2026-10-19; F10's follow-up, R4's step-2 plan AR-8; its initializer
   clause superseded by R4-M121; its wording of the rule partly superseded by R5-M123) Rule (`MirValidator`,
   `MirViolation.StaticSlot`): the builder
@@ -18940,6 +18954,10 @@ structure is recorded here by the unit that first implements it.
     root
     Limit stay.
   - Superseded in part by R8-M7: its Rejected line "a string leaf as a call (F6's Builtin leaf names no callee; a second form of one comparison)" is superseded by R8-M7 with those two reasons: a string leaf has a callee (`ComparisonNode.Target`) and the only form is the call.
+  - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22; the Middle's RP17 C2, B's ruling 12): the sentence "A null
+    `Comparison` (a Limit) is one located `Unsupported_Kd` with an Opaque value, the operands not built": `Comparison` is total, a
+    tuple operator builds its call over every leaf, and past A5's bound a Loan-holding body meets A5's own `OwnershipDepthLimit_Kd`
+    at each such call (m4c).
 - **R5-M76 The operator rows of MIR code generation** (2026-10-19; plan C1a; under R5-M18 form 1, R5-M17, R5-M20 and R5-M65)
   `FunctionCodegen.Arithmetic` writes a BinaryOp or UnaryOp into an unprojected local through `LlvmScalarText` by one table, `Rows`:
   a row per `MirBinaryOp`, then per `MirUnaryOp`. The row's entries are keyed by the left operand's closed Type (`TypeOf`): signed
@@ -22122,6 +22140,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
   - Amended by T-M13 (B7a1): the reserved supplies are the profile's `Supplies` (`TargetSupply`) and `ReservedSymbols`;
     `Kernel32Library`, `BackendLibrary`, `Kernel32Symbols` and `ProvidedSymbols` are deleted. The split stands.
+  - Amended by T-M18 (B7a2): `WindowsProfile` is `TargetProfile.Windows`, the first row of Core's target table `TargetProfile.Rows`
+    (`Core/TargetProfile.cs`); the split stands.
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -22518,6 +22538,10 @@ structure is recorded here by the unit that first implements it.
     instantiation; it read `Locals[0].Type`, a copy of that Type), so SPEC 23.1.2 requires that independent record beside the finding.
     `Templates` calls it for every body before the gate; acceptance never moves. `ABodyWithAFindingDropsOnlyWhatRestsOnIt` gains j's
     gap by this amendment, not under Q13.
+  - Amended by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22; the Middle's RP17 C2, B's ruling 12): in GR-1a's test list,
+    `MirBuildTest.ATupleOperatorWithoutItsComparisonIsUnsupported` (deleted by c4) is replaced by
+    `MirBuildTest.AConstructionRecordMarksItsOwnBodyAlone` (the builder's B3 default past the bound, `Unbuilt`: the record's own
+    ordinary function body marked, no other); `DefaultExpansionStopsAtTheLimit` stays.
 - **R5-M184 One publisher of MIR records (R6-check H3-2)** (2026-11-03, under R5-M182 and Q13; unit U0 bp, then U1a-U3) Major.
   - Rule: `Core/Compilation.Publication.cs` is Core's one publisher of MIR records. It maps one `MirReport.Merged` problem to the
     diagnostics adapter: the `Located` key form, ordinal conditions, one fact table (one arm per `MirFactKind`) and derived problems
@@ -24247,12 +24271,16 @@ R8-M* and R9-M* by the stage of the recording unit.
     initialized; Z6's option (a), if it adds a vocabulary entry; Z23, if its design needs a MIR vocabulary entry; O-445 for Z24.
   - **Not in stream Z:** the producers another stage removes (B1, B3, E3, E4 with R7-T1; B9-B11 with R7-C3 and Y5; E7 with R7-P5;
     X1, X2 with P42's Binding part) and those added since R4's X-2, which keep their own rows (PLAN G1106, G1107 among them).
+  - Amended (R7-T1 c4, Q-641, D-1051; the Middle's RP17 C3, the Middle's decision taken by B's ruling 12): the "Not in stream Z" list
+    drops B1 (removed by R7-T1 c4, R7-M54's c4 part) and moves B3, E3 and E4 into stream Z, as the Middle's rows: they read
+    `Instance`'s verdict (the builder's default copy and A4), not Dispatch's, so their removal stage is R7's stream Z; R7-T1 removes
+    none of them. No postponed stage is created, so no owner approval is needed.
 - **R7-M54 `TyCtxt.Apply` is the substitution alone; the instance collector reads a substitution's formation, never its storage**
   (Back, 2026-11-19; R7-T1 c2 and c3a-c3e, Q-543, D-864; Major unit T1: design review by the Front (Binding), B's reviewer (the
   collector) and the Middle (RP17: `Signature`'s MIR readers, the publication rule, the newly accepted class); the Front's code review
   (C-406: REVISE B1, B2 with C1, C2, answered by c3e's one-level-higher fix, `back\notes\r7-t1\fix-design.md`, B's ruling 17); R7 plan
   §5.1 T1; the owner's RQ12 approval of T1's record moves m1-m3; PLAN G128, G242, G651 U2) SPEC 6.1, 8.1.3, 8.15.3, 23.1.1, 23.1.2;
-  IMPL A.4, 21.3.1, 21.3.2. One entry for c2 and c3; c4 (the Dispatch hunk, after V2c) adds its part.
+  IMPL A.4, 21.3.1, 21.3.2. One entry for c2 and c3; c4 (the Dispatch hunk, after V2c) adds its part (the c4 part, Q-641, D-1051).
   - **Formation (c2).** `TyCtxt.Apply(type, subst)` is `Binding.StorageInstance` (the identity keeps the Type) and gives
     `(BoundType? Type, Formation Cause)`; it walks and prepares no storage. `TyCtxt.Formation { Formed, Incomplete, HeightLimit }`
     (owner `TyCtxt.Substitutions.cs`, contract in its header) is the cause a null instance carries, the substitution's alone:
@@ -24273,7 +24301,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     (Binding's run, code generation, the MIR steps) to G651's site-less record. The frame is the collector's run:
     `InstanceCollector.Run` alone opens it (`TyCtxt.OpenAnswer`) and closes it (`CloseAnswer`) in a `finally`, so no throw leaves it
     open (the Front's C1). A formation (`Binding.OpenFormation`, ended by `CloseAnswer`) owns refusals only inside the frame, and
-    there are two: a site's substitution (`TyCtxt.Answered`, for `Apply` and `Compose`: `HeightLimit`, recorded at the site) and an
+    there are two (three since c4: the c4 part's requirement call's witness resolution): a site's substitution (`TyCtxt.Answered`,
+    for `Apply` and `Compose`: `HeightLimit`, recorded at the site) and an
     instance's stored Types (`Binding.Instance`, whichever reader triggers it: Layout, glue, a witness, a verdict walk), whose cause
     is published with the cached instance as `AdtDef.InstanceStorage.HeightLimit` (its part null, no record), read by Binding's
     storage walk as a limit (`StorageParts`: `StorageRefused`, never Rejected) and by Layout as `Layout.Outcome.HeightLimit` (a limit,
@@ -24283,7 +24312,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     its storage verdict, so a storage bound no longer makes a substitution Incomplete (the Front's B1) and a height refusal no longer
     makes a storage verdict Rejected (B2). Row: `InstanceCollectorTest.OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal`. Outside
     both formations until c4 (behind the Dispatch gate, B's ruling 17 O1): `Agrees`' `Signature(requirement, subst)` and
-    `TyCtxt.Dispatch.Resolve`'s `InstanceContract` and `ResolveRequirementWitness`, where a refusal would be the frame's record.
+    `TyCtxt.Dispatch.Resolve`'s `InstanceContract` and `ResolveRequirementWitness`, where a refusal would be the frame's record;
+    superseded by the c4 part.
   - **The collector (c3b, c3d, c3e).** `Made` is deleted. The collector's one reading of a cause is
     `InstanceCollector.Formed(cause, item, forming, subject)`: Formed makes the instance; HeightLimit is `TypeHeightLimit_Kd`
     (Resource, IMPL 21.3.2) with its limit at the requesting site, one record per requesting declaration and forming site at its least
@@ -24358,9 +24388,63 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Removes.** `Apply`'s Prepared-only filter (G128's one verdict for unlike causes); `Compose`'s null on a storage Limit;
     `InstanceCollector.Made`, its private `Instance` and `Instantiable`'s verdict join.
   - **Temporary.** The answer frame (`Binding.answer`, `[Transitional("G651 a1")]`): G651 a1 makes the site `SubstituteType`'s input
-    and the frame that site kind. `CapabilityGap.StorageNesting` (`[Transitional("R7")]`, its reason now c4), read only by the witness
-    Limit rows (`Requirement`, `Comparing`, `Parts`, `Parts`' null node over a height-refused instance included, B's ruling 17 O2)
-    until c4.
+    and the frame that site kind. `CapabilityGap.StorageNesting`: deleted by the c4 part (R7-T1 c4, 2476a523b).
+  - **c4 part: Dispatch reads no storage; the witness resolution is the call's formation** (Back, 2026-11-22; R7-T1 c4, Q-641,
+    D-1051; design `back\notes\r7-t1\c4-design.md` with B's rulings 1-12; B's collector review `c4\review-collector.md`, the Front's
+    reviews `front\notes\R7T1\review-c4.md` and `review-c4-impl.md`, the Middle's RP17 `middle\notes\q641-rp17.md`).
+    - **Dispatch reads no storage.** `TyCtxt.Dispatch.Resolve`'s gate (`PrepareTypeStorage(self) == Limit`) and
+      `RequirementTargetKind.Limit` are deleted: what a call runs does not depend on its Self's storage (BU-38's reason, now for a
+      Self past Binding's bound too). Supersedes BU-38's Dispatch clause ("the limit wins" beside a failed part) and R5-M67's
+      requirement Limit row; BU-12's interim clause ends for a requirement call's witness; RQ12's G128 interim ends.
+    - **The witness resolution is the call's formation (the third formation owner).** `TyCtxt.Witness` runs `Resolve` inside
+      `Binding.OpenFormation`/`CloseAnswer`: the resolution forms the conformances of Self's Type to the Contract up to the one naming
+      the reference (SPEC 8.6.1, 8.9.1) and the premises of the conformance it selects (8.8.2), so it can form a Type no site formed
+      (another conformance's formal or a conditional conformance's premise); a refusal past IMPL A.4's height inside the collector's
+      answer frame makes the memoized target `(None, Cause: Formation.HeightLimit)`. **New column:** `RequirementTarget.Cause`
+      (`TyCtxt.Formation`, the one cause vocabulary; default `Formed`), the planning session's decision (B's ruling 2; no
+      closed-vocabulary entry added). The collector reads it where it calls `Witness` (`Formed`): `Edge` right after `Witness`, keyed
+      by the call's template site as its composition is; `Runs` and `Callee` at the site; `Parts`' Composite part at the item's site;
+      `Requirement` and `Comparing` read none (B's ruling 8 C1). Outside the frame a formation owns nothing. Fix-design §5 (1)'s
+      condition (a reproducer of a third formation, o1-names-over) was met and resolved by option (a) under B's ruling 1. Rows:
+      `Edge`'s reading by another conformance's formal (o1-names-over) and by a conditional conformance's premise (pe2-over: the
+      gate's `Unsupported_Kd` -> one `TypeHeightLimit_Kd` at `w == w`); `Callee`'s, `Runs`' and `Parts`' readings are reached by no
+      row (a requirement Item's height record is its own Type formation's, in `In` through `TyCtxt.Answered`, before `Callee`'s
+      `Witness`, on dev too; a comparison item past 128 meets R5-M170's key limit first).
+    - **SPEC 8.9.1's reading (the Front's C1b):** the resolution forms the conformances of Self's Type to the Contract in declaration
+      order up to the one that names the reference (by 8.9.1 the only one: direct conformances never collide), then that
+      conformance's premises; a refusal while forming an earlier one or a premise is the call's `TypeHeightLimit_Kd`; a later
+      conformance is not formed. Only that forming follows clause order (o1-names-over: one THL at the call; o1-names-swap:
+      accepted).
+    - **`TyCtxt.Comparison` is total** (`ComparisonNode`, not nullable): the builder's B1 `Unsupported_Kd` producer
+      (`MirBuilder.Compare`) is removed, with the null arms in `Parts`, codegen and the validator. `Compose`'s `_ => None` is the
+      broken contract: it composes a template or a Type a site formed within the height, whose conformance Binding proved at that
+      site, and a refusal of a resolution is reported where the call forms (`Witness`'s HeightLimit at the requesting site), so none
+      reaches it.
+    - **m4c (B's rulings 3 and 12, the Middle's RP17 P3):** a tuple operator over a leaf past Binding's bound in a closed body builds
+      its Requirement call, so a Loan-holding body meets A5's own `OwnershipDepthLimit_Kd` at each call whose store check rests on
+      the part: q-cmp-closed-over's two (the `init()` call's at 10:14 and the operator's at 11:12) are two independent failures
+      (neither reads the other's verdict; SPEC 23.1.2, IMPL 21.3.2, R4-M51, R4-M153), both reported; before c4 the builder's B1
+      `Unsupported_Kd` alone, since the unbuilt call left the body no Loan. Row:
+      `MirBorrowsTest.AClosedTupleOperatorPastTheBoundMeetsA5sLimitAtEachCall` (with the Middle's c-init-loan control: the `init()`
+      call's record alone, no comparison).
+    - **`CapabilityGap.StorageNesting` is deleted** (with its `[Transitional("R7")]`): the Temporary bullet's sentence on it is
+      superseded.
+    - **Resource move (the Front's C6 and the implementation review's C3):** a type-driven key (a property witness's shim or a
+      comparison item) whose erased Type passes 128: the gate's `Unsupported_Kd` -> `GenerationResourceLimit_Kd` at the call
+      (R5-M170's key limit; prop2-under, pp-under, pp2-under; the row prop90 pins the class).
+    - **Exposure (the Front's C4):** xreq2-valring-deep, an invalid program (SPEC 5.2.1, 15.6.4 rule A), moves from the gate's
+      `Unsupported_Kd` at `U.run()` to accepted: R7-M54's named Exposure class (valring65-deep-v5) "also through a witness body that
+      Dispatch's gate kept out" (its shallow twin is accepted on dev: the owner-approved storing silence, O-62 (a), R4-M190). The
+      class is pinned by name only, as c2-c3's valring65-deep-v5 is: no row asserts an invalid program's acceptance (it would pin a
+      known gap as behaviour); the named class with its removal condition, the storing rule's silence under O-62 (a) and R4-M190, is
+      the record. The Middle's RP17 confirms the class.
+    - **Supersedes in this entry** the answer frame's "Outside both formations until c4 ..." and "there are two": now three (a
+      site's substitution, an instance's stored Types, a requirement call's witness resolution).
+    - **Rejected:** keeping the gate and mapping the three witness rows to `GenerationResourceLimit_Kd` (R5-M170 rejects a collector
+      reading of Binding's bound; B's ruling 2); a `RequirementTargetKind.HeightLimit` member (a second statement of the cause
+      vocabulary beside `TyCtxt.Formation`; B's ruling 2); a refused `NamesReference` candidate read as "does not name" (a silent
+      default over a refusal); a two-pass `NamesReference` inside c4 (the Front's C1c: naming by 8.9.1's head unification before
+      forming is PLAN G1269, not c4's).
 - **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
   D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
   CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
@@ -28950,7 +29034,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: O-467 (b) (the record alone); generation directories (decision 2); the report after the move; failing at once when
     busy; the lock in `NativeBuild.Run` only (another build's success could overwrite an invalidation); a delete-on-close lock
     (delete-pending reads as access denied); a reader lock in `run --no-build`; the lock in `emit` (not in B5: it needs the paths
-    before the check or a nested acquisition; the race is PLAN G1202).
+    before the check or a nested acquisition; the race is closed by T-M17's hold).
 - **T-M8 The compiler's supplies** (Tatara, 2026-11-21; the plan's unit B6a, Q-617, D-1004; Major; the owner's decision 20 (O-469
   (a), (a), (a)): the reserved libraries are supplied by the compiler, and a program cannot supply them; design review C-434;
   implementation review C-436)
@@ -29321,3 +29405,67 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: a root parameter or fallback in `Get-KimiKernel32` (T's N6-1: a second copy of one supply); setup deleting an
     existing root's `windows_x64` (older bases on the machine keep working, design fact 12); keeping verify's definition step for a
     file no product reads (N6).
+- **T-M17 A native build's files are its own** (Tatara, 2026-11-22; PLAN G1202 and G1203, Q-659, D-1086; Major; design
+  `artifacts\handoff\tatara\units\G1202\design.md` Revision 1; design reviews C-450 (REVISE, then ACCEPT); the Middle's implementation
+  review C-460, ACCEPT, and the Back's read of the script hunk; T's rulings Q1 (a), Q2 (c5), Q3 (a); amends T-M7). IMPL 20.3.2.
+  - **The hold (G1202):** `NativeBuild.Run` checks the pair's names (`CheckPair`: the manifest's `irFile`, resolved beside it, is
+    `paths.Ir`; the optimization), then opens the IR once with read sharing only (`File.OpenRead`), hashes it from that handle
+    (`ArtifactFiles.Hash(Stream)`) and compares the hash with `irSha256` ("IR/manifest SHA-256 mismatch."), and keeps the handle to
+    the build's end (`using` over `Run`). The hold's start is structural: the hash is read from the held handle, so no write falls
+    between the hash and the hold. Its extent is the build's (one scope; releasing after `Compile` needs a second disposal point for
+    at most the link). Tatara's LLVM opens the path for reading, which the hold admits; every writer is refused while it is held:
+    `emit`'s replacement (`Replace` retries about 1 s, then `ArtifactPublicationFailed_Kd` with the system's message, the pair
+    unchanged), an in-place write, a delete or a rename. The platform check follows the hash check, so a mismatched pair fails as
+    itself on every platform (dev's order: the hash's failure before the platform's).
+  - **One owner of an output's names (G1203):** `ArtifactPaths.Create(ir, optimization)` names an output's files from its IR:
+    manifest `Name.link.json`, record `RecordOf(ir)` = `Name.link.build.json` (Begin keeps its lock beside it), stem
+    `Name.O0`/`Name.O2`. `Create(Project)`, `TestCommand`'s private builds, `BuildManifest` and `Project.Emit`'s message read it;
+    `.link.json` has one spelling in the compiler. For a project and for `test` the four strings equal the earlier construction's,
+    so their paths and bytes are unchanged.
+  - **`build --Manifest` takes the pair as `emit` writes it:** `ArtifactPaths.IrOf` gives the `Name.ll` beside `Name.link.json`
+    (the suffix compared ignoring case); a manifest of another name fails before any write ("A link manifest is named
+    Name.link.json, as emit writes it."). The build begins `RecordOf(ir)` (the file `ChangeExtension(path, ".build.json")` named
+    before), reads and validates the manifest and builds `Create(ir, optimization)`; it no longer reads `irFile` for a path.
+    `CheckPair`'s existing path check now rejects a manifest naming any other IR ("IR/manifest path mismatch: a link manifest
+    Name.link.json names the IR Name.ll beside it."), before any IR is opened, so no IR is one of its own build's files
+    (`Y.link.json` naming `Y.O2.ll`) and one IR has one manifest and one output under one lock (`Alt.link.json` naming `Hello.ll`).
+    "Before any write," precisely: a manifest naming another IR fails after `Begin`, so it writes its own record's invalidation and
+    its lock and nothing else (IMPL 20.3.2: "A build first invalidates"); only a manifest of another name fails before `Begin`.
+  - **The path check's case rule (Q3, C-450 P1):** the comparison is `StringComparison.OrdinalIgnoreCase`, which approximates the
+    default Windows rule, the only host the native build runs on; a manifest given in another case (`hello.link.json`) or naming
+    its IR in another case (`OutputPath` `Hello.LL`) builds into the same files. The rule reaches acceptance only: the build opens
+    `paths.Ir`, the name-derived path, never `irFile`, and the held handle's hash decides the bytes, so a case-sensitive directory
+    (`fsutil file setCaseSensitiveInfo`) stays safe: a different `hello.ll` fails the hash check, and equal bytes build. The given
+    case reaches the object's `.file`, the O2 `.ll`'s module name and the record's `executable` member, as a source build's names
+    follow the given project path; nothing checks them.
+  - **Residuals (no wrong code):** an `emit` that replaces the IR after a build read the manifest and before it opened the IR fails
+    the build's hash check (a spurious but safe failure; only a lock shared with `emit` removes it). A build's outputs are its
+    record's names, and one of them can be another output's IR (`Y.O2.ll` is `OutputPath` `Y.ll`'s optimized IR at O2 and
+    `OutputPath` `Y.O2.ll`'s IR, under two records): safe, since while the second output's build holds it the first's optimize
+    cannot open it for writing and fails, and otherwise the second output's next build fails its hash check.
+  - Rejected: a private copy of the IR (its path reaches the O2 `.ll` and the object; a second redaction root; one more write and
+    read per build); the IR's bytes to Tatara (a `tatara.h` change and a new ABI); one lock over the pair and the outputs with
+    `emit` included (a mode parameter or a per-process table of held locks, `Begin` split, a departure from R5-M181, and only
+    Kimi's `emit` covered); a second lock over the stem; private intermediates (two builds still publish into one output under two
+    locks); one lock per output directory; the record and the lock named from the IR (a manifest that fails to read would
+    invalidate no record); the stem named from the manifest with any IR accepted (Revision 0: a manifest's IR can be one of its own
+    build's files, C-450 B1, and the second derivation stays, B2).
+- **T-M18 The target table** (Tatara, 2026-11-22; the plan's unit B7a2, Q-660, D-1087; Major, behaviour-preserving; design
+  `artifacts\handoff\tatara\units\B7\design-b7a.md` Revision 1 §2.1; design review C-440; the Middle's implementation review C-453,
+  ACCEPT). Amends R5-M174.
+  - **The row:** `WindowsProfile` (a static class of constants) is `TargetProfile.Windows`, the first row of `TargetProfile.Rows`
+    (`Core/TargetProfile.cs`, `internal sealed`, the SPEC's name "executable target profile"). The row is an object initializer of
+    `required init` columns: each column is named where the row states it (fifteen, eleven of them strings, which a positional list
+    could swap silently) and the compiler rejects a row missing one; C# makes a `required` member as visible as its type, so the
+    type is `internal` (its readers are Kimi, `Benchmark` and `xUnitTest`). The values two columns share are private statics before
+    `Windows`, and `Windows` precedes `Rows` (static initializers run in text order). `Supply(name)` is an instance loop. Every
+    member keeps its name; the columns are today's, B7b adding each of r3 §4's others with its reader.
+  - **The rename:** `artifacts\tatara\b7\rename-windows-profile.py <worktree root>`, one whole-word pass (`\bWindowsProfile\b` →
+    `TargetProfile.Windows`) over the C# files of `src/Kimi`, `src/Benchmark` and `tests/xUnitTest` naming it, BOM and line endings
+    kept; its post-condition (no such file but the profile's own) exits non-zero listing each remaining line. A branch adding a
+    `WindowsProfile` reference re-runs it. Const contexts: `LlvmModuleText.Footer` is `static readonly` (the same string, built
+    once); the three `[InlineData]` take the literal `"x86_64-pc-windows-msvc"`, which `CoreModelTest` ties to
+    `TargetProfile.Windows.Target`; `TataraExecutorTest.Triple` is `static readonly`.
+  - Rejected: r3 §4's full column set now (columns without a reader that differs); `Find`/`Host` now (no reader that
+    `TargetProfile.Windows` does not serve; B7b's selection); `WindowsProfile` kept as an alias or the triple as a second `const`
+    (two names for one fact); a constructor (positional columns); the rename by hand (not regenerable at landing).
