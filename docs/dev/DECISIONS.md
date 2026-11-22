@@ -16754,7 +16754,8 @@ resumed by R4-M86 (2026-10-20).
     (an error-typed operand, or an Equals, ReferenceEquals or search call without its method) fails the test, naming its site.
   - `finding`: an operand that is not what its owner publishes, a defect found and not fixed by the row's unit; the row's comment names
     its PLAN open issue, and the reason changes when that issue's fix lands. The first: BindConversion's typed-borrow target (PLAN
-    G1240, D-1036).
+    G1240, D-1036). G1240's rows became `formed` with its fix (Q-657, `BindConversionTarget`); the reason stays in the closed list
+    with no row.
   - A later unit that adds or removes such a comparison updates its row with its reason. A comparison no reason covers is routed
     through the judge as its own unit (an acceptance mover), never whitelisted. The test checks each member's sum of rows, so a change
     inside a member with two or more reasons is reviewed against the reasons file (`...\front\notes\C3\c3c\reasons.tsv`, one line per
