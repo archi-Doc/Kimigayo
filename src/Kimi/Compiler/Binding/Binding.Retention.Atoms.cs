@@ -275,7 +275,7 @@ public sealed partial class Binding
         };
         if (raw && !inside && !past && step == HoldStep.Exclusive && at.Input >= 0)
         {
-            this.RawContent(OwnedOrigin(type)!, at.Input);
+            this.RawContent(OwnedOrigin(type)!, at.Input, at.Signature);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
@@ -376,10 +376,10 @@ public sealed partial class Binding
 
     // SPEC 5.7 Calls (D15; design-final §6.2): a raw parameter layer whose Origin steps Exclusive lets the call write what each borrow the
     // Origin belongs to admits (RawMembers: the referent of each input whose outer Origin it is, the keepers of each slot it binds in a
-    // nominal Type of the contract, substituted by that Type), walked as input `index`'s writable content. Each (Origin, input) is walked
-    // once per contract or erased signature, which loses nothing: its members and its content atom are the same each time. An incomplete
-    // member walk makes the contract CallRetention.Limit.
-    private void RawContent(BoundOrigin origin, int index)
+    // nominal Type of the contract, substituted by that Type; ContractMembers, `signature` the declared counterpart), walked as input
+    // `index`'s writable content. Each (Origin, input) is walked once per contract or erased signature, which loses nothing: its members
+    // and its content atom are the same each time. An incomplete member walk makes the contract CallRetention.Limit.
+    private void RawContent(BoundOrigin origin, int index, BoundType? signature)
     {
         if (!this.retentionRawVisits.Add((origin, index)))
         {
@@ -388,7 +388,7 @@ public sealed partial class Binding
 
         var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, origin, HiddenWritable: true);
         var start = this.rawMembers.Count;
-        this.retentionLimit |= !this.RawMembers(origin, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
+        this.ContractMembers(origin, null, signature, CollectionsMarshal.AsSpan(this.retentionScope));
         var end = this.rawMembers.Count;
         for (var i = start; i < end && !this.retentionLimit; i++)
         {

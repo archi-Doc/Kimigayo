@@ -77,7 +77,7 @@ public sealed partial class Binding
             return StepOf(OwnedOrigin(layer));
         }
 
-        return signature is { IsPointer: true } && this.retentionDeclared.Count > 0
+        return !this.BoundElsewhere(written, signature)
             ? this.SignatureStep(SlotArgument(OwnedOrigin(signature!)), CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1])
             : this.BinderStep(OwnedOrigin(layer));
     }
@@ -109,8 +109,15 @@ public sealed partial class Binding
     // walk is incomplete (RawMembers), and for a layer a Type slot's argument supplies whose Origin steps Exclusive: that Origin belongs to
     // the borrows of the scope that wrote the Type (an input's, a body local's), not to the instance's, and a call may store through it.
     internal bool StoredMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
-        => layer.RawOrigin is not { } origin || StepOf(origin) != HoldStep.Exclusive ||
-            (written is { IsPointer: true } && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in holder), members));
+    {
+        if (layer.RawOrigin is not { } origin || StepOf(origin) != HoldStep.Exclusive)
+        {
+            return true;
+        }
+
+        // The declared arm (`written` a raw layer): within the instance. Any other (a Type argument supplies the layer) is unanswered.
+        return written is { IsPointer: true } && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in holder), members);
+    }
 
     // A raw Origin as its signature writes it (DECISIONS BU-113): `x.s` denotes the slot argument of x's declared Type (the declaration's
     // own slot for `self.s`, the projection itself for an input whose Type omits it); any other Origin is itself.
@@ -146,6 +153,11 @@ public sealed partial class Binding
     // Whether an Origin is `origin` or a meet with it as an operand.
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
+
+    // Whether RawStepAt judges a layer where its Origin is bound (BinderStep's arm: a Type argument's, a Closure environment's), not
+    // within the walked scope; retention's member reads (ContractMembers) take the same arm.
+    private bool BoundElsewhere(BoundType? written, BoundType? signature)
+        => written is not { IsPointer: true } && this.retentionInputs != 0 && !(signature is { IsPointer: true } && this.retentionDeclared.Count > 0);
 
     // SPEC 5.7 Authority (DECISIONS BU-113): a raw layer judged where its Origin is bound, "never by the caller's actual borrow": a
     // function's Input or Parameter Origin by that function's declared inputs (SignatureStep over TyCtxt.Signature, read in

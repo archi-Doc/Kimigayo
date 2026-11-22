@@ -564,7 +564,7 @@ public sealed partial class Binding
         if (declared.IsPointer && this.retentionDeclared.Count > 0 && this.RawStepAt(declared, null, null, declared) == HoldStep.Exclusive)
         {
             var first = this.rawMembers.Count;
-            this.retentionLimit |= !this.RawMembers(OwnedOrigin(declared)!, CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1], this.rawMembers);
+            this.ContractMembers(OwnedOrigin(declared)!, null, declared, CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1]);
             var last = this.rawMembers.Count;
             for (var i = first; i < last; i++)
             {

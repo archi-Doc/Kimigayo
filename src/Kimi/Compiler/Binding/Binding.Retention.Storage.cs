@@ -158,7 +158,7 @@ public sealed partial class Binding
         var (named, bound) = (false, this.Parametric(at.Signature));
         if (targets >= 0)
         {
-            named = this.Position(environment, type, at.Storage, at.Signature);
+            named = this.Position(environment, type, at.Storage, at.Written, at.Signature);
             if (at.Storage != ResultStorage && !bound)
             {
                 this.storageHolds.Add((new(type, at.Written, at.Holder, at.Signature, at.Routed), at.Storage)); // A hidden binding's layers add no reach (SPEC 15.6.4).
@@ -295,7 +295,7 @@ public sealed partial class Binding
 
         if (step == HoldStep.Exclusive)
         {
-            this.Members(environment, OwnedOrigin(type)!, below);
+            this.Members(environment, OwnedOrigin(type)!, at.Written, at.Signature, below);
         }
     }
 
@@ -331,8 +331,8 @@ public sealed partial class Binding
 
     // What a raw layer of the contract whose Origin steps Exclusive lets the call write, at any holder (RawContent's members over the contract
     // scope: the referent of each input whose outer Origin it is, the keepers of each slot it binds, a holding instance's included), each
-    // past the layer, for the output fold; an incomplete member walk is the Limit.
-    private void Members(OriginPremiseEnvironment environment, BoundOrigin origin, StorageAt at)
+    // past the layer (ContractMembers, at the layer's position), for the output fold; an incomplete member walk is the Limit.
+    private void Members(OriginPremiseEnvironment environment, BoundOrigin origin, BoundType? written, BoundType? signature, StorageAt at)
     {
         if (at.Storage == NoStorage)
         {
@@ -340,7 +340,7 @@ public sealed partial class Binding
         }
 
         var start = this.rawMembers.Count;
-        this.retentionLimit |= !this.RawMembers(origin, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
+        this.ContractMembers(origin, written, signature, CollectionsMarshal.AsSpan(this.retentionScope));
         var end = this.rawMembers.Count;
         for (var i = start; i < end; i++)
         {
@@ -349,6 +349,12 @@ public sealed partial class Binding
 
         this.rawMembers.RemoveRange(start, end - start);
     }
+
+    // Retention's one read of the members of a stated raw layer (Z6's R5.1, R5.5), appended to rawMembers, by the layer's position
+    // (`written`, `signature`; RawStepAt's arms, BoundElsewhere): RawMembers within `scope`, the walked contract's; unanswered members are
+    // the Limit.
+    private void ContractMembers(BoundOrigin origin, BoundType? written, BoundType? signature, ReadOnlySpan<BoundType> scope)
+        => this.retentionLimit |= !this.RawMembers(origin, scope, this.rawMembers);
 
     // What a layer refers to. For the output fold: the storage past it where the call may write through it (the root from before the
     // root), and the result's own past any layer (a result carries its whole Type); else, below a position (`targets`, its storage; -1
@@ -433,9 +439,9 @@ public sealed partial class Binding
     // names it. The storage an abstract part hides is the visit's (StorageWalk). A position in the binding of the callee's kept abstract
     // Type (Hides) is tested in the callee's terms (Binding.Retention.Rows.cs, Storages), so it has no target: the binding's Origins are
     // the caller's.
-    private bool Position(OriginPremiseEnvironment environment, BoundType type, int storage, BoundType? signature)
+    private bool Position(OriginPremiseEnvironment environment, BoundType type, int storage, BoundType? written, BoundType? signature)
     {
-        var (start, end) = this.Reads(type);
+        var (start, end) = this.Reads(type, written, signature);
         var named = false;
         foreach (var node in this.OwnNodes(environment, type))
         {
@@ -524,12 +530,16 @@ public sealed partial class Binding
     // where none does; any other Type as itself. OwnedOrigin leaves out `self` (Holder, SPEC 5.7): it names the holding value, no input
     // of the contract, and what a `during self` layer admits is its entries', so such a layer reads as itself. An incomplete
     // member walk is the Limit.
-    private (int Start, int End) Reads(BoundType type)
+    private (int Start, int End) Reads(BoundType type, BoundType? written, BoundType? signature)
     {
         var start = this.retentionReads.Count;
         var stated = type.IsPointer && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) };
         var members = this.rawMembers.Count;
-        this.retentionLimit |= stated && !this.RawMembers(OwnedOrigin(type)!, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
+        if (stated)
+        {
+            this.ContractMembers(OwnedOrigin(type)!, written, signature, CollectionsMarshal.AsSpan(this.retentionScope));
+        }
+
         for (var i = members; i < this.rawMembers.Count; i++)
         {
             var member = this.rawMembers[i];
