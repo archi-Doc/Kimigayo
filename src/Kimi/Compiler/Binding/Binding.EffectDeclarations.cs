@@ -105,6 +105,7 @@ public sealed partial class Binding
     /// <param name="requirement">The Requirement Identity.</param>
     /// <param name="conforming">The conforming Type of the call.</param>
     /// <param name="scope">The scope whose premises hold at the call.</param>
+    /// <param name="site">Where its proofs are asked from (QuerySite; PLAN G651 a1).</param>
     /// <param name="evidence">Optional complete provenance for an editor projection; ordinary proofs allocate none.</param>
     /// <param name="reference">The requirement's exact declaring Contract reference; virtual functions have none.</param>
     /// <returns>Whether confined is available.</returns>

@@ -234,9 +234,6 @@ public sealed partial class Binding
             this.partQuery = binding.enteredParts.Begin(binding.storageVersion);
         }
 
-        // The node of its proofs' judgment (QuerySite): its use, else Nested (the context-free relations Fits reads).
-        private readonly QuerySite Site => this.use is { } at ? at : QuerySite.Nested;
-
         // The first failure of the walk's last false answer.
         internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
 
@@ -249,6 +246,9 @@ public sealed partial class Binding
 
         // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
         internal List<BindingObligation>? Rows { get; init; }
+
+        // The node of its proofs' judgment (QuerySite): its use, else Nested (the context-free relations Fits reads).
+        private readonly QuerySite Site => this.use is { } at ? at : QuerySite.Nested;
 
         // SPEC 3.8: the relation; Never relates only to itself. A Function Type's own syntax binds its per-call inputs (SPEC 8.10).
         // `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the Callable comparison whose
