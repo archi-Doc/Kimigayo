@@ -1012,7 +1012,7 @@ public sealed partial class Binding
             return new(PathEnd.Selected, candidate, use);
         }
 
-        return current.Parameters?.Values.GetValueOrDefault(name) is { } slot && this.Accessible(slot, scope) ? new(PathEnd.Selected, slot, use) : new(PathEnd.Unresolved, null, use);
+        return current.Parameters?.Values?.GetValueOrDefault(name) is { } slot && this.Accessible(slot, scope) ? new(PathEnd.Selected, slot, use) : new(PathEnd.Unresolved, null, use);
     }
 
     // SPEC 9.3, 7.2.3: whether a value binding is visible at `use`: a local only after its declaration (its initializer sees the outer

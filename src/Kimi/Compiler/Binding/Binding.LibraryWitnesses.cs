@@ -194,7 +194,7 @@ public sealed partial class Binding
             type = parameter.Slot;
         }
 
-        if (group.LengthParameter is { } lengthName && scope.Parameters?.Values.GetValueOrDefault(lengthName) is { } extent)
+        if (group.LengthParameter is { } lengthName && scope.Parameters?.Values?.GetValueOrDefault(lengthName) is { } extent)
         {
             length = extent.Slot;
         }

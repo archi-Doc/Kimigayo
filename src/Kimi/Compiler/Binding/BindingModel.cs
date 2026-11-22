@@ -960,7 +960,7 @@ internal sealed class BindingScope(Koto owner)
     {
         this.Types.Clear();
         this.Parameters?.Types.Clear();
-        this.Parameters?.Values.Clear();
+        this.Parameters?.Values?.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
         this.OriginSets?.Clear();
@@ -980,12 +980,14 @@ internal sealed class BindingScope(Koto owner)
 }
 
 // A scope's formal parameters by namespace (BindingScope.Parameters): Type parameters, pair targets and their binders in Types, a
-// function's length slots (SPEC 4.4.1) in Values.
+// function's length slots (SPEC 4.4.1) in Values, null until the scope declares one (AddValues), as Parameters itself is.
 internal sealed class ScopeParameters
 {
     internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
 
-    internal Dictionary<string, BindingSymbol> Values { get; } = new(StringComparer.Ordinal);
+    internal Dictionary<string, BindingSymbol>? Values { get; private set; }
+
+    internal Dictionary<string, BindingSymbol> AddValues() => this.Values ??= new(StringComparer.Ordinal);
 }
 
 /// <summary>How a check judged a repair condition from its own facts (SPEC 23.1.3); a refuted condition withholds the candidate.</summary>

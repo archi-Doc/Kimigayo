@@ -86,7 +86,8 @@ public sealed partial class Binding
         var values = kind is not (BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.AssociatedType or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget);
         var parameter = kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.LengthParameter;
         var members = values ? scope.Values : scope.Types;
-        var parameters = (parameter ? scope.AddParameters() : scope.Parameters) is { } declared ? values ? declared.Values : declared.Types : null;
+        var declared = parameter ? scope.AddParameters() : scope.Parameters;
+        var parameters = !values ? declared?.Types : parameter ? declared!.AddValues() : declared?.Values;
         var table = parameter ? parameters! : members;
         if (table.TryGetValue(name, out var previous))
         {
