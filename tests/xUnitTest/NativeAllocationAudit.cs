@@ -21,13 +21,13 @@ internal static class NativeAllocationAudit
     // declaration in any linkage, such as a second allocator, would escape the counters.
     private static readonly string[] Declarations =
     [
-        "GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess", "VirtualAlloc", "VirtualFree",
+        "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess", "VirtualAlloc", "VirtualFree",
         "memcmp", "memcpy", "memmove", "memset", "__chkstk",
     ];
 
     // The kernel32 functions each platform layer routine may call (the Tatara plan's B7r1 and B7r2; C-468's N2): only the exit ends the
     // process and only the pages routines map and release pages, so a second allocator or exit is caught by its call site. A runtime
-    // declaration no row names, such as the process heap's three until B7r3 removes them, may be called nowhere.
+    // declaration no row names, the test runtime's two, may be called nowhere in an audited module.
     private static readonly (string Routine, string[] Symbols)[] LayerCalls =
     [
         (RuntimeAbi.Exit.Name, ["ExitProcess"]),

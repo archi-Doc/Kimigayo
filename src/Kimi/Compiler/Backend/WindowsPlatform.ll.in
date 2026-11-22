@@ -1,10 +1,6 @@
 ; windows-x64-v1 platform layer over kernel32: the routines through which the common runtime (Runtime.ll.in) writes and exits and
 ; its allocator (HeapRuntime.ll.in) maps and releases pages, and the Abort report's OS-error prefix. Every kernel32 call of the runtime
 ; in a program module lies in these definitions; the test runtime's calls and a program's own kernel32 imports are outside the layer.
-; The process heap's three declarations are unused until the Tatara plan's B7r3 removes them with kernel32's set.
-declare dllimport ptr @GetProcessHeap()
-declare dllimport ptr @HeapAlloc(ptr, i32, i64)
-declare dllimport i32 @HeapFree(ptr, i32, ptr)
 declare dllimport ptr @GetStdHandle(i32)
 declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
 declare dllimport i32 @GetLastError()
