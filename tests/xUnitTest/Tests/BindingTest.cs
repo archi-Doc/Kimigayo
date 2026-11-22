@@ -511,6 +511,80 @@ public class BindingTest
         Assert.IsType<InvalidOperationException>(fault.InnerException);
     }
 
+    // R7-D2 c: the indexer's walk empties its pooled stack when it ends, a faulted walk included, so a walk that faults with entries
+    // pending faults no later Bind (a walk entered over a non-empty stack is InternalInvariant). No program faults the walk, so the test
+    // drives it: a body's entry without a scope faults at its first declaration while its later statements wait on the stack.
+    [Fact]
+    public void AFaultedIndexWalkFaultsNoLaterBind()
+    {
+        const string Source = "func f()\n    let a = 1\n    let b = 2\n    ()\nf()";
+        var compilation = CompilationTestHelper.ParseSuccess(Source);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        var body = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Body!;
+        var entry = typeof(Binding).GetNestedType("IndexEntry", BindingFlags.NonPublic)!;
+        var kind = Enum.ToObject(typeof(Binding).GetNestedType("IndexEntryKind", BindingFlags.NonPublic)!, 0); // Index
+        var walk = typeof(Binding).GetMethod("IndexWalk", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var fault = Assert.Throws<TargetInvocationException>(() => walk.Invoke(compilation.Binding, [Activator.CreateInstance(entry, body, null, kind, 0)]));
+        Assert.IsType<NullReferenceException>(fault.InnerException);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // R7-D2 c (design section 3.1's c2): a loop's Iterable is walked in the loop's scope and its binding in the body scope, so the
+    // Iterable reads the outer local its binding shadows. Valid: SPEC 9.3 (an inner block may shadow an outer local), 14.6 (each
+    // iteration has a fresh body scope; the Subject is acquired once).
+    [Fact]
+    public void ALoopsIterableReadsTheLocalItsBindingShadows()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess("let x: [2 of i32] = [1, 2]\nfor x in x => ()");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // R7-D2 c (design section 3.1's c7, the file contract's "the walk's depth is its stack's, not the host's"): every context pushes a
+    // node's children onto the walk's one stack, so the walk's loop, not the host, holds a tree's depth. The chain of labeled `do`
+    // values at the syntax nesting limit (valid: IMPL A.4, past which the tree is cut, so the design's 3,000-deep chain is the limit's)
+    // binds, then the walk resets its rows (the ResetOnly context, which declares and records nothing) on a thread whose 256 KB stack a
+    // host frame per level (dev's recursive RowReset and IndexVisitor) would not fit, and the next Bind finds the program as the first did.
+    [Fact]
+    public void TheIndexWalkHoldsATreesDepthOnItsOwnStack()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(IndexShape("chain"));
+        Assert.True(SyntaxNestingTest.Depth(compilation.Kotonoha.RootKoto) > 1000);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        var entry = typeof(Binding).GetNestedType("IndexEntry", BindingFlags.NonPublic)!;
+        var kind = Enum.ToObject(typeof(Binding).GetNestedType("IndexEntryKind", BindingFlags.NonPublic)!, 3); // ResetOnly
+        var walk = typeof(Binding).GetMethod("IndexWalk", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Exception? fault = null;
+        var thread = new Thread(() => fault = Record.Exception(() => walk.Invoke(compilation.Binding, [Activator.CreateInstance(entry, compilation.Kotonoha.RootKoto, null, kind, 0)])), 256 * 1024);
+        thread.Start();
+        thread.Join();
+        Assert.Null(fault);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // R7-D2 c (design section 8.6): the walk's stack is one array kept across passes, so a warm Bind of each form whose row pushes its
+    // own entries or steps allocates nothing: an excluded test in a Product build (its subtree in the ExcludedTest context), a loop's
+    // bindings (Declare steps), a guarded match (the arms' and candidates' steps), a try over Option and one over Result (the arms
+    // BindMatch indexes), the chain at the syntax nesting limit, 120 guarded arms and 1,000 root functions (the stack's widest case).
+    // Each valid: SPEC 6.7.2 and 18.6; 14.6; 14.8.2 and 14.8.3; 17.3; IMPL A.4; 6.1.1.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("excluded test")]
+    [InlineData("for")]
+    [InlineData("guarded match")]
+    [InlineData("try")]
+    [InlineData("chain")]
+    [InlineData("arms")]
+    [InlineData("functions")]
+    public void AWarmBindOfTheIndexWalksFormsAllocatesNothing(string shape)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(IndexShape(shape));
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
+    }
+
     [Fact]
     public void ParenthesizedArrayLengthsBindEverySyntaxNode()
     {
@@ -1091,6 +1165,21 @@ public class BindingTest
         layer.AddRange(own);
         own.Clear();
     }
+
+    // The index walk's row shapes (R7-D2 c), each valid.
+    private static string IndexShape(string shape)
+        => shape switch
+        {
+            "excluded test" => "Console.writeLine(\"p\")\n#Test\nfunc t()\n    let v = 1\n    $expect(v == 1)",
+            "for" => "let pairs: [2 of (i32, i32)] = [(1, 2), (3, 4)]\nfor (a, b) in pairs => ()",
+            "guarded match" => "func f(x: Option<i32>) => match x\n    .Some(let n) if n > 0 => ()\n    .Some(_) => ()\n    .None => ()",
+            "try" => "func source() -> i32? => .Some(7)\nfunc run() -> i32? => .Some((try source()) + 1)\nfunc load() -> Result<i32, i32> => .Err(9)\n" +
+                "func check() -> Result<bool, i32>\n    let n = try load()\n    return .Ok(n == 1)",
+            "chain" => CompilationEntryTest.LabeledDos(SyntaxNestingTest.LevelsWithin("labeled do")),
+            "arms" => "func f(x: Option<i32>) => match x\n" + string.Concat(Enumerable.Range(0, 120).Select(static i => $"    .Some(let n) if n > {i} => ()\n")) +
+                "    .Some(_) => ()\n    .None => ()",
+            _ => string.Concat(Enumerable.Range(0, 1000).Select(static i => $"func item{i}() => ()\n")),
+        };
 
     private sealed class TestReplacement(CodeContext context) : ExpressionKoto(context, default)
     {
