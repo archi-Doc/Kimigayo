@@ -26626,6 +26626,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     measured on `aab961bab` and are not re-run on the head; the head pins the same forms as tests.
   - **Remainder.** `sliceUniq(range)`: `Storage.sliceUniq` stays the one library displacement until L2 (R8-M13's removal condition,
     unchanged); its record on a valid program is a known conservative error, not a verdict. PLAN G597 stays open for it.
+  - **`UniqRemainder` without `position` (L2's U1, R8 L2 design Revision 1 scope S1, 2026-11-22; 83d85ec4b):** the exclusive
+    remainder holds `var storage: raw/E during source` (its first untaken element by construction), `count` and `loan`. Exclusive
+    `splitFirst` and `tryGetPairUniq` advance `storage` in place of `position`, and `Storage.sliceUniq` displaces `storage` by the
+    selected start alone (its raw `Add` stays the one library displacement until U3). R8-M13's L1 obligation on `UniqSlice.init`
+    (a remainder at its first untaken element) is removed: it holds by construction. `RefRemainder` and every shared iteration keep
+    `position` (scope S1: no shared iteration code moves); S2 (`RefRemainder` too) is a rejected widening (L2 design §8).
   - **Rejected.** A new MIR form for a view's start (a closed-vocabulary change the keyed operand makes unnecessary); the rule
     copied into the Backend; a per-instance rebuild of generic MIR; keying on the key's Place (its value may be consumed by its
     resolution); the keyed form for every key that does not start at the storage in the body (round 1: it moved closed keys' MIR and
