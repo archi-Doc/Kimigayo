@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -137,6 +138,23 @@ public class TestExecutionAnalysisTest
         Assert.DoesNotContain("__kimi_test_observe", output.ToString());
     }
 
+    // R7-D2 c's named move (c9): the indexer's walk resets an excluded test's body (SPEC 6.7.2, 18.6: outside a test build a test body
+    // is checked only for syntax), so a warm Test-to-Product rebind leaves the body's rows as a cold Product build has them. On dev the
+    // Product pass kept the Test pass's rows (`v` Resolved `i32`); no Hover change was observed. Valid in both builds.
+    [Fact]
+    public void AProductRebindResetsTheExcludedTestBodyRows()
+    {
+        const string Source = "Console.writeLine(\"p\")\n#Test\nfunc t()\n    let v = 1\n    $expect(v == 1)";
+        var c = Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Contains(BodyRows(c), static x => x.StartsWith("Resolved i32", StringComparison.Ordinal));
+        c.IsTestBuild = false;
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var cold = MinimalEmissionTest.Analyze(Source, "Tests.kimi");
+        Assert.Equal(BodyRows(cold), BodyRows(c));
+        Assert.DoesNotContain(BodyRows(c), static x => x.StartsWith("Resolved", StringComparison.Ordinal));
+    }
+
     // A warm rebind checks a message's transfers without allocating (PLAN G609: 384 B a literal message, 1,920 B a call's).
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -159,5 +177,12 @@ public class TestExecutionAnalysisTest
         c.Binding.CheckTestStartup();
         c.Analyze();
         return c;
+    }
+
+    // The state and Type of each node of the test function `t`'s body, in walk order.
+    private static string[] BodyRows(Compilation c)
+    {
+        var test = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "t");
+        return KotoTree.Walk(test.Body!).Select(static x => $"{HirTables.State(x)} {HirTables.TypeOf(x)} {x}").ToArray();
     }
 }

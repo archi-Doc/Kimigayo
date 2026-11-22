@@ -511,6 +511,25 @@ public class BindingTest
         Assert.IsType<InvalidOperationException>(fault.InnerException);
     }
 
+    // R7-D2 c: the indexer's walk empties its pooled stack when it ends, a faulted walk included, so a walk that faults with entries
+    // pending faults no later Bind (a walk entered over a non-empty stack is InternalInvariant). No program faults the walk, so the test
+    // drives it: a body's entry without a scope faults at its first declaration while its later statements wait on the stack.
+    [Fact]
+    public void AFaultedIndexWalkFaultsNoLaterBind()
+    {
+        const string Source = "func f()\n    let a = 1\n    let b = 2\n    ()\nf()";
+        var compilation = CompilationTestHelper.ParseSuccess(Source);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        var body = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Body!;
+        var entry = typeof(Binding).GetNestedType("IndexEntry", BindingFlags.NonPublic)!;
+        var kind = Enum.ToObject(typeof(Binding).GetNestedType("IndexEntryKind", BindingFlags.NonPublic)!, 0); // Index
+        var walk = typeof(Binding).GetMethod("IndexWalk", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var fault = Assert.Throws<TargetInvocationException>(() => walk.Invoke(compilation.Binding, [Activator.CreateInstance(entry, body, null, kind, 0)]));
+        Assert.IsType<NullReferenceException>(fault.InnerException);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
     [Fact]
     public void ParenthesizedArrayLengthsBindEverySyntaxNode()
     {
