@@ -29840,8 +29840,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     manifest's `codegen.unwindTables` checked by `LinkManifest.CheckFixed`), with LLVM's frame lowering placing the entries.
     `NativeBuild.Inspect`'s "the object has an entry" (4e6c6fd87's script check) refused every leaf-only object and never checked the
     per-function meaning, so it is removed; the `_fltused` and default-library refusals stay.
-  - The leaf row relies on O2 folding `__kimi_start` into a frameless leaf; if a later LLVM keeps a frame there, the row builds with
-    entries and fails its "no exception table" assertion, and the next LLVM update's gate meets it first (C-474 N1).
+  - The leaf row relies on O2 folding `__kimi_start` into a frameless leaf and, since B7r4, on its IR without the memory part (built
+    from its manifest): at O2 `memcpy`, `memmove` and `memset` push nonvolatile registers, so every module's object has their unwind
+    entries and every executable an exception table; if a later LLVM keeps a frame there, the row builds with entries and fails its
+    "no exception table" assertion, and the next LLVM update's gate meets it first (C-474 N1).
   - Rejected: an exact object check (leafness needs disassembly; a copy of LLVM's decision), a forced entry for leaves (O2 cost), an
     IR `uwtable` check in the build (a second copy of the emitter's rule). The fact's removal is staged as PLAN G1271 states
     (removal condition: Tatara B7b7 lands).
@@ -29885,3 +29887,34 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   generic). Open (C-479, the Front's C1): `WritesThrough` (Binding's closure classifier) and the NoStore rows (retention and A5) are
   two answers of one per-input access kind of a library operation (read, store, Take, destroy), not one meaning; PLAN G1290 proposes
   one total per-input row.
+- **T-M24 The runtime's C memory functions are its LLVM IR** (Tatara, 2026-11-22; the plan's unit B7r4, Q-682, D-1130; Major;
+  design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.1 §3.5, design review C-445 ACCEPT WITH CONDITIONS;
+  implementation review C-464, the Middle's ACCEPT; the owner's decision 24, 「mem* は LLVM IR で書きましょう。」). Amends IMPL 21.4.7's
+  backend sentence and T-M8's catalog reading (the archive's four memory members stay, unreferenced, until B7r5).
+  - **The part:** `MemoryRuntime.ll.in` (the Backend's runtime, a template of `LlvmModuleText`, R5-M14) defines `memcmp`,
+    `memcpy`, `memmove` and `memset` in every module (an Application's, a Library's, a test build's), written by
+    `LlvmModuleText.WriteRuntime` after the runtime template. External linkage: code generation's libcalls bind to them after the IR
+    passes, so an internal or discardable definition would leave them undefined. Each takes the footer's `#1`, `#0` plus
+    `"no-builtins"` (LLVM's TargetLibraryInfo then treats every library function as unavailable in them), so no pass turns their
+    loops back into calls of themselves. It declares only `llvm.cttz.i64`.
+  - **The algorithms** are the backend archive's assembly ones (the minimal form): eight-byte chunks through `align 1` loads and
+    stores, then a byte tail; `memmove` copies backward only for an overlapping destination above the source and touches no byte
+    on a self-move; `memcmp` finds the first differing byte of a differing chunk by xor and `llvm.cttz`, then subtracts the
+    zero-extended bytes; a zero count touches no byte. Checked by `native.c`'s helper suite on the part alone at O0 and O2 through
+    Tatara's optimize and emit (`TataraExecutorTest.TheMemoryPartPassesTheHelperSuite`): the object defines exactly the four,
+    references no symbol and has no call instruction, and the link takes no archive memory member.
+  - **The names:** `TargetProfile.MemorySymbols` (Core, table-wide: every row's runtime defines them) = `memcmp`, `memcpy`,
+    `memmove`, `memset`; the Windows backend supply's symbols are `__chkstk` and `MemorySymbols` until B7r5, so the reserved
+    external names are unchanged. The template check pins the part's definitions to `MemorySymbols`.
+  - **Change W5** (an acceptance change on Windows): a supplied static library's member that the link pulls and that gives a
+    non-weak definition of one of the four fails the build at the link whatever the library's name ("Tatara failed: link", LLD's
+    `duplicate symbol: memcpy` between the module's object and the staged library's member), where the base resolved it by name
+    order (`codec`, before `kimi_backend`, built with the library's definition; `zlib`, after it, failed against the archive's
+    member). A member the link does not pull adds nothing; a weak definition yields to the module's (C-445 C3's probe and
+    `NativeToolchainTest.ASuppliedMemoryFunctionIsADuplicateOfTheModules`). No supplied library in the repository defines one.
+  - **Measurement:** window W2 (RP8, K's): the 13-kernel O2 corpus A = the `.S`, B = the IR, and a copy kernel; Hello.O2.exe
+    5,120 -> 7,168 bytes (+2,048; O0 6,656 -> 8,192), the four functions without function sections (B7r4's record).
+  - Rejected: weak definitions of the four (a supplied library would replace the runtime's functions silently); a pre-link scan of
+    every supplied archive (a second inspection for one form, while LLD reports the duplicate exactly when a second definition would
+    enter the program); musl's functions; `memcpy` as an alias of `memmove` (not the archive's algorithm); internal or `linkonce`
+    linkage; `rep movsb` (adopted only if the measurement shows the IR slower than the `.S` on large copies, decision 24's allowance).
