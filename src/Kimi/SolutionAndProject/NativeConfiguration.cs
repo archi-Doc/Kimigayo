@@ -242,7 +242,7 @@ internal static class NativeConfiguration
 
     // IMPL 20.4: the reserved supplies (the target profile's Supplies) are the compiler's, so a NativeRequirements or NativeLibraries
     // entry of a reserved name is an error, each record kind with its own note.
-    private static bool Reserved(string? name) => WindowsProfile.Supply(name) is not null;
+    private static bool Reserved(string? name) => TargetProfile.Windows.Supply(name) is not null;
 
     // Whether two packaged records supply one name of one package with assertions that cannot both hold.
     private static bool Conflicts(NativeLibraryInput record, NativeLibraryInput? other)

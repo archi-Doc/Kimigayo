@@ -277,7 +277,7 @@ public class ScalarDefaultEmissionTest
         Assert.Equal(original.ToString(), rebound.ToString());
 
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var kotonoha = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
         Assert.NotNull(kotonoha);

@@ -74,8 +74,8 @@ public class LibraryEmissionTest
             using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
             var root = manifest.RootElement;
             Assert.Equal(testBuild ? "Application" : "Library", root.GetProperty("outputKind").GetString());
-            Assert.Equal(testBuild ? WindowsProfile.EntrySymbol : null, root.GetProperty("entry").GetString());
-            Assert.Equal(testBuild ? WindowsProfile.Subsystem : null, root.GetProperty("subsystem").GetString());
+            Assert.Equal(testBuild ? TargetProfile.Windows.EntrySymbol : null, root.GetProperty("entry").GetString());
+            Assert.Equal(testBuild ? TargetProfile.Windows.Subsystem : null, root.GetProperty("subsystem").GetString());
             Assert.Equal(ArtifactFiles.Hash(paths.Ir), root.GetProperty("irSha256").GetString());
             Assert.False(File.Exists(paths.Record));
             if (testBuild)
@@ -101,7 +101,7 @@ public class LibraryEmissionTest
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.OutputKind = OutputKind.Library;
         c.IsTestBuild = testBuild;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Library.kimi", source));
         c.Bind();
         if (testBuild)

@@ -22,7 +22,7 @@ internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, 
         }
 
         var directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
-        var ir = ArtifactFiles.ResolvePath(project.ProjectFile.OutputPath ?? Path.Combine("bin", WindowsProfile.Target, project.Name + ".ll"), directory);
+        var ir = ArtifactFiles.ResolvePath(project.ProjectFile.OutputPath ?? Path.Combine("bin", TargetProfile.Windows.Target, project.Name + ".ll"), directory);
         if (!Path.GetExtension(ir).Equals(".ll", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("OutputPath must have a .ll extension.");

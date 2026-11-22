@@ -21,7 +21,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void ParallelReadersOfOneTargetGetOneLibrary()
     {
-        var target = TargetTriple.Parse(WindowsProfile.Target);
+        var target = TargetTriple.Parse(TargetProfile.Windows.Target);
         var found = new KimiLibrary[8];
         Parallel.For(0, found.Length, i => found[i] = KimiLibrary.Of(target));
         Assert.All(found, x => Assert.Same(found[0], x));
@@ -80,7 +80,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void AFreezeOfADefectiveLibraryIsARefusal()
     {
-        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         freeze.Library.Kotonoha.CreateCodeContext().Parse(freeze.Library.Kotonoha.RootKoto, ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n    public func zuse2(v: ref/::ZProbe) => ()\n");
         var library = KimiLibrary.Freeze(freeze);
         var refusal = Assert.IsType<Kimi.Compiler.LibraryLayer.Refused>(library.Layer.Refusal);
@@ -96,7 +96,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void ALibraryCallNamesNoBindingMadeShim()
     {
-        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         var library = KimiLibrary.Freeze(freeze);
         var binding = freeze.Binding;
         var shims = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -150,7 +150,7 @@ public partial class KimiLibraryShapeTest
     {
         Assert.Empty(CompilationTestHelper.BindInEveryTargetMode("let x: isize = 1\n"));
         var store = (ConcurrentDictionary<TargetTriple, Lazy<KimiLibrary>>)typeof(KimiLibrary).GetField("Process", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-        Assert.All(new[] { WindowsProfile.Target, "i686-pc-windows-msvc", "avr-unknown-unknown" }, x => Assert.True(store.ContainsKey(TargetTriple.Parse(x)), x));
+        Assert.All(new[] { TargetProfile.Windows.Target, "i686-pc-windows-msvc", "avr-unknown-unknown" }, x => Assert.True(store.ContainsKey(TargetTriple.Parse(x)), x));
         Assert.True(store.ContainsKey(TargetTriple.Invalid));
     }
 

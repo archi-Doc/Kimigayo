@@ -351,7 +351,7 @@ public sealed class HoverProjectionTest
     private static Compilation Create(string text)
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         compilation.CollectDocumentation = true;
         compilation.Kotonoha.AddSource(new("main.kimi", text));

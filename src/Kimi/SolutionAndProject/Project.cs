@@ -115,7 +115,7 @@ public partial class Project
                 throw new PlatformNotSupportedException("Implicit projects currently support only the Windows x64 host target. Specify --Target explicitly for emission to a supported target.");
             }
 
-            target = WindowsProfile.Target;
+            target = TargetProfile.Windows.Target;
         }
 
         var fullPath = Path.GetFullPath(path);
@@ -429,7 +429,7 @@ public partial class Project
             targets = [this.KimiOptions.Target];
         }
 
-        if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
+        if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != TargetProfile.Windows.Target))
         {
             this.Fail(diagnostics, "Artifact production currently requires exactly one configured Windows x64 target.");
             valid = false;
