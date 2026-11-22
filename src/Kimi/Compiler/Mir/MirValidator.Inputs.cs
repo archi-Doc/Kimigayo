@@ -2,7 +2,7 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A Call's input temps (G136, DECISIONS R5-M72): A5 reads the Place a Ref lends into a local flow-insensitively (MirBorrows.lent) where a
+// A Call's input temps (G136, DECISIONS R5-M72): A5 reads the Place a Ref lends into a local flow-insensitively (MirBorrows.LentInto) where a
 // Call takes the local as an input, at an in-place target and its destroying reservations, so the builder writes once an input that
 // reserves (MirCases.Reserves, the predicate MirBuilder.Operand decides by: an exclusive reference or a pair layer): each body of an if, a
 // match or try and a do gives its value through a temp of its own (MirBuilder.Result), as an exit gives its secured temp. An Opaque

@@ -251,6 +251,66 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, WriteCodes));
     }
 
+    // DECISIONS Z17c (SPEC 12.2, 15.6.7, 23.1.2): an Error node's kept part is read as the call builder reads an operand, so A5 reports it
+    // where its decided twin does: a Copy part the form reads at its node where it or a later kept part builds code, else at the site's
+    // node (a-call, r1-two-reads, r1-call-last, r3-kept-op-right at the call or operation); a kept invocation argument's written exclusive
+    // borrow a reservation the site activates (r1-uniq-then-shared, c-two-uniq, c-shared-then-uniq: the twin's activation records;
+    // r4-kept-temp-move's CallReservationConflict_Kd), never a live Loan (r5-limit-uniq-later and D-1003 (2)'s false conflict gone; the G724
+    // rows are valid but the limit), while a tuple's element and a Case payload stay live Loans (c-tuple-later, c-tuple-read, cr-opt-excess:
+    // B6). A non-Copy part, a Copy part's own hold and a raw borrow keep their records (r4-kept-live, r4d-copyhold, z-raw-missing); a
+    // Subject is read at its node (r3-kept-match); a part at the last that builds only by its path (v[i]) is read at its selection
+    // (n27-ridx, R4-M56). Fail-before: base lacks the gained records and keeps the false one. Each row, its decided twin after it: a
+    // program and its A5 problems, code and line:column, as the CLI reports them.
+    [Theory]
+    [InlineData("func k(x: i32) -> i32 => x\nfunc g(n: i32, m: i32) -> i32 => n\nfunc f()\n    var y = 1\n    let r = y@uniq\n    missing(y)\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@6:5")] // a-call
+    [InlineData("func k(x: i32) -> i32 => x\nfunc g(n: i32, m: i32) -> i32 => n\nfunc f()\n    var y = 1\n    let r = y@uniq\n    k(y)\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@6:5")] // a-call-dec
+    [InlineData("func k(x: i32) -> i32 => x\nfunc g(n: i32, m: i32) -> i32 => n\nfunc kq3(a: uniq/i32, b: ref/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    var z = 2\n    let r = y@uniq\n    missing(y, z)\n    r@follow = 2\n    return 0\n", "ComparisonLoanConflict_Kd@8:5")] // r1-two-reads
+    [InlineData("func k(x: i32) -> i32 => x\nfunc g(n: i32, m: i32) -> i32 => n\nfunc kq3(a: uniq/i32, b: ref/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    var z = 2\n    let r = y@uniq\n    g(y, z)\n    r@follow = 2\n    return 0\n", "ComparisonLoanConflict_Kd@8:5")] // r1-tw-two-reads
+    [InlineData("func k(x: i32) -> i32 => x\nfunc g(n: i32, m: i32) -> i32 => n\nfunc kq3(a: uniq/i32, b: ref/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    var z = 2\n    let r = y@uniq\n    let w = g(missing, y)\n    r@follow = 2\n    return 0\n", "ComparisonLoanConflict_Kd@8:13")] // r1-call-last
+    [InlineData("func k(x: i32) -> i32 => x\nfunc g(n: i32, m: i32) -> i32 => n\nfunc kq3(a: uniq/i32, b: ref/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    var z = 2\n    let r = y@uniq\n    let w = g(1, y)\n    r@follow = 2\n    return 0\n", "ComparisonLoanConflict_Kd@8:13")] // r1-tw-call-last
+    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    let z = missing + y\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // r3-kept-op-right
+    [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    let z = 1 + y\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // r3-tw-op-right
+    [InlineData("func kq3(a: uniq/i32, b: ref/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let q = y@ref\n    return missing(y@uniq, q)\n", "CallActivationConflict_Kd@5:12")] // r1-uniq-then-shared
+    [InlineData("func kq3(a: uniq/i32, b: ref/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let q = y@ref\n    return kq3(y@uniq, q)\n", "CallActivationConflict_Kd@5:12")] // r1-tw-uniq-then-shared
+    [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let r = y@uniq\n    let z = missing(r, g(y))\n", "ComparisonLoanConflict_Kd@5:24")] // r4-kept-live
+    [InlineData("func k(a: uniq/i32, b: i32) -> i32 => b\nfunc g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let r = y@uniq\n    let z = k(r, g(y))\n", "ComparisonLoanConflict_Kd@6:18")] // r4-tw-live
+    [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let z = missing(y@uniq, g(y@move))\n", "CallReservationConflict_Kd@4:31")] // r4-kept-temp-move
+    [InlineData("func kk(a: uniq/i32, b: i32) -> i32 => b\nfunc g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let z = kk(y@uniq, g(y@move))\n", "CallReservationConflict_Kd@5:26")] // r4-tw-temp-move
+    [InlineData("func g2(a: uniq/i32) -> i32 => 1\nfunc f()\n    var y = 1\n    let q = y@ref\n    let z = missing(q, g2(y@uniq))\n", "CallActivationConflict_Kd@5:24")] // r4d-copyhold
+    [InlineData("func kq(a: ref/i32, b: i32) -> i32 => b\nfunc g2(a: uniq/i32) -> i32 => 1\nfunc f()\n    var y = 1\n    let q = y@ref\n    let z = kq(q, g2(y@uniq))\n", "CallActivationConflict_Kd@6:19")] // r4d-tw-copyhold
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make(a: uniq/i32, b: i32) -> i32 => b\n    public func make2(a: ref/i32, b: i32) -> i32 => b\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(x: i32) -> i32 => x\nfunc g2(a: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    return S.(C<i32>).Item.make(y@uniq, y)\n", "")] // r5-limit-uniq-read
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make(a: uniq/i32, b: i32) -> i32 => b\n    public func make2(a: ref/i32, b: i32) -> i32 => b\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(x: i32) -> i32 => x\nfunc g2(a: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    return P.make(y@uniq, y)\n", "")] // r5-tw-limit-uniq-read
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make(a: uniq/i32, b: i32) -> i32 => b\n    public func make2(a: ref/i32, b: i32) -> i32 => b\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(x: i32) -> i32 => x\nfunc g2(a: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    return S.(C<i32>).Item.make(y@uniq, g(y))\n", "")] // r5-limit-uniq-later
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make(a: uniq/i32, b: i32) -> i32 => b\n    public func make2(a: ref/i32, b: i32) -> i32 => b\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(x: i32) -> i32 => x\nfunc g2(a: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    return P.make(y@uniq, g(y))\n", "")] // r5-tw-limit-uniq-later
+    [InlineData("func g(x: i32) -> i32 => x\nfunc kk2(a: uniq/i32, b: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let t = (y@uniq, g(y), missing)\n    return 0\nfunc h(a: uniq/i32) -> i32 => 1\nfunc kk(a: uniq/i32, b: i32) -> i32 => b\nfunc kk3(a: i32, b: i32) -> i32 => b\nfunc kq2(a: ref/i32, b: uniq/i32) -> i32 => 1\nfunc kd(a: uniq/i32, c: ref/i32, b: i32 = missing) -> i32 => b\n", "ComparisonLoanConflict_Kd@5:22")] // c-tuple-later
+    [InlineData("func g(x: i32) -> i32 => x\nfunc kk2(a: uniq/i32, b: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let t = (y@uniq, g(y))\n    return 0\nfunc h(a: uniq/i32) -> i32 => 1\nfunc kk(a: uniq/i32, b: i32) -> i32 => b\nfunc kk3(a: i32, b: i32) -> i32 => b\nfunc kq2(a: ref/i32, b: uniq/i32) -> i32 => 1\nfunc kd(a: uniq/i32, c: ref/i32, b: i32 = missing) -> i32 => b\n", "ComparisonLoanConflict_Kd@5:22")] // c-tw-tuple-later
+    [InlineData("func g(x: i32) -> i32 => x\nfunc kk2(a: uniq/i32, b: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let t = (y@uniq, y, missing)\n    return 0\nfunc h(a: uniq/i32) -> i32 => 1\nfunc kk(a: uniq/i32, b: i32) -> i32 => b\nfunc kk3(a: i32, b: i32) -> i32 => b\nfunc kq2(a: ref/i32, b: uniq/i32) -> i32 => 1\nfunc kd(a: uniq/i32, c: ref/i32, b: i32 = missing) -> i32 => b\n", "ComparisonLoanConflict_Kd@5:22")] // c-tuple-read
+    [InlineData("func g(x: i32) -> i32 => x\nfunc kk2(a: uniq/i32, b: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let t = (y@uniq, y)\n    return 0\nfunc h(a: uniq/i32) -> i32 => 1\nfunc kk(a: uniq/i32, b: i32) -> i32 => b\nfunc kk3(a: i32, b: i32) -> i32 => b\nfunc kq2(a: ref/i32, b: uniq/i32) -> i32 => 1\nfunc kd(a: uniq/i32, c: ref/i32, b: i32 = missing) -> i32 => b\n", "ComparisonLoanConflict_Kd@5:13")] // c-tw-tuple-read
+    [InlineData("func g(x: i32) -> i32 => x\nfunc kk2(a: uniq/i32, b: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    return missing(y@uniq, y@uniq)\nfunc h(a: uniq/i32) -> i32 => 1\nfunc kk(a: uniq/i32, b: i32) -> i32 => b\nfunc kk3(a: i32, b: i32) -> i32 => b\nfunc kq2(a: ref/i32, b: uniq/i32) -> i32 => 1\nfunc kd(a: uniq/i32, c: ref/i32, b: i32 = missing) -> i32 => b\n", "CallReservationConflict_Kd@5:12")] // c-two-uniq
+    [InlineData("func g(x: i32) -> i32 => x\nfunc kk2(a: uniq/i32, b: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    return kk2(y@uniq, y@uniq)\nfunc h(a: uniq/i32) -> i32 => 1\nfunc kk(a: uniq/i32, b: i32) -> i32 => b\nfunc kk3(a: i32, b: i32) -> i32 => b\nfunc kq2(a: ref/i32, b: uniq/i32) -> i32 => 1\nfunc kd(a: uniq/i32, c: ref/i32, b: i32 = missing) -> i32 => b\n", "CallReservationConflict_Kd@5:12")] // c-tw-two-uniq
+    [InlineData("func g(x: i32) -> i32 => x\nfunc kk2(a: uniq/i32, b: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let q = y@ref\n    return missing(q, y@uniq)\nfunc h(a: uniq/i32) -> i32 => 1\nfunc kk(a: uniq/i32, b: i32) -> i32 => b\nfunc kk3(a: i32, b: i32) -> i32 => b\nfunc kq2(a: ref/i32, b: uniq/i32) -> i32 => 1\nfunc kd(a: uniq/i32, c: ref/i32, b: i32 = missing) -> i32 => b\n", "CallActivationConflict_Kd@6:12")] // c-shared-then-uniq
+    [InlineData("func g(x: i32) -> i32 => x\nfunc kk2(a: uniq/i32, b: uniq/i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let q = y@ref\n    return kq2(q, y@uniq)\nfunc h(a: uniq/i32) -> i32 => 1\nfunc kk(a: uniq/i32, b: i32) -> i32 => b\nfunc kk3(a: i32, b: i32) -> i32 => b\nfunc kq2(a: ref/i32, b: uniq/i32) -> i32 => 1\nfunc kd(a: uniq/i32, c: ref/i32, b: i32 = missing) -> i32 => b\n", "CallActivationConflict_Kd@6:12")] // c-tw-shared-then-uniq
+    [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let e: Option<uniq/i32> = .Some(y@uniq, g(y))\n", "ComparisonLoanConflict_Kd@4:45")] // cr-opt-excess
+    [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let t = (Option.Some(y@uniq), g(y))\n", "ComparisonLoanConflict_Kd@4:35")] // cr-tw-opt
+    [InlineData("func inspect(v: ref/[2 of i32]) => ()\nfunc k(x: i32) => ()\nfunc f()\n    var v: [2 of i32] = [1, 2]\n    var i = 0\n    let r = v@uniq\n    missing(v[i])\n    inspect(r)\n", "ComparisonLoanConflict_Kd@7:13")] // n27-ridx
+    [InlineData("func inspect(v: ref/[2 of i32]) => ()\nfunc k(x: i32) => ()\nfunc f()\n    var v: [2 of i32] = [1, 2]\n    var i = 0\n    let r = v@uniq\n    k(v[i])\n    inspect(r)\n", "ComparisonLoanConflict_Kd@7:7 | ComparisonLoanConflict_Kd@7:5")] // n27-tw-ridx
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n        _ => 2\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match-ok
+    [InlineData("func f()\n    var h = 1\n    let r = h@uniq\n    let p = h@raw/Missing\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // z-raw-missing
+    [InlineData("func f()\n    var h = 1\n    let r = h@uniq\n    let p = h@raw\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // z-raw-ok
+    public void AKeptPartIsReadAsTheCallBuilderReadsAnOperand(string source, string expected)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), program.Problems.All.ToArray()
+            .Where(static x => !x.IsRecord && LoanCodes.Contains(x.Code) && x.Subject.Module == 0)
+            .Select(x => $"{x.Code}@{At(c.SyntaxOf(x.Subject).Span.Start)}"));
+
+        string At(int offset) => $"{source[..offset].Count(static x => x == '\n') + 1}:{offset - source.LastIndexOf('\n', Math.Max(offset - 1, 0))}";
+    }
+
     // PLAN G1022's exposure (SPEC 23.1.1): valid programs Binding rejects only through its Unsupported_Kd limits reach the derived write
     // too (tests/milestones/Milestone41.kimi's `self.selfWeak = selfWeak@move`, Milestone43.kimi's `owner.level = 30`), and keep the
     // records they had before it: Binding's limits, no construction record, and (w2) the false UninitializedPlace_Kd the derived write's
@@ -383,7 +443,7 @@ public sealed partial class MirBorrowsTest
         var block = body.AddBlock();
         body.Push(block, MirStatement.Assign(x, MirRvalue.Use(Constant(2)), At(1)));
         body.Push(block, MirStatement.Assign(r, MirRvalue.Ref(MirRefKind.Shared, x, reference), At(2)));
-        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(null, body.AddOpaque(new(0, 3), [])), At(3)));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(null, body.AddOpaque(new(0, 3), [], 0)), At(3)));
         var operands = body.AddOperand(MirOperand.Move(unknown));
         _ = Constant(1);
         body.Push(block, MirStatement.Assign(value, MirRvalue.Binary(Enum.Parse<MirBinaryOp>(op), operands, proven: true), At(4)));
