@@ -57,7 +57,7 @@ public sealed class MirDumpTest
     public void AKeyedStorageDumpsItsStartAndKey(string key, string expected)
     {
         var text = new StringBuilder();
-        MirDump.Write(MirValidatorTest.KeyedStorage(key, 2).Body, text, new MirDropTable());
+        MirDump.Write(MirValidatorTest.KeyedStorage("v", key, 2).Body, text, new MirDropTable());
         Assert.Contains(expected, text.ToString(), StringComparison.Ordinal);
     }
 

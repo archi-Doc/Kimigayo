@@ -75,9 +75,9 @@ if ($LASTEXITCODE -ne 0) { throw "clang-cl failed with exit code $LASTEXITCODE" 
 # members) and the LLVM-C import library is offered; the linker takes what is referenced.
 $libraries = @(Get-ChildItem -LiteralPath (Join-Path $LlvmRoot 'lib') -Filter 'LLVM*.lib' -File |
     Where-Object { $_.Name -cnotin 'LLVMWindowsManifest.lib', 'LLVM-C.lib' } | ForEach-Object Name | Sort-Object -CaseSensitive)
-# lldCOFF.lib: LLD's COFF driver (tatara_link's lld::coff::link). lldCommon.lib: lld::lldMain, LLD's error handler and its shared
-# linker context, which lldCOFF uses.
-$libraries += @('lldCOFF.lib', 'lldCommon.lib')
+# lldCOFF.lib and lldELF.lib: LLD's COFF and ELF drivers (tatara_link's lld::coff::link and lld::elf::link). lldCommon.lib:
+# lld::lldMain, LLD's error handler and its shared linker context, which both drivers use.
+$libraries += @('lldCOFF.lib', 'lldELF.lib', 'lldCommon.lib')
 # The Windows libraries and options are read from LLVMSupport's INTERFACE_LINK_LIBRARIES in the archive's LLVMExports.cmake.
 # The reader accepts only the shapes it knows and fails naming any other token, so an LLVM update links as that LLVM does or stops.
 $exports = Join-Path $LlvmRoot 'lib/cmake/llvm/LLVMExports.cmake'
