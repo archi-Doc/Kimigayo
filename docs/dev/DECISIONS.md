@@ -24568,7 +24568,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     in the frame that no formation owns is the frame's: `CloseAnswer` records G651's site-less `InternalInvariant_Kd` at the frame's
     close, never silent. `Apply` reads no storage: Binding's closing step (`ClosePartCore`) reads the closure result's formation, not
     its storage verdict, so a storage bound no longer makes a substitution Incomplete (the Front's B1) and a height refusal no longer
-    makes a storage verdict Rejected (B2). Row: `InstanceCollectorTest.OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal`. Outside
+    makes a storage verdict Rejected (B2). Row: `InstanceCollectorTest.OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal`. Outside
     both formations until c4 (behind the Dispatch gate, B's ruling 17 O1): `Agrees`' `Signature(requirement, subst)` and
     `TyCtxt.Dispatch.Resolve`'s `InstanceContract` and `ResolveRequirementWitness`, where a refusal would be the frame's record;
     superseded by the c4 part.
@@ -24707,6 +24707,19 @@ R8-M* and R9-M* by the stage of the recording unit.
       vocabulary beside `TyCtxt.Formation`; B's ruling 2); a refused `NamesReference` candidate read as "does not name" (a silent
       default over a refusal); a two-pass `NamesReference` inside c4 (the Front's C1c: naming by 8.9.1's head unification before
       forming is PLAN G1269, not c4's).
+  - Amended by G651 U2a (Back, 2026-11-23; Q-689, D-1137; C-485 B1, agreed by F, M and B): the instance's stored-Types formation
+    (`Binding.Instance`), one of the three formation owners, owns a refusal past IMPL A.4's height after Binding's run (`producing`
+    over) in every frame, not only inside the collector's answer frame (`Binding.OpenStorageFormation`), unless a consultation frame
+    open after the run fails its node first (G881b N6; U2c): the refusal is published as the instance's `HeightLimit`, never a null
+    part with `HeightLimit` false that Layout read as Rejected. So `answer.Open` is also set outside the collector's run,
+    transiently, by this opener, which `Binding.Instance` closes in a `finally` (the Front's C-489 C1), where the answer frame's
+    bullet has `InstanceCollector.Run` alone open it. Outside the collector's frame the formation closes to no frame and G651's
+    site-less record is still made beside it until every after-run former outside the frame records at its own site (G651 U2b). The
+    Temporary bullet's answer frame carries this formation too: a1's site kind covers it, else it goes with U2b. Row:
+    `InstanceCollectorTest.AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame`. Rejected: (A) dropping that
+    record now, since an uninstantiated generic body's open instance past H would be accepted (IMPL A.4: never acceptance); a
+    reader-side rule in Layout, since the cause is the producer's published fact (one owner); making `OpenFormation` own after the
+    run for all three owners, since `Answered`'s and `Witness`'s callers outside the frame record nothing yet (U2b).
 - **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
   D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
   CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
