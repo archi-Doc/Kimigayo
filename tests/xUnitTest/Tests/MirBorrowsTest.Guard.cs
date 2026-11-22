@@ -1496,13 +1496,16 @@ public sealed partial class MirBorrowsTest
     // w, used after (`z = 5`, `inspect(w)`): a Field (flat, reborrow through rr), a nested instance's Field (nested), a Case payload
     // (optionNested), each call in a loop beside an independent conflict (looped: `k = 2`), a written `during r` local (duringUniq), one
     // whose value is null (duringNull: by the letter, the Origin decides), a part beside a shared one (twoUniq: v), a Tuple's or a struct's
-    // part (tuplePartD, fieldPartD: b) and a Field beside a static raw part (twoStatic); the same over a shared borrow, a borrow of an i32,
-    // or a referent that holds no Loan stores nothing: sharedSupplied, duringShared, paramShared, paramUniq (an input's referent
+    // part (tuplePartD, fieldPartD: b) and a Field beside a static raw part (twoStatic, which also takes storage-end records at y, w and
+    // x: dependent records on a program rejected anyway, DECISIONS Q13; F1's open issue); the same over a shared borrow, a borrow of an
+    // i32, or a referent that holds no Loan stores nothing: sharedSupplied, paramShared, paramUniq (an input's referent
     // `ref/i32 during a` admits no local borrow), methodShared, methodUniq, ctorShared, i32Referent, loopShared, twoShared, tuplePart and
     // fieldPart (a part's referent i32), slotPart and slotKept (a slot's keeper's referent i32), paramSlot and t11 (one root, two part
     // borrows); a constructor lending the holder (reachedByStep) stores z's borrow, but nothing holding it is used after `z = 5` (SPEC 15.4;
     // Z6's O5-4). An address taken past the shared s whose atom also has an exclusive borrow keeps the located Unsupported_Kd (mixedAtom,
-    // t11s, valid: Z6's named limit R6.1, R6.8 (b2); removal: route (a)). A claim states its atom; an address
+    // t11s, valid: Z6's named limit R6.1, R6.8 (b2); removal: route (a)), as does duringShared (valid): `during s` names s's own region,
+    // which Binding states by another atom than s's borrow, so the written initializer is a fit from another Origin (FittedIntoHolder,
+    // the whitelist's cost; removal: D-1116 (1)'s one atom). A claim states its atom; an address
     // carries no mode, so a claimed atom with an exclusive member stays the located Unsupported_Kd (claimUniq, invalid; removal: per-layer
     // address provenance in A5), and one whose borrows are all shared stores nothing (claimShared, claimMixed, claimRaw, claimRawMixed: a
     // later exclusive borrow of w is P[w]'s, not s's region's; claimInput). A raw layer's region slot in a `var` local assigned from two
@@ -1982,9 +1985,10 @@ public sealed partial class MirBorrowsTest
                 "flat: z = 5", "flat: inspect(w)", "nested: z = 5", "nested: inspect(w)", "optionNested: z = 5",
                 "optionNested: inspect(w)", "looped: k = 2", "looped: z = 5", "looped: inspect(w)",
                 "nestedPointee: z = 5", "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5",
-                "tupleTyped: inspect(w)", "mixedAtom: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5", "duringUniq: inspect(w)",
-                "duringNull: z = 5", "twoUniq: z = 5", "twoUniq: inspect(v)", "twoStatic: z = 5", "twoStatic: inspect(w)", "reborrow: z = 5",
-                "reborrow: inspect(w)", "tuplePartD: z = 5", "tuplePartD: inspect(b)", "fieldPartD: z = 5", "fieldPartD: inspect(b)",
+                "tupleTyped: inspect(w)", "mixedAtom: h.put(z@ref) Unsupported_Kd", "duringShared: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5",
+                "duringUniq: inspect(w)", "duringNull: z = 5", "twoUniq: z = 5", "twoUniq: inspect(v)", "twoStatic: z = 5", "twoStatic: inspect(w)",
+                "twoStatic: var y: raw/u8 during static = null", "twoStatic: var w: ref/i32 = x@ref", "twoStatic: var x = 1", "reborrow: z = 5",
+                "reborrow: inspect(w)", "tuplePartD: z = 5", "tuplePartD: b", "fieldPartD: z = 5", "fieldPartD: b",
                 "t11s: h.put(z@ref) Unsupported_Kd",
                 "claimUniq: h.put(z@ref) Unsupported_Kd", "regionRaw: h.put(z@ref) Unsupported_Kd",
             ],
@@ -2353,7 +2357,8 @@ public sealed partial class MirBorrowsTest
     // (fitAssignedTyped); fitWrittenSame (valid) is the whitelist's cost. An address taken past a shared path writes nothing (SPEC 5.2.1
     // condition 3), which an atom's members do not show: sharedFollow, sharedImplicit and sharedProjection (valid) keep it, and the typed
     // twin keeps the pointee's records (sharedFollowTyped, a pre-existing conservative pair; removal: route (a)). Decided now (FAIL-FIRST:
-    // the located Unsupported_Kd at the call): nestedExclusive (invalid: q's address is r's, `z = 5` found), anchored (invalid, SPEC
+    // the located Unsupported_Kd at the call): nestedExclusive (invalid: q's address is r's, `z = 5` found; its storage-end records at w and
+    // x are dependent, DECISIONS Q13), anchored (invalid, SPEC
     // 5.2.2's anchor: `z = 5`) and a layer over an exclusive Field's address whose referent admits no local borrow (fieldExclusive, valid).
     // `null` is never a fitted value (nullFit, valid). The fit mark is LimitMarks.FittedIntoHolder (Z6-F2), whose paths (a call's
     // argument, a generic result, a clause) TyCtxtTest.AFitFromAnotherOriginMarksTheHoldersAtoms asserts.
@@ -2554,7 +2559,8 @@ public sealed partial class MirBorrowsTest
                 "fitWrittenSame: h.put(z@ref) Unsupported_Kd", "fitNarrowed: h.put(z@ref) Unsupported_Kd", "fitField: h.put(z@ref) Unsupported_Kd",
                 "fitThrough: h.put(z@ref) Unsupported_Kd", "sharedFollow: h.put(z@ref) Unsupported_Kd", "sharedFollowTyped: z = 5",
                 "sharedFollowTyped: inspect(w)", "sharedImplicit: h.put(z@ref) Unsupported_Kd", "sharedProjection: h.put(z@ref) Unsupported_Kd",
-                "nestedExclusive: z = 5", "nestedExclusive: inspect(w)", "anchored: z = 5",
+                "nestedExclusive: z = 5", "nestedExclusive: inspect(w)", "nestedExclusive: var w: ref/i32 = x@ref", "nestedExclusive: var x = 1",
+                "anchored: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
