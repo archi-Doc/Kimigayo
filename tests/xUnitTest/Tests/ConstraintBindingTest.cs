@@ -632,6 +632,16 @@ public class ConstraintBindingTest
     public void AnOccurrenceIsJudgedAtItsOutermostFormedLayer(string box, string records)
         => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\n" + box + "\nstruct S\nfunc g(r: ref/i32, x: ref/(Box<S> during r)) -> i32 => 0\npublic func main() => ()\n").Order(StringComparer.Ordinal)));
 
+    // SPEC 8.3.1, 23.1.2 (R7-V1c, F's V1c ruling 4): a layer whose formed Type is its operand's is that occurrence, by the Type it forms,
+    // not by its syntax: an explicit `owner/` (a Type's own Semantics) over `Box<S>` is one occurrence, recorded at the Type it holds
+    // (c75ca8729 and dev: `owner/Box<S>` and `Box<S>` both); `ref/` forms another Type, so `Box<S>` below it is its own occurrence.
+    [Theory]
+    [InlineData("func g(x: owner/Box<S>) => ()", "UnsatisfiedConstraint_Kd 7:17 Box<S>")]
+    [InlineData("func g(x: owner/Box<K>) => ()", "")]
+    [InlineData("func g(x: ref/Box<S>) => ()", "UnsatisfiedConstraint_Kd 7:15 Box<S>")]
+    public void ALayerFormingItsOperandsTypeIsThatOccurrence(string declaration, string records)
+        => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n").Order(StringComparer.Ordinal)));
+
     // SPEC 7.5: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
     public void AMemberFunctionCanConstrainItsDeclaringTypeParameter()

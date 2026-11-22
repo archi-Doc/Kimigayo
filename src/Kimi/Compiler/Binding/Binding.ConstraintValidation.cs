@@ -546,7 +546,7 @@ public sealed partial class Binding
             // recorded at a node first keeps its record.
             if (this.JudgedOccurrence(node) is { Symbol.Declaration: DeclarationContainerKoto container } type)
             {
-                var written = UseNode(node);
+                var written = this.OccurrenceTypeNode(node);
                 var scope = this.ConstraintScope(node);
                 var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
                 var frame = this.BeginConsultation(use);
@@ -596,27 +596,28 @@ public sealed partial class Binding
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
     }
 
-    // R7-V1c (SPEC 8.3.1, 8.6.3, 23.1.2): the Type ValidateConstraintUses judges at `node`, or null. A written Type occurrence is one Type
-    // node (UseNode) under its transparent layers, the wrappers and parentheses UseNode sees through, each the Type it wraps, so the
-    // walk judges it once: at the outermost node of that chain with a constructed Type that has clauses. A wrapper's Type carries the
-    // written Origin arguments; a wrapper whose annotation failed has none, and the occurrence is judged at the layer below it.
+    // R7-V1c (SPEC 8.3.1, 8.6.3, 23.1.2; F's V1c rulings 3-4): the Type ValidateConstraintUses judges at `node`, or null. A layer that
+    // forms its operand's Type (SameTypeOperand) is that operand's occurrence, so the walk judges a written occurrence once: at its
+    // outermost such layer with a constructed Type that has clauses. A layer forming another Type, or none (a wrapper whose
+    // annotation failed), is not the occurrence below it, which is judged at its own node.
     private BoundType? JudgedOccurrence(Koto node)
+        => this.ConstrainedType(node) is { } type && !(node.Parent is { } layer && ReferenceEquals(this.SameTypeOperand(layer), node) && this.ConstrainedType(layer) is not null) ? type : null;
+
+    // R7-V1c (F's V1c ruling 4): the operand of a layer of Type syntax whose formed Type is its one Type component's, by the identity
+    // judge (SameCompleteType: a transparent wrapper, parentheses, an explicit `owner/`, any such layer alike), else null; a layer
+    // forming another Type (`ref/`, `uniq/`, a pair layer, `T?`) has none.
+    private Koto? SameTypeOperand(Koto node)
+        => node is TypeKoto { TypeComponentCount: 1, BoundType: { } formed } layer && layer.TypeComponent(0) is { BoundType: { } type } operand && this.SameCompleteType(formed, type) ? operand : null;
+
+    // The Type node of the occurrence judged at `node`: the operand below every layer that forms its operand's Type.
+    private Koto OccurrenceTypeNode(Koto node)
     {
-        if (this.ConstrainedType(node) is not { } type)
+        while (this.SameTypeOperand(node) is { } operand)
         {
-            return null;
+            node = operand;
         }
 
-        var named = UseNode(node);
-        for (var outer = node.Parent; outer is not null && ReferenceEquals(UseNode(outer), named); outer = outer.Parent)
-        {
-            if (this.ConstrainedType(outer) is not null)
-            {
-                return null;
-            }
-        }
-
-        return type;
+        return node;
     }
 
     private BoundType? ConstrainedType(Koto node)
