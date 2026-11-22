@@ -301,7 +301,8 @@ public sealed partial class Binding
             if (selection == CallSelection.NoneApplicable)
             {
                 // SPEC 15.1.5: name the missing spelling when a bare Place was the only obstacle.
-                var failure = this.acquisitionFailure?.Kind ?? BindingFailure.NoApplicableCandidate;
+                var acquisition = LastAcquisition(in evaluation);
+                var failure = acquisition?.Kind ?? BindingFailure.NoApplicableCandidate;
                 if (failure == BindingFailure.NoApplicableCandidate && call.BindingFailure == BindingFailure.None)
                 {
                     // The candidates that were considered explain the failed selection; recorded only when it fails.
@@ -349,9 +350,9 @@ public sealed partial class Binding
 
                     this.RecordRejected(call, start);
                 }
-                else if (this.acquisitionFailure is { } acquisition)
+                else if (acquisition is { } absent)
                 {
-                    return this.FailAcquisition(call, failure, acquisition.Place, acquisition.Object, true);
+                    return this.FailAcquisition(call, failure, absent.Place, absent.Object, true);
                 }
 
                 return this.FailWaitingSelection(call, failure);
@@ -371,7 +372,7 @@ public sealed partial class Binding
 
             var winner = evaluated[winnerIndex].Symbol!;
             var selected = (FunctionKoto)winner.Declaration;
-            this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex] ?? (callee as RequirementCalleeKoto)?.Contract; // Reset by the finally block.
+            this.activeRequirementContract = evaluation.RequirementContractOf(winnerIndex); // Reset by the finally block.
             var selectedType = evaluated[winnerIndex].DeclaringType;
             var solveFrame = frames[winnerIndex];
             var selectedMapping = evaluation.MappingOf(winnerIndex);
@@ -399,18 +400,10 @@ public sealed partial class Binding
                     return Complete(call, null);
                 }
 
-                var state = this.TryCandidate(
-                    this.Solution(evaluation, winnerIndex, selected, selectedType),
-                    evaluated[winnerIndex].ArgumentMap,
-                    expected,
-                    waitingOperations,
-                    out _,
-                    out _,
-                    out _,
-                    out _,
-                    out var failure,
-                    out _);
-                if (AsSelected(state, failure, CandidateApplicability.Applicable) != CandidateApplicability.Applicable)
+                var trial = evaluated[winnerIndex]; // A local copy: the row stays its first evaluation's.
+                this.TryCandidate(this.Solution(evaluation, winnerIndex, selected, selectedType), expected, waitingOperations, ref trial);
+                var state = trial.State;
+                if (AsSelected(state, trial.ConstraintFailure, CandidateApplicability.Applicable) != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
                     for (var i = 0; i < argumentCount; i++)
@@ -550,8 +543,7 @@ public sealed partial class Binding
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
-                call.CallStorage.RequirementContract = requirementGroup is not null && this.activeRequirementContract is { } requirementContract ? requirementContract :
-                    callee is RequirementCalleeKoto requirementCallee ? requirementCallee.Contract : null;
+                call.CallStorage.RequirementContract = evaluation.RequirementContractOf(winnerIndex);
             }
 
             return Complete(call, result);
@@ -586,7 +578,7 @@ public sealed partial class Binding
     private BoundType? FailAmbiguous(in CallEvaluation evaluation, ulong applied)
     {
         var (call, evaluated, start) = (evaluation.Call, evaluation.Evaluated, this.rejectedRows.Count);
-        var erasure = ErasureIncomparable(evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride, call.ArgumentNodes.Count);
+        var erasure = ErasureIncomparable(in evaluation);
         for (var i = 0; i < Math.Min(evaluation.Count, 64); i++)
         {
             if ((applied & (1UL << i)) != 0)

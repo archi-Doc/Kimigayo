@@ -167,27 +167,21 @@ public sealed partial class Binding
                     !solution.Rows.Overlaps(evaluation.Rows) && !solution.ChildSlice.Overlaps(evaluation.ChildSlices) &&
                     !solution.Origins.Overlaps(evaluation.Origins) && !solution.Inputs.Overlaps(evaluation.Inputs),
                     "The fixed re-check solves into its own scratch.");
-                var state = this.TryCandidate(
-                    solution,
-                    previous.ArgumentMap,
-                    evaluation.Expected,
-                    candidateOperations,
-                    out var defaults,
-                    out var unbound,
-                    out var receiver,
-                    out _,
-                    out var failure,
-                    out var premiseUnknown);
+                // The re-check's own row, seeded from the first evaluation's argument map (no requirement group: the view is null).
+                ref var row = ref checkedCandidates[i];
+                row = new(previous.Symbol, CandidateApplicability.Inapplicable, construction, 0, ArgumentMap: previous.ArgumentMap);
+                this.TryCandidate(solution, evaluation.Expected, candidateOperations, ref row);
+
                 // SPEC 10.1, 10.2.1 (PLAN G680): the selected constructor, its waiting arguments completed, keeps its selection past a
                 // refuted clause, which is the call's obligation (AsSelected), never a changed selection.
-                state = i == selected ? AsSelected(state, failure, CandidateApplicability.Applicable) : state;
-                checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap, PremiseUnknown: premiseUnknown);
-                if ((state == CandidateApplicability.Pending && !premiseUnknown) || state == CandidateApplicability.Error || unbound)
+                row.State = i == selected ? AsSelected(row.State, row.ConstraintFailure, CandidateApplicability.Applicable) : row.State;
+                var state = row.State;
+                if ((state == CandidateApplicability.Pending && !row.PremiseUnknown) || state == CandidateApplicability.Error || row.Unsolved)
                 {
                     return Reject(function, ConstructionCheck.UnprovenCandidate);
                 }
 
-                unproven ??= premiseUnknown ? function : null;
+                unproven ??= row.PremiseUnknown ? function : null;
 
                 if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                 {

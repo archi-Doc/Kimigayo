@@ -5,58 +5,37 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // SPEC 10.2-10.8: evaluates one named-call candidate from prepared argument slots, expected result and Constraints.
-// Returns its existing applicability and inference facts. The candidate scope restores saved inference state on every exit;
+// Writes its applicability and inference facts into its row (EvaluatedCandidate). The candidate scope restores saved inference state on every exit;
 // lookup, ranking and final call publication remain with their existing owners.
 public sealed partial class Binding
 {
     // A candidate's environment judgments (DECISIONS BU-86) and slot bindings are its own frame's (SlotFrame.EnvironmentJudgment,
-    // Bindings), so a nested call bound while it is evaluated keeps its own. `unsolved` holds the required structural slots that no
-    // evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such slots stays rankable, and its selection is the
-    // inference-boundary record (FailUnboundSlots).
-    private CandidateApplicability TryCandidate(
-        SlotSolution solution,
-        CallArgumentMap argumentMap,
-        BoundType? expected,
-        Span<BoundArgumentOperation> operations,
-        out int defaultsUsed,
-        out bool unsolved,
-        out ClosureReceiverRefutation? closureReceiver,
-        out bool independentRejection,
-        out ReferenceConstraintFailure? constraintFailure,
-        out bool premiseUnknown)
+    // Bindings), so a nested call bound while it is evaluated keeps its own. The trial writes its verdict and facts into `row`, whose
+    // ArgumentMap its caller wrote: State, DefaultsUsed, Unsolved (the required structural slots that no evidence binds, SPEC 10.8: an
+    // Applicable or Waiting candidate with such slots stays rankable, and its selection is the inference-boundary record,
+    // FailUnboundSlots), ClosureReceiver, IndependentRejection, ConstraintFailure, PremiseUnknown and Acquisition, each on every path. It
+    // runs under the solution's requirement reference (SPEC 8.6.4) and restores the enclosing reference and acquisition.
+    private void TryCandidate(SlotSolution solution, BoundType? expected, Span<BoundArgumentOperation> operations, ref EvaluatedCandidate row)
     {
         if (this.MeasureCallInference)
         {
             this.inferenceCandidateChecks++;
         }
 
-        var savedAcquisition = this.acquisitionFailure;
-        this.acquisitionFailure = null;
+        var (savedAcquisition, savedContract) = (this.acquisitionFailure, this.activeRequirementContract);
+        (this.acquisitionFailure, this.activeRequirementContract) = (null, solution.RequirementContract);
         var unformedMark = this.unformedWrites;
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         var wholesMark = this.wholes.Count;
         try
         {
-            var result = this.TryCandidateCore(
-                ref solution,
-                argumentMap,
-                expected,
-                operations,
-                out defaultsUsed,
-                out unsolved,
-                out closureReceiver,
-                out independentRejection,
-                out constraintFailure,
-                out premiseUnknown);
-            if (result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && this.acquisitionFailure is { } acquisition)
-            {
-                // Only a candidate whose other inputs, result and Constraints fit can explain the absent spelling.
-                if (result == CandidateApplicability.Applicable)
-                {
-                    savedAcquisition = acquisition;
-                }
+            var state = this.TryCandidateCore(ref solution, expected, operations, ref row);
 
-                result = CandidateApplicability.Inapplicable;
+            // Only a candidate whose other inputs, result and Constraints fit can explain the absent spelling (LastAcquisition).
+            row.Acquisition = state == CandidateApplicability.Applicable ? this.acquisitionFailure : null;
+            if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting && this.acquisitionFailure is not null)
+            {
+                state = CandidateApplicability.Inapplicable;
             }
 
             // Rule W at the candidate's own verdict (DECISIONS BU-79; SPEC 23.1.2; PLAN G206): a parameter or result Type that failed to
@@ -64,22 +43,23 @@ public sealed partial class Binding
             // verdict over an unformed split (BU-240, PLAN G886; SPEC 10.1's unproven candidate): a trial that formed a Type no binding
             // represents rests on it (Pending, UnformedSplit) only where every check reading no unformed Type passed; an inapplicable
             // candidate is judged without it, its writes dropped. A proof's Error without one stays (InvalidDeclarationContext).
-            if (this.UnformedSince(unformedMark) && result is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error))
+            if (this.UnformedSince(unformedMark) && state is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error))
             {
                 this.trialPending = new(PendingJudgmentKind.UnformedSplit, solution.Function) { Epoch = this.frameEpoch };
-                premiseUnknown = false;
-                return CandidateApplicability.Pending;
+                row.PremiseUnknown = false;
+                row.State = CandidateApplicability.Pending;
+                return;
             }
 
             this.unformedWrites = unformedMark;
-            return result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && IncompleteSignature(solution.Function) is not null
-                ? CandidateApplicability.Pending : result;
+            row.State = state is CandidateApplicability.Applicable or CandidateApplicability.Waiting && IncompleteSignature(solution.Function) is not null
+                ? CandidateApplicability.Pending : state;
         }
         finally
         {
             this.wholes.RemoveRange(wholesMark, this.wholes.Count - wholesMark);
             this.CloseTrial(enclosing);
-            this.acquisitionFailure = savedAcquisition;
+            (this.acquisitionFailure, this.activeRequirementContract) = (savedAcquisition, savedContract);
         }
     }
 
@@ -383,18 +363,9 @@ public sealed partial class Binding
         return structure;
     }
 
-    private CandidateApplicability TryCandidateCore(
-        ref SlotSolution solution,
-        CallArgumentMap argumentMap,
-        BoundType? expected,
-        Span<BoundArgumentOperation> operations,
-        out int defaultsUsed,
-        out bool unsolved,
-        out ClosureReceiverRefutation? closureReceiver,
-        out bool independentRejection,
-        out ReferenceConstraintFailure? constraintFailure,
-        out bool premiseUnknown)
+    private CandidateApplicability TryCandidateCore(ref SlotSolution solution, BoundType? expected, Span<BoundArgumentOperation> operations, ref EvaluatedCandidate row)
     {
+        var argumentMap = row.ArgumentMap;
         var call = solution.Call;
         var function = solution.Function;
         var scope = solution.Scope;
@@ -415,12 +386,12 @@ public sealed partial class Binding
         solution.Unknown = this.RentSlotSet(call.ArgumentNodes.Count); // The parts whose own pattern forms no Type (UnformedPart).
         try
         {
-            defaultsUsed = argumentMap.DefaultsUsed;
-            closureReceiver = null;
-            unsolved = false;
-            independentRejection = false;
-            constraintFailure = null;
-            premiseUnknown = false;
+            row.DefaultsUsed = argumentMap.DefaultsUsed;
+            row.ClosureReceiver = null;
+            row.Unsolved = false;
+            row.IndependentRejection = false;
+            row.ConstraintFailure = null;
+            row.PremiseUnknown = false;
             if (!argumentMap.InputsValid || (function.IsConstructor && declaringType is null))
             {
                 return CandidateApplicability.Inapplicable;
@@ -515,7 +486,7 @@ public sealed partial class Binding
                 {
                     if (part.BoundType is { } actual)
                     {
-                        independentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin;
+                        row.IndependentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin;
                         // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
                         // applies; a successful overload selection publishes nothing from rejected alternatives.
                         if (DifferentRangeShapes(actual, type))
@@ -849,7 +820,7 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.ErasedArgumentsEnvironment(operations), true);
             }
 
-            constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
+            row.ConstraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
                 this.ResolvedClauseUnknown(function.TypeConstraints, solution.Substitution(frame.Types[..CallSlotCount(function)]), scope, self))
@@ -869,23 +840,23 @@ public sealed partial class Binding
                     return CandidateApplicability.Pending;
                 }
 
-                unsolved = !unsolvedSlots.IsEmpty;
+                row.Unsolved = !unsolvedSlots.IsEmpty;
                 return CandidateApplicability.Waiting;
             }
 
             if (proof == ConstraintProof.Refuted)
             {
-                closureReceiver = this.PermittedClosureReceiver(solution, waitingCallables);
+                row.ClosureReceiver = this.PermittedClosureReceiver(solution, waitingCallables);
             }
 
             // Retain only a condition actually reached after the argument/result checks.
-            if (proof == ConstraintProof.Refuted && closureReceiver is null)
+            if (proof == ConstraintProof.Refuted && row.ClosureReceiver is null)
             {
-                constraintFailure = failure;
+                row.ConstraintFailure = failure;
             }
 
-            unsolved = proof is ConstraintProof.Proven or ConstraintProof.Unknown or ConstraintProof.Refuted && !unsolvedSlots.IsEmpty; // Refuted: CheckDefaulted's selected candidate.
-            premiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.3.3: every argument and result check has passed.
+            row.Unsolved = proof is ConstraintProof.Proven or ConstraintProof.Unknown or ConstraintProof.Refuted && !unsolvedSlots.IsEmpty; // Refuted: CheckDefaulted's selected candidate.
+            row.PremiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.3.3: every argument and result check has passed.
             return proof switch
             {
                 // SPEC 10.1: an Unknown is an obligation checked after selection.

@@ -604,19 +604,7 @@ public sealed partial class Binding
         else
         {
             // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-            this.FailUnboundSlots(
-                call,
-                selected,
-                evaluation.Scope,
-                evaluation.Frames[winner].Types,
-                evaluation.Frames[winner].Lengths,
-                solution.Mapping,
-                operations,
-                evaluation.Expected,
-                evaluation.Self,
-                solution.Origins,
-                solution.Inputs,
-                declaringType);
+            this.FailUnboundSlots(in solution, operations, evaluation.Expected);
         }
 
         return false;
@@ -626,26 +614,17 @@ public sealed partial class Binding
     // never reselects.
     private bool CheckDefaulted(ref CallEvaluation evaluation, int winner, SlotSolution solution, Span<BoundArgumentOperation> operations)
     {
-        var state = this.TryCandidate(
-            solution,
-            evaluation.Evaluated[winner].ArgumentMap,
-            evaluation.Expected,
-            operations,
-            out _,
-            out var unsolved,
-            out _,
-            out _,
-            out var failure,
-            out _);
-        state = AsSelected(state, failure, evaluation.Evaluated[winner].State);
+        var trial = evaluation.Evaluated[winner]; // A local copy: the row takes back only State and Unsolved.
+        this.TryCandidate(solution, evaluation.Expected, operations, ref trial);
+        var state = AsSelected(trial.State, trial.ConstraintFailure, evaluation.Evaluated[winner].State);
         if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
-            evaluation.Evaluated[winner] = evaluation.Evaluated[winner] with { State = state, Unsolved = unsolved };
+            (evaluation.Evaluated[winner].State, evaluation.Evaluated[winner].Unsolved) = (state, trial.Unsolved);
             return true;
         }
 
         var call = evaluation.Call;
-        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: failure));
+        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: trial.ConstraintFailure));
         this.RecordRejected(call, this.rejectedRows.Count - 1);
         this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         return false;

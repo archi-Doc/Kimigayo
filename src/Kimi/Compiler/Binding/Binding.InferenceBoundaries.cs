@@ -201,8 +201,12 @@ public sealed partial class Binding
     // the open slot leaves without a Type, rests on the call. Where every unsolved slot stands at a position with a part whose own
     // binding failed (RestSlots), the call rests on such a part instead (SPEC 23.1.2; DECISIONS U1.6h-1): its record is that part's.
     // Otherwise the Reason names the slots that do not rest (`boundary`): a slot at a failed part's position is no independent fact.
-    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, ReadOnlySpan<BoundType?> slots, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType)
+    private BoundType? FailUnboundSlots(in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected)
     {
+        var (call, selected, scope, self, declaringType) = (solution.Call, solution.Function, solution.Scope, solution.Self, solution.DeclaringType);
+        var slots = solution.Types;
+        var lengths = solution.Lengths;
+        var mapping = solution.Mapping;
         var unsolved = this.RentSlotSet(CallSlotCount(selected));
         this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved);
         var firstSlot = this.RentSlotSet(CallSlotCount(selected));
@@ -249,8 +253,8 @@ public sealed partial class Binding
 
                     if (kind == PartKind.Function && this.AwaitsCall(inner) && inner is FunctionKoto closure)
                     {
-                        var parameters = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } ? this.CallType(signature.Components[0], selected, slots, scope, self, origins, inputs, declaringType, lengths) : null;
-                        var result = parameters is null ? null : this.CallType(signature!.Components[1], selected, slots, scope, self, origins, inputs, declaringType, lengths);
+                        var parameters = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } ? this.CallType(signature.Components[0], selected, slots, scope, self, solution.Origins, solution.Inputs, declaringType, lengths) : null;
+                        var result = parameters is null ? null : this.CallType(signature!.Components[1], selected, slots, scope, self, solution.Origins, solution.Inputs, declaringType, lengths);
                         if (holds && ReferenceEquals(waiting, argument))
                         {
                             var inParameters = MentionsSlots(signature!.Components[0], CallSlotOwner(selected), firstSlot);

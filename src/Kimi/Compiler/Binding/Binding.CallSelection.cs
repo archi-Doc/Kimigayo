@@ -105,6 +105,21 @@ public sealed partial class Binding
         return applied;
     }
 
+    // SPEC 15.1.5: the absent spelling a NoneApplicable selection names: the Acquisition of the last candidate, in evaluation order,
+    // whose trial a bare Place alone kept from applying (TryCandidate), else none.
+    private static AcquisitionFailure? LastAcquisition(in CallEvaluation evaluation)
+    {
+        for (var i = evaluation.Count - 1; i >= 0; i--)
+        {
+            if (evaluation.Evaluated[i].Acquisition is { } acquisition)
+            {
+                return acquisition;
+            }
+        }
+
+        return null;
+    }
+
     // SPEC 7.4, 23.1.2 (rule W; G812 ruling 141): a candidate whose group failed its shape (KeepsSignature's ParameterShapeMismatch or
     // ReceiverShapeMismatch), on which a selection the split leaves open rests: that rest reads the failed group, so it is dependent.
     private static Koto? FailedShapeMember(in CallEvaluation evaluation)
@@ -284,13 +299,15 @@ public sealed partial class Binding
     }
 
     // SPEC 10.1-10.4: one call's selection over its rented evaluation: every candidate evaluated, then the selection they determine.
-    // The entry a publishing call and a query share: it starts from no deferred acquisition and no failed cause, and neither fails,
-    // completes nor records a node, but for a broken contract's Fail(Source, Internal) in BetterCandidate (reached from
-    // ClassifySelection through SelectBest and PremisesCannotAffect); the caller acts on the outcome.
+    // The entry a publishing call and a query share: it starts from no deferred acquisition, no failed cause and no requirement
+    // reference (each trial runs under its candidate's, TryCandidate), and neither fails, completes nor records a node, but for a broken
+    // contract's Fail(Source, Internal) in BetterCandidate (reached from ClassifySelection through SelectBest and PremisesCannotAffect);
+    // the caller acts on the outcome.
     private (CallSelection Kind, int Winner) SelectAt(ref CallEvaluation evaluation, in FunctionGroup candidates)
     {
         this.acquisitionFailure = null;
         this.failedCause = null;
+        this.activeRequirementContract = null;
         this.EvaluateCallCandidates(ref evaluation, candidates);
         return this.ClassifySelection(ref evaluation);
     }
@@ -331,42 +348,27 @@ public sealed partial class Binding
         evaluation.RowsOf(index).Clear(); // F1: each candidate writes its own root rows.
         evaluation.ChildSliceOf(index)[1] = -1; // R3: composed at the candidate's first solve.
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
-        var state = CandidateApplicability.Inapplicable;
         (this.premiseReadsSplit, this.refusedOnSplit) = (false, false);
         if (this.MeasureCallInference)
         {
             this.inferenceMappings++;
         }
 
+        // The candidate's row, written once, here: RentCandidates wrote its Symbol and Accessible (decided once, and the header bound,
+        // before the set was measured), the trial writes its verdict and facts (TryCandidate). An inaccessible candidate is not tried:
+        // its row keeps the rent's cleared State (Inapplicable) and the mapping's defaults, the other trial members default.
+        ref var row = ref evaluation.Evaluated[index];
         var mapping = evaluation.MappingOf(index); // Written here only; every later pass reads it.
-        var argumentMap = MapCallArguments(call, function, this.CallReceiver(evaluation.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not null, mapping, evaluation.Used);
-        var defaultsUsed = argumentMap.DefaultsUsed;
-        ClosureReceiverRefutation? closureReceiver = null;
-        var unsolved = false;
-        var independentRejection = false;
-        var premiseUnknown = false;
-        ReferenceConstraintFailure? rejectedConstraint = null;
-        var accessible = evaluation.Evaluated[index].Accessible; // Decided once, and the header bound, before the set was measured.
-        if (accessible)
+        row.ArgumentMap = MapCallArguments(call, function, this.CallReceiver(evaluation.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not null, mapping, evaluation.Used);
+        row.DefaultsUsed = row.ArgumentMap.DefaultsUsed;
+        if (row.Accessible)
         {
             if (function.IsConstructor)
             {
-                declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, mapping, evaluation.Expected) : null;
+                declaringType = row.ArgumentMap.Valid ? this.ConstructorType(call, function, scope, mapping, evaluation.Expected) : null;
             }
 
-            this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
-            state = this.TryCandidate(
-                this.Solution(evaluation, index, function, declaringType),
-                argumentMap,
-                evaluation.Expected,
-                operations,
-                out defaultsUsed,
-                out unsolved,
-                out closureReceiver,
-                out independentRejection,
-                out rejectedConstraint,
-                out premiseUnknown);
-            this.activeRequirementContract = null;
+            this.TryCandidate(this.Solution(evaluation, index, function, declaringType), evaluation.Expected, operations, ref row);
         }
 
         if (function.IsConstructor && declaringType is not null)
@@ -375,20 +377,11 @@ public sealed partial class Binding
         }
 
         // The refusal the trial held (the owner's O-335 (a)): settled only if this candidate is selected (Binding.Calls).
-        var held = this.TakeTrialRefusal(call);
-        ref var row = ref evaluation.Evaluated[index]; // Its Symbol and Accessible are RentCandidates'.
-        row.State = state;
+        var state = row.State;
         row.DeclaringType = declaringType;
-        row.DefaultsUsed = defaultsUsed;
-        row.Unsolved = unsolved;
-        row.ClosureReceiver = closureReceiver;
-        row.ArgumentMap = argumentMap;
-        row.StableConstruction = function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations);
-        row.IndependentRejection = independentRejection;
-        row.ConstraintFailure = rejectedConstraint;
-        row.PremiseUnknown = premiseUnknown;
+        row.HeldRefusal = this.TakeTrialRefusal(call);
+        row.StableConstruction = function.IsConstructor && StableConstructionPremises(state, row.Unsolved, declaringType, operations);
         row.PremiseReadsMark = this.premiseReadsSplit && HoldsMark(evaluation.Frames[index].Types); // DECISIONS BU-240 (G812 ruling 159)
-        row.HeldRefusal = held;
         // The trial's judgment is taken once, in the selection's frame (DECISIONS BU-86); an unformed split (BU-240) only of a candidate that
         // rests on it (Pending; TryCandidate's verdict), as an environment result.
         var judgment = this.TakeTrialPending(call);
@@ -404,9 +397,9 @@ public sealed partial class Binding
 
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
             evaluation.PendingCount++;
-            evaluation.PremisesOnly &= premiseUnknown;
+            evaluation.PremisesOnly &= row.PremiseUnknown;
             evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, mapping) : null;
-            evaluation.ConstraintFailure ??= rejectedConstraint;
+            evaluation.ConstraintFailure ??= row.ConstraintFailure;
             evaluation.PendingJudgment ??= judgment is { Kind: PendingJudgmentKind.EnvironmentResult } judged ? judged : null;
         }
 
@@ -668,5 +661,9 @@ public sealed partial class Binding
         internal readonly Span<BoundOrigin> OriginsOf(int index) => this.Origins.AsSpan(index * this.OriginSlots, this.OriginSlots);
 
         internal readonly Span<BoundOrigin> InputsOf(int index) => this.Inputs.AsSpan(index * this.InputSlots, this.InputSlots);
+
+        // SPEC 8.4.1, 8.6.4: the requirement reference candidate `index` is tried and selected under: its requirement group's Contract,
+        // else a requirement callee's; the trial's input, read from the call (Solution's view, the selected call's plan).
+        internal readonly BindingSymbol? RequirementContractOf(int index) => this.Requirements?.Contracts[index] ?? (this.Callee as RequirementCalleeKoto)?.Contract;
     }
 }
