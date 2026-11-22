@@ -981,10 +981,13 @@ public sealed partial class Binding
         return InValueNamespace(role) ? this.ResolveImportedValue(name, scope, use, step) : this.ResolveImportedType(name, scope, use, role, arity, step);
     }
 
+    // SPEC 9.5: a scope's Type members and the formal parameters it declares are one stage (9.7.3 keeps the two apart by name: a
+    // member is read first, as a later declaration).
     private ResolvedPath TypeStage(BindingScope current, BindingScope scope, Koto use, string name, LookupRole role, int arity, int step)
     {
         var candidates = default(TypeCandidates);
         this.AddTypeCandidates(ref candidates, current.Types.GetValueOrDefault(name), scope, role, arity);
+        this.AddTypeCandidates(ref candidates, current.Parameters?.GetValueOrDefault(name), scope, role, arity);
         return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);
     }
 

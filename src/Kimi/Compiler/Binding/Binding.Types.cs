@@ -58,17 +58,8 @@ public sealed partial class Binding
     };
 
     // A Container's direct Type members named `name`, as a path (SPEC 9.6) or an opening alias (18.2.1) reaches them: never its formal
-    // parameters, which only the scope walk finds at their declaring position (9.5).
-    private static BindingSymbol? MemberTypes(BindingScope container, string name)
-    {
-        var head = container.Types.GetValueOrDefault(name);
-        while (head is not null && IsGenericParameter(head))
-        {
-            head = head.Next;
-        }
-
-        return head;
-    }
+    // parameters, which only the scope walk finds at their declaring position (9.5; BindingScope.Parameters).
+    private static BindingSymbol? MemberTypes(BindingScope container, string name) => container.Types.GetValueOrDefault(name);
 
     private BoundType? BindType(Koto syntax, BindingScope scope)
         => this.BindType(syntax, scope, this.TypeContext(syntax, scope));

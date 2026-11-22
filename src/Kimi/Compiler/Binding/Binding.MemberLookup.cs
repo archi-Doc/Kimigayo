@@ -25,9 +25,10 @@ public sealed partial class Binding
     /// <summary>Gets the clauses UnreadIdentity read in the latest pass, read by the scaling tests.</summary>
     internal int UnreadIdentityWork => this.unreadIdentityWork;
 
-    // SPEC 9.1: a generic parameter belongs to its declaration's own scope and is no member of the Type.
-    private static bool IsGenericParameter(BindingSymbol symbol)
-        => symbol.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.LengthParameter;
+    // SPEC 4.4.1, 9.1: a length slot is a function's Value-namespace parameter and no member of a Type; a nominal header's (invalid, its
+    // recovery kept) stays in its Container's value table, where no member lookup selects it. Type-namespace parameters are in
+    // BindingScope.Parameters, which no member lookup reads.
+    private static bool IsLengthSlot(BindingSymbol symbol) => symbol.Kind == BindingSymbolKind.LengthParameter;
 
     private void ValidateBaseDeclarations(BindingMode? mode = null)
     {
@@ -511,7 +512,7 @@ public sealed partial class Binding
             var scope = this.scopes[symbol.Declaration];
             for (var candidate = (values ? scope.Values : scope.Types).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
-                if (IsGenericParameter(candidate) || !HasLookupRole(candidate, role))
+                if (IsLengthSlot(candidate) || !HasLookupRole(candidate, role))
                 {
                     continue;
                 }

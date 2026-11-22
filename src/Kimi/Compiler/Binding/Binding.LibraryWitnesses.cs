@@ -189,7 +189,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (group.TypeParameter is { } typeName && scope.Types.TryGetValue(typeName, out var parameter))
+        if (group.TypeParameter is { } typeName && scope.Parameters?.GetValueOrDefault(typeName) is { } parameter)
         {
             type = parameter.Slot;
         }

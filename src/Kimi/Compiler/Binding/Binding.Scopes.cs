@@ -82,15 +82,20 @@ public sealed partial class Binding
             return symbol;
         }
 
-        var table = kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType ? scope.Types : scope.Values;
+        var parameter = kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget;
+        var table = parameter ? scope.AddParameters() : kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.AssociatedType ? scope.Types : scope.Values;
         if (table.TryGetValue(name, out var previous))
         {
             symbol.Next = previous;
-            if ((kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function) &&
-                !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, previous)))
-            {
-                this.FailDuplicate(node, previous.Declaration);
-            }
+        }
+
+        // SPEC 9.1, 9.7.3: a Name repeats in one namespace and scope only as a function group or a Type of another arity, and a Type
+        // parameter conflicts with a nested declaration of its namespace: the scope's two Type tables are one space for this rule.
+        if ((previous ?? (parameter ? scope.Types : ReferenceEquals(table, scope.Types) ? scope.Parameters : null)?.GetValueOrDefault(name)) is { } conflict &&
+            (kind != BindingSymbolKind.Function || conflict.Kind != BindingSymbolKind.Function) &&
+            !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, conflict)))
+        {
+            this.FailDuplicate(node, conflict.Declaration);
         }
 
         table[name] = symbol;
