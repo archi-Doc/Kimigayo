@@ -270,6 +270,10 @@ $abortStderr = $utf8.GetBytes("Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n")
 # A source or project run may print build lines first, so its stdout ends with the child's.
 $output = Invoke-Kimi @('run', $abortSource) 1
 if (-not (Test-KimiExpectedOutput $abortStdout ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($childStdout, $abortStdout.Length)))) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Source run lost child output/error: $output" }
+# The record names Abort.kimi, so the project's run without a build needs the project's build (IMPL 20.3.1, PLAN G1256).
+$output = Invoke-Kimi @('run', $abortProject, '--no-build') 1
+if (-not $output.Contains('The latest build record names another input:') -or -not $output.Contains('Abort.kimi.')) { throw "A project run without a build ran the source's build: $output" }
+$output = Invoke-Kimi @('build', $abortProject)
 $output = Invoke-Kimi @('run', $abortProject, '--no-build') 1
 if (-not (Test-KimiExpectedOutput $abortStdout ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($childStdout, $abortStdout.Length)))) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Project run lost child output/error: $output" }
 $output = Invoke-Kimi @('run', (Join-Path $abortDirectory 'bin/x86_64-pc-windows-msvc/Abort.O2.exe'), '--no-build') 1

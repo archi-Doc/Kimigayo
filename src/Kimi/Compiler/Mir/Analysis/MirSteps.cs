@@ -8,8 +8,9 @@
 // the root; the whole Place for a Reborrow's added Deref), whose case Type a Deref's class is read from; and Prepared, whether a root is a
 // default template's PreparedInput.
 // Invariants: a Base of depth d is d steps and an owner-case pair layer none; a Deref or another pair layer is classed by the Semantics of
-// the Type it applies to, an Index by its sequence's Type (SPEC 4.7.1: a view's, an Array's or a fixed array's); a default template's
-// Deref directly on a PreparedInput is the caller's pending slot itself, Inline (E17). The scratch is the projection chain, reset by counts.
+// the Type it applies to, an Index by its sequence's Type (SPEC 4.7.1: a view's, an Array's or a fixed array's; SPEC 5.3: a raw
+// pointer's); a default template's Deref directly on a PreparedInput is the caller's pending slot itself, Inline (E17). The scratch is
+// the projection chain, reset by counts.
 // Must not read MirBorrows' state, syntax or HIR, judge Origins or conflicts, intern projections, or copy the body per view.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -18,7 +19,8 @@ namespace Kimi.Compiler.Mir;
 
 /// <summary>The class of a Place's step (A3 3): an inline step, an index into inline storage that forms no Move Path (a runtime one, or
 /// a fixed array's constant index on an Index row, D-910), an Array's element (ArrayElement), an owning handle's payload, a shared or
-/// exclusive borrow Deref (a Slice's index is a shared one, E6), or a raw pointer's referent.</summary>
+/// exclusive borrow Deref (a Slice's index is a shared one, E6), or a raw pointer's referent, its Deref's or its element's (SPEC 5.3:
+/// `p[n]` is `*(p + n)`, the builder's lowering of it; MirSteps.Index's table).</summary>
 internal enum MirStepClass : byte
 {
     Inline,
@@ -104,8 +106,8 @@ internal sealed class MirSteps(MirCases cases)
         return count;
     }
 
-    // A sequence Place's element step after its count steps, classed as an Index of it walks (Index); a Storage's walk (O-92 (a)). Returns
-    // the new count.
+    // A sequence Place's element step after its count steps, classed as an Index of it walks (Index's table: a raw pointer's element is
+    // its raw referent, SPEC 5.3, as the builder lowers `p[n]`); a Storage's walk (O-92 (a)). Returns the new count.
     internal int Element(MirPlace place, int count, ref MirStep[] into)
     {
         MirDataflow.Grow(ref into, count + 1);
@@ -124,11 +126,14 @@ internal sealed class MirSteps(MirCases cases)
     };
 
     // An Index step's class by its sequence's Type (SPEC 4.7.1's table): a view's Deref (a Slice's index is a shared one, E6), an Array's
-    // element, its index call's referent (ArrayElement), else a fixed array's built-in projection, an Index into inline storage.
+    // element, its index call's referent (ArrayElement), a raw pointer's element, its raw referent (SPEC 5.3: `p[n]` is `*(p + n)`, which
+    // the builder lowers to a Deref of the displaced pointer; a Storage over a raw pointer Place, L2), else a fixed array's built-in
+    // projection, an Index into inline storage.
     private MirStepClass Index(MirPlace sequence) => cases.TypeOf(sequence) switch
     {
         var type when MirTypes.View(type) is { } view => Deref(view),
         { Kind: BoundTypeKind.Array } => MirStepClass.ArrayElement,
+        { IsPointer: true } => MirStepClass.Raw,
         _ => MirStepClass.Index,
     };
 }

@@ -23,7 +23,9 @@
 // replacement, the executable last: linked to a private name, it moves into place after the success record that names its hash, and a
 // failed move invalidates the record again, so its path keeps the previous executable until a build succeeds (IMPL 20.3.2; Tatara
 // decision 18; NativeBuild: in the two windows IMPL 20.3.2 states, decision 19, the attempt's success record names a hash no file at
-// the path has, and run --no-build runs only an executable whose hash the record names); and, from publication only, records in the
+// the path has, and run --no-build runs only an executable whose hash the record names). Every record names its input, the project's
+// selected file (IMPL 20.3.1): a Library's from its project, an Application's from its pair's manifest, which publication writes from
+// the project, so build --Manifest of a project's emitted pair names that project (PLAN G1256); and, from publication only, records in the
 // compiler's Emission partition (ArtifactPublicationFailed_Kd and InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other
 // failure is an exception: one IsToolchainFailure classifies is the toolchain's, which its host renders as a message; any other ends the
 // result it interrupted as Faulted (CheckFaulted_Kd): under Project.Build the build's (R9-B2), under a command the command's own
@@ -140,7 +142,7 @@ internal static partial class NativeToolchain
     {
         var record = new JsonObject
         {
-            ["status"] = "checked", ["outputKind"] = "Library", ["input"] = project.FilePath,
+            ["status"] = "checked", ["outputKind"] = "Library", ["input"] = project.Input,
             ["target"] = metadata.TargetTriple, ["debug"] = metadata.Debug, ["optimization"] = project.ProjectFile.Optimization,
             ["languageVersion"] = metadata.LanguageVersion, ["compilerVersion"] = metadata.CompilerVersion,
         };
@@ -148,6 +150,9 @@ internal static partial class NativeToolchain
         WriteRecord(paths.Record, record);
     }
 
+    // run --no-build (IMPL 20.3): the executable runs only when the latest record succeeded at the project's optimization, names the
+    // executable's hash and names the project's input (IMPL 20.3.1; PLAN G1256), compared as Windows compares paths (ignoring case; G1202's
+    // ruling Q3). A record that names no input (an earlier compiler's) is refused for every project that names one.
     internal static async Task<int> RunProject(Project project, CancellationToken cancellationToken)
     {
         var paths = ArtifactPaths.Create(project);
@@ -163,6 +168,12 @@ internal static partial class NativeToolchain
             Text(Member(root, "executableSha256")) != Hash(paths.Executable))
         {
             throw new InvalidDataException("The latest build failed or the binary was changed. Run 'kimi build' first.");
+        }
+
+        var input = Text(Member(root, "input"));
+        if (!string.Equals(input, project.Input, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException($"The latest build record names {(input is null ? "no input" : "another input: " + input)}. Run 'kimi build' first.");
         }
 
         return await RunExecutable(paths.Executable, Path.GetFullPath(project.Directory.Length == 0 ? "." : project.Directory), cancellationToken);
