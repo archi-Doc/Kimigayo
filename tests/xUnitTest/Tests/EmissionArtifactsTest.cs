@@ -340,7 +340,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     // (ArtifactFiles.CheckPath, PublishArtifacts' fault). Code generation's row, a source path with an embedded NUL, left with G346's fix
     // (DECISIONS R5-M175: naming a source never throws); generation runs outside Publish's classifying catches (R5-M169's amendment),
     // and no program makes it throw without a production seam.
-    // The toolchain boundary (R9-B2): the project's own result (BuildTargetsAndPublish) has the same fault path, one CheckFaulted_Kd, in
+    // The toolchain boundary (R9-B2): the project's own result (Project.OwnResult) has the same fault path, one CheckFaulted_Kd, in
     // check and emit alike: its checks read a null target list (it escaped Check and Generate), and the host's console throws
     // InvalidOperationException at the report of the published pair (it escaped Generate; the pair stays, published before the report).
     [Theory]

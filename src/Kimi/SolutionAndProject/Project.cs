@@ -307,7 +307,7 @@ public partial class Project
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
     /// <returns>Whether every selected target passes front-end checks.</returns>
     internal bool Check(CheckContext context, CancellationToken cancellationToken)
-        => this.BuildTargetsAndPublish(false, cancellationToken, null, context);
+        => this.OwnResult((cancellationToken, context), context, static (project, s, diagnostics) => project.BuildTargets(false, s.cancellationToken, null, s.context, diagnostics));
 
     /// <summary>Publishes the IR and manifest of an accepted compilation through the generation entry, or renders the Emission result:
     /// the generation records, the publication failure, or, for an exception publication does not classify (a broken contract code
@@ -363,24 +363,24 @@ public partial class Project
     // is synchronous; do not build another async state machine around every compilation.
     // paths requests build artifacts, including a Library's record even when emit is false.
     private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
-        => this.BuildTargetsAndPublish(emit, cancellationToken, paths, null);
+        => this.OwnResult((emit, cancellationToken, paths), null, static (project, s, diagnostics) => project.BuildTargets(s.emit, s.cancellationToken, s.paths, null, diagnostics));
 
-    private bool BuildTargetsAndPublish(bool emit, CancellationToken cancellationToken, ArtifactPaths? paths, CheckContext? context)
+    // The project's own result (its configuration, lock and target-selection records, which body reports to its owner): a check request's
+    // caller finalizes its own diagnostics; a command renders it here, with the fault of an exception that ends it, and returns default
+    // (DIAGNOSTICS rule 9; R9-B2): the project's own checks', a target's report after its results (Emit), or a target's preparation
+    // before its front end (BuildTarget's, whose own records are then not rendered: a known limit).
+    private TResult? OwnResult<TState, TResult>(TState state, CheckContext? context, Func<Project, TState, DiagnosticOwner, TResult> body)
     {
-        // The project's own result (its configuration, lock and target-selection records): a check request's caller finalizes its own
-        // diagnostics; a command renders it here, with the fault of an exception that ends it (DIAGNOSTICS rule 9; R9-B2): the project's
-        // own checks', a target's report after its results (Emit), or a target's preparation before its front end (BuildTarget's, whose
-        // own records are then not rendered: a known limit).
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
         Exception? fault = null;
         try
         {
-            return this.BuildTargets(emit, cancellationToken, paths, context, diagnostics);
+            return body(this, state, diagnostics);
         }
         catch (Exception ex) when (this.Faults(ex, context))
         {
             fault = ex;
-            return false;
+            return default;
         }
         finally
         {
@@ -413,22 +413,9 @@ public partial class Project
             valid = !this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs));
         }
 
-        var targets = this.ProjectFile.Targets;
-        if (targets.Length == 0)
+        if (this.SelectTargets(diagnostics) is not { } targets)
         {
-            this.Fail(diagnostics, "At least one compilation target must be configured.");
             return false;
-        }
-
-        if (!string.IsNullOrEmpty(this.KimiOptions.Target))
-        {
-            if (!targets.Contains(this.KimiOptions.Target, StringComparer.Ordinal))
-            {
-                this.Fail(diagnostics, "The selected target is not configured in this project.");
-                return false;
-            }
-
-            targets = [this.KimiOptions.Target];
         }
 
         if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
@@ -679,6 +666,32 @@ public partial class Project
         }
 
         return reads;
+    }
+
+    // IMPL 20.3: the targets the project's unit selects, the configured ones or the one --Target names; null after its record when none is
+    // configured or the selected one is not, which leaves no target to prepare.
+    private string[]? SelectTargets(DiagnosticOwner diagnostics)
+    {
+        var targets = this.ProjectFile.Targets;
+        if (targets.Length == 0)
+        {
+            this.Fail(diagnostics, "At least one compilation target must be configured.");
+            return null;
+        }
+
+        var selected = this.KimiOptions.Target;
+        if (string.IsNullOrEmpty(selected))
+        {
+            return targets;
+        }
+
+        if (!targets.Contains(selected, StringComparer.Ordinal))
+        {
+            this.Fail(diagnostics, "The selected target is not configured in this project.");
+            return null;
+        }
+
+        return [selected];
     }
 
     private void Fail(DiagnosticOwner diagnostics, string message)

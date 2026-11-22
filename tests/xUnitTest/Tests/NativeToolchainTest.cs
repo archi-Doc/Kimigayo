@@ -694,7 +694,7 @@ public sealed class NativeToolchainTest : IDisposable
     // whose failures fail the build with their message (IMPL 20.3; SPEC 23.2.2: a toolchain, output or configuration failure); any other
     // exception, a compiler step's outside generation among them, ends its result as Faulted: one CheckFaulted_Kd (Exception) at the
     // project file (DIAGNOSTICS rule 9). Rows, the expected record first:
-    // - CheckFaulted_Kd, the project's own result (BuildTargetsAndPublish): "project checks", which read a null target list, a caller
+    // - CheckFaulted_Kd, the project's own result (Project.OwnResult): "project checks", which read a null target list, a caller
     //   contract no command input reaches (it escaped the build); "report", the host's console throwing InvalidOperationException, a type
     //   the toolchain's JSON reads throw, at the report of the published pair, after generation and before the toolchain (it printed as a
     //   toolchain failure).
