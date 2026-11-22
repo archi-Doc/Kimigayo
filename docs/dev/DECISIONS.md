@@ -29437,6 +29437,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     of them to land removes it in its merge (T's ruling on C-444 N3).
   - Amended by T-M15 (unit B6b4, 2026-11-22): the command line's option is removed (an error naming its removal; PLAN G1173
     closed).
+  - Amended by T-M11 (B6b3; PLAN G1231): setup installs and records no archive DLL.
 - **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
@@ -29631,6 +29632,14 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `supportingDlls: {}` in schema 1, so an older base's verify on a shared root still reads an object; existing roots keep their
     DLLs (setup deletes nothing). Temporary structure: the always-empty `supportingDlls` member; removal condition: no base
     before B6b3 reads a shared root (PLAN G1231).
+  - Amended (PLAN G1231; Q-690, 2aa79927f): the temporary structure is removed. Setup records no `supportingDlls`, and
+    `check-toolchain.ps1` neither requires nor reads it. Schema 1's members are `schemaVersion`, `profile`, `tools` and
+    `tatara.sha256`, read by name, so a record an older setup wrote (with its DLL list) still passes and its DLL files are not
+    read. `schemaVersion` stays 1: a bump fails an older base's check exactly as the missing member does, and a reader of both
+    versions would be two forms of one record (T-M6's reason). The landing needed no refresh. The first refresh of the shared root
+    after it drops the member, and from then on a base from B6b3 before G1231 fails `check-toolchain.ps1` on that root ("Invalid
+    toolchain installation record") until it merges dev, as that refresh's line says. Bases before B6b3 already failed their
+    verify on the shared root from W-318's refresh on (Tatara's start check), or, before A4, read it only in their verify.
   - **Deleted:** `ToolProcess`, `InstallationTools`, `RequireInstalledFile`, `VerifyKernel32`, `NativeToolchain.ParseVersion`
     and `VersionPattern`, `NativeToolchain.SetupCommand` (its one reader, Tatara's load remedy, holds the text),
     `Kernel32Imports.ValidateInstallation`, `ValidateLibrary`, their regexes and `DlltoolSha256`, `ToolchainIdentity.DlltoolSha256`,

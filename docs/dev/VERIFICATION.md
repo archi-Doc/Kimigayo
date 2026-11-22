@@ -172,11 +172,11 @@ own).
 `-VerifyToolchain` runs `kimi toolchain verify` (the compiler's self-check, `toolchain.json`) and then
 `src/backend/windows-x64/check-toolchain.ps1` (the development toolchain: the tools and `tatara.dll` against
 `installation.json` and the catalog, `check-toolchain.log`); the summary's `toolchainVerification` is `passed` only
-when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrote, and setup installs no archive DLL
-(`supportingDlls: {}`); a base before Tatara B6b3 still verifies such a root (its verify reads the empty object). A root
-made from B6b6 on has no `windows_x64`: it serves bases from B6a on for builds, from B6b3 on for verify and from B6b6 on
-for the native fixtures and the other scripts that linked the root's libraries. Existing roots, the shared one included,
-keep their files (setup deletes nothing). `src/backend/windows-x64/test-toolchain-verification.ps1` tests
+when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrote, and setup installs and records no
+archive DLL (Tatara G1231, DECISIONS T-M11; an older setup's `supportingDlls` and its DLLs are not read). A root set up
+from G1231 on has neither `windows_x64` nor that member: it serves bases from B6a on for builds, from G1231 on for
+`check-toolchain.ps1` (an older base's check requires the member) and from B6b6 on for the native fixtures and the other
+scripts that linked the root's libraries. Existing roots, the shared one included, keep their files (setup deletes nothing). `src/backend/windows-x64/test-toolchain-verification.ps1` tests
 `check-toolchain.ps1` and takes no `-Configuration` (it runs no compiler); its rows check, in turn, one root it makes
 (`artifacts/verify/toolchain/<guid>/toolchain`, removed at the end), whose tools and DLLs are hard links to the toolchain's
 (never written; a hard link needs the toolchain's volume) and whose `installation.json` is a copy, the only file the rows
