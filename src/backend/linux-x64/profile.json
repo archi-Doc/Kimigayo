@@ -5,6 +5,7 @@
     "version": "1.2.6",
     "source": "https://musl.libc.org/releases/musl-1.2.6.tar.gz",
     "sourceSha256": "d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a",
+    "copyrightSha256": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
     "signingKey": "836489290BB6B70F99FFDA0556BCDB593020450F"
   },
   "providedSymbols": [

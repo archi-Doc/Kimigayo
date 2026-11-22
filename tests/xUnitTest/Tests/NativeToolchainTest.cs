@@ -54,7 +54,8 @@ public sealed class NativeToolchainTest : IDisposable
     // IMPL 20.4 (Tatara B6a, B7b4): the compiler carries every row's supplies' bytes. windows-x64's rows are the two reserved names in
     // Ordinal order; linux-x64's c is musl's startup files and C library, keyed by (row, supply) in the Linux catalog's order. Each row's
     // SHA-256 is its catalog's, and each embedded resource has that SHA-256 and is the file committed beside the catalog, so a build
-    // stages the adopted bytes.
+    // stages the adopted bytes. musl's notice, which the compiler carries as Kimi.Linux.COPYRIGHT, is the tarball's COPYRIGHT: the
+    // catalog's copyrightSha256, which build-musl.ps1 checks in the extracted tarball.
     [Fact]
     public void EachCompilerSupplyIsTheCatalogsCommittedFile()
     {
@@ -83,6 +84,11 @@ public sealed class NativeToolchainTest : IDisposable
         {
             AssertCommitted(file.Open(), file.Sha256, Path.Combine(linux, file.Name));
         }
+
+        AssertCommitted(
+            typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.Linux.COPYRIGHT")!,
+            musl.RootElement.GetProperty("musl").GetProperty("copyrightSha256").GetString()!,
+            Path.Combine(linux, "COPYRIGHT"));
 
         static void AssertCommitted(Stream stream, string sha256, string file)
         {

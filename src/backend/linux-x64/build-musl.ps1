@@ -1,18 +1,24 @@
 # Builds linux-x64's c supply, musl's crt1.o, crti.o, crtn.o and libc.a, from the pinned tarball (Tatara B7b4; development only: the
-# products are committed beside profile.json and carried by the compiler, Kimi.csproj). Route M1: WSL's Ubuntu runs musl's own configure
-# and make, which call the pinned LLVM's clang.exe and llvm-ar.exe through WSL interop; the two wrappers written beside the extracted
-# tree only give a Windows process NUL for /dev/null and llvm-ar its members in a response file (a command line has 32,767 characters).
-# Checks: the tarball's SHA-256 is the catalog's sourceSha256 (its signature is checked at the download); every non-weak undefined
-# symbol of libc.a's members is defined in libc.a or the crt, except exactly the catalog's compilerRuntimeSymbols (clang's complex
-# multiplication helpers, which only cpow, cpowf and cpowl call and no supply defines); c's symbols (the catalog's providedSymbols)
-# are defined in libc.a; no product holds the build directory's path. The report (build-musl.json in the build directory) states each product's SHA-256 and
-# whether it is the catalog's; two builds in two directories are compared byte for byte (the reproduction, T-M8).
+# products and the tarball's COPYRIGHT are committed beside profile.json and carried by the compiler, Kimi.csproj). Route M1: the WSL
+# distribution -Distribution (Ubuntu by default) runs musl's own configure and make, which call the pinned LLVM's clang.exe and
+# llvm-ar.exe through WSL interop; the two wrappers written beside the extracted tree only give a Windows process NUL for /dev/null and
+# llvm-ar its members in a response file (a command line has 32,767 characters).
+# Checks, all before anything is copied to -OutputDirectory: the tarball's SHA-256 is the catalog's sourceSha256 (its signature is
+# checked at the download); every non-weak undefined symbol of libc.a's members is defined in libc.a or the crt, except exactly the
+# catalog's compilerRuntimeSymbols (clang's complex multiplication helpers, which only cpow, cpowf and cpowl call and no supply
+# defines); c's symbols (the catalog's providedSymbols) are defined in libc.a; no product holds the build directory's path; each product
+# is its catalog row's SHA-256 and the COPYRIGHT is the catalog's copyrightSha256. The report (build-musl.json in the build directory,
+# written before the catalog match) states the tools, the distribution's kernel and make versions and each file's SHA-256 against the
+# catalog's, so a new musl's first run fails the match and its report gives the catalog's hashes.
+# Reproduction (T-M8) is a procedure of two runs around this script, not the script itself: run it twice with new build directories at
+# different depths; both runs passing the catalog match gives byte-equal products, equal to the committed files.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $LlvmRoot,
     [Parameter(Mandatory)] [string] $Tarball,
     [Parameter(Mandatory)] [string] $BuildDirectory,
-    [string] $OutputDirectory = $PSScriptRoot
+    [string] $OutputDirectory = $PSScriptRoot,
+    [string] $Distribution = 'Ubuntu'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../windows-x64/toolchain.ps1')
@@ -27,13 +33,16 @@ $tools = [ordered]@{}
 foreach ($name in @('clang', 'llvm-ar', 'llvm-ranlib', 'llvm-nm')) {
     $tools[$name] = Get-KimiLlvmToolIdentity (Join-Path $LlvmRoot "bin/$name.exe") $llvmVersion
 }
+$kernel = wsl.exe -d $Distribution --exec uname -r
+if ($LASTEXITCODE -ne 0) { throw "WSL's $Distribution cannot run uname ($LASTEXITCODE)" }
+$make = @(wsl.exe -d $Distribution --exec make --version)[0]
+if ($LASTEXITCODE -ne 0) { throw "WSL's $Distribution cannot run make ($LASTEXITCODE)" }
 # A Windows path as WSL's drvfs mounts it; the wrappers and make's variables take no quoting, so a path must have none to need.
 function ConvertTo-WslPath([string] $Path) {
     if ($Path -notmatch '^([A-Za-z]):\\([^\s''"$`\\]+(\\[^\s''"$`\\]+)*)$') { throw "A path WSL cannot take unquoted: $Path" }
     return '/mnt/' + $Matches[1].ToLowerInvariant() + '/' + $Matches[2].Replace('\', '/')
 }
 New-Item -ItemType Directory -Path $BuildDirectory | Out-Null
-New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 & (Join-Path $env:SystemRoot 'System32/tar.exe') -xzf $Tarball -C $BuildDirectory
 if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
 $source = Join-Path $BuildDirectory "musl-$($catalog.musl.version)"
@@ -42,12 +51,11 @@ $ar = Join-Path $BuildDirectory 'ar'
 $lf = [Text.UTF8Encoding]::new($false)
 [IO.File]::WriteAllText($cc, "#!/bin/sh`nfor a in `"`$@`"; do shift; if [ `"`$a`" = /dev/null ]; then set -- `"`$@`" NUL; else set -- `"`$@`" `"`$a`"; fi; done`nexec $(ConvertTo-WslPath $tools.clang.path) --target=x86_64-linux-musl `"`$@`"`n", $lf)
 [IO.File]::WriteAllText($ar, "#!/bin/sh`nmode=`$1; archive=`$2; shift 2; printf '%s\n' `"`$@`" > `"`$archive.rsp`"`n$(ConvertTo-WslPath $tools['llvm-ar'].path) `"`$mode`" `"`$archive`" `"@`$archive.rsp`"; status=`$?; rm -f `"`$archive.rsp`"; exit `$status`n", $lf)
-$script = "set -e; chmod +x $(ConvertTo-WslPath $cc) $(ConvertTo-WslPath $ar); ./configure --target=x86_64-linux-musl --disable-shared CC=$(ConvertTo-WslPath $cc) AR=$(ConvertTo-WslPath $ar) RANLIB=$(ConvertTo-WslPath $tools['llvm-ranlib'].path); make -j`$(nproc) lib/crt1.o lib/crti.o lib/crtn.o lib/libc.a; uname -r"
+$script = "set -e; chmod +x $(ConvertTo-WslPath $cc) $(ConvertTo-WslPath $ar); ./configure --target=x86_64-linux-musl --disable-shared CC=$(ConvertTo-WslPath $cc) AR=$(ConvertTo-WslPath $ar) RANLIB=$(ConvertTo-WslPath $tools['llvm-ranlib'].path); make -j`$(nproc) lib/crt1.o lib/crti.o lib/crtn.o lib/libc.a"
 $log = Join-Path $BuildDirectory 'make.log'
-wsl.exe -d Ubuntu --cd $source --exec sh -c $script *> $log
+wsl.exe -d $Distribution --cd $source --exec sh -c $script *> $log
 if ($LASTEXITCODE -ne 0) { throw "musl's configure or make failed ($LASTEXITCODE): $log" }
-foreach ($product in $products) { Copy-Item -LiteralPath (Join-Path $source "lib/$product") -Destination (Join-Path $OutputDirectory $product) -Force }
-$paths = $products | ForEach-Object { Join-Path $OutputDirectory $_ }
+$paths = $products | ForEach-Object { Join-Path $source "lib/$_" }
 $nm = $tools['llvm-nm'].path
 function Get-Symbols([string[]] $Arguments) {
     $names = & $nm @Arguments
@@ -70,7 +78,15 @@ foreach ($path in $paths) {
     $hash = Get-KimiSha256 $path
     $identities[$name] = @{ sha256 = $hash; catalogMatched = $hash -ceq ($catalog.files | Where-Object name -ceq $name).sha256 }
 }
+$paths += Join-Path $source 'COPYRIGHT'
+$hash = Get-KimiSha256 $paths[4]
+$identities['COPYRIGHT'] = @{ sha256 = $hash; catalogMatched = $hash -ceq $catalog.musl.copyrightSha256 }
 [ordered]@{
-    musl = $catalog.musl; tools = $tools; undefinedChecked = $undefined.Count; definedSymbols = $defined.Count; products = $identities
+    musl = $catalog.musl; tools = $tools; wsl = [ordered]@{ distribution = $Distribution; kernel = "$kernel"; make = $make }
+    undefinedChecked = $undefined.Count; definedSymbols = $defined.Count; files = $identities
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $BuildDirectory 'build-musl.json') -Encoding utf8
 $identities.GetEnumerator() | ForEach-Object { "$($_.Key) $($_.Value.sha256) catalog=$($_.Value.catalogMatched)" }
+$unmatched = @($identities.Keys | Where-Object { -not $identities[$_].catalogMatched })
+if ($unmatched) { throw "Not the catalog's bytes, so nothing is copied: $($unmatched -join ', ') (build-musl.json states their SHA-256)" }
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+foreach ($path in $paths) { Copy-Item -LiteralPath $path -Destination (Join-Path $OutputDirectory ([IO.Path]::GetFileName($path))) -Force }
