@@ -46,6 +46,7 @@ public partial class ModuleBindingTest
     private const string CStr = "group C\n    public func pick(value: string) -> i32 => 2\n";
     private const string Box = "struct Box\n    public func pick(value: i32) -> i32 => value\n";
     private const string GenericBox = "struct Box<T>\n    public func pick(value: i32) -> i32 => value\n";
+    private const string TwoEnvironments = "public struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\npublic struct Other<T>\n    public init() => ()\n    public func make(x: i32) -> i32 => x\n";
     private const string Apply = "func apply(action: (i32) -> i32, value: i32) -> i32 => action(value)\n";
     private const string Identity = "func identity<T>(value: T) -> T => value@move\n";
     private const string Run = "func run<F>(action: F, value: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\n";
@@ -157,6 +158,11 @@ public partial class ModuleBindingTest
         // An opened generic Container's member beside a group: the reference reader's limit, in every order.
         ("eu1", "Box<i32>", GenericBox + Reference, Unsupported),
         ("eu2", "A Box<i32>", ABool + GenericBox + Reference, Unsupported),
+
+        // PLAN G633: one group gathered from two opened environments is valid (SPEC 9.5.1, 7.4), but a use holds one imported
+        // environment: the located Unsupported_Kd at the Name, a limit, in every order; its invalid twin keeps the limit's record.
+        ("g633", "Box<i32> Other<i64>", TwoEnvironments + "let n = make(1)", Unsupported),
+        ("g633i", "Box<i32> Other<i64>", TwoEnvironments + "let n = make(\"s\")", Unsupported),
     ];
 
     // SPEC 9.6: a member gathered from two Constraints is one group in either clause order. Each row: its name, the Contracts and other
