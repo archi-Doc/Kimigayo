@@ -141,7 +141,6 @@ public partial class ModuleBindingTest
 
     [Theory]
     [InlineData("Lib.Api", true)]
-    [InlineData("Lib.Api.", false)]
     [InlineData("Api", false)]
     [InlineData("Lib.Missing", false)]
     public void DefaultAliasesResolveDirectContainerPaths(string alias, bool expected)
@@ -150,32 +149,51 @@ public partial class ModuleBindingTest
         Assert.Equal(expected, compilation.Bind().IsComplete);
     }
 
+    // SPEC 18.2.3, F.5, IMPL 20.2 (F's ruling N1-9 (4)): a configured path that does not read whole by the Type production is reported by
+    // its parse, as a source alias's target is: the parser's record in the configuration document, and no row for Binding, which neither
+    // evaluates it nor records anything resting on it; the use, which no opened target serves, is its own miss (SPEC 23.1.2).
+    [Theory]
+    [InlineData("Lib.Api.", "MissingSyntax_Kd", 8)]
+    [InlineData("Lib Api", "ExpectedSyntax_Kd", 4)]
+    public void AConfiguredPathThatDoesNotParseWholeIsItsParsesRecord(string alias, string code, int at)
+    {
+        var compilation = Create("public func main() => value()", "public group Api\n    public func value() => ()", configure: (root, _) => root.Alias = [alias]);
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.DoesNotContain(compilation.DefaultAliases(compilation.Kotonoha), x => x.Path == alias);
+        var syntax = Assert.Single(TestDiagnostics.Of(compilation), x => x.Path?.EndsWith($"#Alias[{alias}]", StringComparison.Ordinal) == true);
+        Assert.Equal((code, at), (syntax.Code, syntax.Span.Start));
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
+        Assert.Equal("value", issue.Node.ToString());
+    }
+
     [Fact]
     public void ADefaultAliasOpensNoFormalParameter()
     {
         // SPEC 18.2.1, 18.2.3 (PLAN G574): a default alias opens its target's direct members, never its formal parameters. A generic
-        // target is never fully bound (F's rulings N1-2 C1, N1-3): one record at the configuration (the module root), and the use of `T`,
+        // target is never fully bound (F's rulings N1-2 C1, N1-9 (1)): one record at the configured path's `Box`, and the use of `T`,
         // resting on it, records nothing (N1-2 C2; it was one UnresolvedBinding_Kd at `T`).
         var compilation = Create("public struct Box<T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "public group Api", configure: (root, _) => root.Alias = ["Box"]);
         Assert.False(compilation.Bind().IsComplete);
         var issue = Assert.Single(compilation.Binding.Issues);
         Assert.Equal(DiagnosticCode.InvalidTypeFormation_Kd, issue.Code);
-        Assert.Same(compilation.Kotonoha.RootKoto, issue.Node);
+        AssertConfiguredAt(issue.Node, "Box", 0, "Box");
     }
 
-    // SPEC 18.2.3, 18.2.1 (F's rulings N1-2, N1-3, N1-7 (5); design d rows): a configured default alias resolves as a source alias's target
-    // does, by the path walk from its module's root: an inherited member is found (d05v), a path through the library's name too (C4); a
-    // formal parameter is no member (d02i), a generic Container is never fully bound (d01u, d06i, d07i) and a path naming nothing is
-    // reported without a use (d08i): one record at the module root, which a use resting on it adds nothing to.
+    // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-2, N1-7 (2), (5), N1-9 (1); design d rows): a configured default alias resolves as a
+    // source alias's target does, by the path walk from its module's root: an inherited member is found (d05v), a path through the
+    // library's name too (C4); a generic Container is never fully bound (d01u, d06i, d07i; d02i's walk fails there, at its first
+    // component, before `T`) and a path naming nothing is reported without a use (d08i): one record where the walk fails, in the
+    // configured path's own node, which a use resting on it adds nothing to.
     [Theory]
-    [InlineData("d01u", "Box", "func g() -> i32 => make()", "InvalidTypeFormation_Kd")]
-    [InlineData("d02i", "Box.T", "func g() => ()", "UnresolvedBinding_Kd")]
-    [InlineData("d05v", "Derived.Node", "func g() -> i32 => make()", null)]
-    [InlineData("d06i", "A.B", "func g() -> i32 => helper()", "InvalidTypeFormation_Kd")]
-    [InlineData("d07i", "A.B", "func g() => ()", "InvalidTypeFormation_Kd")]
-    [InlineData("d08i", "Nope", "func g() => ()", "UnresolvedBinding_Kd")]
-    [InlineData("c4v", "Kimi.Console", "func g() => writeLine(\"ok\")", null)]
-    public void ADefaultAliasResolvesByThePathWalk(string row, string alias, string use, string? code)
+    [InlineData("d01u", "Box", "func g() -> i32 => make()", "InvalidTypeFormation_Kd", "Box")]
+    [InlineData("d02i", "Box.T", "func g() => ()", "InvalidTypeFormation_Kd", "Box")]
+    [InlineData("d05v", "Derived.Node", "func g() -> i32 => make()", null, null)]
+    [InlineData("d06i", "A.B", "func g() -> i32 => helper()", "InvalidTypeFormation_Kd", "A")]
+    [InlineData("d07i", "A.B", "func g() => ()", "InvalidTypeFormation_Kd", "A")]
+    [InlineData("d08i", "Nope", "func g() => ()", "UnresolvedBinding_Kd", "Nope")]
+    [InlineData("c4v", "Kimi.Console", "func g() => writeLine(\"ok\")", null, null)]
+    public void ADefaultAliasResolvesByThePathWalk(string row, string alias, string use, string? code, string? text)
     {
         // Each row's own declarations, as its probe's.
         var declarations = alias switch
@@ -192,8 +210,38 @@ public partial class ModuleBindingTest
         {
             var issue = Assert.Single(compilation.Binding.Issues);
             Assert.Equal(code, issue.Code.ToString());
-            Assert.Same(compilation.Kotonoha.RootKoto, issue.Node);
+            AssertConfiguredAt(issue.Node, alias, 0, text!);
         }
+    }
+
+    // SPEC 23.1.2 (F's ruling N1-9 (2)): a failed configured path fails no declaration of its module: a base clause beside it records
+    // nothing (the module root is not failed).
+    [Fact]
+    public void AFailedConfiguredPathFailsNoBaseClause()
+    {
+        var compilation = Create("public open struct Base\n    public init() => ()\npublic struct Derived : Base\n    public init() : base() => ()\nfunc g() => ()", "public group Api", configure: (root, _) => root.Alias = ["Nope"]);
+        Assert.False(compilation.Bind().IsComplete);
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
+        AssertConfiguredAt(issue.Node, "Nope", 0, "Nope");
+    }
+
+    // SPEC 18.2.1, 9.6, 9.7, 23.1.2 (F's ruling N1-9 (3)): an alias target resolves whole with its Type arguments and the walk fails at
+    // its first failing component: `Box.T` at `Box`, a generic Container used without its arguments (a09i); `Box<i32>.T` at `T`, a formal
+    // parameter, which is no member a later component finds (18.2.1: formal parameters are not opened), recorded at the path, as every
+    // Type use's missing last component is (FailingStep). A group reached through a failed qualifier rests on the qualifier's record
+    // (a06s). The alias rests on that record, and a use resting on the alias records nothing (F's ruling N1-2 C2).
+    [Theory]
+    [InlineData("a09i", "alias Box.T\npublic struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\nfunc g() => ()", "InvalidTypeFormation_Kd", 6, "Box")]
+    [InlineData("a09t", "alias Box<i32>.T\npublic struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\nfunc g() => ()", "UnresolvedBinding_Kd", 6, "Box<i32>.T")]
+    [InlineData("a06s", "alias A.B\npublic struct A<T>\n    public group B\n        public func helper() -> i32 => 1\npublic struct A<T, U>\n    public group B\n        public func helper() -> i32 => 1\nfunc g() -> i32 => helper()", "InvalidTypeFormation_Kd", 6, "A")]
+    public void AnAliasTargetsWalkFailsAtItsFirstFailingComponent(string row, string source, string code, int start, string text)
+    {
+        var compilation = Create(source, "public group Api");
+        Assert.False(compilation.Bind().IsComplete, row);
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(code, issue.Code.ToString());
+        Assert.Equal((start, text), (issue.Node.Span.Start, issue.Node.ToString()));
     }
 
     [Fact]
@@ -763,6 +811,13 @@ public partial class ModuleBindingTest
         }
 
         return compilation;
+    }
+
+    // A record's node in a configured path's own document (F's ruling N1-9 (1)): named by its configuration and entry, its text the path.
+    private static void AssertConfiguredAt(Koto node, string alias, int start, string text)
+    {
+        Assert.EndsWith($"#Alias[{alias}]", node.CodeContext.SourceDocument!.Path, StringComparison.Ordinal);
+        Assert.Equal((start, text), (node.Span.Start, node.ToString()));
     }
 
     private static string ProjectionConsumer(bool runtime, string argument)

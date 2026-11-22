@@ -137,7 +137,9 @@ public sealed partial class Binding
     {
         foreach (var module in this.pass.Sources)
         {
-            this.IndexWalk(new(module.RootKoto, this.GetScope(module.RootKoto, null), IndexEntryKind.Index));
+            var scope = this.GetScope(module.RootKoto, null);
+            this.IndexWalk(new(module.RootKoto, scope, IndexEntryKind.Index));
+            this.IndexConfiguredPaths(module, scope);
         }
 
         this.IndexModuleReferences();
@@ -165,6 +167,19 @@ public sealed partial class Binding
         for (var i = 0; i < libraryRoot.Members.Count; i++)
         {
             this.IndexWalk(new(libraryRoot.Members[i], this.Library.Scope, IndexEntryKind.Index));
+        }
+
+        this.IndexConfiguredPaths(library, this.Library.Scope);
+    }
+
+    // A module's configured paths (SPEC 18.2.3; F's rulings N1-4 (2), N1-9 (1)): each path's node, which lives for the Compilation in its
+    // configuration document, is walked with its module's trees, so its rows are reset by the one reset step and its records, at the
+    // component the path walk fails at, are the pass's like any node's.
+    private void IndexConfiguredPaths(Kotonoha module, BindingScope scope)
+    {
+        foreach (var row in this.compilation.DefaultAliases(module))
+        {
+            this.IndexWalk(new(row.Target, scope, IndexEntryKind.Index));
         }
     }
 

@@ -46,10 +46,13 @@ public partial class Compilation
 
     // A configured path read by the Type production (F.5; the alias target's, GroupKoto) in a configuration document of its module, as
     // KimiLibrary.CreateAbort forms its built-in syntax, and declared as the opening alias the configuration states (SPEC 18.2.3), so its
-    // lookup row is an alias target's (UseRow: Qualifier). The loader refused an empty path; the effective path has no leading `::`.
-    internal static Koto ParseConfiguredPath(Kotonoha module, string path)
+    // lookup row is an alias target's (UseRow: Qualifier). The document is named by its configuration file and entry and its text is
+    // the path (F's ruling N1-9 (1)), so a record in it is located like any source's. A path that does not read whole is reported by
+    // the parse in that document, as a source alias's target is (GroupKoto), and gives no node (N1-9 (4)): null. The loader refused an
+    // empty path; the effective path has no leading `::`.
+    internal static Koto? ParseConfiguredPath(Kotonoha module, string configuration, string path)
     {
-        var source = new SourceDocument($"configuration://alias/{path}", path);
+        var source = new SourceDocument($"{configuration}#Alias[{path}]", path);
         _ = module.LogicalName(source);
         var context = new CodeContext(module, sourceDocument: source);
         var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
@@ -58,6 +61,18 @@ public partial class Compilation
             tokenizer.ReadAll();
             var reader = new TokenReader(context, ref tokenizer);
             var target = Parser.ParseType(ref reader, Parser.TypeContext.AnnotatedType);
+            if (target is ErrorKoto || context.RecoveryCause(target) is not null)
+            {
+                return null;
+            }
+
+            var whole = !reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock;
+            reader.ExpectLineEnd();
+            if (!whole)
+            {
+                return null;
+            }
+
             _ = new AliasKoto(ref reader, target, null, target.Span);
             return target;
         }
@@ -116,7 +131,8 @@ public partial class Compilation
 
     // A module's configured default aliases, each path parsed once for the Compilation (F's ruling N1-4 (1), (2)): the configuration
     // owner reads it by the Type production in a configuration document of the module, as KimiLibrary forms its built-in syntax; the
-    // node lives for the Compilation and Binding resets its rows each pass. The library's row is the library's own (KimiLibrary).
+    // node lives for the Compilation and Binding's index walk resets its rows each pass. A path the parse refused has no row (N1-9 (4)).
+    // The library's row is the library's own (KimiLibrary).
     internal DefaultAlias[] DefaultAliases(Kotonoha module)
     {
         if (ReferenceEquals(module, this.Library.Kotonoha))
@@ -127,13 +143,19 @@ public partial class Compilation
         var rows = this.defaultAliasRows ??= new();
         if (!rows.TryGetValue(module, out var parsed))
         {
-            var paths = ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
-            parsed = new DefaultAlias[paths.Length];
-            for (var i = 0; i < paths.Length; i++)
+            var root = ReferenceEquals(module, this.Kotonoha);
+            var paths = root ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
+            var configuration = root ? this.Project.FilePath ?? this.Project.Name : module.Url;
+            var list = new List<DefaultAlias>(paths.Length);
+            foreach (var path in paths)
             {
-                parsed[i] = new(paths[i], ParseConfiguredPath(module, paths[i]));
+                if (ParseConfiguredPath(module, configuration, path) is { } target)
+                {
+                    list.Add(new(path, target));
+                }
             }
 
+            parsed = list.ToArray();
             rows.Add(module, parsed);
         }
 

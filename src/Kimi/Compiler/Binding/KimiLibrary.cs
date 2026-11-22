@@ -96,7 +96,7 @@ public sealed partial class KimiLibrary
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
         this.Abort = this.CreateAbort();
-        this.DefaultAliases = [new("Kimi", Compilation.ParseConfiguredPath(this.Kotonoha, "Kimi"))];
+        this.DefaultAliases = [new("Kimi", Compilation.ParseConfiguredPath(this.Kotonoha, "compiler://configuration", "Kimi")!)];
         this.Restore();
     }
 

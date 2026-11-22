@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(Kotonoha Module, string Path), BindingScope?> defaultAliasTargets = new();
+    private readonly Dictionary<(Kotonoha Module, string Path), (BindingScope? Scope, Koto? Failed)> defaultAliasTargets = new();
     private Dictionary<Koto, List<BindingSymbol>>? gatheredGroups;
 
     private BindingSymbol? AccessibleImport(BindingSymbol head, BindingScope scope)
@@ -39,38 +39,50 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 18.2.3, 18.2.1 (F's rulings N1-3, N1-4, N1-7 (5)): a configured default alias evaluated as a source alias is, once per pass at
-    // its first read and cached per module and path: its node's rows reset by Indexing's reset step, the target selected and formed from
-    // its module's root (SelectAliasTarget, BindContainerQualifier; stages 5-6 off). A failure is the configuration's: a definite record at
-    // the module root (Invalid, never pending, N1-3), with the code of the walk's failure; no reader reads the node's own records.
-    private BindingScope? DefaultAliasTarget(Compilation.DefaultAlias row)
+    // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-4, N1-7 (5), N1-9 (1)): a configured default alias evaluated as a source alias is, once
+    // per pass at its first read and cached per module and path, its node indexed with its module (Index): the target selected and formed
+    // from its module's root (SelectAliasTarget, BindContainerQualifier; stages 5-6 off). A failure is recorded where the walk fails, at
+    // the failing component of the path's own node (its configuration document's), as a source alias's target's is; the module root is
+    // not failed. Failed is that node, which a use's miss rests on (ImportMiss).
+    private (BindingScope? Scope, Koto? Failed) DefaultAliasTarget(Compilation.DefaultAlias row)
     {
-        var module = row.Target.CodeContext.Kotonoha;
-        var key = (module, row.Path);
+        var key = (row.Target.CodeContext.Kotonoha, row.Path);
         if (this.defaultAliasTargets.TryGetValue(key, out var cached))
         {
             return cached;
         }
 
-        this.defaultAliasTargets.Add(key, null);
-        ConfiguredPathReset.Instance.Visit(row.Target);
-        var scope = this.ModuleScope(row.Target);
+        var target = row.Target;
+        this.defaultAliasTargets.Add(key, (null, target));
+        var scope = this.ModuleScope(target);
         this.aliasResolutionDepth++;
         try
         {
-            var (symbol, failed) = this.SelectAliasTarget(row.Target, scope);
-            var reference = symbol?.Declaration is DeclarationContainerKoto ? this.BindContainerQualifier(row.Target, symbol, scope, this.TypeContext(row.Target, scope)) : null;
-            var failure = failed is not null ? this.RecordedFailure(failed)
-                : reference is null ? BindingFailure.InvalidTypeFormation
-                : reference.OriginArguments.Count != (symbol!.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!) ? BindingFailure.InvalidOrigin
-                : BindingFailure.None;
-            if (failure != BindingFailure.None || failed is not null)
+            var (symbol, failed) = this.SelectAliasTarget(target, scope);
+            if (failed is not null)
             {
-                this.Fail(module.RootKoto, failure == BindingFailure.None ? BindingFailure.MissingName : failure);
-                return null;
+                return this.defaultAliasTargets[key] = (null, failed); // SPEC 23.1.2: the walk's record, where it failed.
             }
 
-            return this.defaultAliasTargets[key] = this.scopes[symbol!.Declaration];
+            if (symbol?.Declaration is not DeclarationContainerKoto)
+            {
+                this.Record(target, BindingFailure.InvalidTypeFormation, []);
+                return (null, target);
+            }
+
+            // The target's formation failed with its own record (BindContainerQualifier, as for a source alias).
+            if (this.BindContainerQualifier(target, symbol, scope, this.TypeContext(target, scope)) is not { } reference)
+            {
+                return (null, target);
+            }
+
+            if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
+            {
+                this.Fail(target, BindingFailure.InvalidOrigin);
+                return (null, target);
+            }
+
+            return this.defaultAliasTargets[key] = (this.scopes[symbol.Declaration], null);
         }
         finally
         {
@@ -157,8 +169,8 @@ public sealed partial class Binding
 
         foreach (var row in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
-            var target = this.DefaultAliasTarget(row);
-            failed ??= target is null ? row.Target.CodeContext.Kotonoha.RootKoto : null;
+            var (target, failedPath) = this.DefaultAliasTarget(row);
+            failed ??= failedPath;
             this.AddTypeCandidates(ref candidates, target is null ? null : MemberTypes(target, name), scope, role, arity);
         }
 
@@ -198,17 +210,17 @@ public sealed partial class Binding
                 break;
             }
 
-            var target = this.DefaultAliasTarget(row);
-            failed ??= target is null ? row.Target.CodeContext.Kotonoha.RootKoto : null;
+            var (target, failedPath) = this.DefaultAliasTarget(row);
+            failed ??= failedPath;
             this.AddImport(ref stage, target, default, name, scope, use);
         }
 
         return this.ImportStageEnd(stage, name, scope, use, failed);
     }
 
-    // SPEC 23.1.2 (rule W; F's rulings N1-2 C2, N1-3): a use whose import stages selected nothing read every opening alias of its
+    // SPEC 23.1.2 (rule W; F's rulings N1-2 C2, N1-9 (1)): a use whose import stages selected nothing read every opening alias of its
     // document and every configured default alias, a failed one included, so its miss rests on that alias's record (a configured one's
-    // is its module root's) and records nothing of its own.
+    // is at its path's failing component) and records nothing of its own.
     private ResolvedPath ImportMiss(Koto use, Koto? failed)
     {
         if (failed is not null)
@@ -271,18 +283,5 @@ public sealed partial class Binding
     private readonly record struct ValueImports(BindingSymbol? Imported, AliasImport Import, BindingScope? Source, bool Selectable, bool Ambiguous, bool Limited)
     {
         internal bool Ends => this.Ambiguous || this.Limited;
-    }
-
-    // The reset of a configured path node's subtree before its pass's first read (F's ruling N1-4 (2)): Indexing's reset step for each
-    // node, the one reset every document node takes.
-    private sealed class ConfiguredPathReset : KotoVisitor
-    {
-        internal static readonly ConfiguredPathReset Instance = new();
-
-        public override void Visit(Koto node)
-        {
-            ResetEntry(node);
-            node.VisitChildren(this);
-        }
     }
 }

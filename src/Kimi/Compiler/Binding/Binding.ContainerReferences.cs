@@ -307,7 +307,7 @@ public sealed partial class Binding
                 environment = this.BindContainerQualifier(member.Left, qualifier, scope, context);
                 if (environment is null)
                 {
-                    return null;
+                    return this.CompleteDependent(syntax, member.Left); // SPEC 23.1.2 (rule W): the qualifier's formation record.
                 }
 
                 if (IsCore(qualifier) && symbol.Kind == BindingSymbolKind.Type && this.AlsoAssociated(environment, symbol.Name, member, scope))
