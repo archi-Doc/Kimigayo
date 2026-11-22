@@ -3,11 +3,11 @@
 namespace Kimi.Compiler.Mir;
 
 // Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71, R5-M166).
-// - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function (a Requirement
-//   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
-//   compiler function it serves (none for $abort, TyCtxt.Abort), its arity, no target when it diverges, staticEnsure's static slot by
-//   Ensures, MirValidator.Statics' Slot, testRecordValue's recorded value a Scalar by Records); and its destination:
-//   a diverging Call's, which MirUses does not report, a Place the body names (MirValidator.Tables' Names) with its write bit for G131,
+// - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function, none a Form
+//   one (DispositionKind.Form: the builder writes its MIR form) (a Requirement callee's comparison mode, Compares), a Value callee's
+//   TypeToken constant, an intrinsic's row (defined, the library declaration of the compiler function it serves (none for $abort,
+//   TyCtxt.Abort), its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
+//   testRecordValue's recorded value a Scalar by Records); and its destination: a diverging Call's, which MirUses does not report, a Place the body names (MirValidator.Tables' Names) with its write bit for G131,
 //   no Never value written by a returning Call; a constant record only as an input of a Fn call that keeps nothing of it
 //   (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text (Defers); a Places Call's Fn callee, whole-Temp Moves and
 //   construction borrow, no value the construction's temp (Placed, which MirValidator.Blocks' Terminator calls with the block; PLAN G442).
@@ -101,6 +101,10 @@ internal sealed partial class MirValidator
                 case MirCalleeKind.Requirement when callee.Arg != 0 && !this.Compares(callee):
                 case MirCalleeKind.Value when (uint)callee.Arg >= (uint)body.Consts.Length || body.Consts[callee.Arg].Kind != MirConstKind.TypeToken:
                     this.Report(MirViolation.Callee);
+                    break;
+                // The builder writes a Form function's call as its MIR form (MirBuilder.Calls), never a Call.
+                case MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Virtual when callee.Symbol!.Definition.Kind == DispositionKind.Form:
+                    this.Report(MirViolation.Operation);
                     break;
                 case MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Virtual or MirCalleeKind.Value:
                     this.Signature(call);

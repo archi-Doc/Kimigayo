@@ -354,9 +354,41 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("r", 3, "Arity")]
     public void AKeyedStorageTakesAStartAndAnOpenKey(string form, int count, string? rule)
     {
-        var (body, types) = KeyedStorage(form, count);
+        var (body, types, _) = KeyedStorage("v", form, count);
         MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
         Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // SPEC 5.3 (PLAN G597's L2; O-92 (a)'s list and a raw pointer, whose elements start at its value: Storage.viewStart's form): a
+    // Storage over a raw pointer Place (raw/i32) is admitted unkeyed and keyed, its element the pointee; over a Place that is neither a
+    // sequence nor a raw pointer (an i32) it is an Operation finding either way (fail-before: the raw pointer Place was one too).
+    [Theory]
+    [InlineData("p", 0, null)]
+    [InlineData("p", 2, null)]
+    [InlineData("n", 0, "Operation")]
+    [InlineData("n", 2, "Operation")]
+    public void AStorageOverARawPointerIsAdmitted(string sequence, int count, string? rule)
+    {
+        var (body, types, _) = KeyedStorage(sequence, "r", count);
+        MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // PLAN G597's L2 (the owner's O-490 (a)): the builder writes a Form function's call as its MIR form, so a Call of Storage.viewStart
+    // is an Operation finding at the Call, and only that (no signature is read): A4 and the instance collector, which trust validated
+    // MIR, never see one (fail-before: the Call went to the signature checks). Its operands are KeyedStorage's raw/i32 _4 and start
+    // _3, after its Storage.
+    [Fact]
+    public void AFormFunctionIsNeverACall()
+    {
+        var (body, types, c) = KeyedStorage("p", "r", 0);
+        var view = c.Library.GetSymbol(KimiDeclarationId.ViewStart)!;
+        Assert.Equal(DispositionKind.Form, view.Definition.Kind);
+        var (into, next) = (MirModelTest.Local(body, body.TypeOf(new(2))!), body.AddBlock());
+        var passed = AddOperands(body, [MirOperand.Copy(new(4)), MirOperand.Copy(new(3))]);
+        body.Terminate(0, MirTerminator.Call(new(MirCalleeKind.Fn, view), passed, 2, into, next, Broken));
+        body.Terminate(next, MirTerminator.Return(At));
+        Assert.Equal([(MirViolation.Operation, Broken.Syntax)], Validate(body, types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // SPEC 4.9.5, 4.9.6, 22.5.1 (DECISIONS R5-M129): an Array aggregate of elements publishes its buffer's allocation and its Abort through
@@ -2407,14 +2439,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         return body;
     }
 
-    // A body of one keyed Storage at Broken, `_2 = storage(_1, copy _3, const type K)` over an Array<i32> (PLAN G597): its key the named
-    // parameter's Type of a generic k; "flag" a bool start under the key R and "value" an Integer constant for the token; of its three
-    // operands (the token twice) the count given.
-    internal static (MirBody Body, TyCtxt Types) KeyedStorage(string form, int count)
+    // A body of one keyed Storage at Broken, `_2 = storage(_1, copy _3, const type K)` over an Array<i32> (PLAN G597), or over the named
+    // parameter's local after them (_4: "p" a raw/i32, "n" an i32): its key the named parameter's Type of a generic k; "flag" a bool start
+    // under the key R and "value" an Integer constant for the token; of its three operands (the token twice) the count given.
+    internal static (MirBody Body, TyCtxt Types, Compilation Compilation) KeyedStorage(string sequence, string form, int count)
     {
         var c = MirBuildTest.Compile(
             "func k<R, S, E>(v: Array<i32>, r: R, from: Range<S, End>, both: Range<S, E>, full: Range<Start, End>, to: Range<Start, E>, " +
-            "at: Range<i32, E>, back: Range<FromEnd<i32>, End>, resolved: ResolvedRange) -> ()\n" +
+            "at: Range<i32, E>, back: Range<FromEnd<i32>, End>, resolved: ResolvedRange, p: raw/i32, n: i32) -> ()\n" +
             "    R is PositionRange\n    S is Position\n    E is Position\n    return ()\n");
         Assert.True(c.Binding.Result.IsComplete);
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "k");
@@ -2426,11 +2458,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var start = MirOperand.Copy(MirModelTest.Local(body, form == "flag" ? BoundType.Boolean : BoundType.ISize));
         MirConst key = form == "value" ? new(MirConstKind.Integer, BoundType.ISize, 0) : new(MirConstKind.TypeToken, Of(form == "flag" ? "r" : form));
         var token = MirOperand.Const(body.Const(key));
+        var place = sequence == "v" ? array : MirModelTest.Local(body, Of(sequence));
         var block = body.AddBlock();
-        var keyed = MirRvalue.Storage(array, body.TypeOf(pointer)!, AddOperands(body, [start, token, token])) with { Count = count };
+        var keyed = MirRvalue.Storage(place, body.TypeOf(pointer)!, AddOperands(body, [start, token, token])) with { Count = count };
         body.Push(block, MirStatement.Assign(pointer, keyed, Broken));
         body.Terminate(block, MirTerminator.Return(At));
-        return (body, c.Types);
+        return (body, c.Types, c);
     }
 
     // The compilation of a PrimitiveInteger T and a PrimitiveInteger projection U.(HasItem).Item, and eight Types: its parameters' T,

@@ -111,10 +111,15 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
-    // A sequence's first element's address: a fixed array's own, its record unread (null), else an Array's or Slice's word `data` (IMPL
-    // 21.1.3); an Index's and a Storage's one statement of it.
-    private Value Buffer(BoundType type, ValueLowering? record, Value start)
-        => type.Kind == BoundTypeKind.FixedArray ? start : this.LoadWord(type, record!, start, "data");
+    // A sequence's first element's address: a fixed array's own, its record unread (null), a raw pointer's value, which has no `data`
+    // word (SPEC 5.3: a Storage over it, PLAN G597's L2), else an Array's or Slice's word `data` (IMPL 21.1.3); an Index's and a Storage's
+    // one statement of it.
+    private Value Buffer(BoundType type, ValueLowering? record, Value start) => type switch
+    {
+        { Kind: BoundTypeKind.FixedArray } => start,
+        { IsPointer: true } => this.LoadAt(start, PointerLayout),
+        _ => this.LoadWord(type, record!, start, "data"),
+    };
 
     // An Index: the bounds check at the position local's location, then the element's address at its stride (its Element need, Needed); a
     // handle's record gives its length word, a fixed array's length is its Type's, so its record is not read. False after a record.

@@ -1,5 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
+using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -511,4 +514,50 @@ public sealed partial class MirBorrowsTest
                     g3(h@uniq, r, w@raw@raw/u8)
                     z = 5
                 """));
+
+    // SPEC 5.3 (PLAN G597's L2; the Middle's C-459 ruling, B's ruling 12 C2): a Storage over a raw pointer Place is `copy p`'s value, so
+    // its element step is p's raw referent (MirSteps.Index's table), never p's own storage. Twin r4, labelled from SPEC first, valid in
+    // each form, where v's referent is written while the view v lives: after the remainder's raw word p is overwritten ("overwrite") or
+    // moved ("move"), and while a shared borrow r of p is live ("borrowed"). A5 reports nothing. The Index reading (`&raw p[i]` as p's own
+    // storage) reports the "borrowed" form, the write through v reaching p under r's Loan (fail-before: one Loan conflict there); the two
+    // others report nothing under either reading (no Loan of p is live), which the probe of B's ruling 14 found. A hand-built body: no
+    // producer calls Storage.viewStart before L2's U3.
+    [Theory]
+    [InlineData("overwrite")]
+    [InlineData("move")]
+    [InlineData("borrowed")]
+    public void AStorageOverARawPointerBorrowsNoneOfItsWord(string form)
+    {
+        var c = MirBuildTest.Compile("func w() -> i32 => 1\n");
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var body = new MirBody();
+        body.Reset(Body(program, "w").Key, default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, default));
+        var pointer = c.Types.Pointer(BoundType.I32);
+        var reference = c.Types.Reference(SemanticsKind.Ref, pointer);
+        MirPlace Local(BoundType type) => new(body.AddLocal(new(type, MirLocalKind.Var, default)));
+        var (p, q, v, r) = (Local(pointer), Local(pointer), Local(pointer), Local(reference));
+        SourceInfo At(int id) => new(new(0, id), 0, true);
+        int Constant(BoundType type, long n) => body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Integer, type, n))));
+        var block = body.AddBlock();
+        body.Push(block, MirStatement.Assign(p, MirRvalue.Use(Constant(pointer, 0)), At(1)));
+        body.Push(block, MirStatement.Assign(v, MirRvalue.Storage(p, pointer), At(2)));
+        body.Push(block, form switch
+        {
+            "move" => MirStatement.Assign(q, MirRvalue.Use(body.AddOperand(MirOperand.Move(p))), At(3)),
+            "borrowed" => MirStatement.Assign(r, MirRvalue.Ref(MirRefKind.Shared, p, reference), At(3)),
+            _ => MirStatement.Assign(p, MirRvalue.Use(Constant(pointer, 0)), At(3)),
+        });
+        body.Push(block, MirStatement.Assign(body.Project(c.Types, v, MirProjectionKind.Deref, 0), MirRvalue.Use(Constant(BoundType.I32, 5)), At(4)));
+        if (form == "borrowed")
+        {
+            body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, r, At(5)));
+        }
+
+        body.Push(block, MirStatement.Assign(new(0), MirRvalue.Use(Constant(BoundType.I32, 1)), At(6)));
+        body.Terminate(block, MirTerminator.Return(At(7)));
+        new Stratum(c.Types).Run(program, Validated(c, body));
+        Assert.Empty(program.Problems.All.ToArray());
+    }
 }
