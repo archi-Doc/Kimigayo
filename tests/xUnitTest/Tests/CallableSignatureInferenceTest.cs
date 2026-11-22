@@ -254,6 +254,24 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void AResultOnlyUniversalIsInstantiatedToTheOpenRegion(string name, string body)
         => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceResultOnly" + name, "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc constantOf(n: ref/i32) -> ref/i32 during s => $abort(\"never\")\n" + body + "\nrequire r == 7 else => $abort(\"result only\")", string.Empty);
 
+    // DECISIONS BU-175 (R7-C8 U-D3r): the Input row with its input nested in Tuples past 64 levels; `s` is still result-only. On
+    // `2f7d4a10d^` this valid form fails by Mentions' count of 64 (NoApplicableOverload_Kd). Today it guards the form's acceptance,
+    // not Mentions: with that count put back, or with Mentions answering "mentioned" at every depth, no row of this class changes,
+    // since FitOrigin proves the result's relation that IsResultOnlyOrigin would decide. No invalid twin: the cut only answered
+    // "mentioned", which an input naming the universal already is.
+    [Theory]
+    [InlineData(65)]
+    [InlineData(130)]
+    public void AResultOnlyUniversalBesideADeepInputIsInstantiatedToTheOpenRegion(int depth)
+    {
+        // A nested borrow names its Origin (SPEC 15.4.2): `t` in the Item, `static` in the expected signature.
+        string Nest(string terminal) => new string('(', depth) + terminal + string.Concat(Enumerable.Repeat(", i32)", depth));
+        var source = $"func constantOf(n: {Nest("ref/i32 during t")}) -> ref/i32 during s => $abort(\"never\")\n" +
+            $"func make<T>(f: ({Nest("ref/i32 during static")}) -> T) -> i32 => 7\n" +
+            "let r = make(constantOf)\nrequire r == 7 else => $abort(\"result only\")\n";
+        CompilationTestHelper.AssertBindingRecordsAtLines($"result-only-{depth}", source, string.Empty); // Binding's records; see AReferenceBindsASlotOfAnyHeight.
+    }
+
     // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.
     [Theory]
     [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "makeOf(bounded)")]
