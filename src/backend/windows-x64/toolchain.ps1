@@ -1,6 +1,8 @@
 # Shared by the native builders; loading this file never executes LLVM.
 function Resolve-KimiToolchainRoot([string] $ToolchainRoot = '') {
-    if (-not $ToolchainRoot) { $ToolchainRoot = [Environment]::GetEnvironmentVariable('KIMI_TOOLCHAIN_ROOT') }
+    # A removed input (Tatara B6b4): a shell that still sets it must not have setup write the checkout's toolchain (a worktree's
+    # junction to the shared root), so it fails while it is set.
+    if ($null -ne [Environment]::GetEnvironmentVariable('KIMI_TOOLCHAIN_ROOT')) { throw 'KIMI_TOOLCHAIN_ROOT was removed: unset it (the scripts take -ToolchainRoot <directory>).' }
     if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $PSScriptRoot '../../../toolchain' }
     if ([string]::IsNullOrWhiteSpace($ToolchainRoot) -or $ToolchainRoot -match '[\x00\r\n"]' -or $ToolchainRoot.StartsWith('-')) { throw 'Invalid toolchain root' }
     return [IO.Path]::GetFullPath($ToolchainRoot, (Get-Location).ProviderPath)

@@ -1,13 +1,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
-    [string] $ToolchainRoot = '',
     [string] $ResultRoot = (Join-Path $PSScriptRoot '../../../artifacts/verify/module-verification')
 )
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'toolchain.ps1')
 . (Join-Path $PSScriptRoot 'expected-output.ps1')
-$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $work = Join-Path ([IO.Path]::GetFullPath($ResultRoot)) ([guid]::NewGuid().ToString('N'))
@@ -21,7 +18,6 @@ function Invoke-Kimi([string] $Name, [string[]] $Arguments, [int] $ExpectedExit 
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    $start.Environment['KIMI_TOOLCHAIN_ROOT'] = $ToolchainRoot
     $start.ArgumentList.Add($compiler)
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::Start($start)

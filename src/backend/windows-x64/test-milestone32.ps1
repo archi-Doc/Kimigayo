@@ -1,6 +1,5 @@
 [CmdletBinding()]
 param(
-    [string] $ToolchainRoot = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
 )
 $expected = @'
@@ -24,4 +23,4 @@ Item 40 destroyed.
 Key 4 destroyed.
 Dictionary run finished.
 '@ + [char]10
-& (Join-Path $PSScriptRoot 'milestone-harness.ps1') -Milestone 32 -ToolchainRoot $ToolchainRoot -Configuration $Configuration -Expected $expected
+& (Join-Path $PSScriptRoot 'milestone-harness.ps1') -Milestone 32 -Configuration $Configuration -Expected $expected

@@ -11,21 +11,21 @@ The series builds no compiler: it takes built Release `Kimi.dll` folders (`dotne
 `src/Kimi/bin/Release/net10.0` of each checkout) and copies each into the run's folder under a neutral name (`c/A`, `c/B`).
 
 ```
-dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> [--rounds 20] [--toolchain <root>]
-dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> <folder B> [--rounds 20] [--toolchain <root>]
-dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> --tatara [--rounds 20] [--toolchain <root>]
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> [--rounds 20]
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> <folder B> [--rounds 20]
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> --tatara [--rounds 20]
 ```
 
 - One folder: each row runs A `rounds` times.
-- Two folders: each row runs A, B, A, ..., A (`rounds` + 1 runs of A, `rounds` of B) from one folder, under one toolchain root
-  for both. The same folder given twice is the A=A pass, the variation a budget must exceed.
+- Two folders: each row runs A, B, A, ..., A (`rounds` + 1 runs of A, `rounds` of B) from one folder. The same folder given twice is the A=A pass, the variation a budget must exceed.
 - `--tatara` (Tatara A3 §4): one folder; each row runs A, B, A, ..., A, where A is `Kimi.dll` single-shot on the external tools
   and B the same `Kimi.dll` as `dotnet Kimi.dll tatara` with standard input from a file holding the row's command as its one line
-  (`build <project> --ToolchainRoot <root>` or `build --Manifest <pair> --ToolchainRoot <root>`, paths quoted), then end of input.
-  B runs the `tatara.dll` beside its `Kimi.dll` (Tatara B6b1); its command line's root is accepted and not read. After the O2 source rows of Hello and Milestone30 a session row runs B with k lines
+  (`build <project>` or `build --Manifest <pair>`, paths quoted), then end of input.
+  B runs the `tatara.dll` beside its `Kimi.dll` (Tatara B6b1); a command line names no toolchain root (Tatara B6b4: a compiler copied
+  from before B6b1 finds the checkout's `toolchain` by walking up from its copy). After the O2 source rows of Hello and Milestone30 a session row runs B with k lines
   of that command, k1, k10, k1, ..., k1 (Session table below).
 - With two sides the summary adds per row p50(B) / p50(A) of wall time and p95(B) - p95(A) of the job's peak committed memory.
-- `--toolchain` defaults to the checkout's `toolchain`. `<name>` is one plain path segment (no separator, not `.` or `..`, not
+- `<name>` is one plain path segment (no separator, not `.` or `..`, not
   rooted), unused under `artifacts/benchmarks` and `temp/build-chain`.
 - Arguments reach the child quoted as `CommandLineToArgvW` reads them (backslashes before the closing quote doubled).
 - Run it in a booked quiet slot, through `quiet_guard`.
@@ -93,7 +93,7 @@ job caught every tool, and is A4's evidence of zero child processes). Per row an
   with `DOTNET_TieredCompilation=0`, equal on both sides.
 - Recorded as [O2Corpus](O2Corpus.md) records them: machine, processors, OS, power scheme, .NET SDK version, inherited `KIMI_*`
   and `DOTNET_*`, and the build, test and LLVM processes with their CPU seconds at start and end; plus Defender's real-time state,
-  read only; the toolchain root and the `dotnet` host; per compiler its folder, `Kimi.dll` hash, `ProductVersion` (the source
+  read only; the `dotnet` host; per compiler its folder, `Kimi.dll` hash, `ProductVersion` (the source
   commit) and runtime (its runtimeconfig's framework at the highest installed patch of that major.minor, the host's default
   roll-forward). A condition read that fails stops the run.
 

@@ -4,7 +4,6 @@
 #   ./src/backend/windows-x64/benchmark-p42.ps1 [-Runs 5] [-Configuration Release] [-Name <label>]
 [CmdletBinding()]
 param(
-    [string] $ToolchainRoot = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [ValidateRange(1, 100)] [int] $Runs = 5,
     [string] $Name = ''
@@ -27,7 +26,7 @@ function Get-Median([double[]] $values) {
 $programs = [ordered]@{}
 foreach ($program in @('HashWrapping', 'HashChecked')) {
     $workRoot = Join-Path $root "work/$program"
-    & $harness -Milestone 0 -ToolchainRoot $ToolchainRoot -Configuration $Configuration -Expected $expected -Source (Join-Path $repo "src/Benchmark/Kimi/$program.kimi") -WorkRoot $workRoot -Runs $Runs | Out-Null
+    & $harness -Milestone 0 -Configuration $Configuration -Expected $expected -Source (Join-Path $repo "src/Benchmark/Kimi/$program.kimi") -WorkRoot $workRoot -Runs $Runs | Out-Null
     $reportPath = (Get-ChildItem -LiteralPath $workRoot -Recurse -Filter verification.json | Select-Object -First 1).FullName
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
     if ($report.status -cne 'passed') { throw "Harness did not pass: $reportPath" }
