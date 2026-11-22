@@ -99,7 +99,7 @@ public class ProductTestMembershipTest
     [InlineData("#Test\nvirtual func t() => ()", "InvalidVirtualDeclaration_Kd", "InvalidVirtualDeclaration_Kd")]
     [InlineData("group G\n    func t() => ()\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
     [InlineData("group G\n    #Test\n    protected func t() => ()", "ProtectedPlacement_Kd", "ProtectedPlacement_Kd")]
-    [InlineData("open struct B\n    var x: i32\n    public func t(self: ref/Self) -> i32 => 1\nstruct D : B\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
+    [InlineData("open struct B\n    var x: i32\n    public func t(self: ref/Self) -> i32 => 1\nstruct D : B\n    #Test\n    func t() => ()", "DuplicateBinding_Kd DuplicateBinding_Kd", "DuplicateBinding_Kd DuplicateBinding_Kd")] // D and its t relating B's (R7-E2 E2-4b, ruling 2)
     [InlineData("enum E\n    T\n    #Test\n    func T() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
     [InlineData("struct S\n    var t: i32\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
     [InlineData("group G\n    #Test\n    static func t() => ()", "MisplacedSyntax_Kd", "MisplacedSyntax_Kd")]
