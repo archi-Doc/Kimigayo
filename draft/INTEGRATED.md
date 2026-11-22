@@ -1462,6 +1462,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 112 (2026-11-22, plan §14; the Front's Q-647 and D-1059, F's C8 rulings 1 and 4, R7-C8 U-D3r's landing): C8's
   row records U-D3r as landed in W-311: fail-first rows for InputOrigins and SameExceptOmittedOrigins;
   AddTypeClauseObligations, Mentions and SolveOmittedOrigins stay reading only past their old counts. Nothing frozen.
+- Revision 113 (2026-11-22, plan §14; the Front's Q-648 and D-1062, F's P1 ruling 1, R7-P1's rows): P1's row records its rows
+  as complete, landed in W-311 (Q-648) (fail-first for P2, P3, P4 T4, R1e and I3; the cost rows; SP1's T rows labelled from D-1042's
+  text); its Explicit open row ix-mis (two `Indexable` conformances, an index fitting neither) is PLAN G1252. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
