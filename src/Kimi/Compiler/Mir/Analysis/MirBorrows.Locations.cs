@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Mir;
 // borrowed roots (MirBorrows.Accesses) with the check sets they take, a Call's or Drop's effect access after them, and the reservations it
 // activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
 // relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), W's undecided store
-// (MirWrites.Limit, R4-M147, MirBorrows.Calls) and a Borrow or read the addresses do not classify (PQ-10, MirBorrows.Addresses), each a
+// (MirWrites.Limit, R4-M147, MirBorrows.Calls) and a read the addresses leave Unplaced (PQ-10, MirBorrows.Addresses), each a
 // located Unsupported_Kd, a borrowed root's destruction past the destruction walk's bound, a call's retention Limit (R4-M51) and a store
 // undecided past a walk's bound (MirBorrows.Calls), each OwnershipDepthLimit_Kd (R4-M153), a Value call whose contract is broken (G136,
 // MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
@@ -60,11 +60,6 @@ internal sealed partial class MirBorrows
         }
 
         var terminator = index == this.body.Blocks[block].Count;
-        if (this.layerBorrowed[location])
-        {
-            this.Limit(this.Subject(at), MirOutcome.Limit); // A Copy or Move of a `during self` layer's enclosing Place (PQ-10, R-A: Z5-R2).
-        }
-
         if (terminator || this.limit)
         {
             // The location's store and reads, one verdict: W's undecided store (R4-M147), a store undecided past a walk's bound and a

@@ -245,7 +245,7 @@ public sealed partial class Binding
         // (SPEC 4.6.4).
         // A built-in Type's entry conformance is the witness table's (SPEC 22.1): it adds no member, so its requirement is the call.
         var library = WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null;
-        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
+        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } && this.SelectConformance(subject, entry, scope, out _) is not null &&
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject))));
         if (!nominal && !this.PremiseRefines(subject, entry, scope))
