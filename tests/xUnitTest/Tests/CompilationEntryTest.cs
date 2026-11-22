@@ -77,8 +77,7 @@ public sealed class CompilationEntryTest
             using var writer = new StringWriter();
             Assert.False(c.Generate(writer));
             Assert.Empty(writer.ToString());
-            Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-            Assert.Null(path);
+            Assert.False(EmissionArtifacts.Publish(c, null));
             Assert.Empty(Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories));
             Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
         }

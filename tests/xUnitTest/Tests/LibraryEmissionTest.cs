@@ -69,14 +69,15 @@ public class LibraryEmissionTest
         c.Project.Directory = directory;
         try
         {
-            Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-            using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+            Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+            var paths = ArtifactPaths.Create(c.Project);
+            using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
             var root = manifest.RootElement;
             Assert.Equal(testBuild ? "Application" : "Library", root.GetProperty("outputKind").GetString());
             Assert.Equal(testBuild ? WindowsProfile.EntrySymbol : null, root.GetProperty("entry").GetString());
             Assert.Equal(testBuild ? WindowsProfile.Subsystem : null, root.GetProperty("subsystem").GetString());
-            Assert.Equal(ArtifactFiles.Hash(path!), root.GetProperty("irSha256").GetString());
-            Assert.False(File.Exists(Path.ChangeExtension(path!, ".link.build.json")));
+            Assert.Equal(ArtifactFiles.Hash(paths.Ir), root.GetProperty("irSha256").GetString());
+            Assert.False(File.Exists(paths.Record));
             if (testBuild)
             {
                 NativeToolchain.ValidateManifest(root);

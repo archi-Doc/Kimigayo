@@ -323,7 +323,7 @@ public partial class Project
         Exception? fault = null;
         try
         {
-            if (EmissionArtifacts.Publish(compilation, paths, out _))
+            if (EmissionArtifacts.Publish(compilation, paths))
             {
                 return true;
             }
