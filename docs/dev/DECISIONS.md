@@ -28592,7 +28592,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     expectedSha256, hashMatched}], error?, seconds}`, written first as `status "incomplete"`; at the end "passed", or "failed"
     with `error` for the toolchain's failure or a cancellation; a fault leaves it incomplete. Gone from it: `root`, `llvmBin`,
     `tools`, `toolchainVerification`, `reportedVersionsMatched`, `unverifiedToolchain`, `backendSha256`, `kernel32`. The build
-    record's three verification fields stay (T's ruling R3; PLAN G1227).
+    record's three verification fields went in G1227 (934a5e1d9): its head is `status`, `compilerVersion`, `llvmVersion`; the
+    backend candidate's `reportedVersionsMatched` and `unverifiedToolchain` (`build.ps1`, read by setup) stay, the candidate's
+    tool pinning.
   - **Reading (R4):** Q3 (a)'s "the embedded libraries' hashes against the catalog" includes kernel32's definition and excludes
     its content inspection (`llvm-dlltool -I`, `llvm-readobj`), which needs a tool: the content is a property of the adopted
     bytes, inspected when they are adopted (setup's `kernel32.ps1`, `test-kernel32.ps1`). B6a's design §6, "B6b's verify keeps
