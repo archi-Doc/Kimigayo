@@ -24,7 +24,7 @@ public sealed partial class Binding
     /// <param name="contract">The Contract declaration identity.</param>
     /// <returns>The registered definition and paths, or null if absent.</returns>
     public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && this.impls.PathsOf(result).Count != 0 ? result : null;
+        => type.Symbol is { } symbol ? this.ConformanceOf(symbol, contract) : null;
 
     /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
     /// <param name="type">The actual Type, including its generic arguments.</param>
@@ -100,7 +100,7 @@ public sealed partial class Binding
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration) || this.impls.PathsOf(identity).Count == 0)
+            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration))
             {
                 continue;
             }

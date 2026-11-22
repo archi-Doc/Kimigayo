@@ -389,7 +389,7 @@ public sealed partial class Binding
             }
         }
 
-        if (identity is null || this.impls.PathsOf(identity).Count == 0)
+        if (identity is null)
         {
             return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }

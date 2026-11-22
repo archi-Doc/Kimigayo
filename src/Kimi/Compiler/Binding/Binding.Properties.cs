@@ -60,7 +60,7 @@ public sealed partial class Binding
     // it (ValidateAccessor) and the uses that take the Property's Type instead (BindPropertyCall) agree.
     private bool AccessorTypeMismatch(BoundAccessor accessor)
         => accessor.TypeMismatch ??= accessor.Declaration is { } syntax && UsedType(accessor) is { } used &&
-            accessor.Property.Type is { } type && !SameType(used, type) &&
+            accessor.Property.Type is { } type && !ReferenceEquals(used, type) &&
             this.CheckTypeConstraints(used, this.scopes[syntax]) == ConstraintProof.Proven && this.CheckTypeConstraints(type, this.scopes[syntax]) == ConstraintProof.Proven;
 
     private void IndexAccessor(PropertyAccessorKoto syntax, BindingScope scope)
@@ -445,7 +445,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (accessor.Kind == PropertyAccessorKind.Set && !SameType(accessor.Result, BoundType.Unit))
+        if (accessor.Kind == PropertyAccessorKind.Set && !ReferenceEquals(accessor.Result, BoundType.Unit))
         {
             this.RecordTypeMismatch(syntax!, syntax!, accessor.Result!, BoundType.Unit);
             return ConstraintProof.Error;
