@@ -189,10 +189,11 @@ public class ArchitectureRulesTest
         "Binding.CallSlots.cs:Infer=4 formed",
         "Binding.CallSlots.cs:Infer=1 sufficient",
         "Binding.CallSlots.cs:Infer=1 unchanged",
-        "Binding.CallSlots.cs:IsFormedLayer=1 unchanged",
-        "Binding.CallSlots.cs:IsSource=2 formed",
+        "Binding.CallSlots.cs:IsFormedLayer=1 finding", // PLAN G898 (D-next): a layer of a pair admitting only owner is its target by the pair row, read as written
+        "Binding.CallSlots.cs:IsSource=1 finding", // PLAN G898 (D-next): two formed layers whose pairs admit one Semantics have one head, compared as written
+        "Binding.CallSlots.cs:IsSource=1 formed",
         "Binding.CallSlots.cs:IsSource=1 kind",
-        "Binding.CallSlots.cs:LayerTarget=1 key",
+        "Binding.CallSlots.cs:LayerTarget=1 finding", // PLAN G898 (D-next): two pairs' wholes compared as written where one single-Semantics head is one layer
         "Binding.CallableContracts.cs:CompareCallableContracts=1 declared",
         "Binding.CallableEffects.cs:CheckCallableEffectUses=2 key",
         "Binding.CallableEffects.cs:CollectCallableEffectUses=2 key",
