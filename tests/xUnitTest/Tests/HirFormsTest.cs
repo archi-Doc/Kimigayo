@@ -1208,8 +1208,8 @@ public sealed partial class HirFormsTest
             c.Bind();
             HirTables.Publish(c);
             var plan = CallPlan.Of(c.Binding, call)!;
-            Assert.Equal((i == 0 ? CalleeKind.Value : CalleeKind.Function, (BoundType?)null, default(BoundArgumentOperation), default(HirAdjust)),
-                (plan.Kind, HirTables.CaseDecider(call), plan.SharedReceiver, HirTables.PlanOf(call.Method).Adjust));
+            var expected = (i == 0 ? CalleeKind.Value : CalleeKind.Function, (BoundType?)null, default(BoundArgumentOperation), default(HirAdjust));
+            Assert.Equal(expected, (plan.Kind, HirTables.CaseDecider(call), plan.SharedReceiver, HirTables.PlanOf(call.Method).Adjust));
         }
     }
 
