@@ -2109,7 +2109,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     // (MirDescriptors.Judged), so SharedPath reads no write through the layer: no finding and no InternalInvariant_Kd beside Binding's
     // records, also beside a limit on a valid program (downgrade). A group let's static kept is undecided at its Place, and one located is
     // read by a FakeRead after its ensure (rule (2)), no use. A kept Copy part the form reads is secured by its Copy, an ordinary read, so
-    // its site names the temp (DECISIONS Z17c; fail-before: the projected Place), while a non-Copy part stays undecided at its Place.
+    // its site names the temp (DECISIONS Z17c; fail-before: the projected Place), while a non-Copy part stays undecided at its Place,
+    // through each layer (a ref parameter's and a ref self's Deref, a Slice's Index, an rc payload).
     [Theory]
     [InlineData(StructP + "func g(n: i32, m: i32) -> i32 => n\nfunc f(p: ref/P) -> i32\n    return g(p.n, missing)\n", "UnresolvedBinding_Kd", false)]
     [InlineData(StructP + "func f(p: ref/P)\n    missing(p.s)\n", "UnresolvedBinding_Kd", true)]
@@ -2125,7 +2126,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         "    public init(item: rc/Item) => self.item = item@move\nfunc f(h: ref/Holder)\n    let w = Kimi.Intrinsics.downgrade(h.item)\n",
         "Unsupported_Kd",
         true)]
+    [InlineData(
+        "struct Q\n    public var s: string\n    public init(s: string) => self.s = s@move\n    public func m(self: ref/Self) => missing(self.s)\n",
+        "UnresolvedBinding_Kd",
+        true)]
     [InlineData("func f(s: Slice<i32>, i: isize)\n    missing(s[i])\n", "UnresolvedBinding_Kd", false)]
+    [InlineData("func f(s: Slice<string>, i: isize)\n    missing(s[i])\n", "UnresolvedBinding_Kd", true)]
+    [InlineData("struct Q\n    public var s: string\n    public init(s: string) => self.s = s@move\nfunc f(h: rc/Q)\n    missing(h.s)\n", "UnresolvedBinding_Kd", true)]
     [InlineData(
         "struct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc g(n: i32, m: i32) -> i32 => n\nfunc f(h: rc/Q) -> i32\n" +
         "    return g(h.n, missing)\n",
