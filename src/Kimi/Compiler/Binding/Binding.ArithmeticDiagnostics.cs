@@ -171,7 +171,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var reversed = ArithmeticContracts.IsLeft(id);
+            var reversed = KimiLibraryCatalog.IsLeftContract(id);
             var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
             if (this.OppositeRow(counterpart, seed, oppositeId, scope) is not { Symbol: { Type.Components: [var argument] } opposite } other ||
                 this.MetInParent(seed, counterpart, id, oppositeId, scope))

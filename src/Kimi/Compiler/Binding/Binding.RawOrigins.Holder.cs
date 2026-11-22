@@ -114,26 +114,26 @@ public sealed partial class Binding
     // and drop of the Type whose inline storage holds the layer (ReceiverHolds), a `during self` layer's Place admits reads (a Move
     // included), shared borrows and writes of null only, and an enclosing Tuple or fixed-array Place is read, written and borrowed as the
     // layer's Place is, element by element. A read, a Move included, takes the Place's read Type (ReadHolder) and is no access the
-    // allowlist judges; it judges `access` to `place`, writing `source`, at `at` (JudgeHolderAccess) for a write, an update, a written
-    // exclusive borrow and a receiver's implicit one (JudgeCallFit). PathOrigin publishes the stored Field and the Place's stored Type.
-    private void JudgeHolderPlace(Koto place, HolderAccess access, Koto? source, Koto at)
+    // allowlist judges; it judges a write of `source` to `place`, or with no source an update, a written exclusive borrow or a receiver's
+    // implicit one (JudgeCallFit), at `at` (JudgeHolderAccess). PathOrigin publishes the stored Field and the Place's stored Type.
+    private void JudgeHolderPlace(Koto place, Koto? source, Koto at)
     {
         if (this.PathOrigin(place) is { Dereferences: false, Stored: { } stored } path && this.HoldsHolder(stored) && !this.ReceiverHolds(path))
         {
-            this.JudgeHolderAccess(stored, access, source, at);
+            this.JudgeHolderAccess(stored, source, at);
         }
     }
 
-    // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. Admitted: a write
-    // whose value puts null in every layer (NonNullAtLayers). Any other write, an update and an exclusive borrow, of the layer's Place or
-    // an enclosing one, is an Origin relation problem of `at` that forms no relation and leaves `at` Resolved (R7-O1 B4; SPEC 15.6.1: a
-    // failed relation adds no constraint, so the access's Loans reach MIR; 23.1.2): the holder's storage, which no Origin expression
-    // names, outlives no Origin. Its longer end is the Origin of the value reaching the layer, none for an update or a borrow, which
-    // admit the Place's read Type.
-    private void JudgeHolderAccess(BoundType stored, HolderAccess access, Koto? source, Koto at)
+    // A write of `source` (none: an update or an exclusive borrow) to storage whose Type `stored` is, or encloses, a `during self` layer
+    // reached through no dereference. Admitted: a write whose value puts null in every layer (NonNullAtLayers). Any other write, an update
+    // and an exclusive borrow, of the layer's Place or an enclosing one, is an Origin relation problem of `at` that forms no relation and
+    // leaves `at` Resolved (R7-O1 B4; SPEC 15.6.1: a failed relation adds no constraint, so the access's Loans reach MIR; 23.1.2): the
+    // holder's storage, which no Origin expression names, outlives no Origin. Its longer end is the Origin of the value reaching the
+    // layer, none for an update or a borrow, which admit the Place's read Type.
+    private void JudgeHolderAccess(BoundType stored, Koto? source, Koto at)
     {
-        var written = access == HolderAccess.Write && source is not null ? this.NonNullAtLayers(stored, source) : null;
-        if (access == HolderAccess.Write && written is null)
+        var written = source is null ? null : this.NonNullAtLayers(stored, source);
+        if (source is not null && written is null)
         {
             return;
         }
@@ -141,13 +141,5 @@ public sealed partial class Binding
         var longer = written?.BoundType?.RawOrigin ?? BoundOrigin.Unstated;
         var relation = new OriginRelationFact(at, longer, this.SuppliedAtUse(longer, at), BoundOrigin.Holder, Equality: false, stored, Refuted: true);
         this.RecordFurtherOriginRecord(at, new(relation, null));
-    }
-
-    // The accesses of a `during self` layer's Place the allowlist judges (JudgeHolderPlace).
-    private enum HolderAccess : byte
-    {
-        Write,
-        Update,
-        ExclusiveBorrow,
     }
 }
