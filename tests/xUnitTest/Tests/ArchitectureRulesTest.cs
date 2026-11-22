@@ -26,9 +26,9 @@ public class ArchitectureRulesTest
         "Binding/Binding.DiagnosticTypes.cs=1;Binding/Binding.Lints.cs=1;Binding/Binding.LocalRegions.Types.cs=2;" +
         "Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.OriginSummaries.cs=2;" +
         "Binding/Binding.PlaceAuthority.Raw.cs=1;" +
-        "Binding/Binding.RawOrigins.Borrows.cs=1;Binding/Binding.RawOrigins.Holder.cs=4;Binding/Binding.RawOrigins.Steps.cs=3;Binding/Binding.RawOrigins.cs=4;" +
+        "Binding/Binding.RawOrigins.Borrows.cs=2;Binding/Binding.RawOrigins.Holder.cs=4;Binding/Binding.RawOrigins.Steps.cs=3;Binding/Binding.RawOrigins.cs=4;" +
         "Binding/Binding.Storage.cs=3;Binding/Binding.TypeOrigins.cs=3;" +
-        "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
+        "Binding/Binding.TypeRelations.Origins.cs=5;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
     // The R7-R9 plan's unit M2 (ComponentIsReadOnlyByItsReaders): Build's readers, Project and the commands, the hosts that call it, and
@@ -170,7 +170,6 @@ public class ArchitectureRulesTest
         "Binding.AssociatedOrigins.cs:AssociatedIdentityMatches=3 key",
         "Binding.AssociatedOrigins.cs:CanonicalAssociatedOrigins=1 unchanged",
         "Binding.AssociatedOrigins.cs:FactStates=1 key",
-        "Binding.AssociatedTypes.Specification.cs:ConformanceByReference=1 sufficient",
         "Binding.AssociatedTypes.Specification.cs:PathsAgree=1 declared",
         "Binding.AssociatedTypes.Specification.cs:UnconditionalBinding=1 declared",
         "Binding.AssociatedTypes.cs:AssociatedIdentity=1 declared",
@@ -241,6 +240,7 @@ public class ArchitectureRulesTest
         "Binding.ContractTypes.cs:Hop=1 key",
         "Binding.ContractTypes.cs:InstantiatedContract=1 unchanged",
         "Binding.ContractTypes.cs:WithConformingSelf=1 unchanged",
+        "Binding.Contracts.cs:IsSelectionCandidate=1 sufficient",
         "Binding.Contracts.cs:ProveConformance=1 unchanged",
         "Binding.ControlFlow.cs:EndArrival=1 kind",
         "Binding.ControlFlow.cs:InfersUnit=1 kind",
@@ -353,7 +353,6 @@ public class ArchitectureRulesTest
         "Binding.ReadTypes.cs:ReadTypeReferent=1 unchanged",
         "Binding.RecursiveContracts.cs:IsRecursive=2 declared",
         "Binding.RecursiveContracts.cs:OfSearchSelf=1 declared",
-        "Binding.RequirementInstances.cs:InstanceContract=1 sufficient",
         "Binding.ResultPremises.cs:DefinitionContractFits=1 kind",
         "Binding.ResultPremises.cs:ProvesInputPremises=1 sufficient",
         "Binding.ResultPremises.cs:SolveValueCallOrigins=1 kind",

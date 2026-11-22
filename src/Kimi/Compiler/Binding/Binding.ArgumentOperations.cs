@@ -320,8 +320,8 @@ public sealed partial class Binding
             }
 
             // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source, out _) && this.ReadTypeReferent(actual, scope) is { } read &&
-                this.FitsTypeAt(read, pattern, source, out _))
+            if (!this.FitsTypeAt(actual, pattern, source, out _, null) && this.ReadTypeReferent(actual, scope) is { } read &&
+                this.FitsTypeAt(read, pattern, source, out _, null))
             {
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
@@ -348,7 +348,7 @@ public sealed partial class Binding
         // A comparison's Copy read is a temporary value, even though its syntax retains ref/T.
         // Borrow that snapshot; borrowing the original storage would change left-to-right semantics.
         if (!projected && pattern.Semantics == SemanticsKind.Ref && this.ReadsReferent(source) &&
-            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _))
+            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _, null))
         {
             adapted = this.PreparedBorrowType(source, pattern);
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
