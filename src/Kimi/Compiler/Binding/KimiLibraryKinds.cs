@@ -96,6 +96,8 @@ internal enum IntrinsicId : byte
     TestRecordValue,
     TestTempDirectory,
     StaticEnsure, // SPEC 22.4.3.
+    VolatileRead, // Volatile access (SPEC 5.6).
+    VolatileWrite,
 }
 
 /// <summary>What a function without a MIR body is (SPEC 8.11.2, 22.1, 22.6; TyCtxt.Bodyless), Binding's one category of it, which A4
@@ -146,11 +148,11 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 {
     // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether an intrinsic's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source
-    // (the source as a Take) and an in-place destruction; a Dictionary entry's placement is the DictionaryStorage.placeEntry body.
-    // Raw.release and Raw.slice write nothing.
+    // (the source as a Take), an in-place destruction and a volatile write at `storage`; a Dictionary entry's placement is the
+    // DictionaryStorage.placeEntry body. Raw.release, Raw.slice and Raw.readVolatile write nothing.
     internal static bool WritesThrough(IntrinsicId id, int parameter) => id switch
     {
-        IntrinsicId.RawInitialize or IntrinsicId.DestroyValues => parameter == 0,
+        IntrinsicId.RawInitialize or IntrinsicId.DestroyValues or IntrinsicId.VolatileWrite => parameter == 0,
         IntrinsicId.MoveBytes => parameter is 0 or 1,
         _ => false,
     };

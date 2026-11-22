@@ -131,6 +131,7 @@ public enum KimiDeclarationId : byte
     ArraySwapRemove,
     ArrayReverse,
     ViewStart,
+    RawReadVolatile,
 
     // R8-G1 (the owner's O-307 (a)): the internal declarations the compiler reads through KimiLibrary's members, not a catalog symbol.
     DictionaryStorageUnlink,
