@@ -52,7 +52,7 @@ public sealed partial class Binding
             }
 
             var target = this.AliasTarget(alias);
-            var import = new AliasImport(alias, target is not null && alias.TargetSyntax is { } syntax ? Parser.WrittenOrigin(syntax) : null);
+            var import = new AliasImport(alias, target is not null ? Parser.WrittenOrigin(alias.TargetSyntax) : null);
             if (alias.Name is null)
             {
                 if (!this.aliasesByDocument.TryGetValue(document, out var list))
@@ -133,6 +133,8 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 18.2.1: a target resolves from the Compilation root by the path walk (TypeName from the module scope, stages 5-6 off while
+    // aliasResolutionDepth is set), plain or bound alike; its formation is the bound Container's (BindContainerQualifier, SPEC 9.7).
     private BindingScope? AliasTarget(AliasKoto alias)
     {
         if (this.aliasTargets.TryGetValue(alias, out var cached))
@@ -142,76 +144,37 @@ public sealed partial class Binding
 
         this.aliasTargets.Add(alias, null);
         var scope = this.ModuleScope(alias);
-        var declarationScope = scope;
-        if (alias.TargetSyntax is { } targetSyntax)
+        var targetSyntax = alias.TargetSyntax;
+        this.aliasResolutionDepth++;
+        try
         {
-            this.aliasResolutionDepth++;
-            try
-            {
-                var originDeclaration = this.BeginOriginDeclaration(alias, scope);
-                var symbol = this.TypeName(targetSyntax, scope);
-                if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
-                    this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
-                {
-                    this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
-                    RestPendingOn(originDeclaration, alias);
-                    return null;
-                }
-
-                alias.BoundSymbol = symbol;
-                Complete(alias, reference);
-                this.CompleteOriginDeclaration(originDeclaration);
-                reference = alias.BoundType!;
-                if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
-                {
-                    this.Fail(alias, BindingFailure.InvalidOrigin);
-                    return null;
-                }
-
-                this.aliasTargets[alias] = this.scopes[symbol.Declaration];
-                return this.aliasTargets[alias];
-            }
-            finally
-            {
-                this.aliasResolutionDepth--;
-            }
-        }
-
-        for (var i = 0; i < alias.QualifiedName.Count; i++)
-        {
-            var name = alias.QualifiedName[i];
-            var symbol = i == 0 && name == "Kimi" ? this.Library.Module : this.SelectQualifier(scope.Types.GetValueOrDefault(name), declarationScope, alias) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
-            if (symbol is null || !this.Accessible(symbol, declarationScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
-            {
-                this.Fail(alias, BindingFailure.MissingName, true);
-                return null;
-            }
-
-            if (symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 } or DeclarationContainerKoto { OriginNames.Count: > 0 })
+            var originDeclaration = this.BeginOriginDeclaration(alias, scope);
+            var symbol = this.TypeName(targetSyntax, scope);
+            if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
+                this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
             {
                 this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
-                return null;
-            }
-
-            if (symbol.Declaration is DeclarationContainerKoto { HasIncompatibleBindingHeader: true })
-            {
-                this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
+                RestPendingOn(originDeclaration, alias);
                 return null;
             }
 
             alias.BoundSymbol = symbol;
-            scope = next;
-        }
+            Complete(alias, reference);
+            this.CompleteOriginDeclaration(originDeclaration);
+            reference = alias.BoundType!;
+            if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
+            {
+                this.Fail(alias, BindingFailure.InvalidOrigin);
+                return null;
+            }
 
-        if (alias.QualifiedName.Count == 0 || (alias.Name is not null && scope.Owner is not GroupKoto))
+            this.aliasTargets[alias] = this.scopes[symbol.Declaration];
+            return this.aliasTargets[alias];
+        }
+        finally
         {
-            this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
-            return null;
+            this.aliasResolutionDepth--;
         }
-
-        alias.BindingState = BindingState.Resolved;
-        this.aliasTargets[alias] = scope;
-        return scope;
     }
 
     // Read only provenance that ordinary lookup actually selected in this target; no alias lookup or Type reconstruction occurs.

@@ -60,30 +60,6 @@ public sealed class GroupKoto : DeclarationContainerKoto
         }
     }
 
-    // A plain Name path's segments, which Binding's alias segment loop reads, else null (a bound or other Type keeps its syntax).
-    // Temporary (R7-N1 e3-1a): e3-1b binds every alias target through the path walk and removes it with AliasKoto.QualifiedName.
-    private static List<string>? PlainAliasPath(Koto target)
-    {
-        var segments = new List<string>(4);
-        return AddSegments(target, segments) ? segments : null;
-
-        static bool AddSegments(Koto node, List<string> segments)
-        {
-            switch (node)
-            {
-                case TypeSemanticsKoto { HasOrigin: false, Type: null, IsNamedType: true } leaf:
-                    segments.Add(leaf.Identifier);
-                    return true;
-                case TypeSemanticsKoto { HasOrigin: false, IsTransparentWrapper: true, Type: MemberAccessKoto path }:
-                    return AddSegments(path, segments);
-                case MemberAccessKoto path:
-                    return AddSegments(path.Left, segments) && AddSegments(path.Right, segments);
-                default:
-                    return false;
-            }
-        }
-    }
-
     private void ParseRoot(ref TokenReader reader)
     {
         ConsumeBlockStart(ref reader);
@@ -123,7 +99,6 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
             // The line ends after the target; an attached Origin block may follow.
             reader.ExpectLineEnd(bodyMayFollow: true);
-            var qualifiedName = PlainAliasPath(targetSyntax);
 
             if (state.HasNonAliasDeclaration)
             {
@@ -131,7 +106,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
             else
             {
-                var alias = new AliasKoto(ref reader, qualifiedName ?? [], aliasName, token.Span, qualifiedName is null ? targetSyntax : null);
+                var alias = new AliasKoto(ref reader, targetSyntax, aliasName, token.Span);
                 Parser.ParseAttachedOriginBlock(ref reader, alias);
                 this.AddLast(alias);
             }

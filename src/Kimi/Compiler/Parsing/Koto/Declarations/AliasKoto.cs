@@ -13,31 +13,23 @@ public sealed class AliasKoto : DeclarationKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Alias;
 
-    /// <summary>Gets the segments of the aliased qualified name.</summary>
-    public List<string> QualifiedName { get; private set; }
-
     /// <summary>Gets the optional source-local qualifier name.</summary>
     public string? Name { get; }
 
-    /// <summary>Gets the target unless it is a plain Name path (<see cref="QualifiedName"/>): Type arguments, Origin bindings or another Type.</summary>
-    public Koto? TargetSyntax { get; }
+    /// <summary>Gets the target, a ContainerReference read as a Type (SPEC F.6.1, F.5).</summary>
+    public Koto TargetSyntax { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="AliasKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
-    /// <param name="alias">The qualified name segments.</param>
+    /// <param name="targetSyntax">The target.</param>
     /// <param name="name">The optional qualifier name.</param>
     /// <param name="span">The declaration location.</param>
-    /// <param name="targetSyntax">The target unless it is a plain Name path.</param>
-    public AliasKoto(ref TokenReader reader, List<string> alias, string? name = null, SourceSpan span = default, Koto? targetSyntax = null)
+    public AliasKoto(ref TokenReader reader, Koto targetSyntax, string? name, SourceSpan span)
         : base(ref reader, span)
     {
-        this.QualifiedName = alias;
         this.Name = name;
         this.TargetSyntax = targetSyntax;
-        if (targetSyntax is not null)
-        {
-            targetSyntax.Parent = this;
-        }
+        targetSyntax.Parent = this;
     }
 
     /// <inheritdoc/>
@@ -55,28 +47,12 @@ public sealed class AliasKoto : DeclarationKoto
             builder.Append(" => ");
         }
 
-        if (this.TargetSyntax is { } target)
-        {
-            target.WriteTo(ref builder);
-            OriginClauses.Write(this, ref builder);
-            return;
-        }
-
-        for (var i = 0; i < this.QualifiedName.Count; i++)
-        {
-            if (i > 0)
-            {
-                builder.Append(Constants.DotChar);
-            }
-
-            builder.Append(this.QualifiedName[i]);
-        }
-
+        this.TargetSyntax.WriteTo(ref builder);
         OriginClauses.Write(this, ref builder);
     }
 
     protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        slots.Fixed(this.TargetSyntax);
+        this.TargetSyntax = slots.Slot(this.TargetSyntax);
     }
 }
