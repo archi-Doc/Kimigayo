@@ -11,8 +11,9 @@ namespace Kimi.Compiler;
 // - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
 //   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads, and in
 //   whose view the root's two sides are formed (ClassForm, R7-C2c2 c2-4b's J3; none: the relation as written), which Origin bindings
-//   count (OriginPart), and the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its root comparisons
-//   take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven).
+//   count (OriginPart), the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its root comparisons
+//   take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven), and a placing fit's raw-fit sink
+//   (RawFits), to which FitOuterOrigins appends each raw fit of the parts outside every Callable comparison.
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided, with the components down to the failure that ended it
 //   and whether it is that part's own shape (ComponentPath); a recording root's walk also keeps one fact per failing position
@@ -253,6 +254,10 @@ public sealed partial class Binding
         // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
         internal List<BindingObligation>? Rows { get; init; }
 
+        // The query's raw-fit sink, set by a placing fit's walk (FitsTypeAt's for a placing caller, CheckTypeUse's; G147 ruling 75 Q-A
+        // (a)); none: the walk places no value.
+        internal List<RawFit>? RawFits { get; init; }
+
         // SPEC 3.8: the relation; Never relates only to itself. A Function Type's own syntax binds its per-call inputs (SPEC 8.10).
         // `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the Callable comparison whose
         // per-call Origins the parts are compared under.
@@ -365,7 +370,7 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = this.owner.FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
+                (outer, longer, shorter) = this.owner.FitOuterOrigins(actual, expected, this.use, instance, this.RawFits, invariant);
             }
 
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;

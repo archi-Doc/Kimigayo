@@ -144,8 +144,8 @@
 //   EnclosingContractSelf, a chain environment's sets), FactStates, NegateConstraint, InternConstraint, interning and Type rewriting
 //   (TyCtxt.Rebuild, Intern, HeldContext, HeldType, InterpolationBound, WithContext, RentTypes, StoredType and SubstituteType where
 //   they return a Type), the static gates (KimiLibraryCatalog.IsArithmeticContract, WitnessGroup), SubstituteStoredOrigins (declared
-//   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
-//   and the PrepareTypeStorage memo (per storageVersion); R7-C2c2 c2-4's MemberOf (ContractTypeCore meets its Completion, the
+//   Origins), SelectConformance for a query by declaration (final after the InheritedConformances query, Binding.cs's
+//   RegisterInheritedConformances), and the PrepareTypeStorage memo (per storageVersion); R7-C2c2 c2-4's MemberOf (ContractTypeCore meets its Completion, the
 //   table's), UnconditionalBinding (declarations only; an unfinished or refused instance is its `pending`, met as Provisional),
 //   AssociatedInPath and OperandContexts (pure reads).
 // - PremiseRefines' answer, and the judges' MemberOf reads (ProveConformance, RequestCapability, JudgeConstraintAtom; a read may rest

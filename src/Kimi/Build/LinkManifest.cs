@@ -17,8 +17,7 @@
 // Invariants: every manifest read goes through these readers, so no JsonElement accessor exception (KeyNotFound, InvalidOperation,
 // Format) leaves a manifest read; a member's lookup and an Int32's read are ArtifactFiles' (Member, Number), the toolchain files' one
 // rule; the fixed fields are written and checked by the one table, a compiler's supply's entry by its row. Must not: read the build
-// record, the installation or the kernel32 records (their readers compare ArtifactFiles' total reads with what they expect, PLAN G983),
-// or decide a variable field's value.
+// record (its reader compares ArtifactFiles' total reads with what it expects, PLAN G983), or decide a variable field's value.
 
 using System.Text.Json;
 using Kimi.Compiler;

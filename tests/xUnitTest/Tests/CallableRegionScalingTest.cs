@@ -61,6 +61,22 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void PlacedReadsAreLinearInACopyChain()
         => WorkScales(output, [.. new[] { 64, 128, 256 }.Select(MirBorrowsTest.LentChain)], 2);
 
+    // Z5-R2 (its design section 6): A5's work and Loan-set bytes on a chain of n Copies of a layer's enclosing Place through no
+    // dereference, each used right after it is made, at n = 64, 128, 256, each Copy carrying its owner's one own-step entry
+    // (MirBorrows.Addresses' Layer, one row per Place a location uses): the work has a dense term, so it keeps the factor 5 of the dense
+    // rows (measured: 8,870, 16,488, 32,108, about 116 n + n²/64; on dev, a located Unsupported_Kd at each Copy, 7,484, 13,884, 26,684);
+    // the bytes are linear.
+    [Fact]
+    public void EnclosingCopiesScaleWithTheDenseTerm()
+        => WorkScales(output, [.. new[] { 64, 128, 256 }.Select(MirBorrowsTest.EnclosingCopyChain)], 5);
+
+    // Z5-R2 (its design section 6): A5's work and Loan-set bytes on a Field enclosing a layer k Tuples deep, read whole and used through
+    // its k steps, at k = 16, 32, 64: within the per-prefix Owned walk's O(k²) (each prefix's walk and Encloses descent are bounded by the
+    // Type's depth), the base's order.
+    [Fact]
+    public void ADeepEnclosingReadIsWithinItsWalk()
+        => WorkScales(output, [.. new[] { 16, 32, 64 }.Select(MirBorrowsTest.DeepEnclosingRead)], 4);
+
     // RP8 (PLAN G492-a (iii); J1, the owner's O-264 Q5 (a), O-286 (a)): a comparison's proof reads the recorded bounds of each region it
     // names, each node and bound once (O(N + B) per request), so k chained `var` locals, each with a later store, and m comparisons over
     // the last one bind with premise work linear in m * k: (8, 8), (64, 8), (8, 64), (64, 64), within 1.5 times linear.
