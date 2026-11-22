@@ -18,5 +18,4 @@ public partial class TypeDagScalingTest
         CompilationTestHelper.AssertBindingRecordsAtLines("chain 10000", Verification.AssociatedInferenceWorkloads.OneValueChain(10000), string.Empty);
         CompilationTestHelper.AssertBindingRecordsAtLines("ring 10000", Verification.AssociatedInferenceWorkloads.TwoValueRing(10000), "Resource: Self is RC | ...");
     }
-
 }
