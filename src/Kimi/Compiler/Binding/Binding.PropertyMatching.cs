@@ -110,7 +110,7 @@ public sealed partial class Binding
             }
 
             var getter = requirement.Kind == PropertyAccessorKind.Get;
-            if (receiver.Kind != BoundTypeKind.Semantics || receiver.Semantics != (getter ? SemanticsKind.Ref : SemanticsKind.Uniq) || !SameType(receiver.Components[0], self))
+            if (receiver.Kind != BoundTypeKind.Semantics || receiver.Semantics != (getter ? SemanticsKind.Ref : SemanticsKind.Uniq) || !ReferenceEquals(receiver.Components[0], self))
             {
                 return ConstraintProof.Refuted;
             }
@@ -120,7 +120,7 @@ public sealed partial class Binding
                 kind = PropertyWitnessKind.StorageSet;
                 proof = input is not null && implementation.Property.Declaration.DeclarationKind == PropertyDeclarationKind.Var &&
                     SignatureEquals(input, field, requirement.Binder, implementation.Binder) &&
-                    this.IsSubtypeAt(input, field, requirement.Binder, Bridge()) && SameType(result, BoundType.Unit) ?
+                    this.IsSubtypeAt(input, field, requirement.Binder, Bridge()) && ReferenceEquals(result, BoundType.Unit) ?
                     ConstraintProof.Proven : ConstraintProof.Refuted;
             }
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
@@ -128,7 +128,7 @@ public sealed partial class Binding
                 kind = PropertyWitnessKind.StorageCopy;
                 proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
             }
-            else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && SameType(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
+            else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && ReferenceEquals(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {
                 kind = PropertyWitnessKind.StorageBorrow;
                 proof = ConstraintProof.Proven;
