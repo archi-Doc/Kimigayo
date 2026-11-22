@@ -38,14 +38,15 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryInsertOrReplace, 0b110),
     ];
 
-    // The operation contracts' inputs they store no value through (NoStoreRow): `slice` its storage, `initialize` its value, `release` its
-    // storage (it ends the storage, writing no Place), `transferBytes` its source (read, its values relocated), `replace` and `exchange`
-    // their value, which they place in their target (SPEC 15.7: each writes only its target, by its identity's rules, never its body's);
-    // KimiLibraryShapeTest pins each row to a named parameter of a bodiless contract or a 15.7 declaration.
+    // The operation contracts' inputs they store no value through (NoStoreRow): `slice` and `readVolatile` their storage, `initialize` its
+    // value, `release` its storage (it ends the storage, writing no Place), `transferBytes` its source (read, its values relocated),
+    // `replace` and `exchange` their value, which they place in their target (SPEC 15.7: each writes only its target, by its identity's
+    // rules, never its body's); KimiLibraryShapeTest pins each row to a named parameter of a bodiless contract or a 15.7 declaration.
     private static readonly NoStoreRow[] NoStoreRows =
     [
         new(KimiDeclarationId.RawSlice, 0b1), new(KimiDeclarationId.RawInitialize, 0b10), new(KimiDeclarationId.RawRelease, 0b1),
         new(KimiDeclarationId.StorageTransferBytes, 0b10), new(KimiDeclarationId.Replace, 0b10), new(KimiDeclarationId.Exchange, 0b10),
+        new(KimiDeclarationId.RawReadVolatile, 0b1),
     ];
 
     // The library functions code generation keeps out of line (`noinline`: it steers O2 inlining only and is inert at O0), a closed set, each

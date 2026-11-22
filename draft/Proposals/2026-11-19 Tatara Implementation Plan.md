@@ -283,6 +283,11 @@ Measured first; each one adopted is a unit of its own.
 1. **Direct O2 generation:** generate from the optimized module without re-parsing. Where an object changes this is a behavior change,
    so the differences over every fixture are counted first.
 2. **Reuse of library check results** within an interactive session, for libraries of equal content (within IMPL §A.2).
+   Examined 2026-11-23 (LC2 design Revision 0): the Kimi library's parse, Binding, HIR and library layer are already reused once per
+   process and target (DECISIONS R8-M53, R8-M55); what a `kimi tatara` line still repeats is MIR work over the library (the owner's
+   O-381 (b)), estimated at or below 2% of a Milestone30 session line at O2 (C-381's figures), below the 3% gate, so O-381 (b)
+   stands; reuse of a project's library dependencies waits for a workload with one (none in the repository but
+   `docs/examples/SourceDependencies`). No unit now; the design's options and owners are the starting point if a gate passes later.
 3. **Link time by part:** read, resolve, write, close; then choose a measure.
 4. **Schema 5:** each external declaration names its supplier, with PLAN T1's schema 5.
 
