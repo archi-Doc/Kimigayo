@@ -1116,20 +1116,24 @@ public sealed partial class InstanceCollectorTest
 
     // R7-T1 c4 (IMPL A.4, 21.3.2; SPEC 8.6.1, 8.8.2, 8.9.1; c4\labels.tsv, c4-fix\labels.tsv; the Front's design review C1a, C2 and its
     // implementation review C1, C2; B's review C1): a requirement call's witness resolution is the call's formation. After f19's chain (T = Box^8100<i32>), U.get()
-    // through `U is C<i32>` at S<Box^90<T>>, whose S declares `Self is C<Box<Box<T>>>` first, forms that other conformance's formal past
-    // the height (8,193): one TypeHeightLimit_Kd at the call (names), and none in the other clause order, which forms only the matching
-    // formal (namesSwap); w == w over W<Box^90<T>>, Equatable when T is Eqv<Box^8<T>>, forms that conditional conformance's premise past
-    // the height (8,198) with its operands within (8,192): one TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80)
-    // (fail-before of all four: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's formation, names' record is
+    // through `U is C<i32>` at S<Box^90<T>>, whose S declares `Self is C<Box<Box<T>>>` beside `Self is C<i32>`, forms that other
+    // conformance's formal past the height (8,193): the selection judges every member (SPEC 8.6.1, 8.9.1's selection has no clause order;
+    // R7-C3 b's SelectConformance), so both clause orders record one TypeHeightLimit_Kd at the call (names90, namesSwap90; F's C3b ruling
+    // (A), C-481) and at Box^80, within the height, both accept (names80, namesSwap80); w == w over W<Box^90<T>>, Equatable when T is
+    // Eqv<Box^8<T>>, forms that conditional conformance's premise past the height (8,198) with its operands within (8,192): one
+    // TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80) (c4's fail-before of names90, namesSwap90, premise90 and
+    // premise80: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's formation, names' record is
     // the frame's site-less InternalInvariant_Kd). Through a requirement Item (namesItem: `let f = U.get`) the record at `f` is the Item's own Type
     // formation's (In, through TyCtxt.Answered, before Callee's Witness), on dev too: a control, no fail-before of Callee's reading. A
     // standard property witness over Ph<Box^90<T>> agrees with no refusal and meets R5-M170's type-driven key limit at the call (prop90;
     // fail-before: the gate's Unsupported_Kd); one level deeper the receiver refuses at the receiver `x` before any witness (prop91, as
     // before).
     [Theory]
+    [InlineData("names80", "")]
     [InlineData("names90", "TypeHeightLimit_Kd U.get()")]
     [InlineData("namesItem90", "TypeHeightLimit_Kd f")]
-    [InlineData("namesSwap90", "")]
+    [InlineData("namesSwap80", "")]
+    [InlineData("namesSwap90", "TypeHeightLimit_Kd U.get()")]
     [InlineData("premise90", "TypeHeightLimit_Kd w == w")]
     [InlineData("premise80", "")]
     [InlineData("prop90", "GenerationResourceLimit_Kd x.n")]
