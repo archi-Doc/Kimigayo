@@ -332,7 +332,7 @@ public sealed partial class Binding
         }
 
         // SPEC 6.3.2, 8.5.2: a projection qualifier constructs its normal form.
-        var type = projected is not null ? Complete(member.Left, projected) : this.ConstructorQualifierType(member.Left, path.Symbol!, scope);
+        var type = projected is not null ? this.PublishType(member.Left, projected) : this.ConstructorQualifierType(member.Left, path.Symbol!, scope);
 
         // R7-C3 (F's C2 ruling 226, C-i; SPEC 6.3.2, 8.5.2, 8.2.3): the construction's declaring Type is the qualifier's class form in the
         // use's view, published once by this selection (memberSelections); the qualifier keeps its Type as written, and a record names it.
@@ -376,7 +376,7 @@ public sealed partial class Binding
 
         var type = this.ConstructionTargetType(syntax, symbol, scope, null);
         syntax.BoundSymbol = symbol;
-        return Complete(syntax, type);
+        return this.PublishType(syntax, type);
     }
 
     private BoundType? BindBaseConstructor(SyntaxFormKoto node, BindingScope scope)

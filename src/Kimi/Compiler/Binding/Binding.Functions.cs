@@ -133,7 +133,7 @@ public sealed partial class Binding
             // parameter.
             if (function.ReturnType is { } resultSyntax && this.BindType(resultSyntax, scope) is not null && symbol is { Type: null })
             {
-                Complete(resultSyntax, null);
+                this.PublishType(resultSyntax, null);
                 this.Fail(resultSyntax, BindingFailure.Unsupported);
             }
 
@@ -215,11 +215,10 @@ public sealed partial class Binding
         {
             // BindType retains a partial value on the parameter symbol without publishing it on
             // syntax. A failed Type (null) is already an error, not an inference dependency.
-            pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.PendingAssociatedType(parameterType);
+            pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.HoldsPendingProjection(parameterType);
         }
 
-        var pendingHeader = pendingInputs || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
-        if (this.associatedInferenceReady && pendingHeader)
+        if (pendingInputs || (symbol.Type is { } resultType && this.HoldsPendingProjection(resultType)))
         {
             // Result portions that do not depend on missing Type values use the ordinary Origin
             // completion. Unrelated result holes do not hide a determined input/elision contract.

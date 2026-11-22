@@ -436,7 +436,7 @@ public sealed partial class Binding
             var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(scratch.AsSpan(0, count));
             if (tuple is not null)
             {
-                Complete(tuple, parameters);
+                this.PublishType(tuple, parameters);
             }
 
             // The result is formed where it is written (FormNestedResult); the inputs add no obligation here (R4-M137).

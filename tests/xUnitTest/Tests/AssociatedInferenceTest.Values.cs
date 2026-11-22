@@ -109,6 +109,11 @@ public partial class AssociatedInferenceTest
     // valid: SPEC 8.5.5, 9.6: D.X = Outer<E.W>.Inner = Outer<i32>.Inner, read through a nested Type's qualifier argument (E.W = i32).
     private const string C4NestedPath = "contract DC\n    associate X\n    func a(self: ref/Self) -> Self.X\ncontract EC\n    associate W\n    func w(self: ref/Self) -> Self.W\nstruct Outer<T>\n    public struct Inner\n        public init() => ()\nstruct D\n    Self is DC\n    public func a(self: ref/Self) -> Outer<E.(EC).W>.Inner => $abort(\"a\")\nstruct E\n    Self is EC\n    public func w(self: ref/Self) -> i32 => 0\n()\n";
 
+    // valid: SPEC 8.5.5 (C4 ruling 8, labelled before any run): S.Other = i32 (other, unique); read's identification is pending (its key
+    // reads the missing Other) and is identified again after completion: PA<i32> and PA<i32> are compatible. The candidate's parameter
+    // holds the pending projection inside a generic argument, so its header is bound partially while Other is pending.
+    private const string C4ParamPending = "contract C\n    associate Other\n    func read(self: ref/Self, p: PA<Self.Other>)\n    func other(self: ref/Self) -> Self.Other\nstruct PA<T>\n    public init() => ()\nstruct S\n    public init() => ()\n    Self is C\n    public func read(self: ref/Self, p: PA<Self.(C).Other>) => ()\n    public func other(self: ref/Self) -> i32 => 0\n()\n";
+
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records).
     [Theory]
     [InlineData("guard", "n1-d", C4N1D, "*: * | ...")]
@@ -144,6 +149,7 @@ public partial class AssociatedInferenceTest
     [InlineData("C4", "generic", C4Generic, "")]
     [InlineData("C4", "generic-conflict", C4GenericConflict, "AssociatedTypeInferenceFailed_Kd: Self is MC | ...")]
     [InlineData("guard", "nested-path", C4NestedPath, "")]
+    [InlineData("C4", "param-pending", C4ParamPending, "", Explicit = true)]
     public void EveryValueFollowsItsEvidenceInEveryOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program, records);
 
@@ -183,6 +189,7 @@ public partial class AssociatedInferenceTest
     [InlineData("C4Generic", C4Generic)]
     [InlineData("C4GenericConflict", C4GenericConflict)]
     [InlineData("C4NestedPath", C4NestedPath)]
+    [InlineData("C4ParamPending", C4ParamPending)]
     public void EveryReadLiesInTheReadersReach(string form, string program)
         => Assert.Equal((form, 0), (form, MinimalEmissionTest.Analyze(program).Binding.InferenceReachMisses));
 }

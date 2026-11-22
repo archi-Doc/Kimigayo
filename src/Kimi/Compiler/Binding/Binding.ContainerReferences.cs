@@ -398,7 +398,7 @@ public sealed partial class Binding
 
         if (syntax is ParenthesizedTypeKoto grouped)
         {
-            return Complete(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));
+            return this.PublishType(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));
         }
 
         if (symbol.Declaration is GroupKoto)
@@ -408,7 +408,7 @@ public sealed partial class Binding
 
             // The qualifier names its group, as BindType names a struct qualifier, so no consumer takes the group's Type as a value.
             syntax.BoundSymbol = symbol;
-            return result is null ? null : Complete(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
+            return result is null ? null : this.PublishType(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
         }
 
         return this.BindType(syntax, scope, context with { SuppressOuter = true });

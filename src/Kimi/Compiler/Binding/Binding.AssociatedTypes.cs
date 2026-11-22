@@ -349,7 +349,7 @@ public sealed partial class Binding
         Complete(syntax.Right, projection);
         if (!ReferenceEquals(receiver, syntax.Left))
         {
-            Complete(syntax.Left, type);
+            this.PublishType(syntax.Left, type);
         }
 
         return this.NormalizedProjection(projection, scope, applyingOrigins);

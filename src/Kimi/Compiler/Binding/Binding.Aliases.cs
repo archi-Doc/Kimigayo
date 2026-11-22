@@ -159,7 +159,7 @@ public sealed partial class Binding
                 }
 
                 alias.BoundSymbol = symbol;
-                Complete(alias, reference);
+                this.PublishType(alias, reference); // Before the gate (PrepareAliases): never held back.
                 this.CompleteOriginDeclaration(originDeclaration);
                 reference = alias.BoundType!;
                 if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
