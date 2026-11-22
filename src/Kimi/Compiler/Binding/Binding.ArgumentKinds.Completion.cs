@@ -24,7 +24,7 @@ public sealed partial class Binding
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, evaluation.Evaluated[winner].DeclaringType);
-        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(winner);
         var contract = this.activeRequirementContract;
         this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
         var completed = true;
@@ -33,7 +33,7 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var argument = call.ArgumentNodes[i];
-                var pattern = selected.Parameters[evaluation.Mapping[i]].Type.BoundType!;
+                var pattern = selected.Parameters[solution.Mapping[i]].Type.BoundType!;
                 this.TakeArgument(argument); // SPEC 10.5.1: the call has selected; no conflict in the argument waits for it since.
                 if (this.IsWaiting(argument))
                 {

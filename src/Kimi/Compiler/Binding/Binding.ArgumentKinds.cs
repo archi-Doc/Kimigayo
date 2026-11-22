@@ -593,7 +593,7 @@ public sealed partial class Binding
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, declaringType);
         var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
-        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved(evaluation.Mapping)))
+        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved()))
         {
             this.DeferNestedCall(call, evaluation.Expected);
             Complete(call, null);
@@ -605,10 +605,10 @@ public sealed partial class Binding
             return true;
         }
 
-        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(winner);
         foreach (var kind in OwnTypeSteps)
         {
-            if (solution.DefaultArguments(evaluation.Mapping, kind, out var applied) is { } misfit)
+            if (solution.DefaultArguments(kind, out var applied) is { } misfit)
             {
                 this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
                 return false;
@@ -632,19 +632,7 @@ public sealed partial class Binding
         else
         {
             // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-            this.FailUnboundSlots(
-                call,
-                selected,
-                evaluation.Scope,
-                evaluation.Frames[winner].Types,
-                evaluation.Frames[winner].Lengths,
-                evaluation.Mapping,
-                operations,
-                evaluation.Expected,
-                evaluation.Self,
-                evaluation.Origins,
-                evaluation.Inputs,
-                declaringType);
+            this.FailUnboundSlots(in solution, operations, evaluation.Expected);
         }
 
         return false;
@@ -654,27 +642,17 @@ public sealed partial class Binding
     // never reselects.
     private bool CheckDefaulted(ref CallEvaluation evaluation, int winner, SlotSolution solution, Span<BoundArgumentOperation> operations)
     {
-        var state = this.TryCandidate(
-            solution,
-            evaluation.Mapping,
-            evaluation.Evaluated[winner].ArgumentMap,
-            evaluation.Expected,
-            operations,
-            out _,
-            out var unsolved,
-            out _,
-            out _,
-            out var failure,
-            out _);
-        state = AsSelected(state, failure, evaluation.Evaluated[winner].State);
+        var trial = evaluation.Evaluated[winner]; // A local copy: the row takes back only State and Unsolved.
+        this.TryCandidate(solution, evaluation.Expected, operations, ref trial);
+        var state = AsSelected(trial.State, trial.ConstraintFailure, evaluation.Evaluated[winner].State);
         if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
-            evaluation.Evaluated[winner] = evaluation.Evaluated[winner] with { State = state, Unsolved = unsolved };
+            (evaluation.Evaluated[winner].State, evaluation.Evaluated[winner].Unsolved) = (state, trial.Unsolved);
             return true;
         }
 
         var call = evaluation.Call;
-        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: failure));
+        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: trial.ConstraintFailure));
         this.RecordRejected(call, this.rejectedRows.Count - 1);
         this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         return false;

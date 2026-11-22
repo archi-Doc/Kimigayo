@@ -39,16 +39,16 @@ public class BorrowedDefaultTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
-    // SPEC 7.2.3, 23.1.2: two failed requirements at `x@ref`: the result keeps a new Borrow of a preceding parameter (the prepared Loan,
-    // as NewPreparedLoansAreRejectedAtTheirDeclaration's) and the fit `ref/i32 during a` (the Borrow outlives a: Refuted). R7-O1 H: the
-    // fit is A5's one record (Binding's twin went, R4-M108's until R7); A5's DefaultArgumentBorrow_Kd, which the failed default's Opaque
-    // node hid, is shown (Q13 rule 3, the Middle's (iii)).
+    // SPEC 7.2.3, 15.6.5, 23.1.2: one failure at `x@ref`, the result keeping a new Borrow of a preceding parameter whose fit
+    // `ref/i32 during a` is Refuted (one edit repairs both requirements), so the relation is its one record and the default's
+    // DefaultArgumentBorrow_Kd is derived from it (Z19, the owner's O-496 (a); it was published beside the relation since R7-O1 H, the
+    // Middle's class (iii) of 11-19).
     [Fact]
     public void APreparedSlotsBorrowCannotFitAnExternalOrigin()
     {
         const string Source = "func f(x: i32, y: ref/i32 during a = x@ref) => ()\npublic func main() => ()";
         Assert.Equal(
-            [(nameof(DiagnosticCode.DefaultArgumentBorrow_Kd), "x@ref"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref")],
+            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref")],
             DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 

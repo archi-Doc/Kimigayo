@@ -69,7 +69,6 @@ public sealed partial class Binding
     // another Type there, so that some case erases nothing (an applicable `f: F` beside a resting `f: (Z, Box) -> i32`), or none is left.
     private static BoundType? ErasedByEveryCandidate(ref CallEvaluation evaluation, int argument)
     {
-        var arguments = evaluation.Call.ArgumentNodes.Count;
         BoundType? erased = null;
         for (var i = 0; i < evaluation.Count; i++)
         {
@@ -78,8 +77,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var parameter = evaluation.SavedCandidates != 0 ? evaluation.AllMaps[(i * arguments) + argument] : evaluation.Mapping[argument];
-            if (function.Parameters[parameter].Type.BoundType is not { Kind: BoundTypeKind.Function } declared)
+            if (function.Parameters[evaluation.MappingOf(i)[argument]].Type.BoundType is not { Kind: BoundTypeKind.Function } declared)
             {
                 return null;
             }
@@ -105,6 +103,21 @@ public sealed partial class Binding
         }
 
         return applied;
+    }
+
+    // SPEC 15.1.5: the absent spelling a NoneApplicable selection names: the Acquisition of the last candidate, in evaluation order,
+    // whose trial a bare Place alone kept from applying (TryCandidate), else none.
+    private static AcquisitionFailure? LastAcquisition(in CallEvaluation evaluation)
+    {
+        for (var i = evaluation.Count - 1; i >= 0; i--)
+        {
+            if (evaluation.Evaluated[i].Acquisition is { } acquisition)
+            {
+                return acquisition;
+            }
+        }
+
+        return null;
     }
 
     // SPEC 7.4, 23.1.2 (rule W; G812 ruling 141): a candidate whose group failed its shape (KeepsSignature's ParameterShapeMismatch or
@@ -189,7 +202,7 @@ public sealed partial class Binding
     // each candidate sets (null on entry: the arguments are the caller's expressions, as in BindCall), the inference counters, an
     // enclosing trial's facts and the proofs' single-slot facts, which its trials replace (OpenTrial), the walk's open positions, and
     // the waiting parts the enclosing fit met (its own fits start theirs above them: waitingBase). The one owner of that set for every
-    // query (ProbeSelection, SelectedCandidate, OpenForm, SelectOmittedBaseConstructor; a part checked against its expected Type,
+    // query (ProbeSelection, OpenForm, SelectOmittedBaseConstructor; a part checked against its expected Type,
     // SelectCallAt and FitConstructionAt).
     private SelectionQuery BeginSelectionQuery()
     {
@@ -272,7 +285,6 @@ public sealed partial class Binding
         var argumentCount = call.ArgumentNodes.Count;
         var originSlots = shape.SolveOrigins ? shape.Origins : 0;
         var inputSlots = shape.SolveOrigins ? shape.InputOrigins : 0;
-        var savedCandidates = candidateCount > 1 ? candidateCount : 0;
         var explicitCount = generic?.TypeArguments.Count ?? 0;
         var evaluation = new CallEvaluation
         {
@@ -283,7 +295,6 @@ public sealed partial class Binding
             Expected = expected,
             FrameCount = candidateCount,
             OperationStride = argumentCount + 1,
-            SavedCandidates = savedCandidates,
             OriginSlots = originSlots,
             InputSlots = inputSlots,
             Winner = -1,
@@ -292,16 +303,13 @@ public sealed partial class Binding
         evaluation.Frames = this.RentFrames(candidateCount, shape.Generics, call, scope);
         evaluation.ExplicitTypes = this.typeScratch.Rent(explicitCount);
         evaluation.ExplicitLengths = this.lengthScratch.Rent(explicitCount);
-        evaluation.Mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
+        evaluation.Mapping = this.indexScratch.Rent(candidateCount * argumentCount);
         evaluation.Used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
         evaluation.CompletedWaiting = this.flagScratch.Rent(argumentCount);
         evaluation.WaitingContexts = this.typeScratch.Rent(argumentCount);
         evaluation.CompletedWaiting.AsSpan(0, argumentCount).Clear();
-        evaluation.Origins = this.originScratch.Rent(originSlots);
-        evaluation.Inputs = this.originScratch.Rent(inputSlots);
-        evaluation.AllMaps = this.indexScratch.Rent(savedCandidates * argumentCount);
-        evaluation.AllOrigins = this.originScratch.Rent(savedCandidates * originSlots);
-        evaluation.AllInputs = this.originScratch.Rent(savedCandidates * inputSlots);
+        evaluation.Origins = this.originScratch.Rent(candidateCount * originSlots);
+        evaluation.Inputs = this.originScratch.Rent(candidateCount * inputSlots);
         evaluation.Operations = this.argumentOperationScratch.Rent(candidateCount * evaluation.OperationStride);
         evaluation.Rows = this.rowScratch.Rent(candidateCount * argumentCount);
         evaluation.ChildSlices = this.indexScratch.Rent(candidateCount * 2);
@@ -318,9 +326,6 @@ public sealed partial class Binding
         this.indexScratch.Return(evaluation.ChildSlices);
         this.childRows.RemoveRange(evaluation.ChildBase, this.childRows.Count - evaluation.ChildBase);
         this.positionOperations.RemoveRange(evaluation.PositionBase, this.positionOperations.Count - evaluation.PositionBase);
-        this.originScratch.Return(evaluation.AllInputs, clearArray: true);
-        this.originScratch.Return(evaluation.AllOrigins, clearArray: true);
-        this.indexScratch.Return(evaluation.AllMaps);
         this.lengthScratch.Return(evaluation.ExplicitLengths, clearArray: true);
         this.candidateScratch.Return(evaluation.Evaluated, clearArray: true);
         this.originScratch.Return(evaluation.Inputs, clearArray: true);
@@ -334,14 +339,16 @@ public sealed partial class Binding
     }
 
     // SPEC 10.1-10.4: one call's selection over its rented evaluation: every candidate evaluated, then the selection they determine.
-    // The entry a publishing call and a query share: it starts from no deferred acquisition and no failed cause, and neither fails,
-    // completes nor records a node, but for a broken contract's Fail(Source, Internal) in BetterCandidate (reached from
-    // ClassifySelection through SelectBest and PremisesCannotAffect); the caller acts on the outcome.
+    // The entry a publishing call and a query share: it starts from no deferred acquisition, no failed cause and no requirement
+    // reference (each trial runs under its candidate's, TryCandidate), and neither fails, completes nor records a node, but for a broken
+    // contract's Fail(Source, Internal) in BetterCandidate (reached from ClassifySelection through SelectBest and PremisesCannotAffect);
+    // the caller acts on the outcome.
     private (CallSelection Kind, int Winner) SelectAt(ref CallEvaluation evaluation, in FunctionGroup candidates)
     {
         this.BeginResolution();
         this.acquisitionFailure = null;
         this.failedCause = null;
+        this.activeRequirementContract = null;
         this.EvaluateCallCandidates(ref evaluation, candidates);
         return this.ClassifySelection(ref evaluation);
     }
@@ -408,47 +415,32 @@ public sealed partial class Binding
         var callee = evaluation.Callee;
         var scope = evaluation.Scope;
         var index = evaluation.Count++;
-        var operations = evaluation.Operations.AsSpan(index * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(index);
         operations.Clear();
-        evaluation.Rows.AsSpan(index * call.ArgumentNodes.Count, call.ArgumentNodes.Count).Clear(); // F1: each candidate writes its own root rows.
-        evaluation.ChildSlices[(index * 2) + 1] = -1; // R3: composed at the candidate's first solve.
+        evaluation.RowsOf(index).Clear(); // F1: each candidate writes its own root rows.
+        evaluation.ChildSliceOf(index)[1] = -1; // R3: composed at the candidate's first solve.
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
-        var state = CandidateApplicability.Inapplicable;
         (this.premiseReadsSplit, this.refusedOnSplit) = (false, false);
         if (this.MeasureCallInference)
         {
             this.inferenceMappings++;
         }
 
-        var argumentMap = MapCallArguments(call, function, this.CallReceiver(evaluation.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not null, evaluation.Mapping, evaluation.Used);
-        var defaultsUsed = argumentMap.DefaultsUsed;
-        ClosureReceiverRefutation? closureReceiver = null;
-        var unsolved = false;
-        var independentRejection = false;
-        var premiseUnknown = false;
-        ReferenceConstraintFailure? rejectedConstraint = null;
-        var accessible = evaluation.Evaluated[index].Accessible; // Decided once, and the header bound, before the set was measured.
-        if (accessible)
+        // The candidate's row, written once, here: RentCandidates wrote its Symbol and Accessible (decided once, and the header bound,
+        // before the set was measured), the trial writes its verdict and facts (TryCandidate). An inaccessible candidate is not tried:
+        // its row keeps the rent's cleared State (Inapplicable) and the mapping's defaults, the other trial members default.
+        ref var row = ref evaluation.Evaluated[index];
+        var mapping = evaluation.MappingOf(index); // Written here only; every later pass reads it.
+        row.ArgumentMap = MapCallArguments(call, function, this.CallReceiver(evaluation.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not null, mapping, evaluation.Used);
+        row.DefaultsUsed = row.ArgumentMap.DefaultsUsed;
+        if (row.Accessible)
         {
             if (function.IsConstructor)
             {
-                declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, evaluation.Mapping, evaluation.Expected) : null;
+                declaringType = row.ArgumentMap.Valid ? this.ConstructorType(call, function, scope, mapping, evaluation.Expected) : null;
             }
 
-            this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
-            state = this.TryCandidate(
-                this.Solution(evaluation, index, function, declaringType),
-                evaluation.Mapping,
-                argumentMap,
-                evaluation.Expected,
-                operations,
-                out defaultsUsed,
-                out unsolved,
-                out closureReceiver,
-                out independentRejection,
-                out rejectedConstraint,
-                out premiseUnknown);
-            this.activeRequirementContract = null;
+            this.TryCandidate(this.Solution(evaluation, index, function, declaringType), evaluation.Expected, operations, ref row);
         }
 
         if (function.IsConstructor && declaringType is not null)
@@ -457,29 +449,13 @@ public sealed partial class Binding
         }
 
         // The refusal the trial held (the owner's O-335 (a)): settled only if this candidate is selected (Binding.Calls).
-        var held = this.TakeTrialRefusal(call);
+        var state = row.State;
         var checkedPart = this.TakeTrialChecked(call); // SPEC 10.5.1: the reason of an inapplicable candidate only.
-        ref var row = ref evaluation.Evaluated[index]; // Its Symbol and Accessible are RentCandidates'.
-        row.State = state;
         row.DeclaringType = declaringType;
-        row.DefaultsUsed = defaultsUsed;
-        row.Unsolved = unsolved;
-        row.ClosureReceiver = closureReceiver;
-        row.ArgumentMap = argumentMap;
-        row.StableConstruction = function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations);
-        row.IndependentRejection = independentRejection;
-        row.ConstraintFailure = rejectedConstraint;
-        row.PremiseUnknown = premiseUnknown;
+        row.HeldRefusal = this.TakeTrialRefusal(call);
+        row.StableConstruction = function.IsConstructor && StableConstructionPremises(state, row.Unsolved, declaringType, operations);
         row.PremiseReadsMark = this.premiseReadsSplit && HoldsMark(evaluation.Frames[index].Types); // DECISIONS BU-240 (G812 ruling 159)
-        row.HeldRefusal = held;
         row.CheckedFailure = state == CandidateApplicability.Inapplicable ? checkedPart : null;
-        var saved = evaluation.SavedCandidates != 0;
-        var argumentCount = call.ArgumentNodes.Count;
-        if (saved)
-        {
-            evaluation.Mapping.AsSpan(0, argumentCount).CopyTo(evaluation.AllMaps.AsSpan(index * argumentCount));
-        }
-
         // The trial's judgment is taken once, in the selection's frame (DECISIONS BU-86); an unformed split (BU-240) only of a candidate that
         // rests on it (Pending; TryCandidate's verdict), as an environment result.
         var judgment = this.TakeTrialPending(call);
@@ -495,9 +471,9 @@ public sealed partial class Binding
 
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
             evaluation.PendingCount++;
-            evaluation.PremisesOnly &= premiseUnknown;
-            evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Mapping) : null;
-            evaluation.ConstraintFailure ??= rejectedConstraint;
+            evaluation.PremisesOnly &= row.PremiseUnknown;
+            evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, mapping) : null;
+            evaluation.ConstraintFailure ??= row.ConstraintFailure;
             evaluation.PendingJudgment ??= judgment is { Kind: PendingJudgmentKind.EnvironmentResult } judged ? judged : null;
         }
 
@@ -511,11 +487,6 @@ public sealed partial class Binding
 
         evaluation.Applicable++;
         evaluation.Winner = index;
-        if (saved)
-        {
-            evaluation.Origins.AsSpan(0, evaluation.OriginSlots).CopyTo(evaluation.AllOrigins.AsSpan(index * evaluation.OriginSlots));
-            evaluation.Inputs.AsSpan(0, evaluation.InputSlots).CopyTo(evaluation.AllInputs.AsSpan(index * evaluation.InputSlots));
-        }
     }
 
     // The selection the evaluated candidates determine. A failed candidate declaration or signature leaves the selection resting on
@@ -578,9 +549,9 @@ public sealed partial class Binding
     // cases (SelectionOnSplit, G812 ruling 139): where it fails in every one the call keeps its own record, the canonical run's
     // classification, as BindCall records it with no evaluation to explain it (FailWaitingSelection). Each part awaiting the call is
     // judged and completed as a value call's part on the split is (CompleteNamedPartOnSplit; G812 rulings 134, 136, 143, 156), at the
-    // parameter the trial of the candidate the canonical run selects (SelectedCandidate) forms, as SlotSolution.Type forms a parameter:
-    // in each case of the bindings it reads, then in the canonical case, marked open where a split binding decides it (OpenForm); the
-    // call rests on the first that fails.
+    // parameter the first evaluation of the candidate the canonical run selects forms from its own columns, as SlotSolution.Type forms
+    // a parameter: in each case of the bindings it reads, then in the canonical case, marked open where a split binding decides it
+    // (OpenForm); the call rests on the first that fails.
     private BoundType? FailUnformedCall(ref CallEvaluation evaluation, bool fails, ProbedSelection canonical)
     {
         var call = evaluation.Call;
@@ -590,18 +561,20 @@ public sealed partial class Binding
                 : this.FailWaitingSelection(call, canonical.Kind == CallSelection.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         }
 
-        var shaped = canonical.Kind == CallSelection.Selected ? this.SelectedCandidate(ref evaluation, canonical.Winner) : -1;
+        // The canonical run's winner indexes this evaluation's candidates: both evaluate the call's one group (GroupOf) in RentCandidates'
+        // order, so it is below Count and names the same candidate, whose columns are its first evaluation's.
+        var shaped = canonical.Kind == CallSelection.Selected ? canonical.Winner : -1;
         Koto? completion = null;
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
             var part = call.ArgumentNodes[a];
-            if (shaped >= 0 && evaluation.Evaluated[shaped] is { Symbol.Declaration: FunctionKoto function } candidate && part.BoundType is null &&
-                this.KindOf(part) != PartKind.Typed && function.Parameters[evaluation.Mapping[a]].Type.BoundType is { } declared)
+            if (shaped >= 0 && evaluation.Evaluated[shaped] is { Symbol.Declaration: FunctionKoto function } && part.BoundType is null &&
+                this.KindOf(part) != PartKind.Typed && function.Parameters[evaluation.MappingOf(shaped)[a]].Type.BoundType is { } declared)
             {
                 completion ??= this.CompleteNamedPartOnSplit(
                     (call, a, declared, evaluation.Scope),
-                    (function, Frame: evaluation.Frames[shaped], evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType),
-                    static (binding, s, type) => binding.CallType(type, s.function, s.Frame.Types, s.Scope, s.Self, s.Origins, s.Inputs, s.DeclaringType, s.Frame.Lengths));
+                    (Evaluation: evaluation, Candidate: shaped),
+                    static (binding, s, type) => binding.CallType(type, s.Evaluation.Evaluated[s.Candidate].Symbol!.Declaration, s.Evaluation.Frames[s.Candidate].Types, s.Evaluation.Scope, s.Evaluation.Self, s.Evaluation.OriginsOf(s.Candidate), s.Evaluation.InputsOf(s.Candidate), s.Evaluation.Evaluated[s.Candidate].DeclaringType, s.Evaluation.Frames[s.Candidate].Lengths));
             }
 
             if (ErasedByEveryCandidate(ref evaluation, a) is not { } erased)
@@ -675,33 +648,6 @@ public sealed partial class Binding
         return (!rests, canonical, only);
     }
 
-    // DECISIONS BU-240 (G812 rulings 134, 139): candidate `index` (the canonical run's winner), whose trial's frame and mapping the
-    // evaluation then holds: the last trial's, so a candidate evaluated before another is evaluated again alone, as a query that
-    // publishes nothing (BeginSelectionQuery); the evaluation's counts stay its selection's. -1 for none.
-    private int SelectedCandidate(ref CallEvaluation evaluation, int index)
-    {
-        if (index < 0 || index == evaluation.Count - 1)
-        {
-            return index;
-        }
-
-        var (query, saved, selection) = (this.BeginSelectionQuery(), evaluation, this.OpenFrame());
-        this.candidateTrials++;
-        try
-        {
-            evaluation.Count = index;
-            this.EvaluateCallCandidate(ref evaluation, saved.Evaluated[index].Symbol!);
-            return index;
-        }
-        finally
-        {
-            this.candidateTrials--;
-            this.CloseFrame(selection);
-            this.EndSelectionQuery(query);
-            evaluation = saved; // The rented frame, mapping and rows keep the trial's contents.
-        }
-    }
-
     // A named call's selection probed as a query (ProbeSelection): its classification and winner, the candidates that applied,
     // whether a pending candidate's Unknown premise reads the split, the premise-only comparison's winner (-1 none; null where the
     // selection is not Unproven by Unknown premises only) and whether the final winner returns an owner value.
@@ -743,8 +689,13 @@ public sealed partial class Binding
     }
 
     // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. Each candidate's
-    // slots are its own frame (Frames, R7-I2 c); the saved arrays retain each applicable candidate's mapping, Origins and input Origins
-    // only when several candidates are compared.
+    // slots are its own frame (Frames, R7-I2 c), and its argument operations, root rows, child slice, mapping, Origins and input Origins
+    // its own stride of the call's columns (OperationsOf, RowsOf, ChildSliceOf, MappingOf, OriginsOf, InputsOf: `Count x stride` arrays
+    // rented once per call and never grown, replaced or returned before the selection ends; one accessor each). Only a candidate's first
+    // evaluation (EvaluateCallCandidate) writes its mapping (MapCallArguments); the evaluation, the defaults' re-check, the waiting
+    // re-trial and the selected call's judgments solve into the candidate's own Origin strides (Solution), and CallType marks its input
+    // Origins Static there; the fixed re-check solves into its own scratch and copies the selected candidate's back
+    // (ValidateFixedConstruction).
     private struct CallEvaluation
     {
         internal InvocationKoto Call;
@@ -771,10 +722,6 @@ public sealed partial class Binding
         internal int PositionBase;
         internal int FrameCount;
         internal int OperationStride;
-        internal int SavedCandidates;
-        internal int[] AllMaps;
-        internal BoundOrigin[] AllOrigins;
-        internal BoundOrigin[] AllInputs;
         internal int OriginSlots;
         internal int InputSlots;
         internal int Count;
@@ -793,5 +740,25 @@ public sealed partial class Binding
         internal Koto? IncompleteSignature;
         internal Koto? FailedPendingSignature;
         internal Koto? InvalidDeclaration;
+
+        // Candidate `index`'s argument operations (stride OperationStride: each argument's, then the receiver's).
+        internal readonly Span<BoundArgumentOperation> OperationsOf(int index) => this.Operations.AsSpan(index * this.OperationStride, this.OperationStride);
+
+        // Candidate `index`'s root rows (stride: the call's argument count) and child slice (stride 2: start and count, R3).
+        internal readonly Span<PositionRow> RowsOf(int index) => this.Rows.AsSpan(index * this.Call.ArgumentNodes.Count, this.Call.ArgumentNodes.Count);
+
+        internal readonly Span<int> ChildSliceOf(int index) => this.ChildSlices.AsSpan(index * 2, 2);
+
+        // Candidate `index`'s argument-to-parameter mapping (stride: the call's argument count).
+        internal readonly Span<int> MappingOf(int index) => this.Mapping.AsSpan(index * this.Call.ArgumentNodes.Count, this.Call.ArgumentNodes.Count);
+
+        // Candidate `index`'s Origin slots and input Origins (strides OriginSlots and InputSlots; empty when the call solves no Origins).
+        internal readonly Span<BoundOrigin> OriginsOf(int index) => this.Origins.AsSpan(index * this.OriginSlots, this.OriginSlots);
+
+        internal readonly Span<BoundOrigin> InputsOf(int index) => this.Inputs.AsSpan(index * this.InputSlots, this.InputSlots);
+
+        // SPEC 8.4.1, 8.6.4: the requirement reference candidate `index` is tried and selected under: its requirement group's Contract,
+        // else a requirement callee's; the trial's input, read from the call (Solution's view, the selected call's plan).
+        internal readonly BindingSymbol? RequirementContractOf(int index) => this.Requirements?.Contracts[index] ?? (this.Callee as RequirementCalleeKoto)?.Contract;
     }
 }

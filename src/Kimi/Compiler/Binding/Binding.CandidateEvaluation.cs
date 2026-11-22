@@ -131,18 +131,18 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2.2, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
-    private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
+    private static bool ErasureIncomparable(in CallEvaluation evaluation)
     {
-        for (var a = 0; a < arguments; a++)
+        for (var a = 0; a < evaluation.Call.ArgumentNodes.Count; a++)
         {
             var erased = false;
             var direct = false;
-            for (var i = 0; i < candidates.Length; i++)
+            for (var i = 0; i < evaluation.Count; i++)
             {
-                if (candidates[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+                if (evaluation.Evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                 {
-                    erased |= operations[(i * stride) + a].Adaptation == ArgumentAdaptation.Erasure;
-                    direct |= operations[(i * stride) + a].Adaptation != ArgumentAdaptation.Erasure;
+                    erased |= evaluation.OperationsOf(i)[a].Adaptation == ArgumentAdaptation.Erasure;
+                    direct |= evaluation.OperationsOf(i)[a].Adaptation != ArgumentAdaptation.Erasure;
                 }
             }
 
@@ -354,10 +354,16 @@ public sealed partial class Binding
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
     // HeldRefusal: the refusal its trial read and held (TakeTrialRefusal), settled only if it is selected (SettleSelected).
-    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation the rest.
+    // Acquisition: the absent spelling of a bare Place that alone kept an otherwise Applicable trial from applying (SPEC 15.1.5), read by
+    // a NoneApplicable selection through LastAcquisition.
+    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation (EvaluateCallCandidate)
+    // ArgumentMap and the facts after the trial, the trial (TryCandidate) its verdict and facts. A continuation's trial (CheckDefaulted,
+    // the waiting re-trial, the fixed re-check) writes a local row; CheckDefaulted takes back only State and Unsolved.
     private record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false, bool PremiseReadsMark = false)
     {
         internal Refusal? HeldRefusal { get; set; }
+
+        internal AcquisitionFailure? Acquisition { get; set; }
 
         // SPEC 10.5.1: an inapplicable candidate's failed check of a part against its expected Type (TakeTrialChecked).
         internal CheckedPartFailure? CheckedFailure { get; set; }
