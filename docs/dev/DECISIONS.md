@@ -16213,6 +16213,13 @@ resumed by R4-M86 (2026-10-20).
     `ref/U` (`AmbiguousBinding_Kd` until then, STATUS) and a join's waiting source completed at the step-1 Type (jw1, jw1-1, n6,
     n6-r, q1, x.i3-gen); K's R10-N1 (an `s/T` result whose `s` evidence binds to `owner` while `T` stays unbound) has no row yet.
     PLAN G443 (item (1), the Tuple step-3 path, BU-156's interim), G954, G957, G973, G977-G980 and R1e.
+  - Amended by the owner's O-492 (a) (2026-11-22, verbatim 「O-492 a」; D-1072, SPEC 10.5.1 bullet 2), for AF-3b: a nested call
+    that is ambiguous at a remaining candidate's expected Type does not check there, so that candidate is inapplicable, one rule
+    with a nested call none of whose candidates fits there (P5-3: `ko2(b@ref, pick(1))` selects `ko2` and returns 1, where dev
+    gives `AmbiguousBinding_Kd` at `ko2(`: both `pick` fit `ko2<T>`'s `ref/Option<T>` by structure and neither is better). So a
+    nested call ambiguous at every remaining candidate's expected Type leaves no applicable candidate (`take(q(1))` with
+    `q(x: i32) -> i64`, `q(x: i64) -> i64` and `take(value: i64)`), and `two(1, pick(1))` with `two<T>(first: T, second:
+    Option<T>)` is invalid, since no default breaks the ambiguity (SPEC 10.2.1); `two(1@i32, pick(1))` is valid.
 - **BU-225 What an abstract part hides is writable wherever an input's walk meets it (PLAN G963)** (2026-11-18; Front, Binding; Q17
   class 1; Major, an acceptance mover; design review REVISE (B1), re-check ACCEPT (F's G963 ruling 6); implementation review ACCEPT;
   the Middle's RP17 consent C-386 after F2's fix; W-256) SPEC 15.6.4 (the abstract-Type sentence, route 2), 5.7 Calls. Supersedes
@@ -28588,7 +28595,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     expectedSha256, hashMatched}], error?, seconds}`, written first as `status "incomplete"`; at the end "passed", or "failed"
     with `error` for the toolchain's failure or a cancellation; a fault leaves it incomplete. Gone from it: `root`, `llvmBin`,
     `tools`, `toolchainVerification`, `reportedVersionsMatched`, `unverifiedToolchain`, `backendSha256`, `kernel32`. The build
-    record's three verification fields stay (T's ruling R3; PLAN G1227).
+    record's three verification fields went in G1227 (934a5e1d9): its head is `status`, `compilerVersion`, `llvmVersion`; the
+    backend candidate's `reportedVersionsMatched` and `unverifiedToolchain` (`build.ps1`, read by setup) stay, the candidate's
+    tool pinning.
   - **Reading (R4):** Q3 (a)'s "the embedded libraries' hashes against the catalog" includes kernel32's definition and excludes
     its content inspection (`llvm-dlltool -I`, `llvm-readobj`), which needs a tool: the content is a property of the adopted
     bytes, inspected when they are adopted (setup's `kernel32.ps1`, `test-kernel32.ps1`). B6a's design §6, "B6b's verify keeps

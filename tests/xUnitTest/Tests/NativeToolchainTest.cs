@@ -74,6 +74,8 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
+    // The invalidation is the record's incomplete state: its status and the compiler's and LLVM's versions, and no member more (PLAN
+    // G1227: the three constant toolchain-verification members are gone).
     [Fact]
     public async Task ManifestFailureInvalidatesPreviousSuccessBeforeLoadingTools()
     {
@@ -86,6 +88,7 @@ public sealed class NativeToolchainTest : IDisposable
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("IR/manifest SHA-256", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("status,compilerVersion,llvmVersion", string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
         Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
     }
@@ -600,8 +603,8 @@ public sealed class NativeToolchainTest : IDisposable
 
     // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
     // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member;
-    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. On the
-    // installed toolchain.
+    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. The success
+    // record's members are exactly these (PLAN G1227: no toolchain-verification constants). On the installed toolchain.
     [Fact]
     public async Task ABuildLinksTheCompilersSuppliesAsStagedSnapshots()
     {
@@ -610,7 +613,9 @@ public sealed class NativeToolchainTest : IDisposable
         var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
-            Assert.False(record.RootElement.TryGetProperty("kernel32", out _));
+            Assert.Equal(
+                "status,compilerVersion,llvmVersion,tools,irSha256,optimization,libraries,executable,executableSha256,objectUndefinedSymbols",
+                string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
             Assert.Equal(
                 staged.Select(x => x.Name + " " + NativeToolchain.Redact(x.Path, this.directory) + " " + x.Sha256),
                 record.RootElement.GetProperty("libraries").EnumerateArray().Select(static x =>

@@ -1744,3 +1744,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   §11: the question before B9 is answered, and one before B10's units is added. Decision 22's "not started" for the OS features
   is superseded by decision 35; no other decision changes. No SPEC or IMPL text: B9's units carry it, each with an independent
   review. Nothing frozen.
+- Revision 11 (2026-11-22, the owner's answer to O-489 in T's dialog, verbatim 「O-489 全てa」; T's D-1068): §2 gains decisions
+  36-43 (B10's forms: fixed intrinsics in a Kimi group `X86`, one per instruction, general inline assembly an Appendix D line; one
+  family id `Instruction` over a Backend table `InstructionRows`; privileged `X86` members only where `os == "none"`;
+  `Raw.readVolatile`/`writeVolatile` for `PrimitiveInteger` on every target; interrupt entries through the Contracts
+  `X86.InterruptHandler`/`ErrorCodeHandler` and an entry intrinsic returning an `x86_intrcc` thunk's code address; sections
+  deferred, with an Appendix D line; the order OSF2, OSF1a before B9h, OSF1b and OSF3a, OSF3b after B9h; `IntrinsicId`'s limit
+  28 → 32, each raised by its own unit, the documents listed, no download); §7: B10's row names decisions 35-43 and its units
+  OSF2, OSF1a, OSF1b, OSF3a and OSF3b; §11: the question before B10's units is answered. No other decision changes. No SPEC, IMPL
+  or COMPILER_ARCHITECTURE text: each OSF unit carries its own, with K's independent review. Nothing frozen.
