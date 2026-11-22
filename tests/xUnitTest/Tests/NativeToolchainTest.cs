@@ -314,6 +314,59 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Ir));
     }
 
+    // IMPL 20.3, 20.3.1 (PLAN G1256): run --no-build runs the latest build only when its record names the project's input, the selected
+    // .kimiproj or .kimi file, compared as Windows compares paths. A.kimi, A.kimiproj and B.kimiproj (whose OutputPath is A's) share one
+    // record. A row builds one input (a source build, or build --Manifest of its emitted pair, whose manifest names it), or as an earlier
+    // compiler did (the record without the member), then runs another: it runs, or the refusal names the record's input. Before G1256
+    // every row ran (a record named no input).
+    [Theory]
+    [InlineData("build", "A.kimi", "A.kimiproj", "A.kimi")] // IMPL 20.3.1's example: the record names A.kimi.
+    [InlineData("build", "A.kimiproj", "A.kimi", "A.kimiproj")]
+    [InlineData("build", "B.kimiproj", "A.kimiproj", "B.kimiproj")]
+    [InlineData("build", "A.kimi", "A.kimi", null)]
+    [InlineData("build", "A.kimiproj", "A.kimiproj", null)]
+    [InlineData("build", "a.kimi", "A.KIMI", null)] // One file in another case (G1202's ruling Q3).
+    [InlineData("manifest", "A.kimiproj", "A.kimiproj", null)]
+    [InlineData("manifest", "A.kimiproj", "A.kimi", "A.kimiproj")]
+    [InlineData("earlier", "A.kimi", "A.kimi", "")]
+    public async Task ARunWithoutBuildRunsOnlyTheBuildOfItsInput(string how, string built, string run, string? recorded)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var settings = $"Targets={{\"{WindowsProfile.Target}\"}}";
+        File.WriteAllText(Path.Combine(this.directory, "A.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
+        File.WriteAllText(Path.Combine(this.directory, "A.kimiproj"), settings);
+        File.WriteAllText(Path.Combine(this.directory, "B.kimiproj"), settings + $" OutputPath=\"bin/{WindowsProfile.Target}/A.ll\"");
+        var first = this.Load(built);
+        var paths = ArtifactPaths.Create(first);
+        if (how == "manifest")
+        {
+            Assert.True(await first.Generate(TestContext.Current.CancellationToken), this.console.Text);
+            await NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken);
+        }
+        else
+        {
+            Assert.True(await first.Build(TestContext.Current.CancellationToken), this.console.Text);
+        }
+
+        if (how == "earlier")
+        {
+            var record = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Record))!.AsObject();
+            Assert.True(record.Remove("input"));
+            File.WriteAllText(paths.Record, record.ToJsonString());
+        }
+
+        var second = this.Load(run);
+        if (recorded is null)
+        {
+            Assert.Equal(0, await second.Run(TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            var names = recorded.Length == 0 ? "no input" : "another input: " + Path.Combine(this.directory, recorded);
+            await this.AssertRunRefused(second, $"The latest build record names {names}. Run 'kimi build' first.");
+        }
+    }
+
     // PLAN G983 (form J): a build record that is not the JSON its reader expects (a field missing or of another kind, or not an object)
     // records no successful build of this executable, so the run is refused with that reason (IMPL 20.3.2), never a JSON accessor's
     // failure printed as the toolchain's.
@@ -718,7 +771,7 @@ public sealed class NativeToolchainTest : IDisposable
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
             Assert.Equal(
-                "status,compilerVersion,llvmVersion,tools,irSha256,optimization,libraries,executable,executableSha256,objectUndefinedSymbols",
+                "status,compilerVersion,llvmVersion,input,tools,irSha256,optimization,libraries,executable,executableSha256,objectUndefinedSymbols",
                 string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
             Assert.Equal(
                 staged.Select(x => x.Name + " " + NativeToolchain.Redact(x.Path, this.directory) + " " + x.Sha256),
@@ -887,6 +940,19 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), $"::Kimi.Console.writeLine(\"{text}\")");
         Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
+        return project;
+    }
+
+    // A selected input in the test's directory, as resolution gives it: a .kimi file's implicit project, or a project file's project.
+    private Project Load(string input)
+    {
+        var path = Path.Combine(this.directory, input);
+        if (input.EndsWith(".kimi", StringComparison.OrdinalIgnoreCase))
+        {
+            return Project.CreateFromSource(new Kimigayo(this.console), path, new KimiOptions());
+        }
+
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, path, out var project));
         return project;
     }
 

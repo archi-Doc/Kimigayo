@@ -75,6 +75,13 @@ public static class EmissionArtifacts
                     json.WriteStartObject();
                     LinkManifest.WriteFixed(json);
                     json.WriteString("optimization", settings.Optimization);
+                    if (compilation.Project.Input is { } input)
+                    {
+                        // The pair names its input, which its build's record names (IMPL 20.3.1), relative to the output directory as
+                        // the manifest's other paths are.
+                        json.WriteString("input", Path.GetRelativePath(outputDirectory, input));
+                    }
+
                     WriteOutput(json, Path.GetFileName(destination), hash, module);
                     WriteLibraries(json, foreign, directory, outputDirectory);
                     json.WriteEndObject();
