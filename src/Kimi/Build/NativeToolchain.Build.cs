@@ -378,9 +378,10 @@ internal static partial class NativeToolchain
         // record's linked state, naming the private file's hash, which Run's commit publishes before the file.
         private void Link(Tatara tatara, string obj, List<string> libraries, string undefined, string executable)
         {
-            var link = new string[libraries.Count + 6];
-            link[0] = obj;
-            libraries.CopyTo(link, 1);
+            var link = new string[libraries.Count + 7];
+            link[0] = "lld-link";
+            link[1] = obj;
+            libraries.CopyTo(link, 2);
             link[^5] = "/entry:" + TargetProfile.Windows.EntrySymbol;
             link[^4] = "/subsystem:" + TargetProfile.Windows.Subsystem;
             link[^3] = "/nodefaultlib";

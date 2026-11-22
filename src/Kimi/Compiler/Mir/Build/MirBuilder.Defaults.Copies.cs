@@ -70,8 +70,9 @@ internal sealed partial class MirBuilder
         return true;
     }
 
-    // A copy's keyed view (SPEC 8.15.3; PLAN G597): its key, in the call's instance, decides its form again (First), so a closed one is
-    // unkeyed; the displaced form's temp is the copy's, at the view's location and live for its two statements.
+    // A copy's keyed view (SPEC 8.15.3; PLAN G597), or Storage.viewStart's (Form): its key, in the call's instance, decides its form
+    // again (First), so a closed one is unkeyed; the displaced form's temp is the copy's, at the view's location and live for its two
+    // statements.
     private void Refirst(in MirStatement view, in MirOperand start, BoundType key)
     {
         var starts = MirTypes.StartsAtStorage(key);

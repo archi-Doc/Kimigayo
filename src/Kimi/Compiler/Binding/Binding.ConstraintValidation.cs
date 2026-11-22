@@ -542,14 +542,21 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
             }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructionTargets.Contains(node) &&
-                (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
+            // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names. A check that
+            // recorded at a node first keeps its record.
+            if (this.JudgedOccurrence(node) is { Symbol.Declaration: DeclarationContainerKoto container } type)
             {
+                var written = this.OccurrenceTypeNode(node);
                 var scope = this.ConstraintScope(node);
-                var use = this.VerdictUse(node); // A synthesized call's Type is its consumer's verdict (PLAN G214).
+                var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
                 var frame = this.BeginConsultation(use);
                 var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
                 this.RequireConstraintInFrame(use, result, mode, frame);
+                if (result != ConstraintProof.Proven)
+                {
+                    this.RestLayersOnType(node, written);
+                }
+
                 if (node.BindingState == BindingState.Invalid)
                 {
                     // Invalid type formation in a clause must not remain available as evidence.
@@ -587,6 +594,59 @@ public sealed partial class Binding
         }
 
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
+    }
+
+    // R7-V1c (SPEC 8.3.1, 8.6.3, 23.1.2; F's V1c rulings 3-4): the Type ValidateConstraintUses judges at `node`, or null. A layer that
+    // forms its operand's Type (SameTypeOperand) is that operand's occurrence, so the walk judges a written occurrence once: at its
+    // outermost such layer with a constructed Type that has clauses. A layer forming another Type, or none (a wrapper whose
+    // annotation failed), is not the occurrence below it, which is judged at its own node.
+    private BoundType? JudgedOccurrence(Koto node)
+        => this.ConstrainedType(node) is { } type && !(node.Parent is { } layer && ReferenceEquals(this.SameTypeOperand(layer), node) && this.ConstrainedType(layer) is not null) ? type : null;
+
+    // R7-V1c (F's V1c ruling 4): the operand of a layer of Type syntax whose formed Type is its one Type component's, by the identity
+    // judge (SameCompleteType: a transparent wrapper, parentheses, an explicit `owner/`, any such layer alike), else null; a layer
+    // forming another Type (`ref/`, `uniq/`, a pair layer, `T?`) has none.
+    private Koto? SameTypeOperand(Koto node)
+        => node is TypeKoto { TypeComponentCount: 1, BoundType: { } formed } layer && layer.TypeComponent(0) is { BoundType: { } type } operand && this.SameCompleteType(formed, type) ? operand : null;
+
+    // The Type node of the occurrence judged at `node`: the operand below every layer that forms its operand's Type.
+    private Koto OccurrenceTypeNode(Koto node)
+    {
+        while (this.SameTypeOperand(node) is { } operand)
+        {
+            node = operand;
+        }
+
+        return node;
+    }
+
+    private BoundType? ConstrainedType(Koto node)
+        => node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto { ConstraintNodes.Count: not 0 } } type &&
+            !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) ? type : null;
+
+    // SPEC 23.1.2 (rule W): the layers of a written Type occurrence from its judged node down to its Type node `written` are that Type;
+    // when the Type's judgment leaves it failed or unproven, a layer with no failure of its own rests on it (RestOnPart) or takes its
+    // unproven state, so a reader of the declaration's written Type reads a failed Type.
+    private void RestLayersOnType(Koto judged, Koto written)
+    {
+        var state = this.RecordedState(written);
+        for (var layer = written; state != BindingState.Resolved && !ReferenceEquals(layer, judged);)
+        {
+            layer = layer.Parent!;
+            if (this.RecordedState(layer) == BindingState.Invalid)
+            {
+                continue;
+            }
+
+            if (state == BindingState.Invalid)
+            {
+                this.RestOnPart(layer, written);
+            }
+            else
+            {
+                this.SetRecordedState(layer, state);
+            }
+        }
     }
 
     // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and

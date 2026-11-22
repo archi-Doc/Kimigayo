@@ -224,10 +224,10 @@ public class ComponentSummaryTest
     [InlineData("rf3o-nouse", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", false, "", 0)]
     [InlineData("rf4o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n    let other: Array<S<R<Pair2<T>>>>\n", true, "", 0)]
     [InlineData("rf-mut-o", "struct R<T>\n    T is Owned\n    let next: Array<S<Q<Wrap<T>>>>\nstruct Q<U>\n    U is Owned\n    let back: Array<S<R<U>>>\n", true, "", 0)]
-    [InlineData("rf3", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", true, "", 4)]
-    [InlineData("rf3-nouse", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", false, "", 3)]
+    [InlineData("rf3", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", true, "", 3)]
+    [InlineData("rf3-nouse", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", false, "", 2)]
     [InlineData("regular", "struct R<T>\n    T is Owned\n    let next: Array<S<R<T>>>\n", true, "", 0)]
-    [InlineData("regular-n", "struct R<T>\n    let next: Array<S<R<T>>>\n", true, "", 4)]
+    [InlineData("regular-n", "struct R<T>\n    let next: Array<S<R<T>>>\n", true, "", 3)]
     public void AnInstanceFamilyIsFormedOnce(string id, string declarations, bool use, string limits, int unproven)
     {
         var c = CompilationTestHelper.ParseSuccess(Prelude + "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\n" + declarations +
@@ -247,12 +247,12 @@ public class ComponentSummaryTest
     // resting on R's failed Field. The valid twin (T is K, Wrap is K) has no record: its use's instance is generated (R7-T1, the owner's
     // RQ12: the collector reads no storage verdict; before, the storage-nesting gap's located Unsupported_Kd at the use).
     [Theory]
-    [InlineData("g-mix-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15)]
-    [InlineData("g-mix2-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, Wrap<T>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15, "UnsatisfiedConstraint_Kd")] // O-344 (a): Wrap states no K, so `Wrap<T> is K` is Refuted
-    [InlineData("g-mix3-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
-    [InlineData("g-mix3-use-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 11, 3, 16)]
-    [InlineData("g-mix-ctl-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
-    [InlineData("g-mix-ctl0-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 10, 3, 0)]
+    [InlineData("g-mix-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 2, 15)]
+    [InlineData("g-mix2-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, Wrap<T>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 2, 15, "UnsatisfiedConstraint_Kd")] // O-344 (a): Wrap states no K, so `Wrap<T> is K` is Refuted
+    [InlineData("g-mix3-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 2, 0)]
+    [InlineData("g-mix3-use-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 11, 2, 16)]
+    [InlineData("g-mix-ctl-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 2, 0)]
+    [InlineData("g-mix-ctl0-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 10, 2, 0)]
     [InlineData("g-mix-r", MixValid, 12, 0, 17)]
     public void AnIndependentRecordBesideAnInstanceFamilyIsKept(string id, string source, int stored, int unproven, int use, string code = "UnprovenConstraint_Kd")
     {

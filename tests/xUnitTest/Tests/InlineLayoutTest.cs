@@ -16,10 +16,9 @@ public class InlineLayoutTest
     private const string BindingCycle = "contract C\n    associate Item\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct S\n    Self is C\n";
     private const string BorrowSlot = "contract C\n    associate Item\nstruct Box<T> {s}\n    T is C\n";
     private const string M2Records = "InvalidTypeFormation_Kd struct | UnsatisfiedConstraint_Kd B<Box<D>> | InvalidConstraint_Kd B<Box<D>> | " +
-        "InvalidConstraint_Kd Box<D> | InvalidConstraint_Kd Box<D>";
-
-    private const string T08Records = "InvalidTypeFormation_Kd struct | UnprovenConstraint_Kd B<Box<D>> | InvalidConstraint_Kd Box<D> | " +
         "InvalidConstraint_Kd Box<D>";
+
+    private const string T08Records = "InvalidTypeFormation_Kd struct | UnprovenConstraint_Kd B<Box<D>> | InvalidConstraint_Kd Box<D>";
 
     private const string Heir = "contract C\n    associate Item\nopen struct B<X>\n    Self is C\n    associate C.Item is X\n" +
         "struct Box<T>\n    T is C\n    public var next: T.(C).Item\n";
@@ -153,8 +152,9 @@ public class InlineLayoutTest
     // the heir's conformance, its base clause, once, used or not, through any number of bases, nested or transformed arguments, mutual or
     // generic heirs, a fixed array or a refinement; an heir whose binding closes no cycle is valid where it is stored. A base clause that
     // fails by its own checks keeps their records whether or not the cycle is there (m2: B's premise refuted; t08: SPEC 8.3.3; their twins
-    // store the projection in an Array): the record is written after them. A later writer at an inherited path's Use
-    // (ValidateBoundConformanceAgreement, SPEC 8.9.2: G<Z> and G<i32> disagree at Z = i32) still reports there.
+    // store the projection in an Array): the record is written after them. In m2 the base clause's own check (Unsatisfied) and the use
+    // walk's one judgment of the written B<Box<D>> (Invalid: it reads D's failed base) are two checks (R7-V1c). A later writer at an
+    // inherited path's Use (ValidateBoundConformanceAgreement, SPEC 8.9.2: G<Z> and G<i32> disagree at Z = i32) still reports there.
     [Theory]
     [InlineData(Heir + "struct D : B<i32>\nstruct U\n    public var b: Box<D>\n", "")]
     [InlineData(Heir + "struct D : B<Box<D>>\n", "InvalidInlineLayout_Kd B<Box<D>>")]

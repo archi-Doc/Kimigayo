@@ -288,8 +288,9 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // Whether a set a store puts in E holds a Loan's indirect marker: the Loan arrived there as no Copy of the borrow (Arrive decided it
-    // for E's receiving Type before the store's entry).
+    // Whether a location's E stores (eStores' Sure: the union of its non-resting entries, which Arrive formed) hold a Loan's indirect
+    // marker: the Loan arrived there as no Copy of the borrow (Arrive decided it for E's receiving Type before the store's entry). Marked
+    // adds a marker only to a set holding its element, so Sure holds it exactly when some entry at the location does.
     private bool MarkedIn(int set, int loan) => this.wCount > 0 && this.wOfLoan[loan] is var w and >= 0 && this.sets.Contains(set, this.Mark(w));
 
     // A W element's causes joined to the conflict's, each once.
