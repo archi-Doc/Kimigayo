@@ -854,6 +854,17 @@ public partial class PropertyBindingTest
         Assert.Equal(0, allocated);
     }
 
+    // SPEC 9.4, 11.3.2, 23.3 (R7-E2 E2-4b): an absent or inaccessible accessor at a use is located at the use and relates the Property
+    // (RecordAccess): a member access writing a getter-only Property (u4, the one related line dev's member-access arm gave) and an
+    // IdentifierName writing an opened Property's private setter (u5a: dev related nothing). The twin has the setter. Each row lists the
+    // Access records alone (a group's Property is Unsupported_Kd on its own, a boundary outside this rule).
+    [Theory]
+    [InlineData("struct S\n    public computed x: i32\n        get(self: ref/Self) -> i32 => 0\n    public init() => ()\nfunc f(s: uniq/S)\n    s.x = 1\n", "InaccessibleBinding_Kd 6:5 s.x, inaccessible declaration 'x'")] // u4
+    [InlineData("struct S\n    public computed x: i32\n        get(self: ref/Self) -> i32 => 0\n        set(self: uniq/Self, value: i32) -> () => ()\n    public init() => ()\nfunc f(s: uniq/S)\n    s.x = 1\n", "")] // u4t
+    [InlineData("alias G\ngroup G\n    public var x: i32 = 0\n        private set\nfunc f()\n    x = 1\n", "InaccessibleBinding_Kd 6:5 x, inaccessible declaration 'x'")] // u5a
+    public void AnAccessorAtAUseRelatesItsProperty(string source, string records)
+        => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n").Where(static x => x.StartsWith("InaccessibleBinding_Kd", StringComparison.Ordinal))));
+
     [Fact]
     public void RefinementsRetainPropertyOperationsByRequirementIdentity()
     {
