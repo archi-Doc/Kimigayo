@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Kimi;
 using Kimi.Build;
 using Kimi.Compiler;
@@ -82,15 +83,17 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // The tool control comparison (permanent): the archive's opt, llc and lld-link with P13's arguments against Tatara's operations,
-    // on the IR of the fixed rows or every corpus fixture, at O0 and O2; both links take the libraries the compiler carries.
+    // on the IR of the fixed rows or every corpus fixture, at O0 and O2; both links take the libraries the compiler carries and a
+    // generated row's program libraries. Every row is a program that links, so each must give equal products down to the executable
+    // (Run): a generated row is an Application linked with what its manifest names, the debug IR has the entry, and a corpus fixture
+    // is a native fixture, which the fixture runner links with the compiler's libraries and runs at both levels.
     [Fact]
     public async Task TataraEqualsTheTools()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var rows = Corpus is { } corpus
-            ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => ir + "|" + level)).ToArray()
-            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => ArtifactPaths.IrOf(m) + "|" + Level(m))
-                .Concat(Levels.Select(level => this.DebugIr() + "|" + level)).ToArray();
+            ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => new Row(ir, level, []))).ToArray()
+            : (await this.FixedRows()).Select(row => Generated(Manifest(row))).Concat(Levels.Select(level => new Row(this.DebugIr(), level, []))).ToArray();
         await Run(rows, row => this.CompareWithTools(row));
     }
 
@@ -104,7 +107,7 @@ public sealed class TataraExecutorTest : IDisposable
         File.WriteAllText(deep, "target triple = \"x86_64-pc-windows-msvc\"\n\n@g = global " + string.Concat(Enumerable.Repeat("[1 x ", 20000)) + "i32" + new string(']', 20000) + " zeroinitializer\n");
         foreach (var level in Levels)
         {
-            var outcome = await this.CompareWithTools(deep + "|" + level);
+            var outcome = await this.CompareWithTools(new Row(deep, level, []));
             Assert.True(outcome is "equal" or "equal failure\tlink", level + ": " + outcome);
         }
     }
@@ -152,7 +155,7 @@ public sealed class TataraExecutorTest : IDisposable
         var link = Assert.Throws<IOException>(() => tatara.Link(Context, [obj, Kernel32, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
         Assert.StartsWith("Tatara failed: link\n", link.Message, StringComparison.Ordinal);
         Assert.Contains("undefined symbol", link.Message, StringComparison.Ordinal);
-        tatara.Link(Context, LinkArguments(obj, Path.Combine(this.directory, "b.exe")));
+        tatara.Link(Context, LinkArguments(obj, Path.Combine(this.directory, "b.exe"), []));
         Assert.True(File.Exists(Path.Combine(this.directory, "b.exe")));
     }
 
@@ -175,7 +178,7 @@ public sealed class TataraExecutorTest : IDisposable
         File.WriteAllText(asm, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f() {\nentry:\n  %r = call i32 asm sideeffect \"mov $0, 1\", \"={notaregister}\"()\n  ret i32 %r\n}\n");
         Assert.Throws<IOException>(() => tatara.Emit(Context, asm, Path.Combine(this.directory, "asmerror.obj"), 0));
         tatara.Inspect(Context, obj);
-        tatara.Link(Context, LinkArguments(obj, Path.Combine(this.directory, "hello.exe")));
+        tatara.Link(Context, LinkArguments(obj, Path.Combine(this.directory, "hello.exe"), []));
         var module = NativeLibrary.Load("tatara", typeof(Tatara).Assembly, DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32);
         NativeLibrary.Free(module);
         Assert.Equal(before, FilterOwner());
@@ -214,14 +217,26 @@ public sealed class TataraExecutorTest : IDisposable
     // The pair's optimization, as its file names carry it (Name.link.json beside Name.ll; the level from the manifest's text).
     private static string Level(string manifest) => File.ReadAllText(manifest).Contains("\"optimization\": \"O0\"", StringComparison.Ordinal) ? "O0" : "O2";
 
+    // A generated row: its manifest's IR and optimization, and the program's libraries, the manifest's libraries entries with an input
+    // (a compiler's supply's entry has none, LinkManifest), each resolved against the manifest's folder as the native build does.
+    private static Row Generated(string manifest)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllBytes(manifest));
+        var folder = Path.GetDirectoryName(manifest)!;
+        string[] programs = [.. LinkManifest.Items(document.RootElement, "libraries").Select(x => LinkManifest.OptionalText(x, "libraries.input")).OfType<string>().Select(x => ArtifactFiles.ResolvePath(x, folder))];
+        return new(ArtifactPaths.IrOf(manifest), Level(manifest), programs);
+    }
+
     private static string Hash(string path) => File.Exists(path) ? ArtifactFiles.Hash(path) : "(none)";
 
-    private static string[] LinkArguments(string obj, string exe)
-        => [obj, Kernel32, Backend, "/entry:" + TargetProfile.Windows.EntrySymbol, "/subsystem:" + TargetProfile.Windows.Subsystem, "/nodefaultlib", "/Brepro", "/out:" + exe];
+    // Both links' arguments: the object, the program's libraries, the libraries the compiler carries, then P13's options.
+    private static string[] LinkArguments(string obj, string exe, string[] programs)
+        => [obj, .. programs, Kernel32, Backend, "/entry:" + TargetProfile.Windows.EntrySymbol, "/subsystem:" + TargetProfile.Windows.Subsystem, "/nodefaultlib", "/Brepro", "/out:" + exe];
 
     // Runs every row (in parallel for a corpus: the tools run concurrently, Tatara's calls are serialized by its lock), appends each
-    // row's outcome to the corpus's results.tsv and fails with every row that differs.
-    private static async Task Run(string[] rows, Func<string, Task<string>> compare)
+    // row's outcome to the corpus's results.tsv and fails with every row whose verdict is not "equal" (a cleanup's note beside it
+    // aside): an equal failure fails too, so a run that compares no executable fails (PLAN G1255).
+    private static async Task Run(Row[] rows, Func<Row, Task<string>> compare)
     {
         var differences = new ConcurrentBag<string>();
         var results = Corpus is { } corpus ? Path.Combine(corpus, "results.tsv") : null;
@@ -238,7 +253,7 @@ public sealed class TataraExecutorTest : IDisposable
                 outcome = "error\t" + ex.GetType().Name + ": " + ex.Message.ReplaceLineEndings(" ");
             }
 
-            if (!outcome.StartsWith("equal", StringComparison.Ordinal))
+            if (outcome.Split('\t')[0] != "equal")
             {
                 differences.Add(row + "\t" + outcome);
             }
@@ -370,8 +385,9 @@ public sealed class TataraExecutorTest : IDisposable
 
     // The steps, each run by the tools and by Tatara; a later step's input is that side's own product. The inspect step writes each
     // side's facts to inspected (tools, then Tatara).
-    private static IEnumerable<(string Step, Func<Task<string>> Tools, Action Tatara)> Steps(string ir, string level, string tools, string tatara, Tatara library, string[] inspected)
+    private static IEnumerable<(string Step, Func<Task<string>> Tools, Action Tatara)> Steps(Row row, string tools, string tatara, Tatara library, string[] inspected)
     {
+        var (ir, level, programs) = row;
         var (toolIr, tataraIr) = (ir, ir);
         if (level == "O2")
         {
@@ -386,22 +402,21 @@ public sealed class TataraExecutorTest : IDisposable
             inspected[0] = facts;
             return failure;
         }, () => inspected[1] = Facts(library.Inspect(Context, Path.Combine(tatara, "input.obj"))));
-        yield return ("link", () => Tool("lld-link", tools, LinkArguments(Path.Combine(tools, "input.obj"), Path.Combine(tools, "input.exe"))), () => library.Link(Context, LinkArguments(Path.Combine(tatara, "input.obj"), Path.Combine(tatara, "input.exe"))));
+        yield return ("link", () => Tool("lld-link", tools, LinkArguments(Path.Combine(tools, "input.obj"), Path.Combine(tools, "input.exe"), programs)), () => library.Link(Context, LinkArguments(Path.Combine(tatara, "input.obj"), Path.Combine(tatara, "input.exe"), programs)));
     }
 
     // One IR at one level: the tools (opt -S default<O2>, llc, llvm-nm and llvm-readobj, lld-link with P13's arguments) in one folder,
     // Tatara's optimize, emit, inspect and link in another, the same input file read by both; equal O2 text, object, object facts and
     // executable, or the same failing step with the same text (FailureText).
-    private async Task<string> CompareWithTools(string row)
+    private async Task<string> CompareWithTools(Row row)
     {
-        var (ir, level) = (row[..row.LastIndexOf('|')], row[(row.LastIndexOf('|') + 1)..]);
         var work = Path.Combine(this.directory, Guid.NewGuid().ToString("N"));
         var (tools, tatara) = (Path.Combine(work, "tools"), Path.Combine(work, "tatara"));
         Directory.CreateDirectory(tools);
         Directory.CreateDirectory(tatara);
         var inspected = new string[2];
         (string Step, string Text) toolFailure = (string.Empty, string.Empty), tataraFailure = (string.Empty, string.Empty);
-        foreach (var (step, run, call) in Steps(ir, level, tools, tatara, Tatara.Instance, inspected))
+        foreach (var (step, run, call) in Steps(row, tools, tatara, Tatara.Instance, inspected))
         {
             toolFailure = toolFailure.Step.Length == 0 && await run() is { Length: > 0 } failed ? (step, FailureText(failed, tools)) : toolFailure;
             try
@@ -429,14 +444,19 @@ public sealed class TataraExecutorTest : IDisposable
         return Clean(work, verdict);
     }
 
-    // C-424 N6: an IR with a CodeView compile unit (the debug information no fixed row's IR carries).
+    // C-424 N6: an IR with a CodeView compile unit (the debug information no fixed row's IR carries), and the entry, so it links.
     private string DebugIr()
     {
         var path = Path.Combine(this.directory, "debug.ll");
-        var ir = """
+        var ir = $$"""
             target triple = "x86_64-pc-windows-msvc"
 
             @g = global i32 7, align 4
+
+            define void @{{TargetProfile.Windows.EntrySymbol}}() {
+            entry:
+              ret void
+            }
 
             define i32 @f(i32 %x) !dbg !8 {
             entry:
@@ -600,5 +620,12 @@ public sealed class TataraExecutorTest : IDisposable
             Assert.Contains("Cannot select", later.Message, StringComparison.Ordinal);
             Assert.True(NativeToolchain.IsToolchainFailure(later));
         }
+    }
+
+    // A row of the tool control comparison: an IR, its level and its program's libraries, which both links take before the compiler's
+    // (none but a generated row's); named "<ir>|<level>" in a failure and in results.tsv.
+    private sealed record Row(string Ir, string Level, string[] Programs)
+    {
+        public override string ToString() => this.Ir + "|" + this.Level;
     }
 }

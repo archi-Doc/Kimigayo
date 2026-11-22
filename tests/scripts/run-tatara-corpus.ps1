@@ -66,7 +66,8 @@ if ($env:KIMI_TATARA_CORPUS) {
     $rows = @(Get-Content -LiteralPath (Join-Path $env:KIMI_TATARA_CORPUS 'results.tsv') -ErrorAction SilentlyContinue)
     $report += '## Corpus rows', '', '| Outcome | Rows |', '|---|---|'
     $report += $rows | ForEach-Object { ($_ -split "`t")[1] } | Group-Object | ForEach-Object { "| $($_.Name) | $($_.Count) |" }
+    # A row passes only as "equal" (TataraExecutorTest's Run): an equal failure is listed too.
     $report += '', '## Rows that differ or failed', ''
-    $report += $rows | Where-Object { ($_ -split "`t")[1] -notlike 'equal*' } | ForEach-Object { "- $_" }
+    $report += $rows | Where-Object { ($_ -split "`t")[1] -cne 'equal' } | ForEach-Object { "- $_" }
 }
 $report | Set-Content -LiteralPath (Join-Path $Output 'report.md') -Encoding utf8
