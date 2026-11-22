@@ -140,9 +140,13 @@ public class NormalizedConstraintProofBindingTest
     // entries and the requests' index over the library's: exact.
     // R7-C3 (B2', C7, design §13.1): f's identity facts are filed once (the agreement's input proofs read CollisionScope, one request
     // per proof), the Contract facts' readings under T (9): 89 -> 71.
+    // PLAN x41n (F's C2 ruling 321 (D), counted by a temporary probe): the direction check asks the rows of T in each of S's two
+    // conditional conformance scopes, a scope with premises of its own (`T is i32`, `T is string`); each request forms that view's entry
+    // with its one written pair and does not keep it, so disjointness's read forms it again as before: 77 -> 79. Its other seed requests
+    // (f's, Left's and Right's) form entries other readers form anyway (0).
     [Fact]
     public void AValidatorsReadIndexesItsViewOncePerRead()
-        => Assert.Equal(77, ClosureWork(Validated) - ClosureWork(string.Empty)); // dev 95 (89; 97 before f6324930d, below); R7-C3 C7 -18
+        => Assert.Equal(79, ClosureWork(Validated) - ClosureWork(string.Empty)); // dev 77 (95; 89; 97 before f6324930d, below); R7-C3 C7 -18; x41n +2
 
     // R7-C2c2 c2-3b at R7-C2e2-2's merge (merge review N1): a Callable fact is a row kind's fact, so a request's entry files it under its
     // subject and its class key, and a validator's read (no classes) under its subject alone. In f's view (`U is T`, whose class key is T)

@@ -121,6 +121,312 @@ public class ArchitectureRulesTest
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
         .Select(static x => (OpCode)x.GetValue(null)!).ToDictionary(static x => x.Value);
 
+    // R7-C3 C3c (TypeComparisonsOutsideTheJudgeStayAtTheirSites): the closed list of reasons an equality as written answers SPEC 8.2.3's
+    // question. kind: one side is a static Type, or both are primitives, a kind test of the other side as given; unchanged: a Type
+    // derived from another (rebuilt, substituted, peeled, completed, formed) against its input, so nothing changed; key: a key, memo,
+    // index, slot or set member (the judge's ClassKey or an interned key), no verdict; sufficient: "identical as written" answers yes and
+    // anything else asks the judge or a relation; formed: both sides passed a judgment's intake (ClassForm at J1-J4 and (ii), or the pair
+    // RelationWalk.Intake published); declared: declared shapes or published Types in their own terms (signatures, a declaration's Self,
+    // associated bindings, an overlap's two paths, a layout's parts: no form crosses views); representation: TyCtxt's interning and a
+    // Type's own equality, below every view; record: a record's or note's selection, no verdict; finding: an operand that is not what its
+    // owner publishes (a defect found, not fixed here), kept until its PLAN open issue's fix lands; the row's comment names that row.
+    private static readonly string[] TypeComparisonReasons = ["kind", "unchanged", "key", "sufficient", "formed", "declared", "representation", "record", "finding"];
+
+    // R7-C3 C3c: one row per site and reason, `File:Member=count reason`.
+    private static readonly string[] TypeComparisonSites =
+    [
+        "Binding.Access.cs:IsReceiverType=1 declared",
+        "Binding.Aliases.cs:PrepareAliases=1 declared",
+        "Binding.ArgumentKinds.Evidence.cs:InferBoundary=1 kind",
+        "Binding.ArgumentKinds.Evidence.cs:InferClosureHeader=1 kind",
+        "Binding.ArgumentKinds.Evidence.cs:InferComposite=3 unchanged",
+        "Binding.ArgumentKinds.Evidence.cs:InferPosition=1 kind",
+        "Binding.ArgumentKinds.Fit.cs:ProbeRangeBoundary=1 formed",
+        "Binding.ArgumentKinds.Fit.cs:ProbeRangeBoundary=1 kind",
+        "Binding.ArgumentKinds.Solution.cs:RestoreSlotValues=1 unchanged",
+        "Binding.ArgumentKinds.Wholes.cs:BindWholes=1 key",
+        "Binding.ArgumentKinds.Wholes.cs:HoldsNeverPart=1 kind",
+        "Binding.ArgumentKinds.Wholes.cs:SameBinding=1 sufficient",
+        "Binding.ArgumentOperations.cs:AdaptInput=2 declared",
+        "Binding.ArgumentOperations.cs:AdaptInput=2 kind",
+        "Binding.ArgumentOperations.cs:AdaptInput=2 sufficient",
+        "Binding.ArgumentOperations.cs:SharedReferenceThroughLayers=1 sufficient",
+        "Binding.ArithmeticContracts.cs:NotString=1 kind",
+        "Binding.ArithmeticOperators.cs:TryArithmetic=1 kind",
+        "Binding.ArithmeticOperators.cs:TryArithmetic=1 sufficient",
+        "Binding.ArrayInference.cs:ArrayElementEvidence=1 kind",
+        "Binding.ArrayInference.cs:BindContextualArrayLiteral=1 kind",
+        "Binding.ArrayInference.cs:CollectLiteralElementEvidence=1 kind",
+        "Binding.AsWritten.cs:Composed=3 unchanged",
+        "Binding.AsWritten.cs:Through=1 unchanged",
+        "Binding.AsWritten.cs:Written=1 unchanged",
+        "Binding.AsWritten.cs:WrittenEnvironment=1 unchanged",
+        "Binding.AsWritten.cs:WrittenProjection=1 kind",
+        "Binding.AsWritten.cs:WrittenProjection=2 unchanged",
+        "Binding.AssociatedFormation.cs:StoresTypeArgument=2 declared",
+        "Binding.AssociatedInference.cs:InferAssociatedTypes=1 declared",
+        "Binding.AssociatedInference.cs:JoinEvidence=4 sufficient",
+        "Binding.AssociatedOrigins.cs:AssociatedIdentityMatches=3 key",
+        "Binding.AssociatedOrigins.cs:CanonicalAssociatedOrigins=1 unchanged",
+        "Binding.AssociatedOrigins.cs:FactStates=1 key",
+        "Binding.AssociatedTypes.Specification.cs:ConformanceByReference=1 sufficient",
+        "Binding.AssociatedTypes.Specification.cs:PathsAgree=1 declared",
+        "Binding.AssociatedTypes.Specification.cs:UnconditionalBinding=1 declared",
+        "Binding.AssociatedTypes.cs:AssociatedIdentity=1 declared",
+        "Binding.AssociatedTypes.cs:AssociatedInPath=1 sufficient",
+        "Binding.AssociatedTypes.cs:PrepareAssociatedBindings=1 declared",
+        "Binding.AssociatedTypes.cs:ResolveAssociated=1 declared",
+        "Binding.Attributes.cs:HasNoCCounterpart=1 kind",
+        "Binding.Attributes.cs:ImportAbi=1 kind",
+        "Binding.BoundContracts.cs:BoundContractReference=2 declared",
+        "Binding.BoundContracts.cs:SubstituteRequirementContract=1 unchanged",
+        "Binding.CallRelations.cs:CollectCallRelations=1 sufficient",
+        "Binding.CallRelations.cs:JudgeCallFit=1 sufficient",
+        "Binding.CallSelection.Candidates.cs:TryCandidateCore=1 unchanged",
+        "Binding.CallSlots.cs:Infer=4 formed",
+        "Binding.CallSlots.cs:Infer=1 sufficient",
+        "Binding.CallSlots.cs:Infer=1 unchanged",
+        "Binding.CallableContracts.cs:CompareCallableContracts=1 declared",
+        "Binding.CallableEffects.cs:CheckCallableEffectUses=2 key",
+        "Binding.CallableEffects.cs:CollectCallableEffectUses=2 key",
+        "Binding.CallableSelection.cs:SameCallableSignature=1 sufficient",
+        "Binding.CallableSelection.cs:SameProofPremise=1 key",
+        "Binding.CallableSelection.cs:SelectValueCall=1 declared",
+        "Binding.CandidateEvaluation.cs:BetterCandidate=1 declared",
+        "Binding.Capabilities.cs:RequestCapability=1 key",
+        "Binding.Capabilities.cs:StructuralCapability=1 unchanged",
+        "Binding.Capabilities.cs:TryLeafCapability=2 kind",
+        "Binding.ClosureInstances.cs:ClosePartCore=1 unchanged",
+        "Binding.ClosureResults.cs:PublishedParts=1 unchanged",
+        "Binding.Closures.cs:ClosureSignatureFits=1 kind",
+        "Binding.Closures.cs:FailClosureHeader=1 kind",
+        "Binding.Comparisons.cs:CompleteComparison=9 kind",
+        "Binding.ComponentSummaries.cs:AddInstance=1 key",
+        "Binding.ComponentSummaries.cs:WalkProjection=1 key",
+        "Binding.ComponentSummaries.cs:WalkProjection=1 unchanged",
+        "Binding.ConditionalConformances.cs:DisjointConformanceFacts=1 declared",
+        "Binding.ConditionalConformances.cs:DisjointConformanceFacts=1 key",
+        "Binding.ConditionalConformances.cs:SameConformanceType=1 sufficient",
+        "Binding.ConstraintValidation.Proofs.cs:UnprovenInputRead=1 sufficient",
+        "Binding.ConstraintValidation.StepFive.cs:CheckOperationTypeConstraints=1 unchanged",
+        "Binding.ConstraintValidation.cs:SemanticsPremise=1 declared",
+        "Binding.Constraints.Model.cs:Equals=2 key",
+        "Binding.Constraints.Model.cs:NameUnprovenInput=1 key",
+        "Binding.Constraints.cs:JudgeConstraintAtom=1 unchanged",
+        "Binding.Constraints.cs:NormalizeProofConstraint=3 unchanged",
+        "Binding.Constraints.cs:NormalizeProofTypeCore=1 unchanged",
+        "Binding.ConstructorValidation.cs:StableConstructionPremises=1 sufficient",
+        "Binding.ConstructorValidation.cs:ValidateFixedConstruction=1 key",
+        "Binding.ConstructorValidation.cs:ValidateFixedConstruction=1 sufficient",
+        "Binding.ContractMatching.cs:ProveSpecification=1 declared",
+        "Binding.ContractSolver.Rows.cs:Add=1 key",
+        "Binding.ContractSolver.Rows.cs:DropClassKeys=1 key",
+        "Binding.ContractSolver.Rows.cs:EnumerateClosed=1 key",
+        "Binding.ContractSolver.Rows.cs:FirstRows=1 key",
+        "Binding.ContractSolver.Rows.cs:IndexWritten=1 key",
+        "Binding.ContractSolver.Rows.cs:PremiseRefines=1 key",
+        "Binding.ContractSolver.cs:EnumerateMates=2 key",
+        "Binding.ContractSolver.cs:SameClass=1 key",
+        "Binding.ContractSolver.cs:SpokenVerdict=1 key",
+        "Binding.ContractTypes.cs:ContractTypeCore=3 unchanged",
+        "Binding.ContractTypes.cs:Hop=1 key",
+        "Binding.ContractTypes.cs:InstantiatedContract=1 unchanged",
+        "Binding.ContractTypes.cs:WithConformingSelf=1 unchanged",
+        "Binding.Contracts.cs:ProveConformance=1 unchanged",
+        "Binding.ControlFlow.cs:EndArrival=1 kind",
+        "Binding.ControlFlow.cs:InfersUnit=1 kind",
+        "Binding.ControlFlow.cs:ReadTypeUnification=1 formed",
+        "Binding.ControlFlow.cs:SelectCommonType=2 kind",
+        "Binding.Conversions.Raw.cs:CompletePointerConversion=2 kind",
+        "Binding.Conversions.cs:BindConversion=12 formed",
+        "Binding.Conversions.cs:BindConversion=2 kind",
+        "Binding.Conversions.cs:IsNeverValue=1 kind",
+        "Binding.Conversions.cs:IsRuntimeRecordType=3 kind",
+        "Binding.Conversions.cs:ResultNeverEvidence=2 kind",
+        "Binding.Diagnostics.Conversions.cs:ReportOwnedConversion=1 record",
+        "Binding.Diagnostics.Operators.cs:ReportOperatorOperand=1 kind",
+        "Binding.Diagnostics.cs:FailedCallableClause=1 record",
+        "Binding.Diagnostics.cs:SharedObjectAuthorityMismatch=1 record",
+        "Binding.Dictionaries.cs:BindDictionaryLiteral=2 kind",
+        "Binding.Dictionaries.cs:TryDictionaryLiteralKey=1 kind",
+        "Binding.ElementAccess.cs:IsSynthesizedAccess=2 unchanged",
+        "Binding.Elements.cs:BindElement=3 kind",
+        "Binding.Elements.cs:BindElement=1 unchanged",
+        "Binding.Enums.cs:BindEnumConstruction=2 kind",
+        "Binding.ExplicitAdaptations.cs:BindSemanticsAdaptation=1 kind",
+        "Binding.ExplicitAdaptations.cs:BindSemanticsAdaptation=3 unchanged",
+        "Binding.ExplicitAdaptations.cs:CheckAdaptationRows=2 unchanged",
+        "Binding.Expressions.cs:BindAndAdaptNode=2 unchanged",
+        "Binding.Expressions.cs:BindNodeCore=1 kind",
+        "Binding.Expressions.cs:IsIntegerLiteralOnly=1 kind",
+        "Binding.Expressions.cs:NumericLiteralDefault=2 kind",
+        "Binding.FunctionReferences.cs:ExplicitReferenceAgrees=1 sufficient",
+        "Binding.FunctionReferences.cs:SolveOmittedOrigins=1 sufficient",
+        "Binding.FunctionTypes.cs:ConvertFunctionValue=1 sufficient",
+        "Binding.FunctionTypes.cs:SameExceptOmittedOrigins=1 sufficient",
+        "Binding.FunctionWitnesses.cs:ProjectRequirementReceiver=1 declared",
+        "Binding.Hir.Adjust.cs:DecidesAlike=2 key",
+        "Binding.Hir.Patterns.cs:Subject=1 unchanged",
+        "Binding.Hir.cs:Layers=1 unchanged",
+        "Binding.Imports.cs:AddImport=1 declared",
+        "Binding.InPlaceReads.cs:ElementRead=1 unchanged",
+        "Binding.InPlaceReads.cs:StringThroughLayers=2 kind",
+        "Binding.Indexers.cs:TryBindIndexer=1 unchanged",
+        "Binding.InferCtxt.cs:BindsDistinctTypes=1 formed",
+        "Binding.InheritedConformances.cs:InheritedSelfMismatchNote=1 record",
+        "Binding.InlineLayouts.cs:AddInlinePart=1 key",
+        "Binding.InlineLayouts.cs:WithComponent=1 unchanged",
+        "Binding.Interpolation.cs:BindTryWrite=1 kind",
+        "Binding.Interpolation.cs:FormattingCall=1 kind",
+        "Binding.Lengths.cs:EvaluateLength=1 kind",
+        "Binding.Lengths.cs:LengthTypeEvidence=1 kind",
+        "Binding.Lengths.cs:SameLengthSignature=1 declared",
+        "Binding.LibraryWitnesses.cs:WitnessGroup=6 kind",
+        "Binding.LibraryWitnesses.cs:WitnessReceiver=6 kind",
+        "Binding.Lints.cs:FailureTargetFits=2 record",
+        "Binding.Lints.cs:HasValue=2 kind",
+        "Binding.Materialization.cs:Materialization=1 unchanged",
+        "Binding.MemberLookup.cs:LookupMember=1 unchanged",
+        "Binding.NumericConversions.cs:BindBitConversion=3 kind",
+        "Binding.NumericConversions.cs:BindWrapConversion=1 kind",
+        "Binding.NumericConversions.cs:BitWidth=2 kind",
+        "Binding.NumericConversions.cs:TryFloatLiteral=1 kind",
+        "Binding.ObjectViews.cs:FindObjectErasure=1 declared",
+        "Binding.ObjectViews.cs:FindObjectErasure=2 key",
+        "Binding.ObjectViews.cs:ObjectUpcastFits=1 formed",
+        "Binding.ObjectViews.cs:RequireObjectErasure=1 sufficient",
+        "Binding.OpenOrigins.cs:FillOpenOrigins=1 sufficient",
+        "Binding.OpenOrigins.cs:FillOpenOrigins=1 unchanged",
+        "Binding.OpenOrigins.cs:OpenKnownOrigins=1 unchanged",
+        "Binding.OpenOrigins.cs:OpenSlotOrigins=1 unchanged",
+        "Binding.OpenOrigins.cs:PerCallStandIn=1 unchanged",
+        "Binding.OpenOrigins.cs:ReplaceOpenOrigins=1 unchanged",
+        "Binding.OperatorApplicability.cs:ArithmeticPairApplicability=2 kind",
+        "Binding.OperatorApplicability.cs:ComparisonApplicability=3 kind",
+        "Binding.OperatorApplicability.cs:NumericApplicability=1 kind",
+        "Binding.OperatorApplicability.cs:OperatorApplicabilityOf=3 kind",
+        "Binding.OperatorApplicability.cs:OperatorApplicabilityOf=1 unchanged",
+        "Binding.OperatorApplicability.cs:RightOperatorApplicability=1 kind",
+        "Binding.OperatorApplicability.cs:ShiftCountApplicability=1 kind",
+        "Binding.Operators.cs:BindBinary=1 kind",
+        "Binding.Operators.cs:CompleteBinary=2 kind",
+        "Binding.Operators.cs:NonNumericOperand=2 kind",
+        "Binding.OriginDiagnostics.cs:IsExcludedInputOrigin=1 record",
+        "Binding.OriginInheritance.cs:CompleteImplementationOrigins=2 formed",
+        "Binding.OriginRequirements.cs:PairOrdinal=1 key",
+        "Binding.PairCases.cs:CaseType=2 unchanged",
+        "Binding.PairCases.cs:PairSlotCondition=1 key",
+        "Binding.ParameterShapes.cs:SameBinding=1 sufficient",
+        "Binding.Patterns.cs:AcquireSubject=1 kind",
+        "Binding.Patterns.cs:BindPattern=1 kind",
+        "Binding.Patterns.cs:CalculateMatchCoverage=1 kind",
+        "Binding.Patterns.cs:ResolvePatternCase=1 declared",
+        "Binding.Patterns.cs:TryPatternLiteral=3 kind",
+        "Binding.Payloads.cs:TryPayloadProjection=1 sufficient",
+        "Binding.PlaceAuthority.cs:BorrowableTemporary=1 kind",
+        "Binding.Properties.cs:AccessorTypeMismatch=1 declared",
+        "Binding.Properties.cs:BindAccessorBody=1 kind",
+        "Binding.Properties.cs:ValidateAccessor=1 declared",
+        "Binding.PropertyMatching.cs:MatchPropertyOperation=3 declared",
+        "Binding.Ranges.cs:BindFromEnd=1 kind",
+        "Binding.Ranges.cs:BindPositionKey=1 kind",
+        "Binding.Ranges.cs:BindRangeValue=2 kind",
+        "Binding.Ranges.cs:DirectBoundary=1 kind",
+        "Binding.Ranges.cs:FitDirectBoundary=1 kind",
+        "Binding.Ranges.cs:FitsLiteralPosition=2 kind",
+        "Binding.Ranges.cs:FromEndOffset=1 kind",
+        "Binding.Ranges.cs:IndependentBoundary=1 kind",
+        "Binding.Ranges.cs:TryBindKeyedSelection=2 kind",
+        "Binding.RawOrigins.Borrows.cs:Join=1 key",
+        "Binding.RawOrigins.Borrows.cs:Mode=1 key",
+        "Binding.RawOrigins.cs:SameExceptRawOrigins=1 sufficient",
+        "Binding.ReadTypes.cs:ReadTypeReferent=1 unchanged",
+        "Binding.RecursiveContracts.cs:IsRecursive=2 declared",
+        "Binding.RecursiveContracts.cs:OfSearchSelf=1 declared",
+        "Binding.RequirementInstances.cs:InstanceContract=1 sufficient",
+        "Binding.ResultPremises.cs:DefinitionContractFits=1 kind",
+        "Binding.ResultPremises.cs:ProvesInputPremises=1 sufficient",
+        "Binding.ResultPremises.cs:SolveValueCallOrigins=1 kind",
+        "Binding.ResultPropagation.Parts.cs:AddResultPart=1 kind",
+        "Binding.ResultPropagation.Parts.cs:AddResults=1 kind",
+        "Binding.ResultPropagation.cs:BindWaitedSources=1 kind",
+        "Binding.ResultPropagation.cs:DefaultWaitingPart=1 kind",
+        "Binding.ResultPropagation.cs:FittedTupleType=1 kind",
+        "Binding.ResultPropagation.cs:LateResultType=1 kind",
+        "Binding.ResultPropagation.cs:LateType=1 kind",
+        "Binding.ResultPropagation.cs:PartAwaits=1 kind",
+        "Binding.ResultPropagation.cs:ResultCandidates=1 kind",
+        "Binding.ResultPropagation.cs:SourcesAwait=1 kind",
+        "Binding.ResultSurvey.cs:SourceEvidence=1 kind",
+        "Binding.Retention.Declared.cs:View=1 unchanged",
+        "Binding.Retention.Declared.cs:Viewed=1 unchanged",
+        "Binding.Retention.Rows.cs:Hands=1 key",
+        "Binding.Retention.Rows.cs:Takes=1 kind",
+        "Binding.Retention.Rows.cs:Writes=1 kind",
+        "Binding.Retention.Rows.cs:Written=1 key",
+        "Binding.Retention.Sources.cs:CaseFits=1 key",
+        "Binding.Retention.Sources.cs:Fits=1 declared",
+        "Binding.Retention.Storage.cs:Parts=1 key",
+        "Binding.Retention.Storage.cs:StorageWalk=1 key",
+        "Binding.Retention.cs:AddErasedSignature=2 kind",
+        "Binding.Retention.cs:Handed=2 key",
+        "Binding.RuntimeTypeTests.cs:BindRuntimeTypeTest=3 kind",
+        "Binding.SemanticsAdaptations.cs:AdaptedType=1 kind",
+        "Binding.SemanticsAdaptations.cs:FamilyApplication=2 unchanged",
+        "Binding.Sequences.cs:BeginIterationStep=1 formed",
+        "Binding.Sequences.cs:IterationEntry=1 unchanged",
+        "Binding.ShapeEvidence.cs:SameArgumentEvidence=1 kind",
+        "Binding.ShapeEvidence.cs:SameShapeBinding=1 sufficient",
+        "Binding.Signatures.cs:SignatureEquals=1 sufficient",
+        "Binding.SlotVariables.cs:SkeletonOf=1 unchanged",
+        "Binding.SlotVariables.cs:SlotValuesOf=1 unchanged",
+        "Binding.Specializations.cs:MayMatch=1 sufficient",
+        "Binding.Startup.cs:ValidMain=1 kind",
+        "Binding.Storage.cs:CompletedParts=2 unchanged",
+        "Binding.Storage.cs:MarkedParts=1 unchanged",
+        "Binding.Storage.cs:StoredOriginParts=1 unchanged",
+        "Binding.Structs.cs:PrepareTypeStorage=1 key",
+        "Binding.Try.cs:TryFailure=1 record",
+        "Binding.TypeArities.cs:AddTypeCandidates=1 declared",
+        "Binding.TypeOrigins.cs:OriginFormationSite=2 record",
+        "Binding.TypeRelations.Origins.cs:CommonOriginType=2 sufficient",
+        "Binding.TypeRelations.Walk.cs:Discharged=1 formed",
+        "Binding.TypeRelations.Walk.cs:FunctionFits=1 formed",
+        "Binding.TypeRelations.Walk.cs:Relate=1 formed",
+        "Binding.TypeRelations.cs:CompatibleResult=1 kind",
+        "Binding.TypeRelations.cs:CompatibleSignature=1 unchanged",
+        "Binding.TypeRelations.cs:SubstituteTypeCore=3 unchanged",
+        "Binding.Types.cs:BindTypeStructure=1 kind",
+        "Binding.ValueCalls.cs:AcquireValueCallee=1 unchanged",
+        "Binding.ValueCalls.cs:BindValueCall=1 kind",
+        "Binding.ValueCalls.cs:CallableClosure=1 unchanged",
+        "Binding.ValueCalls.cs:IndirectObjectCallee=1 unchanged",
+        "Binding.ValueCalls.cs:TryCallable=1 unchanged",
+        "Binding.ValueContext.cs:DiscardsFunctionBody=1 kind",
+        "Binding.ValueContext.cs:IsUnitType=1 kind",
+        "Binding.ValueFits.cs:CheckTypeUseCore=5 formed",
+        "Binding.ValueFits.cs:NeverFits=1 kind",
+        "Binding.VirtualOverrides.cs:SelectVirtualCall=2 declared",
+        "Binding.WellFormedPremises.cs:FirstMet=1 key",
+        "BindingModel.cs:Equals=1 representation",
+        "BindingModel.cs:IsScalar=2 kind",
+        "BindingModel.cs:IsWrappingInteger=1 representation",
+        "ExplicitAdaptationPlan.cs:Select=7 formed",
+        "ExplicitAdaptationPlan.cs:Select=2 kind",
+        "TyCtxt.Comparison.cs:OperatorCompares=1 kind",
+        "TyCtxt.Comparison.cs:OperatorTableRuns=2 kind",
+        "TyCtxt.Formatting.cs:FormatBound=5 kind",
+        "TyCtxt.Retention.Calls.cs:Retains=1 kind",
+        "TyCtxt.Substitutions.cs:HeldContext=1 representation",
+        "TyCtxt.Substitutions.cs:Intern=3 representation",
+        "TyCtxt.Substitutions.cs:Synthesized=1 representation",
+        "TyCtxt.cs:CoreContent=1 kind",
+        "TyCtxt.cs:Intern=2 representation",
+        "TyCtxt.cs:IsStoredReference=2 kind",
+        "TyCtxt.cs:PairBindings=1 representation",
+        "TyCtxt.cs:StorageMatches=1 representation",
+    ];
+
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Build", "*.cs", @"\bFail\(\$?""", 0)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
@@ -291,9 +597,10 @@ public class ArchitectureRulesTest
     // 315), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
     // bound-slot branch; J4's parameter side, a pattern's Type parameter that is no slot of the solve, a nested callee's enclosing
     // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
-    // input (Expressions.cs: the expected and the bound Type; Variables.cs, Conversions.cs, NumericConversions.cs); Keys.cs is
+    // input (Expressions.cs: the expected and the bound Type; Variables.cs; Conversions.cs: a conversion's written target,
+    // BindConversionTarget, PLAN G1240); Keys.cs is
     // ClassForm's own recursion. J2 reads the classes, no form. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
@@ -570,6 +877,118 @@ public class ArchitectureRulesTest
         Assert.All(
             calls.Where(static x => CalledName(x.Expression) is "InstantiatedContract" or "ContractConstraint"),
             static x => Assert.Equal("false", x.ArgumentList.Arguments[3].Expression.ToString()));
+    }
+
+    // R7-C3 C3c (RP6; DECISIONS R7-M24, R7-M63; the Front's C3 design §3 and §7 item 2): SPEC 8.2.3's identity of two Types in a view
+    // is the judge's (Binding.TypeIdentity: IdentityProven, IdentityRefuted, and ClassForm at the intakes of the judgments over
+    // identical Types). Types are interned, so every other comparison of two Types is an equality as written, which answers SPEC's
+    // question only where its reason holds. Each comparison outside the judge's files stays at its site under one reason
+    // (TypeComparisonReasons); a further site fails here until its row is reviewed. Read by the semantic model: `==`, `!=`,
+    // ReferenceEquals and Equals whose two operands are Types (a null literal is none), SameCompleteType, and a library search of Types
+    // for a Type (Contains, IndexOf, LastIndexOf, SequenceEqual, Remove), each counted at its file and member (a lambda's or local
+    // function's in its declaring member), a conditional access's too (`a?.Equals(b)`, `xs?.Contains(t)`). A candidate the model does
+    // not resolve (an error-typed operand, or an Equals, ReferenceEquals or search call without its method) fails here, naming its site.
+    // Not seen, so review reads them: a Type as a key (a Dictionary's or HashSet's lookup, a tuple's or record's generated equality), an
+    // equality through a comparer or an object-typed operand.
+    [Fact]
+    public void TypeComparisonsOutsideTheJudgeStayAtTheirSites()
+    {
+        var rows = TypeComparisonSites.Select(static x => x.Split(' ')).ToArray();
+        Assert.All(rows, static x => Assert.True(x.Length == 2 && TypeComparisonReasons.Contains(x[1]), $"A row names one reason: {string.Join(' ', x)}."));
+        var expected = rows.Select(static x => x[0].Split('=')).GroupBy(static x => x[0], StringComparer.Ordinal)
+            .Select(static x => $"{x.Key}={x.Sum(static y => int.Parse(y[1], System.Globalization.CultureInfo.InvariantCulture))}").Order(StringComparer.Ordinal).ToArray();
+        var sites = TypeComparisons();
+        var unresolved = sites.Where(static x => x.Unresolved).Select(static x => x.Site).Distinct().Order(StringComparer.Ordinal).ToArray();
+        Assert.True(unresolved.Length == 0, $"Candidate Type comparisons the semantic model does not resolve: {string.Join(";", unresolved)}.");
+        var actual = sites.GroupBy(static x => x.Site, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
+        Assert.True(
+            expected.SequenceEqual(actual),
+            $"Type comparisons outside the judge: new or changed {string.Join(";", actual.Except(expected))}; the rows say {string.Join(";", expected.Except(actual))}.");
+    }
+
+    // The comparisons of two Types in Binding outside the judge's files (Binding.TypeIdentity.cs and its Binding.TypeIdentity.<Concern>.cs),
+    // one `File:Member` per comparison, read by Roslyn's semantic model over the compiler's sources; Unresolved marks a candidate the model
+    // does not resolve (the source generators' members are absent, so an operand that is one is error-typed).
+    private static (string Site, bool Unresolved)[] TypeComparisons()
+    {
+        var options = new CSharpParseOptions(LanguageVersion.Preview);
+        var root = Path.GetFullPath(Path.Combine(Repository.Root, "src", "Kimi"));
+        var trees = SourceFiles("src/Kimi", "*.cs").Select(Path.GetFullPath)
+            .Where(x => Path.GetRelativePath(root, x).Split(Path.DirectorySeparatorChar)[0] is not ("bin" or "obj"))
+            .AsParallel().Select(x => CSharpSyntaxTree.ParseText(File.ReadAllText(x), options, x, cancellationToken: TestContext.Current.CancellationToken))
+            .Append(CSharpSyntaxTree.ParseText(
+                "global using System; global using System.Collections.Generic; global using System.IO; global using System.Linq; " +
+                "global using System.Net.Http; global using System.Threading; global using System.Threading.Tasks;",
+                options,
+                cancellationToken: TestContext.Current.CancellationToken))
+            .ToArray();
+        var kimi = typeof(Kimi.Compiler.Compilation).Assembly.Location;
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+            .Where(x => !string.Equals(x, kimi, StringComparison.OrdinalIgnoreCase)).Select(static x => MetadataReference.CreateFromFile(x));
+        var compilation = CSharpCompilation.Create(
+            "Kimi", trees, references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true, nullableContextOptions: NullableContextOptions.Enable));
+        var type = compilation.GetTypeByMetadataName("Kimi.Compiler.BoundType") ?? throw new InvalidOperationException("No BoundType.");
+        var binding = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Binding") + Path.DirectorySeparatorChar;
+        return trees.Where(x => x.FilePath.StartsWith(binding, StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(x.FilePath).StartsWith("Binding.TypeIdentity.", StringComparison.Ordinal))
+            .AsParallel().SelectMany(x => Sites(x, compilation.GetSemanticModel(x))).ToArray();
+
+        IEnumerable<(string Site, bool Unresolved)> Sites(SyntaxTree tree, SemanticModel model)
+        {
+            foreach (var node in tree.GetRoot(TestContext.Current.CancellationToken).DescendantNodes())
+            {
+                // Null: a candidate the model does not resolve.
+                bool? compares = node switch
+                {
+                    BinaryExpressionSyntax x when x.IsKind(SyntaxKind.EqualsExpression) || x.IsKind(SyntaxKind.NotEqualsExpression) => Types(x.Left, x.Right),
+                    InvocationExpressionSyntax { ArgumentList.Arguments: [var a, var b] } x when Name(x.Expression) is "ReferenceEquals" or "Equals" => Resolved(x, Types(a.Expression, b.Expression)),
+                    InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax or MemberBindingExpressionSyntax, ArgumentList.Arguments: [var a] } x when Name(x.Expression) is "Equals" =>
+                        Resolved(x, Types(Receiver(x.Expression), a.Expression)),
+                    InvocationExpressionSyntax x when Name(x.Expression) is "SameCompleteType" => true,
+                    InvocationExpressionSyntax x when Name(x.Expression) is "Contains" or "IndexOf" or "LastIndexOf" or "SequenceEqual" or "Remove" =>
+                        model.GetSymbolInfo(x, TestContext.Current.CancellationToken).Symbol is IMethodSymbol method
+                            ? !SymbolEqualityComparer.Default.Equals(method.ContainingAssembly, compilation.Assembly) && (method.TypeArguments.Any(Is) || method.ContainingType.TypeArguments.Any(Is) || method.Parameters.Any(p => Is(p.Type)))
+                            : null,
+                    _ => false,
+                };
+                if (compares is not false)
+                {
+                    yield return ($"{Path.GetFileName(tree.FilePath)}:{Member(node)}", compares is null);
+                }
+            }
+
+            bool? Types(ExpressionSyntax left, ExpressionSyntax right)
+            {
+                if (left.IsKind(SyntaxKind.NullLiteralExpression) || right.IsKind(SyntaxKind.NullLiteralExpression))
+                {
+                    return false;
+                }
+
+                var leftType = model.GetTypeInfo(left, TestContext.Current.CancellationToken).Type;
+                var rightType = model.GetTypeInfo(right, TestContext.Current.CancellationToken).Type;
+                return leftType is { TypeKind: TypeKind.Error } || rightType is { TypeKind: TypeKind.Error } ? null : Is(leftType) && Is(rightType);
+            }
+
+            bool? Resolved(InvocationExpressionSyntax call, bool? compares) => model.GetSymbolInfo(call, TestContext.Current.CancellationToken).Symbol is null ? null : compares;
+        }
+
+        bool Is(ITypeSymbol? candidate) => SymbolEqualityComparer.Default.Equals(candidate, type);
+
+        // A called name, a conditional access's member binding (`a?.Equals(b)`) included.
+        static string? Name(ExpressionSyntax called) => called is MemberBindingExpressionSyntax binding ? binding.Name.Identifier.Text : CalledName(called);
+
+        // An instance call's receiver: its member access's, or for a member binding its conditional access's.
+        static ExpressionSyntax Receiver(ExpressionSyntax called) => called is MemberAccessExpressionSyntax access ? access.Expression
+            : called.Ancestors().OfType<ConditionalAccessExpressionSyntax>().First(x => x.WhenNotNull.Span.Contains(called.Span)).Expression;
+
+        static string Member(SyntaxNode node) => node.Ancestors().FirstOrDefault(static x => x is BaseMethodDeclarationSyntax or BasePropertyDeclarationSyntax or BaseFieldDeclarationSyntax) switch
+        {
+            MethodDeclarationSyntax x => x.Identifier.Text,
+            ConstructorDeclarationSyntax x => x.Identifier.Text,
+            PropertyDeclarationSyntax x => x.Identifier.Text,
+            OperatorDeclarationSyntax x => "operator " + x.OperatorToken.Text,
+            BaseFieldDeclarationSyntax x => x.Declaration.Variables[0].Identifier.Text,
+            _ => "this[]",
+        };
     }
 
     // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).

@@ -64,7 +64,7 @@ public sealed class NativeToolchainTest : IDisposable
                 "kimi_backend " + catalog.RootElement.GetProperty("artifactSha256").GetString(),
             ],
             ToolchainIdentity.Supplies.Select(static x => x.Supply.Name + " " + x.Sha256));
-        foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", ToolchainIdentity.BackendFile }))
+        foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", "kimi_backend_windows_x64_v1.lib" }))
         {
             using var stream = supply.Open();
             using var bytes = new MemoryStream();
@@ -74,6 +74,8 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
+    // The invalidation is the record's incomplete state: its status and the compiler's and LLVM's versions, and no member more (PLAN
+    // G1227: the three constant toolchain-verification members are gone).
     [Fact]
     public async Task ManifestFailureInvalidatesPreviousSuccessBeforeLoadingTools()
     {
@@ -86,6 +88,7 @@ public sealed class NativeToolchainTest : IDisposable
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("IR/manifest SHA-256", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("status,compilerVersion,llvmVersion", string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
         Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
     }
@@ -532,6 +535,43 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(1, this.console.Text.Split("Waiting for another build: ").Length - 1);
     }
 
+    // A build that cannot begin (NativeToolchain.Begin; PLAN G1205, O-491 (d)): after a successful v1, a v2 whose first invalidation
+    // cannot replace the record (read-only, or held without delete sharing) or whose lock cannot be opened (read-only) fails saying that
+    // the build could not begin and that its record, which it names, keeps its last state; the record is v1's success (IMPL 20.3.2: "the
+    // earlier success when the first invalidation fails"), so run --no-build runs v1's executable. On the installed toolchain.
+    [Theory]
+    [InlineData("record read-only")]
+    [InlineData("record held")]
+    [InlineData("lock read-only")]
+    public async Task ABuildThatCannotBeginNamesItsRecordWhichKeepsItsLastState(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, paths, v1) = await this.BuildHello();
+        var record = File.ReadAllText(paths.Record);
+        var file = row == "lock read-only" ? Path.ChangeExtension(paths.Record, ".lock") : paths.Record;
+        var project = this.Hello("Hi");
+        using var held = row == "record held" ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
+        if (held is null)
+        {
+            File.SetAttributes(file, FileAttributes.ReadOnly);
+        }
+
+        try
+        {
+            Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        }
+        finally
+        {
+            held?.Dispose();
+            File.SetAttributes(file, FileAttributes.Normal); // Before Dispose deletes the directory.
+        }
+
+        Assert.Contains($"The build could not begin, so its record keeps its last state: {paths.Record}. ", this.console.Text, StringComparison.Ordinal);
+        Assert.Equal(record, File.ReadAllText(paths.Record));
+        Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        Assert.Equal(0, await project.Run(TestContext.Current.CancellationToken));
+    }
+
     // A build waits only while another build holds its record's lock (NativeToolchain.Begin; C-433 B2, N6): after a build in this process
     // whose invalidation failed (its record's path a directory, an output failure: the lock was closed again), and while another
     // output's lock is held, Hello builds with no waiting line (a wait would fail the build at the console instead of hanging the row).
@@ -563,8 +603,8 @@ public sealed class NativeToolchainTest : IDisposable
 
     // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
     // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member;
-    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. On the
-    // installed toolchain.
+    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. The success
+    // record's members are exactly these (PLAN G1227: no toolchain-verification constants). On the installed toolchain.
     [Fact]
     public async Task ABuildLinksTheCompilersSuppliesAsStagedSnapshots()
     {
@@ -573,7 +613,9 @@ public sealed class NativeToolchainTest : IDisposable
         var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
-            Assert.False(record.RootElement.TryGetProperty("kernel32", out _));
+            Assert.Equal(
+                "status,compilerVersion,llvmVersion,tools,irSha256,optimization,libraries,executable,executableSha256,objectUndefinedSymbols",
+                string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
             Assert.Equal(
                 staged.Select(x => x.Name + " " + NativeToolchain.Redact(x.Path, this.directory) + " " + x.Sha256),
                 record.RootElement.GetProperty("libraries").EnumerateArray().Select(static x =>
