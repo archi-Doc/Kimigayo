@@ -196,6 +196,23 @@ public sealed partial class Binding
             return false;
         }
 
+        // R7-C3 C3d (F's C2/C3 rulings 332, 333; SPEC 8.3.4, 23.1.2): the whole of a pair layer in the final error group `group` whose binder
+        // admits no case in this view (PairHead's empty set, 8.3.4's Error: the failed input the group's meets read), else null. One scan
+        // of the nodes, on an error group only.
+        internal BoundType? EmptiedPair(int group)
+        {
+            for (var n = 0; n < this.types.Count; n++)
+            {
+                if (TryPairLayer(this.types[n], out var whole, out _) && this.Group(this.Find(n)) == group &&
+                    binding.AdmittedSemantics(whole, this.scope!) == SemanticsMask.None)
+                {
+                    return whole;
+                }
+            }
+
+            return null;
+        }
+
         // The worst final error class this table holds that the parent's table does not hold with the same state for the same member (the
         // premises that first form it are this scope's), whether an own error class is still waiting for its Origin declarations, and
         // whether an own final class is at the closure limit, which a worse class hides from Worst; each own final error group with its

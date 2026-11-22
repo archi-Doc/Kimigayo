@@ -343,6 +343,16 @@ public sealed partial class Binding
             site ??= scope.Owner;
             atOwner |= ReferenceEquals(site, scope.Owner);
             this.RecordNumbered(site, state == IdentityClasses.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.InvalidConstraint, []);
+
+            // F's C2/C3 rulings 332, 333 (SPEC 8.3.4, 23.1.2, rule W): a group whose meets read a binder's emptied admitted set (PairHead's
+            // 8.3.4 Error) read that failed input, so its record rests on the Error's, which the validation step's proof records after
+            // this one at the owner of the environment emptying the set (JudgeFacts): a pending prerequisite, read at publication
+            // (IsDerived). A group that reads no emptied set records at its site.
+            if (own.EmptiedPair(group) is { } whole && this.EmptyingOwner(scope, whole) is { } emptier && !ReferenceEquals(emptier, site))
+            {
+                this.AddPendingPrerequisite(site, emptier);
+            }
+
             first ??= site;
         }
 

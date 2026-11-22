@@ -321,6 +321,24 @@ public sealed partial class Binding
         return (false, false);
     }
 
+    // SPEC 8.3.4 (F's C2/C3 rulings 332, 333): the owner of the environment whose premises, with its enclosing scopes', empty a pair's
+    // admitted set: the outermost such scope on the chain, whose own Semantics premise the validation step proves Error (JudgeFacts), the
+    // Error's one record; null when the chain admits a case. Read before that proof runs, where EmptyingEnvironment's FailedPremise is
+    // not yet written (RecordIdentityPremiseError); an error path only.
+    private Koto? EmptyingOwner(BindingScope scope, BoundType whole)
+    {
+        Koto? owner = null;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not null && this.AdmittedSemantics(whole, current) == SemanticsMask.None)
+            {
+                owner = current.Owner;
+            }
+        }
+
+        return owner;
+    }
+
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
     {
         var changed = false;
