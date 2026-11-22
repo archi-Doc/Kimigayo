@@ -12,6 +12,10 @@ namespace XunitTest;
 /// counters.</summary>
 public class NativeAllocationAuditTest
 {
+    // An exit that bypasses __kimi_exit, as a generator calling the import directly would write it: no import shares ExitProcess's
+    // declaration (SPEC 21.2), so no definition but __kimi_exit's may mention it (the string lifetime audit's premise too).
+    internal const string DirectExit = "define internal void @audit_direct_exit() {\nentry:\n  call void @ExitProcess(i32 0)\n  unreachable\n}\n";
+
     // One growth from empty: one 16-byte allocation and no copy.
     private const string Append = "var values: Array<i32> = []\nvalues@uniq.append(1)";
 
@@ -21,14 +25,19 @@ public class NativeAllocationAuditTest
     // Two Dictionary storages (96 and 192 bytes); the growth transfers the four occupied slots (96 bytes).
     private const string Entries = "var entries: Dictionary<i32, i32> = [:]\nvar i = 0\nwhile i < 5\n    _ = entries.tryInsert(i, i)\n    i += 1";
 
-    // An exit that bypasses __kimi_exit, as a generator calling the import directly would write it: no import shares ExitProcess's
-    // declaration (SPEC 21.2), so no program definition may mention it.
-    private const string DirectExit = "define internal void @audit_direct_exit() {\nentry:\n  call void @ExitProcess(i32 0)\n  unreachable\n}\n";
+    // A block taken from the process heap outside the platform layer, as the runtime took it before the layer (the Tatara plan's B7r1).
+    private const string DirectAllocation =
+        "define internal ptr @audit_direct_alloc() {\nentry:\n  %heap = call ptr @GetProcessHeap()\n  %data = call ptr @HeapAlloc(ptr %heap, i32 0, i64 1)\n  ret ptr %data\n}\n";
 
-    // The program's own page mapping, through its import that shares the runtime's VirtualAlloc declaration (ForeignEmissionTest.Pages):
-    // outside the layer, which owns only the runtime's calls.
+    // Pages mapped outside the platform layer, as a program's import that shares the runtime's VirtualAlloc declaration calls it
+    // (ForeignEmissionTest.Pages): around the allocator the audit counts.
     private const string ImportedPages =
         "define internal ptr @audit_imported_pages() {\nentry:\n  %data = call ptr @VirtualAlloc(ptr null, i64 4096, i32 12288, i32 4)\n  ret ptr %data\n}\n";
+
+    // A program mapping its own pages through its import of VirtualAlloc, with the runtime's signature.
+    private const string PagesProgram = "group Native\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n" +
+        "    public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8\n" +
+        "public func main()\n    var p: raw/u8 = null\n    unsafe => p = Native.allocate(null, 4096, 12288, 4)\n    require p != null else => $abort(\"allocate\")";
 
     [Theory]
     [InlineData("Control", "call ptr @__kimi_heap_allocate(")]
@@ -75,21 +84,19 @@ public class NativeAllocationAuditTest
         }));
     }
 
-    // The program's own definitions call kernel32 only through their imports, outside the layer: an imported VirtualAlloc passes the rule,
-    // an exit around __kimi_exit does not.
+    // Design-b7b §3.3 (C-478 B1): outside the layer routine that owns it no definition mentions a runtime kernel32 function, a program's
+    // own import included, so no page escapes the counters and no exit the hook: a program importing VirtualAlloc and calling it, the
+    // same call written into a program, B7r1's process-heap block and an exit around __kimi_exit fail, each for its call.
     [Theory]
-    [InlineData(DirectExit, true)]
-    [InlineData(ImportedPages, false)]
-    public void AProgramCallsOnlyItsImportsOutsideTheLayer(string definition, bool fails)
+    [InlineData(PagesProgram, "", " mentions VirtualAlloc")]
+    [InlineData(Append, ImportedPages, "audit_imported_pages mentions VirtualAlloc")]
+    [InlineData(Append, DirectAllocation, "audit_direct_alloc mentions GetProcessHeap")]
+    [InlineData(Append, DirectExit, "audit_direct_exit mentions ExitProcess")]
+    public void AProgramsOsCallFails(string source, string definition, string offender)
     {
-        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Append)) + definition;
-        if (fails)
-        {
-            Assert.Throws<EmptyException>(() => NativeAllocationAudit.AssertOsCallsInLayer(ir));
-            return;
-        }
-
-        NativeAllocationAudit.AssertOsCallsInLayer(ir);
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)) + definition;
+        var failure = Assert.Throws<EmptyException>(() => NativeAllocationAudit.AssertOsCallsInLayer(ir));
+        Assert.Contains(offender, failure.Message, StringComparison.Ordinal);
     }
 
     // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1): Hello's module and a Dictionary program's, which also defines the nullable Alloc, call

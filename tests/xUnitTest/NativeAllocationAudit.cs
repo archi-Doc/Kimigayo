@@ -36,10 +36,6 @@ internal static class NativeAllocationAudit
         (RuntimeAbi.ReleasePages.Name, ["VirtualFree", "GetLastError"]),
     ];
 
-    // The runtime text's own definitions, read once from their owner: LlvmModuleText.WriteRuntime's (the layer, the common part, the
-    // allocator and the memory part) and the module parts a body requests (the nullable Alloc and the byte copy).
-    private static readonly HashSet<string> RuntimeDefinitions = ReadRuntimeDefinitions();
-
     // Each count lies in its bound at process exit; transferred, when given, bounds the bytes the transfer routine copies.
     internal static void WriteFixture(
         string name,
@@ -143,12 +139,12 @@ internal static class NativeAllocationAudit
         ScalarEmissionTest.WriteFixture(name, ir, stdout, exit, stderr);
     }
 
-    // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1, B7r2): the platform layer owns the runtime's OS calls in a program module. Every
-    // mention of a runtime kernel32 function (TargetProfile.Windows.RuntimeDeclarations) but its one declaration in the runtime text's
-    // definitions lies inside the layer routine (RuntimeAbi.PlatformRoutines) that LayerCalls lets call it: the process exits only in
-    // __kimi_exit, where an audit hooks, and pages are mapped and released only in the pages routines, below the allocator the audit
-    // counts. Any other definition is the program's, whose kernel32 calls are its own imports (outside the layer), each sharing the
-    // runtime's declaration only with its signature (SPEC 21.2): none can share ExitProcess's, so the program never exits around the hook.
+    // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1, B7r2; design-b7b §3.3; C-478 B1): the platform layer owns every OS call of an audited
+    // module. Every mention of a runtime kernel32 function (TargetProfile.Windows.RuntimeDeclarations) but its one declaration lies inside
+    // the layer routine (RuntimeAbi.PlatformRoutines) that LayerCalls lets call it, whatever else defines it: the process exits only in
+    // __kimi_exit, where the audit hooks, and pages are mapped and released only in the pages routines, below the allocator the audit
+    // counts. A program's own kernel32 import, which shares the runtime's declaration (SPEC 21.2), is no exception: its calls would take
+    // memory around the counters, so a program calling one is not an allocation audit's subject.
     internal static void AssertOsCallsInLayer(string ir)
     {
         Assert.Equal(RuntimeAbi.PlatformRoutines.Select(static x => x.Name), LayerCalls.Select(static x => x.Routine));
@@ -157,13 +153,11 @@ internal static class NativeAllocationAudit
         foreach (Match definition in definitions.Matches(ir))
         {
             var name = definition.Groups[1].Value;
-            var runtime = RuntimeDefinitions.Contains(name);
             var row = Array.FindIndex(LayerCalls, x => x.Routine == name);
             string[] calls = row < 0 ? [] : LayerCalls[row].Symbols;
-            foreach (var (symbol, signature) in TargetProfile.Windows.RuntimeDeclarations)
+            foreach (var (symbol, _) in TargetProfile.Windows.RuntimeDeclarations)
             {
-                var allowed = Array.IndexOf(calls, symbol) >= 0 || (!runtime && signature is not null);
-                if (!allowed && Mentions(definition.Value, symbol))
+                if (Array.IndexOf(calls, symbol) < 0 && Mentions(definition.Value, symbol))
                 {
                     offenders.Add(name + " mentions " + symbol);
                 }
@@ -190,15 +184,6 @@ internal static class NativeAllocationAudit
     {
         Assert.Equal(2, ir.Split(anchor, StringSplitOptions.None).Length);
         return ir.Replace(anchor, instrumented, StringComparison.Ordinal);
-    }
-
-    // The names the runtime text defines, as its define lines spell them.
-    private static HashSet<string> ReadRuntimeDefinitions()
-    {
-        var text = new StringWriter();
-        LlvmModuleText.WriteRuntime(text, null);
-        text.Write(LlvmModuleText.TryAllocate + LlvmModuleText.TransferBytes);
-        return [.. Regex.Matches(text.ToString(), @"(?m)^define [^@\n]*@([^(\n]+)\(").Select(static x => x.Groups[1].Value)];
     }
 
     // Redirects every call of symbol to audit except on its one declaring line; any other mention, such as a non-call use

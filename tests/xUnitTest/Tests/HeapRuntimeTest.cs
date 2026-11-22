@@ -21,7 +21,9 @@ public class HeapRuntimeTest
         """;
 
     // Every class (2^k bytes with the 16-byte header, k = 5 to 18) by its smallest and largest payload, aligned and apart; their release
-    // and the class's LIFO reuse (the last released block first). The classes carve 1,048,512 bytes of the first region, so five more
+    // and the class's LIFO reuse (the last released block first); each boundary pinned by the payloads one byte past it, which take another
+    // class and so neither released block (above the largest, the next class or, past 256 KiB, the smallest large run of 262,129 bytes;
+    // below the smallest, the class before). The classes carve 1,048,512 bytes of the first region, so five more
     // 256 KiB blocks take two from their list and three from a new region. Large runs of 300 KiB and 1 MiB, Raw.allocate<u64>(n) for n =
     // 0 to 40, and 10^5 Arrays of 1 to 300 bytes built and dropped (design §5 row 14).
     [Fact]
@@ -47,6 +49,14 @@ public class HeapRuntimeTest
                 unsafe
                     Raw.release(c)
                     Raw.release(d)
+                let above = Raw.allocate<u8>(large + 1)
+                let below = Raw.allocate<u8>(small - 1)
+                require aligned(above) and above != c and above != d and (block == 32 or (below != c and below != d)) else => $abort("boundary")
+                fill(above, large + 1, 3)
+                require holds(above, large + 1, 3) else => $abort("boundary bytes")
+                unsafe
+                    Raw.release(above)
+                    Raw.release(below)
                 block *= 2
             let r1 = Raw.allocate<u8>(262128)
             let r2 = Raw.allocate<u8>(262128)
@@ -93,7 +103,9 @@ public class HeapRuntimeTest
         ScalarEmissionTest.EmitFixture("HeapRuntimeBlocks", Source, "heap ok\n");
     }
 
-    // SPEC 22.5.2: the layer has no pages, for a new region or for a large run: KIMI_E_ALLOC at the allocation, without an OS error.
+    // SPEC 22.5.2: the layer has no pages, for a new region or for a large run: KIMI_E_ALLOC at the allocation, without an OS error. The
+    // adapter suite's mode 15 fakes the first region away under the runtime alone; these rows add the large run's path and the report at a
+    // program's allocating source location.
     [Theory]
     [InlineData("Region", 10)]
     [InlineData("Run", 307200)]
@@ -107,7 +119,8 @@ public class HeapRuntimeTest
     }
 
     // SPEC 22.5.2: a large run's release that the system refuses (VirtualFree given a size with MEM_RELEASE, ERROR_INVALID_PARAMETER)
-    // Aborts KIMI_E_FREE at the release with the OS error.
+    // Aborts KIMI_E_FREE at the release with the OS error. The adapter suite's mode 17 fakes the refusal and its error; this row has the
+    // real system refuse it and reports at a program's releasing source location.
     [Fact]
     public void ARefusedReleaseIsAFreeFailure()
     {
