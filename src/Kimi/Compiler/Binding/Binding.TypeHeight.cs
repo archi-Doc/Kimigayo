@@ -28,8 +28,10 @@ namespace Kimi.Compiler;
 //   as the instance's HeightLimit, which Binding's storage walk reads as a limit and Layout as its HeightLimit, recorded at the use)
 //   or a requirement call's witness resolution (TyCtxt.Witness, its target's Cause HeightLimit, recorded at the requesting site);
 //   one no formation owns is the frame's, recorded at its close as the same site-less broken contract; Binding writes nothing else.
-//   Outside the frame (Binding's run, code generation) nothing is answered (the passes not yet framed: PLAN G651 a1-a4 make the site
-//   SubstituteType's input).
+//   After Binding's run the instance's formation owns its refusals in every frame (PLAN G651 U2a, OpenStorageFormation), so no
+//   reader meets a part refused without its HeightLimit; outside the collector's frame it still records the site-less record at its
+//   close, since no reader there gives a site yet (G651 U2b). Otherwise nothing is answered outside the frame (Binding's run, code
+//   generation; the passes not yet framed: PLAN G651 a1-a4 make the site SubstituteType's input).
 // - Prohibitions: no check before a walk from its inputs' heights (it over-approximates); no other suppression than SPEC 23.1.2's rests.
 public sealed partial class Binding
 {
@@ -55,8 +57,8 @@ public sealed partial class Binding
         return parent;
     }
 
-    /// <summary>Begins a formation that owns its refusals inside the open frame (TyCtxt.Answered, Instance, TyCtxt.Witness); outside
-    /// one it owns nothing, so a refusal is recorded as before.</summary>
+    /// <summary>Begins a formation that owns its refusals inside the open frame (TyCtxt.Answered, TyCtxt.Witness); outside one it owns
+    /// nothing, so a refusal is recorded as before.</summary>
     /// <returns>The frame or formation it begins in, which <see cref="CloseAnswer"/> restores.</returns>
     internal (bool Open, bool Answered) OpenFormation()
     {
@@ -65,7 +67,20 @@ public sealed partial class Binding
         return parent;
     }
 
-    /// <summary>Ends a formation or closes the frame <see cref="OpenAnswer"/> or <see cref="OpenFormation"/> began.</summary>
+    /// <summary>Begins an instance's stored-Types formation (Instance; PLAN G651 U2a): inside the open frame as <see cref="OpenFormation"/>,
+    /// and after Binding's run (producing over) in every frame, since it publishes what is answered to it as the instance's HeightLimit,
+    /// which every reader of the instance reads (Binding's storage walk a limit, Layout its HeightLimit). Closing to no frame it still
+    /// records the site-less record (<see cref="CloseAnswer"/>): outside the collector's frame no reader of the instance gives a site yet.</summary>
+    /// <returns>The frame or formation it begins in, which <see cref="CloseAnswer"/> restores.</returns>
+    internal (bool Open, bool Answered) OpenStorageFormation()
+    {
+        var parent = this.answer;
+        this.answer = (parent.Open || !this.producing, false);
+        return parent;
+    }
+
+    /// <summary>Ends a formation or closes the frame <see cref="OpenAnswer"/>, <see cref="OpenFormation"/> or
+    /// <see cref="OpenStorageFormation"/> began.</summary>
     /// <param name="parent">The frame or formation it began in.</param>
     /// <returns>Whether a refusal inside it was answered to it.</returns>
     internal bool CloseAnswer((bool Open, bool Answered) parent)
@@ -74,7 +89,7 @@ public sealed partial class Binding
         this.answer = parent;
         if (answered && !parent.Open)
         {
-            this.RecordSitelessHeightRefusal(); // The frame's own: no formation owned it (a frame closes to no frame).
+            this.RecordSitelessHeightRefusal(); // Closing to no frame: the frame's own, or an instance's after the run outside it (U2a).
         }
 
         return answered;

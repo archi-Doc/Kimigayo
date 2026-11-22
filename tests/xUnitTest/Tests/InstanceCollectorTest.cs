@@ -998,6 +998,43 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (outside.Subst, outside.Cause));
     }
 
+    // PLAN G651 U2a (IMPL A.4, 21.3.2; R7-T1): an instance whose stored Type passes IMPL A.4's height, first formed after Binding's run
+    // outside the collector's answer frame (main's MIR reads D<W^8000<i32>>, main's p40 lifted 40 times, its Field W^250<T> forming
+    // 8,250), publishes the refusal as its HeightLimit in every frame, so Layout records TypeHeightLimit_Kd at each least use (count's
+    // parameter, noneD's result, the call forming the instance), never Rejected's located InternalInvariant_Kd; its Field behind raw
+    // (raw192: raw/W^192<T>, 8,193) the same; at exactly H (raw191: 8,192) the instance forms and the program is accepted. G651's
+    // site-less InternalInvariant_Kd at the project stays beside it until U2b gives the after-run readers a site, and the default's copy
+    // (copy250, f-stored) is B3's Unsupported_Kd at the omitting call until Z26 builds it. In a Closure literal's body (clo250) the same
+    // records (beside A4's own limit at the lifted locals). The Front's f-stored and f-stored-direct (C-485 B1). Fail-before: dev gives
+    // InternalInvariant_Kd at each use.
+    [Theory]
+    [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("raw191", "")]
+    [InlineData("copy250", "Unsupported_Kd@taked(p40) InternalInvariant_Kd@-")]
+    [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
+    {
+        var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
+        var name = shape[..shape.IndexOfAny("0123456789".ToCharArray())];
+        var statement = name switch
+        {
+            "copy" => "taked(p40)",
+            "stored" => "taked(p40, count(noneD(p40)))", // The copy's written twin.
+            "clo" => "let c = func () -> i32 => count(noneD(p40))\n    _ = c()",
+            _ => "_ = count(noneD(p40))",
+        };
+        var c = MinimalEmissionTest.Check(Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement));
+        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), TestDiagnostics.Of(c).Where(static x => x.Code != nameof(DiagnosticCode.OwnershipDepthLimit_Kd)).Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
+
+        // W^8000<i32> by 40 lifts of 200 levels, each within the height and within its frame.
+        static string Lifted(string stored, string statement)
+            => $"struct W<T>\n    public var v: T\nstruct D<T>\n    public var v: {stored}\nfunc lift<T>(p: raw/T) -> raw/{Nest("W", 200, "T")} => null\n" +
+                "func count<U>(u: U) -> i32 => 0\nfunc noneD<T>(p: raw/T) -> Option<D<T>> => .None\n" +
+                "func taked<T>(p: raw/T, k: i32 = count(Option<D<T>>.None)) => ()\npublic func main() -> ()\n    let p0: raw/i32 = null\n" +
+                string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    {statement}\n    return\n";
+    }
+
     // R7-T1 (IMPL 21.3.1, SPEC 6.1; the owner's RQ12): a finite Type past Binding's storage bound that no called signature carries is an
     // instance, whose growth alone R5-M170 bounds: a body local behind raw or ref over Box^n<i32> (61, the bound's twin, to 450) or over S1
     // of a 65-ring, a handle in a generic struct's Field, a by-value local over the ring through rc, a chain of distinct functions within
