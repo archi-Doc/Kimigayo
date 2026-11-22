@@ -1957,19 +1957,44 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.5 "DropGlue", SPEC 16.3.2: a fixed array's glue destroys its elements through its element Type's glue, and a fixed array of
-    // elements that need no drop has none; a derived struct's glue ends with its base's, which is the base's declared destructor alone, as
-    // a base without one ends with its Fields.
+    // elements that need no drop has none, nor has one without an element (SPEC 4.1: it destroys nothing; R8-X1 U3), so no glue of Tok,
+    // which only it holds, is requested (Tok's drop stays a checked body, as every nongeneric body is); a derived struct's glue ends with
+    // its base's, which is the base's declared destructor alone, as a base without one ends with its Fields.
     [Fact]
     public void AFixedArraysAndADerivedStructsGluesEndWithTheirParts()
     {
         var (program, set) = Collect("open struct Res\n    public var id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
             "struct Derived: Res\n    public var name: string = \"d\"\n    public var count: i32 = 0\n    public init() : base(1) => ()\n" +
-            "func use() -> ()\n    let f: [2 of string] = [\"x\", \"y\"]\n    let g: [2 of i32] = [1, 2]\n    let d = Derived.init()\n    return\n");
+            "struct Tok\n    public var n: i32 = 0\n    drop => ()\n" +
+            "func use() -> ()\n    let f: [2 of string] = [\"x\", \"y\"]\n    let g: [2 of i32] = [1, 2]\n    let none: [0 of Tok] = []\n" +
+            "    let d = Derived.init()\n    return\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
         Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue [2 of string]"));
-        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue [2 of i32]");
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) is "DropGlue [2 of i32]" or "DropGlue [0 of Tok]" or "DropGlue Tok");
         Assert.Equal(["DropGlue string", "DropGlue Res"], Targets(program, set, "DropGlue Derived"));
         Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
+    }
+
+    // SPEC 4.1, 8.15.3 (R8-X1 U3): a generic body's Drop of `[N of T]` targets, per instance, its closed Type's glue: none at N = 0, whose
+    // array destroys nothing (hold<0, Tok>), the one-pass Run's glue at N = 1, which reaches Tok's glue and its drop (hold<1, Tok>). A
+    // non-regular Type behind an array without an element (G<T>'s `[0 of rc/G<(T, T)>]`) has no glue item to grow, so no instance is
+    // required past the generation limit (growlocal: no GenerationResourceLimit_Kd).
+    [Fact]
+    public void AnInstancesArrayWithoutAnElementRequestsNoGlue()
+    {
+        var (program, set) = Collect("struct Tok\n    public var n: i32 = 0\n    public init() => ()\n    drop => ()\n" +
+            "struct G<T>\n    public var kids: [0 of rc/G<(T, T)>]\n    public init() => self.kids = []\n" +
+            "func hold<length N, T>(a: [N of T]) => ()\nfunc use() -> ()\n    let empty: [0 of Tok] = []\n    let one: [1 of Tok] = [Tok.init()]\n" +
+            "    hold(empty@move)\n    hold(one@move)\n    let k: [0 of rc/G<(i32, i32)>] = []\n    return\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var holds = Enumerable.Range(0, set.Items.Length).Where(x => Label(program, set.Items[x]).StartsWith("Fn hold", StringComparison.Ordinal));
+        Assert.Equal(
+            [string.Empty, "DropGlue [1 of Tok]"],
+            holds.Select(x => string.Join(", ", set.Targets(x).ToArray().Select(t => Label(program, set.Items[t.Item])))).Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(
+            set.Items.ToArray(), x => Label(program, x) is var label && (label == "DropGlue [0 of Tok]" || label.StartsWith("DropGlue G<", StringComparison.Ordinal)));
+        Assert.Equal(["DropGlue Tok"], Targets(program, set, "DropGlue [1 of Tok]"));
+        Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Tok"));
     }
 
     // PLAN G641 kind 4 (R3-U2a, R3-U2b), SPEC 16.3.2, 8.15.3: an Open Drop's site targets what its group destroys, in DropGlue.Destroyed's

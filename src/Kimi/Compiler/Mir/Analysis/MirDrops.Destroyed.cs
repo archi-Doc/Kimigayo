@@ -16,11 +16,8 @@
 // sorted once), then searches the index once per part of an Open level and once per fixed-array level (Children), and reads each
 // child row's verdict once: no row is read again per level, at any depth; a part Binding rejected (no Type) has no step; a child row
 // of an Open row names a direct part of that row's Type (MirDropTable's contract, which A2's writer meets by construction: the walk
-// trusts it and checks nothing).
-// Temporary, a need of the Backend's stated in Mir's level: a fixed array without an element is one empty Run in a level no row
-// governs. The instance collector requests the element's glue from that Run and code generation reads that target for `[0 of T]`
-// (it writes no loop: the Run has no element), as before PLAN G702, so the checked set and generated code are unchanged. It goes
-// with the unit that stops requesting and reading that target (a checked-set and generated-code change with its own tests).
+// trusts it and checks nothing); every Run has an element (First <= Last): a fixed array's level has one, since a `[0 of T]` destroys
+// nothing (MirTypes.Parts, SPEC 4.1: no glue function's level) and no Move Path names an element of it (no Open row).
 // Must not: state the order of a level's parts (MirTypes.LevelPart); decide a verdict (A2's rows state it; this walk and the readers
 // of a group's first row, FunctionCodegen.Drops and A5's Elides, read it), whether a part needs a drop (MirTypes.MayNeedDrop, the
 // reader's), or a part's glue, position or layout, a declared destructor, a collection's elements or a handle's payload (the Backend's).
@@ -35,8 +32,9 @@ namespace Kimi.Compiler.Mir;
 internal enum MirDropStepKind : byte
 {
     Whole, // A part destroyed whole (its drop, then every part), by its Keep or Flag row, or by its parent's own bit without a row.
-    Run, // A fixed array's elements without a row at the positions Arg to Last, each whole under the parent's own bit, in the level's
-    // order (MirTypes.LevelPart: a fixed array's elements from the last, so from Last down to Arg).
+    Run, // A fixed array's elements without a row at the positions Arg to Last (Arg <= Last: at least one, since a `[0 of T]` destroys
+    // nothing, SPEC 4.1), each whole under the parent's own bit, in the level's order (MirTypes.LevelPart: a fixed array's elements from
+    // the last, so from Last down to Arg).
     Open, // A level destroyed part by part, never by a drop of its own: its steps follow, up to its End.
     End, // The end of a level, with its Open step's columns.
 }
@@ -62,8 +60,8 @@ internal readonly record struct MirDropStep(MirDropStepKind Kind, BoundType Type
     internal static MirDropStep Whole(BoundType type, int parent, int row, MirProjectionKind step, long arg)
         => new(MirDropStepKind.Whole, type, parent, row, step, arg, -1);
 
-    /// <summary>A fixed array's elements without a row, from the last position down to the first; a first above the last is no
-    /// element.</summary>
+    /// <summary>A fixed array's elements without a row, from the last position down to the first, at least one (first &lt;= last: a
+    /// <c>[0 of T]</c> destroys nothing, SPEC 4.1, so the walk writes no Run for it).</summary>
     /// <param name="element">The element Type.</param>
     /// <param name="parent">The row whose own bit the elements follow; -1 for none.</param>
     /// <param name="first">The first position.</param>
@@ -231,16 +229,11 @@ internal sealed partial class MirDropTable
 
         // A fixed array's elements in the level's order, which descends from its first rank's position (MirTypes.LevelPart): each
         // element with a row by its walk, each run of elements without one between them one Run step. The rowed elements are the
-        // level's entries by position, taken from the highest. An array without an element is one empty Run (the header's Temporary).
+        // level's entries by position, taken from the highest. The array has an element: a `[0 of T]` destroys nothing (SPEC 4.1), so
+        // no level of one is walked (the header's invariant).
         private void Elements(BoundType type, int row, long count)
         {
             var element = type.Components[0];
-            if (count == 0)
-            {
-                into.Add(MirDropStep.Run(element, row, 0, -1));
-                return;
-            }
-
             var children = this.Children(row);
             var end = MirTypes.LevelPart(types, type, count - 1).Arg - 1; // Below the last position destroyed.
             for (var at = MirTypes.LevelPart(types, type, 0).Arg; ; at--)
