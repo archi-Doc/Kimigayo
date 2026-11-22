@@ -117,7 +117,10 @@ internal enum BodylessKind : byte
     Import,
 
     /// <summary>A library declaration the MIR builder writes as a MIR form (<see cref="DispositionKind.Form"/>): validated MIR has no
-    /// Call of it (MirValidator), so A4 and the instance collector, which trust validated MIR, read none.</summary>
+    /// Call of it (MirValidator), so A4 and the instance collector, which trust validated MIR, read none. No value of it reaches MIR
+    /// either: every Form function is `unsafe` (its KimiLibraryShapeTest row), and Binding acquires such a function only as a direct
+    /// callee (SPEC 7.6, Binding.DirectCallOnly). A Form function that is not `unsafe` would add the validator's MirConstKind.FnItem
+    /// row, in its own unit.</summary>
     Form,
 
     /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18), or whose Body the parser recorded missing
