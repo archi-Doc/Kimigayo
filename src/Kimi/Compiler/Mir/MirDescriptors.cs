@@ -174,6 +174,8 @@ internal static class MirDescriptors
         IntrinsicId.MakeRc => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
         IntrinsicId.MakeArc => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
         IntrinsicId.RawInitialize => Intrinsic(MirEffect.None, 2),
+        IntrinsicId.VolatileRead => Intrinsic(MirEffect.None, 1), // Raw accesses through its arguments (SPEC 8.11.2), as RawInitialize's.
+        IntrinsicId.VolatileWrite => Intrinsic(MirEffect.None, 2),
         IntrinsicId.RawSlice => Intrinsic(MirEffect.None, 3) with { Retained = 2 }, // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Intrinsic(MirEffect.None, 3),
         IntrinsicId.Stride => Intrinsic(MirEffect.None, 0),

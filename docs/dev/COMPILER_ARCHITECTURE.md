@@ -76,7 +76,7 @@ a SPEC basis and owner approval.
 | `HirPlaceKind` | 11 |
 | `HirCompletion` | 3 |
 | `ExpansionKind` | 6 |
-| `IntrinsicId` | 27 |
+| `IntrinsicId` | 29 |
 | `MirStatementKind` | 5 |
 | `MirRvalueKind` | 11 |
 | `MirTerminatorKind` | 7 |
@@ -86,7 +86,7 @@ a SPEC basis and owner approval.
 | `MirAggregateKind` | 6 |
 | `LayoutNeed` | 4 |
 
-These are the unchanged pre-retirement limits, except `IntrinsicId`'s 27, R8-I1's count and limit (DECISIONS R5-M137, R8-M44, R8-M52), and `MirTerminatorKind`'s 7, the case branch `CaseSwitch` (the owner's O-446 (a), verbatim 「O-446 a」, 2026-11-19; DECISIONS R7-M59). `LayoutNeed` (`None`,
+These are the unchanged pre-retirement limits, except `IntrinsicId`'s 29, R8-I1's 27 (DECISIONS R5-M137, R8-M44, R8-M52) and OSF2's `VolatileRead` and `VolatileWrite` (the owner's O-489, verbatim 「O-489 全てa」, 2026-11-22: the plan's decision 43, OSF's four ids; DECISIONS T-M23), and `MirTerminatorKind`'s 7, the case branch `CaseSwitch` (the owner's O-446 (a), verbatim 「O-446 a」, 2026-11-19; DECISIONS R7-M59). `LayoutNeed` (`None`,
 `Parts`, `Element`, `TypeArguments`; the owner, DECISIONS R5-M149) is the Backend's one statement of what a form's generated code reads a
 layout of besides its by-value storage: `LayoutNeeds`' rows (projection steps, operators, comparison nodes) and the intrinsic
 rows' `Need` column; a new form adds a row.
@@ -239,7 +239,7 @@ and earlier stages do not. Mechanical evasions fail review. At a stage exit, rec
 exceptions and transitional declarations with the owner; the deleted Report command is not a gate.
 
 At R7, Syntax's restriction extends to the whole Binding layer (moved from R6, DECISIONS R5-M9), and UnwrapParentheses
-is restricted to Parsing/Binding. IntrinsicId's limit is 27 since R8-I1 (DECISIONS R8-M6, R8-M44, R8-M52).
+is restricted to Parsing/Binding. IntrinsicId's limit is 29 since OSF2 (R8-I1's 27, DECISIONS R8-M6, R8-M44, R8-M52; the owner's O-489).
 
 ## Rules during the migration
 

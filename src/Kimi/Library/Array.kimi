@@ -11,6 +11,16 @@ public struct Array<T>
     Self is IntoIterable
     associate IntoIterable.IteratorType is ArrayOwningIterator<T>
 
+    /// A shared reference to the first element, or `None` when the Array is empty.
+    public computed first: Option<ref/T during self>
+        get() -> Option<ref/T during self>
+            return self.tryGet(0)
+
+    /// A shared reference to the last element, or `None` when the Array is empty.
+    public computed last: Option<ref/T during self>
+        get() -> Option<ref/T during self>
+            return self.tryGet(^1)
+
     /// Creates an empty Array whose capacity is at least `capacity`; a negative argument aborts and zero allocates nothing.
     ///
     /// The compiler supplies this constructor's definition from `initCapacity` (SPEC 4.9.5, 22.1).
