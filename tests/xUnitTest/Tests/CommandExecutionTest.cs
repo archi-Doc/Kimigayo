@@ -219,6 +219,8 @@ public sealed class CommandExecutionTest : IDisposable
     [Collection<ConsoleIsolationCollection>]
     public sealed class ConsoleTests : IDisposable
     {
+        private const string Passes = "#Test\nfunc passes()\n    $require(1 == 1)\n";
+
         private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-command-" + Guid.NewGuid().ToString("N"));
 
         public ConsoleTests() => Directory.CreateDirectory(this.directory);
@@ -398,6 +400,55 @@ public sealed class CommandExecutionTest : IDisposable
             Assert.Contains("Tests.kimiproj::passes", output.ToString(), StringComparison.Ordinal);
         }
 
+        // The project identity (IMPL 20.6.2: "the project file name with extension; an implicit project uses its source file name") is
+        // the file name of the project's input as its path spells it, and the result document's path is that input (Project.Input; PLAN
+        // G1273): an implicit A.KIMI is A.KIMI, never A.kimi, and its path the source file, never its folder; a project file unchanged.
+        [Theory]
+        [InlineData("A.KIMI")]
+        [InlineData("A.kimi")]
+        [InlineData("Tests.kimiproj")]
+        public async Task TheProjectIdentityAndTheResultPathAreTheInputs(string file)
+        {
+            var input = Path.Combine(this.directory, file);
+            File.WriteAllText(Path.Combine(this.directory, file == "Tests.kimiproj" ? "tests.kimi" : file), Passes);
+            if (file == "Tests.kimiproj")
+            {
+                File.WriteAllText(input, $"Targets = {{ \"{TargetProfile.Windows.Target}\" }}\nOutputKind = \"Library\"\nTestSources = {{ \"tests.kimi\" }}\n");
+            }
+
+            var (exit, document) = await this.List(input);
+            using (document)
+            {
+                Assert.Equal(0, exit);
+                var project = Assert.Single(document.RootElement.GetProperty("projects").EnumerateArray());
+                Assert.Equal((file, input), (project.GetProperty("identity").GetString(), project.GetProperty("path").GetString()));
+                Assert.Equal(file, Assert.Single(document.RootElement.GetProperty("cases").EnumerateArray()).GetProperty("projectId").GetString());
+            }
+        }
+
+        // Two selected Projects with one identity are an error (IMPL 20.6.2; 20.6.4: 2), compared as the identities are spelled: a
+        // solution's implicit A.kimi and A.KIMI in two folders are two identities (PLAN G1273), two A.kimi one.
+        [Theory]
+        [InlineData("b/A.KIMI", 0)]
+        [InlineData("b/A.kimi", 2)]
+        public async Task ImplicitProjectsConflictOnlyByTheirSpelledIdentities(string second, int expected)
+        {
+            foreach (var source in new[] { "a/A.kimi", second })
+            {
+                Directory.CreateDirectory(Path.Combine(this.directory, Path.GetDirectoryName(source)!));
+                File.WriteAllText(Path.Combine(this.directory, source), Passes);
+            }
+
+            var solution = Path.Combine(this.directory, "S.kimisln");
+            File.WriteAllText(solution, $"Projects = {{ \"a/A.kimi\", \"{second}\" }}\n");
+            var (exit, document) = await this.List(solution);
+            using (document)
+            {
+                Assert.Equal(expected, exit);
+                Assert.Equal(expected == 0 ? 2 : 1, document.RootElement.GetProperty("projects").GetArrayLength());
+            }
+        }
+
         // Kimigayo.RunEnded (Tatara unit SP1): a cancelled run <file.exe> calls it once, after its program ended (RunExecutable kills the
         // tree and drains the output first) and before "Command cancelled.", and returns 130 (after a cancellation the outcome is the
         // cancellation). The program is the test apphost's sleeping probe (TestProcessRecoveryTest.ProcessProbe): run passes no argument,
@@ -474,6 +525,28 @@ public sealed class CommandExecutionTest : IDisposable
             {
                 return false;
             }
+        }
+
+        // test --list --format json of the input (no native build): the exit code and the result document.
+        private async Task<(int Exit, JsonDocument Document)> List(string input)
+        {
+            var product = TataraCommandTest.Unit(new());
+            var console = Console.Out;
+            using var output = new StringWriter();
+            Console.SetOut(output);
+            try
+            {
+                Environment.ExitCode = 0;
+                await product.Execute($"test --list --format json \"{input}\"", product.Context.ServiceProvider, TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            return (exit, JsonDocument.Parse(output.ToString()));
         }
     }
 }
