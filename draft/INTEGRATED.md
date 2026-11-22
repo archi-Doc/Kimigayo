@@ -1440,6 +1440,34 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   12.3.3; G274 and G265 closed, no longer reproducing; R7-P1 keeps their programs as guard rows). Nothing frozen.
 - Revision 106 (2026-11-22, plan §14; the Front's D-1034, R7-C8's state check): C8's row records U-D3 as landed in substance
   with G647 (`2f7d4a10d`, DECISIONS BU-175) and names what is left: U-D3r's fail-first rows, G140 U3 and G309-R. Nothing frozen.
+- Revision 107 (2026-11-22, plan §14; the Front's D-1044, F's V2e/V2f/V1c ruling 1, R7-V2f's state check): V2's row
+  records V2f as done with V2a and its DeclQuery kind as moved to C9 (a bound reference to a library Contract carries the
+  frozen library declaration; completing such a query throws in `SetQueryState`); C7's prerequisite is met; C9's row takes
+  the kind. Nothing frozen.
+- Revision 108 (2026-11-22, plan §14; the Front's Q-643 and D-1053, F's V2a2/C3b rulings 1 and 2, R7-V2a2's landing): V2's
+  row records V2a2 as landed in W-309: `ImplTable.Find` and `TryPath` hand out only what the running pass registered
+  (DECISIONS R7-M16's R7-V2a2 amendment); e6 and t1, valid programs the Bind after an edit rejected, are accepted. Nothing
+  frozen.
+- Revision 109 (2026-11-22, plan §14; the Front's Q-645 and D-1055, F's C8 rulings 1 and 2, R7-D3 D3-1's landing): D3's row
+  records D3-1 as landed in W-309: ClosureType's `FixedAtoms` walk no longer crosses a Closure's signature, so a closure chain's
+  formations are linear (DECISIONS BU-73's R7-D3 D3-1 amendment; PLAN G348 F1); D3-2 takes `UnimagedClosure` and
+  `ClosureArgumentVariance`. Nothing frozen.
+- R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
+  `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
+  independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
+  by 15.6.1's "Origin relations" (declared and substituted relations are judged after selection; applicability and expected-result
+  filtering use only structural parts), 10.8's "Solving" (Origin evidence never makes a candidate inapplicable; each argument's
+  Origin fit is judged after selection) and 15.3.6 (inference is judged after selection); T2 by 10.3 (only the structural part of
+  the fit before selection), with 10.2's erasure row, 10.7 and 15.6.1's structural part of a fit; T3 by 10.3, 15.6.1 and 10.8 (the
+  expected result fills only unbound parts, its Origins 15.3.6 inference variables). T4 goes into SPEC 15.3.7's Compatibility
+  bullet (a body inference variable of 15.3.4 on either side is solved, each position giving it the bound its polarity gives at a
+  use, 15.3.6; never judged from premises) with its example, 15.6.1 (the whole-contract comparison from premises alone, "apart
+  from the body inference variables that 15.3.7 solves", and the body sentence's "every other relation" gains "not on a body
+  inference variable") and 10.7 (only the implementation's call-time Origins "and the body inference variables of either side" are
+  inferred). The plan's row cites §10.1 step 5 or §8.1.3, §10.8 and §15.3.4; the text is in 15.3.7, 15.6.1 and 10.7, and P4
+  implements it. Only t4-short moves (rejected on dev with `UnprovenOriginContract_Kd`, valid); t4-long (valid) and t4-fixed
+  (invalid, between fixed Origins) are unchanged. SPECJ follows (RQ10), not in this commit. The wording is the census's, not the
+  plan's: nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

@@ -11,12 +11,6 @@ namespace Kimi.Compiler;
 // callable one (CallableSignatureFits). Each entry is one query of the relation's one walk (RelationWalk, Binding.TypeRelations.Walk.cs).
 public sealed partial class Binding
 {
-    /// <summary>Compares interned complete types without erasing their Origin contracts.</summary>
-    /// <param name="left">The first canonical type.</param>
-    /// <param name="right">The second canonical type from the same compilation.</param>
-    /// <returns>Whether both references identify the same complete type.</returns>
-    public static bool SameType(BoundType left, BoundType right) => ReferenceEquals(left, right);
-
     // SPEC 3.8: whether `actual` is a subtype of `expected`.
     internal bool IsSubtype(BoundType actual, BoundType expected)
         => new RelationWalk(this, null, null, OriginPart.Judged).Fits(actual, expected);
