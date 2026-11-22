@@ -155,7 +155,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheCapabilityMemosEndWithTheirEpoch()
     {
-        var c = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var c = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs", "examples", "Hello", "Hello.kimi")));
         c.Bind();
         var binding = c.Binding;
@@ -200,6 +200,14 @@ public partial class KimiLibraryShapeTest
     [Theory]
     [MemberData(nameof(LayerPrograms))]
     public void TheLibraryLayerIsIndependentOfTheProgram(string program) => SameLayerAsTheEmptyPrograms(program);
+
+    // ContractSolver's request tables (Rows.cs): the outermost request empties, capacity kept, the pooled link lists it lent (LeaveRows;
+    // PLAN x41n, F's ruling 188 X1), so no row outlives its request and Enumerate's pool is empty after every Bind; the library-layer row
+    // above then holds for the pool because it is empty, not because the requests that ran last left the same rows.
+    [Theory]
+    [MemberData(nameof(LayerPrograms))]
+    public void ThePooledRowListsAreEmptyAfterABind(string program)
+        => Assert.All(((IEnumerable)LibraryLayer.ValueAt(Bound(program).Binding, "Binding.enumeratePool")).Cast<ICollection>(), static rows => Assert.Empty(rows));
 
     [Theory(Explicit = true)] // Its length (PLAN G949 S1-0b): run by each G949 unit and window.
     [MemberData(nameof(LayerCorpus))]
@@ -320,7 +328,7 @@ public partial class KimiLibraryShapeTest
                 "syntax" => DiagnosticCorpus.Syntax(subject).Source,
                 _ => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
             };
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         }
 
@@ -337,7 +345,7 @@ public partial class KimiLibraryShapeTest
         var math = new DependencyNode("math@1", new("math.kimiproj", new() { OutputKind = OutputKind.Library }, [], []), 1, "Math");
         root.Edges.Add("Geometry", geometry.Key);
         geometry.Edges.Add("Math", math.Key);
-        Assert.True(c.Prepare(WindowsProfile.Target, new([root, geometry, math])));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target, new([root, geometry, math])));
         string[] modules = ["Application", "Geometry", "Math"];
         for (var i = 0; i < modules.Length; i++)
         {

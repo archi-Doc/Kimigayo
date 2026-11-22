@@ -317,6 +317,12 @@ public sealed partial class Binding
 
                 environment = this.QualifierEnvironment(environment, symbol, container, parent, scope, syntax);
             }
+            else if (qualifier is null && HirTables.LookupOf(UseNode(member.Left)) == PathEnd.Projection && UseNode(member.Left).BoundType is { Symbol: { } formed } projected)
+            {
+                // SPEC 9.6, 8.5.2 (PLAN G724 (b)): after a projection the qualifier is its formed normal form (BindAssociatedProjection).
+                var selected = ReferenceEquals(formed.Declaration, parent) ? default : this.LookupMember(projected, symbol.Name, scope, LookupRole.Qualifier);
+                environment = ReferenceEquals(formed.Declaration, parent) ? projected : ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
+            }
         }
 
         if (inherited is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 })

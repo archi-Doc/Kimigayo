@@ -86,7 +86,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
     public void TheFirstDeclarationFollowsConsumedSourceOrder()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("z-first.kimi", "group G\n    public func x() => ()"));
         c.Kotonoha.AddSource(new SourceDocument("a-second.kimi", "group G\n    public func x() => ()"));
         Assert.False(c.Bind().IsComplete);
@@ -151,7 +151,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
     public void RootRuntimeDeclarationsRemainSourceLocal()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         foreach (var path in new[] { "first.kimi", "second.kimi" })
         {
             c.Kotonoha.AddSource(new SourceDocument(path, "let x = 1\nfunc f() => ()"));
@@ -195,6 +195,41 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }
+
+    // SPEC 9.1 (R7-V2e): a member group's duplicate check hashes each function once and compares only functions of one SignatureHash, so
+    // its work is linear in n overloads whose parameter Types differ in their top layer (plus one repeated pair), where the pairwise scan
+    // compared n (n + 1) / 2 pairs; the repeat is still the one record, at the last `pick`, related to the first.
+    [Fact]
+    public void DuplicateSignatureChecksAreLinearInTheGroup()
+    {
+        var work = new[] { 64, 128, 256 }.Select(static n => Work(n)).ToArray();
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 16, string.Join(' ', work));
+
+        static int Work(int overloads)
+        {
+            var types = string.Concat(Enumerable.Range(0, overloads).Select(static i => $"struct S{i}\n"));
+            var group = string.Concat(Enumerable.Range(0, overloads).Select(static i => $"func pick(value: S{i}) -> i32 => {i}\n"));
+            var c = CompilationTestHelper.ParseSuccess(types + group + "func pick(other: S0) -> i32 => 0\n");
+            c.Bind();
+            var count = c.Binding.DuplicateCheckWork;
+            c.Binding.ReportDiagnostics();
+            var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
+            Assert.Equal(nameof(DiagnosticCode.DuplicateBinding_Kd), error.Code);
+            Assert.Equal(2 * overloads, error.Display!.Range!.Value.Start.Line);
+            Assert.Equal(overloads, Assert.Single(error.Related!).Range!.Value.Start.Line);
+            return count;
+        }
+    }
+
+    // SPEC 9.1 (R7-V2e): a function is compared with every later function of its SignatureHash, past an unequal one too. The four `d`
+    // differ only at their parameter Type's third layer, so all share one hash; d1 and d3, d2 and d4 have one Signature each (the
+    // review's q4). A slot inside a direct part hashes by its slot number under each binder, so `Array<T>` and `Array<U>` of two
+    // one-parameter generics are one Signature (q7).
+    [Theory]
+    [InlineData("func d(a: Array<Array<Array<i32>>>) => ()\nfunc d(a: Array<Array<Array<i64>>>) => ()\nfunc d(b: Array<Array<Array<i32>>>) => ()\nfunc d(b: Array<Array<Array<i64>>>) => ()\n", "2*DuplicateBinding_Kd")] // q4
+    [InlineData("func g<T>(a: Array<T>) => ()\nfunc g<U>(b: Array<U>) => ()\n", "1*DuplicateBinding_Kd")] // q7
+    public void EveryLaterFunctionOfOneSignatureHashIsCompared(string functions, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(functions + "public func main() => ()\n", "Application"));
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]

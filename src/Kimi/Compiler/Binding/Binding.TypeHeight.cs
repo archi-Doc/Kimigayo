@@ -23,9 +23,10 @@ namespace Kimi.Compiler;
 //   contract: InternalInvariant_Kd at the project, never a silent null, but inside the instance collector's answer frame (R7-T1;
 //   PLAN G651's after-run site kind "the caller records"), which only the collector's run opens and closes (TyCtxt.OpenAnswer,
 //   CloseAnswer: every substitution after Binding's run that the collector, Layout or a witness causes is inside it): there the
-//   refusal is answered to the innermost formation owning the Type, one of two (OpenFormation): a substitution at a requesting site
-//   (TyCtxt.Answered, giving TyCtxt.Formation.HeightLimit, recorded at that site) or an instance's stored Types (Instance, published
-//   as the instance's HeightLimit, which Binding's storage walk reads as a limit and Layout as its HeightLimit, recorded at the use);
+//   refusal is answered to the innermost formation owning the Type, one of three (OpenFormation): a substitution at a requesting site
+//   (TyCtxt.Answered, giving TyCtxt.Formation.HeightLimit, recorded at that site), an instance's stored Types (Instance, published
+//   as the instance's HeightLimit, which Binding's storage walk reads as a limit and Layout as its HeightLimit, recorded at the use)
+//   or a requirement call's witness resolution (TyCtxt.Witness, its target's Cause HeightLimit, recorded at the requesting site);
 //   one no formation owns is the frame's, recorded at its close as the same site-less broken contract; Binding writes nothing else.
 //   Outside the frame (Binding's run, code generation) nothing is answered (the passes not yet framed: PLAN G651 a1-a4 make the site
 //   SubstituteType's input).
@@ -54,8 +55,8 @@ public sealed partial class Binding
         return parent;
     }
 
-    /// <summary>Begins a formation that owns its refusals inside the open frame (TyCtxt.Answered, Instance); outside one it owns
-    /// nothing, so a refusal is recorded as before.</summary>
+    /// <summary>Begins a formation that owns its refusals inside the open frame (TyCtxt.Answered, Instance, TyCtxt.Witness); outside
+    /// one it owns nothing, so a refusal is recorded as before.</summary>
     /// <returns>The frame or formation it begins in, which <see cref="CloseAnswer"/> restores.</returns>
     internal (bool Open, bool Answered) OpenFormation()
     {

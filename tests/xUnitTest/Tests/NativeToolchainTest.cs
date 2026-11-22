@@ -64,7 +64,7 @@ public sealed class NativeToolchainTest : IDisposable
                 "kimi_backend " + catalog.RootElement.GetProperty("artifactSha256").GetString(),
             ],
             ToolchainIdentity.Supplies.Select(static x => x.Supply.Name + " " + x.Sha256));
-        foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", ToolchainIdentity.BackendFile }))
+        foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", "kimi_backend_windows_x64_v1.lib" }))
         {
             using var stream = supply.Open();
             using var bytes = new MemoryStream();
@@ -74,6 +74,8 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
+    // The invalidation is the record's incomplete state: its status and the compiler's and LLVM's versions, and no member more (PLAN
+    // G1227: the three constant toolchain-verification members are gone).
     [Fact]
     public async Task ManifestFailureInvalidatesPreviousSuccessBeforeLoadingTools()
     {
@@ -86,6 +88,7 @@ public sealed class NativeToolchainTest : IDisposable
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("IR/manifest SHA-256", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("status,compilerVersion,llvmVersion", string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
         Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
     }
@@ -128,6 +131,21 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Contains(failure, error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+    }
+
+    // Tatara G1203 (IMPL 20.3.2): build --Manifest takes a manifest named Name.link.json, as emit writes it. A manifest of another name
+    // names no output and fails before any write: no record or lock beside it (dev 3245a057d built it, its record Native test.build.json).
+    [Fact]
+    public async Task AManifestOfAnotherNameFailsBeforeAnyWrite()
+    {
+        var project = this.Create();
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var renamed = Path.ChangeExtension(ArtifactPaths.Create(project).Ir, ".json");
+        File.Copy(ArtifactPaths.Create(project).Manifest, renamed);
+        var entries = Directory.GetFileSystemEntries(Path.GetDirectoryName(renamed)!).Order(StringComparer.Ordinal).ToArray();
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(renamed, (_, _) => { }, TestContext.Current.CancellationToken));
+        Assert.Equal("A link manifest is named Name.link.json, as emit writes it.", error.Message);
+        Assert.Equal(entries, Directory.GetFileSystemEntries(Path.GetDirectoryName(renamed)!).Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -202,7 +220,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal("checked", root.GetProperty("status").GetString());
         Assert.Equal("Library", root.GetProperty("outputKind").GetString());
         Assert.Equal(file, root.GetProperty("input").GetString());
-        Assert.Equal(WindowsProfile.Target, root.GetProperty("target").GetString());
+        Assert.Equal(TargetProfile.Windows.Target, root.GetProperty("target").GetString());
         Assert.True(root.GetProperty("debug").GetBoolean());
         Assert.Equal(Compilation.CurrentLanguageVersion, root.GetProperty("languageVersion").GetString());
         Assert.Equal(Compilation.CompilerVersion, root.GetProperty("compilerVersion").GetString());
@@ -250,7 +268,7 @@ public sealed class NativeToolchainTest : IDisposable
     {
         var project = this.Create("public group Example");
         project.ProjectFile.OutputKind = OutputKind.Library;
-        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", WindowsProfile.Target];
+        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", TargetProfile.Windows.Target];
         project.KimiOptions.Target = selected;
         Assert.Equal(accepted, await project.Build(TestContext.Current.CancellationToken));
         using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project).Record));
@@ -532,6 +550,46 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(1, this.console.Text.Split("Waiting for another build: ").Length - 1);
     }
 
+    // A build that cannot begin (NativeToolchain.Begin; PLAN G1205, O-491 (d)): after a successful v1, a v2 whose first invalidation
+    // cannot replace the record (read-only, or held without delete sharing) or whose lock cannot be opened (read-only) fails saying that
+    // the build could not begin and that its record keeps its last state, naming the record once: with the lock's failure, which names
+    // the lock, and through the replacement's failure, which names its destination (PLAN G1257). The record is v1's success (IMPL 20.3.2:
+    // "the earlier success when the first invalidation fails"), so run --no-build runs v1's executable. On the installed toolchain.
+    [Theory]
+    [InlineData("record read-only")]
+    [InlineData("record held")]
+    [InlineData("lock read-only")]
+    public async Task ABuildThatCannotBeginNamesItsRecordWhichKeepsItsLastState(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, paths, v1) = await this.BuildHello();
+        var record = File.ReadAllText(paths.Record);
+        var file = row == "lock read-only" ? Path.ChangeExtension(paths.Record, ".lock") : paths.Record;
+        var project = this.Hello("Hi");
+        using var held = row == "record held" ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
+        if (held is null)
+        {
+            File.SetAttributes(file, FileAttributes.ReadOnly);
+        }
+
+        try
+        {
+            Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        }
+        finally
+        {
+            held?.Dispose();
+            File.SetAttributes(file, FileAttributes.Normal); // Before Dispose deletes the directory.
+        }
+
+        var named = row == "lock read-only" ? $": {paths.Record}. " : $". The file could not be replaced: {paths.Record}. ";
+        Assert.Contains("The build could not begin, so its record keeps its last state" + named, this.console.Text, StringComparison.Ordinal);
+        Assert.Equal(1, this.console.Text.Split(paths.Record).Length - 1);
+        Assert.Equal(record, File.ReadAllText(paths.Record));
+        Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        Assert.Equal(0, await project.Run(TestContext.Current.CancellationToken));
+    }
+
     // A build waits only while another build holds its record's lock (NativeToolchain.Begin; C-433 B2, N6): after a build in this process
     // whose invalidation failed (its record's path a directory, an output failure: the lock was closed again), and while another
     // output's lock is held, Hello builds with no waiting line (a wait would fail the build at the console instead of hanging the row).
@@ -561,10 +619,99 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.NotNull(this.console.LineAction);
     }
 
+    // Tatara G1202 (IMPL 20.3.2): a native build holds its IR open for reading only from its hash of the pair's IR to its end, so it
+    // compiles the bytes its record names. An emit of the same output during the build (at its "Built: " report, inside the hold; the
+    // source edited to "Changed") cannot replace the IR and fails (ArtifactPublicationFailed_Kd); the pair stays the checked one, the
+    // record names it and the executable prints its text. On dev 3245a057d the emit published "Changed". On the installed toolchain.
+    [Theory]
+    [InlineData("O2")]
+    [InlineData("O0")]
+    public async Task AnEmitDuringABuildOfItsOutputFails(string optimization)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var token = TestContext.Current.CancellationToken;
+        var project = this.Hello("Checked");
+        project.ProjectFile.Optimization = optimization;
+        var paths = ArtifactPaths.Create(project);
+        string? checkedIr = null;
+        bool? emitted = null;
+        this.console.LineAction = ("Built: ", () =>
+        {
+            checkedIr = ArtifactFiles.Hash(paths.Ir);
+            var edited = this.Hello("Changed");
+            emitted = Task.Run(() => edited.Generate(token)).GetAwaiter().GetResult();
+        });
+        Assert.True(await project.Build(token), this.console.Text);
+        Assert.False(emitted, this.console.Text);
+        Assert.Contains(nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), this.console.Text, StringComparison.Ordinal);
+        Assert.Equal(checkedIr, ArtifactFiles.Hash(paths.Ir));
+        using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
+        {
+            Assert.Equal(checkedIr, record.RootElement.GetProperty("irSha256").GetString());
+        }
+
+        using var run = Process.Start(new ProcessStartInfo(paths.Executable) { RedirectStandardOutput = true, CreateNoWindow = true })!;
+        Assert.Equal("Checked", (await run.StandardOutput.ReadToEndAsync(token)).Trim());
+        await run.WaitForExitAsync(token);
+    }
+
+    // Tatara G1203 (IMPL 20.3.2): build --Manifest builds the pair as emit writes it, the Name.ll beside Name.link.json, so a manifest
+    // naming another IR fails at the pair's path check before any IR is opened, and writes only its own record's invalidation and lock.
+    // Each row builds an output (OutputPath out/<output>.ll) and copies its manifest to <copy>.link.json, which it builds while the
+    // output's lock is held: Alt.link.json names Hello.ll (dev 3245a057d rewrote Hello.O2.exe, .obj and .ll under Hello's held lock);
+    // Y.link.json names Y.O2.ll, the optimized IR its own name gives (review C-450 B1; dev built Y.O2.O2.*). Every file of the output
+    // keeps its write time. On the installed toolchain.
+    [Theory]
+    [InlineData("Hello", "Alt")]
+    [InlineData("Y.O2", "Y")]
+    public async Task AManifestNamingAnotherIrFailsAtThePathCheck(string output, string copy)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var token = TestContext.Current.CancellationToken;
+        var project = this.Hello("Hello");
+        project.ProjectFile.OutputPath = "out/" + output + ".ll";
+        Assert.True(await project.Build(token), this.console.Text);
+        var paths = ArtifactPaths.Create(project);
+        var directory = Path.GetDirectoryName(paths.Manifest)!;
+        var before = Directory.GetFileSystemEntries(directory).ToDictionary(x => x, File.GetLastWriteTimeUtc);
+        var manifest = Path.Combine(directory, copy + ".link.json");
+        File.Copy(paths.Manifest, manifest);
+        Exception? error;
+        using (new FileStream(Path.ChangeExtension(paths.Record, ".lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            error = await Record.ExceptionAsync(() => NativeToolchain.BuildManifest(manifest, (_, _) => { }, token));
+        }
+
+        Assert.StartsWith("IR/manifest path mismatch", Assert.IsType<InvalidDataException>(error).Message, StringComparison.Ordinal);
+        Assert.All(before, x => Assert.Equal(x.Value, File.GetLastWriteTimeUtc(x.Key)));
+        string[] written = [manifest, Path.Combine(directory, copy + ".link.build.json"), Path.Combine(directory, copy + ".link.build.lock")];
+        Assert.Equal(before.Keys.Concat(written).Order(StringComparer.Ordinal), Directory.GetFileSystemEntries(directory).Order(StringComparer.Ordinal));
+    }
+
+    // Tatara G1203's case rule: the pair's path check compares as Windows compares paths, so an emitted pair named in another case builds
+    // into the same files, the executable unchanged: the manifest given as hello.link.json (its IR hello.ll), and the manifest
+    // Hello.link.json of OutputPath Hello.LL (its IR Hello.ll, which the manifest names Hello.LL). On the installed toolchain.
+    [Theory]
+    [InlineData("Hello.ll", "hello.link.json")]
+    [InlineData("Hello.LL", "Hello.link.json")]
+    public async Task AManifestNamingItsIrInAnotherCaseBuilds(string ir, string manifest)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var token = TestContext.Current.CancellationToken;
+        var project = this.Hello("Hello");
+        project.ProjectFile.OutputPath = "out/" + ir;
+        Assert.True(await project.Build(token), this.console.Text);
+        var paths = ArtifactPaths.Create(project);
+        var (executable, written) = (ArtifactFiles.Hash(paths.Executable), File.GetLastWriteTimeUtc(paths.Executable));
+        await NativeToolchain.BuildManifest(Path.Combine(Path.GetDirectoryName(paths.Manifest)!, manifest), (_, _) => { }, token);
+        Assert.NotEqual(written, File.GetLastWriteTimeUtc(paths.Executable));
+        Assert.Equal(executable, ArtifactFiles.Hash(paths.Executable));
+    }
+
     // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
     // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member;
-    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. On the
-    // installed toolchain.
+    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. The success
+    // record's members are exactly these (PLAN G1227: no toolchain-verification constants). On the installed toolchain.
     [Fact]
     public async Task ABuildLinksTheCompilersSuppliesAsStagedSnapshots()
     {
@@ -573,7 +720,9 @@ public sealed class NativeToolchainTest : IDisposable
         var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
-            Assert.False(record.RootElement.TryGetProperty("kernel32", out _));
+            Assert.Equal(
+                "status,compilerVersion,llvmVersion,tools,irSha256,optimization,libraries,executable,executableSha256,objectUndefinedSymbols",
+                string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
             Assert.Equal(
                 staged.Select(x => x.Name + " " + NativeToolchain.Redact(x.Path, this.directory) + " " + x.Sha256),
                 record.RootElement.GetProperty("libraries").EnumerateArray().Select(static x =>
@@ -685,7 +834,7 @@ public sealed class NativeToolchainTest : IDisposable
             File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "group Native\n    #LibraryImport(\"codec\", \"f\")\n    public unsafe func f() -> i32\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.f()\n");
             Directory.CreateDirectory(Path.Combine(this.directory, "native"));
             File.WriteAllText(Path.Combine(this.directory, "native", "codec.lib"), "not the asserted bytes");
-            project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('0', 64) } };
+            project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('0', 64) } };
         }
 
         Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
@@ -738,7 +887,7 @@ public sealed class NativeToolchainTest : IDisposable
     private Project Hello(string text)
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\"");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), $"::Kimi.Console.writeLine(\"{text}\")");
         Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
         return project;

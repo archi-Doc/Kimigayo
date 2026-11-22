@@ -267,7 +267,7 @@ internal sealed unsafe partial class Tatara
 }
 
 /// <summary>What Tatara's calls take, and nothing else: the host's report (a call's message on success, as a Warning) and cancellation
-/// (checked before and inside the lock), and the target values of TataraTarget, in its order (WindowsProfile's).</summary>
+/// (checked before and inside the lock), and the target values of TataraTarget, in its order (TargetProfile.Windows's).</summary>
 internal sealed record TataraContext(
     Action<DiagnosticSeverity, string> Report,
     CancellationToken CancellationToken,

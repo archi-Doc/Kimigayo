@@ -55,11 +55,7 @@ public sealed partial class Binding
         var candidates = FunctionGroup.Of(group);
         var evaluated = this.RentCandidates(candidates, call.Method, this.scopes[constructor]);
         var shape = MeasureCandidates(candidates, true);
-        var obligationCount = this.obligations.Count;
-        var acquisition = this.acquisitionFailure;
-        var failedCause = this.failedCause;
-        var requirementContract = this.activeRequirementContract;
-        var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
+        var query = this.BeginSelectionQuery();
         var evaluation = this.RentEvaluation(call, call.Method, null, this.scopes[constructor], null, shape); // The call has no argument.
         evaluation.Evaluated = evaluated;
         try
@@ -75,7 +71,7 @@ public sealed partial class Binding
                 CallSelection.Selected => new(OmittedBaseOutcome.Selected, (FunctionKoto)evaluated[winner].Symbol!.Declaration),
                 CallSelection.NoneApplicable => new(OmittedBaseOutcome.NoneApplicable),
                 CallSelection.Ambiguous => new(OmittedBaseOutcome.Ambiguous),
-                CallSelection.Unproven => new(OmittedBaseOutcome.Unproven, Cause: evaluation.PendingCount != 1 ? null : evaluation.CallableFailure?.Clause ?? evaluation.ConstraintFailure?.Clause),
+                CallSelection.Unproven or CallSelection.UnformedSplit => new(OmittedBaseOutcome.Unproven, Cause: evaluation.PendingCount != 1 ? null : evaluation.CallableFailure?.Clause ?? evaluation.ConstraintFailure?.Clause),
                 CallSelection.InvalidDeclaration => new(OmittedBaseOutcome.Dependent, Cause: evaluation.InvalidDeclaration ?? this.TakeFailedCause().Use),
                 CallSelection.FailedSignature => new(OmittedBaseOutcome.Dependent, Cause: evaluation.FailedPendingSignature),
                 _ => new(OmittedBaseOutcome.Dependent, Cause: evaluation.IncompleteSignature),
@@ -83,16 +79,7 @@ public sealed partial class Binding
         }
         finally
         {
-            for (var i = obligationCount; i < this.obligations.Count; i++)
-            {
-                this.obligationSet.Remove(this.obligations[i]);
-            }
-
-            this.obligations.RemoveRange(obligationCount, this.obligations.Count - obligationCount);
-            this.acquisitionFailure = acquisition;
-            this.failedCause = failedCause;
-            this.activeRequirementContract = requirementContract;
-            (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
+            this.EndSelectionQuery(query);
             this.ReturnEvaluation(evaluation);
         }
     }

@@ -26,7 +26,7 @@ public class RunCommand : ISimpleCommand<RunCommand.Options>
 
     public async Task Execute(RunCommand.Options options, string[] args, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, async () =>
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, args, async () =>
         {
             try
             {

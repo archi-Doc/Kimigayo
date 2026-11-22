@@ -9,7 +9,7 @@ public class DefaultCommand(Kimigayo kimigayo) : ISimpleCommand
 {
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(kimigayo, () =>
+        Environment.ExitCode = await CommandExecution.Execute(kimigayo, args, () =>
         {
             if (args.Length != 0)
             {

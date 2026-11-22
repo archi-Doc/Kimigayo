@@ -1,9 +1,7 @@
-# Shared import definition, identity checks and generation for all PowerShell builders.
-function Get-KimiInstalledKernel32([string] $ToolchainRoot) {
-    $path = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Toolchain file not found: $path. Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM $((Read-KimiWindowsProfile).llvmVersion) archive, extracted> for the selected toolchain." }
-    return @{ path = $path; generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
-}
+# Shared import definition, library check and generation for all PowerShell builders; it reads toolchain.ps1, which its callers load.
+# The adopted kernel32 import library, committed beside the catalog (profile.json's kernel32.sha256) and carried by the compiler: the
+# one place naming it, which every script linking kernel32 reads (build.ps1 names its candidate after it).
+function Get-KimiKernel32 { return Join-Path $PSScriptRoot 'kernel32.lib' }
 
 function Get-KimiKernel32Definition {
     $definition = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'kernel32.def')).Replace("`r`n", "`n").TrimEnd() + "`n"
@@ -12,24 +10,9 @@ function Get-KimiKernel32Definition {
     return $definition
 }
 
-function Get-KimiDlltoolIdentity {
-    [CmdletBinding()]
-    param([string] $ToolPath, [switch] $AllowUnpinnedToolchain)
-    if (-not (Test-Path -LiteralPath $ToolPath -PathType Leaf)) { throw 'llvm-dlltool not found' }
-    $resolved = (Resolve-Path -LiteralPath $ToolPath).Path
-    $hash = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant()
-    $expected = (Read-KimiWindowsProfile).kernel32.dlltoolSha256
-    $matched = $hash -ceq $expected
-    if (-not $matched) {
-        if (-not $AllowUnpinnedToolchain) { throw 'llvm-dlltool SHA-256 mismatch. Use -AllowUnpinnedToolchain only for exploratory builds.' }
-        Write-Warning 'llvm-dlltool SHA-256 mismatch; continuing with an unverified toolchain.'
-    }
-    return @{ path = $resolved; sha256 = $hash; expectedSha256 = $expected; hashMatched = $matched }
-}
-
 # An import library's content, as the tools read it: llvm-dlltool names KERNEL32.dll, and llvm-readobj lists x64 COFF members only that
-# define exactly the definition's symbols and their __imp_ forms, each once. Generation's check (New-KimiKernel32Library) and the
-# development toolchain's (check-toolchain.ps1).
+# define exactly the definition's symbols and their __imp_ forms, each once. Generation's check (New-KimiKernel32Library), so the
+# adopted bytes were inspected when setup or an LLVM update reproduced them.
 function Test-KimiKernel32Library([string] $Dlltool, [string] $Readobj, [string] $Path) {
     $dll = & $Dlltool -I $Path | Out-String
     if ($LASTEXITCODE -ne 0 -or $dll.Trim() -cne 'KERNEL32.dll') { throw 'Unexpected generated kernel32 DLL name' }
@@ -39,9 +22,11 @@ function Test-KimiKernel32Library([string] $Dlltool, [string] $Readobj, [string]
     $expected = @($symbols) + @($symbols | ForEach-Object { "__imp_$_" })
     $actual = @([regex]::Matches($inspection, '(?m)^Symbol: (\S+)\r?$') | ForEach-Object { $_.Groups[1].Value })
     $formats = @([regex]::Matches($inspection, '(?m)^Format: (\S+)\r?$') | ForEach-Object { $_.Groups[1].Value })
-    if ((($actual | Sort-Object -CaseSensitive) -join ',') -cne (($expected | Sort-Object -CaseSensitive) -join ',') -or
-        $formats.Count -eq 0 -or @($formats | Where-Object { $_ -cnotin @('COFF-x86-64','COFF-import-file-x86-64') }).Count -ne 0) {
-        throw 'Generated kernel32 library has an unexpected architecture or import symbol set'
+    if ($formats.Count -eq 0 -or @($formats | Where-Object { $_ -cnotin @('COFF-x86-64','COFF-import-file-x86-64') }).Count -ne 0) {
+        throw 'Generated kernel32 library has an unexpected architecture'
+    }
+    if ((($actual | Sort-Object -CaseSensitive) -join ',') -cne (($expected | Sort-Object -CaseSensitive) -join ',')) {
+        throw 'Generated kernel32 library has an unexpected import symbol set'
     }
 }
 
@@ -59,7 +44,7 @@ function New-KimiKernel32Library([hashtable] $Tools, [string] $OutputPath) {
         Test-KimiKernel32Library $dlltool $readobj kernel32.lib
         Move-Item -LiteralPath (Join-Path $staging 'kernel32.def') -Destination ([IO.Path]::ChangeExtension($output, '.def')) -Force
         Move-Item -LiteralPath (Join-Path $staging 'kernel32.lib') -Destination $output -Force
-        return @{ path = $output; sha256 = (Get-FileHash -LiteralPath $output).Hash.ToLowerInvariant(); generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
+        return @{ path = $output; sha256 = Get-KimiSha256 $output; generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
     }
     finally {
         Pop-Location

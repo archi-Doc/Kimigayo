@@ -145,6 +145,21 @@ public sealed partial class Binding
     private static BindingState CompletedState(BindingState state, BoundType? type)
         => state == BindingState.Invalid ? state : type is null ? BindingState.Unresolved : BindingState.Resolved;
 
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; rule W): an unbound part other than an anonymous function at a position a split
+    // binding decides as a whole: every check of it reads the position, so it rests, unbound, as a part awaiting its position does,
+    // and is bound on its own once its call ends (CompleteUnselected). A typed part there holds (the relation holds at a mark); an
+    // anonymous function reads the mark (BindClosure: every part open).
+    private static bool RestsAtOpenPosition(Koto node, BoundType? expected)
+        => expected is { Kind: BoundTypeKind.Open } && node.BoundType is null && KotoHelper.UnwrapParentheses(node) is not FunctionKoto { IsAnonymous: true };
+
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; rule W; G812 ruling 151): a node bound at a position holding a mark that forms
+    // no Type and has no failure cause (no record of its own, no failed or resting input: HasFailureCauses) formed none because a part
+    // of it rests at its open position (RestsAtOpenPosition), the split's own limit. It rests there as that part does, so its reader
+    // does not take it as a failed input (SPEC 23.1.2: a rest has a reported cause): a Tuple whose element rests so, a Case whose
+    // payload does, and every form above them.
+    private bool RestsBelowOpenPosition(Koto node, BoundType? type, BoundType? expected)
+        => type is null && expected is { ContainsOpen: true } && !this.HasFailureCauses(node);
+
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
     private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
 
@@ -218,12 +233,13 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, expected))
+        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, expected) || RestsAtOpenPosition(node, expected))
         {
             return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later, a result for its call.
         }
 
-        // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
+        // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2), its rest below an open position
+        // none (RestsBelowOpenPosition).
         var parent = this.BeginConsultation(node);
         var type = this.HeightChecked(node, this.BindAndAdaptNode(node, scope, expected));
         if (this.FormsBorrows)
@@ -232,12 +248,19 @@ public sealed partial class Binding
         }
 
         this.EndConsultation(node, parent);
-        this.Consulted(node);
+        if (!this.RestsBelowOpenPosition(node, type, expected))
+        {
+            this.Consulted(node);
+        }
+
         return type;
     }
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
+        // DECISIONS BU-240 (temporary with BoundTypeKind.Open): an anonymous function reads the marks of its expected signature (BindClosure)
+        // and is then adapted at the unmarked one, the erasure's signature having been judged case by case.
+        var closure = KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true };
         if (expected is not null)
         {
             expected = this.ClassForm(expected, scope, out _); // SPEC 8.2.3: the binding input's form (a literal at T under `T is i32` is i32)
@@ -265,6 +288,11 @@ public sealed partial class Binding
         else
         {
             actual = this.BindNodeCore(node, scope, expected);
+        }
+
+        if (closure && expected is { ContainsOpen: true })
+        {
+            expected = this.Unmarked(expected);
         }
 
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))

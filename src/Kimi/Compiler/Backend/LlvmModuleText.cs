@@ -13,7 +13,7 @@
 // FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, a
 // floating constant's IEEE bits, name prefixes and symbols; the runtime ABI records and constants (RuntimeAbi), the abort reasons (AbortReasons)
-// and the target profile (WindowsProfile).
+// and the target profile (TargetProfile.Windows).
 // Output: LLVM text written to the writer; a symbol's spelling after @; an expanded
 // runtime template; a floating constant's hexadecimal spelling bits.
 // Invariants: warm writes allocate nothing; a template is expanded in one ordered scan into one builder; each runtime ABI
@@ -37,11 +37,6 @@ internal readonly record struct ExternalFunction(FunctionAbi Abi, string Symbol,
 /// <summary>Writes the syntax-free module frame of the LLVM text.</summary>
 internal static partial class LlvmModuleText
 {
-    // Every generated definition carries the same profile attributes (SPEC 21.3.1).
-    internal const string Footer =
-        "attributes #0 = { uwtable(" + WindowsProfile.UnwindTables + ") \"target-cpu\"=\"" + WindowsProfile.Cpu + "\" \"target-features\"=\"" +
-        WindowsProfile.Features + "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
-
     // Fixed profile vocabulary: no per-module tracking or warm declaration construction.
     // The aggregate helpers copy bytes through these intrinsics.
     internal const string MemoryDeclarations =
@@ -85,6 +80,11 @@ internal static partial class LlvmModuleText
         declare { i128, i1 } @llvm.umul.with.overflow.i128(i128, i128)
         """ + "\n";
 
+    // Every generated definition carries the same profile attributes (SPEC 21.3.1), built once.
+    internal static readonly string Footer =
+        "attributes #0 = { uwtable(" + TargetProfile.Windows.UnwindTables + ") \"target-cpu\"=\"" + TargetProfile.Windows.Cpu + "\" \"target-features\"=\"" +
+        TargetProfile.Windows.Features + "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
+
     // SPEC 21.4.3, 22.2: the nullable form of Alloc (RuntimeAbi.TryAllocateBytes), defined where a body calls it: null wherever Alloc
     // would Abort (a size above isize's range, no process heap, a failed allocation); a zero-byte request allocates one byte, so the
     // result is a fresh start; no location to report.
@@ -126,9 +126,9 @@ internal static partial class LlvmModuleText
 
     // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.4.7).
     private static readonly string Header =
-        "; Kimigayo checked pre-optimization IR (" + WindowsProfile.Name + ")\ntarget triple = \"" + WindowsProfile.Target + "\"\n" +
-        "target datalayout = \"" + WindowsProfile.DataLayout + "\"\n" +
-        RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
+        "; Kimigayo checked pre-optimization IR (" + TargetProfile.Windows.Name + ")\ntarget triple = \"" + TargetProfile.Windows.Target + "\"\n" +
+        "target datalayout = \"" + TargetProfile.Windows.DataLayout + "\"\n" +
+        RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + TargetProfile.Windows.FloatMarker + " = global i32 0, align 4\n";
 
     private static readonly string Runtime = ReadRuntime();
 

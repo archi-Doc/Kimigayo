@@ -366,7 +366,7 @@ public partial class KimiLibraryShapeTest
         static (int Walks, BindingResult Result, string[] Records) Second(bool clear)
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
             CompilationTestHelper.UseEditedLibrary(c, static _ => { }); // A library of its own: the row writes its query states (x1).
             Assert.True(c.Bind().IsComplete);
@@ -775,7 +775,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void AFreezeRefusesAnUnverifiedConformancePath()
     {
-        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         freeze.Library.Kotonoha.CreateCodeContext().Parse(
             freeze.Library.Kotonoha.RootKoto,
             "contract ZBumps\n    func bump(self: uniq/Self) -> ()\nopen struct ZBase\n    Self is ZBumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct ZLeaf: ZBase\n    public init() => ()\n");

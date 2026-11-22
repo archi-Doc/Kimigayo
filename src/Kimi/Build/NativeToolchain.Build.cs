@@ -14,9 +14,9 @@ internal static partial class NativeToolchain
     // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
-    // A project's native build. A build reads no toolchain root and no LlvmBin: --ToolchainRoot, KIMI_TOOLCHAIN_ROOT and the command
-    // line's LlvmBin select nothing (B6b3), and they are accepted and not read here; a project's LlvmBin and a link manifest's
-    // toolchain member are errors (B6b5) (Tatara designs A4 §2.1, B6b1; the options removed in B6b4).
+    // A project's native build. A build reads no toolchain root and no LlvmBin: the options --ToolchainRoot and --LlvmBin (B6b4), a
+    // project's LlvmBin and a link manifest's toolchain member (B6b5) are errors, and Kimi reads KIMI_TOOLCHAIN_ROOT nowhere (B6b3)
+    // (Tatara designs A4 §2.1, B6b1).
     internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
@@ -25,21 +25,19 @@ internal static partial class NativeToolchain
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
-    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. It holds its record's
-    // lock (Begin) from its first write to its end.
+    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. It builds the pair as
+    // emit writes it: every path is named from the manifest's own name (ArtifactPaths), so its IR is the Name.ll beside it (CheckPair).
+    // It holds its record's lock (Begin) from its first write to its end.
     internal static async Task BuildManifest(string path, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         path = Path.GetFullPath(path);
-        var directory = Path.GetDirectoryName(path)!;
-        var record = Path.ChangeExtension(path, ".build.json");
-        using var output = await Begin(record, report, cancellationToken);
+        var ir = ArtifactPaths.IrOf(path);
+        using var output = await Begin(ArtifactPaths.RecordOf(ir), report, cancellationToken);
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, cancellationToken));
         var manifest = document.RootElement;
         ValidateManifest(manifest);
-        var ir = ResolvePath(LinkManifest.Text(manifest, "irFile"), directory);
         var optimization = LinkManifest.Text(manifest, "optimization");
-        var paths = new ArtifactPaths(ir, path, record, Path.Combine(directory, Path.GetFileNameWithoutExtension(ir) + "." + optimization));
-        await new NativeBuild(null, paths, manifest, directory, optimization, report, cancellationToken).Run();
+        await new NativeBuild(null, ArtifactPaths.Create(ir, optimization), manifest, Path.GetDirectoryName(path)!, optimization, report, cancellationToken).Run();
     }
 
     // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
@@ -49,7 +47,7 @@ internal static partial class NativeToolchain
     {
         LinkManifest.CheckFixed(root);
         if (LinkManifest.Text(root, "optimization") is not ("O0" or "O2") || LinkManifest.Text(root, "outputKind") != "Application" ||
-            LinkManifest.Text(root, "entry") != WindowsProfile.EntrySymbol || LinkManifest.Text(root, "subsystem") != WindowsProfile.Subsystem)
+            LinkManifest.Text(root, "entry") != TargetProfile.Windows.EntrySymbol || LinkManifest.Text(root, "subsystem") != TargetProfile.Windows.Subsystem)
         {
             throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
         }
@@ -118,7 +116,7 @@ internal static partial class NativeToolchain
     private static HashSet<string> CreateAllowedUndefined()
     {
         var allowed = new HashSet<string>(ToolchainIdentity.Backend.Symbols, StringComparer.Ordinal);
-        foreach (var (symbol, _) in WindowsProfile.RuntimeDeclarations)
+        foreach (var (symbol, _) in TargetProfile.Windows.RuntimeDeclarations)
         {
             allowed.Add("__imp_" + symbol);
         }
@@ -144,7 +142,8 @@ internal static partial class NativeToolchain
     /// should the process end between the success record and the move, or the move and the invalidation both fail (one IOException
     /// naming both, the move's as its inner exception), the attempt's success record stays, naming a hash no file at the path has. run
     /// --no-build runs only an executable whose hash the record names, so it refuses that one, and the next build invalidates the
-    /// record.</summary>
+    /// record. From the pair's hash to its end the build holds its IR open for reading only (G1202): a write, replacement or deletion of
+    /// it fails meanwhile, so Tatara compiles the bytes the record names.</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -172,12 +171,27 @@ internal static partial class NativeToolchain
             this.outputDirectory = Path.GetDirectoryName(paths.Manifest)!;
             this.optimization = optimization;
             this.context = new TataraContext(
-                report, cancellationToken, WindowsProfile.Target, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel);
+                report, cancellationToken, TargetProfile.Windows.Target, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
         }
 
         internal async Task Run()
         {
-            var irHash = this.CheckPair();
+            // The pair's IR, held with read sharing only from its hash to the build's end: no writer changes or replaces it before Tatara
+            // reads it, so Tatara compiles the bytes the record names (G1202). The platform is checked after the hash, so a mismatched pair
+            // fails as itself on every platform.
+            this.CheckPair();
+            using var ir = File.OpenRead(this.paths.Ir);
+            var irHash = Hash(ir);
+            if (irHash != LinkManifest.Text(this.manifest, "irSha256"))
+            {
+                throw new InvalidDataException("IR/manifest SHA-256 mismatch.");
+            }
+
+            if (!OperatingSystem.IsWindows())
+            {
+                throw new PlatformNotSupportedException("Native build currently requires Windows.");
+            }
+
             var tools = new JsonObject();
             this.record["tools"] = tools;
             this.record["irSha256"] = irHash;
@@ -228,35 +242,28 @@ internal static partial class NativeToolchain
         private static void CheckSupply(Project project, string name, string? kind, string? hash)
         {
             var settings = project.ProjectFile;
-            var supply = settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
-            var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(settings, WindowsProfile.Target, name, supply);
+            var supply = settings.NativeLibraries.TryGetValue(TargetProfile.Windows.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
+            var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(settings, TargetProfile.Windows.Target, name, supply);
             if (supply is null || expectedKind != kind || (expectedHash is not null && !expectedHash.Equals(hash, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new InvalidDataException($"Native library '{name}' does not match its NativeLibraries Kind or Sha256 assertion.");
             }
         }
 
-        // The pair's identity: the manifest names this IR by path, hash and optimization, on a platform Tatara runs on.
-        private string CheckPair()
+        // The pair's names, checked before Run opens the IR: the manifest names this IR, the Name.ll beside its Name.link.json (paths
+        // compared as Windows compares them), and this optimization. So a build's IR is never another output's or one of its own files
+        // (G1203).
+        private void CheckPair()
         {
-            var irHash = Hash(this.paths.Ir);
-            if (ResolvePath(LinkManifest.Text(this.manifest, "irFile"), this.outputDirectory) != this.paths.Ir ||
-                irHash != LinkManifest.Text(this.manifest, "irSha256"))
+            if (!ResolvePath(LinkManifest.Text(this.manifest, "irFile"), this.outputDirectory).Equals(this.paths.Ir, StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidDataException("IR/manifest SHA-256 or path mismatch.");
+                throw new InvalidDataException("IR/manifest path mismatch: a link manifest Name.link.json names the IR Name.ll beside it.");
             }
 
             if (this.optimization != LinkManifest.Text(this.manifest, "optimization"))
             {
                 throw new InvalidDataException("Project and manifest optimization differ; re-emit the inputs.");
             }
-
-            if (!OperatingSystem.IsWindows())
-            {
-                throw new PlatformNotSupportedException("Native build currently requires Windows.");
-            }
-
-            return irHash;
         }
 
         // The manifest's libraries in its order, each staged (the file the linker receives), checked against its assertions and
@@ -353,7 +360,7 @@ internal static partial class NativeToolchain
                 }
             }
 
-            var markers = facts.DefinedExternal.Count(s => s.Name == WindowsProfile.FloatMarker && s.Kind is 'B' or 'D');
+            var markers = facts.DefinedExternal.Count(s => s.Name == TargetProfile.Windows.FloatMarker && s.Kind is 'B' or 'D');
             if (markers != 1 || !facts.HasUnwind || facts.HasDefaultLibrary)
             {
                 throw new InvalidDataException("Invalid _fltused definition, unwind information or hidden default library.");
@@ -370,8 +377,8 @@ internal static partial class NativeToolchain
             link[0] = "lld-link";
             link[1] = obj;
             libraries.CopyTo(link, 2);
-            link[^5] = "/entry:" + WindowsProfile.EntrySymbol;
-            link[^4] = "/subsystem:" + WindowsProfile.Subsystem;
+            link[^5] = "/entry:" + TargetProfile.Windows.EntrySymbol;
+            link[^4] = "/subsystem:" + TargetProfile.Windows.Subsystem;
             link[^3] = "/nodefaultlib";
             link[^2] = "/Brepro";
             link[^1] = "/out:" + executable;

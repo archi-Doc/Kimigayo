@@ -273,7 +273,7 @@ public class DefaultBindingTest
         Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.SymbolOf());
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var kotonoha = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
         Assert.NotNull(kotonoha);

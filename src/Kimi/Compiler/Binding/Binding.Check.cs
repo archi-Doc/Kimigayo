@@ -78,8 +78,9 @@ public sealed partial class Binding
             else if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call)
             {
                 // A call's verdict at its use (VerdictUse); a synthesized call rests on its failed consumer, failed before or by this verdict.
+                // DECISIONS BU-240 (G812 ruling 159): an obligation whose premise was Unknown at a split's mark rests (CallPlan.PremiseReadsMark).
                 var consumer = this.synthesizedCalls?.GetValueOrDefault(invocation);
-                if (consumer is not { BindingFailure: not BindingFailure.None })
+                if (consumer is not { BindingFailure: not BindingFailure.None } && !call.PremiseReadsMark)
                 {
                     this.RequireClauses(this.VerdictUse(node), this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
                 }

@@ -211,9 +211,14 @@ internal static class DiagnosticCorpus
     /// <param name="source">The program.</param>
     /// <param name="outputKind">The project's OutputKind.</param>
     /// <returns>The counts.</returns>
-    internal static string RecordProfile(string source, string outputKind)
+    internal static string RecordProfile(string source, string outputKind) => RecordProfile(Check(source, outputKind));
+
+    /// <summary>Counts a check's records by code, in ordinal order: "2*A_Kd 1*B_Kd", or "clean".</summary>
+    /// <param name="output">The check's output.</param>
+    /// <returns>The counts.</returns>
+    internal static string RecordProfile(CheckOutput output)
     {
-        var records = Check(source, outputKind).Diagnostics.GroupBy(static x => x.Code).OrderBy(static x => x.Key, StringComparer.Ordinal);
+        var records = output.Diagnostics.GroupBy(static x => x.Code).OrderBy(static x => x.Key, StringComparer.Ordinal);
         return records.Any() ? string.Join(' ', records.Select(static x => $"{x.Count()}*{x.Key}")) : "clean";
     }
 
@@ -255,12 +260,12 @@ internal static class DiagnosticCorpus
         try
         {
             var project = Path.Combine(folder, "Program.kimiproj");
-            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{WindowsProfile.Target}\"}}\n{settings}");
+            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{TargetProfile.Windows.Target}\"}}\n{settings}");
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
             Assert.True(
                 Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
                 string.Join(", ", failures));
-            return CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+            return CheckService.Run(loaded, TargetProfile.Windows.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         }
         finally
         {

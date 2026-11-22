@@ -127,6 +127,30 @@ public sealed class TataraCommandTest : IDisposable
         Assert.Equal(1, code);
     }
 
+    // A removed option fails its line alone (Tatara B6b4, design §5.2 row 3): its text on standard error and the line's exit code 1;
+    // the next line builds, and the session returns 1.
+    [Fact]
+    public async Task ARemovedOptionFailsItsLineAlone()
+    {
+        this.Library("Lib");
+        var error = Console.Error;
+        using var stderr = new StringWriter();
+        Console.SetError(stderr);
+        try
+        {
+            var (code, text, _) = await this.Session("build Lib/Lib.kimiproj --ToolchainRoot x\nbuild Lib/Lib.kimiproj\n");
+            Assert.Equal(1, code);
+            Assert.Equal(1, Count(text, "Exit code: 1"));
+            Assert.Equal(1, Count(text, "Project: Lib (Lib.kimiproj)"));
+        }
+        finally
+        {
+            Console.SetError(error);
+        }
+
+        Assert.Equal("--ToolchainRoot was removed: Kimi carries its toolchain.", stderr.ToString().TrimEnd());
+    }
+
     // The Ctrl+C action (§2.4): the session replaces Program.CancelKey and restores it at its end; a press during a line cancels that
     // line's token ("Command cancelled.", 130, a failed line) and the next line runs.
     [Fact]
@@ -292,7 +316,7 @@ public sealed class TataraCommandTest : IDisposable
         try
         {
             Environment.ExitCode = 0;
-            var code = await CommandExecution.Execute(provider.GetRequiredService<Kimigayo>(), () => command.Run(input, cancellationToken));
+            var code = await CommandExecution.Execute(provider.GetRequiredService<Kimigayo>(), [], () => command.Run(input, cancellationToken));
             Assert.Equal(0, Environment.ExitCode);
             return (code, console.Text);
         }
@@ -306,7 +330,7 @@ public sealed class TataraCommandTest : IDisposable
     internal static void WriteLibrary(string path)
     {
         Directory.CreateDirectory(path);
-        File.WriteAllText(Path.Combine(path, "Lib.kimiproj"), $"OutputKind=\"Library\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(path, "Lib.kimiproj"), $"OutputKind=\"Library\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(path, "lib.kimi"), "func one() -> i32 => 1\n");
     }
 

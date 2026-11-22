@@ -242,7 +242,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             var contract = TyCtxt.Contract(callee.Symbol!);
             this.compared.Clear();
-            this.Compared(program, body, contract, types.Comparison(contract, callee.Subst!.Self!, operators: true)!); // The builder's root.
+            this.Compared(program, body, contract, types.Comparison(contract, callee.Subst!.Self!, operators: true)); // The builder's root.
         }
         else if (callee is { Kind: MirCalleeKind.Requirement, Subst: { Self: { } written } subst } && cases.Type(written) is var self &&
             (callee.Symbol!.Definition.Kind != DispositionKind.Body || !self.IsAbstract))

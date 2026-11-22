@@ -307,7 +307,7 @@ public partial class LayoutAttributeBindingTest
     public void SourceOrderAndCanonicalWritingPreserveMergedLayouts(bool storageFirst)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var storage = new SourceDocument("z-storage.kimi", "#Layout(\"C\")\nstruct S\n    var a: i32\n    var b: u8");
         var methods = new SourceDocument("a-methods.kimi", "#Layout(\"C\")\nstruct S\n    func method() => ()");
         c.Kotonoha.AddSource(storageFirst ? storage : methods);

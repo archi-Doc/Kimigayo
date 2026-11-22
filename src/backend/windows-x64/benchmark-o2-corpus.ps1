@@ -104,7 +104,7 @@ function Build-Kernel($Source, [string] $Variant, $Checkout) {
     $sourceHash = (Get-FileHash -LiteralPath (Join-Path $directory $Source.Name) -Algorithm SHA256).Hash # The source this build compiles.
     $project = Join-Path $directory "$($Source.BaseName).kimiproj"
     [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$Optimization`"`n", $utf8)
-    $build = Invoke-Timed $dotnet @($Checkout.compiler, 'build', $project, '--ToolchainRoot', $ToolchainRoot) $Checkout.environment
+    $build = Invoke-Timed $dotnet @($Checkout.compiler, 'build', $project) $Checkout.environment
     if ($build.exitCode -ne 0) { throw "Build failed: $Variant $($Source.Name)`n$($utf8.GetString($build.stdout))$($utf8.GetString($build.stderr))" }
     $bin = Join-Path $directory 'bin/x86_64-pc-windows-msvc'
     $exe = Join-Path $bin "$($Source.BaseName).$Optimization.exe"
