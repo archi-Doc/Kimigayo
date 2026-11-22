@@ -45,9 +45,10 @@ public sealed class TataraExecutorTest : IDisposable
 
     private static string Hello => Path.Combine(Repository.Root, "docs", "examples", "Hello", "Hello.kimi");
 
-    private static string Kernel32 => Path.Combine(Root, "windows_x64", "kernel32.lib");
+    // The libraries the compiler carries, committed beside the catalog (Tatara B6b6).
+    private static string Kernel32 => Path.Combine(Repository.Root, "src", "backend", "windows-x64", "kernel32.lib");
 
-    private static string Backend => Path.Combine(Root, "windows_x64", ToolchainIdentity.BackendFile);
+    private static string Backend => Path.Combine(Repository.Root, "src", "backend", "windows-x64", "kimi_backend_windows_x64_v1.lib");
 
     public void Dispose() => Directory.Delete(this.directory, true);
 
@@ -81,14 +82,14 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // The tool control comparison (permanent): the archive's opt, llc and lld-link with P13's arguments against Tatara's operations,
-    // on the IR of the fixed rows or every corpus fixture, at O0 and O2.
+    // on the IR of the fixed rows or every corpus fixture, at O0 and O2; both links take the libraries the compiler carries.
     [Fact]
     public async Task TataraEqualsTheTools()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var rows = Corpus is { } corpus
             ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => ir + "|" + level)).ToArray()
-            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => Path.ChangeExtension(Path.ChangeExtension(m, null), ".ll") + "|" + Level(m))
+            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => ArtifactPaths.IrOf(m) + "|" + Level(m))
                 .Concat(Levels.Select(level => this.DebugIr() + "|" + level)).ToArray();
         await Run(rows, row => this.CompareWithTools(row));
     }
@@ -119,7 +120,8 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var manifest = Manifest(rows[i % 2]);
             await NativeToolchain.BuildManifest(manifest, (_, _) => { }, TestContext.Current.CancellationToken);
-            var products = Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".obj") + Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".exe");
+            var built = ArtifactPaths.Create(ArtifactPaths.IrOf(manifest), Level(manifest));
+            var products = ArtifactFiles.Hash(built.Stem + ".obj") + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
             first[i % 2] ??= products;
             Assert.Equal(first[i % 2], products);
         }
@@ -133,7 +135,7 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
-        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var invalid = Path.Combine(this.directory, "invalid.ll");
         File.WriteAllText(invalid, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f( {\n");
@@ -163,7 +165,7 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
-        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var before = FilterOwner();
         tatara.Optimize(Context, ir, Path.Combine(this.directory, "hello.O2.ll"));

@@ -493,7 +493,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < qualified.Components.Count; i++)
         {
-            if (!SameType(qualified.Components[i], expected.Components[i]))
+            if (!ReferenceEquals(qualified.Components[i], expected.Components[i]))
             {
                 return null;
             }

@@ -1440,6 +1440,47 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   12.3.3; G274 and G265 closed, no longer reproducing; R7-P1 keeps their programs as guard rows). Nothing frozen.
 - Revision 106 (2026-11-22, plan §14; the Front's D-1034, R7-C8's state check): C8's row records U-D3 as landed in substance
   with G647 (`2f7d4a10d`, DECISIONS BU-175) and names what is left: U-D3r's fail-first rows, G140 U3 and G309-R. Nothing frozen.
+- Revision 107 (2026-11-22, plan §14; the Front's D-1044, F's V2e/V2f/V1c ruling 1, R7-V2f's state check): V2's row
+  records V2f as done with V2a and its DeclQuery kind as moved to C9 (a bound reference to a library Contract carries the
+  frozen library declaration; completing such a query throws in `SetQueryState`); C7's prerequisite is met; C9's row takes
+  the kind. Nothing frozen.
+- Revision 108 (2026-11-22, plan §14; the Front's Q-643 and D-1053, F's V2a2/C3b rulings 1 and 2, R7-V2a2's landing): V2's
+  row records V2a2 as landed in W-309: `ImplTable.Find` and `TryPath` hand out only what the running pass registered
+  (DECISIONS R7-M16's R7-V2a2 amendment); e6 and t1, valid programs the Bind after an edit rejected, are accepted. Nothing
+  frozen.
+- Revision 109 (2026-11-22, plan §14; the Front's Q-645 and D-1055, F's C8 rulings 1 and 2, R7-D3 D3-1's landing): D3's row
+  records D3-1 as landed in W-309: ClosureType's `FixedAtoms` walk no longer crosses a Closure's signature, so a closure chain's
+  formations are linear (DECISIONS BU-73's R7-D3 D3-1 amendment; PLAN G348 F1); D3-2 takes `UnimagedClosure` and
+  `ClosureArgumentVariance`. Nothing frozen.
+- Revision 110 (2026-11-22, plan §14; the Back's D-1063, the owner's O-486 1 (a) and 2 (b), R8-X1's review of exceptions):
+  §10.2 item 3 excepts Array `appendAll` from the A4-summary agreement, R8's decided exception at X1 (PLAN G400); §5.2's X1 row
+  names L2 (PLAN G597) as R8's exit work before X1's exit run. Nothing frozen.
+- Revision 111 (2026-11-22, plan §14; the Front's Q-646 and D-1058, F's V2e rulings 1-3, R7-V2e's landing): V2's row
+  records V2e as landed in W-310: SPEC 9.1's duplicate check compares only functions of one `SignatureHash` over `FnSig`
+  (DECISIONS R7-M77, superseding R7-M37's `SignatureKey` clause: no key type); the group checks left pairwise are PLAN
+  G1249. Nothing frozen.
+- Revision 112 (2026-11-22, plan §14; the Front's Q-647 and D-1059, F's C8 rulings 1 and 4, R7-C8 U-D3r's landing): C8's
+  row records U-D3r as landed in W-311: fail-first rows for InputOrigins and SameExceptOmittedOrigins;
+  AddTypeClauseObligations, Mentions and SolveOmittedOrigins stay reading only past their old counts. Nothing frozen.
+- Revision 113 (2026-11-22, plan §14; the Front's Q-648 and D-1062, F's P1 ruling 1, R7-P1's rows): P1's row records its rows
+  as complete, landed in W-311 (Q-648) (fail-first for P2, P3, P4 T4, R1e and I3; the cost rows; SP1's T rows labelled from D-1042's
+  text); its Explicit open row ix-mis (two `Indexable` conformances, an index fitting neither) is PLAN G1252. Nothing frozen.
+- R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
+  `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
+  independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
+  by 15.6.1's "Origin relations" (declared and substituted relations are judged after selection; applicability and expected-result
+  filtering use only structural parts), 10.8's "Solving" (Origin evidence never makes a candidate inapplicable; each argument's
+  Origin fit is judged after selection) and 15.3.6 (inference is judged after selection); T2 by 10.3 (only the structural part of
+  the fit before selection), with 10.2's erasure row, 10.7 and 15.6.1's structural part of a fit; T3 by 10.3, 15.6.1 and 10.8 (the
+  expected result fills only unbound parts, its Origins 15.3.6 inference variables). T4 goes into SPEC 15.3.7's Compatibility
+  bullet (a body inference variable of 15.3.4 on either side is solved, each position giving it the bound its polarity gives at a
+  use, 15.3.6; never judged from premises) with its example, 15.6.1 (the whole-contract comparison from premises alone, "apart
+  from the body inference variables that 15.3.7 solves", and the body sentence's "every other relation" gains "not on a body
+  inference variable") and 10.7 (only the implementation's call-time Origins "and the body inference variables of either side" are
+  inferred). The plan's row cites §10.1 step 5 or §8.1.3, §10.8 and §15.3.4; the text is in 15.3.7, 15.6.1 and 10.7, and P4
+  implements it. Only t4-short moves (rejected on dev with `UnprovenOriginContract_Kd`, valid); t4-long (valid) and t4-fixed
+  (invalid, between fixed Origins) are unchanged. SPECJ follows (RQ10), not in this commit. The wording is the census's, not the
+  plan's: nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
@@ -1690,3 +1731,25 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   download; `KIMI_E_PROCESS_HEAP` removed in B7r2; decision 23's memory gate); §7: B7's row names B7b's group B7r and its
   order, B8's row records the owner's deferral; §11: the question before B7b is answered. No earlier decision changes.
   Nothing frozen.
+- Revision 9 (2026-11-22, the B7b and B7r design's Revision 2 accepted by the Middle's review C-445 (N4), as Revision 2.1; T's
+  D-1061): §7: B7's row states the order B7 lands in, in eight windows: B7a1 and B7a2, then B7b1 (W1), B7r4 (W2), B7r1-B7r3
+  (W3, all or none), B7b2, B7b6 and B7b5 (W4), B7r5 and B7b4 (W5), B7b7 (W6), B7b8 (W7) and B7b9 (W8), replacing revision 8's
+  order (the group B7r first, from the design's Revision 1). No decision of the owner changes. Nothing frozen.
+- Revision 10 (2026-11-22, the owner's answers to O-488 in T's dialog, verbatim 「O-488 (a) a (b) a (c) a (d) a (e) a (f) 全てa」,
+  and in the same message 「さらに、「言語側の OS 機能」の設計も開始してください。」; T's D-1065): §2 gains decisions 29-35 (B9's
+  platform contract: a root struct `Self is Platform` judged as startup selection is, the runtime-held platform value and its
+  members, the Limine boot protocol with the compiler's linker script, the Condition value `os == "none"`, compiler-rt's soft-float
+  builtins, the SPEC §22 and IMPL §21.6 statements and no new vocabulary entry; and the language-side OS features in design);
+  §7: B9's row names decisions 29-34 and its design outline, and a new row B10 (the language-side OS features, design only);
+  §11: the question before B9 is answered, and one before B10's units is added. Decision 22's "not started" for the OS features
+  is superseded by decision 35; no other decision changes. No SPEC or IMPL text: B9's units carry it, each with an independent
+  review. Nothing frozen.
+- Revision 11 (2026-11-22, the owner's answer to O-489 in T's dialog, verbatim 「O-489 全てa」; T's D-1068): §2 gains decisions
+  36-43 (B10's forms: fixed intrinsics in a Kimi group `X86`, one per instruction, general inline assembly an Appendix D line; one
+  family id `Instruction` over a Backend table `InstructionRows`; privileged `X86` members only where `os == "none"`;
+  `Raw.readVolatile`/`writeVolatile` for `PrimitiveInteger` on every target; interrupt entries through the Contracts
+  `X86.InterruptHandler`/`ErrorCodeHandler` and an entry intrinsic returning an `x86_intrcc` thunk's code address; sections
+  deferred, with an Appendix D line; the order OSF2, OSF1a before B9h, OSF1b and OSF3a, OSF3b after B9h; `IntrinsicId`'s limit
+  28 → 32, each raised by its own unit, the documents listed, no download); §7: B10's row names decisions 35-43 and its units
+  OSF2, OSF1a, OSF1b, OSF3a and OSF3b; §11: the question before B10's units is answered. No other decision changes. No SPEC, IMPL
+  or COMPILER_ARCHITECTURE text: each OSF unit carries its own, with K's independent review. Nothing frozen.
