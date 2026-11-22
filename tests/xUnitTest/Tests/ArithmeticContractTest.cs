@@ -53,7 +53,7 @@ public class ArithmeticContractTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(
             "Addable Subtractable Multipliable Dividable RemainderProvider LeftAddable LeftSubtractable LeftMultipliable LeftDividable LeftRemainderProvider Negatable",
-            string.Join(' ', Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.IsArithmetic(x))));
+            string.Join(' ', Enum.GetValues<KimiDeclarationId>().Where(static x => KimiLibraryCatalog.IsArithmeticContract(x))));
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
             var contract = c.Library.GetSymbol(id)!.Contract!;
