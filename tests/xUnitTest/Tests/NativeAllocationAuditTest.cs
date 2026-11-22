@@ -25,10 +25,6 @@ public class NativeAllocationAuditTest
     // Two Dictionary storages (96 and 192 bytes); the growth transfers the four occupied slots (96 bytes).
     private const string Entries = "var entries: Dictionary<i32, i32> = [:]\nvar i = 0\nwhile i < 5\n    _ = entries.tryInsert(i, i)\n    i += 1";
 
-    // A block taken from the process heap outside the platform layer, as the runtime took it before the layer (the Tatara plan's B7r1).
-    private const string DirectAllocation =
-        "define internal ptr @audit_direct_alloc() {\nentry:\n  %heap = call ptr @GetProcessHeap()\n  %data = call ptr @HeapAlloc(ptr %heap, i32 0, i64 1)\n  ret ptr %data\n}\n";
-
     // Pages mapped outside the platform layer, as a program's import that shares the runtime's VirtualAlloc declaration calls it
     // (ForeignEmissionTest.Pages): around the allocator the audit counts.
     private const string ImportedPages =
@@ -67,12 +63,12 @@ public class NativeAllocationAuditTest
     }
 
     // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1, B7r2): a kernel32 call in a runtime routine other than the layer routine that owns it
-    // fails the audit before any run: the common part on the process heap, as the runtime took it before the layer (B7r1); the allocator
-    // mapping pages itself, beside the layer (B7r2); and C-468's N2, a heap call in the exit or a page mapping in the write.
+    // fails the audit before any run: the common part mapping pages itself, as the runtime called the OS before the layer (B7r1); the
+    // allocator mapping pages itself, beside the layer (B7r2); and C-468's N2, a page release in the exit or a page mapping in the write.
     [Theory]
-    [InlineData("__kimi_alloc", "call ptr @GetProcessHeap()")]
+    [InlineData("__kimi_alloc", "call ptr @VirtualAlloc(ptr null, i64 4096, i32 12288, i32 4)")]
     [InlineData("__kimi_heap_allocate", "call ptr @VirtualAlloc(ptr null, i64 4096, i32 12288, i32 4)")]
-    [InlineData("__kimi_exit", "call ptr @GetProcessHeap()")]
+    [InlineData("__kimi_exit", "call i32 @VirtualFree(ptr null, i64 0, i32 32768)")]
     [InlineData("__kimi_write", "call ptr @VirtualAlloc(ptr null, i64 4096, i32 12288, i32 4)")]
     public void AnOsCallOutsideItsLayerRoutineFails(string routine, string call)
     {
@@ -86,11 +82,11 @@ public class NativeAllocationAuditTest
 
     // Design-b7b §3.3 (C-478 B1): outside the layer routine that owns it no definition mentions a runtime kernel32 function, a program's
     // own import included, so no page escapes the counters and no exit the hook: a program importing VirtualAlloc and calling it, the
-    // same call written into a program, B7r1's process-heap block and an exit around __kimi_exit fail, each for its call.
+    // same call written into a program and an exit around __kimi_exit fail, each for its call (B7r1's process-heap block is a declaration
+    // outside the whitelist since B7r3, UnknownDeclarationFails).
     [Theory]
     [InlineData(PagesProgram, "", " mentions VirtualAlloc")]
     [InlineData(Append, ImportedPages, "audit_imported_pages mentions VirtualAlloc")]
-    [InlineData(Append, DirectAllocation, "audit_direct_alloc mentions GetProcessHeap")]
     [InlineData(Append, DirectExit, "audit_direct_exit mentions ExitProcess")]
     public void AProgramsOsCallFails(string source, string definition, string offender)
     {
@@ -111,7 +107,10 @@ public class NativeAllocationAuditTest
         NativeAllocationAudit.AssertOsCallsInLayer(ir);
     }
 
+    // A declaration outside the whitelist fails before any run: another allocator's, a page query, and the process heap's allocator,
+    // which left kernel32's set with the runtime's declarations (the Tatara plan's decision 23, B7r3).
     [Theory]
+    [InlineData("declare dllimport ptr @HeapAlloc(ptr, i32, i64)")]
     [InlineData("declare dllimport ptr @HeapReAlloc(ptr, i32, ptr, i64)")]
     [InlineData("declare dllimport ptr @VirtualQuery(ptr, ptr, i64)")]
     [InlineData("declare dllimport ptr @RtlAllocateHeap(ptr, i32, i64)")]

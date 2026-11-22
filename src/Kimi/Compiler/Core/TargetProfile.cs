@@ -34,9 +34,6 @@ internal sealed class TargetProfile
     // noreturn, an ABI attribute no import carries (SPEC 21.2).
     private static readonly (string Symbol, string? Signature)[] WindowsRuntimeDeclarations =
     [
-        ("GetProcessHeap", "p"),
-        ("HeapAlloc", "pp48"),
-        ("HeapFree", "4p4p"),
         ("GetStdHandle", "p4"),
         ("WriteFile", "4pp4pp"),
         ("GetLastError", "4"),
