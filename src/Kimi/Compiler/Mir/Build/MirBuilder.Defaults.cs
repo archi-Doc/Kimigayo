@@ -123,7 +123,7 @@ internal sealed partial class MirBuilder
             var completes = Completes(decl.Expression);
             if (!template.Recursive && (template.Body is null || template.Failed || limit || unsupported))
             {
-                this.uses.Clear();
+                this.ClearUses();
                 for (var i = 0; i < decl.Index; i++)
                 {
                     this.SiteUse(new(this.arguments[start + MirCallee.Position(function, i)].Place.Root));
