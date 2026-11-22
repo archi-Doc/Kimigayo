@@ -571,11 +571,12 @@ public sealed partial class Binding
         private struct TakeRecord(Binding binding, Dictionary<SourceRef, Facts> met, bool exclusive) : IHirUses
         {
             private int call = -1;
+            private Koto? preceding; // The call's preceding input (EarlierAdjust), reset by Call.
 
             // The takes recorded (ClosureWork).
             public int Count { get; private set; }
 
-            public void Call(int ordinal) => this.call = ordinal;
+            public void Call(int ordinal) => (this.call, this.preceding) = (ordinal, null);
 
             public readonly void Unselected(CallPlan call)
             {
@@ -586,7 +587,7 @@ public sealed partial class Binding
                 if (child is not null)
                 {
                     ref var takes = ref this.Row(child, out var taken);
-                    this.Fix(ref takes, binding.ChildAdjust(child, adaptation, kind, taken ? binding.Claimed(child, takes.Last, takes.Earlier) : PlaceUse.Shared));
+                    this.Fix(child, ref takes, binding.ChildAdjust(child, adaptation, kind, taken ? binding.Claimed(child, takes.Last, takes.Earlier) : PlaceUse.Shared));
                 }
             }
 
@@ -595,7 +596,7 @@ public sealed partial class Binding
                 if (child is not null)
                 {
                     ref var takes = ref this.Row(child, out var taken);
-                    this.Fix(ref takes, binding.ChildAdjust(child, operation, taken ? binding.Claimed(child, takes.Last, takes.Earlier) : PlaceUse.Shared));
+                    this.Fix(child, ref takes, binding.ChildAdjust(child, operation, taken ? binding.Claimed(child, takes.Last, takes.Earlier) : PlaceUse.Shared));
                 }
             }
 
@@ -603,7 +604,7 @@ public sealed partial class Binding
             {
                 if (child is not null)
                 {
-                    this.Fix(ref this.Row(child, out _), adjust);
+                    this.Fix(child, ref this.Row(child, out _), adjust);
                 }
             }
 
@@ -617,10 +618,11 @@ public sealed partial class Binding
                 return ref exclusive ? ref facts.Exclusive : ref facts.Shared;
             }
 
-            private void Fix(ref ConsumedTakes takes, HirAdjust adjust)
+            private void Fix(Koto child, ref ConsumedTakes takes, HirAdjust adjust)
             {
                 this.Count++;
-                takes = new(adjust, this.call >= 0 ? EarlierAdjust(this.call, takes.Last, adjust) : takes.Earlier);
+                takes = new(adjust, this.call >= 0 ? EarlierAdjust(this.call > 0 || ReferenceEquals(child, this.preceding), takes.Last, adjust) : takes.Earlier);
+                this.preceding = child;
             }
         }
     }

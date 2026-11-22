@@ -115,6 +115,17 @@ public sealed class CallPlan
     /// <summary>Gets a value call's receiver acquisition.</summary>
     public SemanticsKind ReceiverKind { get; internal set; } = SemanticsKind.Ref;
 
+    /// <summary>Gets the decider of a value call whose Closure receiver is by case (SPEC 7.7.3, 8.15.2; PLAN G13): the callee's Closure
+    /// Type whose <c>Receiver</c> gave the call's Exclusive mode while its <c>CaseFreeReceiver</c> is Shared, so that each admitted case
+    /// acquires the callee as that Type's case receiver gives it. Null for any other call: the one presence of
+    /// <see cref="SharedReceiver"/>. Read through <see cref="HirTables.CaseDecider"/>.</summary>
+    public BoundType? CaseDecider { get; private set; }
+
+    /// <summary>Gets a by-case value call's Shared receiver acquisition, beside the Exclusive <see cref="ReceiverOperation"/> in
+    /// <see cref="ReceiverKind"/>: the callee as a Shared call acquires it (default for an owned callee, whose take borrows it shared);
+    /// default where <see cref="CaseDecider"/> is null.</summary>
+    public BoundArgumentOperation SharedReceiver { get; private set; }
+
     // The position in ArgumentOperations of the argument that stands for an operand its expansion already evaluated (ExpansionPlan's
     // Evaluated): a key resolution's length of the receiver the selection evaluated, an update setter's computed value; -1 for any other
     // call. Binding fixes it where it creates the call, with the argument list.
@@ -303,6 +314,7 @@ public sealed class CallPlan
         this.DeclaringType = null;
         this.BasePath = null;
         this.ReceiverOperation = default;
+        this.SetCaseReceiver(null, default);
         this.TupleOperator = false;
         this.PremiseReadsMark = false;
         this.RequirementContract = null;
@@ -334,6 +346,7 @@ public sealed class CallPlan
         this.DeclaringType = declaringType;
         this.BasePath = basePath;
         this.ReceiverOperation = receiverOperation;
+        this.SetCaseReceiver(null, default);
         this.SetOperations(operations);
         if (this.defaultArguments.Length != defaults.Length)
         {
@@ -396,7 +409,16 @@ public sealed class CallPlan
         this.DeclaredSignature = declaredSignature;
         this.ReturnType = signature.Components[1];
         this.ReceiverKind = receiverKind;
+        this.SetCaseReceiver(null, default);
         this.SetOperations(arguments);
+    }
+
+    // A value call's by-case receiver (CaseDecider, SharedReceiver), written together by BindValueCall after SetValue, which resets them as
+    // Set and Clear do: the storage is reused on a rebind, so a call rebound as a case-free or a named one keeps neither.
+    internal void SetCaseReceiver(BoundType? decider, in BoundArgumentOperation shared)
+    {
+        this.CaseDecider = decider;
+        this.SharedReceiver = shared;
     }
 
     private void SetOperations(ReadOnlySpan<BoundArgumentOperation> operations)

@@ -156,9 +156,11 @@ public sealed partial class Binding
             this.OperationBorrow(rows, receiver);
         }
 
-        // Each call of the node, a user index's two included (the publication's SelectionMode takes one).
+        // Each call of the node, a user index's two included (the publication's SelectionMode takes one); a by-case value call's Shared
+        // receiver acquisition too, which the publication takes before the Exclusive one (PLAN G13; it joins the Exclusive entry).
         for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
         {
+            this.OperationBorrow(rows, call.SharedReceiver);
             this.CallBorrows(rows, call.ReceiverOperation, call.ArgumentOperations);
         }
     }

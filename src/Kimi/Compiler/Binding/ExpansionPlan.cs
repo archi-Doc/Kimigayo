@@ -22,7 +22,7 @@ namespace Kimi.Compiler;
 /// setter that takes the value the update computed, as the call's plan records it; -1 when none.</param>
 /// <param name="Direct">An interpolation passed directly as the one argument of <c>Console.writeLine</c>, whose writes the instance places
 /// in a stack region when they are bounded within the profile's limit (SPEC 22.7).</param>
-/// <param name="Shared">An index's <c>index</c> call where its selection is by case (<see cref="HirTables.IndexCaseDecider"/>), the call
+/// <param name="Shared">An index's <c>index</c> call where its selection is by case (<see cref="HirTables.CaseDecider"/>), the call
 /// the admitted cases its decider does not make exclusive select; null otherwise.</param>
 internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? First = null, CallPlan? Second = null, int Evaluated = -1, bool Direct = false, CallPlan? Shared = null)
 {
@@ -50,7 +50,7 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
             case HirOp.Index or HirOp.Call when node is IndexKoto index:
                 var key = binding.ResolvedKeyCall(index)?.CallStorage;
                 var selected = binding.SelectedIndexCall(index, HirTables.PlanOf(index).Mode != 0);
-                var shared = HirTables.IndexCaseDecider(index) is null ? null : binding.IndexerCall(index, exclusive: false)?.CallStorage;
+                var shared = HirTables.CaseDecider(index) is null ? null : binding.IndexerCall(index, exclusive: false)?.CallStorage;
                 return new(ExpansionKind.Index, key, selected?.CallStorage, key?.Evaluated ?? -1, Shared: shared);
             default:
                 return null;

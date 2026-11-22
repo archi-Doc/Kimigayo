@@ -47,6 +47,12 @@ public sealed partial class HirFormsTest
 
             """;
 
+    // The by-case Closure calls' shape (C-487's rows): a function whose `value` is a pair layer, a Closure body taking its capture bare, and
+    // a call while a shared borrow of the callee is live.
+    private const string ByCaseOwnerOrUniq = "func f<s/T>(value: s/T, w: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
+    private const string ByCaseBody = "        let local = value\n        _ = local\n";
+    private const string ByCaseLive = "    let r = h@ref\n    h()\n    inspect(r)\n";
+
     // The programs AnAcceptedProgramLeavesNoDiscardRowUnsetOrFailed sweeps: every SPEC example variant without an expected record that the MIR
     // accepts too (Binding records none), the library and the milestone programs.
     public static TheoryData<string> AcceptedPrograms
@@ -1082,7 +1088,7 @@ public sealed partial class HirFormsTest
 
     // SPEC 4.7.1 step 3, 8.14, 13.5.5 (R7 plan Z23; PLAN G147 (2) (a)): a standing bare take of a user index's element that Reborrows in
     // some admitted case and Copies in another selects per case, as the take's Copy or Reborrow is ("each operation applies the rule of each
-    // admitted Semantics"): a selection by case (HirTables.IndexCaseDecider) whose decider is the Type of the Place taken by case, the
+    // admitted Semantics"): a selection by case (HirTables.CaseDecider) whose decider is the Type of the Place taken by case, the
     // element's (a `let` in the ref or uniq and the owner or uniq cases, an explicit discard, a Dictionary element) or a Field's below it
     // (SPEC 3.4.3: its receiver needs exclusive capability only where the Field's take Reborrows), and whose expansion names both calls;
     // a user index below such an element, whose receiver the element's selection takes exclusively only where it selects indexUniq,
@@ -1112,7 +1118,7 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && ExpansionPlan.Of(c.Binding, x)?.Second is not null).ToArray();
         Assert.Equal(expected, string.Join(" | ", selections.Select(x => Selection(c, x))));
-        foreach (var receiver in selections.Where(static x => HirTables.IndexCaseDecider(x) is not null).Select(static x => ((IndexKoto)x).Left))
+        foreach (var receiver in selections.Where(static x => HirTables.CaseDecider(x) is not null).Select(static x => ((IndexKoto)x).Left))
         {
             // Both calls' inputs (DECISIONS R4-M145): the receiver's column is indexUniq's exclusive take, its plan row index's shared one.
             var (last, earlier) = (HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust);
@@ -1122,8 +1128,88 @@ public sealed partial class HirFormsTest
         static string Selection(Compilation c, Koto index)
         {
             var plan = ExpansionPlan.Of(c.Binding, index)!.Value;
-            var decider = HirTables.IndexCaseDecider(index);
+            var decider = HirTables.CaseDecider(index);
             return $"{index} {plan.Second!.Target.Name} {plan.Shared?.Target.Name ?? "-"} {(decider is null ? "-" : Binding.HoverTypeName(decider))}";
+        }
+    }
+
+    // SPEC 7.7.3, 8.15.2 (PLAN G13; DECISIONS R4-M145): a value call of a Closure that is Exclusive exactly in the admitted cases where a
+    // capture Reborrows (`s is owner or uniq`: a moved, a bare or a nested entry, two binders, a call inside a Closure) acquires its callee by
+    // case: its CallPlan's decider (HirTables.CaseDecider) is the callee's Closure Type, its Shared acquisition is published beside the
+    // Exclusive one at the same callee and Origin, and the callee's two takes stand in its two rows, the plan row's shared and the column's
+    // exclusive: an owned callee borrowed (its operation default), a reference callee (`u = h@uniq`) Reborrowed at `ref`, a payload callee
+    // (`o = makeObj(h@move)`) projected at `ref`, a Tuple element's. A Closure Shared in every case (`s is ref or raw`: every case Copies,
+    // SPEC 8.14) or Exclusive in every case (`outer`, which calls its captured `h`: PLAN G13 (c)) has none, and a callee that supplies no
+    // Exclusive call (`ref/F`, a `let` Closure: Binding's InvalidAssignment_Kd) publishes no call. The labels are SPEC's (C-487's
+    // labels.md): every row but cw1f, rl2, po2 and cc2 is invalid in its uniq cases only, which the MIR's per-case analysis decides.
+    [Theory]
+    [InlineData(ByCaseOwnerOrUniq + "    let x = w\n    _ = x\n    var h = func [value@move] () -> ()\n" + ByCaseBody + ByCaseLive, true, "h owned SharedBorrow,False/ExclusiveBorrow,False")]
+    [InlineData(ByCaseOwnerOrUniq + "    let x = w\n    _ = x\n    var h = func [value@move] () -> ()\n        var inner = func [value] () -> ()\n            let local = value\n            _ = local\n        inner()\n" + ByCaseLive, true, "inner owned SharedBorrow,False/ExclusiveBorrow,False | h owned SharedBorrow,False/ExclusiveBorrow,False")]
+    [InlineData("func tb1<s/T, r/U>(a: s/T, b: r/U) -> ()\n    s is owner or uniq\n    r is owner or uniq\n    T is Copy\n    U is Copy\n    var h = func [a, b] () -> ()\n        let la = a\n        _ = la\n        let lb = b\n        _ = lb\n" + ByCaseLive, true, "h owned SharedBorrow,False/ExclusiveBorrow,False")]
+    [InlineData(ByCaseOwnerOrUniq + "    var h = func [value] () -> ()\n" + ByCaseBody + "    let u = h@uniq\n    let r = u@ref\n    u()\n    inspect(r)\n", true, "u Reborrow Ref ReferenceRead,False/None,True")]
+    [InlineData(ByCaseOwnerOrUniq + "    var h = func [value] () -> ()\n" + ByCaseBody + "    var o = Kimi.Intrinsics.makeObj(h@move)\n    let r = o@follow@ref\n    o()\n    inspect(r)\n", true, "o PayloadProjection Ref PayloadProjection,False/PayloadProjection,True")]
+    [InlineData(ByCaseOwnerOrUniq + "    var h = func [value] () -> ()\n" + ByCaseBody + "    var o = Kimi.Intrinsics.makeObj(h@move)\n    o()\n    o()\n", false, "o PayloadProjection Ref PayloadProjection,False/PayloadProjection,True | o PayloadProjection Ref PayloadProjection,False/PayloadProjection,True")]
+    [InlineData(ByCaseOwnerOrUniq + "    var h = func [value] () -> ()\n" + ByCaseBody + "    var t = (h@move, 0)\n    let r = t@ref\n    t.0()\n    inspect(r)\n", true, "t.0 owned SharedBorrow,False/ExclusiveBorrow,False")]
+    [InlineData(ByCaseOwnerOrUniq + "    var h = func [value] () -> ()\n" + ByCaseBody + "    var outer = func [var h@move] () -> ()\n        h()\n    outer()\n    outer()\n", false, "h owned SharedBorrow,False/ExclusiveBorrow,False | outer - | outer -")]
+    [InlineData("func cw1f<s/T>(value: s/T, w: s/T) -> ()\n    s is ref or raw\n    T is Copy\n    let x = w\n    _ = x\n    var h = func [value@move] () -> ()\n" + ByCaseBody + ByCaseLive, false, "h -")]
+    [InlineData(ByCaseOwnerOrUniq + "    var h = func [value] () -> ()\n" + ByCaseBody + "    let q = h@ref\n    let r = q\n    q()\n    inspect(r)\n", true, "")]
+    [InlineData(ByCaseOwnerOrUniq + "    let h = func [value@move] () -> ()\n" + ByCaseBody + "    h()\n", true, "")]
+    public void AByCaseClosureCallPublishesItsSharedReceiver(string program, bool invalid, string expected)
+    {
+        var source = "func inspect<T>(value: ref/T) => ()\n" + program + "()\n";
+        Assert.Equal(invalid, DiagnosticCorpus.Check(source).Diagnostics.Length > 0);
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var calls = Reachable(c.Kotonoha).OfType<InvocationKoto>().Where(x => CallPlan.Of(c.Binding, x) is { Kind: CalleeKind.Value });
+        Assert.Equal(expected, string.Join(" | ", calls.Select(x => Receivers(c, x))));
+
+        static string Receivers(Compilation c, InvocationKoto call)
+        {
+            var plan = CallPlan.Of(c.Binding, call)!;
+            if (HirTables.CaseDecider(call) is not { } decider)
+            {
+                Assert.Equal(default, plan.SharedReceiver);
+                return $"{call.Method} -";
+            }
+
+            var closure = BoundClosure.Of(decider)!;
+            Assert.Equal((SemanticsKind.Uniq, SemanticsKind.Ref, SemanticsKind.Uniq), (plan.ReceiverKind, closure.CaseFreeReceiver, closure.Receiver));
+            Assert.Same(plan.ReceiverOperation.Source, plan.SharedReceiver.Source);
+            Assert.Same(plan.ReceiverOperation.AdaptedType?.Origin, plan.SharedReceiver.AdaptedType?.Origin);
+            var taken = plan.SharedReceiver.Source ?? call.Method;
+            var (last, earlier) = (HirTables.AdjustOf(taken), HirTables.PlanOf(taken).Adjust);
+            var shared = plan.SharedReceiver.Source is null ? "owned" : $"{plan.SharedReceiver.Kind} {plan.SharedReceiver.AdaptedType!.Semantics}";
+            return $"{call.Method} {shared} {earlier.Adaptation},{earlier.ExclusiveMode}/{last.Adaptation},{last.ExclusiveMode}";
+        }
+    }
+
+    // PLAN G13: a call's storage is reused on a rebind (CallPlan), so a by-case value call whose Closure an in-place edit makes case-free,
+    // and one the edit rebinds as a named call (the local `h` removed, `h()` selecting the function `h`), keeps neither its decider nor its
+    // Shared acquisition, nor the callee's plan-row take.
+    [Fact]
+    public void ARebindClearsAByCaseReceiver()
+    {
+        const string Source = "func h() -> () => ()\nfunc g<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n" +
+            "func donor() -> ()\n    var h = func () -> () => ()\n    let z = 3\npublic func main() => ()\n";
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source));
+        c.Bind();
+        HirTables.Publish(c);
+        var functions = Reachable(c.Kotonoha).OfType<FunctionKoto>().ToArray();
+        var g = functions.Single(static x => x.Name == "g");
+        var donor = functions.Single(static x => x.Name == "donor");
+        var call = (InvocationKoto)g.Body!.Items[1];
+        Assert.Equal((true, true), (HirTables.CaseDecider(call) is not null, HirTables.PlanOf(call.Method).Adjust != default));
+        for (var i = 0; i < 2; i++)
+        {
+            var replaced = g.Body.Items[0];
+            Assert.True(KotoHelper.Replace(replaced.Parent!, replaced, ParseTestHelper.Detach(donor.Body!.Items[i], new CodeBlockKoto(donor.CodeContext))));
+            c.Bind();
+            HirTables.Publish(c);
+            var plan = CallPlan.Of(c.Binding, call)!;
+            Assert.Equal((i == 0 ? CalleeKind.Value : CalleeKind.Function, (BoundType?)null, default(BoundArgumentOperation), default(HirAdjust)),
+                (plan.Kind, HirTables.CaseDecider(call), plan.SharedReceiver, HirTables.PlanOf(call.Method).Adjust));
         }
     }
 
