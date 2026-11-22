@@ -22,7 +22,8 @@ namespace Kimi.Compiler;
 //   readers closed to the intakes of the judgments over identical Types); and BU-72's HIR premise (`P is` the ClassForm of `P`).
 // - Inputs: the view's chain of valid Constraint environments: positive identity premises and their availability (R7-C2e1's
 //   Completion); the Origin declarations' relations and completion; the pairs' admitted sets.
-// - Outputs: per view and pass, the classes (ClassesOf) and their Completion (DECISIONS R7-M20's W7); Proven; the premise error; a
+// - Outputs: per view and pass, the classes (ClassesOf) and their Completion (DECISIONS R7-M20's W7); Proven; the premise error and,
+//   for a declaration resting on its records, their site (IdentityErrorSite, the cause queries' one answer for it); a
 //   Type's key in a table (ClassKey: a parameter's or projection's class's least parameter or projection by a total structural order,
 //   Representative, or the Type over its components' keys; c2-4: a constructed member keys to its class's Representative, so
 //   every member's premise rows are the class's, joined with the Member's closed world by polarity), which relates only what Proven relates (a class in state One with complete meets, whatever the
@@ -43,9 +44,10 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingScope> identityBuilding = new(ReferenceEqualityComparer.Instance);
-    // A scope's recorded premise error: whether it is the owner's failure, whether an own class reached the closure limit, and whether
-    // a record stands at the owner itself (R7-C3 C3d: else at its clauses or its supplier, and the owner's own checks are its readers).
-    private readonly Dictionary<BindingScope, (bool Own, bool Limited, bool AtOwner)> identityRecorded = new(ReferenceEqualityComparer.Instance);
+    // A scope's recorded premise error: whether it is the owner's failure, whether an own class reached the closure limit, and the site
+    // of its first record when the owner rests on its records (R7-C3 C3d: no record at the owner and no failure of its own; an own
+    // clause or the supplier, the owner's published cause, IdentityErrorSite, and the owner's own checks are its readers), else null.
+    private readonly Dictionary<BindingScope, (bool Own, bool Limited, Koto? Site)> identityRecorded = new(ReferenceEqualityComparer.Instance);
     private readonly List<(int Group, byte State)> identityGroups = new(); // RecordIdentityPremiseError's own error groups (R7-C3 C3d)
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
@@ -276,7 +278,8 @@ public sealed partial class Binding
     // premise clause with a Type in it (SPEC 8.2.3's example marks that clause); a group no own clause reaches is the supplying
     // declaration's where its own classes hold the supplied clauses erroneous (a Contract for what its Constraints alone cause, reported
     // there, never again at a use), else the owner's. In the Final pass an own error class still waiting for its Origin declarations is
-    // the located limit (an Origin attribute the judge could not decide), and a limit stays the owner's failure.
+    // the located limit (an Origin attribute the judge could not decide), and a limit (Unsupported, the closure limit) stays the owner's
+    // record, as before.
     private bool RecordIdentityPremiseError(BindingScope scope, BindingMode mode)
     {
         if (scope.Constraints is not { HasTypeIdentity: true } environment || this.identityRecorded.ContainsKey(scope) ||
@@ -304,7 +307,7 @@ public sealed partial class Binding
         }
 
         var owned = scope.Owner.BindingFailure == BindingFailure.None;
-        this.identityRecorded.Add(scope, (owned, limited, true));
+        this.identityRecorded.Add(scope, (owned, limited, null));
         if (ImplementationLimit(failure) is not null)
         {
             // A Resource record (SPEC 8.3.3 Limits, 23.1.1) is written as every limit writer writes it (RefuseProof's, TypeHeight's): the
@@ -313,14 +316,18 @@ public sealed partial class Binding
             return true;
         }
 
-        // The owner keeps no failure of its own for a record at a clause or its supplier: it rests on that site (rule W), so a use whose
-        // proof rests on the declaration stays dependent (SPEC 8.2.3: never again at uses), and so do the owner's own checks' records.
-        Koto? rest = null;
+        if (failure == BindingFailure.Unsupported)
+        {
+            this.Record(scope.Owner, failure, []); // a problem of its own where the owner's first failure is another check's (SPEC 23.1.2)
+            return true;
+        }
+
+        // Each group in an error state is its own problem (SPEC 23.1.2) beside any failure of its site; a group in a limit state beside a
+        // worse one stays behind the worst, as before.
+        Koto? first = null;
         var atOwner = false;
         foreach (var (group, state) in groups)
         {
-            // A group in a limit state beside a worse one stays behind the worst, as before; each other group is its own problem (SPEC
-            // 23.1.2), beside any failure of its site.
             if (state < IdentityClasses.Unproven)
             {
                 continue;
@@ -329,27 +336,36 @@ public sealed partial class Binding
             Koto? site = this.PremiseErrorClause(scope, environment, own, group);
             if (site is null && this.PremiseErrorSupplier(scope, own, group) is { } supplier)
             {
-                rest ??= supplier;
+                first ??= supplier;
                 continue;
             }
 
             site ??= scope.Owner;
             atOwner |= ReferenceEquals(site, scope.Owner);
             this.RecordNumbered(site, state == IdentityClasses.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.InvalidConstraint, []);
-            rest ??= ReferenceEquals(site, scope.Owner) ? null : site;
+            first ??= site;
         }
 
-        this.identityRecorded[scope] = (owned, limited, atOwner);
-        if (rest is not null && scope.Owner.BindingFailure == BindingFailure.None)
+        // F's C2/C3 ruling 331 (B): an owner with no failure and no record of its own is Invalid with no failure and no part, and its
+        // cause is the first record's site (IdentityErrorSite), which the cause queries read: a use whose proof rests on the declaration
+        // stays dependent (SPEC 8.2.3: never again at uses), and the context reader reads no part, so the owner keeps its context.
+        var rest = owned && !atOwner ? first : null;
+        this.identityRecorded[scope] = (owned, limited, rest);
+        if (rest is not null)
         {
-            // As RestOnPart, with the part kept whatever its state now (AddPendingPrerequisite): a supplier may be validated later in
-            // the pass, and the owner's own checks' failures read the part's state at publication.
             this.SetRecordedState(scope.Owner, BindingState.Invalid);
-            this.AddPendingPrerequisite(scope.Owner, rest);
         }
 
         return true;
     }
+
+    // R7-C3 C3d (F's C2/C3 ruling 331 (B)): the site a declaration's premise error stands at when no record stands at the declaration
+    // itself (its first own clause's record or its supplier), while that site is not resolved: the published cause of the declaration's
+    // Invalid state, which the cause queries read (HasFailureCauses and the prerequisite walk, PushPrerequisites). The context reader
+    // (InvalidDeclarationCause) reads no site, so the declaration keeps its context (KeepsPremiseErrorContext), as on dev.
+    private Koto? IdentityErrorSite(Koto declaration)
+        => this.identityRecorded.Count != 0 && this.scopes.TryGetValue(declaration, out var scope) &&
+            this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Site is { } site && this.IsUnresolvedPrerequisite(site) ? site : null;
 
     // R7-C3 C3d (PLAN G830): an own error group's clause, the last of the owner's premise clauses (its own facts) with a Type in the group.
     private IsKoto? PremiseErrorClause(BindingScope scope, ConstraintEnvironment environment, IdentityClasses own, int group)
@@ -488,7 +504,7 @@ public sealed partial class Binding
         {
             // The producer's own checks (its frame) are the error's sites where it records at the owner, never its readers
             // (ChecksOwnSite); with its records at its clauses or its supplier (R7-C3 C3d) they read it as any check does.
-            if (this.identityRecorded.TryGetValue(current, out var recorded) && recorded.Own && (!recorded.AtOwner || !this.ChecksOwnSite(current.Owner)) &&
+            if (this.identityRecorded.TryGetValue(current, out var recorded) && recorded.Own && (recorded.Site is not null || !this.ChecksOwnSite(current.Owner)) &&
                 this.ClassesOf(current, out _) is { } classes && (classes.Holds(a) || classes.Holds(b)))
             {
                 producer = current;

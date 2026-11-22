@@ -97,13 +97,13 @@ public sealed partial class Binding
     /// <returns>Whether it rests on causes.</returns>
     internal bool HasRestingCauses(Koto node) => this.RestingSource(node, out _, out _);
 
-    /// <summary>Gets whether Binding recorded a cause for a node it did not resolve: the node is a recovery, failed, or rests on an
-    /// unresolved prerequisite (a dependent, SPEC 23.1.2).</summary>
+    /// <summary>Gets whether Binding recorded a cause for a node it did not resolve: the node is a recovery, failed, rests on an
+    /// unresolved prerequisite (a dependent, SPEC 23.1.2), or is a declaration resting on its premise error's site (IdentityErrorSite).</summary>
     /// <param name="node">The node.</param>
     /// <returns>Whether a check that reads the node rests on a Binding cause.</returns>
     internal bool HasFailureCauses(Koto node)
         => this.RecordedState(node) != BindingState.Resolved &&
-            (IsRecovery(node, out _) || this.RecordedFailure(node) != BindingFailure.None || this.HasUnresolvedPrerequisite(node));
+            (IsRecovery(node, out _) || this.RecordedFailure(node) != BindingFailure.None || this.HasUnresolvedPrerequisite(node) || this.IdentityErrorSite(node) is not null);
 
     // SPEC 23.1.2 (PLAN G1073): the declaration part that gives a slot its Type, where Binding records that Type's failure: a
     // parameter's written Type, an accessor parameter's annotation or Property Type; a definition's result: an accessor's executing
@@ -697,12 +697,19 @@ public sealed partial class Binding
         return keys;
     }
 
+    // A node's causes in a walk: its unresolved part, its premise error's site (a declaration resting on its records, IdentityErrorSite)
+    // and its unresolved consulted operands.
     private bool PushPrerequisites(Koto node, Stack<Koto> pending)
     {
         var count = pending.Count;
         if (this.UnresolvedPart(node) is { } part)
         {
             pending.Push(part);
+        }
+
+        if (this.IdentityErrorSite(node) is { } site)
+        {
+            pending.Push(site);
         }
 
         if (this.prerequisites.TryGetValue(node, out var range))

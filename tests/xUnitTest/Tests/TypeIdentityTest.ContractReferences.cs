@@ -170,6 +170,21 @@ public partial class TypeIdentityTest
     public void ContractReferencesAreIdentifiedByTheirNormalizedForm(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
+    // R7-C3 C3d (F's C2/C3 ruling 331 (B)): a declaration whose premise error stands at its clause, or at its supplying Contract's clause, is
+    // Invalid with no failure and no part, and its published cause is that record: the cyclic owner's is its clause's, f's under a
+    // Contract-only cycle the Contract's clause's (through the Contract, which rests on its own clause).
+    [Theory]
+    [InlineData("func cyclic<T, U>(value: T) -> i32\n    T is Option<U>\n    U is Option<T>\n    return 0\n", "cyclic", "U is Option<T>")]
+    [InlineData("contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "f", "Self.Y is Option<Self.X>")]
+    public void ADeclarationRestingOnItsPremiseErrorsClausePublishesItsRecordAsItsCause(string program, string owner, string clause)
+    {
+        var c = MinimalEmissionTest.Analyze(program + "()");
+        var declaration = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single(x => x.Name == owner);
+        Assert.Equal((Kimi.Compiler.BindingState.Invalid, Kimi.Compiler.BindingFailure.None), (declaration.StateOf(c), declaration.FailureOf(c)));
+        var cause = Assert.IsType<Kimi.Compiler.Parsing.IsKoto>(Assert.Single(c.Binding.FailureCauses(declaration)!).Subject);
+        Assert.Equal(program.IndexOf(clause, StringComparison.Ordinal), cause.Span.Start);
+    }
+
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
     // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
     [Theory]
