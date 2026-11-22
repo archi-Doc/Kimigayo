@@ -493,14 +493,14 @@ public partial class AssociatedInferenceTest
     [Theory]
     // SPEC 8.5.5, 8.3.3 Finality: a value inferred for another definition is usable as soon as it is determined, so PA and PB complete each other in
     // every declaration and requirement order.
-    [InlineData("C4", "pa-first", PqContracts + PaFirstField + PbFirstField, "", Explicit = true)]
-    [InlineData("C4", "pb-first", PqContracts + PbFirstField + PaFirstField, "", Explicit = true)]
-    [InlineData("C4", "pa-swap", PqContracts + PaLastField + PbLastField, "", Explicit = true)]
-    [InlineData("C4", "pb-swap", PqContracts + PbLastField + PaLastField, "", Explicit = true)]
+    [InlineData("C4", "pa-first", PqContracts + PaFirstField + PbFirstField, "")]
+    [InlineData("C4", "pb-first", PqContracts + PbFirstField + PaFirstField, "")]
+    [InlineData("C4", "pa-swap", PqContracts + PaLastField + PbLastField, "")]
+    [InlineData("C4", "pb-swap", PqContracts + PbLastField + PaLastField, "")]
 
     // SPEC 8.5.5: evidence that needs a value of the current definition held pending supplies none, so D.X is a's i32, and E.W reads the determined D.X,
     // in both orders.
-    [InlineData("C4", "alt-d", AltContracts + AltD + AltE, "", Explicit = true)]
+    [InlineData("C4", "alt-d", AltContracts + AltD + AltE, "")]
     [InlineData("guard", "alt-e", AltContracts + AltE + AltD, "")]
 
     // SPEC 8.5.5: B.Value is inferred from A.Item, so A.Other has no evidence although the graph is acyclic; the failure's resting records stay open. An
