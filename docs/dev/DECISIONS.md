@@ -1948,7 +1948,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       last at its converged state, so the fact is a may-fact that includes the fixpoint's, and the replay reports with it known.
     - The grain is (body, view): a view's store changes only that view's states, `MirReport` keys a problem by (code, subject, body)
       so a Language problem and an `Unsupported_Kd` never merge, and the stratum runs each view's solve and replay before the next.
-    - Every Loan-problem producer reports through `MirBorrows.Reports`' common `Report(code, anchor, via, at, reservation)`
+    - Every Loan-problem producer reports through `MirBorrows.Reports`' common `Found(code, found, via, at, reservation, effect)`
       (`Checks.cs` at an access and at err(ended), `Activations.cs` at an activation and err(destroy)), so the hold is one rule there,
       and a future producer (err(effect), 2b; the E7/E12 merge, 2a-2; F6's Φ_c, superseded by R4-M106) must report through it too.
     - R4-M69 governs inline default copies (superseded by R4-M97: the hold applies to every failure a body owns, a copy's at the
@@ -25525,6 +25525,24 @@ R8-M* and R9-M* by the stage of the recording unit.
   wrapper-only skip test (phase 3: it lost a failed wrapper's occurrence and kept one record per parenthesis, the two halves reading
   different nodes); a list of transparent syntax kinds (phase 4: `owner/` kept its own record, one more case of an open family).
   Records at other nodes resting on the same failure: PLAN G1278.
+- **R7-M81 A Loan found in E is witnessed by its store on a path to the access** (Middle, 2026-11-22; R7 plan stream Z, Z18b (PLAN
+  G396 (4)'s E1; T-29a review N2), Q-675, D-1118; Major; Z18 design review 1's B1-B3) SPEC 15.6.2, 14.8.3, 7.2.3.
+  - **Owner.** `MirBorrows.Flow`'s E stores (`eStores`): per location, from its last plan, the sets its entries put into E, `Sure`
+    (not resting) and `Unsure` (resting on an undecided write, Φ_M or Φ_U), gathered at `AddSlot`, the one entry path. R26-borrow's
+    place reads `Sure` (a resting set places nothing, SPEC 7.2.3); the witness reads both.
+  - **Key.** A Loan problem is recorded through `Found(code, found, ...)`, keyed by the element the check found (a Loan, a guard
+    marker for err(ended), none for a destruction's own hold); its Anchor is derived from it by one rule.
+  - **Witness.** A conflict or err(ended) whose element the check found in E names as its `Store` the nearest location backward from
+    the access along the edges the forward solve carried (`MirDataflow.Carries`, the one edge rule `Flows` and the chain edge), under
+    the run's view, whose E stores hold it, never past an ending of it; none is `InternalInvariant_Kd` (the transfer is monotone in
+    what a location stores into E).
+  - **Records (Q13):** related locations only (each Loan problem via E moves its `Store` from the access to E's store); no record
+    added, lost or moved; no acceptance move. Named record-selection change (Z18b R1.2): R26-borrow's records at one location are added
+    in Loan order, so a merged `DefaultArgumentBorrow_Kd` keeps the Anchor of the location's first Loan in that order, no longer of its
+    first entry.
+  - Rejected: one least location per Loan (it can name a store whose path never reaches the access); a provenance lattice (every body
+    pays for a rejected body's fact); writing the fact after the replay (a second write path into a merged problem); keeping entry
+    order for R26 (a second structure beside the set).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
