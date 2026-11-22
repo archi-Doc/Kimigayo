@@ -64,6 +64,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
         (KimiDeclarationId.RawSlice, "public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s"),
         (KimiDeclarationId.ViewStart, "internal unsafe func viewStart<P, R>(storage: P, start: isize) -> P\nR is PositionRange"), // The builder's Form (L2).
+        (KimiDeclarationId.RawReadVolatile, "public unsafe func readVolatile<T>(storage: raw/T) -> T\nT is PrimitiveInteger"),
     ];
 
     // The bodiless compiler functions without a lang item (R8-G1 G1-6: no C# reader names them), by their library path.
@@ -82,6 +83,7 @@ public partial class KimiLibraryShapeTest
         ("Storage.formatFloat", "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize"),
         ("Storage.formatInteger128", "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize"),
         ("Raw.allocate", "public func allocate<T>(count: isize) -> raw/T"),
+        ("Raw.writeVolatile", "public unsafe func writeVolatile<T>(storage: raw/T, value: T)\nT is PrimitiveInteger"),
         ("Storage.argumentOutOfRange", "internal func argumentOutOfRange() -> Never"),
         ("Storage.indexBounds", "internal func indexBounds() -> Never"),
     ];
@@ -137,13 +139,14 @@ public partial class KimiLibraryShapeTest
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
         // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
         // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a).
-        // R8-G1 G1-6 (the owner's O-307 (a)): only the lang items a C# reader identifies are cataloged; 83 other declarations carry
+        // R8-G1 G1-6 (the owner's O-307 (a)): only the lang items a C# reader identifies are cataloged; 84 other declarations carry
         // `#Intrinsic` or `#CallerLocation` and are registered unnamed (Storage.reserveDispatch, R8-W2 b2-1, among them; PLAN G71's
         // three `splitAt`, four position and range `format` bodies, Array `index` and `indexUniq`, and seven Time functions; the Time unit's
         // `Storage.clockFailure` and `Time.readCounterFrequency`; O-412 (1)'s Array.sort(by:), which destroys `by` inside the operation;
-        // R8-X1's Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share, PLAN G970).
+        // R8-X1's Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share, PLAN G970; OSF2's Raw.writeVolatile,
+        // whose pair Raw.readVolatile is cataloged for its NoStore row).
         // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`.
-        Assert.Equal(121, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(122, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             Assert.NotNull(c.Library.GetSymbol(entry.Id));
@@ -156,7 +159,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf(c));
         }
 
-        Assert.Equal((121, 83), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
+        Assert.Equal((122, 84), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
@@ -230,7 +233,7 @@ public partial class KimiLibraryShapeTest
     {
         var c = Library.Value;
         var unnamed = c.Library.RegisteredSymbols.ToArray().Where(static x => x.LibraryDeclaration is null).ToArray();
-        Assert.Equal(83, unnamed.Length);
+        Assert.Equal(84, unnamed.Length);
         foreach (var symbol in unnamed)
         {
             var function = Assert.IsType<FunctionKoto>(symbol.Declaration);
@@ -329,14 +332,15 @@ public partial class KimiLibraryShapeTest
             .. CompilerFunctionShapes.Select(x => library.GetSymbol(x.Id)!.Declaration),
             .. UnnamedCompilerFunctionShapes.Select(x => LibrarySource.Declaration(library, x.Path)),
         ];
-        Assert.Equal((27, 27), (expected.Count, shaped.Length));
+        Assert.Equal((29, 29), (expected.Count, shaped.Length));
         Assert.True(expected.SetEquals(shaped));
     }
 
     // Plan 5.8: every library function and $abort has one disposition, its symbol's Definition: an intrinsic serves at most one of them,
-    // except Fail, which carries a fixed SPEC 22.5.2 code; a symbol of no compiler function has its Body; there are at most 27
-    // intrinsics, the temporary ones of the owner's approvals of 2026-10-11 gone (FormatBuffer at R8-W2 c3b, FormatFinish at c3a,
-    // FormatSegment, R5-M133's rename of FormatHint, at c2b). A built-in target's Shim is MirBuildTest's census key.
+    // except Fail, which carries a fixed SPEC 22.5.2 code; a symbol of no compiler function has its Body; there are at most 29
+    // intrinsics (OSF2's volatile pair, the owner's O-489), the temporary ones of the owner's approvals of 2026-10-11 gone (FormatBuffer
+    // at R8-W2 c3b, FormatFinish at c3a, FormatSegment, R5-M133's rename of FormatHint, at c2b). A built-in target's Shim is MirBuildTest's
+    // census key.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
     {
@@ -354,7 +358,7 @@ public partial class KimiLibraryShapeTest
         var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
         Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
-        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 27);
+        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 29);
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the

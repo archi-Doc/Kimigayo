@@ -133,9 +133,10 @@ public sealed partial class Binding
         => this.DeclarationFailed(implementation.Declaration) || (accessor?.Declaration is { } declaration && this.DeclarationFailed(declaration)) ? ConstraintProof.Error
             : (accessor?.Receiver?.Semantics ?? ReceiverShape(implementation)) is SemanticsKind.Ref or SemanticsKind.ObjRef ? ConstraintProof.Proven : ConstraintProof.Unknown;
 
-    // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
-    // so a call without applicable candidates names the required spelling (SPEC 15.1.5), the Place that needs it and,
-    // for an exclusive borrow, whether the Place is an object handle (@objuniq) (SPEC 23.1.3).
+    // Set while an input is adapted (AdaptInput's out-channel): the reason an otherwise fitting bare Place was not applicable, which a
+    // candidate trial takes into its row (EvaluatedCandidate.Acquisition), so a call without applicable candidates names the required
+    // spelling (SPEC 15.1.5), the Place that needs it and, for an exclusive borrow, whether the Place is an object handle (@objuniq)
+    // (SPEC 23.1.3).
     private AcquisitionFailure? acquisitionFailure;
 
     private bool RequireAcquisition(Koto source, BoundType actual, BoundType expected, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
