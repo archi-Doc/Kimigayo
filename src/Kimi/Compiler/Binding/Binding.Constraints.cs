@@ -182,20 +182,22 @@ public sealed partial class Binding
             return this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope);
         }
 
-        // SPEC 8.2.3 (F's C2/C3 ruling 333): an identity is decided once, by the identity judge. Its verdict for the atom is Proven, or,
-        // over a Type with a part in a recorded erroneous class (IdentityPremiseErrorRead), failed: the atom is not judged again (no
-        // Refuted from comparing the Types the class holds), and the read is the proof's limit (IdentityProven's
-        // ReadIdentityPremiseError), so an answer the valid facts leave open rests on the judge's record (EndProof). The other atom
-        // kinds (Callable, Semantics, a Contract or capability) are judged by their own judges, as before.
+        // SPEC 8.2.3 (F's C2/C3 rulings 333, 334): an identity is decided once, by the identity judge. Over a Type with a part in a
+        // recorded erroneous class (IdentityPremiseErrorRead) the atom reads the judge's verdict as it is: Refuted where the judge
+        // refutes (IdentityRefuted: a known difference, as heads, whatever the class; one erroneous class is no difference), else
+        // Unknown, the read being the proof's limit (IdentityProven's ReadIdentityPremiseError), so an answer the valid facts leave open
+        // rests on the judge's record (EndProof). The other atom kinds (Callable, Semantics, a Contract or capability) are judged by
+        // their own judges, as before.
         if (proposition.Kind == ConstraintKind.TypeIdentity)
         {
-            if (this.IdentityProven(proposition.Subject!, proposition.RequiredType!, scope))
+            var (subject, required) = (proposition.Subject!, proposition.RequiredType!);
+            if (this.IdentityProven(subject, required, scope))
             {
                 return ConstraintProof.Proven;
             }
 
-            return this.DependentType(proposition.Subject!) || this.DependentType(proposition.RequiredType!) ||
-                this.IdentityPremiseErrorRead(scope, proposition.Subject, proposition.RequiredType) is not null
+            return this.DependentType(subject) || this.DependentType(required) ||
+                (this.IdentityPremiseErrorRead(scope, subject, required) is not null && !this.IdentityRefuted(subject, required, scope, null))
                 ? ConstraintProof.Unknown : ConstraintProof.Refuted;
         }
 
