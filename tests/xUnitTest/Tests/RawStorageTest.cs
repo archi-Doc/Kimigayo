@@ -212,7 +212,9 @@ public class RawStorageTest
     [InlineData("Raw.release(null@raw/i32)", false)]
     [InlineData("Raw.initialize(null@raw/i32, 1)", false)]
     [InlineData("let view: Slice<i32> = Raw.slice(null@raw/i32, 0)", false)]
-    public void OnlyReleaseAndInitializeNeedAnUnsafeContext(string statement, bool valid)
+    [InlineData("let bits = Raw.readVolatile(null@raw/u32)", false)]
+    [InlineData("Raw.writeVolatile(null@raw/u32, 1)", false)]
+    public void EveryRawOperationButAllocateNeedsAnUnsafeContext(string statement, bool valid)
     {
         var diagnostics = DiagnosticCorpus.Check("public func main()\n    " + statement + "\n").Diagnostics;
         if (valid)
@@ -225,13 +227,25 @@ public class RawStorageTest
         }
     }
 
-    // SPEC 5.6, 8.11.2: allocate is an allocation and release and initialize are raw accesses; none is an environment effect.
+    // SPEC 5.6, 8.7.4, 10.1: the volatile pair's `T is PrimitiveInteger` (the twelve integer Types), so at a float or bool Place the one
+    // candidate's Constraint fails and the call has no applicable candidate.
+    [Theory]
+    [InlineData("func f(p: raw/f64) -> f64\n    unsafe => return Raw.readVolatile(p)", "NoApplicableOverload_Kd: Raw.readVolatile(p)")]
+    [InlineData("func f(p: raw/bool)\n    unsafe => Raw.writeVolatile(p, true)", "NoApplicableOverload_Kd: Raw.writeVolatile(p, true)")]
+    public void AVolatileAccessIsOfAPrimitiveInteger(string declarations, string record)
+        => Assert.Equal([record], RawPointerSyntaxTest.Records(declarations));
+
+    // SPEC 5.6, 8.11.2: allocate is an allocation and release, initialize and the volatile pair are raw accesses; none is an environment
+    // effect, a volatile read through an input included (Probe, OSF2's row 25).
     [Fact]
     public void RawOperationsAreNoEnvironmentEffects()
     {
         const string Source = "contract Sink\n    func put(self: uniq/Self, value: i32)\n        effect confined\n" +
             "struct RawSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32)\n        let storage = Raw.allocate<i32>(1)\n" +
-            "        unsafe\n            Raw.initialize(storage, value)\n            Raw.release(storage)\npublic func main() => ()\n";
+            "        unsafe\n            Raw.initialize(storage, value)\n            Raw.writeVolatile(storage, value)\n            Raw.release(storage)\n" +
+            "contract Probe\n    func read(self: uniq/Self) -> u32\n        effect confined\n" +
+            "struct Register\n    Self is Probe\n    internal let p: raw/u32\n    public init(p: raw/u32) => self.p = p\n" +
+            "    public func read(self: uniq/Self) -> u32\n        unsafe => return Raw.readVolatile(self.p)\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
@@ -257,13 +271,14 @@ public class RawStorageTest
     // element (R4-M117 item 6). Every other write, an exclusive borrow, also a receiver's implicit one (SPEC 7.3), and a non-null Case
     // payload is an Origin relation error, one record each. A Move of an enclosing Place is a read the allowlist does not judge; it Moves
     // the whole Place, the layer's element included (SPEC 13.5.3, 15.1.2), so only a whole write restores it. Since the MIR
-    // decides acceptance (R6-check H5), its records on two of these Binding-rejected programs are published beside Binding's (DECISIONS
-    // R5-M184, until A6's 2g-1; H3b T51, class 4): PQ-10's located Unsupported_Kd at the enclosing Tuple's Copy read `b.pair` (DECISIONS
-    // R4-M120). R7-O1 H (B4: a relation problem leaves the access Resolved, so A5 reaches it; Q13 rule 3, the Middle's (iii)): PQ-10's
-    // located Unsupported_Kd also stands beside the relation record at an update, A5's own limit whatever the verdict (R4-M120); a borrow
-    // of a layer's Place or an enclosing one issues its Loan with no mark (Z5-R1's R-B), so the relation record of an exclusive borrow
-    // stands alone, as do the record and the U of the Move beside a shared one; the restore `b.data = fresh` after `b.data@move` reinitializes the
-    // Place (SPEC 15.1), so b1's two MovedPlace_Kd, read through the failed write's Opaque node, were false records (removed, Q13).
+    // decides acceptance (R6-check H5), its records on these Binding-rejected programs are published beside Binding's (DECISIONS
+    // R5-M184, until A6's 2g-1; H3b T51, class 4). R7-O1 H (B4: a relation problem leaves the access Resolved, so A5 reaches it; Q13
+    // rule 3, the Middle's (iii)): PQ-10's located Unsupported_Kd stands beside the relation record at an update, A5's own limit whatever
+    // the verdict (R4-M120); a Copy or Move of an enclosing Place carries its owner's own-step entry (Z5-R2) and a borrow of a layer's
+    // Place or an enclosing one issues its Loan (Z5-R1's R-B), each with no mark, so the relation record of an exclusive borrow or of a
+    // write of a Copy stands alone, as does the conflict of the Move beside a shared one; the restore `b.data = fresh` after `b.data@move`
+    // reinitializes the Place (SPEC 15.1), so b1's two MovedPlace_Kd, read through the failed write's Opaque node, were false records
+    // (removed, Q13).
     [Theory]
     [InlineData("()", "b.data = fresh", "UnsatisfiedOriginRelation_Kd: b.data = fresh")]
     [InlineData("()", "b.data = shared", "UnsatisfiedOriginRelation_Kd: b.data = shared")]
@@ -272,7 +287,7 @@ public class RawStorageTest
     [InlineData("()", "b.pair = (fresh, 1)", "UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 1)")]
     [InlineData("()", "b.pair = (b.data, 1)", "UnsatisfiedOriginRelation_Kd: b.pair = (b.data, 1)")]
     [InlineData("()", "b.arr = [null, fresh]", "UnsatisfiedOriginRelation_Kd: b.arr = [null, fresh]")]
-    [InlineData("()", "let q = b.pair\n    b.pair = q", "Unsupported_Kd: b.pair | UnsatisfiedOriginRelation_Kd: b.pair = q")]
+    [InlineData("()", "let q = b.pair\n    b.pair = q", "UnsatisfiedOriginRelation_Kd: b.pair = q")]
     [InlineData("()", "b.pair.0 = fresh", "UnsatisfiedOriginRelation_Kd: b.pair.0 = fresh")]
     [InlineData("()", "b.arr[1] = fresh", "UnsatisfiedOriginRelation_Kd: b.arr[1] = fresh")]
     [InlineData("()", "let w = b.pair.0@uniq", "UnsatisfiedOriginRelation_Kd: b.pair.0@uniq")]
@@ -296,21 +311,21 @@ public class RawStorageTest
     // rejected program, counted: DECISIONS Q13).
     [InlineData("()", "for _ in b.arr@uniq => _ = 0", "ComparisonLoanConflict_Kd: var b = Block.init() | UnsatisfiedOriginRelation_Kd: b.arr@uniq")]
     [InlineData("()", "let w = b.data@move\n    b.data = fresh", "UnsatisfiedOriginRelation_Kd: b.data = fresh")]
-    // A Move of an enclosing Place (Z5): PQ-10's located Unsupported_Kd at the moved Place (R4-M120), and each program's own A1 or A5
+    // A Move of an enclosing Place (Z5; Z5-R2: it carries its owner's own-step entry, with no mark): each program's own A1 or A5
     // record, which Binding's former located Unsupported_Kd at the Move hid (SPEC 23.1.2): Block's drop needs the whole Place restored
     // (16.3), the Moved Place is read, Moved again, borrowed while Moved or restored in part (13.5.3, 15.1.2), or Moved under a shared
     // Loan (15.6); a non-null restore is the relation error, the write staying Resolved (R7-O1 B4).
-    [InlineData("()", "let t = b.pair@move", "MovedPlace_Kd: var b = Block.init() | Unsupported_Kd: b.pair")]
-    [InlineData("()", "let m = b.pair@move\n    b.pair = (fresh, 2)", "Unsupported_Kd: b.pair | UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 2)")]
-    [InlineData("()", "let m = b.pair@move\n    b.pair = m", "Unsupported_Kd: b.pair | UnsatisfiedOriginRelation_Kd: b.pair = m")]
-    [InlineData("()", "let m = b.pair@move\n    let t = b.pair\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair")]
-    [InlineData("()", "let m = b.pair@move\n    let p = b.pair.0\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair.0")]
-    [InlineData("()", "let m = b.pair@move\n    let n = b.pair.1\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair.1")]
-    [InlineData("()", "let m = b.arr@move\n    let u = b.arr[1]\n    b.arr = [null, null]", "Unsupported_Kd: b.arr | MovedPlace_Kd: b.arr[1]")]
-    [InlineData("()", "let m = b.pair@move\n    let w = b.pair.1@ref\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair.1@ref")]
-    [InlineData("()", "let m = b.pair@move\n    let n = b.pair@move\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair")]
-    [InlineData("()", "let m = b.pair@move\n    b.pair.1 = 2", "MovedPlace_Kd: var b = Block.init() | Unsupported_Kd: b.pair | MovedPlace_Kd: b.pair.1 = 2")]
-    [InlineData("()", "let r = b.pair@ref\n    let m = b.pair@move\n    let q = r@follow.0\n    b.pair = (null, 2)", "Unsupported_Kd: b.pair | ComparisonLoanConflict_Kd: b.pair")]
+    [InlineData("()", "let t = b.pair@move", "MovedPlace_Kd: var b = Block.init()")]
+    [InlineData("()", "let m = b.pair@move\n    b.pair = (fresh, 2)", "UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 2)")]
+    [InlineData("()", "let m = b.pair@move\n    b.pair = m", "UnsatisfiedOriginRelation_Kd: b.pair = m")]
+    [InlineData("()", "let m = b.pair@move\n    let t = b.pair\n    b.pair = (null, 2)", "MovedPlace_Kd: b.pair")]
+    [InlineData("()", "let m = b.pair@move\n    let p = b.pair.0\n    b.pair = (null, 2)", "MovedPlace_Kd: b.pair.0")]
+    [InlineData("()", "let m = b.pair@move\n    let n = b.pair.1\n    b.pair = (null, 2)", "MovedPlace_Kd: b.pair.1")]
+    [InlineData("()", "let m = b.arr@move\n    let u = b.arr[1]\n    b.arr = [null, null]", "MovedPlace_Kd: b.arr[1]")]
+    [InlineData("()", "let m = b.pair@move\n    let w = b.pair.1@ref\n    b.pair = (null, 2)", "MovedPlace_Kd: b.pair.1@ref")]
+    [InlineData("()", "let m = b.pair@move\n    let n = b.pair@move\n    b.pair = (null, 2)", "MovedPlace_Kd: b.pair")]
+    [InlineData("()", "let m = b.pair@move\n    b.pair.1 = 2", "MovedPlace_Kd: var b = Block.init() | MovedPlace_Kd: b.pair.1 = 2")]
+    [InlineData("()", "let r = b.pair@ref\n    let m = b.pair@move\n    let q = r@follow.0\n    b.pair = (null, 2)", "ComparisonLoanConflict_Kd: b.pair")]
     // Rule W (DECISIONS Q13, BU-79; PLAN G789): a failed part at a layer's position is no evidence of what the write puts there, so only
     // its own record is reported; another layer's non-null source and an update, which reads no value, keep their records.
     [InlineData("()", "b.data = nope", "UnresolvedBinding_Kd: nope")]
@@ -354,6 +369,12 @@ public class RawStorageTest
     [InlineData("()", "let t = b.pair.0@move\n    b.pair.0 = null")]
     [InlineData("()", "let t = b.arr[0]@move\n    b.arr[0] = null")]
     [InlineData("()", "let r = b@uniq\n    unsafe => r.pair = (fresh@(raw/u8 during r), 1)")]
+    // Z5-R2 (SPEC 5.7 Writing a Field, 15.6.2): a Move of an enclosing Tuple or fixed-array Place restored whole for Block's drop reads
+    // the layer's element and carries its owner's own-step entry; in the Type's own constructor the allowlist does not apply (R4-M110).
+    [InlineData("()", "let t = b.pair@move\n    b.pair = (null, 2)")]
+    [InlineData("()", "let t = b.arr@move\n    b.arr = [null, null]")]
+    [InlineData("()", "match b.pair@move\n        (let p, let n) => _ = p\n    b.pair = (null, 2)")]
+    [InlineData("()\nstruct M\n    internal var pair: (raw/u8 during self, isize)\n    public init()\n        self.pair = (null, 1)\n        let p = self.pair@move\n        self.pair = (null, 2)", "()")]
     // Z5-R1 (H5's (e) list): a non-raw borrow of a layer's or enclosing Place issues its Loan, and a read through it is placed by its exact
     // lent position (a Case payload bound through c@ref, read through the binding).
     [InlineData("()", "let c = Cell.Some(null)\n    let p: raw/u8 = match c@ref\n        Cell.Some(let q) => q@follow\n        Cell.Two((let q, _)) => q@follow\n        Cell.None => null")]
@@ -387,30 +408,6 @@ public class RawStorageTest
         string[] expected = records.Length == 0 ? [] : [$"{records}: {place} = {value}"];
         Assert.Equal(expected, RawPointerSyntaxTest.Records(source));
     }
-
-    // H3b T31a, PQ-10 as Z5-R1 narrowed it: these valid forms (SPEC 5.7's allowlist, 15.6.2), a Move of an enclosing Tuple or fixed-array
-    // Place restored whole for Block's drop (Z5: Binding completes it as a read, SPEC 5.7), are refused by A5's located Unsupported_Kd at
-    // the moved Place (DECISIONS R4-M120, R-A) until Z5-R2; the old analysis accepted them. H5's (e) list (the owner, 2026-11-03,
-    // 「推奨どおり」, board O-1): Z5-R1 restored the borrows' and the Case match's acceptance (ASelfLayerAdmitsReadsSharedBorrowsAndNull).
-    [Theory]
-    [InlineData("let t = b.pair@move\n    b.pair = (null, 2)", "b.pair", "let t = b.pair@move")]
-    [InlineData("let t = b.arr@move\n    b.arr = [null, null]", "b.arr", "let t = b.arr@move")]
-    [InlineData("match b.pair@move\n        (let p, let n) => _ = p\n    b.pair = (null, 2)", "b.pair", "match b.pair@move")]
-    public void ASelfLayersEnclosingMovesAreRefusedPendingPq10(string use, string subject, params string[] contexts)
-        => RefusedPendingPq10(
-            Block.Replace("{0}", "()", StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal) + "\npublic func main() => ()\n", subject, contexts);
-
-    // SPEC 5.7 (DECISIONS R4-M110): through `self` in the Type's own constructors and drop the allowlist does not apply, so an enclosing
-    // Place is moved and exclusively borrowed there as any Field is. H3b T31a, PQ-10 as Z5-R1 narrowed it: A5 refuses the Move with its
-    // located Unsupported_Kd at the enclosing Place (DECISIONS R4-M120, R-A) until Z5-R2; the old analysis accepted it. H5's (e) list
-    // (the owner, 2026-11-03, 「推奨どおり」, board O-1): Z5-R1 restored the exclusive borrow's empty records.
-    [Fact]
-    public void TheTypesOwnConstructorsMoveIsRefusedPendingPq10()
-        => RefusedPendingPq10(
-            "struct M\n    internal var pair: (raw/u8 during self, isize)\n    public init()\n        self.pair = (null, 1)\n        let p = self.pair@move\n" +
-                "        self.pair = (null, 2)\npublic func main() => ()\n",
-            "self.pair",
-            "let p = self.pair@move");
 
     [Fact]
     public void TheTypesOwnDropBorrowsItsEnclosingPlaceExclusively()
@@ -564,15 +561,4 @@ public class RawStorageTest
         => Assert.Contains(
             RawPointerSyntaxTest.Records("func make(c: ref/i32) -> ref/i32 during c\n    let n: i32 = 1\n    let r = n@ref\n    let p = r@follow@raw\n    unsafe => return " + borrow),
             static x => x.StartsWith(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), StringComparison.Ordinal));
-
-    // A valid program on H5's (e) list under PQ-10: Binding completes, and the check's only Error records are A5's located Unsupported_Kd,
-    // one at the subject in each context.
-    private static Compilation RefusedPendingPq10(string source, string subject, params string[] contexts)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.False(c.Accepts);
-        MirTargetSide.Check(c, [.. contexts.Select(x => (DiagnosticCode.Unsupported_Kd, MirTargetSide.At(x, subject)))]);
-        return c;
-    }
 }

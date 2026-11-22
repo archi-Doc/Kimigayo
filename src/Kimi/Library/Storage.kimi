@@ -61,8 +61,7 @@ internal group Storage
     internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) during a) -> UniqRemainder<E> during a
         return UniqRemainder<E>.init(value.storage, value.length)
 
-    /// Selects a range from an exclusive capability without copying elements or weakening its Loan. The one
-    /// displacement of a view's start in the library: the selected start's offset is its stride (SPEC 5.3, 8.15.3).
+    /// Selects a range from an exclusive capability without copying elements or weakening its Loan.
     #CallerLocation
     internal func sliceUniq<E, R>(state: UniqRemainder<E> during source, range: R) -> UniqSlice<E> during source
         R is PositionRange
@@ -70,8 +69,11 @@ internal group Storage
             .Some(let resolved) => resolved
             .None => Storage.indexBounds()
         unsafe
-            // `0 <= selected.start <= state.count`, and `storage` addresses `count` elements.
-            let start = state.storage + selected.start
+            // `0 <= selected.start <= state.count`, and `storage` addresses `count` elements, so `viewStart` is
+            // defined (SPEC 5.3): a zero start keeps any pointer, null included; a nonzero one has live elements
+            // and ends at most one past them. `selected` resolves `range`, whose `Start` boundary resolves to 0
+            // (SPEC 4.6.1).
+            let start = Storage.viewStart<raw/E during source, R>(state.storage, selected.start)
             return UniqSlice<E>.init(UniqRemainder<E>.init(start, selected.length))
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
@@ -593,3 +595,16 @@ internal group Storage
     /// Returns the stride of `T` (IMPL 21.1.3), the byte distance between adjacent elements.
     #Intrinsic("Stride")
     internal func stride<T>() -> isize
+
+    /// Returns the address of the element at `start` among those from `storage`, `storage + start` (SPEC 5.3).
+    ///
+    /// `P` is a raw pointer Type `raw/E`, whose Origin the result keeps. The compiler writes the address in each
+    /// instance of `R`, without the element's stride where `R`'s start boundary is `Start`, the static zero (SPEC
+    /// 4.6.1, 8.15.3).
+    ///
+    /// - safety: `start >= 0`, and `storage + start` is defined (SPEC 5.3): a nonzero displacement needs live
+    ///   storage, and `storage` and the result lie within its provenance or one past its end. Where `R`'s start
+    ///   boundary is `Start`, `start` is 0.
+    #Lang("ViewStart")
+    internal unsafe func viewStart<P, R>(storage: P, start: isize) -> P
+        R is PositionRange

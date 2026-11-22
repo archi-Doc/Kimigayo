@@ -1474,6 +1474,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   `TestSyntaxVisitor`; DECISIONS R7-M79) and b as a census line that closes when the N5 batch holding `shapeJudgments` lands; N5's
   row: the census gains `shapeJudgments` (Koto-keyed through `ShapePair`'s fields, invisible to the line-regex ratchet; 24 → 25 on
   dev), converted or deleted in one N5 batch with a type-aware ratchet row (PLAN G1069). Nothing frozen.
+- Revision 116 (2026-11-23, plan §14; the Front's Q-693 and D-1143, F's V2a2/C3b rulings 1, 3 and 4 and ruling (A), R7-C3 b's
+  landing): C3's row records b as landed in W-322 (`SelectConformance`, one selection of a Type's conformance by a Contract;
+  DECISIONS R7-M82) and its remainder C3b-2 (PLAN G1300: a specification whose qualifier names a conformance of several members)
+  as next. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
@@ -1775,3 +1779,67 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   `UnsatisfiedEffectBound_Kd` at the member's declaration with a new requirement `Ownership.PlatformStatic`, `OwnershipRequirement`
   +1, this answer its approval under the enum's rule; no new code); §11: the question before B9c2 is answered. No other decision
   changes. No SPEC or IMPL text: B9c2 carries DIAGNOSTICS' requirement row. Nothing frozen.
+- Revision 14 (2026-11-22, T's D-1115; a wording correction): §7's B10 row names the six units of B10's accepted design (Revision
+  2.1 §11.1, C-457 ACCEPT) where it named five: OSF3a interrupt declarations, OSF3b interrupt entries, OSF3c the interrupt run under
+  QEMU (after B9h and OSF3b), and cites the design's revision. No decision changes (36-43 stand). No SPEC or IMPL text. Nothing frozen.
+- Revision 15 (2026-11-23, T's D-1123; a wording addition): §8's later candidate 2 (reuse of library check results within an
+  interactive session) gains its outcome, examined in the LC2 design's Revision 0: the Kimi library's parse, Binding, HIR and
+  library layer are already reused once per process and target; the MIR work a `kimi tatara` line still repeats is estimated at
+  or below 2% of a Milestone30 session line at O2, below the 3% gate, so the owner's O-381 (b) stands; no unit now. No decision
+  changes. No SPEC or IMPL text. Nothing frozen.
+- Revision 16 (2026-11-23, T's D-1125; an order update): §7's B7 row lands W4 as B7b2a1, B7b2a2, B7b6, B7b2b and B7b5 (design
+  Revision 2.5, C-445 ACCEPT): B7b2 splits into B7b2a (B7b2a1 the frame per row, behaviour-preserving, Windows alone; B7b2a2 the
+  Linux row) and B7b2b (the import side), which follows B7b6 because before B7b6 puts the Kimi library's kernel32 imports under
+  `#if windows` every Linux module would require `kernel32`. The owner's O-504 (Q1 (a), Q2 (i)): each call writes its own import's
+  extension; B7b2a and B7b6 proceed while B7b2b's reading was open. No other decision changes. No SPEC or IMPL text. Nothing frozen.
+
+## 2026-11-22 — Four proposals withdrawn to Obsolete
+
+The owner's instruction (K's dialog, 2026-11-22, verbatim): 「draft/Proposalsフォルダーのファイルのうち、10/16 Library Binding Reuse、10/26 Review Efficiency Proposals、10/20 M69 Default Loan Correspondence、10/20 S3 Closure Origin Publication を廃止（Obsoleteに移動）しようと思っています。いかがですか？問題なければ移動してください。」
+K checked each before the move: none has a section integrated into SPEC or IMPL, no `docs/**` file links any of them, and no
+open PLAN row names one as its plan. Each moves to `Obsolete/` as 完了 with only its status sentence replaced; its open items are
+withdrawn with it, and a remaining need becomes a new PLAN row.
+
+- `Obsolete/2026-10-16 Library Binding Reuse.md`: a design proposal for reusing the embedded library's Binding results, which
+  awaited the owner's decision (its §1.3). It was never taken in, implemented or registered in this file. Withdrawn.
+- `Obsolete/2026-10-26 Review Efficiency Proposals.md`: the R5 planning session's proposals for WORKFLOW's reviews, VERIFICATION's
+  checks and PLAN's open-issue rows, placed in `Proposals/` on the owner's 2026-10-26 request; by its own text nothing in it was
+  adopted until the owner revised WORKFLOW. The later WORKFLOW revisions and DECISIONS Q entries stand on their own records.
+  Withdrawn.
+- `Obsolete/2026-10-20 M69 Default Loan Correspondence Plan.md`: evaluated useful on 2026-10-21 (that entry). Its issue, PLAN
+  G171, was taken up by A5's step 2 designs (the copy disposition under DECISIONS R4-M90; R4-M92's G171 interim superseded by
+  R4-M97) and is no longer in PLAN. M69-0, M69-2 and M69-3 are withdrawn with it.
+- `Obsolete/2026-10-20 S3 Closure Origin Publication Plan.md`: evaluated useful on 2026-10-21 (that entry). 2a0-D (DECISIONS
+  R4-M94) took its body-relative atom classes; its other units refined A5 step 2 units, whose plan closed on 2026-11-19 with its
+  remaining units in PLAN G396 (that entry). Withdrawn; what remains is G396's.
+- Links: the `Proposals/` paths in this file's earlier entries (2026-10-21, 2026-11-19) and in the frozen
+  `Changes/2026-10-21 Closure Calls as Receiver Calls.md` are unchanged and read at the commit before this move; the path in
+  `Sketches/A5 Step 0/prototype.md` is repointed. The moved files keep their folder depth, so their own relative links resolve as
+  before.
+
+## 2026-11-22 — Callable and Local Region Implementation Plan closed
+
+The owner's instruction (K's dialog, 2026-11-22): asked whether to apply only the items the current specification keeps
+(「現行仕様に残る項目のみ適用しようと思います。いかがですか？」); after K's assessment (every unit already implemented on 2026-10-07,
+the Place parts removed by the language since), the owner answered, verbatim, 「今閉じる」.
+`Changes/2026-10-06 Callable and Local Region Implementation Plan.md`: 取り込み済み (closed 2026-11-22), moved from `Proposals/`
+with only its status sentence replaced. Every item now has a disposition:
+
+- §3 (D1, an Abort through a function value reports the actual call; an erasure's allocation failure the conversion): incorporated
+  (the 2026-10-07 entry). Its sections today: SPEC §22.5.1, referenced from §7.7.4 (the entry's "§7.6.4" before the 2026-10-15
+  rewrite); IMPL's former §21.4.2 sentence is now IMPL §21.3.4's `#CallerLocation` row ("which its private ABI carries"). The
+  observable rule is unchanged in SPEC §22.5.1.
+- U1 (N27b, references to length-generic functions), U2 (N24, block-bodied closure result inference), U3 (N25b, selection among
+  several Callable signatures), U6 (N27c, safe compiler-implemented functions as values), U7-U9 (LR, local region inference) and
+  U10: implemented on 2026-10-07 under existing rules (PLAN_HISTORY 2026-10-07); the local region analysis now lives in Binding's
+  local regions and MIR's A5 (STATUS), not in the components the plan names.
+- U4 and U5 (N26b, Place results), and the Place parts of U3, U6 and U9 and of §4's policies 1 and 3: superseded by the removal of
+  Place results (2026-10-16, DECISIONS PR-1; the 2026-10-16 entry recorded the design point as needing no further work). Running
+  them as written would revive `-> place ref/T`, now a syntax error.
+- Leftovers transferred to their PLAN rows: G10 and G78 (Callable inference and effect bounds), G988 (a constructor's Callable
+  Constraint), G1222 (a generic function reference's bound Origin), G1198 (length-argument records), G470 (SPEC 17.5.2's warning for
+  a return-inferred anonymous function), G194, G1201, G1208, G1209, G441, G1099 and G1105 (local regions and A5), and G396 (A5's
+  remainder); G65 was completed in its scope (PLAN_HISTORY 2026-10-07).
+- Links: the frozen `Changes/2026-10-07 G65 Fixed Origin Loan Retention Implementation Plan.md` and `Changes/2026-10-16 Complete
+  Polonius A5 Plan.md` name the plan as before; this file's earlier entries keep their `Proposals/` path, read at the commit before
+  this move. No SPEC or IMPL text changes.
