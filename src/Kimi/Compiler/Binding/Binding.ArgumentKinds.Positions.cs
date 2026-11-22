@@ -80,6 +80,31 @@ public sealed partial class Binding
         => position is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } &&
             !this.HasBorrowSemantics(referent) ? referent : position;
 
+    // SPEC 10.2.1, 12.3.1 (the one Literal layer rule, the owner's O-372 (a)): the Type a Literal meets at a parameter Type: a pair layer
+    // that formed nothing (an application under a binding that forms no Type, BU-240) passes to its target, one fixed ref layer to the
+    // value part's expected Type there (ExpectedTypeOf: its referent, a borrowed temporary, unless that is a borrow value), and any
+    // other fixed layer (uniq, an object form, raw) is met as it is, which no Literal fits.
+    private BoundType LiteralInputType(BoundType parameter)
+    {
+        var borrowed = false;
+        while (true)
+        {
+            if (parameter is { Kind: BoundTypeKind.SemanticsApplication, Components: [var target] })
+            {
+                parameter = target;
+            }
+            else if (!borrowed && this.ExpectedTypeOf(parameter) is var referent && !ReferenceEquals(referent, parameter))
+            {
+                parameter = referent;
+                borrowed = true;
+            }
+            else
+            {
+                return parameter;
+            }
+        }
+    }
+
     // A walk's position of one argument part; ClosePosition removes it with every part appended after it.
     private int OpenPosition(Koto part)
     {

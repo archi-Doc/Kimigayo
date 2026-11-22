@@ -115,7 +115,7 @@ public partial class Project
                 throw new PlatformNotSupportedException("Implicit projects currently support only the Windows x64 host target. Specify --Target explicitly for emission to a supported target.");
             }
 
-            target = WindowsProfile.Target;
+            target = TargetProfile.Windows.Target;
         }
 
         var fullPath = Path.GetFullPath(path);
@@ -317,15 +317,13 @@ public partial class Project
     /// <param name="compilation">The accepted compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="context">The check context, or null for a command.</param>
-    /// <param name="irPath">The published IR path on success.</param>
     /// <returns>Whether the artifacts were published.</returns>
-    internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context, out string? irPath)
+    internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context)
     {
-        irPath = null;
         Exception? fault = null;
         try
         {
-            if (EmissionArtifacts.Publish(compilation, paths, out irPath))
+            if (EmissionArtifacts.Publish(compilation, paths))
             {
                 return true;
             }
@@ -431,7 +429,7 @@ public partial class Project
             targets = [this.KimiOptions.Target];
         }
 
-        if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
+        if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != TargetProfile.Windows.Target))
         {
             this.Fail(diagnostics, "Artifact production currently requires exactly one configured Windows x64 target.");
             valid = false;
@@ -648,12 +646,13 @@ public partial class Project
 
     private bool Emit(Compilation compilation, ArtifactPaths? paths, CheckContext? context)
     {
-        if (!this.PublishArtifacts(compilation, paths, context, out var pathIr))
+        if (!this.PublishArtifacts(compilation, paths, context))
         {
             return false;
         }
 
-        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {pathIr} and {Path.ChangeExtension(pathIr, ".link.json")}; native build has not yet been performed.");
+        paths ??= ArtifactPaths.Create(this);
+        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {paths.Ir} and {paths.Manifest}; native build has not yet been performed.");
         return true;
     }
 

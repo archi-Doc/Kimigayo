@@ -179,7 +179,7 @@ public sealed class LspProtocolTest
                 finished.SetResult();
             }
         });
-        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}");
+        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{TargetProfile.Windows.Target}\"}}");
         await client.OpenAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "Cancel.kimi"), "let x = 1");
         var token = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         client.Cancel();

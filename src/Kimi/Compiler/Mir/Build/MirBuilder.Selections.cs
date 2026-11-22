@@ -30,7 +30,7 @@ internal sealed partial class MirBuilder
             return this.Unidentified(sequence, index);
         }
 
-        sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
+        sequence = Builds(index.Right, HirTables.AdjustOf(index.Right)) ? this.Handle(sequence, index.Left) : sequence;
         var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
         var key = ExpansionPlan.Of(compilation.Binding, index)?.First;
         MirPlace position;
@@ -156,7 +156,8 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
+        var later = range is null ? Builds(index.Right, HirTables.AdjustOf(index.Right))
+            : (range.Start is { } from && Builds(from, HirTables.AdjustOf(from))) || (range.End is { } to && Builds(to, HirTables.AdjustOf(to)));
         sequence = later ? this.Handle(sequence, index.Left) : sequence;
         var backing = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index);
         var length = this.Length(sequence, index);

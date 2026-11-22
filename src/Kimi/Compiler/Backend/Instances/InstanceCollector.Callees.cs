@@ -63,7 +63,8 @@ internal sealed partial class InstanceCollector
             return this.Implementation(program, item, subject, symbol, this.types.SubstOfItem(callable));
         }
 
-        return this.types.Witness(callable) is { } target ? this.Called(program, item, subject, symbol, target) : -1;
+        return this.types.Witness(callable) is { } target && this.Formed(target.Cause, item, subject, subject)
+            ? this.Called(program, item, subject, symbol, target) : -1;
     }
 
     // SPEC 8.13.3: the body of the implementation a function's substitution selects, admitted for a site of an item's body; without one,
