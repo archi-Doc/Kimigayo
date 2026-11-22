@@ -70,7 +70,7 @@ public class NamedAliasTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.Alias = additions;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Defaults.kimi", "writeLine(\"x\")"));
         Assert.Equal(bareVisible, c.Bind().IsComplete);
         Assert.Equal(additions, c.Project.ProjectFile.Alias);
@@ -120,7 +120,7 @@ public class NamedAliasTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.Alias = ["Extras"];
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Aliases.kimi", (explicitKimi ? "alias Kimi\n" : string.Empty) + "group Extras\n    public group Console\nConsole.writeLine(\"x\")"));
         Assert.Equal(explicitKimi, c.Bind().IsComplete);
     }
@@ -196,7 +196,7 @@ public class NamedAliasTest
                 }
 
                 var c = Compilation.CreateForTest();
-                Assert.True(c.Prepare(WindowsProfile.Target));
+                Assert.True(c.Prepare(TargetProfile.Windows.Target));
                 c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, File.ReadAllText(path));
                 Assert.True(TestDiagnostics.Of(c).Length == 0, path + ": " + string.Join("; ", TestDiagnostics.Of(c).Select(x => x.Message)));
                 count++;

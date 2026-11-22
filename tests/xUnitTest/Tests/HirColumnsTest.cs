@@ -77,7 +77,7 @@ public sealed class HirColumnsTest
     public void TheCorpusHasNoBrokenContract(string name)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var block = name.StartsWith("specblock/", StringComparison.Ordinal) ? name["specblock/".Length..] : null;
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", block is null ? DiagnosticSnapshotTest.Source(name) : DiagnosticCorpus.SpecBlocks.First(x => x.Name == block).Source));
         c.Bind();
@@ -185,7 +185,7 @@ public sealed class HirColumnsTest
             text.Append(indent).Append("func f(a: i32) -> isize\n").Append(indent).Append("    let t: Array<i32> = ").Append('(', 100).Append('[')
                 .AppendJoin(", ", Enumerable.Repeat("a", reads)).Append(']').Append(')', 100).Append('\n').Append(indent).Append("    return t.length\n");
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", text.ToString()));
             c.Bind();
             HirTables.Publish(c);

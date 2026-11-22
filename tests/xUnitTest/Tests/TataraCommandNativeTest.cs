@@ -85,7 +85,7 @@ public sealed class TataraCommandNativeTest : IDisposable
         Assert.Contains("Command cancelled.", text, StringComparison.Ordinal);
         Assert.Contains("Exit code: 130", text, StringComparison.Ordinal);
         Assert.Equal(1, TataraCommandTest.Count(text, "Built: "));
-        Assert.NotNull(JsonNode.Parse(File.ReadAllText(Path.Combine(this.directory, "A", "bin", WindowsProfile.Target, "A.link.build.json")))!["tools"]!["tatara"]);
+        Assert.NotNull(JsonNode.Parse(File.ReadAllText(Path.Combine(this.directory, "A", "bin", TargetProfile.Windows.Target, "A.link.build.json")))!["tools"]!["tatara"]);
     }
 
     // The fatal row in a child test process of its own, its folder this row's (Fatal); the child loads the tatara.dll beside its
@@ -104,7 +104,7 @@ public sealed class TataraCommandNativeTest : IDisposable
             var folder = Path.Combine(root, name);
             Directory.CreateDirectory(folder);
             File.Copy(Path.Combine(Repository.Root, "docs", "examples", "Hello", source), Path.Combine(folder, name + ".kimi"));
-            File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"Targets={{\"{WindowsProfile.Target}\"}} OutputKind=\"Application\" Optimization=\"O0\"");
+            File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputKind=\"Application\" Optimization=\"O0\"");
         }
     }
 
@@ -179,7 +179,7 @@ public sealed class TataraCommandNativeTest : IDisposable
             Directory.CreateDirectory(Path.Combine(folder, "native"));
             File.WriteAllText(Path.Combine(folder, "native", "malformed.lib"), "!<arch>\nnot a library member\n");
             File.WriteAllText(Path.Combine(folder, "F.kimi"), "group Native\n    #LibraryImport(\"codec\", \"f\")\n    public unsafe func f() -> i32\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.f()\n");
-            File.WriteAllText(Path.Combine(folder, "F.kimiproj"), $"Targets={{\"{WindowsProfile.Target}\"}} OutputKind=\"Application\" Optimization=\"O0\"\nNativeLibraries=\n  \"{WindowsProfile.Target}\"=\n    codec={{ Kind=\"static\" Input=\"native/malformed.lib\" }}");
+            File.WriteAllText(Path.Combine(folder, "F.kimiproj"), $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputKind=\"Application\" Optimization=\"O0\"\nNativeLibraries=\n  \"{TargetProfile.Windows.Target}\"=\n    codec={{ Kind=\"static\" Input=\"native/malformed.lib\" }}");
             var (code, text) = await Session(directory, [("build F/F.kimiproj", null), ("build A/A.kimiproj", null)]);
             Assert.True(code == 1, text);
             Assert.Contains("Tatara cannot run again in this process (", text, StringComparison.Ordinal);

@@ -137,7 +137,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         var document = CheckJsonOutput.Create(new KimiOptions(), [project], TestContext.Current.CancellationToken);
         Assert.Equal(CheckDocument.SchemaName, document.Schema);
         Assert.Equal(Compilation.CompilerVersion, document.Compiler);
-        Assert.Equal(new CheckUnitDescription(project, WindowsProfile.Target, CheckMode.Product, false), document.Unit);
+        Assert.Equal(new CheckUnitDescription(project, TargetProfile.Windows.Target, CheckMode.Product, false), document.Unit);
         Assert.Equal(CheckOutcome.Completed, document.Outcome);
         Assert.False(document.Accepted);
         Assert.Equal(TestPresence.No, document.TestPresence);
@@ -151,7 +151,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
             string.Join(", ", failures));
-        var expected = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        var expected = CheckService.Run(loaded, TargetProfile.Windows.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(expected.Diagnostics, document.Diagnostics);
         var record = Assert.Single(document.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), record.Code);
@@ -243,7 +243,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(folder, file), text);
         return path;
     }

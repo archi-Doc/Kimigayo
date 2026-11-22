@@ -344,7 +344,7 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
     private (DiagnosticEntryView[] Records, bool Accepted) Compile(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Deep.kimi", source));
         var checkedAll = c.Bind().IsComplete && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze().IsVerified;
         c.Binding.ReportDiagnostics();
