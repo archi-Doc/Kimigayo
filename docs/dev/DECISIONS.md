@@ -25029,7 +25029,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **`Instance`, a fifth Binding kind (B's O1 (a)).** Its Value is a kept side's index, a Type its location does not determine,
       read by its site: at the preceding `Related` fact's own site, the instance that party is (the declaring Contract instance of a
       related associated declaration, a related Contract's instance, a construction's constructed Type); at a member declaration of
-      that party, the Type that instance binds the member to (the agreement's associated Type). A problem's Count and Instance facts
+      that party, the Type that instance binds the member to (the agreement's associated Type; widened to a member or Type parameter
+      declaration by E3c-1, R7-M75, D-1142). A problem's Count and Instance facts
       are in their row's order; a MIR record carrying one is `InternalInvariant_Kd`, as `Key`. No related location's own recorded
       Type serves (C6 (3)): an ambiguity's two candidates share one declaration, whose Type is the generic one; an inference hole's
       identity is the conformance's substituted instance; an agreement's two instances share one Contract declaration, and an
@@ -25665,6 +25666,18 @@ R8-M* and R9-M* by the stage of the recording unit.
     once, is E3b's staged removal too, since it is no RequireConstraint caller and "every caller" does not cover it (the Front's
     C-634a). E3c takes `arithmeticConformanceFailures` with ArithmeticContracts.cs, its writer, ArithmeticDiagnostics and the
     selection and direction stores (ruling 4: E3c states the ineligible Type's reading, or B asks the owner then).
+  - **E3c-1 (Q-692, D-1142).** The arithmetic records record their facts through `Record` (no new kind): ArithmeticSelection records
+    the requirement its route could not prove by one conformance (`Constraint`: the route's Contract, applied to the counterpart when
+    it has one), its cause (`Reason`) and each candidate conformance (`Related` role 0, "conformance", with its Contract instance as
+    `Instance`); ArithmeticDirection records both premises (`Related` roles 0 "ordinary" and 1 "reverse", each with its Contract
+    instance), the pair read from the instances' arguments; InvalidArithmeticConformance records its cause, the arithmetic Contract's
+    declaration (`Related` role 0, "contract") and a counterpart's Type as `Instance` at the Contract's Type parameter. `Instance`'s
+    second reading names "a member or Type parameter declaration" (SPEC 13.3.3's bindings of `Lhs` and `Rhs`; B's E3c-1 ruling 1).
+    Deleted: `arithmeticSelectionFailures` and `arithmeticDirectionFailures` (ratchet "Node-keyed table members in Binding" -2),
+    `arithmeticConformanceFailures` (its NodeColumns column), the three ReportIssue arms. Kept until R7-E5: the direction's guard at
+    its owner (O6 (a)). The Notes are rendered from `Reason`, which the CLI/LSP rows pin. CallRelations' E3 row closes by census (no
+    edit: line 157 records through `RecordNumbered` since E3a-2; O-8). Moves: content only, ArithmeticDirection_Kd's evidence `left`
+    where the reverse premise names it through an identity mate.
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
