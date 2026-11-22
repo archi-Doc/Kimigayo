@@ -16215,8 +16215,11 @@ resumed by R4-M86 (2026-10-20).
     PLAN G443 (item (1), the Tuple step-3 path, BU-156's interim), G954, G957, G973, G977-G980 and R1e.
   - Amended by the owner's O-492 (a) (2026-11-22, verbatim 「O-492 a」; D-1072, SPEC 10.5.1 bullet 2), for AF-3b: a nested call
     that is ambiguous at a remaining candidate's expected Type does not check there, so that candidate is inapplicable, one rule
-    with a nested call none of whose candidates fits there (P5-3: `ko2(b@ref, pick(1))` selects `ko2`, since both `pick` fit
-    `ko2<T>`'s `ref/Option<T>` by structure).
+    with a nested call none of whose candidates fits there (P5-3: `ko2(b@ref, pick(1))` selects `ko2` and returns 1, where dev
+    gives `AmbiguousBinding_Kd` at `ko2(`: both `pick` fit `ko2<T>`'s `ref/Option<T>` by structure and neither is better). So a
+    nested call ambiguous at every remaining candidate's expected Type leaves no applicable candidate (`take(q(1))` with
+    `q(x: i32) -> i64`, `q(x: i64) -> i64` and `take(value: i64)`), and `two(1, pick(1))` with `two<T>(first: T, second:
+    Option<T>)` is invalid, since no default breaks the ambiguity (SPEC 10.2.1); `two(1@i32, pick(1))` is valid.
 - **BU-225 What an abstract part hides is writable wherever an input's walk meets it (PLAN G963)** (2026-11-18; Front, Binding; Q17
   class 1; Major, an acceptance mover; design review REVISE (B1), re-check ACCEPT (F's G963 ruling 6); implementation review ACCEPT;
   the Middle's RP17 consent C-386 after F2's fix; W-256) SPEC 15.6.4 (the abstract-Type sentence, route 2), 5.7 Calls. Supersedes
