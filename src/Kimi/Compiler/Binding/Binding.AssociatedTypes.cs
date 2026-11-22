@@ -707,6 +707,8 @@ public sealed partial class Binding
         {
             if (this.associatedInferenceReady && this.associatedInference.TryGetValue(path.Type, out var batch))
             {
+                this.ValidateInferenceRead(batch, binding);
+
                 // SPEC 8.5.5, 8.6.3 (PLAN G1001): a formation reads an inferred binding as its normal form, a requirement's evidence as its
                 // sources wrote it (InferredEvidence). SPEC 6.2, DECISIONS BU-128: one on an inline cycle names no Type to either reader
                 // after the failed Binding, as a written one does (its failed specification fails the conformance's environment, so its
@@ -714,21 +716,10 @@ public sealed partial class Binding
                 if (this.inferenceRequest >= 0 && batch.Component == this.inferenceRequest && this.inferenceBindingIndex.TryGetValue(binding, out var heldIndex))
                 {
                     // R7-C4 (SPEC 8.5.5, 8.3.3): a binding of the component under request is its answer under the reading run's hold, a
-                    // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending). An own run
-                    // reads only within its binding's Reach (the validator, counted), except a binding its own additions hold (C4 ruling
-                    // 14): its binding, or, in the run of the definition's bindings (Frozen is the run itself), a binding of its definition
-                    // (the requirements' Types are read with them held, ruling 11). Such a read answers pending whatever the outer hold, so
-                    // the state's key keeps it out; a read outside Reach held only through the outer hold still counts.
-                    if (this.collectingAssociated is { Owner: >= 0 } own && !this.ValueReaches(own.Owner, heldIndex) && heldIndex != own.Owner &&
-                        !(ReferenceEquals(own.Frozen, own) && ReferenceEquals(this.inferenceBindings[heldIndex].Batch.Type, own.Type)))
-                    {
-                        this.InferenceReachMisses++;
-                    }
-
+                    // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending).
                     return this.HeldValue(binding, this.collectingAssociated?.Hold ?? this.inferenceEmptyHold) is { State: HeldState.Type } held ? held.Type : null;
                 }
 
-                this.CountInferenceRead(path.Type);
                 return !batch.Published || binding.InferenceConflict || binding.InlineCycle ||
                     binding.Inferred is null ? null : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, batch, out pending);
             }

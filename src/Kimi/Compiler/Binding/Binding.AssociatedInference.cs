@@ -249,7 +249,7 @@ public sealed partial class Binding
                 batch.Evidence.Add(identity.Symbol, evidence = new());
             }
 
-            evidence.Add(new(path, identity, actual, source, written, anchor ?? required));
+            evidence.Add(new(path, identity, actual, source, batch.Requirement!, written, anchor ?? required));
             return;
         }
 
@@ -582,7 +582,7 @@ public sealed partial class Binding
         }
 
         var self = this.ConformanceSelf(path);
-        var selection = this.LookupMember(self, identity.Symbol.Name, path.Scope, LookupRole.Value, self);
+        var selection = this.RequirementCandidates(path, identity, self);
         var requirement = (FunctionKoto)identity.Symbol.Declaration;
         BindingSymbol? selected = null;
         var matches = 0;
@@ -664,16 +664,22 @@ public sealed partial class Binding
         Limit,
     }
 
-    // A projection a member's written Type makes on an inferring definition (Discovery): the definition, the associated name, and whether it
+    // SPEC 8.5.5 Identification: a requirement's candidates, the members of the conforming Self its name selects; the one lookup
+    // identification and discovery's reads read (C4 ruling 17 B1).
+    private MemberSelection RequirementCandidates(BoundConformancePath path, BoundRequirement identity, BoundType self)
+        => this.LookupMember(self, identity.Symbol.Name, path.Scope, LookupRole.Value, self);
+
+    // A projection a member's written Type makes on an inferring definition (Discovery): the definition, the associated Type it names
+    // (none: every binding of the definition), and whether it
     // is the subject of another projection (value-dependent: `E.(EC).W.(FC).U`).
-    internal readonly record struct WrittenRead(FunctionKoto Member, AssociatedInference Read, string? Name, bool Dependent);
+    internal readonly record struct WrittenRead(FunctionKoto Member, AssociatedInference Read, BindingSymbol? Associated, bool Dependent);
 
     internal readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
 
     // An inference source, one extraction position (ExtractAssociatedEvidence): the hole's normal part (Type) of Source's result, what Source
     // wrote at the position the evidence reads it from (Written: at the hole, or the written part of another shape the hole lies in) and
     // the requirement's part there (Required).
-    internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source, BoundType Written, BoundType Required);
+    internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source, BindingSymbol Requirement, BoundType Written, BoundType Required);
 
     // The `associatedInference` family's one accessor (DECISIONS BU-220): a conforming Type's batch is kept in its Type's declaration's
     // module at the declaration's SyntaxId (SPEC 8.6.1: a conformance is declared in its Type's declaration, ImplTable's store rule),
@@ -741,6 +747,9 @@ public sealed partial class Binding
         // The implementation whose result the extraction in progress walks (AssociatedEvidence.Source).
         internal FunctionKoto? Source { get; set; }
 
+        // The requirement whose identified implementation Source is (AssociatedEvidence.Requirement: a source is a path's requirement).
+        internal BindingSymbol? Requirement { get; set; }
+
         internal HashSet<BoundType> CheckedTypes { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal HashSet<BoundType> ProblemTypes { get; } = new(ReferenceEqualityComparer.Instance);
@@ -807,6 +816,7 @@ public sealed partial class Binding
             run.CheckedTypes.Clear();
             run.ProblemTypes.Clear();
             run.Source = null;
+            run.Requirement = null;
             run.Component = this.Component;
             foreach (var evidence in run.Evidence.Values)
             {

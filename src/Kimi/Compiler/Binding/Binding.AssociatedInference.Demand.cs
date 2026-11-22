@@ -477,7 +477,7 @@ public sealed partial class Binding
             foreach (var identity in path.Contract.Contract!.RequirementStorage)
             {
                 if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement ||
-                    (run.Owner >= 0 && !this.SourceOf(run.Owner, path, identity.Symbol.Name)))
+                    (run.Owner >= 0 && !this.SourceOf(run.Owner, path, identity.Symbol)))
                 {
                     continue;
                 }
@@ -517,6 +517,7 @@ public sealed partial class Binding
                 actual = this.ContractType(this.MemberType(actual, match.Selection.DeclaringType)!, path.Scope);
                 run.Pairs.Clear();
                 run.Source = implementation;
+                run.Requirement = identity.Symbol;
                 this.ExtractAssociatedEvidence(run, path, required, actual, written, null);
             }
         }
@@ -550,9 +551,11 @@ public sealed partial class Binding
 
                 foreach (var source in evidence)
                 {
-                    if (run.Owner < 0 && !this.SourceOf(index, source.Path, source.Source.Name))
+                    if (run.Owner < 0 && !this.SourceOf(index, source.Path, source.Requirement))
                     {
-                        this.InferenceReachMisses++; // the validator: a position outside its binding's sources (DiscoverValues)
+                        // The source list's contract (DiscoverValues): a position of the definition's run outside its binding's sources is
+                        // one no own run of the binding collects.
+                        throw new InvalidOperationException("A position lies outside its binding's sources (InternalInvariant; R7-C4).");
                     }
 
                     // SPEC 8.5.5 Completion: evidence from another path is usable when the destination's premises prove the source's; the
@@ -610,9 +613,13 @@ public sealed partial class Binding
     // component is decided without its held states, each binding by its own run under the hold of every binding of the component, where
     // a source reading the component is pending and supplies nothing. A binding whose Reach holds no other binding of the component is its
     // value there (a Type, missing or a conflict, as Value(v | {}) gives it); another is a conflict when two supplying sources differ (an
-    // Error that stands), else a Resource failure (InferenceProblem.Limit), whose one record is the component's least definition's by
-    // name (SPEC 8.3.3: "may depend on declaration names"), every other definition's failure resting on it (VerifyConformance). A run
-    // records no problem here; every state's runs are back in the pools (ruling 15 (a)), and each binding's run goes back after it.
+    // Error that stands), else a Resource failure (InferenceProblem.Limit). The component's one Resource record is decided here, where
+    // the limit is reached (C4 ruling 17 B2): at the conformance use of its least definition by full name (SPEC 8.3.3: "may depend on
+    // declaration names"), every Resource binding's ProblemDetail; VerifyConformance writes it as that conformance's first record (the
+    // use is the conformance's declaration: a record written here would fail it before its verification, and the conformance's own
+    // Error would be lost), every Resource binding's use rests on it, and a standing binding's Error stays its conformance's record
+    // (SPEC 23.1.2). A run records no problem here; every state's runs are back in the pools (ruling 15 (a)), and each binding's run
+    // goes back after it.
     private void DecideAtLimit()
     {
         // The hold of every binding, formed in order-number order (each member newer than the last, one node each; in entry order each
@@ -633,6 +640,7 @@ public sealed partial class Binding
         }
 
         BoundConformancePath? least = null;
+        string? leastName = null;
         for (var i = 0; i < this.inferenceBindings.Count; i++)
         {
             var (binding, batch, path, _) = this.inferenceBindings[i];
@@ -669,21 +677,44 @@ public sealed partial class Binding
                 binding.InferenceSource = null;
                 binding.EvidenceSources.Clear();
                 binding.Problem = InferenceProblem.Limit;
-                least = least is null || LeastByName(path.RootPath.Type, least.Type) ? path.RootPath : least;
+                var name = FullName(path.RootPath.Type.Declaration);
+                if (least is null || (StringComparer.Ordinal.Compare(name, leastName) is var order && (order < 0 ||
+                    (order == 0 && StringComparer.Ordinal.Compare(path.Type.Declaration.CodeContext.Kotonoha.Name, least.Type.Declaration.CodeContext.Kotonoha.Name) < 0))))
+                {
+                    (least, leastName) = (path.RootPath, name);
+                }
             }
+        }
+
+        if (least is null)
+        {
+            return; // every binding is decided (a value, missing or a conflict): no judgment depends on the analysis past the limit
         }
 
         for (var i = 0; i < this.inferenceBindings.Count; i++)
         {
             if (this.inferenceBindings[i].Binding is { Problem: InferenceProblem.Limit } limited)
             {
-                limited.ProblemDetail = least!.Use; // the component's one record (VerifyConformance)
+                limited.ProblemDetail = least.Use; // the use holding the component's one record (VerifyConformance)
             }
         }
 
-        static bool LeastByName(BindingSymbol a, BindingSymbol b)
-            => StringComparer.Ordinal.Compare(a.Name, b.Name) is var order && (order < 0 ||
-                (order == 0 && StringComparer.Ordinal.Compare(a.Declaration.CodeContext.Kotonoha.Name, b.Declaration.CodeContext.Kotonoha.Name) < 0));
+        // A definition's full name: the enclosing declarations' names from the outermost, joined by `.` (below every identifier
+        // character, so the ordinal order is the names' order part by part, a shorter path first): `GA.R0` before `GB.R0` (C4 ruling 17
+        // C1), whichever is declared first; the module's name breaks a tie.
+        static string FullName(Koto declaration)
+        {
+            var name = ((DeclarationContainerKoto)declaration).Name;
+            for (var outer = declaration.Parent; outer is not null; outer = outer.Parent)
+            {
+                if (outer is DeclarationContainerKoto { Parent: not null, Name.Length: > 0 } enclosing)
+                {
+                    name = enclosing.Name + "." + name;
+                }
+            }
+
+            return name;
+        }
     }
 
     // Holds (C4 ruling 13 (3); one owner of the hold form): a hold is a set of the component's canonical entries, stored as its parent plus

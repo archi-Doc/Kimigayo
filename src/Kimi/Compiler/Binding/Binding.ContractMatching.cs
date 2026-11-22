@@ -165,6 +165,15 @@ public sealed partial class Binding
         try
         {
             var shape = conformance.Contract.Contract!;
+            if (this.HoldsInferenceLimit(conformance, shape))
+            {
+                // SPEC 8.3.3 Limits, 23.1.1-23.1.2 (C4 ruling 17 B2): the component's one Resource record, decided by DecideAtLimit, is this
+                // conformance's first record whatever else it fails for: every Resource binding's use rests on it, and the conformance's
+                // own failing hole is recorded beside it.
+                conformance.Invalid = true;
+                this.RecordNumbered(conformance.Use, BindingFailure.AnalysisLimit, [new(ProblemFactKind.Reason, this.FactSite(conformance.Use), (long)AnalysisBound.InferenceStates)]);
+            }
+
             var scope = conformance.Scope;
             var self = this.ConformanceSelf(conformance);
             var declarationProof = this.ReadSourceState(conformance.Type, out _);
@@ -200,6 +209,7 @@ public sealed partial class Binding
             var proof = declarationProof;
             IsKoto? specification = null;
             Koto? failedRequirement = null;
+            (Koto Use, BoundRequirement Identity, AssociatedBinding Binding)? limited = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -225,14 +235,10 @@ public sealed partial class Binding
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem == InferenceProblem.Limit)
                         {
-                            // SPEC 8.3.3 Limits, 23.1.1-23.1.2: the component's one Resource record at its least definition by name;
-                            // another definition's failure rests on it (a pending part: its state is read at publication).
-                            if (ReferenceEquals(binding.ProblemDetail, conformance.Use))
-                            {
-                                return Invalid(BindingFailure.AnalysisLimit, [new(ProblemFactKind.Reason, this.FactSite(conformance.Use), (long)AnalysisBound.InferenceStates)]);
-                            }
-
-                            this.AddPendingPrerequisite(conformance.Use, binding.ProblemDetail!);
+                            // SPEC 8.3.3 Limits, 23.1.2 (C4 ruling 17 B2): a Resource binding rests on the component's one record
+                            // (DecideAtLimit's); the conformance's own failing hole, if it has one, is its record beside it.
+                            limited ??= (binding.ProblemDetail!, identity, binding);
+                            continue;
                         }
 
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
@@ -252,6 +258,17 @@ public sealed partial class Binding
                     // specification or an inferred one, outside the use's syntax, so no part (RecordAccess' rule).
                     return Invalid(BindingFailure.Access, [this.AccessFact(inaccessible)]);
                 }
+            }
+
+            if (limited is { } limit)
+            {
+                if (ReferenceEquals(limit.Use, conformance.Use))
+                {
+                    return ConstraintProof.Error; // its use holds the component's one record (HoldsInferenceLimit)
+                }
+
+                this.AddPendingPrerequisite(conformance.Use, limit.Use); // a pending part: its state is read at publication
+                return Invalid(BindingFailure.AssociatedInference, this.InferenceFacts(limit.Identity, limit.Binding));
             }
 
             if (specification is not null)
@@ -456,6 +473,21 @@ public sealed partial class Binding
             (this.specificationLinks ??= new()).Add(conformance.Use);
             return Invalid(BindingFailure.InvalidAssociatedType, []);
         }
+    }
+
+    // Whether the conformance's use holds its component's one inference-limit record (DecideAtLimit: a Resource binding's ProblemDetail).
+    private bool HoldsInferenceLimit(BoundConformancePath conformance, BoundContract shape)
+    {
+        for (var i = 0; i < shape.AssociatedTypes.Count; i++)
+        {
+            if (this.InferenceHole(conformance, shape.AssociatedTypes[i]) && this.AssociatedBindingOf(conformance.RootPath, shape.AssociatedTypes[i]) is
+                { Problem: InferenceProblem.Limit } binding && ReferenceEquals(binding.ProblemDetail, conformance.Use))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): a requirement's evidence, that the specified Types meet a Contract clause (or a

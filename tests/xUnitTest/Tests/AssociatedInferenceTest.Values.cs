@@ -122,6 +122,31 @@ public partial class AssociatedInferenceTest
 
     private const string C4ParamPending = "contract C\n    associate Other\n    func read(self: ref/Self, p: PA<Self.Other>)\n    func other(self: ref/Self) -> Self.Other\nstruct PA<T>\n    public init() => ()\nstruct S\n    public init() => ()\n    Self is C\n    public func read(self: ref/Self, p: PA<Self.(C).Other>) => ()\n    public func other(self: ref/Self) -> i32 => 0\n()\n";
 
+    // invalid: SPEC 8.5.5 (C4 ruling 17 B1; the review's eq-b, labelled before any run): D.W's only source w reads P.X, inferred from
+    // D.(K).B, which the contract's `associate B is A` equates to D.A; with D's values held, D.A is pending, so P.X supplies nothing and
+    // D.W has no evidence: AssociatedTypeInferenceFailed_Kd at D's `Self is DC`. P.X = D.A = i32 stands. P declared first.
+    private const string C4EqBPd = "contract K\n    associate A\n    associate B is A\n    func a(self: ref/Self) -> Self.A\ncontract DC\n    associate W\n    func w(self: ref/Self) -> Self.W\ncontract HA\n    associate X\n    func x(self: ref/Self) -> Self.X\nstruct P\n    Self is HA\n    public func x(self: ref/Self) -> D.(K).B => $abort(\"x\")\nstruct D\n    Self is K\n    Self is DC\n    public func a(self: ref/Self) -> i32 => 0\n    public func w(self: ref/Self) -> P.(HA).X => $abort(\"w\")\n()\n";
+
+    // invalid: the same, D declared first.
+    private const string C4EqBDp = "contract K\n    associate A\n    associate B is A\n    func a(self: ref/Self) -> Self.A\ncontract DC\n    associate W\n    func w(self: ref/Self) -> Self.W\ncontract HA\n    associate X\n    func x(self: ref/Self) -> Self.X\nstruct D\n    Self is K\n    Self is DC\n    public func a(self: ref/Self) -> i32 => 0\n    public func w(self: ref/Self) -> P.(HA).X => $abort(\"w\")\nstruct P\n    Self is HA\n    public func x(self: ref/Self) -> D.(K).B => $abort(\"x\")\n()\n";
+
+    // invalid: the same through D's own specification `associate K.B is Self.(K).A` (the review's eq2-b), P declared first.
+    private const string C4Eq2BPd = "contract K\n    associate A\n    associate B\n    func a(self: ref/Self) -> Self.A\ncontract DC\n    associate W\n    func w(self: ref/Self) -> Self.W\ncontract HA\n    associate X\n    func x(self: ref/Self) -> Self.X\nstruct P\n    Self is HA\n    public func x(self: ref/Self) -> D.(K).B => $abort(\"x\")\nstruct D\n    Self is K\n    Self is DC\n    associate K.B is Self.(K).A\n    public func a(self: ref/Self) -> i32 => 0\n    public func w(self: ref/Self) -> P.(HA).X => $abort(\"w\")\n()\n";
+
+    // invalid: the same, D declared first.
+    private const string C4Eq2BDp = "contract K\n    associate A\n    associate B\n    func a(self: ref/Self) -> Self.A\ncontract DC\n    associate W\n    func w(self: ref/Self) -> Self.W\ncontract HA\n    associate X\n    func x(self: ref/Self) -> Self.X\nstruct D\n    Self is K\n    Self is DC\n    associate K.B is Self.(K).A\n    public func a(self: ref/Self) -> i32 => 0\n    public func w(self: ref/Self) -> P.(HA).X => $abort(\"w\")\nstruct P\n    Self is HA\n    public func x(self: ref/Self) -> D.(K).B => $abort(\"x\")\n()\n";
+
+    // invalid: the twins reading the identical projection by its own name, `D.(K).A` (rejected on dev and the head alike).
+    private const string C4EqAPd = "contract K\n    associate A\n    associate B is A\n    func a(self: ref/Self) -> Self.A\ncontract DC\n    associate W\n    func w(self: ref/Self) -> Self.W\ncontract HA\n    associate X\n    func x(self: ref/Self) -> Self.X\nstruct P\n    Self is HA\n    public func x(self: ref/Self) -> D.(K).A => $abort(\"x\")\nstruct D\n    Self is K\n    Self is DC\n    public func a(self: ref/Self) -> i32 => 0\n    public func w(self: ref/Self) -> P.(HA).X => $abort(\"w\")\n()\n";
+
+    private const string C4EqADp = "contract K\n    associate A\n    associate B is A\n    func a(self: ref/Self) -> Self.A\ncontract DC\n    associate W\n    func w(self: ref/Self) -> Self.W\ncontract HA\n    associate X\n    func x(self: ref/Self) -> Self.X\nstruct D\n    Self is K\n    Self is DC\n    public func a(self: ref/Self) -> i32 => 0\n    public func w(self: ref/Self) -> P.(HA).X => $abort(\"w\")\nstruct P\n    Self is HA\n    public func x(self: ref/Self) -> D.(K).A => $abort(\"x\")\n()\n";
+
+    private const string C4Eq2APd = "contract K\n    associate A\n    associate B\n    func a(self: ref/Self) -> Self.A\ncontract DC\n    associate W\n    func w(self: ref/Self) -> Self.W\ncontract HA\n    associate X\n    func x(self: ref/Self) -> Self.X\nstruct P\n    Self is HA\n    public func x(self: ref/Self) -> D.(K).A => $abort(\"x\")\nstruct D\n    Self is K\n    Self is DC\n    associate K.B is Self.(K).A\n    public func a(self: ref/Self) -> i32 => 0\n    public func w(self: ref/Self) -> P.(HA).X => $abort(\"w\")\n()\n";
+
+    // valid: SPEC 8.5.5 (C4 ruling 13 (2)): S.Other = i32 from other; read's Other position reads S's own Other (supplies none);
+    // S.Item = ref/i32. Its read of Other lies in Item's Reach through the definition's held bindings (ruling 14).
+    private const string C4OwnRead = "contract C\n    associate Item\n    associate Other\n    func read() -> (Self.Item, Self.Other)\n    func other() -> Self.Other\nstruct S\n    Self is C\n    public func read() -> (ref/i32, Self.Other)\n        $abort(\"unused\")\n    public func other() -> i32 => 1\n()\n";
+
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records).
     [Theory]
     [InlineData("guard", "n1-d", C4N1D, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
@@ -159,49 +184,14 @@ public partial class AssociatedInferenceTest
     [InlineData("guard", "nested-path", C4NestedPath, "")]
     [InlineData("C4", "param-pending", C4ParamPending, "")]
     [InlineData("C4", "contract-argument", C4ContractArgument, "")]
+    [InlineData("C4", "own-read", C4OwnRead, "")]
+    [InlineData("guard", "eq-b-pd", C4EqBPd, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
+    [InlineData("guard", "eq-b-dp", C4EqBDp, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
+    [InlineData("guard", "eq2-b-pd", C4Eq2BPd, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
+    [InlineData("guard", "eq2-b-dp", C4Eq2BDp, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
+    [InlineData("guard", "eq-a-pd", C4EqAPd, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
+    [InlineData("guard", "eq-a-dp", C4EqADp, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
+    [InlineData("guard", "eq2-a-pd", C4Eq2APd, "AssociatedTypeInferenceFailed_Kd: Self is DC | ...")]
     public void EveryValueFollowsItsEvidenceInEveryOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program, records);
-
-    // R7-C4 commit 2 (design Revision 2 §3.2, the validator, counted until the cutover enforces it): every read the batches make of another
-    // inferring definition's binding lies in the reader's Reach as discovery computes it from the declarations (Heads, D2-B1 included).
-    [Theory]
-    [InlineData("C4N1D", C4N1D)]
-    [InlineData("C4N1E", C4N1E)]
-    [InlineData("C4N1EVw", C4N1EVw)]
-    [InlineData("C4N2D", C4N2D)]
-    [InlineData("C4N2E", C4N2E)]
-    [InlineData("C4N4Def", C4N4Def)]
-    [InlineData("C4N4Efd", C4N4Efd)]
-    [InlineData("C4N4Fde", C4N4Fde)]
-    [InlineData("C4C3Abc", C4C3Abc)]
-    [InlineData("C4C3Bca", C4C3Bca)]
-    [InlineData("C4C3Cab", C4C3Cab)]
-    [InlineData("C4C3X", C4C3X)]
-    [InlineData("C4K1S", C4K1S)]
-    [InlineData("C4K1E", C4K1E)]
-    [InlineData("C4K2S", C4K2S)]
-    [InlineData("C4K2E", C4K2E)]
-    [InlineData("C4K3S", C4K3S)]
-    [InlineData("C4K3E", C4K3E)]
-    [InlineData("C4K3X", C4K3X)]
-    [InlineData("C4DrAef", C4DrAef)]
-    [InlineData("C4DrFea", C4DrFea)]
-    [InlineData("C4DrEfa", C4DrEfa)]
-    [InlineData("C4Ring6", C4Ring6)]
-    [InlineData("C4PremOwn", C4PremOwn)]
-    [InlineData("C4PremE", C4PremE)]
-    [InlineData("C4PremP", C4PremP)]
-    [InlineData("C4B2012", C4B2012)]
-    [InlineData("C4B2210", C4B2210)]
-    [InlineData("C4Ov12", C4Ov12)]
-    [InlineData("C4Ov12R", C4Ov12R)]
-    [InlineData("C4Generic", C4Generic)]
-    [InlineData("C4GenericConflict", C4GenericConflict)]
-    [InlineData("C4NestedPath", C4NestedPath)]
-    [InlineData("C4ParamPending", C4ParamPending)]
-    [InlineData("Mutual", Mutual + MutualUses)]
-    [InlineData("C4ContractArgument", C4ContractArgument)]
-    [InlineData("OwnRead", "contract C\n    associate Item\n    associate Other\n    func read() -> (Self.Item, Self.Other)\n    func other() -> Self.Other\nstruct S\n    Self is C\n    public func read() -> (ref/i32, Self.Other)\n        $abort(\"unused\")\n    public func other() -> i32 => 1\n()\n")]
-    public void EveryReadLiesInTheReadersReach(string form, string program)
-        => Assert.Equal((form, 0), (form, MinimalEmissionTest.Analyze(program).Binding.InferenceReachMisses));
 }

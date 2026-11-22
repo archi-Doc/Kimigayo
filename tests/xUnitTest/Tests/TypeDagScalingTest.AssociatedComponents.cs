@@ -16,23 +16,67 @@ public partial class TypeDagScalingTest
     // R7-C4 (C4 ruling 11; design §3.3 and §6): a request evaluates the model's held states (`value_model_r2.py shapes`): each held state
     // keyed by (binding, hold n Reach(binding)), its own run collecting only its binding's sources, the requirements' Types read with the
     // definition's bindings held. Rings of 4, 6 and 8 definitions (valid by SPEC 8.3.3 Finality) are one component each; a two-value chain
-    // of 30 (valid by SPEC 8.5.5) is 31 components of one definition. Each is accepted, every read lies in its reader's Reach.
+    // of 30 (valid by SPEC 8.5.5) is 31 components of one definition. Each is accepted, every read in its reader's Reach (the validator).
+    // C4 ruling 17 C2 (design §6's scaling rows, the counts the model's `value_model_r2.py shapes`, labelled before any run; each valid,
+    // every value i32): `over` at 30 and 40 (acyclic in its real reads; the model's 64 and 84 plus Z.Y, a binding the program's Z declares,
+    // since CC has two values, and the model's `over` leaves out), the diamond ladder (3n + 1 one-binding components), the ladder and the
+    // two-value chain with a back edge (one component each).
     [Theory]
     [InlineData("ring", 4, 364)]
     [InlineData("ring", 6, 4122)]
     [InlineData("ring", 8, 41080)]
     [InlineData("two-value chain", 30, 62)]
+    [InlineData("over", 30, 65)]
+    [InlineData("over", 40, 85)]
+    [InlineData("diamond ladder", 30, 91)]
+    [InlineData("ladder, back edge", 4, 590)]
+    [InlineData("ladder, back edge", 8, 18114)]
+    [InlineData("two-value chain, back edge", 4, 352)]
+    [InlineData("two-value chain, back edge", 8, 21594)]
     public void AComponentEvaluatesTheModelsHeldStates(string shape, int size, int states)
     {
-        var c = MinimalEmissionTest.Analyze(shape == "ring" ? Verification.AssociatedInferenceWorkloads.TwoValueRing(size) : Verification.AssociatedInferenceWorkloads.TwoValueChain(size));
-        Assert.Equal((shape, size, states, 0, 0), (shape, size, c.Binding.InferenceStates, c.Binding.InferenceReachMisses, CompilationTestHelper.BindingErrors(c).Length));
+        var c = MinimalEmissionTest.Analyze(Shape(shape, size));
+        Assert.Equal((shape, size, states, 0), (shape, size, c.Binding.InferenceStates, CompilationTestHelper.BindingErrors(c).Length));
     }
 
     [Fact]
-    public void AChainAndARingOfTenThousandDefinitionsStayWithinTheStack()
+    public void AChainOfTenThousandDefinitionsStaysWithinTheStack()
+        => CompilationTestHelper.AssertBindingRecordsAtLines("chain 10000", Verification.AssociatedInferenceWorkloads.OneValueChain(10000), string.Empty);
+
+    // C4 ruling 17 C4: Explicit for its time (the review's 36.4 s cold in one Bind, 58.2 s in the Unit with the chain; dev did not finish
+    // in 400 s): 65,536 states over 20,000 bindings, the decision at the limit reading every binding once.
+    [Fact(Explicit = true)]
+    public void ARingOfTenThousandDefinitionsStaysWithinTheStack() => AssertOneLimitRecord(10000);
+
+    // C4 ruling 17 B2, C1 (the review's probes, labelled before any run, `C4\review-rev3.md` §1): past the bound the component's one
+    // AnalysisLimit_Kd is at its least definition by full name, in every declaration order (nest9: GA.R0 before GB.R0), and a binding's
+    // Error that stands is its conformance's own record beside it (std9: R0.Z's constant sources i32 and i64; conf9: R5.X's), whichever
+    // of the contract's values or the sources is declared first; no other definition reports a Language record for a Resource failure.
+    // Each entry names a record's code and the definition whose `Self is RC` holds it; the headers' records over a failed conformance stay
+    // open (dependent).
+    [Theory]
+    [InlineData("std9-z1", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R0")]
+    [InlineData("std9-z2", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R0")]
+    [InlineData("std9-ok", "AnalysisLimit_Kd@struct R0")]
+    [InlineData("conf9-ef", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R5")]
+    [InlineData("conf9-fe", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R5")]
+    [InlineData("nest9-ab", "AnalysisLimit_Kd@struct GA")]
+    [InlineData("nest9-ba", "AnalysisLimit_Kd@struct GA")]
+    public void TheLimitRecordIsTheComponentsOneAndAStandingErrorStays(string form, string records)
     {
-        CompilationTestHelper.AssertBindingRecordsAtLines("chain 10000", Verification.AssociatedInferenceWorkloads.OneValueChain(10000), string.Empty);
-        AssertOneLimitRecord(10000);
+        var program = form switch
+        {
+            "std9-z1" => Verification.AssociatedInferenceWorkloads.RingWithZ(true, "i64"),
+            "std9-z2" => Verification.AssociatedInferenceWorkloads.RingWithZ(false, "i64"),
+            "std9-ok" => Verification.AssociatedInferenceWorkloads.RingWithZ(true, "i32"),
+            "conf9-ef" => Verification.AssociatedInferenceWorkloads.RingWithConflict(true),
+            "conf9-fe" => Verification.AssociatedInferenceWorkloads.RingWithConflict(false),
+            _ => Verification.AssociatedInferenceWorkloads.NestedRing(form == "nest9-ab"),
+        };
+        var expected = records.Split(" | ").Select(x => x.Split('@')).Select(x => $"{x[0]}@{program.IndexOf("Self is RC", program.IndexOf(x[1] + "\n", StringComparison.Ordinal), StringComparison.Ordinal)}");
+        var actual = CompilationTestHelper.BindingErrors(MinimalEmissionTest.Analyze(program))
+            .Where(static x => x.Code is nameof(Kimi.DiagnosticCode.AnalysisLimit_Kd) or nameof(Kimi.DiagnosticCode.AssociatedTypeInferenceFailed_Kd)).Select(static x => $"{x.Code}@{x.Span.Start}");
+        Assert.Equal((form, string.Join(" | ", expected.Order(StringComparer.Ordinal))), (form, string.Join(" | ", actual.Order(StringComparer.Ordinal))));
     }
 
     [Fact]
@@ -48,4 +92,14 @@ public partial class TypeDagScalingTest
         const string Text = "A judgment here is not decided within the implementation limit of 65536 held states of one component of associated-Type inference";
         Assert.Equal((size, Kimi.Compiler.Binding.InferenceStateLimit, at, Text), (size, c.Binding.InferenceStates, limit.Span.Start, limit.Message));
     }
+
+    private static string Shape(string shape, int size) => shape switch
+    {
+        "ring" => Verification.AssociatedInferenceWorkloads.TwoValueRing(size),
+        "two-value chain" => Verification.AssociatedInferenceWorkloads.TwoValueChain(size),
+        "over" => Verification.AssociatedInferenceWorkloads.Over(size),
+        "diamond ladder" => Verification.AssociatedInferenceWorkloads.Ladder(size, "i32"),
+        "ladder, back edge" => Verification.AssociatedInferenceWorkloads.Ladder(size, "L0.(LC).X"),
+        _ => Verification.AssociatedInferenceWorkloads.TwoValueChainBackEdge(size),
+    };
 }

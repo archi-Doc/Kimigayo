@@ -21,8 +21,9 @@ namespace Kimi.Compiler;
 // - Prohibitions: no read of an inferred value; no state but the batches' discovery fields and the lists below, reset here each pass.
 // Every batch present after PrepareAssociatedInference drops the inactive ones has paths (an active batch's paths include the one
 // that made it active), so a batch found by its Type infers.
-// Until R7-C4's cutover the components only count: a read the batches make outside the reader's Reach (ResolveAssociated) is counted in
-// InferenceReachMisses, which the rows assert is zero (the validator, enforced by the cutover).
+// - The binding a written projection or a requirement's Type names is decided by identity, directly or through the definition's one
+//   published equality (NamesBinding; C4 rulings 13 (1), 17 B1): the source list and Reach's edges read the same fact, never a spelled
+//   name. The validator (ValidateInferenceRead) makes a read outside Reach a broken contract (InternalInvariant_Kd), never a count.
 public sealed partial class Binding
 {
     // The inferring definitions of the pass in Tarjan's emission order (each component after every component it reads).
@@ -65,9 +66,6 @@ public sealed partial class Binding
 
     // The component's canonical entries (ConnectValues), so a Reach of that many covers it.
     private int inferenceCanonicalCount;
-
-    // Reads the batches made outside the reader's Reach in this compilation (the validator's count until the cutover enforces it).
-    internal int InferenceReachMisses { get; private set; }
 
     private void DiscoverInferenceComponents()
     {
@@ -150,8 +148,8 @@ public sealed partial class Binding
     // receiver (`subject`: `S.(EC).W.(FC).U`, `Option<S.(EC).W>.(FC).U`) makes the reader value-dependent on it. The walk takes the Type
     // forms' own Type parts (a length or an Origin argument is no Type) and looks up only the uses the Type binder looks up, in its order (a
     // path, then a projection's receiver). Each projection on an inferring definition is also kept as the member's read (MemberReads, the
-    // definition's own included: a binding's Reach reads it). Returns the definition a name, generic or path use selects (a projection's
-    // receiver), or none.
+    // definition's own included: a binding's Reach reads it), with the associated Type it names (ProjectedAssociated). Returns the
+    // definition a name, generic or path use selects (a projection's receiver), or none.
     private BindingSymbol? DiscoverWritten(AssociatedInference batch, FunctionKoto source, Koto? syntax, BindingScope scope, bool subject)
     {
         var use = syntax is null ? null : UseNode(syntax);
@@ -164,7 +162,7 @@ public sealed partial class Binding
                 var read = this.InferringDefinition(this.DiscoverWritten(batch, source, receiver, scope, true));
                 if (read is not null)
                 {
-                    batch.MemberReads.Add(new(source, read, TypeSpelling(member.Right), subject));
+                    batch.MemberReads.Add(new(source, read, this.ProjectedAssociated(read, member, scope), subject));
                 }
 
                 if (read is not null && !ReferenceEquals(read, batch))
@@ -246,6 +244,16 @@ public sealed partial class Binding
                 list.Add(item);
             }
         }
+    }
+
+    // The associated Type a written projection on the inferring definition `read` names (SPEC 8.5.2), by the binder's one search
+    // (SearchAssociated, recording nothing): in its `.(C)` qualifier's Contract, else in the definition's conformances. None when the name
+    // is ambiguous or names none: the read then reads every binding of the definition (Reach over-approximates; it never misses).
+    private BindingSymbol? ProjectedAssociated(AssociatedInference read, MemberAccessKoto projection, BindingScope scope)
+    {
+        var qualifier = projection.Left is MemberAccessKoto { Right: ParenthesizedTypeKoto contract } ? this.TypeName(contract, scope) : null;
+        return TypeSpelling(projection.Right) is { } name && this.SearchAssociated(this.SelfType(read.Type), scope, name, qualifier) is { Alternative: null, Found: { } found }
+            ? found : null;
     }
 
     private void AddHead(AssociatedInference batch, BindingSymbol? symbol)
@@ -350,11 +358,12 @@ public sealed partial class Binding
     }
 
     // Per binding of a component, before its request (the owner's O-484 (1 a); C4 ruling 11; BindBeforeRequest has bound the requirement
-    // headers): its sources, the function requirements of the definition's paths whose required Type names its associated name (SPEC 8.5.5
-    // Extraction: a source is a requirement's identified implementation), and its direct reads, the component's bindings its sources'
-    // candidates' written Types name (MemberReads by the requirement's name; a value-dependent read reads every binding of the definitions
-    // its subject's definition can name, as Reads does); then the bindings' components (Tarjan, iterative), each after those it reads.
-    // Reach(v) is v's binding component and every one it reads (ValueReaches). A requirement whose header is not bound names every binding.
+    // headers): its sources, the function requirements of the definition's paths whose required Type names the binding (SPEC 8.5.5
+    // Extraction: a source is a requirement's identified implementation; NamesBinding), and its direct reads, the component's bindings
+    // its sources' candidates' written Types name (the candidates identification looks up, RequirementCandidates; each read's binding by
+    // NamesBinding; a value-dependent read reads every binding of the definitions its subject's definition can name, as Reads does); then
+    // the bindings' components (Tarjan, iterative), each after those it reads. Reach(v) is v's binding component and every one it reads
+    // (ValueReaches). A requirement whose header is not bound names every binding.
     private void DiscoverValues(int component)
     {
         var entries = this.inferenceBindings;
@@ -399,7 +408,7 @@ public sealed partial class Binding
                 if (requirement.BoundSymbol?.Type is not { } required || this.NamesIdentity(path.RootPath, required, entry.Identity.Symbol))
                 {
                     this.inferenceValueSources.Add((path, identity));
-                    this.AddValueReads(batch, requirement.Name, edges, component);
+                    this.AddCandidateReads(batch, path, identity, edges, component);
                 }
             }
         }
@@ -412,30 +421,9 @@ public sealed partial class Binding
     // once (inferenceEqualities, cleared by the caller), so a cycle of specifications ends.
     private bool NamesIdentity(BoundConformancePath root, BoundType type, BindingSymbol associated)
     {
-        if (type.Kind == BoundTypeKind.AssociatedProjection && type.Symbol is { } symbol)
+        if (type.Kind == BoundTypeKind.AssociatedProjection && type.Symbol is { } symbol && this.NamesBinding(root, symbol, associated))
         {
-            if (ReferenceEquals(symbol, associated))
-            {
-                return true;
-            }
-
-            for (var i = 0; root.AssociatedBindings is { } bindings && i < bindings.Count; i++)
-            {
-                var binding = bindings[i].Binding;
-                if (!ReferenceEquals(bindings[i].Associated.Symbol, symbol) || this.inferenceEqualities.Contains(binding))
-                {
-                    continue;
-                }
-
-                this.inferenceEqualities.Add(binding);
-                for (var c = 0; c < binding.Candidates.Count; c++)
-                {
-                    if (this.NamesIdentity(root, binding.Candidates[c], associated))
-                    {
-                        return true;
-                    }
-                }
-            }
+            return true;
         }
 
         for (var i = 0; i < type.Components.Count; i++)
@@ -449,14 +437,49 @@ public sealed partial class Binding
         return false;
     }
 
-    // The reads of `batch`'s members named `name` (a requirement's candidates).
-    private void AddValueReads(AssociatedInference batch, string name, int edges, int component)
+    // Whether the associated Type `projected` names the binding of `associated` on `root` (the one member for "the binding a written
+    // projection names", C4 ruling 17 B1): itself, or what root's binding of `projected` is specified as (its Candidates, the one published
+    // equality: a contract's `associate B is A` or a definition's `associate K.B is Self.(K).A` gives B as A), read by NamesIdentity.
+    private bool NamesBinding(BoundConformancePath root, BindingSymbol projected, BindingSymbol associated)
     {
-        for (var r = 0; r < batch.MemberReads.Count; r++)
+        if (ReferenceEquals(projected, associated))
         {
-            if (batch.MemberReads[r].Member.Name == name)
+            return true;
+        }
+
+        for (var i = 0; root.AssociatedBindings is { } bindings && i < bindings.Count; i++)
+        {
+            var binding = bindings[i].Binding;
+            if (!ReferenceEquals(bindings[i].Associated.Symbol, projected) || this.inferenceEqualities.Contains(binding))
             {
-                this.AddValueReads(batch.MemberReads[r], edges, component);
+                continue;
+            }
+
+            this.inferenceEqualities.Add(binding);
+            for (var c = 0; c < binding.Candidates.Count; c++)
+            {
+                if (this.NamesIdentity(root, binding.Candidates[c], associated))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // The reads of a source's candidates: the members of `batch` identification looks up for the requirement (RequirementCandidates).
+    private void AddCandidateReads(AssociatedInference batch, BoundConformancePath path, BoundRequirement requirement, int edges, int component)
+    {
+        var self = this.ConformanceSelf(path);
+        for (var candidate = this.RequirementCandidates(path, requirement, self).Member; candidate is not null; candidate = candidate.Next)
+        {
+            for (var r = 0; r < batch.MemberReads.Count; r++)
+            {
+                if (ReferenceEquals(batch.MemberReads[r].Member, candidate.Declaration))
+                {
+                    this.AddValueReads(batch.MemberReads[r], edges, component);
+                }
             }
         }
     }
@@ -465,7 +488,7 @@ public sealed partial class Binding
     {
         if (!read.Dependent)
         {
-            this.AddValueEdges(read.Read, read.Name, edges, component);
+            this.AddValueEdges(read.Read, read.Associated, edges, component);
             return;
         }
 
@@ -484,14 +507,16 @@ public sealed partial class Binding
         }
     }
 
-    // The bindings of `batch` named `name` (every one for none) in the component under request, as canonical entries, once each.
-    private void AddValueEdges(AssociatedInference batch, string? name, int edges, int component)
+    // The bindings of `batch` the associated Type `associated` names (NamesBinding; every one for none) in the component under request,
+    // as canonical entries, once each.
+    private void AddValueEdges(AssociatedInference batch, BindingSymbol? associated, int edges, int component)
     {
         for (var x = batch.FirstEntry; batch.Component == component && x < batch.EntryEnd; x++)
         {
             var entry = this.inferenceBindings[x];
             var canonical = this.inferenceBindingIndex[entry.Binding];
-            if ((name is null || entry.Identity.Symbol.Name == name) && this.inferenceEdges.IndexOf(canonical, edges) < 0)
+            this.inferenceEqualities.Clear();
+            if ((associated is null || this.NamesBinding(entry.Path, associated, entry.Identity.Symbol)) && this.inferenceEdges.IndexOf(canonical, edges) < 0)
             {
                 this.inferenceEdges.Add(canonical);
             }
@@ -664,13 +689,13 @@ public sealed partial class Binding
         return (start, count);
     }
 
-    // Whether `owner`'s sources include the requirement named `requirement` on `path` (the own run's filter, the definition run's validator).
-    private bool SourceOf(int owner, BoundConformancePath path, string requirement)
+    // Whether `owner`'s sources include the requirement `requirement` on `path` (the own run's filter, the definition run's validator).
+    private bool SourceOf(int owner, BoundConformancePath path, BindingSymbol requirement)
     {
         var (sources, count) = (this.inferenceValueFacts[owner].Sources, this.inferenceValueFacts[owner].SourceCount);
         for (var i = sources; i < sources + count; i++)
         {
-            if (ReferenceEquals(this.inferenceValueSources[i].Path, path) && this.inferenceValueSources[i].Requirement.Symbol.Name == requirement)
+            if (ReferenceEquals(this.inferenceValueSources[i].Path, path) && ReferenceEquals(this.inferenceValueSources[i].Requirement.Symbol, requirement))
             {
                 return true;
             }
@@ -679,19 +704,26 @@ public sealed partial class Binding
         return false;
     }
 
-    // The validator (counted until the cutover): a batch collecting its evidence reads another inferring definition's binding only within its
-    // Reach (its Reads, closed transitively).
-    private void CountInferenceRead(BindingSymbol readType)
+    // The validator (design §3.2; C4 ruling 17 B1), ResolveAssociated's one site: a run reads an inferring definition's binding only within
+    // its reader's Reach as discovery found it. In the component under request, the own run of a binding reads that binding's Reach, or a
+    // binding its own additions hold (C4 ruling 14: itself, or in the run of its definition's bindings, Frozen being the run itself, a
+    // binding of its definition; such a read answers pending whatever the outer hold, so the state's key keeps it out); a definition's run
+    // (publication) reads under the definition's hold. Another component's binding is one the reader's Reads reach (an earlier component,
+    // published). A read outside is a broken contract of the key or of the components' order: InternalInvariant_Kd, never a count.
+    private void ValidateInferenceRead(AssociatedInference read, AssociatedBinding binding)
     {
-        // The collecting run is its batch's (InferenceRun): Reach is the batch's.
-        if (this.collectingAssociated is not { Component: >= 0 } run || ReferenceEquals(run.Type, readType) ||
-            !this.associatedInference.TryGetValue(run.Type, out var reader) ||
-            !this.associatedInference.TryGetValue(readType, out var read) || this.Reaches(reader, read))
+        if (this.collectingAssociated is not { } run)
         {
             return;
         }
 
-        this.InferenceReachMisses++;
+        var within = this.inferenceRequest >= 0 && read.Component == this.inferenceRequest && this.inferenceBindingIndex.TryGetValue(binding, out var index)
+            ? run.Owner < 0 || index == run.Owner || this.ValueReaches(run.Owner, index) || (ReferenceEquals(run.Frozen, run) && ReferenceEquals(read.Type, run.Type))
+            : ReferenceEquals(read.Type, run.Type) || (this.associatedInference.TryGetValue(run.Type, out var reader) && this.Reaches(reader, read));
+        if (!within)
+        {
+            throw new InvalidOperationException($"A run of `{run.Type.Name}` reads `{read.Type.Name}`'s binding outside its Reach (InternalInvariant; R7-C4).");
+        }
     }
 
     // Whether `to` is in `from`'s Reach: Reads closed transitively, walked on the work list with a visit stamp (no allocation).
