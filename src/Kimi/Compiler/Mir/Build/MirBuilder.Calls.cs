@@ -48,12 +48,12 @@ internal sealed partial class MirBuilder
     // secured before a later argument that builds code or that the operand order puts before it: a named one (SPEC 10.1.1), an unbound
     // reference's receiver supplied after earlier parameters (SPEC 7.3.4), a setter's receiver after its value (SPEC 13.7.1), A3 E13 (2);
     // or in its pending slot), then its omitted defaults (Defaults), passed by parameter slot, the receiver first. A compiler function is its
-    // intrinsic where its Definition gives one (its declaration's `#Intrinsic`), naming its library declaration (A3 E14), with the operands
-    // it takes beyond the written arguments (Extra), $abort's at its macro (SPEC 22.5.1), and a direct base call the implementation the virtual selection
-    // names. A call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call
-    // whose operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
-    // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the
-    // Never value (DECISIONS R4-M62).
+    // MIR form where its Definition is a Form (Form), its intrinsic where its Definition gives one (its declaration's `#Intrinsic`), naming
+    // its library declaration (A3 E14), with the operands it takes beyond the written arguments (Extra), $abort's at its macro (SPEC
+    // 22.5.1), and a direct base call the implementation the virtual selection names. A call of a Never function or a diverging intrinsic
+    // has no runtime successor and continues for the checks (SPEC 14.10); a call whose operand does not complete enters no callee at run
+    // time (SPEC 15.6.7), but for the checks it continues where that operand's code continues, its later operands, defaults and activation
+    // checked there (SPEC 14.10.3), each operand as built: a Never form's is the Never value (DECISIONS R4-M62).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, params ReadOnlySpan<(Koto? Node, MirOperand Value)> given)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
@@ -126,6 +126,12 @@ internal sealed partial class MirBuilder
         }
 
         var disposition = function?.Definition ?? default;
+        if (disposition.Kind == DispositionKind.Form)
+        {
+            this.Form(destination, function!, subst, start, node);
+            return;
+        }
+
         if (this.Extra(disposition) is { } extra)
         {
             this.arguments.Add(extra);
@@ -166,13 +172,13 @@ internal sealed partial class MirBuilder
             }
 
             (this.leastAfter[after + i], least) = (least, Math.Min(least, MirCallee.Position(function, argument.ParameterIndex)));
-            last = last == -2 && Evaluated(given, argument.Source) is null && Builds(argument.Source!) ? i : last;
+            last = last == -2 && Evaluated(given, argument.Source) is null && Builds(argument.Source!, HirTables.AdjustOf(argument.Source!)) ? i : last;
         }
 
         if (earliest >= 0)
         {
             this.leastAfter[after + earliest] = least;
-            last = last == -2 && Evaluated(given, first) is null && Builds(first!) ? -1 : last;
+            last = last == -2 && Evaluated(given, first) is null && Builds(first!, HirTables.AdjustOf(first!)) ? -1 : last;
         }
 
         return last;
@@ -196,6 +202,25 @@ internal sealed partial class MirBuilder
 
         var borrowed = this.body.AddOperand(this.Operand(receiver, whole, input: true));
         return this.Temporary(view, MirRvalue.Cast(MirCastKind.Upcast, borrowed, view) with { Proven = true }, receiver, slot);
+    }
+
+    // SPEC 5.3, 8.15.3 (PLAN G597's L2; the owner's O-490 (a)): a Form function's call, the MIR form its lang item names, on the operands
+    // pushed since start: Storage.viewStart<P, R>(storage, start)'s is the view's first element's address from the raw pointer Place
+    // `storage` (First), decided by the substitution's R as a copy's fold decides its key again (Refirst). Another lang item, an operand
+    // that is no Place or no R is a broken contract.
+    private void Form(MirPlace destination, BindingSymbol function, Subst? subst, int start, Koto node)
+    {
+        var (storage, offset) = (this.arguments[start], this.arguments[start + 1]);
+        this.arguments.RemoveRange(start, this.arguments.Count - start);
+        if (function.LibraryDeclaration != KimiDeclarationId.ViewStart || storage.Kind is not (MirOperandKind.Copy or MirOperandKind.Move) ||
+            subst is not { Types: [_, { } key] })
+        {
+            this.Invariant(node, destination);
+            return;
+        }
+
+        var view = MirStatement.Assign(destination, MirRvalue.Storage(storage.Place, this.body.TypeOf(storage.Place)!), this.Info(node));
+        this.Refirst(view, offset, key);
     }
 
     // A Call terminator of a callee on the operands pushed since start, into the destination; one that diverges continues for the checks

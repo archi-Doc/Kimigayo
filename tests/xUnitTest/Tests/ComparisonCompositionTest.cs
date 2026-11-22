@@ -460,7 +460,8 @@ public class ComparisonCompositionTest
     // SPEC 13.4, 13.4.1: tuples and `ref` layers compose elementwise, built-in Types natively, a closed leaf by its witness under its declaring
     // instance (a conditional conformance's too), a leaf with an abstract part by the Contract's requirement on it; each mode and key has its own
     // node, asked again the same one.
-    // A leaf whose storage nests past Binding's depth bound makes the comparison a Limit (null), its shallow form not.
+    // A leaf whose storage nests past Binding's depth bound composes as its shallow form does, by its witness: what it runs does not depend
+    // on its storage (R7-T1 c4; fail-before: a Limit, null).
     [Fact]
     public void AComparisonComposesItsLeaves()
     {
@@ -483,7 +484,8 @@ public class ComparisonCompositionTest
             deep = c.Types.Intern(wrap.Kind, wrap.Symbol, wrap.Semantics, [deep]);
         }
 
-        Assert.Null(c.Types.Comparison(equatable, c.Types.Tuple([deep, BoundType.I32]), operators: true));
+        var node = c.Types.Comparison(equatable, c.Types.Tuple([deep, BoundType.I32]), operators: true);
+        Assert.Equal((ComparisonKind.Composite, ComparisonKind.Witness, "equals"), (node.Kind, node.Parts[0].Kind, node.Parts[0].Target!.Name));
         var shallow = c.Types.Intern(wrap.Kind, wrap.Symbol, wrap.Semantics, [BoundType.I32]);
         Assert.Equal("(Wrap.equals @Wrap<i32>, i32)", Show(c.Types.Comparison(equatable, c.Types.Tuple([shallow, BoundType.I32]), operators: true)!));
     }

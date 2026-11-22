@@ -168,6 +168,12 @@ public sealed partial class Binding
         return ReferenceEquals(this.ResultEvidence(source, scope), BoundType.Never);
     }
 
+    // SPEC 8.2.3 with 13.5.1: a conversion's written target (a Type target, a typed borrow's, the U of @wrap<U> and @bits<U>) is the
+    // one Type the identity premises of the conversion's scope make of it, as its operand's is ((ii), BindAndAdaptNode), so the
+    // operation's comparisons meet identical Types as one Type (PLAN G1240).
+    private BoundType? BindConversionTarget(Koto target, BindingScope scope, TypeBindingContext context)
+        => this.BindType(target, scope, context) is { } bound ? this.ClassForm(bound, scope, out _) : null;
+
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope, BoundType? expected = null)
     {
         var syntax = ConversionTargetSyntax(conversion);
@@ -231,7 +237,7 @@ public sealed partial class Binding
 
         if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
         {
-            var pattern = this.BindType(conversion.Right, scope, this.TypeContext(conversion.Right, scope) with { SuppressOuter = true });
+            var pattern = this.BindConversionTarget(conversion.Right, scope, this.TypeContext(conversion.Right, scope) with { SuppressOuter = true });
             var actual = this.BindNode(conversion.Left, scope);
             if (pattern is null || actual is null)
             {
@@ -240,7 +246,7 @@ public sealed partial class Binding
 
             if (IsExclusive(pattern.Semantics))
             {
-                this.JudgeHolderPlace(conversion.Left, HolderAccess.ExclusiveBorrow, null, conversion);
+                this.JudgeHolderPlace(conversion.Left, null, conversion);
             }
 
             if (this.IsNeverValue(conversion.Left, actual))
@@ -355,7 +361,7 @@ public sealed partial class Binding
 
             if (IsExclusive(semantics))
             {
-                this.JudgeHolderPlace(conversion.Left, HolderAccess.ExclusiveBorrow, null, conversion);
+                this.JudgeHolderPlace(conversion.Left, null, conversion);
             }
 
             // SPEC 14.9.3: an object creation of a Never operand and a borrow of a Never value only pass it on (IsNeverValue).
@@ -442,10 +448,9 @@ public sealed partial class Binding
             return this.BindSemanticsAdaptation(conversion, scope, designation);
         }
 
-        var target = this.BindType(conversion.Right, scope);
+        var target = this.BindConversionTarget(conversion.Right, scope, this.TypeContext(conversion.Right, scope));
         if (target is not null)
         {
-            target = this.ClassForm(target, scope, out _);
             Complete(conversion.Right, target);
         }
 

@@ -40,6 +40,21 @@ public sealed partial class MirEffectsTest
 
     private const string PruneLoud = "H.pruneBound(self.table@uniq, func [loud@move] (v) => loud.n == 0)";
 
+    // The confined witness's head before its `put`, and its generic twin.
+    private const string Plain = "struct S\n    Self is Sink\n";
+
+    private const string Generic = "struct S<T>\n    Self is Sink\n";
+
+    // A struct whose only Field of a Type with a drop is a `[0 of Loud]`, and its twin over one Loud.
+    private const string ZeroField = "struct Wrap\n    public var z: [0 of Loud]\n    public var k: i32\n    public init(k: i32)\n        self.z = []\n" +
+        "        self.k = k\n";
+
+    private const string OneField = "struct Wrap\n    public var z: [1 of Loud]\n    public var k: i32\n    public init(k: i32)\n" +
+        "        self.z = [Loud.init()]\n        self.k = k\n";
+
+    // A non-regular Type through a handle (SPEC 15.3.5) behind an array without an element: G<T> holds `[0 of rc/G<(T, T)>]`.
+    private const string Growing = "struct G<T>\n    public var kids: [0 of rc/G<(T, T)>]\n    public init() => self.kids = []\n";
+
     // SPEC 4.9.6, 8.11.4, 15.6.4 (PLAN G264 U0′): `truncate` and `removeAll` compose through their rows at the caller: the elements'
     // destruction, which `Loud`'s drop makes an environment effect (E5, E7; E8 `clear`'s row, the comparison), and `removeAll`'s calls of
     // `matching` through the actual argument, a printing function item (E1) or a Closure calling it (E3), each `confined`'s violation at
@@ -83,6 +98,48 @@ public sealed partial class MirEffectsTest
         var source = Sink + Loud + Quiet + Predicates + PruneBound + (form == "pruneUse" ? body : WithField("table: Array<i32> = []") + body);
         AssertRows(form, source, problems, records);
     }
+
+    // SPEC 4.1, 8.11.2, 16.3.2 (R8-X1 U3; O-486 part 4 (a)): a fixed array of constant length 0 destroys nothing whatever its element is,
+    // so a `confined` witness may create, replace and drop one of Loud (each V form valid): as a local (e12, e12asg), of an evaluated
+    // constant length (tconst, texpr), nested either way (tnest20, tnest02), in a Tuple, an Option payload, a struct's Field, also under a
+    // declared drop (e12tup, e12opt, e12field, e12fieldd), as an Array's element (e12arr), over an abstract element (e12genT, tgenopt0: the
+    // destruction depends on no abstract Type, so 8.11.2's abstract row does not apply), as its own Field replaced (tself), a callee's
+    // parameter (tcallee) and a discarded result (ttemp). A non-regular Type behind one is never walked (tgrow: no OwnershipDepthLimit_Kd
+    // at the conformance; its GenerationResourceLimit_Kd leaves too, SPEC 8.15.3: no instance is required). Each I twin runs Loud's drop
+    // (one element: e12one, ttup1, topt1, tfield1, tself1, tcallee1, tmix; an abstract one: tgenopt1) or another environment effect
+    // (tplus, one record), and a generic callee's summary keeps the destruction of its Type parameter (SPEC 15.6.4: once per declaration),
+    // composed at the call as Loud's whatever the length (e12gen0).
+    [Theory]
+    [InlineData("e12", "", Plain, "        let none: [0 of Loud] = []\n", true)]
+    [InlineData("e12tup", "", Plain, "        let t: ([0 of Loud], i32) = ([], 1)\n", true)]
+    [InlineData("e12opt", "", Plain, "        let o: Option<[0 of Loud]> = .Some([])\n", true)]
+    [InlineData("e12field", ZeroField, Plain, "        let w = Wrap.init(k: 1)\n", true)]
+    [InlineData("e12fieldd", ZeroField + "    drop => ()\n", Plain, "        let w = Wrap.init(k: 1)\n", true)]
+    [InlineData("e12arr", "", Plain, "        let a: Array<[0 of Loud]> = []\n", true)]
+    [InlineData("e12asg", "", Plain, "        var none: [0 of Loud] = []\n        none = []\n", true)]
+    [InlineData("e12genT", "", Generic, "        let none: [0 of T] = []\n", true)]
+    [InlineData("tconst", "group Dim\n    public let Zero: isize = 0\n", Plain, "        let none: [(Dim.Zero) of Loud] = []\n", true)]
+    [InlineData("texpr", "", Plain, "        let none: [(1 - 1) of Loud] = []\n", true)]
+    [InlineData("tnest20", "", Plain, "        let n: [2 of [0 of Loud]] = [[], []]\n", true)]
+    [InlineData("tnest02", "", Plain, "        let n: [0 of [2 of Loud]] = []\n", true)]
+    [InlineData("tself", "", Plain + "    var z: [0 of Loud] = []\n", "        self.z = []\n", true)]
+    [InlineData("tgenopt0", "", Generic + "    var item: Option<[0 of T]> = .None\n", "        self.item = .None\n", true)]
+    [InlineData("tcallee", "group Hold\n    public func take(a: [0 of Loud]) => ()\n", Plain, "        let none: [0 of Loud] = []\n        Hold.take(none@move)\n", true)]
+    [InlineData("ttemp", "group Make\n    public func empty() -> [0 of Loud] => []\n", Plain, "        _ = Make.empty()\n", true)]
+    [InlineData("tgrow", Growing, Plain, "        let g = G<i32>.init()\n", true)]
+    [InlineData("e12one", "", Plain, "        let one: [1 of Loud] = [Loud.init()]\n", false)]
+    [InlineData("ttup1", "", Plain, "        let t: ([1 of Loud], i32) = ([Loud.init()], 1)\n", false)]
+    [InlineData("topt1", "", Plain, "        let o: Option<[1 of Loud]> = .Some([Loud.init()])\n", false)]
+    [InlineData("tfield1", OneField, Plain, "        let w = Wrap.init(k: 1)\n", false)]
+    [InlineData("tself1", "", Plain + "    var z: [1 of Loud] = [Loud.init()]\n", "        self.z = [Loud.init()]\n", false)]
+    [InlineData("tcallee1", "group Hold\n    public func take(a: [1 of Loud]) => ()\n", Plain, "        let one: [1 of Loud] = [Loud.init()]\n        Hold.take(one@move)\n", false)]
+    [InlineData("tgenopt1", "", Generic + "    var item: Option<[1 of T]> = .None\n", "        self.item = .None\n", false)]
+    [InlineData("tmix", "", Plain, "        let t: ([0 of Loud], [1 of Loud]) = ([], [Loud.init()])\n", false)]
+    [InlineData("tplus", "", Plain, "        let none: [0 of Loud] = []\n        Console.writeLine(\"x\")\n", false)]
+    [InlineData("e12gen0", "group Hold\n    public func sink<length N, T>(a: [N of T]) => ()\n", Plain, "        let none: [0 of Loud] = []\n        Hold.sink(none@move)\n", false)]
+    public void AConfinedWitnessMayDestroyAFixedArrayWithoutAnElement(string form, string declarations, string witness, string body, bool valid)
+        => AssertRows(
+            form, Sink + Loud + declarations + witness + Put + body + "        return .Ok(())\n", valid ? string.Empty : Failed, valid ? string.Empty : AtSink);
 
     // A form's A4 problems on the MIR and its published Error records, each as the form's row. Check publishes them
     // (DECISIONS R5-M156, PLAN G314).

@@ -40,7 +40,7 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(sourced.Order(), declared.Keys.Order());
         Assert.Equal(declared.Count, declared.Values.Distinct().Count());
-        Assert.Equal((120, 137), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names; G1-3b-2: Weak's.
+        Assert.Equal((121, 138), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names; G1-3b-2: Weak's.
     }
 
     // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the Definition the registration gives the declaration's symbol;
@@ -113,8 +113,9 @@ public partial class KimiLibraryShapeTest
         var flagged = registered.Where(static x => KimiLibraryCatalog.RequiresCallerLocation(x)).ToArray();
         Assert.True(declared.SetEquals(flagged));
         // PLAN G71: 23 declarations (its commits' messages list them); the Time unit: Time.readCounterFrequency; O-412 (1):
-        // Array.sort(by:), which destroys `by`, a Kimi destructor's owner, inside the operation (SPEC 22.5.1).
-        Assert.Equal((107, 107), (declared.Count, flagged.Length));
+        // Array.sort(by:), which destroys `by`, a Kimi destructor's owner, inside the operation (SPEC 22.5.1); R8-X1:
+        // Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share (PLAN G970).
+        Assert.Equal((108, 108), (declared.Count, flagged.Length));
     }
 
     // The library's Attributes of one kind, each with the declaration it is written on, in source order.

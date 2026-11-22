@@ -91,8 +91,9 @@ internal readonly record struct MirRvalue(
 
     internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
 
-    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, of the raw pointer Type to
-    // its element; its access is a raw borrow of the Place, as `&raw P[i]`'s is.
+    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, or of a raw pointer Place,
+    // whose elements start at its value (SPEC 5.3; Storage.viewStart's form), of the raw pointer Type to its element; its access is a raw
+    // borrow of the Place, as `&raw P[i]`'s is.
     internal static MirRvalue Storage(MirPlace place, BoundType type) => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, Type: type);
 
     // SPEC 4.8.1, 8.15.3 (G597): a keyed Storage, of a key selection whose key's start is open in the body (MirTypes.StartsAtStorage), which
@@ -250,8 +251,10 @@ internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType? Type,
 /// <summary>The site of an Opaque value: the syntax it replaces and the uses of that syntax, <see cref="Count"/> Places of
 /// <see cref="MirBody.OpaqueUses"/> from <see cref="Start"/> (plan 5.4), each undecided (DECISIONS Z17): reported with the Opaque row's
 /// access (<see cref="MirDescriptors.IsUndecided"/>), which only A1 judges at the Place and every other reader at its root
-/// (<see cref="MirDescriptors.Judged"/>).</summary>
-internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count);
+/// (<see cref="MirDescriptors.Judged"/>). The first <see cref="Kept"/> (at most <see cref="Count"/>) are an Error node's kept parts'
+/// Places, which the site takes as the invocation it replaces takes its inputs, so A5 activates the reservations they hold (DECISIONS
+/// Z17c, SPEC 15.6.7); 0 for every other site (a default's, which runs during the reservation, a derived value's, a jump's).</summary>
+internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count, int Kept);
 
 /// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
 /// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure

@@ -21,11 +21,9 @@ public static class EmissionArtifacts
     /// (Compilation.Generated, with the output kind and the external declarations the manifest states; R9-B1).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
-    /// <param name="irPath">The published IR path on success.</param>
     /// <returns>Whether the complete matched pair was published.</returns>
-    internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath)
+    internal static bool Publish(Compilation compilation, ArtifactPaths? paths)
     {
-        irPath = null;
         if (ToolchainIdentity.BackendVersion.Length == 0 || ToolchainIdentity.BackendSha256.Length != 64)
         {
             return FailBeforeGeneration(compilation, DiagnosticCode.InternalInvariant_Kd, null);
@@ -77,6 +75,13 @@ public static class EmissionArtifacts
                     json.WriteStartObject();
                     LinkManifest.WriteFixed(json);
                     json.WriteString("optimization", settings.Optimization);
+                    if (compilation.Project.Input is { } input)
+                    {
+                        // The pair names its input, which its build's record names (IMPL 20.3.1), relative to the output directory as
+                        // the manifest's other paths are.
+                        json.WriteString("input", Path.GetRelativePath(outputDirectory, input));
+                    }
+
                     WriteOutput(json, Path.GetFileName(destination), hash, module);
                     WriteLibraries(json, foreign, directory, outputDirectory);
                     json.WriteEndObject();
@@ -84,7 +89,6 @@ public static class EmissionArtifacts
 
                 Replace(tempIr, destination);
                 Replace(tempManifest, manifest);
-                irPath = destination;
                 return true;
             }
             catch (Exception ex) when (IsPublicationFailure(ex))
