@@ -211,7 +211,7 @@ public sealed partial class Binding
         var inferred = reference is MemberAccessKoto qualified && this.inferredConstructionTargets.Contains(qualified.Left);
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
-        var frame = this.infer.Rent(slots, scope);
+        var frame = this.infer.Rent(slots, use, scope);
         var origins = this.originScratch.Rent(originCount);
         var operations = this.argumentOperationScratch.Rent(count);
         var settled = this.RentSlotSet(count);
@@ -630,7 +630,7 @@ public sealed partial class Binding
             // construction Resolved (JudgeHolderAccess).
             if (this.HoldsHolder(stored))
             {
-                this.JudgeHolderAccess(stored, HolderAccess.Write, source, source);
+                this.JudgeHolderAccess(stored, source, source);
             }
 
             if (completed is null || this.PartFailed(source) ||

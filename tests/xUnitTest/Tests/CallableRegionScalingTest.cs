@@ -54,6 +54,13 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void EachAxisScalesWithinItsBound(string axis, double factor)
         => WorkScales(output, Sizes(axis), factor);
 
+    // Z5-F and Z5-R1 (Z5-F's review N3, Z5-R1's design section 7): A5's work and Loan-set bytes on a chain of n Copies of a borrow of a
+    // layer's enclosing Place, each read through right after it is made, at n = 64, 128, 256, every read placed by its exact lent position
+    // (MirBorrows.Addresses' Place, one Lent per listed row; a whole local's lender kept per view): linear.
+    [Fact]
+    public void PlacedReadsAreLinearInACopyChain()
+        => WorkScales(output, [.. new[] { 64, 128, 256 }.Select(MirBorrowsTest.LentChain)], 2);
+
     // RP8 (PLAN G492-a (iii); J1, the owner's O-264 Q5 (a), O-286 (a)): a comparison's proof reads the recorded bounds of each region it
     // names, each node and bound once (O(N + B) per request), so k chained `var` locals, each with a later store, and m comparisons over
     // the last one bind with premise work linear in m * k: (8, 8), (64, 8), (8, 64), (64, 64), within 1.5 times linear.
@@ -105,7 +112,7 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     private static long PremiseWork(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;

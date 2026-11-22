@@ -4,18 +4,18 @@
 // resource Kimi.WindowsBackendProfile.json; DECISIONS R5-M165, R5-M174): the pinned LLVM release, the backend archive's package id, ABI
 // version, version and SHA-256, the kernel32 definition and library hashes, the backend supply (Backend: the profile's
 // reserved supply the record's library names), and the compiler's supplies (IMPL 20.4's reserved supplies): one row per supply of the
-// target profile (WindowsProfile.Supplies: its name, kind and symbols), with the manifest fields that identify it and its bytes, which
+// target profile (TargetProfile.Windows.Supplies: its name, kind and symbols), with the manifest fields that identify it and its bytes, which
 // the compiler carries as an embedded resource (Kimi.Kernel32.lib, Kimi.WindowsBackend.lib, committed beside the catalog) whose SHA-256
 // is the catalog's; this material is keyed by the supply's name. The linux-x64 row's material (Tatara B7b4) is its c supply, musl
 // 1.2.6's startup files and C library, read from the embedded Linux record (src/backend/linux-x64/profile.json, the resource
 // Kimi.LinuxBackendProfile.json) and keyed by (row, supply): the record's profile and library, until Core's linux-x64 row exists
 // (B7b2's TargetProfile.Linux, whose Name is the record's profile; B7b7's native build reads its files).
 // Input: the embedded records and libraries. Output: those values, for the native build, publication's manifest and toolchain verify's
-// self-check (P13). Invariants: the record matches the target profile (WindowsProfile's name; its library names a reserved supply, whose
+// self-check (P13). Invariants: the record matches the target profile (TargetProfile.Windows's name; its library names a reserved supply, whose
 // symbols are its provided symbols) and pins a major.minor.patch LLVM version, and the material's keys are the profile's supplies' names
 // in the profile's order, and the Linux record names linux-x64-v1's c, else the type initializer throws InvalidDataException; each
 // resource's SHA-256 is its row's (NativeToolchainTest's catalog row; not checked at a start, stated by toolchain verify).
-// Must not be read by check (Binding, project configuration, LSP) or code generation: those read WindowsProfile.
+// Must not be read by check (Binding, project configuration, LSP) or code generation: those read TargetProfile.Windows.
 
 using System.Text.Json;
 using Kimi.Compiler;
@@ -61,8 +61,8 @@ public static class ToolchainIdentity
         }
 
         if (root.GetProperty("packageId").GetString() != BackendPackageId || root.GetProperty("abiVersion").GetInt32() != BackendAbiVersion ||
-            root.GetProperty("profile").GetString() != WindowsProfile.Name ||
-            WindowsProfile.Supply(root.GetProperty("library").GetString()) is not { } backend)
+            root.GetProperty("profile").GetString() != TargetProfile.Windows.Name ||
+            TargetProfile.Windows.Supply(root.GetProperty("library").GetString()) is not { } backend)
         {
             throw new InvalidDataException("The embedded native supply catalog does not match windows-x64-v1.");
         }
@@ -89,7 +89,7 @@ public static class ToolchainIdentity
                 Kernel32Sha256),
             (Backend.Name, [("resolution", "toolchain")], "Kimi.WindowsBackend.lib", BackendSha256),
         ];
-        var row = WindowsProfile.Supplies;
+        var row = TargetProfile.Windows.Supplies;
         var supplies = new CompilerSupply[material.Length];
         for (var i = 0; i < material.Length; i++)
         {

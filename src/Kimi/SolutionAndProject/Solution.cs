@@ -129,8 +129,8 @@ public class Solution
         }
 
         var project = this.Projects.Values.Single();
-        if ((this.KimiOptions.Target.Length != 0 && this.KimiOptions.Target != Compiler.WindowsProfile.Target) ||
-            !project.ProjectFile.Targets.Contains(Compiler.WindowsProfile.Target, StringComparer.Ordinal))
+        if ((this.KimiOptions.Target.Length != 0 && this.KimiOptions.Target != Compiler.TargetProfile.Windows.Target) ||
+            !project.ProjectFile.Targets.Contains(Compiler.TargetProfile.Windows.Target, StringComparer.Ordinal))
         {
             throw new CommandInputException("Run requires the Windows x64 target.");
         }
@@ -300,9 +300,14 @@ SolutionLoaed:
     private static string Resolve(string input)
     {
         var path = Path.GetFullPath(input);
+        var supported = path.EndsWith(Constants.KimiProjectExtension, StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(Constants.KimiSolutionExtension, StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase);
         if (!TryGetAttributes(path, out var attributes))
         {
-            if (!Path.HasExtension(path))
+            // IMPL 20.3.1: an input ending in .kimi, .kimiproj, .kimisln or .exe selects only that path; any other input A, with or
+            // without another extension, tries A.kimiproj, then A.kimi.
+            if (!supported && !path.EndsWith(Constants.ExecutableExtension, StringComparison.OrdinalIgnoreCase))
             {
                 var project = path + Constants.KimiProjectExtension;
                 if (TryGetAttributes(project, out var projectAttributes) && (projectAttributes & FileAttributes.Directory) == 0)
@@ -322,10 +327,7 @@ SolutionLoaed:
             throw new CommandInputException("Input not found: " + path);
         }
 
-        if ((attributes & FileAttributes.Directory) == 0 &&
-            !path.EndsWith(Constants.KimiProjectExtension, StringComparison.OrdinalIgnoreCase) &&
-            !path.EndsWith(Constants.KimiSolutionExtension, StringComparison.OrdinalIgnoreCase) &&
-            !path.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase))
+        if ((attributes & FileAttributes.Directory) == 0 && !supported)
         {
             throw new CommandInputException("Unsupported input file: " + path + ". Expected .kimiproj, .kimisln, or .kimi.");
         }

@@ -54,8 +54,9 @@ public partial class LocalRegionInferenceTest
     [InlineData("func g(c: bool) -> i32\n    var x = 1\n    let y = x@ref\n    var s: (ref/i32 during y, i32) = (y, 1)\n    if c\n        let z = 3\n        s = (z@ref, 2)\n    return s.0@follow\n", "ComparisonLoanConflict_Kd let z = 3")]
     // a9_generic_holder: invalid: SPEC 15.6.2, `z = 4` while a holder carrying z's Loan is read after.
     [InlineData("struct H<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\nfunc g(a: ref/i32) -> i32\n    var x = 1\n    var z = 3\n    let y = x@ref\n    var s: H<ref/i32 during y> = H.init(y)\n    s = H.init(z@ref)\n    z = 4\n    return s.item@follow\n", "ComparisonLoanConflict_Kd z = 4")]
-    // hp3n: invalid twice, independent (SPEC 23.1.2): SPEC 5.7, an exclusive borrow of a `during self` layer's Place; SPEC 15.6.2, `b.data = null` while r holds that Loan.
-    [InlineData("struct Block\n    internal var data: raw/u8 during self\n    public init() => self.data = null\n    drop => ()\nfunc f() -> i32\n    var b = Block.init()\n    let r = b.data@uniq\n    b.data = null\n    let q = r@follow\n    return 0\n", "Unsupported_Kd b.data@uniq; UnsatisfiedOriginRelation_Kd b.data@uniq; ComparisonLoanConflict_Kd b.data = null")]
+    // hp3n: invalid twice, independent (SPEC 23.1.2): SPEC 5.7, an exclusive borrow of a `during self` layer's Place; SPEC 15.6.2, `b.data = null` while r holds that Loan
+    // (the borrow issues its Loan with no PQ-10 limit since Z5-R1's R-B).
+    [InlineData("struct Block\n    internal var data: raw/u8 during self\n    public init() => self.data = null\n    drop => ()\nfunc f() -> i32\n    var b = Block.init()\n    let r = b.data@uniq\n    b.data = null\n    let q = r@follow\n    return 0\n", "UnsatisfiedOriginRelation_Kd b.data@uniq; ComparisonLoanConflict_Kd b.data = null")]
     public void AnAssignmentIntoABorrowLocalIsJudgedByA5(string program, string records)
     {
         var source = program + "public func main() => ()\n";

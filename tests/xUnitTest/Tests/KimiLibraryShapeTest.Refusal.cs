@@ -110,7 +110,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TwoCompilationsGivenOneRefusedLibraryEachPublishItsRefusal()
     {
-        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         freeze.Library.Kotonoha.CreateCodeContext().Parse(freeze.Library.Kotonoha.RootKoto, ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n");
         var library = KimiLibrary.Freeze(freeze);
         var (counts, refusal) = (Counts(library), library.Layer.Refusal!);
@@ -132,7 +132,7 @@ public partial class KimiLibraryShapeTest
         static Compilation Reading(KimiLibrary library)
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.UseLibrary(library);
             c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
             return c;
@@ -153,7 +153,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheRefusedLibrarysSyntaxRecordsAreEachReadersOwn()
     {
-        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
         freeze.Library.Kotonoha.AddSource(new("ZA.kimi", "public group ZA\n    public func f(x: i32 -> i32 => x\n"));
         freeze.Library.Kotonoha.AddSource(new("ZB.kimi", "public group ZB\n    public func g(y: i32 -> i32 => y\n"));
         var library = KimiLibrary.Freeze(freeze);
@@ -162,7 +162,7 @@ public partial class KimiLibraryShapeTest
         for (var i = 0; i < 2; i++)
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.UseLibrary(library);
             c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
             Assert.False(c.Check());

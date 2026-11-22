@@ -31,11 +31,12 @@ public sealed partial class Binding
         Error,
     }
 
-    // DECISIONS BU-86: the closed vocabulary of PendingJudgment.
+    // DECISIONS BU-86: the closed vocabulary of PendingJudgment (UnformedSplit: the temporary BU-240 fact, PLAN G886).
     private enum PendingJudgmentKind : byte
     {
         FailedTypeArgument,
         EnvironmentResult,
+        UnformedSplit,
     }
 
     // SPEC 10.4, 8.3.3: the candidates the ordinary comparison ranks; with premises, also each candidate whose applicability is unproven
@@ -68,14 +69,14 @@ public sealed partial class Binding
         return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
     }
 
-    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent) and judged in the use's `view`; a candidate's trial
-    // and re-trials write only its own.
-    private SlotFrame[] RentFrames(int count, int capacity, BindingScope view)
+    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent), keyed by the solve's node and judged in the use's
+    // `view`; a candidate's trial and re-trials write only its own.
+    private SlotFrame[] RentFrames(int count, int capacity, Koto node, BindingScope view)
     {
         var frames = this.frameScratch.Rent(count);
         for (var i = 0; i < count; i++)
         {
-            frames[i] = this.infer.Rent(Math.Max(1, capacity), view);
+            frames[i] = this.infer.Rent(Math.Max(1, capacity), node, view);
         }
 
         return frames;
@@ -125,18 +126,18 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2.2, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
-    private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
+    private static bool ErasureIncomparable(in CallEvaluation evaluation)
     {
-        for (var a = 0; a < arguments; a++)
+        for (var a = 0; a < evaluation.Call.ArgumentNodes.Count; a++)
         {
             var erased = false;
             var direct = false;
-            for (var i = 0; i < candidates.Length; i++)
+            for (var i = 0; i < evaluation.Count; i++)
             {
-                if (candidates[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+                if (evaluation.Evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                 {
-                    erased |= operations[(i * stride) + a].Adaptation == ArgumentAdaptation.Erasure;
-                    direct |= operations[(i * stride) + a].Adaptation != ArgumentAdaptation.Erasure;
+                    erased |= evaluation.OperationsOf(i)[a].Adaptation == ArgumentAdaptation.Erasure;
+                    direct |= evaluation.OperationsOf(i)[a].Adaptation != ArgumentAdaptation.Erasure;
                 }
             }
 
@@ -159,12 +160,13 @@ public sealed partial class Binding
     // environment gives the slot no evidence (SPEC 8.10, 7.7.4), named without its acquisition spelling.
     private static void ReportPendingJudgment(Koto node, PendingJudgment judgment, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        var argument = KotoHelper.UnwrapParentheses(judgment.Part) is ConversionKoto { Left: { } place } ? place : judgment.Part;
+        var part = judgment.Part!; // An EnvironmentResult judgment always names its argument.
+        var argument = KotoHelper.UnwrapParentheses(part) is ConversionKoto { Left: { } place } ? place : part;
         node.Report(
             requirement,
             code,
             note: $"The result of {argument} over its environment is no evidence for {judgment.Slot?.Name}",
-            related: [("argument", judgment.Part, null)]);
+            related: [("argument", part, null)]);
     }
 
     // SPEC 10.2.2, 10.4 step 1: two adaptation classes at one argument or position; false when they are incomparable (an erasure and
@@ -347,10 +349,16 @@ public sealed partial class Binding
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
     // HeldRefusal: the refusal its trial read and held (TakeTrialRefusal), settled only if it is selected (SettleSelected).
-    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation the rest.
-    private record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false)
+    // Acquisition: the absent spelling of a bare Place that alone kept an otherwise Applicable trial from applying (SPEC 15.1.5), read by
+    // a NoneApplicable selection through LastAcquisition.
+    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation (EvaluateCallCandidate)
+    // ArgumentMap and the facts after the trial, the trial (TryCandidate) its verdict and facts. A continuation's trial (CheckDefaulted,
+    // the waiting re-trial, the fixed re-check) writes a local row; CheckDefaulted takes back only State and Unsolved.
+    private record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false, bool PremiseReadsMark = false)
     {
         internal Refusal? HeldRefusal { get; set; }
+
+        internal AcquisitionFailure? Acquisition { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
@@ -360,7 +368,10 @@ public sealed partial class Binding
     // FailedTypeArgument: an explicit Type argument that did not bind (Part), on which the selection rests (SPEC 23.1.2).
     // EnvironmentResult: the argument (Part) whose known signature's result over its closure's environment is no evidence for Slot
     // (SPEC 8.10, 7.7.4), a slot that no other evidence binds (SPEC 10.8).
-    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto Part, BindingSymbol? Slot = null)
+    // UnformedSplit (DECISIONS BU-240, temporary until PLAN G886's representation): the candidate trial of Part rests on a formation under a
+    // binding whose split no Type represents (Binding.Unformed's count), every check reading no unformed Type having passed; only
+    // TryCandidate's verdict publishes it, and its call is then one located Unsupported_Kd.
+    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto? Part, BindingSymbol? Slot = null)
     {
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).
         internal long Epoch { get; init; }

@@ -68,11 +68,12 @@ A **Lookup Role**, chosen by the syntactic use, filters the candidates of a name
 | Type Semantics | Type | Pair binders and language-defined Semantics |
 | Qualifier | Type | Groups, Kotonoha references and Types that can qualify members |
 | Requirement | Type | What requirement syntax admits |
+| Contract Reference | Type | Contracts |
 | Declaration Container | Type | Groups, structs, enums, contracts and Kotonoha references |
 | Value | Value | All value declarations, callable or not |
 | Enum Case | Value | Cases of the enum fixed by a qualifier or the expected Type; never an unqualified Name ([§9.5](#95-unqualified-lookup)) |
 
-Role filtering looks only at the declaration kind and the syntactic use, never at arity, arguments, expected results, Constraints or later members; there is no callable-only role. Object-target syntax selects the Object View Target role. After selection, Type Legality checks that the binding may be used in that role under its declared Constraints ([§8.1.1](08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters)); a failure there, or a later ObjectViewCompatible failure, is an error and never resumes lookup outward.
+Role filtering looks only at the declaration kind and the syntactic use, never at arity, arguments, expected results, Constraints or later members; there is no callable-only role. Object-target syntax selects the Object View Target role. A grammar `ContractReference` or a Contract parent's `InheritanceReference` ([§F.6.2](appendices/F-syntax-summary.md#f62-contracts-requirements-and-conformance)) selects the Contract Reference role: a Contract's parent ([§8.4.3](08-generics-constraints-and-contracts.md#843-refinement)), a conditional conformance's Contract ([§8.8](08-generics-constraints-and-contracts.md#88-conditional-conformance)), a projection's `C` in `T.(C).X` ([§8.5.2](08-generics-constraints-and-contracts.md#852-projections)) and the Contract of a parenthesized selector `(C)` ([§8.5.1](08-generics-constraints-and-contracts.md#851-declaration-and-specification), [§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations)). After selection, Type Legality checks that the binding may be used in that role under its declared Constraints ([§8.1.1](08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters)); a failure there, or a later ObjectViewCompatible failure, is an error and never resumes lookup outward.
 
 Type and Value names may coexist. In one namespace and scope a Name repeats only by [§9.1](#91-signatures). Origin and Label lookup never falls back to Type or Value names.
 
@@ -251,7 +252,7 @@ Members opened by opening aliases ([§18.2.1](18-modules-and-dependencies.md#182
 
 The first component of `A.B.C` is found by unqualified lookup; later components search only the selected target's members. Intermediate Type-side components are Qualifiers; the final role follows the syntax. Associated-Type projections follow [§8.5](08-generics-constraints-and-contracts.md#85-associated-types) and [§9.7.3](#973-nested-types-and-associated-projections).
 
-Where Type and Value qualification are both possible, each namespace commits its own first stage and follows its complete path (roles, access, static or instance use); a stop under [§9.5](#95-unqualified-lookup) fails the path. The sole successful path is selected; several are ambiguous, and arguments or expected Types never decide. Paths to one Symbol count once; value accesses through different receivers are distinct paths.
+Where Type and Value qualification are both possible, each namespace commits its own first stage and follows its complete path (roles, access, static or instance use); a stop under [§9.5](#95-unqualified-lookup) fails the path. The sole successful path is selected; several are ambiguous, and arguments or expected Types never decide. Paths to one Symbol count once, as the Type path when one of them is a Type path; value accesses through different receivers, and an access with a receiver and one without, are distinct paths.
 
 `::A.B` starts at the Compilation root of the use's Kotonoha ([§18](18-modules-and-dependencies.md#18-modules-and-dependencies)), ignoring locals and aliases. Root-name collisions with reference names are governed by [§18.4.1](18-modules-and-dependencies.md#1841-identities-and-reference-names).
 

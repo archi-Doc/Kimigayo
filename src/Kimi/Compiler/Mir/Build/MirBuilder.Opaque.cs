@@ -98,7 +98,7 @@ internal sealed partial class MirBuilder
     // the temp's node whose site names only the temp, undecided at its root.
     private MirRvalue DerivedValue(MirPlace temp, BoundType? type)
     {
-        this.uses.Clear();
+        this.ClearUses();
         this.SiteUse(new(temp.Root));
         return MirRvalue.Opaque(type, this.AddSite(this.body.Locals[temp.Root].Source.Syntax));
     }
@@ -135,5 +135,5 @@ internal sealed partial class MirBuilder
     }
 
     // The site of an Opaque value at its syntax, naming the uses collected.
-    private int AddSite(SourceRef source) => this.body.AddOpaque(source, CollectionsMarshal.AsSpan(this.uses));
+    private int AddSite(SourceRef source) => this.body.AddOpaque(source, CollectionsMarshal.AsSpan(this.uses), this.keptUses);
 }

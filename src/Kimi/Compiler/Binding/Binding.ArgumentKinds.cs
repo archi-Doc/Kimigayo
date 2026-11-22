@@ -378,6 +378,46 @@ public sealed partial class Binding
         return valid;
     }
 
+    // SPEC 6.5.2, 10.5.1 (G812 ruling 123): prepares the payloads of each contextual Case awaiting its call that a value call on the
+    // split meets in `part` (the part, a Tuple or array literal's elements, a join's results, a Case's payloads), as a call's arguments
+    // are prepared (PrepareCallArguments), before the call's search, so that no run of it binds. A Case whose payload fails is left
+    // there: it rests on that payload's record.
+    private void PrepareWaitingCases(Koto part, BindingScope scope)
+    {
+        var node = PartCore(KotoHelper.UnwrapParentheses(part));
+        if (NeedsEnumContext(node))
+        {
+            if (node is InvocationKoto call && this.PrepareCallArguments(call, scope, callableContext: true))
+            {
+                for (var i = 0; i < call.ArgumentNodes.Count; i++)
+                {
+                    this.PrepareWaitingCases(call.ArgumentNodes[i], scope);
+                }
+            }
+
+            return;
+        }
+
+        if (CallableParts(node) is { } elements)
+        {
+            for (var i = 0; i < elements.Count; i++)
+            {
+                this.PrepareWaitingCases(elements[i], scope);
+            }
+        }
+        else if (this.KindOf(node) == PartKind.Join && ControlFlowExpression(node) is { } join)
+        {
+            var start = this.positionParts.Count;
+            this.AddResults(join);
+            for (var i = start; i < this.positionParts.Count; i++)
+            {
+                this.PrepareWaitingCases(this.positionParts[i], scope);
+            }
+
+            this.ClosePosition(start);
+        }
+    }
+
     // SPEC 10.5.1: prepares an argument part once per pass, by its kind. An anonymous function waits for a candidate's signature; an
     // Aggregate or Join prepares its parts; control flow is classified by the survey of its result sources (SPEC 14.9.1); a Literal is
     // fitted after selection, unless the parser kept it as a recovery, which fails here so that the call rests on its Error; every other
@@ -525,7 +565,7 @@ public sealed partial class Binding
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, declaringType);
         var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
-        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved(evaluation.Mapping)))
+        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved()))
         {
             this.DeferNestedCall(call, evaluation.Expected);
             Complete(call, null);
@@ -537,10 +577,10 @@ public sealed partial class Binding
             return true;
         }
 
-        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(winner);
         foreach (var kind in OwnTypeSteps)
         {
-            if (solution.DefaultArguments(evaluation.Mapping, kind, out var applied) is { } misfit)
+            if (solution.DefaultArguments(kind, out var applied) is { } misfit)
             {
                 this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
                 return false;
@@ -564,19 +604,7 @@ public sealed partial class Binding
         else
         {
             // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-            this.FailUnboundSlots(
-                call,
-                selected,
-                evaluation.Scope,
-                evaluation.Frames[winner].Types,
-                evaluation.Frames[winner].Lengths,
-                evaluation.Mapping,
-                operations,
-                evaluation.Expected,
-                evaluation.Self,
-                evaluation.Origins,
-                evaluation.Inputs,
-                declaringType);
+            this.FailUnboundSlots(in solution, operations, evaluation.Expected);
         }
 
         return false;
@@ -586,27 +614,17 @@ public sealed partial class Binding
     // never reselects.
     private bool CheckDefaulted(ref CallEvaluation evaluation, int winner, SlotSolution solution, Span<BoundArgumentOperation> operations)
     {
-        var state = this.TryCandidate(
-            solution,
-            evaluation.Mapping,
-            evaluation.Evaluated[winner].ArgumentMap,
-            evaluation.Expected,
-            operations,
-            out _,
-            out var unsolved,
-            out _,
-            out _,
-            out var failure,
-            out _);
-        state = AsSelected(state, failure, evaluation.Evaluated[winner].State);
+        var trial = evaluation.Evaluated[winner]; // A local copy: the row takes back only State and Unsolved.
+        this.TryCandidate(solution, evaluation.Expected, operations, ref trial);
+        var state = AsSelected(trial.State, trial.ConstraintFailure, evaluation.Evaluated[winner].State);
         if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
-            evaluation.Evaluated[winner] = evaluation.Evaluated[winner] with { State = state, Unsolved = unsolved };
+            (evaluation.Evaluated[winner].State, evaluation.Evaluated[winner].Unsolved) = (state, trial.Unsolved);
             return true;
         }
 
         var call = evaluation.Call;
-        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: failure));
+        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: trial.ConstraintFailure));
         this.RecordRejected(call, this.rejectedRows.Count - 1);
         this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         return false;

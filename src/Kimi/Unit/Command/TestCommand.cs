@@ -5,11 +5,18 @@ using System.Text;
 using System.Text.Json;
 using Kimi.Build;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Kimi.Testing;
 using SimpleCommandLine;
 
 namespace Kimi.Command;
 
+// kimi test's own result (IMPL 20.6.4; DECISIONS R9-M12; PLAN G1012). No exception type decides a fault here: the command's own Input
+// error (CommandInputException: options and selection) prints its message, exit 2; preparation, generation and the native build's
+// toolchain failure are results with their own owners, exit 2; a runner step's failure (the run directory, a project's artifact
+// directory, its startup, the run) is the runner's, exit 3, an output failure (ArtifactFiles.IsOutputFailure) printing its message.
+// Any other exception is the command's fault: one CheckFaulted_Kd without a location, rendered on standard error, and its code and
+// message as the result's errors entry, exit 2, or 3 in a runner step. Cancellation returns 130.
 [SimpleCommand("test")]
 public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleCommand
 {
@@ -26,9 +33,9 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
         FileStream? active = null;
         try
         {
-            options = TestOptions.Parse(args);
-            // Compiler diagnostics must never corrupt the machine-readable result stream.
+            // Compiler diagnostics, a fault's record among them, must never corrupt the machine-readable result stream.
             Console.SetOut(Console.Error);
+            options = TestOptions.Parse(args);
             var snapshot = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (DictionaryEntry item in Environment.GetEnvironmentVariables())
             {
@@ -42,7 +49,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
             solution.PrepareProject(null);
             if (solution.Projects.Count == 0 || solution.SolutionFile.Projects.Any(x => !solution.Projects.ContainsKey(x)))
             {
-                throw new InvalidDataException("Every selected project must load successfully.");
+                throw new CommandInputException("Every selected project must load successfully.");
             }
 
             var identities = new HashSet<string>(StringComparer.Ordinal);
@@ -51,33 +58,28 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                 cancellationToken.ThrowIfCancellationRequested();
                 project.KimiOptions = options.Compiler;
                 project.SolutionLanguageVersion = solution.SolutionFile.Configuration.LangVersion;
-                try
+                if (project.PrepareTests(cancellationToken) is not { } compilation)
                 {
-                    if (project.PrepareTests(cancellationToken) is not { } compilation)
-                    {
-                        errors.Add("Test semantic verification failed: " + project.Name);
-                        exit = 2;
-                        continue;
-                    }
-
-                    if (!identities.Add(compilation.Tests.ProjectId))
-                    {
-                        throw new InvalidDataException("Conflicting project identity; configure distinct TestProjectId values: " + compilation.Tests.ProjectId);
-                    }
-
-                    prepared.Add((project, compilation, options.Settings(project.ProjectFile.Test)));
-                    foreach (var test in compilation.Tests.Cases)
-                    {
-                        outcomes.Add(new(test, compilation.Tests)
-                        {
-                            Selected = options.Get("--case") is { } id ? test.CaseId == id : options.Get("--filter") is not { } filter || test.Name.Contains(filter, StringComparison.Ordinal),
-                        });
-                    }
-                }
-                catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException)
-                {
-                    errors.Add(project.Name + ": " + ex.Message);
+                    errors.Add("Test semantic verification failed: " + project.Name);
                     exit = 2;
+                    continue;
+                }
+
+                if (!identities.Add(compilation.Tests.ProjectId))
+                {
+                    // The project's selection error (IMPL 20.6.2: 2); the loop goes on to the later projects.
+                    errors.Add(project.Name + ": Conflicting project identity; configure distinct TestProjectId values: " + compilation.Tests.ProjectId);
+                    exit = 2;
+                    continue;
+                }
+
+                prepared.Add((project, compilation, options.Settings(project.ProjectFile.Test)));
+                foreach (var test in compilation.Tests.Cases)
+                {
+                    outcomes.Add(new(test, compilation.Tests)
+                    {
+                        Selected = options.Get("--case") is { } id ? test.CaseId == id : options.Get("--filter") is not { } filter || test.Name.Contains(filter, StringComparison.Ordinal),
+                    });
                 }
             }
 
@@ -103,7 +105,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
 
             if (!outcomes.Any(x => x.Selected) && (!options.AllowEmpty || options.Get("--case") is not null))
             {
-                throw new InvalidDataException("No test cases match the selection.");
+                throw new CommandInputException("No test cases match the selection.");
             }
 
             if (options.List || !outcomes.Any(x => x.Selected))
@@ -112,10 +114,22 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
             }
 
             var input = Solution.ResolveInputPath(options.Input ?? Directory.GetCurrentDirectory());
-            var resultRoot = Path.GetFullPath(options.Get("--results-dir") ?? Path.Combine(Directory.Exists(input) ? input : Path.GetDirectoryName(input)!, "bin", "test-results"));
+            var resultRoot = options.ResultsDirectory ?? Path.GetFullPath(Path.Combine(Directory.Exists(input) ? input : Path.GetDirectoryName(input)!, "bin", "test-results"));
             runDirectory = Path.Combine(resultRoot, "run-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(runDirectory);
-            active = new FileStream(Path.Combine(runDirectory, ".active"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+
+            // The runner's steps (IMPL 20.6.4: 3) in DECISIONS R9-M12's order: the run directory with .active, each project's artifact
+            // directory, each project's startup and the run. A step's failure ends the command (RunnerFailed).
+            try
+            {
+                Directory.CreateDirectory(runDirectory);
+                active = new FileStream(Path.Combine(runDirectory, ".active"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                RunnerFailed(ex);
+                return;
+            }
+
             var artifacts = new Dictionary<TestCatalog, ArtifactPaths>();
             var artifactIndex = 0;
             foreach (var (project, compilation, _) in prepared)
@@ -126,10 +140,19 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                 }
 
                 var directory = Path.Combine(runDirectory, "artifacts", "p" + (artifactIndex++).ToString(System.Globalization.CultureInfo.InvariantCulture));
-                Directory.CreateDirectory(directory);
+                try
+                {
+                    Directory.CreateDirectory(directory);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    RunnerFailed(ex);
+                    return;
+                }
+
                 var stem = Path.Combine(directory, "tests");
-                var paths = new ArtifactPaths(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + "." + project.ProjectFile.Optimization);
-                if (!project.PublishArtifacts(compilation, paths, null, out _))
+                var paths = ArtifactPaths.Create(stem + ".ll", project.ProjectFile.Optimization);
+                if (!project.PublishArtifacts(compilation, paths, null))
                 {
                     errors.Add("Test generation failed: " + project.Name); // Its records are rendered, as kimi build's (R5 C0a).
                     exit = 2;
@@ -148,10 +171,19 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                     continue;
                 }
 
-                // The runner's startup: the pinned executable and its case manifest (IMPL 20.6.4: a failure is the runner's, 3).
-                pinnedExecutables.Add(new FileStream(paths.Executable, FileMode.Open, FileAccess.Read, FileShare.Read));
-                compilation.Tests.WriteManifest(stem + ".test.json", paths.Executable);
-                artifacts.Add(compilation.Tests, paths);
+                // The runner's startup: the pinned executable, its case manifest and the artifact map (R9-M12; a startup failure ends
+                // the project loop).
+                try
+                {
+                    pinnedExecutables.Add(new FileStream(paths.Executable, FileMode.Open, FileAccess.Read, FileShare.Read));
+                    compilation.Tests.WriteManifest(stem + ".test.json", paths.Executable);
+                    artifacts.Add(compilation.Tests, paths);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    RunnerFailed(ex);
+                    return;
+                }
             }
 
             if (exit != 0)
@@ -163,21 +195,29 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
             var selected = outcomes.Where(x => x.Selected).ToArray();
             var next = -1;
             var stopped = 0;
-            var workers = new Task[Math.Min(options.Jobs, selected.Length)];
-            for (var w = 0; w < workers.Length; w++)
+            try
             {
-                workers[w] = Worker();
-            }
-
-            await Task.WhenAll(workers).ConfigureAwait(false);
-            foreach (var outcome in outcomes.Where(x => x.Selected))
-            {
-                if (!outcome.Started)
+                var workers = new Task[Math.Min(options.Jobs, selected.Length)];
+                for (var w = 0; w < workers.Length; w++)
                 {
-                    outcome.Termination = cancellationToken.IsCancellationRequested ? "cancelled" : "notStarted";
+                    workers[w] = Worker();
                 }
 
-                exit = Math.Max(exit, outcome.ExitCode);
+                await Task.WhenAll(workers).ConfigureAwait(false);
+                foreach (var outcome in outcomes.Where(x => x.Selected))
+                {
+                    if (!outcome.Started)
+                    {
+                        outcome.Termination = cancellationToken.IsCancellationRequested ? "cancelled" : "notStarted";
+                    }
+
+                    exit = Math.Max(exit, outcome.ExitCode);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                RunnerFailed(ex);
+                return;
             }
 
             if (cancellationToken.IsCancellationRequested)
@@ -217,15 +257,16 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
         {
             exit = 130;
         }
-        catch (Exception ex) when (ex is CommandInputException or IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
+        catch (CommandInputException ex)
         {
             errors.Add(ex.Message);
-            exit = runDirectory is null ? 2 : 3;
+            exit = 2;
         }
         catch (Exception ex)
         {
-            errors.Add("Internal test runner error: " + ex.Message);
-            exit = 3;
+            // An exception no result owns ends the command's own result in its load, check or build steps (IMPL 20.6.4: 2).
+            Fault(ex);
+            exit = 2;
         }
         finally
         {
@@ -319,6 +360,29 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
             }
 
             Environment.ExitCode = exit;
+        }
+
+        // A runner step's failure (IMPL 20.6.4: 3): an output failure is its message, any other exception the command's fault.
+        void RunnerFailed(Exception ex)
+        {
+            exit = 3;
+            if (ArtifactFiles.IsOutputFailure(ex))
+            {
+                errors.Add(ex.Message);
+            }
+            else
+            {
+                Fault(ex);
+            }
+        }
+
+        // The command's own Faulted result (SPEC 23.2.2, DIAGNOSTICS rule 9): its one CheckFaulted_Kd, with no location, is rendered
+        // on standard error with its Note, and the result's errors list names its code and message once.
+        void Fault(Exception ex)
+        {
+            var fault = DiagnosticFaults.Create(DiagnosticFault.Exception, ex, null);
+            kimigayo.Render(fault, string.Empty);
+            errors.Add(fault.Diagnostics[0].Code + ": " + fault.Diagnostics[0].Message);
         }
 
         void PersistJson()

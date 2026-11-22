@@ -874,6 +874,36 @@ public sealed partial class FunctionCodegenTest
         Assert.Single(texts, static x => Regex.IsMatch(x, @" = mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n"));
     }
 
+    // SPEC 5.3, 8.15.3 (PLAN G597's L2 U2, B's ruling 14): a Storage over a raw pointer Place, the form MirValidatorTest's rows admit and
+    // Storage.viewStart's call takes, is the pointer's value (Buffer): unkeyed in both instances, and keyed where the instance's key starts
+    // at the storage, the load of p with no stride; keyed where the key displaces, that value plus the start times the element's stride,
+    // Displace's statement. Each instance stores the value it loads through p's home, directly or as the displacement's base (fail-before:
+    // the pointer's home was read as a handle's record, through a `data` word it has no). No producer calls viewStart before U3, so h's
+    // built `p + start` Add is rewritten in place into the Storage over its pointer operand's Place.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AStorageOverARawPointerIsItsValue(bool keyed)
+    {
+        var source = "func h<R>(p: raw/i64, r: R, start: isize) -> raw/i64\n    R is PositionRange\n    unsafe => return p + start\n" +
+            "func x(p: raw/i64) -> raw/i64 => h(p, .., 0)\nfunc y(p: raw/i64) -> raw/i64 => h(p, 1.., 1)\n";
+        var c = Analyze(source, OutputKind.Library);
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "h");
+        var at = Enumerable.Range(0, body.Statements.Length).Single(x => body.Statements[x].Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: (byte)MirBinaryOp.Add });
+        ref readonly var add = ref body.Statements[at];
+        var (pointer, start) = (body.Operands[add.Rvalue.Start], body.Operands[add.Rvalue.Start + 1]);
+        var type = body.TypeOf(pointer.Place)!;
+        var operands = body.AddOperand(start);
+        body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.TypeToken, body.Locals[2].Type!))));
+        Unsafe.AsRef(in add) = add with { Rvalue = keyed ? MirRvalue.Storage(pointer.Place, type, operands) : MirRvalue.Storage(pointer.Place, type) };
+        var texts = ItemTexts(c, "h");
+        Assert.Equal(2, texts.Length);
+        Assert.All(texts, static x => Assert.DoesNotContain("__kimi_abort", x, StringComparison.Ordinal));
+        Assert.All(texts, static x => Assert.Matches(@"(%t\d+) = load ptr, ptr %[\w.]+, align 8\n(?:  .*\n)*?  (?:(%t\d+) = getelementptr i8, ptr \1, i64 %t\d+\n  store ptr \2|store ptr \1), ", x));
+        Assert.Equal(keyed ? 1 : 2, texts.Count(static x => !x.Contains(" = mul ", StringComparison.Ordinal) && !x.Contains("getelementptr", StringComparison.Ordinal)));
+        Assert.Equal(keyed ? 1 : 0, texts.Count(static x => Regex.IsMatch(x, @" = mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n")));
+    }
+
     // The place writer (R5 C2a; DECISIONS R5-M83, package C 3.2 I7 and I9): a Place's address is its root's home, then each step at the offset
     // the prefix's Layout gives (IMPL 21.1): a Tuple element in Kimigayo order (the i64, then the i16 at 8), a Base at its derived struct's
     // own address (X1) and a Field after the base, an enum payload after its i32 tag (8, the i64's alignment) and its second element at 0, a
@@ -1249,6 +1279,43 @@ public sealed partial class FunctionCodegenTest
     public void AnIntrinsicIsWrittenByItsRow(string source, string pattern)
         => Assert.Matches(pattern, Parse(source).Text);
 
+    // SPEC 5.6, IMPL 21.3: Raw.readVolatile and Raw.writeVolatile are one volatile load and store of their integer Type at the storage, with
+    // its alignment, where the call is: a device register polled until its ready bit is set is read in the loop's condition, which every
+    // iteration runs, and acknowledged once after the loop; a u128 is one volatile i128 access, which LLVM splits into two 8-byte accesses
+    // in no fixed order, so no machine order is asserted (keeping each access at O2 is LLVM's volatile guarantee: no O2 run).
+    [Fact]
+    public void AVolatileAccessIsOneVolatileLoadOrStore()
+    {
+        var ir = Parse("func waitReady(status: raw/u32)\n    unsafe\n        while (Raw.readVolatile(status) & 1) == 0 => ()\n        Raw.writeVolatile(status, 1)\n" +
+            "func wide(p: raw/u128) -> u128\n    unsafe => return Raw.readVolatile(p)").Ir;
+        var volatiles = ir.Functions.SelectMany(static x => x.Blocks)
+            .SelectMany(static x => x.Instructions.Where(static y => y.Shape.Contains(" volatile ", StringComparison.Ordinal)).Select(y => (y.Shape, Block: x))).ToArray();
+        string[] expected = ["load volatile i128, ptr %, align 16", "load volatile i32, ptr %, align 4", "store volatile i32 1, ptr %, align 4"];
+        Assert.Equal(expected, volatiles.Select(static x => x.Shape).Order(StringComparer.Ordinal));
+        Assert.Equal((true, false), (Cycles(volatiles.Single(x => x.Shape == expected[1]).Block), Cycles(volatiles.Single(x => x.Shape == expected[2]).Block)));
+
+        // Whether a block reaches itself through its successors: whether it is in a loop.
+        static bool Cycles(IrBlock block)
+        {
+            var seen = new HashSet<IrBlock>();
+            var pending = new Stack<IrBlock>(block.Successors);
+            while (pending.TryPop(out var next))
+            {
+                if (next == block)
+                {
+                    return true;
+                }
+
+                if (seen.Add(next))
+                {
+                    next.Successors.ForEach(pending.Push);
+                }
+            }
+
+            return false;
+        }
+    }
+
     // SPEC 5.1, 5.3 (DECISIONS R5-M92): p + n and p - n displace a raw pointer by n * stride(T) through the place writer's byte offset, a zero
     // stride keeping the pointer; == and != compare addresses, null the one pointer constant.
     [Theory]
@@ -1363,8 +1430,8 @@ public sealed partial class FunctionCodegenTest
     public void AnImportIsCalledByItsCSignature()
     {
         var imported = Compilation.CreateForTest();
-        imported.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-        Assert.True(imported.Prepare(WindowsProfile.Target));
+        imported.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(imported.Prepare(TargetProfile.Windows.Target));
         const string Source =
             "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n    #LibraryImport(\"codec\", \"mix\")\n" +
             "    public unsafe func again(a: i8, b: f64) -> f64\n    #LibraryImport(\"codec\", \"idle\")\n    public unsafe func idle() -> ()\n" +
@@ -1388,8 +1455,8 @@ public sealed partial class FunctionCodegenTest
     public void AnEditedImportKeepsItsSignature()
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         const string Source = "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n" +
             "public func main()\n    var t: f64 = 0.0\n    unsafe => t = Native.mix(-1, t)\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
@@ -1921,7 +1988,7 @@ public sealed partial class FunctionCodegenTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = source.Contains("#Test", StringComparison.Ordinal);
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source, isTestOnly: c.IsTestBuild));
         c.Bind();
         if (!c.IsTestBuild)

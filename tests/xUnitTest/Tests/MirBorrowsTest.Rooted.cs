@@ -1589,7 +1589,7 @@ public sealed partial class MirBorrowsTest
 
         foreach (var site in built.OpaqueSites)
         {
-            body.AddOpaque(site.Source, [.. built.OpaqueUses.Slice(site.Start, site.Count).ToArray().Select(map)]);
+            body.AddOpaque(site.Source, [.. built.OpaqueUses.Slice(site.Start, site.Count).ToArray().Select(map)], site.Kept);
         }
 
         foreach (var end in built.MustNotComplete)

@@ -21,7 +21,9 @@ internal static class ArtifactFiles
 
     // Atomically replaces destination with source. Windows briefly keeps a just-published file open (real-time
     // scanning, indexing), and replacing it during that hold fails with access denied or a sharing violation.
-    // The hold is transient, so the rename is retried with a bounded backoff before the failure is reported.
+    // The hold is transient, so the rename is retried with a bounded backoff before the failure is reported. The move's output failure
+    // names no path on Windows, so it is reported as one IOException that names the destination, keeps the system's message and has the
+    // failure as its inner exception, for every caller (PLAN G1257); any other exception propagates as itself.
     internal static void Replace(string source, string destination)
     {
         for (var delay = 1; ; delay *= 2)
@@ -35,12 +37,22 @@ internal static class ArtifactFiles
             {
                 Thread.Sleep(delay);
             }
+            catch (Exception ex) when (IsOutputFailure(ex))
+            {
+                throw new IOException($"The file could not be replaced: {destination}. {ex.Message}", ex);
+            }
         }
     }
 
     internal static string Hash(string path)
     {
         using var stream = File.OpenRead(path);
+        return Hash(stream);
+    }
+
+    // The SHA-256 (lower-case hex) of a stream's remaining bytes.
+    internal static string Hash(Stream stream)
+    {
         Span<byte> hash = stackalloc byte[32];
         SHA256.HashData(stream, hash);
         return Convert.ToHexStringLower(hash);

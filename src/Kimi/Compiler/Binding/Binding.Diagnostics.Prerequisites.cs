@@ -34,6 +34,7 @@ public sealed partial class Binding
     private readonly List<DiagnosticKey> prerequisiteKeys = [];
     private readonly PrerequisiteVisitRows prerequisiteVisits;
     private readonly Stack<Koto> prerequisitePending = new();
+    private readonly Stack<Koto> derivationInputs = new();
 
     // The running walk's number (PrerequisiteVisitRows): a row carrying it is a node this walk visited, any other row one it did not.
     private uint prerequisiteWalk = FirstQuery;
@@ -508,8 +509,9 @@ public sealed partial class Binding
     // A recovery node derives from its syntax error, and so does every failure of a check that consulted a recovery node,
     // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3), except a
     // requirement judged by declared names alone (JudgedByDeclaredNames), whose check reads no guess. A failure that reports missing
-    // information is derived when the check consulted prerequisites that stayed unresolved; a failure explained by the Origin rule, or any
-    // other definite failure, is direct.
+    // information is derived when the check consulted a prerequisite that stayed unresolved and whose own record, or the record it rests
+    // on, is reported (RestsOnReported; AGENTS Diagnostics, G812 rulings 163-164): a pending prerequisite with no record (a part that
+    // rests on what is not decided yet) derives nothing. A failure explained by the Origin rule, or any other definite failure, is direct.
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
     // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
@@ -517,7 +519,7 @@ public sealed partial class Binding
     private bool IsDerived(Koto node, BindingFailure failure)
         => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node))) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
-            this.HasUnresolvedPrerequisite(node)) ||
+            this.RestsOnReported(node)) ||
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
             (this.RecordedState(part) == BindingState.Invalid || this.HasFailureCauses(part))) ||
             (failure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
@@ -583,9 +585,11 @@ public sealed partial class Binding
     // SPEC 23.1.2 (rule W): an owner whose check read a failed part and fails only because of it is Invalid resting on that part, with no
     // failure of its own, so it is derived and records nothing. That holds only where the part's own record publishes: an attribute's
     // target on its rejected attribute (InvalidateAttributeTarget), whose record is direct, since an attribute carries no frame or part
-    // another check writes. It runs before the pass's first environment walk, so no change signal is due (Invalidated).
+    // another check writes, and a layer of a written Type that forms its operand's Type (a wrapper, parentheses, `owner/`) on the Type
+    // node it is (RestLayersOnType, R7-V1c), whose record ValidateConstraintUses writes at that node. The state change is a change signal (Invalidated; before the pass's first environment walk it moves none).
     private void RestOnPart(Koto owner, Koto part)
     {
+        this.Invalidated();
         this.SetRecordedState(owner, BindingState.Invalid);
         this.AddPrerequisite(owner, part);
     }
@@ -647,9 +651,11 @@ public sealed partial class Binding
         return result;
     }
 
-    // SPEC 23.1.2, 10.5.1 (PLAN G924, ruling 115 B2): whether a failure is reported: a recovery, its own record, or a record its
-    // prerequisites reach, directly or through failures resting on them (the records PrerequisiteKeys names); one that reaches only
-    // parts without a record rests on what is not decided yet. EndAwait reads it; nothing is allocated.
+    // SPEC 23.1.2, 10.5.1 (AGENTS Diagnostics; PLAN G924, ruling 115 B2; G812 rulings 163-164): whether an input's own record, or the
+    // record it rests on, is reported: a recovery, its own record, or a record its prerequisites reach, directly or through failures
+    // resting on them (the records PrerequisiteKeys names); one that reaches only parts without a record rests on what is not decided
+    // yet. The one test of dependence on an input: EndAwait and a split call's completion (CompleteOnSplit) read it of a part, and a
+    // record's derivation (RestsOnReported) of each of its inputs; nothing is allocated.
     private bool FailureReported(Koto node)
     {
         if (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None)
@@ -665,6 +671,23 @@ public sealed partial class Binding
         }
 
         keys.Clear();
+        return reported;
+    }
+
+    // Whether a record at `node` rests on an input whose own record, or the record it rests on, is reported (FailureReported, read for
+    // each unresolved input PushPrerequisites names): IsDerived's test of a missing-information record.
+    private bool RestsOnReported(Koto node)
+    {
+        var inputs = this.derivationInputs;
+        this.PushPrerequisites(node, inputs);
+        var reported = false;
+        while (inputs.TryPop(out var input))
+        {
+            this.prerequisiteVisits.Add(node); // A walk back to the record itself reaches no input of it.
+            reported = reported || this.FailureReported(input);
+            this.prerequisiteVisits.Clear(); // The walk ends, also where FailureReported answered without one (its mark of `node` goes).
+        }
+
         return reported;
     }
 

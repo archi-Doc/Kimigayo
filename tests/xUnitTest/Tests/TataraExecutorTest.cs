@@ -1,9 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Build;
 using Kimi.Compiler;
@@ -14,14 +18,18 @@ namespace XunitTest;
 // Tatara, the native build's LLVM and LLD (Tatara designs A2 §4.5, A4 §2.6 and B6b1 §2), on the compiler's Tatara (the tatara.dll the
 // build copies beside the test output's Kimi.dll) and the checkout's development toolchain's tools. A row that loads tatara.dll or runs a tool
 // skips off Windows; on Windows a missing tatara.dll fails it. KIMI_TATARA_CORPUS names a corpus directory whose fixtures/*.ll (bare
-// IR) replace the fixed rows of the tool control comparison, at O0 and O2; each row's outcome is appended to <corpus>/results.tsv
-// (tests/scripts/run-tatara-corpus.ps1 prepares the corpus and runs this class). A fatal row leaves Tatara refusing every later call for
-// the rest of its process, so each runs in a child test process of its own (Fatal).
+// IR) replace the fixed rows of the tool control comparison, at O0 and O2; each row's decision and outcome is appended to
+// <corpus>/results.tsv (Run; tests/scripts/run-tatara-corpus.ps1 prepares the corpus, runs this class and lists the rows Run failed).
+// A fatal row leaves Tatara refusing every later call for the rest of its process, so each runs in a child test process of its own
+// (Fatal).
 public sealed class TataraExecutorTest : IDisposable
 {
-    private const string Triple = WindowsProfile.Target;
-
     private const string Windows = "Tatara and the LLVM tools run on Windows.";
+
+    // The probe's metadata naming a dependent library, so its ELF object has a .deplibs section.
+    private const string DependentLibrary = "!llvm.dependent-libraries = !{!0}\n!0 = !{!\"c\"}";
+
+    private static readonly string Triple = TargetProfile.Windows.Target;
 
     private static readonly string[] Levels = ["O0", "O2"];
 
@@ -29,7 +37,16 @@ public sealed class TataraExecutorTest : IDisposable
 
     // What NativeBuild gives Tatara's calls, without a report or a cancellation.
     private static readonly TataraContext Context = new(
-        (_, _) => { }, CancellationToken.None, Triple, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel);
+        (_, _) => { }, CancellationToken.None, Triple, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
+
+    // The Linux probe's target (Tatara B7b1, before B7b2's row): a static x86-64 ELF.
+    private static readonly TataraContext LinuxContext = Context with { Triple = "x86_64-unknown-linux-musl", RelocationModel = "static" };
+
+    // The tool control's two formats. The archive's ld.lld.exe and llvm-readelf.exe are the toolchain's lld-link.exe and llvm-readobj.exe
+    // (equal SHA-256); -flavor gnu and --elf-output-style=GNU select what those names select.
+    private static readonly ToolTarget Coff = new(Context, ["--unwind", "--coff-directives"], CoffFlags, "lld-link", [], LinkArguments);
+
+    private static readonly ToolTarget Elf = new(LinuxContext, ["--elf-output-style=GNU", "--sections"], ElfFlags, "ld.lld", ["-flavor", "gnu"], ElfLinkArguments);
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-" + Guid.NewGuid().ToString("N"));
 
@@ -49,6 +66,9 @@ public sealed class TataraExecutorTest : IDisposable
     private static string Kernel32 => Path.Combine(Repository.Root, "src", "backend", "windows-x64", "kernel32.lib");
 
     private static string Backend => Path.Combine(Repository.Root, "src", "backend", "windows-x64", "kimi_backend_windows_x64_v1.lib");
+
+    // Both, in ToolchainIdentity.Supplies' order: a link manifest's libraries when the program names none of its own.
+    private static string[] CompilerLibraries => [Kernel32, Backend];
 
     public void Dispose() => Directory.Delete(this.directory, true);
 
@@ -82,31 +102,94 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // The tool control comparison (permanent): the archive's opt, llc and lld-link with P13's arguments against Tatara's operations,
-    // on the IR of the fixed rows or every corpus fixture, at O0 and O2; both links take the libraries the compiler carries.
+    // on the IR of the fixed rows or every corpus fixture, at O0 and O2. Every row is a program that links, so each must give equal
+    // products down to the executable (Run): a generated row is an Application whose links take its manifest's libraries in the build's
+    // order, the debug IR has the entry and takes the compiler's libraries, and a corpus fixture is a native fixture, which the fixture
+    // runner links with the compiler's libraries and runs at both levels.
     [Fact]
     public async Task TataraEqualsTheTools()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var rows = Corpus is { } corpus
-            ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => ir + "|" + level)).ToArray()
-            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => Path.ChangeExtension(Path.ChangeExtension(m, null), ".ll") + "|" + Level(m))
-                .Concat(Levels.Select(level => this.DebugIr() + "|" + level)).ToArray();
-        await Run(rows, row => this.CompareWithTools(row));
+            ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => new Row(ir, level, CompilerLibraries))).ToArray()
+            : (await this.FixedRows()).Select(row => Generated(Manifest(row))).Concat(Levels.Select(level => new Row(this.DebugIr(), level, CompilerLibraries))).ToArray();
+        await Run(rows, row => this.CompareWithTools(row, Coff));
     }
 
-    // C1's deep input: a global of 20,000 nested array types, deeper than dotnet's 1.5 MiB reserve allows and within the tools' 10 MB;
-    // Tatara's optimize and emit return 0 with the tools' products (the link fails alike on both sides: no entry).
+    // The tool control comparison on ELF (Tatara B7b1): the probe's Linux IR and the same IR naming a dependent library, at O0 and O2,
+    // through opt, llc, llvm-nm, llvm-readelf and ld.lld -static, with no library.
+    [Fact]
+    public async Task TataraEqualsTheToolsOnElf()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        string[] probes = [this.LinuxProbe("probe", string.Empty), this.LinuxProbe("deplibs", DependentLibrary)];
+        await Run([.. probes.SelectMany(ir => Levels.Select(level => new Row(ir, level, [])))], row => this.CompareWithTools(row, Elf));
+    }
+
+    // Tatara's ELF side (Tatara B7b1): the probe's Linux object at O0 and O2 has _start defined, nothing undefined, unwind information
+    // and no dependent library (the variant naming one has it); ld.lld -static links a static executable (§6.1's checks), which
+    // llvm-readobj reads alike. Another format stays an inspection failure.
+    [Fact]
+    public async Task TataraInspectsAndLinksAnElf()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var tatara = Tatara.Instance;
+        var probe = this.LinuxProbe("probe", string.Empty);
+        foreach (var level in Levels)
+        {
+            var (obj, exe) = (Path.Combine(this.directory, "probe." + level + ".o"), Path.Combine(this.directory, "probe." + level));
+            tatara.Emit(LinuxContext, probe, obj, level[1] - '0');
+            var facts = tatara.Inspect(LinuxContext, obj);
+            Assert.Empty(facts.Undefined);
+            Assert.Equal([new ObjectSymbol("_start", 'T')], facts.DefinedExternal);
+            Assert.True(facts.HasUnwind && !facts.HasDefaultLibrary, level);
+            tatara.Link(LinuxContext, ["ld.lld", .. ElfLinkArguments(obj, exe, [])]);
+            var elf = ElfFile.Read(exe);
+            elf.AssertStatic("_start");
+            var (failure, listing) = await Launch("llvm-readobj", this.directory, "--file-headers", "--program-headers", exe);
+            Assert.Equal(string.Empty, failure);
+            var headers = listing[listing.IndexOf("ProgramHeaders [", StringComparison.Ordinal)..];
+            Assert.Equal(elf.Entry, Convert.ToUInt64(Regex.Match(listing, @"(?m)^\s*Entry: 0x([0-9A-F]+)\r?$").Groups[1].Value, 16));
+            Assert.Equal(elf.Segments, Regex.Matches(headers, @"(?m)^\s*Type: \S+ \(0x([0-9A-F]+)\)\r?$").Zip(
+                Regex.Matches(headers, @"(?m)^\s*Flags \[ \(0x([0-9A-F]+)\)\r?$"), (t, f) => (Convert.ToUInt32(t.Groups[1].Value, 16), Convert.ToUInt32(f.Groups[1].Value, 16))));
+        }
+
+        var deplibs = Path.Combine(this.directory, "deplibs.o");
+        tatara.Emit(LinuxContext, this.LinuxProbe("deplibs", DependentLibrary), deplibs, 0);
+        Assert.True(tatara.Inspect(LinuxContext, deplibs).HasDefaultLibrary);
+        var macho = Path.Combine(this.directory, "probe.macho.o");
+        tatara.Emit(Context with { Triple = "x86_64-apple-macosx" }, probe, macho, 0);
+        Assert.Contains("not a COFF or ELF object", Assert.Throws<IOException>(() => tatara.Inspect(Context, macho)).Message, StringComparison.Ordinal);
+    }
+
+    // Two emits and links of the probe in two folders give equal objects and executables (§6.1).
+    [Fact]
+    public void ElfBuildsInTwoFoldersAreEqual()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var probe = this.LinuxProbe("probe", string.Empty);
+        var products = new string[2];
+        for (var i = 0; i < products.Length; i++)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(this.directory, "elf" + i)).FullName;
+            var (obj, exe) = (Path.Combine(folder, "probe.o"), Path.Combine(folder, "probe"));
+            Tatara.Instance.Emit(LinuxContext, probe, obj, 2);
+            Tatara.Instance.Link(LinuxContext, ["ld.lld", .. ElfLinkArguments(obj, exe, [])]);
+            products[i] = Hash(obj) + Hash(exe);
+        }
+
+        Assert.Equal(products[0], products[1]);
+    }
+
+    // C1's deep input: a global of 20,000 nested array types, deeper than dotnet's 1.5 MiB reserve allows and within the tools' 10 MB,
+    // and the entry, so it links: Tatara's optimize, emit and link give the tools' products, at O0 and O2 (Run).
     [Fact]
     public async Task DeepInputEqualsTheTools()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var deep = Path.Combine(this.directory, "deep.ll");
-        File.WriteAllText(deep, "target triple = \"x86_64-pc-windows-msvc\"\n\n@g = global " + string.Concat(Enumerable.Repeat("[1 x ", 20000)) + "i32" + new string(']', 20000) + " zeroinitializer\n");
-        foreach (var level in Levels)
-        {
-            var outcome = await this.CompareWithTools(deep + "|" + level);
-            Assert.True(outcome is "equal" or "equal failure\tlink", level + ": " + outcome);
-        }
+        File.WriteAllText(deep, "target triple = \"x86_64-pc-windows-msvc\"\n\n@g = global " + string.Concat(Enumerable.Repeat("[1 x ", 20000)) + "i32" + new string(']', 20000) + " zeroinitializer\n\ndefine void @" + TargetProfile.Windows.EntrySymbol + "() {\nentry:\n  ret void\n}\n");
+        await Run([.. Levels.Select(level => new Row(deep, level, CompilerLibraries))], row => this.CompareWithTools(row, Coff));
     }
 
     // Twenty native builds in one process alternating two programs give equal bytes each time.
@@ -120,7 +203,8 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var manifest = Manifest(rows[i % 2]);
             await NativeToolchain.BuildManifest(manifest, (_, _) => { }, TestContext.Current.CancellationToken);
-            var products = Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".obj") + Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".exe");
+            var built = ArtifactPaths.Create(ArtifactPaths.IrOf(manifest), Level(manifest));
+            var products = ArtifactFiles.Hash(built.Stem + ".obj") + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
             first[i % 2] ??= products;
             Assert.Equal(first[i % 2], products);
         }
@@ -134,7 +218,7 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
-        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var invalid = Path.Combine(this.directory, "invalid.ll");
         File.WriteAllText(invalid, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f( {\n");
@@ -148,10 +232,12 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.False(File.Exists(Path.Combine(this.directory, "asmerror.obj")));
         var obj = Path.Combine(this.directory, "hello.obj");
         tatara.Emit(Context, ir, obj, 0);
-        var link = Assert.Throws<IOException>(() => tatara.Link(Context, [obj, Kernel32, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
+        var link = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld-link", obj, Kernel32, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
         Assert.StartsWith("Tatara failed: link\n", link.Message, StringComparison.Ordinal);
         Assert.Contains("undefined symbol", link.Message, StringComparison.Ordinal);
-        tatara.Link(Context, LinkArguments(obj, Path.Combine(this.directory, "b.exe")));
+        var flavor = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld", .. LinkArguments(obj, Path.Combine(this.directory, "c.exe"), CompilerLibraries)]));
+        Assert.Contains("arguments[0] names the flavor, lld-link or ld.lld, not 'lld'", flavor.Message, StringComparison.Ordinal);
+        tatara.Link(Context, ["lld-link", .. LinkArguments(obj, Path.Combine(this.directory, "b.exe"), CompilerLibraries)]);
         Assert.True(File.Exists(Path.Combine(this.directory, "b.exe")));
     }
 
@@ -164,7 +250,7 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
-        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var before = FilterOwner();
         tatara.Optimize(Context, ir, Path.Combine(this.directory, "hello.O2.ll"));
@@ -174,7 +260,7 @@ public sealed class TataraExecutorTest : IDisposable
         File.WriteAllText(asm, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f() {\nentry:\n  %r = call i32 asm sideeffect \"mov $0, 1\", \"={notaregister}\"()\n  ret i32 %r\n}\n");
         Assert.Throws<IOException>(() => tatara.Emit(Context, asm, Path.Combine(this.directory, "asmerror.obj"), 0));
         tatara.Inspect(Context, obj);
-        tatara.Link(Context, LinkArguments(obj, Path.Combine(this.directory, "hello.exe")));
+        tatara.Link(Context, ["lld-link", .. LinkArguments(obj, Path.Combine(this.directory, "hello.exe"), CompilerLibraries)]);
         var module = NativeLibrary.Load("tatara", typeof(Tatara).Assembly, DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32);
         NativeLibrary.Free(module);
         Assert.Equal(before, FilterOwner());
@@ -213,16 +299,46 @@ public sealed class TataraExecutorTest : IDisposable
     // The pair's optimization, as its file names carry it (Name.link.json beside Name.ll; the level from the manifest's text).
     private static string Level(string manifest) => File.ReadAllText(manifest).Contains("\"optimization\": \"O0\"", StringComparison.Ordinal) ? "O0" : "O2";
 
+    // A generated row: its manifest's IR and optimization, and its libraries in the manifest's order, which the native build links in
+    // (NativeBuild's ResolveLibraries): a reserved name is the compiler's supply, any other a program's, its input resolved against
+    // the manifest's folder.
+    private static Row Generated(string manifest)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllBytes(manifest));
+        var folder = Path.GetDirectoryName(manifest)!;
+        string[] libraries = [.. LinkManifest.Items(document.RootElement, "libraries").Select(x => Array.FindIndex(ToolchainIdentity.Supplies, s => s.Supply.Name == LinkManifest.Text(x, "libraries.name")) is var supply and >= 0
+            ? CompilerLibraries[supply] : ArtifactFiles.ResolvePath(LinkManifest.Text(x, "libraries.input"), folder))];
+        return new(ArtifactPaths.IrOf(manifest), Level(manifest), libraries);
+    }
+
     private static string Hash(string path) => File.Exists(path) ? ArtifactFiles.Hash(path) : "(none)";
 
-    private static string[] LinkArguments(string obj, string exe)
-        => [obj, Kernel32, Backend, "/entry:" + WindowsProfile.EntrySymbol, "/subsystem:" + WindowsProfile.Subsystem, "/nodefaultlib", "/Brepro", "/out:" + exe];
+    // lld-link's arguments after its flavor: the object, the libraries in the build's order, then P13's options.
+    private static string[] LinkArguments(string obj, string exe, string[] libraries)
+        => [obj, .. libraries, "/entry:" + TargetProfile.Windows.EntrySymbol, "/subsystem:" + TargetProfile.Windows.Subsystem, "/nodefaultlib", "/Brepro", "/out:" + exe];
 
-    // Runs every row (in parallel for a corpus: the tools run concurrently, Tatara's calls are serialized by its lock), appends each
-    // row's outcome to the corpus's results.tsv and fails with every row that differs.
-    private static async Task Run(string[] rows, Func<string, Task<string>> compare)
+    // ld.lld's arguments after its flavor: a static executable of the object and the libraries, no library a .deplibs section names.
+    private static string[] ElfLinkArguments(string obj, string exe, string[] libraries) => ["-m", "elf_x86_64", "-static", "--no-dependent-libraries", obj, .. libraries, "-o", exe];
+
+    // llvm-readobj --unwind --coff-directives' two facts: a RuntimeFunction, and DEFAULTLIB in any case.
+    private static (bool Unwind, bool Library) CoffFlags(string listing)
+        => (listing.Contains("RuntimeFunction", StringComparison.Ordinal), listing.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase));
+
+    // llvm-readelf --sections' two facts: a non-empty .eh_frame, and an SHT_LLVM_DEPENDENT_LIBRARIES section (a line's name, type,
+    // address, offset and size; the null section's line has no name and matches nothing).
+    private static (bool Unwind, bool Library) ElfFlags(string listing)
     {
-        var differences = new ConcurrentBag<string>();
+        var sections = Regex.Matches(listing, @"(?m)^\s*\[\s*\d+\]\s+(\S+)\s+(\S+)\s+[0-9a-f]{16}\s+[0-9a-f]+\s+([0-9a-f]+)\s");
+        return (sections.Any(s => s.Groups[1].Value == ".eh_frame" && Convert.ToUInt64(s.Groups[3].Value, 16) != 0), sections.Any(s => s.Groups[2].Value == "LLVM_DEPENDENT_LIBRARIES"));
+    }
+
+    // Runs every row (in parallel for a corpus: the tools run concurrently, Tatara's calls are serialized by its lock) and decides it: a
+    // row passes only when its verdict is "equal" (a cleanup's note beside it aside), so an equal failure fails too and a run that
+    // compares no executable fails (PLAN G1255). Appends each row's decision and outcome to the corpus's results.tsv
+    // ("<row>\tpass\t<outcome>" or "<row>\tfail\t<outcome>", which run-tatara-corpus.ps1 reads) and fails with every row it failed.
+    private static async Task Run(Row[] rows, Func<Row, Task<string>> compare)
+    {
+        var failed = new ConcurrentBag<string>();
         var results = Corpus is { } corpus ? Path.Combine(corpus, "results.tsv") : null;
         var gate = new object();
         await Parallel.ForEachAsync(rows, new ParallelOptions { MaxDegreeOfParallelism = results is null ? 1 : 6, CancellationToken = TestContext.Current.CancellationToken }, async (row, _) =>
@@ -237,20 +353,21 @@ public sealed class TataraExecutorTest : IDisposable
                 outcome = "error\t" + ex.GetType().Name + ": " + ex.Message.ReplaceLineEndings(" ");
             }
 
-            if (!outcome.StartsWith("equal", StringComparison.Ordinal))
+            var decision = outcome.Split('\t')[0] == "equal" ? "pass" : "fail";
+            if (decision == "fail")
             {
-                differences.Add(row + "\t" + outcome);
+                failed.Add(row + "\t" + outcome);
             }
 
             lock (gate)
             {
                 if (results is not null)
                 {
-                    File.AppendAllText(results, row + "\t" + outcome.ReplaceLineEndings(" ") + "\n");
+                    File.AppendAllText(results, row + "\t" + decision + "\t" + outcome.ReplaceLineEndings(" ") + "\n");
                 }
             }
         });
-        Assert.True(differences.IsEmpty, string.Join("\n", differences));
+        Assert.True(failed.IsEmpty, string.Join("\n", failed));
     }
 
     // A row's verdict is decided before its work folder is deleted; a folder that cannot be deleted (an executable still held, for
@@ -327,19 +444,16 @@ public sealed class TataraExecutorTest : IDisposable
         return (process.ExitCode == 0 ? string.Empty : $"{name} exit={process.ExitCode}\n{await output}{errors}", await output);
     }
 
-    // The tools' facts of an object, as the external build read them before Tatara: the two llvm-nm listings and llvm-readobj's two
-    // predicates (the listing's "RuntimeFunction" and "DEFAULTLIB" in any case).
-    private static async Task<(string Failure, string Facts)> ToolFacts(string directory, string obj)
+    // The tools' facts of an object, as the external build read them before Tatara: the two llvm-nm listings and the target's
+    // llvm-readobj listing with its two predicates.
+    private static async Task<(string Failure, string Facts)> ToolFacts(string directory, string obj, ToolTarget target)
     {
         var undefined = await Launch("llvm-nm", directory, "--undefined-only", "--format=posix", obj);
         var defined = await Launch("llvm-nm", directory, "--defined-only", "--extern-only", "--format=posix", obj);
-        var inspection = await Launch("llvm-readobj", directory, "--unwind", "--coff-directives", obj);
+        var inspection = await Launch("llvm-readobj", directory, [.. target.Inspection, obj]);
         var failure = undefined.Failure + defined.Failure + inspection.Failure;
-        return failure.Length != 0 ? (failure, string.Empty) : (string.Empty, Facts(new ObjectFacts(
-            PosixSymbols(undefined.Output),
-            PosixSymbols(defined.Output),
-            inspection.Output.Contains("RuntimeFunction", StringComparison.Ordinal),
-            inspection.Output.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase))));
+        var (unwind, library) = target.Flags(inspection.Output);
+        return failure.Length != 0 ? (failure, string.Empty) : (string.Empty, Facts(new ObjectFacts(PosixSymbols(undefined.Output), PosixSymbols(defined.Output), unwind, library)));
     }
 
     // llvm-nm's --format=posix lines: the name, then the kind's letter, the value and the size, each after one space. The name is
@@ -367,40 +481,42 @@ public sealed class TataraExecutorTest : IDisposable
     private static string Facts(ObjectFacts facts)
         => string.Join(' ', facts.Undefined) + " | " + string.Join(' ', facts.DefinedExternal) + " | unwind " + facts.HasUnwind + ", default library " + facts.HasDefaultLibrary;
 
-    // The steps, each run by the tools and by Tatara; a later step's input is that side's own product. The inspect step writes each
-    // side's facts to inspected (tools, then Tatara).
-    private static IEnumerable<(string Step, Func<Task<string>> Tools, Action Tatara)> Steps(string ir, string level, string tools, string tatara, Tatara library, string[] inspected)
+    // The steps on the target, each run by the tools and by Tatara; a later step's input is that side's own product. The inspect step
+    // writes each side's facts to inspected (tools, then Tatara). The tools' LLD is lld-link.exe with the target's flavor arguments; both
+    // links take the row's libraries.
+    private static IEnumerable<(string Step, Func<Task<string>> Tools, Action Tatara)> Steps(Row row, string tools, string tatara, ToolTarget target, string[] inspected)
     {
+        var (ir, level, libraries) = row;
+        var (library, context) = (Tatara.Instance, target.Context);
         var (toolIr, tataraIr) = (ir, ir);
         if (level == "O2")
         {
             (toolIr, tataraIr) = (Path.Combine(tools, "input.O2.ll"), Path.Combine(tatara, "input.O2.ll"));
-            yield return ("optimize", () => Tool("opt", tools, "-S", "-passes=default<O2>", "-mtriple=" + Triple, ir, "-o", toolIr), () => library.Optimize(Context, ir, tataraIr));
+            yield return ("optimize", () => Tool("opt", tools, "-S", "-passes=default<O2>", "-mtriple=" + context.Triple, ir, "-o", toolIr), () => library.Optimize(context, ir, tataraIr));
         }
 
-        yield return ("emit", () => Tool("llc", tools, "-" + level, "-filetype=obj", "-mtriple=" + Triple, "-mcpu=" + WindowsProfile.Cpu, "-mattr=" + WindowsProfile.Features, "-relocation-model=" + WindowsProfile.RelocationModel, "-code-model=" + WindowsProfile.CodeModel, toolIr, "-o", "input.obj"), () => library.Emit(Context, tataraIr, Path.Combine(tatara, "input.obj"), level[1] - '0'));
+        yield return ("emit", () => Tool("llc", tools, "-" + level, "-filetype=obj", "-mtriple=" + context.Triple, "-mcpu=" + context.Cpu, "-mattr=" + context.Features, "-relocation-model=" + context.RelocationModel, "-code-model=" + context.CodeModel, toolIr, "-o", "input.obj"), () => library.Emit(context, tataraIr, Path.Combine(tatara, "input.obj"), level[1] - '0'));
         yield return ("inspect", async () =>
         {
-            var (failure, facts) = await ToolFacts(tools, Path.Combine(tools, "input.obj"));
+            var (failure, facts) = await ToolFacts(tools, Path.Combine(tools, "input.obj"), target);
             inspected[0] = facts;
             return failure;
-        }, () => inspected[1] = Facts(library.Inspect(Context, Path.Combine(tatara, "input.obj"))));
-        yield return ("link", () => Tool("lld-link", tools, LinkArguments(Path.Combine(tools, "input.obj"), Path.Combine(tools, "input.exe"))), () => library.Link(Context, LinkArguments(Path.Combine(tatara, "input.obj"), Path.Combine(tatara, "input.exe"))));
+        }, () => inspected[1] = Facts(library.Inspect(context, Path.Combine(tatara, "input.obj"))));
+        yield return ("link", () => Tool("lld-link", tools, [.. target.ToolFlavor, .. target.Link(Path.Combine(tools, "input.obj"), Path.Combine(tools, "input.exe"), libraries)]), () => library.Link(context, [target.Flavor, .. target.Link(Path.Combine(tatara, "input.obj"), Path.Combine(tatara, "input.exe"), libraries)]));
     }
 
-    // One IR at one level: the tools (opt -S default<O2>, llc, llvm-nm and llvm-readobj, lld-link with P13's arguments) in one folder,
-    // Tatara's optimize, emit, inspect and link in another, the same input file read by both; equal O2 text, object, object facts and
-    // executable, or the same failing step with the same text (FailureText).
-    private async Task<string> CompareWithTools(string row)
+    // One IR at one level on the target: the tools (opt -S default<O2>, llc, llvm-nm and llvm-readobj, LLD with the target's arguments)
+    // in one folder, Tatara's optimize, emit, inspect and link in another, the same input file read by both; equal O2 text, object,
+    // object facts and executable, or the same failing step with the same text (FailureText).
+    private async Task<string> CompareWithTools(Row row, ToolTarget target)
     {
-        var (ir, level) = (row[..row.LastIndexOf('|')], row[(row.LastIndexOf('|') + 1)..]);
         var work = Path.Combine(this.directory, Guid.NewGuid().ToString("N"));
         var (tools, tatara) = (Path.Combine(work, "tools"), Path.Combine(work, "tatara"));
         Directory.CreateDirectory(tools);
         Directory.CreateDirectory(tatara);
         var inspected = new string[2];
         (string Step, string Text) toolFailure = (string.Empty, string.Empty), tataraFailure = (string.Empty, string.Empty);
-        foreach (var (step, run, call) in Steps(ir, level, tools, tatara, Tatara.Instance, inspected))
+        foreach (var (step, run, call) in Steps(row, tools, tatara, target, inspected))
         {
             toolFailure = toolFailure.Step.Length == 0 && await run() is { Length: > 0 } failed ? (step, FailureText(failed, tools)) : toolFailure;
             try
@@ -428,14 +544,19 @@ public sealed class TataraExecutorTest : IDisposable
         return Clean(work, verdict);
     }
 
-    // C-424 N6: an IR with a CodeView compile unit (the debug information no fixed row's IR carries).
+    // C-424 N6: an IR with a CodeView compile unit (the debug information no fixed row's IR carries), and the entry, so it links.
     private string DebugIr()
     {
         var path = Path.Combine(this.directory, "debug.ll");
-        var ir = """
+        var ir = $$"""
             target triple = "x86_64-pc-windows-msvc"
 
             @g = global i32 7, align 4
+
+            define void @{{TargetProfile.Windows.EntrySymbol}}() {
+            entry:
+              ret void
+            }
 
             define i32 @f(i32 %x) !dbg !8 {
             entry:
@@ -459,6 +580,32 @@ public sealed class TataraExecutorTest : IDisposable
             !10 = !{null}
             !12 = !DILocation(line: 2, column: 3, scope: !8)
             !13 = !DILocation(line: 3, column: 5, scope: !8)
+
+            """;
+        File.WriteAllText(path, ir);
+        return path;
+    }
+
+    // The B7 probe (artifacts\tatara\b7\probe\nolibc.c) as hand-written Linux IR: _start writes "Hello, world!" with the write system
+    // call and ends with exit_group, without a C library; then the given metadata.
+    private string LinuxProbe(string name, string metadata)
+    {
+        var path = Path.Combine(this.directory, name + ".ll");
+        var ir = $$"""
+            source_filename = "probe"
+            target triple = "x86_64-unknown-linux-musl"
+
+            @text = private unnamed_addr constant [14 x i8] c"Hello, world!\0A"
+
+            define void @_start() #0 {
+            entry:
+              %written = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"(i64 1, i64 1, ptr @text, i64 14)
+              %exited = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},~{rcx},~{r11},~{memory}"(i64 231, i64 0)
+              unreachable
+            }
+
+            attributes #0 = { noreturn nounwind uwtable }
+            {{metadata}}
 
             """;
         File.WriteAllText(path, ir);
@@ -561,7 +708,7 @@ public sealed class TataraExecutorTest : IDisposable
             var tatara = Tatara.Instance;
             var obj = Path.Combine(directory, "f.obj");
             tatara.Emit(Context, Path.Combine(directory, "f.ll"), obj, 0);
-            var error = Assert.Throws<IOException>(() => tatara.Link(Context, [obj, Path.Combine(directory, "malformed.lib"), "/entry:f", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(directory, "f.exe")]));
+            var error = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld-link", obj, Path.Combine(directory, "malformed.lib"), "/entry:f", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(directory, "f.exe")]));
             Assert.StartsWith("Tatara failed: link\n", error.Message, StringComparison.Ordinal);
             Assert.Contains("lld-link: error:", error.Message, StringComparison.Ordinal);
             Assert.Contains("truncated or malformed archive", error.Message, StringComparison.Ordinal);
@@ -598,6 +745,63 @@ public sealed class TataraExecutorTest : IDisposable
             Assert.StartsWith("Tatara failed: inspect\n", later.Message, StringComparison.Ordinal);
             Assert.Contains("Cannot select", later.Message, StringComparison.Ordinal);
             Assert.True(NativeToolchain.IsToolchainFailure(later));
+        }
+    }
+
+    // A format of the tool control comparison: Tatara's context, llvm-readobj's arguments for the object's two facts and their reading,
+    // LLD's flavor, the tool's arguments selecting it, and the link's arguments after the flavor for an object, an executable and the
+    // row's libraries.
+    private sealed record ToolTarget(
+        TataraContext Context, string[] Inspection, Func<string, (bool Unwind, bool Library)> Flags, string Flavor, string[] ToolFlavor, Func<string, string, string[], string[]> Link);
+
+    // A row of the tool control comparison: an IR, its level and the libraries both links take after the object, in the build's order (a
+    // generated row's manifest's, the compiler's for another COFF row, none on ELF); named "<ir>|<level>" in a failure and in results.tsv.
+    private sealed record Row(string Ir, string Level, string[] Libraries)
+    {
+        public override string ToString() => this.Ir + "|" + this.Level;
+    }
+
+    // §6.1's managed reading of a static ELF executable (Tatara B7b1): ELF64 little-endian; the header's type, machine and entry, each
+    // program header's type and flags, and .symtab's symbols with their values.
+    private sealed record ElfFile(int Type, int Machine, ulong Entry, (uint Type, uint Flags)[] Segments, Dictionary<string, ulong> Symbols)
+    {
+        internal static ElfFile Read(string path)
+        {
+            var bytes = File.ReadAllBytes(path);
+            Assert.True(bytes.AsSpan(0, 6).SequenceEqual("\u007fELF\u0002\u0001"u8), path + " is not an ELF64 little-endian file.");
+            int U16(int at) => BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(at));
+            uint U32(int at) => BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(at));
+            ulong U64(int at) => BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(at));
+            var (programs, programSize, sections, sectionSize) = ((int)U64(32), U16(54), (int)U64(40), U16(58));
+            var segments = Enumerable.Range(0, U16(56)).Select(i => (U32(programs + (i * programSize)), U32(programs + (i * programSize) + 4))).ToArray();
+            var symbols = new Dictionary<string, ulong>();
+            for (var header = sections; header < sections + (U16(60) * sectionSize); header += sectionSize)
+            {
+                // SHT_SYMTAB: its entries after the null symbol; sh_link names its string table's header.
+                if (U32(header + 4) == 2)
+                {
+                    var (start, end, size) = ((int)U64(header + 24), (int)(U64(header + 24) + U64(header + 32)), (int)U64(header + 56));
+                    var names = (int)U64(sections + ((int)U32(header + 40) * sectionSize) + 24);
+                    for (var symbol = start + size; symbol < end; symbol += size)
+                    {
+                        var name = names + (int)U32(symbol);
+                        symbols.TryAdd(Encoding.UTF8.GetString(bytes, name, Array.IndexOf(bytes, (byte)0, name) - name), U64(symbol + 8));
+                    }
+                }
+            }
+
+            return new ElfFile(U16(16), U16(18), U64(24), segments, symbols);
+        }
+
+        // ET_EXEC for EM_X86_64; no PT_INTERP and no PT_DYNAMIC; one executable PT_LOAD; one PT_GNU_STACK, not executable; the entry at
+        // the entry symbol.
+        internal void AssertStatic(string entry)
+        {
+            Assert.Equal((2, 62), (this.Type, this.Machine));
+            Assert.DoesNotContain(this.Segments, s => s.Type is 2 or 3);
+            Assert.Single(this.Segments, s => s.Type == 1 && (s.Flags & 1) != 0);
+            Assert.Equal(0u, Assert.Single(this.Segments, s => s.Type == 0x6474e551).Flags & 1);
+            Assert.Equal(this.Symbols[entry], this.Entry);
         }
     }
 }

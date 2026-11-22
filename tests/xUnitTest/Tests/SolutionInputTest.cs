@@ -17,13 +17,17 @@ public sealed class SolutionInputTest : IDisposable
 
     public void Dispose() => Directory.Delete(this.directory, true);
 
-    [Fact]
-    public void ResolvesExactPathThenProjectThenSource()
+    // IMPL 20.3.1: any input not ending in .kimi, .kimiproj, .kimisln or .exe, with or without another extension (PLAN G1274), resolves
+    // to the path A, else A.kimiproj, else A.kimi.
+    [Theory]
+    [InlineData("A")]
+    [InlineData("A.other")]
+    public void ResolvesExactPathThenProjectThenSource(string name)
     {
-        var stem = Path.Combine(this.directory, "A");
-        var source = this.Write("A.kimi", "::Kimi.Console.writeLine(\"single\")");
+        var stem = Path.Combine(this.directory, name);
+        var source = this.Write(name + ".kimi", "::Kimi.Console.writeLine(\"single\")");
         Assert.Equal(source, Solution.ResolveInputPath(stem));
-        var project = this.Write("A.kimiproj", "invalid project contents");
+        var project = this.Write(name + ".kimiproj", "invalid project contents");
         Assert.Equal(project, Solution.ResolveInputPath(stem));
         Assert.Equal(source, Solution.ResolveInputPath(source));
         Assert.Equal(project, Solution.ResolveInputPath(Path.GetRelativePath(Directory.GetCurrentDirectory(), stem)));
@@ -32,31 +36,39 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Throws<CommandInputException>(() => this.Load(stem));
     }
 
-    [Fact]
-    public void ExistingUnsupportedFileDoesNotFallBack()
+    [Theory]
+    [InlineData("A")]
+    [InlineData("A.other")]
+    public void ExistingUnsupportedFileDoesNotFallBack(string name)
     {
-        this.Write("A.kimiproj", "{}");
-        this.Write("A.kimi", "()");
-        var path = this.Write("A", "()");
+        this.Write(name + ".kimiproj", "{}");
+        this.Write(name + ".kimi", "()");
+        var path = this.Write(name, "()");
         Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(path));
     }
 
+    // IMPL 20.3.1: an input ending in one of the four extensions selects only that path, and its error names only that path.
     [Theory]
     [InlineData("A.kimi")]
     [InlineData("A.kimiproj")]
     [InlineData("A.kimisln")]
-    [InlineData("A.other")]
+    [InlineData("A.EXE")]
     public void ExplicitExtensionIsNeverAppendedAgain(string name)
     {
         this.Write(name + ".kimiproj", "{}");
         this.Write(name + ".kimi", "()");
-        Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(Path.Combine(this.directory, name)));
+        var path = Path.Combine(this.directory, name);
+        var exception = Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(path));
+        Assert.Contains(path, exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(path + Constants.KimiProjectExtension, exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void MissingNameReportsAllCandidates()
+    [Theory]
+    [InlineData("absent")]
+    [InlineData("absent.ext")]
+    public void MissingNameReportsAllCandidates(string name)
     {
-        var path = Path.Combine(this.directory, "absent");
+        var path = Path.Combine(this.directory, name);
         var exception = Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(path));
         Assert.Contains(path, exception.Message);
         Assert.Contains(path + ".kimiproj", exception.Message);
@@ -123,14 +135,14 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Equal(this.directory, project.Directory);
         Assert.Equal(OutputKind.Application, project.ProjectFile.OutputKind);
         Assert.Equal("O2", project.ProjectFile.Optimization);
-        Assert.Equal(WindowsProfile.Target, Assert.Single(project.ProjectFile.Targets));
+        Assert.Equal(TargetProfile.Windows.Target, Assert.Single(project.ProjectFile.Targets));
         Assert.True(await solution.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
         Assert.True(File.Exists(paths.Ir));
         Assert.True(File.Exists(paths.Manifest));
         Assert.False(File.Exists(paths.Record));
         Assert.False(File.Exists(Path.ChangeExtension(source, ".kimiproj")));
-        Assert.Equal(Path.Combine(this.directory, "bin", WindowsProfile.Target, "Single.O2.exe"), paths.Executable);
+        Assert.Equal(Path.Combine(this.directory, "bin", TargetProfile.Windows.Target, "Single.O2.exe"), paths.Executable);
     }
 
     [Fact]
@@ -142,7 +154,7 @@ public sealed class SolutionInputTest : IDisposable
         if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64)
         {
             solution.PrepareProject(null);
-            Assert.Equal(WindowsProfile.Target, Assert.Single(Assert.Single(solution.Projects).Value.ProjectFile.Targets));
+            Assert.Equal(TargetProfile.Windows.Target, Assert.Single(Assert.Single(solution.Projects).Value.ProjectFile.Targets));
         }
         else
         {
@@ -163,7 +175,7 @@ public sealed class SolutionInputTest : IDisposable
         File.WriteAllBytes(source, [0xff]);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         var solution = new Solution(new Kimigayo(console));
-        solution.LoadForBuild(null, new() { Target = WindowsProfile.Target }, [source]);
+        solution.LoadForBuild(null, new() { Target = TargetProfile.Windows.Target }, [source]);
         solution.PrepareProject(null);
         Assert.Equal(1, await solution.Run(TestContext.Current.CancellationToken)); // The toolchain's failure before launch (IMPL 20.3).
         Assert.Contains("Run 'kimi build' first", console.Text, StringComparison.Ordinal);
@@ -226,7 +238,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
         Assert.Equal("corrupt lock", File.ReadAllText(lockPath));
-        var resolution = DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        var resolution = DependencyResolver.Resolve(path, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
         DependencyLock.Update(lockPath, resolution, TestContext.Current.CancellationToken);
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         var bytes = File.ReadAllBytes(lockPath);
@@ -250,7 +262,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         var lockPath = DependencyLock.PathForProject(path);
         Assert.False(File.Exists(lockPath));
-        var resolution = DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        var resolution = DependencyResolver.Resolve(path, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
         Assert.True(resolution.Product.IsResolved);
         Assert.False(resolution.Test.IsResolved);
         DependencyLock.Update(lockPath, resolution, TestContext.Current.CancellationToken);
@@ -258,7 +270,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
         Assert.True(await solution.Generate(TestContext.Current.CancellationToken));
-        var ir = Path.Combine(this.directory, "bin", WindowsProfile.Target, "Root.ll");
+        var ir = Path.Combine(this.directory, "bin", TargetProfile.Windows.Target, "Root.ll");
         Assert.True(File.Exists(ir));
         Assert.False(File.Exists(Path.ChangeExtension(ir, ".link.build.json")));
         File.AppendAllText(librarySource, "\npublic func unused() => missing()");
@@ -281,7 +293,7 @@ public sealed class SolutionInputTest : IDisposable
     private Solution Load(params string[] paths)
     {
         var solution = new Solution(Compilation.CreateForTest().Kimigayo);
-        solution.LoadForBuild(null, new() { Target = WindowsProfile.Target }, paths);
+        solution.LoadForBuild(null, new() { Target = TargetProfile.Windows.Target }, paths);
         solution.PrepareProject(null);
         return solution;
     }

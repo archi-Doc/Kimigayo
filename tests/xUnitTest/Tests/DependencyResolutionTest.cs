@@ -192,7 +192,7 @@ public sealed class DependencyResolutionTest : IDisposable
         var root = this.Write("Root", "root", settings: "TestDependencies={Tests={PackageId=\"tests\" PackageVersion=\"1\" Project=\"../Tests/Tests.kimiproj\"}}");
         var tests = this.Write("Tests", "tests");
         using var exclusive = new FileStream(tests, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        var result = DependencyResolver.Resolve(root, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken, includeTests: false);
+        var result = DependencyResolver.Resolve(root, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken, includeTests: false);
         Assert.True(result.Product.IsResolved);
         Assert.Equal("NotRequested", Failure(result.Test).Code);
     }
@@ -241,7 +241,7 @@ public sealed class DependencyResolutionTest : IDisposable
         => string.Join("; ", (partition.Failures ?? []).Select(static x => x.Message));
 
     private static DependencyResolution Resolve(string path)
-        => DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        => DependencyResolver.Resolve(path, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
 
     private static string Edge(string name, string folder, string id, string version = "1")
         => $"{name}={{PackageId=\"{id}\" PackageVersion=\"{version}\" Project=\"../{folder}/{folder}.kimiproj\"}} ";
@@ -251,7 +251,7 @@ public sealed class DependencyResolutionTest : IDisposable
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"{version}\" Targets={{\"{WindowsProfile.Target}\"}} Dependencies={{{dependencies}}} {settings}");
+        File.WriteAllText(path, $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"{version}\" Targets={{\"{TargetProfile.Windows.Target}\"}} Dependencies={{{dependencies}}} {settings}");
         File.WriteAllText(Path.Combine(folder, "main.kimi"), source);
         return path;
     }

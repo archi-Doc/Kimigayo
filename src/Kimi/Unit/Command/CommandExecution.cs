@@ -48,7 +48,7 @@ internal static class CommandExecution
         }
         catch (Exception ex)
         {
-            kimigayo.Render(DiagnosticFaults.Create(DiagnosticFault.Exception, ex.Message, null), string.Empty);
+            kimigayo.Render(DiagnosticFaults.Create(DiagnosticFault.Exception, ex, null), string.Empty);
             return 1;
         }
     }

@@ -110,7 +110,7 @@ public class DependencyConfigurationTest
     public void IndentedNativeRequirementIsRead()
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeRequirements=\n  \"x86_64-pc-windows-msvc\"=\n    codec={ Kind=\"static\" ContractId=\"example.codec.v1\" }\n"))!;
-        var requirement = file.NativeRequirements[WindowsProfile.Target]["codec"];
+        var requirement = file.NativeRequirements[TargetProfile.Windows.Target]["codec"];
         Assert.Equal(("static", "example.codec.v1", (string?)null), (requirement.Kind, requirement.ContractId, requirement.Sha256));
     }
 
@@ -118,7 +118,7 @@ public class DependencyConfigurationTest
     public void NativeLibraryRecordArraysSeparateSelfAndPackageTargets()
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeLibraries=\n  \"x86_64-pc-windows-msvc\"=\n    {\n      Package={ PackageId=\"example.codec\" PackageVersion=\"1.0.0\" }\n      Name=\"codec\"\n      ContractId=\"example.codec.v1\"\n      Input=\"native/codec.lib\"\n    }\n    { Name=\"observer\" Kind=\"static\" Input=\"native/observer.lib\" }\n"))!;
-        var supplies = file.NativeLibraries[WindowsProfile.Target];
+        var supplies = file.NativeLibraries[TargetProfile.Windows.Target];
         var observer = Assert.Single(supplies);
         Assert.Equal(("observer", "static", (NativePackageTarget?)null), (observer.Key, observer.Value.Kind, observer.Value.Package));
         var codec = Assert.Single(supplies.Packaged);
@@ -129,7 +129,7 @@ public class DependencyConfigurationTest
         Assert.Equal("codec", shorthand.NativeLibraries["t"]["codec"].Name);
         Assert.Contains("codec", Encoding.UTF8.GetString(TinyhandSerializer.SerializeToUtf8(shorthand)));
         Assert.Equal(file, ProjectFile.Load(TinyhandSerializer.SerializeToUtf8(file)), NativeSuppliesComparer.Instance);
-        var clone = TinyhandSerializer.Clone(file)!.NativeLibraries[WindowsProfile.Target].Packaged[0];
+        var clone = TinyhandSerializer.Clone(file)!.NativeLibraries[TargetProfile.Windows.Target].Packaged[0];
         Assert.Equal(codec, clone);
         Assert.NotSame(codec.Package, clone.Package);
     }
@@ -148,22 +148,22 @@ public class DependencyConfigurationTest
         var c = Compilation.CreateForTest();
         var root = c.Project.ProjectFile;
         root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
-        root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = name, Package = new() { PackageId = "library", PackageVersion = version }, ContractId = contractId, Sha256 = hashDigit is null ? null : new string(hashDigit[0], 64), Input = "codec.lib" }] };
+        root.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = name, Package = new() { PackageId = "library", PackageVersion = version }, ContractId = contractId, Sha256 = hashDigit is null ? null : new string(hashDigit[0], 64), Input = "codec.lib" }] };
         var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
         var sha256 = new string('a', 64);
         if (combined)
         {
-            library.NativeLibraries[WindowsProfile.Target] = new() { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Input = "own.lib" } };
+            library.NativeLibraries[TargetProfile.Windows.Target] = new() { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Input = "own.lib" } };
         }
         else
         {
-            library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = sha256 } };
+            library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = sha256 } };
         }
 
         var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
         var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
         rootNode.Edges.Add("Lib", libraryNode.Key);
-        Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode])));
+        Assert.Equal(valid, c.Prepare(TargetProfile.Windows.Target, new([rootNode, libraryNode])));
         Assert.Equal(!valid, TestDiagnostics.Of(c).Any(x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd)));
     }
 
@@ -178,16 +178,16 @@ public class DependencyConfigurationTest
         var c = Compilation.CreateForTest();
         var root = c.Project.ProjectFile;
         root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
-        root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = rootContract, Input = "root.lib" }] };
+        root.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = rootContract, Input = "root.lib" }] };
         var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
         var other = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "other", PackageVersion = "1" };
-        other.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = otherContract, Input = "other.lib" }] };
+        other.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = otherContract, Input = "other.lib" }] };
         var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
         var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
         var otherNode = new DependencyNode("other@1", new("other.kimiproj", other, [], []), 1, "Other");
         rootNode.Edges.Add("Lib", libraryNode.Key);
         libraryNode.Edges.Add("Other", otherNode.Key);
-        Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode, otherNode])));
+        Assert.Equal(valid, c.Prepare(TargetProfile.Windows.Target, new([rootNode, libraryNode, otherNode])));
     }
 
     // IMPL A.4, 21.3.2: a Compilation has at most 65,535 modules, the ordinals below SyntaxTable.LibraryModule. One more is refused by
@@ -208,7 +208,7 @@ public class DependencyConfigurationTest
             nodes[i] = new($"library@{i}", input, 0, string.Empty);
         }
 
-        Assert.True(c.Prepare(WindowsProfile.Target, new(nodes)));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target, new(nodes)));
         Assert.Equal(supported ? count : 0, c.SourceModules.Length);
         Assert.Equal((!supported, supported ? TestPresence.No : TestPresence.Unknown), (c.AnalyzesNoModule, CheckService.ScanTestPresence(c)));
         if (supported)
@@ -239,8 +239,8 @@ public class DependencyConfigurationTest
     public void InvalidProgrammaticNativeRequirementsCannotPrepare()
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() };
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() };
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
     }
 
@@ -253,8 +253,8 @@ public class DependencyConfigurationTest
         file.PackageId = "Bad";
         file.PackageVersion = "1";
         file.Alias = [" "];
-        file.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["a"] = new(), ["b"] = new() };
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        file.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["a"] = new(), ["b"] = new() };
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         var notes = ConfigurationNotes(c);
         Assert.Equal(4, notes.Length);
         Assert.All(new[] { "PackageId", "entry 'a'", "entry 'b'", "Alias" }, x => Assert.Single(notes, n => n.Contains(x, StringComparison.Ordinal)));
@@ -266,7 +266,7 @@ public class DependencyConfigurationTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.Dependencies = null!;
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Equal("Dependency maps and source lists must not be null.", Assert.Single(ConfigurationNotes(c)));
     }
 
@@ -279,7 +279,7 @@ public class DependencyConfigurationTest
         var root = c.Project.ProjectFile;
         root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
         var package = new NativePackageTarget { PackageId = "library", PackageVersion = "1" };
-        root.NativeLibraries[WindowsProfile.Target] = new()
+        root.NativeLibraries[TargetProfile.Windows.Target] = new()
         {
             Packaged =
             [
@@ -288,7 +288,7 @@ public class DependencyConfigurationTest
             ],
         };
         var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
-        library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal)
         {
             ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = new string('a', 64) },
             ["observer"] = new() { Kind = "static", ContractId = "o.v1" },
@@ -298,7 +298,7 @@ public class DependencyConfigurationTest
         var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
         var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
         rootNode.Edges.Add("Lib", libraryNode.Key);
-        Assert.False(c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode])));
+        Assert.False(c.Prepare(TargetProfile.Windows.Target, new([rootNode, libraryNode])));
         var records = TestDiagnostics.Of(c);
         Assert.Equal(2, records.Count(static x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd)));
         Assert.Equal(3, ConfigurationNotes(c).Length);
@@ -331,8 +331,8 @@ public class DependencyConfigurationTest
         }
         else if (graphFailure == DiagnosticCode.InvalidDependencyConfiguration_Kd)
         {
-            root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = "other", Input = "codec.lib" }] };
-            library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1" } };
+            root.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = "other", Input = "codec.lib" }] };
+            library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1" } };
         }
 
         var nodes = new DependencyNode[graphFailure == DiagnosticCode.ModuleCountLimit_Kd ? 65_536 : 2];
@@ -343,7 +343,7 @@ public class DependencyConfigurationTest
             nodes[i] = new($"library@{i}", input, 0, string.Empty);
         }
 
-        Assert.False(c.Prepare(rootFailure == DiagnosticCode.UnsupportedTarget_Kd ? "unknown-none-elf" : WindowsProfile.Target, new(nodes)));
+        Assert.False(c.Prepare(rootFailure == DiagnosticCode.UnsupportedTarget_Kd ? "unknown-none-elf" : TargetProfile.Windows.Target, new(nodes)));
         Assert.Null(c.BuildMetadata);
         Assert.Equal(new[] { rootFailure.ToString(), graphFailure.ToString() }.Order(StringComparer.Ordinal), TestDiagnostics.Of(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
@@ -382,7 +382,7 @@ public class DependencyConfigurationTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.KotonohaArray = [new() { Name = "Math", Version = "1" }];
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
     }
 
@@ -437,7 +437,7 @@ public class DependencyConfigurationTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.Dependencies.Add("Math", new() { PackageId = "example.math", PackageVersion = "1", Project = "Math.kimiproj" });
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.UnresolvedDependencyGraph_Kd));
         Assert.Null(c.BuildMetadata);
     }
@@ -456,7 +456,7 @@ public class DependencyConfigurationTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.TestDependencies.Add("Math", new() { PackageId = "example.math", PackageVersion = "1", Project = "missing.kimiproj" });
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
     }
 
     [Fact]
@@ -496,8 +496,8 @@ public class DependencyConfigurationTest
     private static string[] PackagedNotes(params NativeLibraryInput[] packaged)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { Packaged = packaged };
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = packaged };
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         return ConfigurationNotes(c);
     }
 }

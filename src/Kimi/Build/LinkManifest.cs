@@ -5,10 +5,10 @@
 // the native build checks (CheckFixed) in the same order; the libraries entries of the compiler's supplies (IMPL 20.4's reserved names,
 // ToolchainIdentity.Supplies), each written from its row (WriteCompilerSupply) and checked against it (CheckCompilerSupply); and the
 // readers (Field, Text, OptionalText, Items, Flag), which turn a field that is missing, of another JSON kind or, for an Int32 row, another
-// number into InvalidDataException at the read (form J, the manifest's share of PLAN G983). The variable fields (optimization, the output
-// section, the libraries array and its programs' entries) are written by EmissionArtifacts, which orders and fills the libraries array,
-// and read, through these readers, by NativeToolchain.Build. A removed member (Removed: the toolchain, Tatara B6b5) is written by no
-// publication and rejected by CheckFixed with its own text, whatever its content.
+// number into InvalidDataException at the read (form J, the manifest's share of PLAN G983). The variable fields (optimization, the input,
+// the output section, the libraries array and its programs' entries) are written by EmissionArtifacts, which orders and fills the
+// libraries array, and read, through these readers, by NativeToolchain.Build. A removed member (Removed: the toolchain, Tatara B6b5) is
+// written by no publication and rejected by CheckFixed with its own text, whatever its content.
 // Input: a Utf8JsonWriter (publication) or a manifest element (the native build, a library entry), each field named by its path
 // ("section.name" in a section or an array's items).
 // Output: the fixed fields' and the compiler's supplies' JSON; for a read, the field's value or InvalidDataException naming the field's
@@ -32,14 +32,14 @@ internal static class LinkManifest
     private static readonly (string Path, object Value)[] Rows =
     [
         ("schemaVersion", 4),
-        ("target", WindowsProfile.Target),
-        ("codegen.profile", WindowsProfile.Name),
+        ("target", TargetProfile.Windows.Target),
+        ("codegen.profile", TargetProfile.Windows.Name),
         ("codegen.llvmVersion", ToolchainIdentity.LlvmVersion),
-        ("codegen.cpu", WindowsProfile.Cpu),
-        ("codegen.features", new[] { WindowsProfile.Features }),
-        ("codegen.relocationModel", WindowsProfile.RelocationModel),
-        ("codegen.codeModel", WindowsProfile.CodeModel),
-        ("codegen.unwindTables", WindowsProfile.UnwindTables),
+        ("codegen.cpu", TargetProfile.Windows.Cpu),
+        ("codegen.features", new[] { TargetProfile.Windows.Features }),
+        ("codegen.relocationModel", TargetProfile.Windows.RelocationModel),
+        ("codegen.codeModel", TargetProfile.Windows.CodeModel),
+        ("codegen.unwindTables", TargetProfile.Windows.UnwindTables),
         ("backendSupport.packageId", ToolchainIdentity.BackendPackageId),
         ("backendSupport.abiVersion", ToolchainIdentity.BackendAbiVersion),
         ("backendSupport.packageVersion", ToolchainIdentity.BackendVersion),

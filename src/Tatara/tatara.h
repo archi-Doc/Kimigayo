@@ -1,7 +1,8 @@
 // Tatara: the C ABI over the pinned LLVM and LLD libraries, built into tatara.dll by build.ps1.
 //
 // Responsibility: run in process what Kimi's native build runs as LLVM's and LLD's tools: optimize (opt), emit (llc), inspect
-//   (llvm-nm and llvm-readobj) and link (lld-link), with bytes and text equal to the tools'; and report the build's identity.
+//   (llvm-nm and llvm-readobj, for COFF and ELF objects) and link (lld-link or ld.lld), with bytes and text equal to the tools'; and
+//   report the build's identity.
 // Inputs: the pinned LLVM archive (its headers and static libraries); at run time, file paths and the target values of each call.
 // Outputs: tatara.dll, exporting the functions declared here and nothing else; the files each operation writes.
 // Invariants: built and linked as LLVM's own tools are (static release CRT, no RTTI, no exceptions, the archive's link interface);
@@ -53,16 +54,19 @@ __declspec(dllexport) const char* TATARA_CALL tatara_abi(void);
 __declspec(dllexport) int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, TataraText optimizedIr, TataraResult** result);
 // emit: opt -passes=verify, then llc -O<optimizationLevel> -filetype=obj with the target's values (optimizationLevel 0 to 3).
 __declspec(dllexport) int32_t TATARA_CALL tatara_emit(const TataraTarget* target, TataraText ir, TataraText obj, int32_t optimizationLevel, TataraResult** result);
-// inspect: the COFF object's symbols as llvm-nm lists them and the two flags below.
+// inspect: the COFF or ELF object's symbols as llvm-nm lists them and the two flags below; another format is a failure (1).
 __declspec(dllexport) int32_t TATARA_CALL tatara_inspect(TataraText obj, TataraResult** result);
-// link: lld-link with these arguments (argv[0] is "lld-link").
+// link: LLD with these arguments as its argv: arguments[0] names the flavor, "lld-link" (COFF) or "ld.lld" (ELF), as an LLD
+// executable's name does; another flavor is a failure (1).
 __declspec(dllexport) int32_t TATARA_CALL tatara_link(const TataraText* arguments, size_t count, TataraResult** result);
 // kind 0: the message (every operation; the tools' standard output and error, empty when they print nothing). Inspect: 1 the
 // undefined symbols, 2 the defined external symbols, one "<llvm-nm's letter> <name>\n" per symbol in llvm-nm's order. Another
 // kind, or a kind the operation does not set: an empty text.
 __declspec(dllexport) TataraText TATARA_CALL tatara_text(const TataraResult* result, int32_t kind);
-// Inspect: kind 0, 1 when a .pdata section holds an entry (llvm-readobj --unwind prints a RuntimeFunction); kind 1, 1 when a
-// .drectve section contains DEFAULTLIB in any case. Otherwise 0. Another kind: -1.
+// Inspect, kind 0 (unwind information): COFF, 1 when a .pdata section holds an entry (llvm-readobj --unwind prints a
+// RuntimeFunction); ELF, 1 when a non-empty .eh_frame section exists. Kind 1 (a library the object names for the link): COFF, 1
+// when a .drectve section contains DEFAULTLIB in any case; ELF, 1 when an SHT_LLVM_DEPENDENT_LIBRARIES (.deplibs) section exists.
+// Otherwise 0. Another kind: -1.
 __declspec(dllexport) int32_t TATARA_CALL tatara_flag(const TataraResult* result, int32_t kind);
 __declspec(dllexport) void TATARA_CALL tatara_release(TataraResult* result);
 

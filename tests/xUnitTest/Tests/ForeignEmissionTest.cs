@@ -185,8 +185,8 @@ public class ForeignEmissionTest
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
         c.Project.ProjectFile.OutputKind = OutputKind.Library;
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var source = "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n" +
             "#Test\nfunc encodes()\n    var v: i32 = 0\n    unsafe => v = Native.encode(1)\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
@@ -1729,8 +1729,8 @@ public class ForeignEmissionTest
     private static Compilation AnalyzeAs(string source, string kind, OutputKind output)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = kind } };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = kind } };
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(output);

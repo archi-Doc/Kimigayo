@@ -9,9 +9,9 @@ namespace Kimi.Compiler;
 // waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
 // CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
 // CompleteValueCallPart completes a value call's part at its one candidate's parameter Type, a waiting one (WaitsForValueCallSolve) at
-// the instantiated parameter; CompleteUnselected binds on its own each
-// part of a call that completes none, outside its consultation. The selection, its defaults and their re-check (SolveSelected,
-// CheckDefaulted) stay in Binding.ArgumentKinds.cs.
+// the instantiated parameter, and a resting part of a call on the split at the canonical case's open formed parameter (DECISIONS BU-240,
+// Binding.OpenForm); CompleteUnselected binds on its own each part of a call that completes none, outside its consultation. The
+// selection, its defaults and their re-check (SolveSelected, CheckDefaulted) stay in Binding.ArgumentKinds.cs.
 public sealed partial class Binding
 {
     // SPEC 10.5, 10.5.4: takes each argument first (TakeArgument, CallRelation.Taken), then completes the selected candidate's waiting
@@ -24,7 +24,7 @@ public sealed partial class Binding
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, evaluation.Evaluated[winner].DeclaringType);
-        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(winner);
         var contract = this.activeRequirementContract;
         this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
         var completed = true;
@@ -33,7 +33,7 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var argument = call.ArgumentNodes[i];
-                var pattern = selected.Parameters[evaluation.Mapping[i]].Type.BoundType!;
+                var pattern = selected.Parameters[solution.Mapping[i]].Type.BoundType!;
                 this.TakeArgument(argument); // SPEC 10.5.1: the call has selected; no conflict in the argument waits for it since.
                 if (this.IsWaiting(argument))
                 {
@@ -210,6 +210,22 @@ public sealed partial class Binding
         }
 
         return type;
+    }
+
+    // SPEC 23.1.2, 10.5.1 (DECISIONS BU-240 with rule W; G812 rulings 124, 126, 128, 132): a part of a value call on the split awaiting its
+    // call (a named Call or a contextual Case) that fails in every case of the bindings it reads, always at that same part, is completed
+    // at the Type the canonical case formed for it (each binding at its first admitted Semantics), where it fails as that run found,
+    // outside the probes and outside the call's consultation, and that failure is its record; the call rests on it unless it fails by
+    // itself (BindValueCallOnSplit). Every other deferred call stays completed by its outer call (CompleteUnselectedPart): what only
+    // the missing expectation causes is dependent.
+    private void CompleteFailedPart(Koto failed, BoundType formed, BindingScope scope)
+    {
+        var consultation = this.SuspendConsultation();
+        var probes = (this.argumentProbe, this.nestedOperandProbe);
+        (this.argumentProbe, this.nestedOperandProbe) = (null, null);
+        this.BindNode(failed, scope, formed);
+        (this.argumentProbe, this.nestedOperandProbe) = probes;
+        this.ResumeConsultation(consultation);
     }
 
     private void CompleteUnselectedPart(Koto part, BindingScope scope)

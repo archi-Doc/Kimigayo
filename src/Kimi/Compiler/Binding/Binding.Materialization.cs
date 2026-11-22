@@ -25,9 +25,10 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 3.4.1, 10.2.2 item 2: whether a result of this Type is an owner value, no borrow value: its outer Semantics is not `ref`,
-    // `uniq`, `objref` or `objuniq`, nor a pair binder's, which may be one. An owned handle and `raw/T` are owner values.
+    // `uniq`, `objref` or `objuniq`, nor a pair binder's, which may be one (a pair layer in each representation, IsPairLayer: SPEC 10.3
+    // step 2's "nor a Semantics parameter"). An owned handle and `raw/T` are owner values.
     private static bool OwnerResult(BoundType result)
-        => result is not { Kind: BoundTypeKind.Semantics } || !(IsBorrow(result.Semantics) || result.Semantics == SemanticsKind.Parameter);
+        => !result.IsPairLayer && (result is not { Kind: BoundTypeKind.Semantics } || !(IsBorrow(result.Semantics) || result.Semantics == SemanticsKind.Parameter));
 
     // The Type U of the owner temporary that `part` at `type` is (the contract above); null at any other Type or part.
     private BoundType? Materialization(Koto part, BoundType? type, BindingScope scope)
