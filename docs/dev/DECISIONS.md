@@ -29653,3 +29653,20 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: an exact object check (leafness needs disassembly; a copy of LLVM's decision), a forced entry for leaves (O2 cost), an
     IR `uwtable` check in the build (a second copy of the emitter's rule). The fact's removal is staged as PLAN G1271 states
     (removal condition: Tatara B7b7 lands).
+- **T-M22 Tatara's ELF side: one link export for both LLD drivers, one inspection for COFF and ELF** (Tatara, 2026-11-22; the plan's
+  unit B7b1, Q-665, D-1099; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.1 §3.1; the Middle's reviews, C-445
+  of the design and C-456 of the implementation, ACCEPT WITH CONDITIONS; Major).
+  - `tatara_link`'s `arguments[0]` names the flavor, `lld-link` or `ld.lld`, as an LLD executable's name does; `lld::lldMain` gets
+    both drivers (`lld::coff::link`, `lld::elf::link`); another flavor (or none) is a return of 1 naming it, before LLD runs.
+    `Tatara.Link` passes the arguments through unchanged, and `NativeBuild`'s link names `lld-link` first, beside its other `lld-link`
+    options (B7b7 takes the flavor from the row's `Format`). A COFF link's argv is the base's, so its bytes are unchanged.
+  - `tatara_inspect` reads the format the object has: COFF as before, ELF (`ELFObjectFileBase`) with `llvm-nm`'s ELF letters
+    (`getNMSectionTagAndName`: weak undefined `v`/`w`, IFUNC `i`, weak `V`/`W`, unique `u`); flag 0 is "unwind information" (COFF: a
+    `.pdata` entry; ELF: a non-empty `.eh_frame`), flag 1 "a library the object names for the link" (COFF: `DEFAULTLIB` in a
+    `.drectve`; ELF: an `SHT_LLVM_DEPENDENT_LIBRARIES` section); another format is an error.
+  - `build.ps1` links `lldELF.lib` beside `lldCOFF.lib` and `lldCommon.lib`; its `link.rsp` carries it into the published `kimi.exe`
+    (B6b2's link). `tatara.h`'s ABI changes, so every toolchain is rebuilt by setup; build records differ only in `tools.tatara`.
+  - Rejected: a second export `tatara_link_elf` (two functions for one operation); `Tatara.Link` prepending `lld-link` itself (the
+    design's first reading: no managed path would link an ELF, and a test calling the export directly would bypass Tatara's lock,
+    against `tatara.h`'s "callers serialize calls"); the flavor chosen from the target triple inside Tatara (a consumer deciding by
+    syntax what the row publishes, B7b7's `Format`).
