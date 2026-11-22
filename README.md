@@ -95,7 +95,6 @@ kimi run docs/examples/Hello/Hello.kimiproj --no-build
 kimi emit docs/examples/Hello/Hello.kimiproj
 kimi build docs/examples/Hello/Hello
 kimi emit docs/examples/Hello/Hello.kimi
-kimi build docs/examples/Hello --ToolchainRoot 'C:/tools/kimi/toolchain'
 kimi run docs/examples/Hello/bin/x86_64-pc-windows-msvc/Hello.O2.exe
 ```
 
@@ -240,22 +239,22 @@ native builds fail and name setup.
 
 ### Toolchain path resolution
 
-No `kimi` command selects a toolchain root: Kimi reads no `KIMI_TOOLCHAIN_ROOT`, and `kimi toolchain verify`
-checks only what the compiler carries. The development scripts (`setup.ps1`, `check-toolchain.ps1`, the backend
-builders and tests) select the root they use in this order:
+No `kimi` command selects a toolchain root: the options `--ToolchainRoot` and `--LlvmBin` are errors naming their
+removal, Kimi reads no `KIMI_TOOLCHAIN_ROOT`, and `kimi toolchain verify` checks only what the compiler carries. The
+development scripts (`setup.ps1`, `check-toolchain.ps1`, the backend builders and tests) select the root they use in
+this order:
 
 1. `-ToolchainRoot <path>`.
-2. The `KIMI_TOOLCHAIN_ROOT` environment variable.
-3. The checkout's `toolchain/`.
+2. The checkout's `toolchain/`.
 
-Relative paths use the current working directory. An explicit root does not fall back if missing. No script
-searches `PATH`; adding LLVM to `PATH` is only for direct tool use.
+While `KIMI_TOOLCHAIN_ROOT` is set they fail naming its removal; unset it. Relative paths use the current working
+directory. An explicit root does not fall back if missing. No script searches `PATH`; adding LLVM to `PATH` is only
+for direct tool use.
 
 A native build selects no root: it runs Tatara (LLVM and LLD in one library), which the published
 `kimi.exe` carries linked in and a development `Kimi.dll` loads from the `tatara.dll` beside it, never one
 on `PATH`; it checks Tatara's ABI and LLVM version before generating and starts no LLVM executable.
-A build accepts `--ToolchainRoot` and `--LlvmBin` and does not read them (until Tatara
-B6b4); `kimi toolchain verify` takes neither option. A project's `LlvmBin` setting and a link manifest's
+A project's `LlvmBin` setting and a link manifest's
 `toolchain.llvmBin` are errors (Kimi carries its toolchain): remove the setting, and re-emit such a manifest.
 The reserved libraries are the compiler's: a build stages them under `<output>.native/<sha256>.lib`
 and records their hashes; a link manifest whose backend entry names an input asks for a re-emit.

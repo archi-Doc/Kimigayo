@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -14,7 +15,9 @@ namespace Kimi.Compiler;
 //   included; with its result, Origin count and binder): a view over what the header published, read by every signature comparison,
 //   the 7.3 receiver shape and the 7.4 checker's correspondence (Binding.ParameterShapes) included; the generic slots' kinds are the
 //   bound Schema's (SameGenericShape) and the syntax's (SameExplicitArgumentShape, SameSlotKinds), read once their counts compared equal.
-//   ValidateSignatures checks a member group's one receiver shape (SPEC 7.3), its duplicate overloads (SPEC 9.1, by SignatureEquals)
+//   ValidateSignatures checks a member group's one receiver shape (SPEC 7.3), its duplicate overloads (SPEC 9.1, by SignatureEquals,
+//   only between functions of one SignatureHash: a hash per function, so the check is linear in a group whose Signatures differ within
+//   the top two layers of their parameter Types; Signatures that differ only deeper share a hash and are compared pairwise)
 //   and a Contract's same-name requirements with those they inherit (SPEC 8.4.2).
 // - Inputs: the declared symbols and scopes; the bound parameter Types. Outputs: each header's Type, its Signature state (BeginQuery,
 //   CompleteQuery, AbandonQuery), FnSig, and the ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are
@@ -24,9 +27,25 @@ namespace Kimi.Compiler;
 //   parameters, BindType's partial value while a pending associated Type keeps the header open), its result the symbol's Type (likewise),
 //   its receiver index the declaration's `self` parameter (Binding.Indexing); an accessor's are its BoundAccessor's (BindPropertyHeader).
 // - Prohibitions: no call is selected and no overload ranked here; ValidateSignatures only fails declarations; no signature
-//   comparison reads a function's parameter Types, receiver index, result or generic count other than through FnSig.
+//   comparison reads a function's parameter Types, receiver index, result or generic count other than through FnSig; SignatureHash
+//   reads nothing SignatureEquals does not compare, and both classify a Type's kind only by SignaturePartsCompared and
+//   SignatureSymbolBySlot, so two functions of one Signature never have different hashes.
 public sealed partial class Binding
 {
+    // SPEC 9.1: the member group being checked, its functions in chain order, each with its SignatureHash (null: an unbound parameter Type)
+    // and the index of the next later function of that hash (-1: none). Cleared after the check, so no group stays alive between passes;
+    // its capacity is reused, so a warm rebind allocates nothing.
+    private readonly List<(BindingSymbol Symbol, FunctionKoto Function, int? Hash, int SameHash)> signatureGroup = [];
+
+    // SignatureGroup's scratch: each hash's latest function in the group being linked; empty between groups (each removes its own).
+    private readonly Dictionary<int, int> signatureHashes = [];
+
+    // The hashes and comparisons of this run's duplicate check (SPEC 9.1).
+    private int duplicateSteps;
+
+    /// <summary>Gets the hashes and comparisons of the latest run's duplicate check (SPEC 9.1), which a scaling check reads.</summary>
+    internal int DuplicateCheckWork => this.duplicateSteps;
+
     /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>
     private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
         => symbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto { IsSpecialization: false } function } &&
@@ -34,6 +53,42 @@ public sealed partial class Binding
 
     private static bool SignatureSlotEquals(BindingSymbol? a, BindingSymbol? b, Koto aBinder, Koto bBinder)
         => ReferenceEquals(a, b) || (a is not null && b is not null && ReferenceEquals(a.Scope.Owner, aBinder) && ReferenceEquals(b.Scope.Owner, bBinder) && a.Slot == b.Slot);
+
+    // SPEC 9.1: whether SignatureEquals compares a Type's parts; a generic parameter or a target projection is its slot alone.
+    private static bool SignaturePartsCompared(BoundTypeKind kind) => kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
+
+    // SPEC 9.1: whether SignatureEquals compares a Type's symbol by slot number under the two binders (SignatureSlotEquals), not by identity.
+    private static bool SignatureSymbolBySlot(BoundTypeKind kind)
+        => !SignaturePartsCompared(kind) || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+
+    // SPEC 9.1: a hash of a function's declared Signature (its generic count and ordered parameter Types), or null when a parameter Type
+    // is unbound (such a Signature equals no other). Equal Signatures have equal hashes: it reads, of each parameter Type and of its
+    // direct parts where SignaturePartsCompared, only what SignatureEquals compares before any part (SignatureLayer).
+    private static int? SignatureHash(FnSig signature)
+    {
+        var hash = HashCode.Combine(signature.GenericCount, signature.InputCount);
+        for (var i = 0; i < signature.InputCount; i++)
+        {
+            if (signature.Input(i) is not { } input)
+            {
+                return null;
+            }
+
+            hash = HashCode.Combine(hash, SignatureLayer(input));
+            var parts = SignaturePartsCompared(input.Kind) ? input.Components.Count : 0;
+            for (var p = 0; p < parts; p++)
+            {
+                hash = HashCode.Combine(hash, SignatureLayer(input.Components[p]));
+            }
+        }
+
+        return hash;
+    }
+
+    // What SignatureEquals compares of a Type before its parts: Kind, Semantics, Length, the part count and the symbol, by slot number
+    // where SignatureSymbolBySlot and by identity elsewhere.
+    private static int SignatureLayer(BoundType type)
+        => HashCode.Combine(type.Kind, type.Semantics, type.Length, type.Components.Count, SignatureSymbolBySlot(type.Kind) ? type.Symbol?.Slot ?? -1 : RuntimeHelpers.GetHashCode(type.Symbol));
 
     private static bool SignatureEquals(BoundType a, BoundType b, Koto aBinder, Koto bBinder)
     {
@@ -55,7 +110,7 @@ public sealed partial class Binding
             }
         }
 
-        if (a.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
+        if (!SignaturePartsCompared(a.Kind))
         {
             return SignatureSlotEquals(a.Symbol, b.Symbol, aBinder, bBinder);
         }
@@ -65,7 +120,7 @@ public sealed partial class Binding
             return a.Symbol is not null && ReferenceEquals(a.Symbol, b.Symbol);
         }
 
-        if (a.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ? !SignatureSlotEquals(a.Symbol, b.Symbol, aBinder, bBinder) : a.Symbol != b.Symbol)
+        if (SignatureSymbolBySlot(a.Kind) ? !SignatureSlotEquals(a.Symbol, b.Symbol, aBinder, bBinder) : a.Symbol != b.Symbol)
         {
             return false;
         }
@@ -134,13 +189,9 @@ public sealed partial class Binding
                     this.ValidateParameterShapes(first);
                 }
 
-                for (var a = first; a is not null; a = a.Next)
+                var group = this.SignatureGroup(first);
+                foreach (var (a, fa, _, sameHash) in group)
                 {
-                    if (a.Declaration is not FunctionKoto fa || fa.IsSpecialization)
-                    {
-                        continue;
-                    }
-
                     var sa = new FnSig(fa);
 
                     // SPEC 7.3: every function with a receiver in one member group shares one receiver shape.
@@ -156,13 +207,11 @@ public sealed partial class Binding
                         }
                     }
 
-                    for (var b = a.Next; b is not null; b = b.Next)
+                    // SPEC 9.1: a later function of the same Signature has the same SignatureHash; only those are compared, in chain order.
+                    for (var k = sameHash; k >= 0; k = group[k].SameHash)
                     {
-                        if (b.Declaration is not FunctionKoto { IsSpecialization: false } fb)
-                        {
-                            continue;
-                        }
-
+                        this.duplicateSteps++;
+                        var fb = group[k].Function;
                         var sb = new FnSig(fb);
                         if (sa.GenericCount != sb.GenericCount || sa.InputCount != sb.InputCount)
                         {
@@ -189,6 +238,8 @@ public sealed partial class Binding
                 }
             }
         }
+
+        this.signatureGroup.Clear();
 
         // SPEC 8.4.2: a Contract's same-name requirements, including those inherited by refinement, share one receiver shape.
         for (var n = 0; n < this.nodes.Count; n++)
@@ -224,6 +275,47 @@ public sealed partial class Binding
                 }
             }
         }
+    }
+
+    // SPEC 9.1: a member group's functions in chain order, each linked to the next later function of the same SignatureHash; a function
+    // with an unbound parameter Type is linked to none. The hashes' scratch is emptied by removing the group's own hashes: a Clear would
+    // cost the widest group's capacity again for every later group.
+    private List<(BindingSymbol Symbol, FunctionKoto Function, int? Hash, int SameHash)> SignatureGroup(BindingSymbol first)
+    {
+        var group = this.signatureGroup;
+        var latest = this.signatureHashes;
+        group.Clear();
+        for (var symbol = first; symbol is not null; symbol = symbol.Next)
+        {
+            if (symbol.Declaration is not FunctionKoto { IsSpecialization: false } function)
+            {
+                continue;
+            }
+
+            this.duplicateSteps++;
+            var hash = SignatureHash(new FnSig(function));
+            if (hash is { } key)
+            {
+                if (latest.TryGetValue(key, out var last))
+                {
+                    group[last] = group[last] with { SameHash = group.Count };
+                }
+
+                latest[key] = group.Count;
+            }
+
+            group.Add((symbol, function, hash, -1));
+        }
+
+        foreach (var row in group)
+        {
+            if (row.Hash is { } key)
+            {
+                latest.Remove(key);
+            }
+        }
+
+        return group;
     }
 
     // A callable's declared signature (SPEC 9.1, 8.6.3): a view over a function's or an accessor's published header (no temporary

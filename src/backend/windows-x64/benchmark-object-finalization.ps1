@@ -1,7 +1,6 @@
 # Opt-in uninstrumented native timings. Each source is built once at O0/O2, with a checked first run and fixed repeats.
 [CmdletBinding()]
 param(
-    [string] $ToolchainRoot = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [ValidateRange(1, 100)] [int] $Runs = 7,
     [ValidateSet('Rc', 'Arc')] [string[]] $Mode = @('Rc', 'Arc'),
@@ -24,7 +23,7 @@ foreach ($modeName in $Mode) {
             $source = Join-Path $root "$program.kimi"
             [IO.File]::WriteAllText($source, $text, [Text.UTF8Encoding]::new($false))
         }
-        & (Join-Path $PSScriptRoot 'milestone-harness.ps1') -Milestone 0 -ToolchainRoot $ToolchainRoot -Configuration $Configuration -Expected "checksum $checksum`n" -Source $source -WorkRoot $workRoot -Runs $Runs | Out-Null
+        & (Join-Path $PSScriptRoot 'milestone-harness.ps1') -Milestone 0 -Configuration $Configuration -Expected "checksum $checksum`n" -Source $source -WorkRoot $workRoot -Runs $Runs | Out-Null
         $reportPath = (Get-ChildItem -LiteralPath $workRoot -Recurse -Filter verification.json | Select-Object -First 1).FullName
         $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
         if ($report.status -cne 'passed') { throw "Harness did not pass: $reportPath" }

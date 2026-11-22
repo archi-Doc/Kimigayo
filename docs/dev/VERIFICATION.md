@@ -164,8 +164,10 @@ with no heavy run registered. A worktree whose `tatara.h` differs from the share
 `src/Tatara`, or an older base after a window that changed `tatara.h`) gives itself a toolchain directory of its own, for
 all its runs, Unit and Session included: it removes the link alone (`cmd /c rmdir toolchain`, from Git Bash
 `cmd //c rmdir toolchain`; never `/s` or a recursive delete, which empties the shared root), runs setup into the new
-directory, and builds Kimi again; it never runs setup through the junction. A window that changes `tatara.h` announces on
-the board that older bases fail the start check until they merge dev (or take a toolchain of their own).
+directory, and builds Kimi again; it never runs setup through the junction. The development scripts select `-ToolchainRoot`,
+else the checkout's `toolchain`, and fail while `KIMI_TOOLCHAIN_ROOT` is set (Tatara B6b4): unset it. A window that changes
+`tatara.h` announces on the board that older bases fail the start check until they merge dev (or take a toolchain of their
+own).
 
 `-VerifyToolchain` runs `kimi toolchain verify` (the compiler's self-check, `toolchain.json`) and then
 `src/backend/windows-x64/check-toolchain.ps1` (the development toolchain: the tools, `tatara.dll` and the root's libraries
