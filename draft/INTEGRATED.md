@@ -1775,3 +1775,27 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   `UnsatisfiedEffectBound_Kd` at the member's declaration with a new requirement `Ownership.PlatformStatic`, `OwnershipRequirement`
   +1, this answer its approval under the enum's rule; no new code); §11: the question before B9c2 is answered. No other decision
   changes. No SPEC or IMPL text: B9c2 carries DIAGNOSTICS' requirement row. Nothing frozen.
+
+## 2026-11-22 — Four proposals withdrawn to Obsolete
+
+The owner's instruction (K's dialog, 2026-11-22, verbatim): 「draft/Proposalsフォルダーのファイルのうち、10/16 Library Binding Reuse、10/26 Review Efficiency Proposals、10/20 M69 Default Loan Correspondence、10/20 S3 Closure Origin Publication を廃止（Obsoleteに移動）しようと思っています。いかがですか？問題なければ移動してください。」
+K checked each before the move: none has a section integrated into SPEC or IMPL, no `docs/**` file links any of them, and no
+open PLAN row names one as its plan. Each moves to `Obsolete/` as 完了 with only its status sentence replaced; its open items are
+withdrawn with it, and a remaining need becomes a new PLAN row.
+
+- `Obsolete/2026-10-16 Library Binding Reuse.md`: a design proposal for reusing the embedded library's Binding results, which
+  awaited the owner's decision (its §1.3). It was never taken in, implemented or registered in this file. Withdrawn.
+- `Obsolete/2026-10-26 Review Efficiency Proposals.md`: the R5 planning session's proposals for WORKFLOW's reviews, VERIFICATION's
+  checks and PLAN's open-issue rows, placed in `Proposals/` on the owner's 2026-10-26 request; by its own text nothing in it was
+  adopted until the owner revised WORKFLOW. The later WORKFLOW revisions and DECISIONS Q entries stand on their own records.
+  Withdrawn.
+- `Obsolete/2026-10-20 M69 Default Loan Correspondence Plan.md`: evaluated useful on 2026-10-21 (that entry). Its issue, PLAN
+  G171, was taken up by A5's step 2 designs (the copy disposition under DECISIONS R4-M90; R4-M92's G171 interim superseded by
+  R4-M97) and is no longer in PLAN. M69-0, M69-2 and M69-3 are withdrawn with it.
+- `Obsolete/2026-10-20 S3 Closure Origin Publication Plan.md`: evaluated useful on 2026-10-21 (that entry). 2a0-D (DECISIONS
+  R4-M94) took its body-relative atom classes; its other units refined A5 step 2 units, whose plan closed on 2026-11-19 with its
+  remaining units in PLAN G396 (that entry). Withdrawn; what remains is G396's.
+- Links: the `Proposals/` paths in this file's earlier entries (2026-10-21, 2026-11-19) and in the frozen
+  `Changes/2026-10-21 Closure Calls as Receiver Calls.md` are unchanged and read at the commit before this move; the path in
+  `Sketches/A5 Step 0/prototype.md` is repointed. The moved files keep their folder depth, so their own relative links resolve as
+  before.
