@@ -74,7 +74,7 @@ internal sealed partial class MirBorrows
     // value it takes, a transit value's or E's store, or none (None: a destruction's own hold, which no value carries); the reservation's
     // anchor; the static Field an effect met (R4-M92); and last its subject and, inside an inline default copy, the default's operation
     // (Evaluated).
-    private (SourceRef Subject, int Count) Facts(SourceRef anchor, int via, MirLocation at, int reservation, ProblemFact? effect)
+    private (SourceRef Subject, int Count) Facts(int found, int via, MirLocation at, int reservation, ProblemFact? effect)
     {
         var (operation, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
         SourceRef? witness = via == None ? null : operation;
@@ -89,7 +89,7 @@ internal sealed partial class MirBorrows
         }
 
         var count = 0;
-        this.facts[count++] = new(ProblemFactKind.Anchor, anchor);
+        this.facts[count++] = new(ProblemFactKind.Anchor, this.Anchor(found, at));
         if (witness is { } site)
         {
             this.facts[count++] = new(kind, site);
@@ -107,6 +107,11 @@ internal sealed partial class MirBorrows
 
         return this.Evaluated(at, count);
     }
+
+    // What a check found's anchor (D14): a Loan's issuing location's subject, a guard marker's candidate's declaration, else (None: a
+    // destruction's own hold, R3) the location's.
+    private SourceRef Anchor(int found, MirLocation at)
+        => found >= this.loanBase ? this.Site(found - this.loanBase) : found >= Markers ? this.body.Subject(this.body.Locals[found - Markers].Source) : this.Subject(at);
 
     // A problem's subject at a location, after the count facts built (D13): inside an inline default copy the outermost omitting call, with
     // the default's operation as an Evaluated fact; else the location's subject.
