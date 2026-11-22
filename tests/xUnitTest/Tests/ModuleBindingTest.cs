@@ -286,6 +286,20 @@ public partial class ModuleBindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
     }
 
+    // F's ruling N1-4 (2): a configured path's node lives for the Compilation and its rows are reset each pass, so an edit beside it (a
+    // document added, the module renumbered) leaves its lookup current: each later pass resolves through it again, and judges it again.
+    [Fact]
+    public void AConfiguredPathStaysCurrentAcrossAnEdit()
+    {
+        var compilation = Create("public func main() => value()", "public group Api\n    public func value() => ()", configure: (root, _) => root.Alias = ["Lib.Api"]);
+        Assert.True(compilation.Bind().IsComplete);
+        compilation.Kotonoha.AddSource(new SourceDocument("more.kimi", "func more() => value()"));
+        Assert.True(compilation.Bind().IsComplete);
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "func bad() => missing()"));
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, Assert.Single(compilation.Binding.Issues).Code);
+    }
+
     [Theory]
     [InlineData("func f(x: Lib.Api.Box, y: Lib.Api.Box<i32>) => ()", false, true)]
     [InlineData("func f(x: ::Lib.Api.Box, y: ::Lib.Api.Box<i32>) => ()", false, true)]
