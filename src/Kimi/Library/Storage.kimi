@@ -23,16 +23,16 @@ internal group Storage
             self.count = count
             self.loan = Loan<ref/E during source>.init()
 
-    /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
+    /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements: `storage` addresses
+    /// the first of them and `count` counts them.
     internal struct UniqRemainder<E> {source}
-        internal let storage: raw/E during source
-        internal var position: isize = 0
+        internal var storage: raw/E during source
         internal var count: isize
         internal let loan: Loan<uniq/E during source>
 
-        /// Starts at the first of `count` elements. The caller's obligations, which the signature cannot state:
-        /// `storage` addresses them in what `source` covers, with read and write authority, and the function that
-        /// returns this remainder states `source` as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
+        /// The caller's obligations, which the signature cannot state: `storage` addresses `count` elements in what
+        /// `source` covers, with read and write authority, and the function that returns this remainder states `source`
+        /// as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
         internal init(storage: raw/E during source, count: isize)
             self.storage = storage
             self.count = count
@@ -70,9 +70,8 @@ internal group Storage
             .Some(let resolved) => resolved
             .None => Storage.indexBounds()
         unsafe
-            // `0 <= selected.start <= state.count`, and the storage holds `position + count` elements.
-            let offset = (state.position@Wrapping<isize> + selected.start@Wrapping<isize>)@isize
-            let start = state.storage + offset
+            // `0 <= selected.start <= state.count`, and `storage` addresses `count` elements.
+            let start = state.storage + selected.start
             return UniqSlice<E>.init(UniqRemainder<E>.init(start, selected.length))
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
@@ -209,11 +208,11 @@ internal group Storage
     /// Splits the first untaken element off as a child Loan and advances the exclusive remainder.
     internal func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>
         require state.count > 0 else => return .None
-        let position = state.position
-        // `count > 0` bounds both steps: the remainder's storage holds `position + count` elements.
-        state.position = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
+        let first = state.storage
+        // `count > 0` bounds both steps: `storage` addresses `count` elements.
+        unsafe => state.storage = first + 1
         state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
-        unsafe => return .Some(state.storage[position]@uniq)
+        unsafe => return .Some((*first)@uniq)
 
     /// Lends the key and value of the first untaken entry for shared access and advances along the insertion order.
     internal func splitFirst<K, V>(state: uniq/DictionaryRefRemainder<K, V>) -> Option<(ref/K during state.source, ref/V during state.source)>
@@ -298,19 +297,19 @@ internal group Storage
         require firstPosition != secondPosition else => return .None
         let low = if firstPosition < secondPosition => firstPosition else => secondPosition
         let high = if firstPosition < secondPosition => secondPosition else => firstPosition
-        let start = state.position
+        let start = state.storage
         unsafe
             // Discard each skipped prefix's authority, then remove the selected element before splitting it.
             // Distinct positions let the raw Places designate distinct Places, also when E is zero-sized (SPEC 5.2).
-            // `0 <= low < high < count`, and the storage holds `start + count` elements, so no step below overflows.
+            // `0 <= low < high < count`, and `start` addresses `count` elements, so no step below overflows.
             let afterLow = (low@Wrapping<isize> + 1@Wrapping<isize>)@isize
             let afterHigh = (high@Wrapping<isize> + 1@Wrapping<isize>)@isize
-            state.position = (start@Wrapping<isize> + afterLow@Wrapping<isize>)@isize
+            state.storage = start + afterLow
             state.count = (count@Wrapping<isize> - afterLow@Wrapping<isize>)@isize
-            let lower = state.storage[(start@Wrapping<isize> + low@Wrapping<isize>)@isize]@uniq
-            state.position = (start@Wrapping<isize> + afterHigh@Wrapping<isize>)@isize
+            let lower = start[low]@uniq
+            state.storage = start + afterHigh
             state.count = (count@Wrapping<isize> - afterHigh@Wrapping<isize>)@isize
-            let upper = state.storage[(start@Wrapping<isize> + high@Wrapping<isize>)@isize]@uniq
+            let upper = start[high]@uniq
             if firstPosition < secondPosition => return .Some((lower@move, upper@move))
             return .Some((upper@move, lower@move))
 
