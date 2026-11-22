@@ -354,32 +354,17 @@ public sealed partial class MirBuildTest
     public void AFieldAMembersPremiseMakesNeverIsAcquiredAsTheNeverValue()
         => _ = Body("struct Box<E>\n    var v: E\n    public func f(self: ref/Self) -> i32\n        E is Never\n        return self.v\n", "f");
 
-    // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
-    // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call),
-    // which marks f, the body it lies in, alone (MirBody.HasConstructionRecord; GR-1a, fail-before: none).
-    [Fact]
-    public void ATupleOperatorWithoutItsComparisonIsUnsupported()
-    {
-        var c = Compile(Unbuilt.Declarations + $"func f(a: ref/{Unbuilt.Tuple}, b: ref/{Unbuilt.Tuple}) -> bool => a == b\n");
-        var program = c.BuildMir();
-        Assert.Empty(program.Findings);
-        var record = Assert.Single(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
-        Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
-        Assert.Equal(["f"], program.Bodies.ToArray().Where(static x => x.HasConstructionRecord && x.Source.Module == 0).Select(static x => x.Key.Decl?.Name));
-    }
-
-    // SPEC 13.4, 23.1.2 (DECISIONS BU-38, R5-M166): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or
-    // through a handle, has its comparison, since what the leaf's witness runs does not depend on that part: its comparison call (equals
-    // under the operator mode) builds, with no record of the builder's (fail-before: the Limit of the twin above, Unsupported_Kd at the
-    // operator).
+    // SPEC 13.4, 13.4.1, 23.1.2 (DECISIONS BU-38, R5-M166, R7-M54 (R7-T1 c4)): what a tuple operator's leaf's witness runs does not depend
+    // on the leaf's storage, so a tuple operator whose leaf's storage rests on a part Binding rejected, inline or through a handle, or nests
+    // past Binding's bound (Wrap^80<i32>, a complete program) has its comparison: its comparison call (equals under the operator mode) builds,
+    // with no record of the builder's (fail-before: for the deep leaf, TyCtxt.Comparison's Limit, Unsupported_Kd at the operator with an
+    // Opaque value, the builder's B1; for the rejected ones, that Limit before BU-38).
     [Theory]
-    [InlineData("struct Bad\n    Self is Equatable\n    public var m: Missing\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Bad, b: ref/Bad) -> bool => (a, 1) == (b, 1)\n")]
-    [InlineData("struct Bad\n    public var m: Missing\nstruct Sx\n    Self is Equatable\n    public var x: rc/Bad\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Sx, b: ref/Sx) -> bool => (a, 1) == (b, 1)\n")]
-    public void ATupleOperatorOverRejectedStorageBuildsItsComparison(string source)
+    [MemberData(nameof(TupleOperators))]
+    public void ATupleOperatorBuildsItsComparisonWhateverItsStorage(string source, string errors)
     {
         var c = Compile(source);
-        Assert.Equal(["UnresolvedBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
+        Assert.Equal(errors, string.Join(' ', CompilationTestHelper.BindingErrors(c).Select(static x => x.Code)));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
@@ -390,6 +375,18 @@ public sealed partial class MirBuildTest
             Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Requirement, Symbol.Name: "equals", Arg: (int)ComparisonMode.Operator },
         });
     }
+
+    // ATupleOperatorBuildsItsComparisonWhateverItsStorage's programs and their Binding records.
+    public static TheoryData<string, string> TupleOperators => new()
+    {
+        { "struct Bad\n    Self is Equatable\n    public var m: Missing\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Bad, b: ref/Bad) -> bool => (a, 1) == (b, 1)\n", "UnresolvedBinding_Kd" },
+        { "struct Bad\n    public var m: Missing\nstruct Sx\n    Self is Equatable\n    public var x: rc/Bad\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Sx, b: ref/Sx) -> bool => (a, 1) == (b, 1)\n", "UnresolvedBinding_Kd" },
+        {
+            "struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+                $"func f(a: ref/{string.Concat(Enumerable.Repeat("Wrap<", 80))}i32{new string('>', 80)}, b: ref/{string.Concat(Enumerable.Repeat("Wrap<", 80))}i32{new string('>', 80)}) -> bool => (a, 1) == (b, 1)\n",
+            string.Empty
+        },
+    };
 
     // SPEC 8.2.3, 13.4 (R8-OT): a comparison operand whose Type an identity premise makes layered (T is ref/string or uniq/string, ref/U
     // over U is ref/string, under an explicit ref, uniq or pair layer, on either side, in a Closure or before a Literal Pattern) compares

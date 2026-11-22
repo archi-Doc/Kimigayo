@@ -361,6 +361,10 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open): the canonical case's Type `formed` marked open, with its outer Semantics and
+    // Origin (a raw layer's stays in the formed Type alone), so a Function Type whose input it is keeps its per-call binder.
+    internal BoundType Open(BoundType formed) => this.Intern(BoundTypeKind.Open, null, formed.Semantics, [formed], origin: formed.Origin);
+
     // SPEC 22.10.5 and rule L (StackLimit): the interpolation-bound term of a direct interpolation with these value Types
     // (a Tuple) and literal bytes, its stack region's size: the constant StackBound decides, else the term (Term), which a
     // substitution folds again (Refold). R8-W2 a2's builder forms it.

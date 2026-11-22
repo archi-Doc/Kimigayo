@@ -29,11 +29,12 @@ public sealed class EmissionArtifactsTest : IDisposable
             ["unused"] = new() { Kind = "import", Input = "unused.lib" },
             Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Input = "native/codec.lib" }],
         };
-        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-        Assert.Equal(Path.Combine(this.directory, "out", "Hello.ll"), path);
-        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+        Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+        var paths = ArtifactPaths.Create(c.Project);
+        Assert.Equal(Path.Combine(this.directory, "out", "Hello.ll"), paths.Ir);
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
-        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path!))), root.GetProperty("irSha256").GetString());
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(paths.Ir))), root.GetProperty("irSha256").GetString());
         Assert.Equal("Hello.ll", root.GetProperty("irFile").GetString());
         using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/backend/windows-x64/profile.json"))));
         Assert.Equal(catalog.RootElement.GetProperty("llvmVersion").GetString(), ToolchainIdentity.LlvmVersion);
@@ -49,7 +50,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Equal("kimi_backend", libraries[1].GetProperty("name").GetString());
         Assert.Equal("toolchain", libraries[1].GetProperty("resolution").GetString());
         Assert.False(libraries[1].TryGetProperty("input", out _));
-        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(path!)!, "*.tmp"));
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(paths.Ir)!, "*.tmp"));
     }
 
     [Theory]
@@ -64,8 +65,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         c.Project.ProjectFile.Optimization = optimization;
         c.Project.ProjectFile.OutputPath = outputPath;
-        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-        Assert.Null(path);
+        Assert.False(EmissionArtifacts.Publish(c, null));
         Assert.NotEmpty(PublicationFailure(c));
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
     }
@@ -80,8 +80,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create();
         c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = kind, Input = input } };
-        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-        Assert.Null(path);
+        Assert.False(EmissionArtifacts.Publish(c, null));
         Assert.NotEmpty(PublicationFailure(c));
     }
 
@@ -94,8 +93,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create();
         c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Kind = kind, Input = input }] };
-        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-        Assert.Null(path);
+        Assert.False(EmissionArtifacts.Publish(c, null));
         Assert.NotEmpty(PublicationFailure(c));
     }
 
@@ -123,8 +121,9 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void DefaultManifestNeedsNoToolchainAndRejectsOldSchema()
     {
         var c = this.Create();
-        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-        var json = File.ReadAllText(Path.ChangeExtension(path!, ".link.json"));
+        Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+        var paths = ArtifactPaths.Create(c.Project);
+        var json = File.ReadAllText(paths.Manifest);
         using var manifest = JsonDocument.Parse(json);
         Assert.False(manifest.RootElement.TryGetProperty("toolchain", out _));
         NativeToolchain.ValidateManifest(manifest.RootElement);
@@ -139,8 +138,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var output = Path.Combine(this.directory, "out");
         Directory.CreateDirectory(Path.Combine(output, "Hello.link.json"));
         File.WriteAllText(Path.Combine(output, "Hello.ll"), "old IR");
-        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-        Assert.Null(path);
+        Assert.False(EmissionArtifacts.Publish(c, null));
         Assert.NotEmpty(PublicationFailure(c));
         Assert.Empty(Directory.EnumerateFiles(output, "*.tmp"));
     }
@@ -177,33 +175,68 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.False(File.Exists(source));
     }
 
-    [Fact]
-    public void ReplaceReportsAPersistentHoldAndKeepsBothFiles()
+    // A replacement that keeps failing (ArtifactFiles.Replace; PLAN G1257) is one IOException naming its destination once, with the
+    // system's message and the move's failure inside, and keeps both files: a destination held with or without delete sharing, read-only,
+    // a directory, or in a missing directory (the move names no path on Windows, so every caller's message gains it here).
+    [Theory]
+    [InlineData("held", typeof(UnauthorizedAccessException))]
+    [InlineData("held without delete sharing", typeof(UnauthorizedAccessException))]
+    [InlineData("read-only", typeof(UnauthorizedAccessException))]
+    [InlineData("a directory", typeof(UnauthorizedAccessException))]
+    [InlineData("in a missing directory", typeof(DirectoryNotFoundException))]
+    public void ReplaceReportsAPersistentFailureNamingItsDestinationAndKeepsBothFiles(string row, Type failure)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows rename semantics test.");
-        var destination = Path.Combine(this.directory, "Hello.link.build.json");
-        var source = destination + ".tmp";
-        File.WriteAllText(destination, "old");
+        var destination = Path.Combine(this.directory, row == "in a missing directory" ? "missing" : string.Empty, "Hello.link.build.json");
+        var source = Path.Combine(this.directory, "Hello.link.build.json.tmp");
+        var old = row is "a directory" or "in a missing directory" ? null : "old";
         File.WriteAllText(source, "new");
-        using (new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+        if (old is not null)
         {
-            Assert.Throws<UnauthorizedAccessException>(() => ArtifactFiles.Replace(source, destination));
+            File.WriteAllText(destination, old);
+        }
+        else if (row == "a directory")
+        {
+            Directory.CreateDirectory(destination);
         }
 
-        Assert.Equal("old", File.ReadAllText(destination));
+        var sharing = row == "held" ? FileShare.Read | FileShare.Delete : FileShare.Read;
+        using var held = row.StartsWith("held", StringComparison.Ordinal) ? new FileStream(destination, FileMode.Open, FileAccess.Read, sharing) : null;
+        if (row == "read-only")
+        {
+            File.SetAttributes(destination, FileAttributes.ReadOnly);
+        }
+
+        IOException ex;
+        try
+        {
+            ex = Assert.Throws<IOException>(() => ArtifactFiles.Replace(source, destination));
+        }
+        finally
+        {
+            held?.Dispose();
+            if (row == "read-only")
+            {
+                File.SetAttributes(destination, FileAttributes.Normal); // Before Dispose deletes the directory.
+            }
+        }
+
+        Assert.IsType(failure, ex.InnerException);
+        Assert.Equal($"The file could not be replaced: {destination}. {ex.InnerException!.Message}", ex.Message);
         Assert.Equal("new", File.ReadAllText(source));
+        Assert.Equal(old, File.Exists(destination) ? File.ReadAllText(destination) : null);
     }
 
     [Fact]
     public void FailedSemanticGatePreservesOldOutputsWithoutClaimingThem()
     {
         var c = this.Create();
-        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-        var previous = File.ReadAllBytes(path!);
+        Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+        var paths = ArtifactPaths.Create(c.Project);
+        var previous = File.ReadAllBytes(paths.Ir);
         c.Bind(); // The earlier analysis and startup check cannot authorize another publication.
-        Assert.False(EmissionArtifacts.Publish(c, null, out var failedPath));
-        Assert.Null(failedPath);
-        Assert.Equal(previous, File.ReadAllBytes(path!));
+        Assert.False(EmissionArtifacts.Publish(c, null));
+        Assert.Equal(previous, File.ReadAllBytes(paths.Ir));
     }
 
     [Fact]
@@ -234,8 +267,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         var blocker = Path.Combine(this.directory, "out");
         File.WriteAllText(blocker, "a file where the output directory goes");
-        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-        Assert.Null(path);
+        Assert.False(EmissionArtifacts.Publish(c, null));
         var record = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
         Assert.Equal(("ArtifactPublicationFailed_Kd", DiagnosticCategory.Input, DiagnosticSeverity.Error), (record.Code, record.Category, record.Severity));
         Assert.NotEmpty(PublicationFailure(c));
@@ -290,8 +322,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { ["unused"] = new() { Kind = "import", Input = "unused.dll" } };
         FunctionCodegenTest.RemoveTheDropVerdict(c);
-        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-        Assert.Null(path);
+        Assert.False(EmissionArtifacts.Publish(c, null));
         Assert.Equal(
             [("ArtifactPublicationFailed_Kd", (string?)null), ("InternalInvariant_Kd", "\"Hello, world!\"")],
             TestDiagnostics.Of(c).Select(static x => (x.Code, x.Text)).Order());
@@ -335,8 +366,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             var c = this.Create();
             c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
 
-            Assert.False(project.PublishArtifacts(c, null, null, out var path));
-            Assert.Null(path);
+            Assert.False(project.PublishArtifacts(c, null, null));
         }
         else
         {
@@ -361,10 +391,10 @@ public sealed class EmissionArtifactsTest : IDisposable
         var console = new DiagnosticContractTest.DiagnosticConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
         var c = this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
-        Assert.True(project.PublishArtifacts(c, null, null, out var path), console.Text);
+        Assert.True(project.PublishArtifacts(c, null, null), console.Text);
         Assert.Equal("He\\u{0}llo.kimi:3:24", c.Locations.Text(SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MacroKoto>().Single())));
         Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Text, StringComparison.Ordinal);
-        Assert.True(File.Exists(path));
+        Assert.True(File.Exists(ArtifactPaths.Create(c.Project).Ir));
     }
 
     [Fact]
@@ -418,15 +448,16 @@ public sealed class EmissionArtifactsTest : IDisposable
                 ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('a', 64) },
                 ["unused"] = new() { Kind = "static", Input = "unused.lib" },
             });
-        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+        Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+        var paths = ArtifactPaths.Create(c.Project);
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var libraries = manifest.RootElement.GetProperty("libraries");
         Assert.Equal(["codec", "kernel32", "kimi_backend", "zlib"], libraries.EnumerateArray().Select(x => x.GetProperty("name").GetString()));
         Assert.Equal(("static", Path.Combine("..", "native", "codec.lib")), (libraries[0].GetProperty("kind").GetString(), libraries[0].GetProperty("input").GetString()));
         Assert.Equal(("import", "zlib.lib"), (libraries[3].GetProperty("kind").GetString(), libraries[3].GetProperty("input").GetString()));
         Assert.Equal(new string('a', 64), libraries[0].GetProperty("sha256").GetString());
         Assert.False(libraries[3].TryGetProperty("sha256", out _));
-        Assert.Contains("declare dllimport i32 @inflate(i32)\n", File.ReadAllText(path!));
+        Assert.Contains("declare dllimport i32 @inflate(i32)\n", File.ReadAllText(paths.Ir));
     }
 
     // R9-B1: the manifest states the generation result's external declarations, which the native build's object inspection reads in
@@ -445,8 +476,9 @@ public sealed class EmissionArtifactsTest : IDisposable
                 ["codec"] = new() { Kind = "static", Input = "codec.lib" },
                 ["zlib"] = new() { Kind = "import", Input = "zlib.lib" },
             });
-        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+        Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+        var paths = ArtifactPaths.Create(c.Project);
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
         Assert.Equal(
             [("encode", false), ("GetLastError", true)],
@@ -461,8 +493,9 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void ADependencysCalledImportIsDeclared()
     {
         var c = this.Create("var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()");
-        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+        Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+        var paths = ArtifactPaths.Create(c.Project);
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var declared = manifest.RootElement.GetProperty("externalDeclarations").EnumerateArray()
             .Select(static x => (x.GetProperty("symbol").GetString()!, x.GetProperty("dllimport").GetBoolean())).ToArray();
         Assert.Equal(c.Generated.Externals.Select(static x => (x.Symbol, x.DllImport)), declared);
@@ -479,8 +512,9 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void AMalformedExternalDeclarationIsRejected(string declarations, string failure)
     {
         var c = this.Create();
-        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-        var json = File.ReadAllText(Path.ChangeExtension(path!, ".link.json"));
+        Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+        var paths = ArtifactPaths.Create(c.Project);
+        var json = File.ReadAllText(paths.Manifest);
         Assert.Contains("\"externalDeclarations\": []", json, StringComparison.Ordinal);
         using var malformed = JsonDocument.Parse(json.Replace("\"externalDeclarations\": []", "\"externalDeclarations\": " + declarations, StringComparison.Ordinal));
         Assert.Contains(failure, Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(malformed.RootElement)).Message);
@@ -492,8 +526,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.CreateForeign(
             "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\npublic func main() => ()",
             settings => settings.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
-        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-        Assert.Null(path);
+        Assert.False(EmissionArtifacts.Publish(c, null));
         Assert.Contains("has no NativeLibraries supply", PublicationFailure(c));
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
     }

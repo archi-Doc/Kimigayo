@@ -90,7 +90,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var rows = Corpus is { } corpus
             ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => ir + "|" + level)).ToArray()
-            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => Path.ChangeExtension(Path.ChangeExtension(m, null), ".ll") + "|" + Level(m))
+            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => ArtifactPaths.IrOf(m) + "|" + Level(m))
                 .Concat(Levels.Select(level => this.DebugIr() + "|" + level)).ToArray();
         await Run(rows, row => this.CompareWithTools(row));
     }
@@ -121,7 +121,8 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var manifest = Manifest(rows[i % 2]);
             await NativeToolchain.BuildManifest(manifest, (_, _) => { }, TestContext.Current.CancellationToken);
-            var products = Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".obj") + Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".exe");
+            var built = ArtifactPaths.Create(ArtifactPaths.IrOf(manifest), Level(manifest));
+            var products = ArtifactFiles.Hash(built.Stem + ".obj") + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
             first[i % 2] ??= products;
             Assert.Equal(first[i % 2], products);
         }
@@ -135,7 +136,7 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
-        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var invalid = Path.Combine(this.directory, "invalid.ll");
         File.WriteAllText(invalid, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f( {\n");
@@ -217,7 +218,7 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
-        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var before = FilterOwner();
         tatara.Optimize(Context, ir, Path.Combine(this.directory, "hello.O2.ll"));

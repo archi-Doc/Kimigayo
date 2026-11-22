@@ -287,7 +287,7 @@ public partial class TypeIdentityTest
     public void AnOriginalMeetsAsItsPairApplication(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [G925]", program, records);
 
-    private static string PremiseRecords(string source)
+    internal static string PremiseRecords(string source)
         => string.Join(' ', DiagnosticCorpus.Check(source, "Library").Diagnostics
             .Select(x => $"{x.Code}@{source[..x.Span!.Value.Start].Count(static c => c == '\n') + 1}").Order(StringComparer.Ordinal));
 }

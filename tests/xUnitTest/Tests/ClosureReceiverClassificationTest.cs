@@ -640,7 +640,8 @@ public class ClosureReceiverClassificationTest
         var operations = (BoundArgumentOperation[])typeof(CallPlan).GetField("argumentOperations", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(CallPlan.Of(c.Binding, call))!;
         var use = operations[0].Source!;
         operations[0] = operations[0] with { Source = call.Method };
-        typeof(Binding).GetMethod("BindClosure", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [closure, Binding.KeptScopes.Slot(closure), null, false]);
+        var bindClosure = typeof(Binding).GetMethod("BindClosure", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        bindClosure.Invoke(c.Binding, [closure, Binding.KeptScopes.Slot(closure), null, Activator.CreateInstance(bindClosure.GetParameters()[3].ParameterType)]); // No open part.
         Assert.Equal(BindingFailure.Internal, c.Semantics.FailureOf(use));
     }
 

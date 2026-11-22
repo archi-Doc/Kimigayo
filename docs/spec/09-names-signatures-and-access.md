@@ -251,7 +251,7 @@ Members opened by opening aliases ([§18.2.1](18-modules-and-dependencies.md#182
 
 The first component of `A.B.C` is found by unqualified lookup; later components search only the selected target's members. Intermediate Type-side components are Qualifiers; the final role follows the syntax. Associated-Type projections follow [§8.5](08-generics-constraints-and-contracts.md#85-associated-types) and [§9.7.3](#973-nested-types-and-associated-projections).
 
-Where Type and Value qualification are both possible, each namespace commits its own first stage and follows its complete path (roles, access, static or instance use); a stop under [§9.5](#95-unqualified-lookup) fails the path. The sole successful path is selected; several are ambiguous, and arguments or expected Types never decide. Paths to one Symbol count once; value accesses through different receivers are distinct paths.
+Where Type and Value qualification are both possible, each namespace commits its own first stage and follows its complete path (roles, access, static or instance use); a stop under [§9.5](#95-unqualified-lookup) fails the path. The sole successful path is selected; several are ambiguous, and arguments or expected Types never decide. Paths to one Symbol count once, as the Type path when one of them is a Type path; value accesses through different receivers, and an access with a receiver and one without, are distinct paths.
 
 `::A.B` starts at the Compilation root of the use's Kotonoha ([§18](18-modules-and-dependencies.md#18-modules-and-dependencies)), ignoring locals and aliases. Root-name collisions with reference names are governed by [§18.4.1](18-modules-and-dependencies.md#1841-identities-and-reference-names).
 

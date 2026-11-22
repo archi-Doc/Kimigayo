@@ -131,6 +131,20 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Single(notes, static x => x.Contains("'B.kimi', 'b.kimi'", StringComparison.Ordinal));
     }
 
+    // SPEC 23.1.2, 11.6 (DECISIONS G52-1; G812 ruling 174): a Property whose header query failed (its cycle) still binds its accessor
+    // bodies outside its frame, so a getter's own record is reported beside the cycle's and no later phase meets an unbound body.
+    [Theory]
+    [InlineData("group G\n    let a = b\n        get() -> i32\n            return storage\n    let b = a\n", false)]
+    [InlineData("group G\n    let a = b\n        get() -> i32\n            return nosuch\n    let b = a\n", true)]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = T.b\n        get() -> i32\n            return nosuch\n", true)]
+    public void APropertyInACycleKeepsItsAccessorBodiesBound(string source, bool getterRecord)
+    {
+        var output = this.Run(this.WriteProject("Cycle", ("main.kimi", source)));
+        Assert.Contains(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.CyclicBinding_Kd));
+        Assert.DoesNotContain(output.Diagnostics, static x => x.Category == DiagnosticCategory.Internal);
+        Assert.Equal(getterRecord, output.Diagnostics.Any(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd)));
+    }
+
     // SPEC 23.1.2, IMPL 20.1: TestSources entries are compared as resolved paths, and each duplicate is its own record, in a product and
     // a test check alike.
     [Theory]

@@ -333,7 +333,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            var definition = Definition(function);
+            var definition = CalleeDefinition(function);
             var excluded = this.binding.resultPremiseExcluded;
             this.binding.resultPremiseExcluded = definition;
             try
