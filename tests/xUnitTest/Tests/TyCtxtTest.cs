@@ -117,6 +117,17 @@ public sealed partial class TyCtxtTest
     private const string FitStore = "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b)|" +
         "    origin b outlives a|    h@follow = Wrap.init(q)|";
 
+    // ce2's callee (`origin b outlives a`), ce2t's (`origin a outlives b`) and their caller, whose `static` arguments leave a's solution
+    // kx's Origin.
+    private const string FitClause = "func store2(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during b)|" +
+        "    origin b outlives a|    h@follow = q|";
+
+    private const string FitClauseT = "func store5(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during a)|" +
+        "    origin a outlives b|    h@follow = q|";
+
+    private const string FitClauseCaller = "func ce2(ks: ref/i32 during static, qs: raw/u8 during static)|    var x = 1|    let kx = x@ref|" +
+        "    var hp = kx@follow@raw@raw/u8|    ";
+
     private const string FitHolderStruct = "struct HF {s}|    var p: ";
 
     private const string FitHolderBody = "|        self.p = q|        self.k = k|    public func put<U>(self: uniq/Self, v: U) => ()|";
@@ -991,18 +1002,25 @@ public sealed partial class TyCtxtTest
         Assert.Equal(expected, BorrowRows(c).Where(static x => x.EndsWith(nameof(Binding.LimitMarks.SharedAddress), StringComparison.Ordinal)));
     }
 
-    // SPEC 5.7 under O-498 Q1 (i), G147 ruling 75 (Z6-F2): a value whose raw layer states another Origin, fitted into a raw layer, marks
-    // the atom that layer states FittedIntoHolder (the raw fit's target; at swap's invariant position its value's too), whatever form
-    // places it: an assignment (t6, t6t, the written-Type t6w, n01), a written-Type initializer (t4k), an argument through Self's E (t6m)
-    // or a callee's own Origin (t6c), replace and swap (t6r, t6rx), a generic result (t6g), a Field write (t6f), a write through `h@uniq`
-    // (t6p), a conversion restating the Origin outside unsafe (t6x), a constructor's slot (d04, d04t: each operand of its meet), and a
-    // callee's clause relating an input raw layer's Origin to another (t6e, the raw fit's second source; h's atom is also marked by h's
-    // own argument fit, so the row does not isolate the clause; store's own body fit marks its `a`, q's fit y's); t6's reassignment also as an overloaded call's
-    // argument (t6o) and in a Closure body (t6k). `null` and an equal Origin form none (p02, t08x, x01, d01, t9, t9k). h's layer states the
-    // atom `s@follow@raw` states, w's projection (which also carries SharedAddress); `during s` names s's own region, another atom, so
-    // t6w's, t6wn's and p10's initializers are raw fits too (labels.txt's addendum (2)). Labels from SPEC (`G147\z6f2i\labels.txt`,
-    // before any run; t6c's and t6e's forms after their invalid first forms): the marked rows I (h's layer may hold r's exclusive
-    // address of v, so put may store z's borrow in v), t6wn, x01, d01, t9 and t9k V, p02, p10 and t08x I for other reasons.
+    // SPEC 5.7 under O-498 Q1 (i), G147 rulings 75 and 76 (Z6-F2): a value whose raw layer states another Origin, fitted into a raw
+    // layer, marks the atom that layer states FittedIntoHolder (the raw fit's target; at swap's invariant position its value's too),
+    // whatever form places it: an assignment (t6, t6t, the written-Type t6w, n01), a written-Type initializer (t4k), an argument through
+    // Self's E (t6m) or a callee's own Origin (t6c), replace and swap (t6r, t6rx), a generic result (t6g), a Field write (t6f), a write
+    // through `h@uniq` (t6p), a conversion restating the Origin outside unsafe (t6x), a constructor's slot (d04, d04t: each operand of its
+    // meet), and a callee's clause relating an input raw layer's Origin to another (the raw fit's second source). ce2 isolates the clause
+    // (`origin b outlives a`): `a and static` is a (SPEC 15.2.2), so a's solution is kx's Origin and every argument's raw Origin is its
+    // parameter's, and x's projection is marked by the clause alone (store2's own body fit marks its `a`); its twin ce2t (`origin a
+    // outlives b`, the shorter end on no raw layer) marks none. t6e does not isolate it: the clause also makes a's solution a meet (`a
+    // and b`: w's and y's projections), so h's own argument fit marks both operands without it (store's body fit marks its `a`). t6's
+    // reassignment also as an overloaded call's argument (t6o) and in a Closure body (t6k). `null` and an equal Origin form
+    // none (p02, t08x, x01, d01, t9, t9k). h's layer states the atom `s@follow@raw` states, w's projection (which also carries
+    // SharedAddress), and `during s` names s's own region: by SPEC one Origin, the outer Origin of s's borrow (5.4, 15.2.1), which
+    // Binding splits into two atoms (PathOrigin reads a `let` borrow's region as its initializer borrow's atom, the Origin expression the
+    // let's own region), so t6w's, t6wn's and p10's initializers are raw fits too, a sound over-mark (labels.txt's addendum (2)). The
+    // split is a PLAN open issue (Front); its removal unmarks t6wn and p10. Labels from SPEC (`G147\z6f2i\labels.txt`, before any run;
+    // t6c's and t6e's forms after their invalid first forms; ce2 and ce2t `G147\z6f\dl\labels.txt`): the marked rows but ce2 I (h's layer
+    // may hold r's exclusive address of v, so put may store z's borrow in v), ce2, ce2t, t6wn, x01, d01, t9 and t9k V, p02, p10 and t08x
+    // I for other reasons.
     [Theory]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => h = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw)|if c => h = Wrap.init(r@follow@raw)" + FitTail, FitS)]
@@ -1015,6 +1033,8 @@ public sealed partial class TyCtxtTest
     [InlineData("", FitHead + "var h = Box.init(s@follow@raw@raw/u8)|if c => h.value = r@follow@raw@raw/u8" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c|    let hr = h@uniq|    hr@follow = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
     [InlineData(FitStore, FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => store(h@uniq, r@follow@raw@raw/u8, w@ref, y@ref)" + FitTail, "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b) Parameter 0:  FittedIntoHolder|" + FitS + "|var y = 2 Projection 0: i32 S FittedIntoHolder")]
+    [InlineData(FitClause + FitClauseCaller + "store2(kx, ks, hp@uniq, qs)|", "return", "func store2(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during b) Parameter 0:  FittedIntoHolder|var x = 1 Projection 0: i32 S SharedAddress, FittedIntoHolder")]
+    [InlineData(FitClauseT + FitClauseCaller + "store5(kx, ks, hp@uniq, kx@follow@raw@raw/u8)|", "return", "")]
     [InlineData("", FitHead + "var h = Wrap.init(r@follow@raw@(raw/u8 during s))" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder")]
     [InlineData("func g(v: ()) => ()|func g(v: i32) => ()|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => g(h = Wrap.init(r@follow@raw@raw/u8))" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|let pr = r@follow@raw@raw/u8|let hr = h@uniq|var put2 = func [hr, pr] () => hr@follow = Wrap.init(pr)|if c => put2()" + FitTail, FitS)]

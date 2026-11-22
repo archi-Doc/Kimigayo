@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
@@ -129,8 +128,9 @@ internal sealed partial class MirBorrows
 
     // R26-borrow's place (SPEC 7.2.3: a default that stores a value carrying an inspection Loan into storage the body does not own, "by
     // a write, or by a call or destruction that may store it there", is invalid "with the error at that operation"): in the checks
-    // replay of a template view, a location's entries at E, the stores it makes there (a write's Store, a call's or a destruction's
-    // Keep), each with the slot-rooted Loans they carry, once per Loan; the verdict stays the Returns' (DefaultBorrows).
+    // replay of a template view, the slot-rooted Loans of a location's E stores that do not rest (MirBorrows.Flow's eStores, Sure: a
+    // write's Store, a call's or a destruction's Keep), once per Loan; a set that rests (Φ_U, Φ_M) places none, so keepS's resting store
+    // leaves the Loan's record at its site; the verdict stays the Returns' (DefaultBorrows).
     private void DefaultStores(int location)
     {
         if (this.body.Key.Kind != MirBodyKind.DefaultTemplate)
@@ -139,32 +139,11 @@ internal sealed partial class MirBorrows
         }
 
         MirDataflow.Grow(ref this.defaultHeld, this.loanCount);
-        var first = this.defaultStores.Count;
-        for (var e = 0; e < this.entryCount; e++)
+        var placed = this.eStores[location].Sure;
+        this.Work += this.sets.Count(placed);
+        foreach (var element in this.sets.Elements(placed))
         {
-            if (this.entries[e] is { Slot: Escaped, Op: not Cleared } entry)
-            {
-                this.DefaultStored(entry.Value, location, first);
-                this.DefaultStored(entry.Own, location, first);
-            }
-        }
-
-        this.Work += this.entryCount;
-    }
-
-    // The slot-rooted Loans of a set a location stores in E (DefaultStores), the location's pairs from its first; a set that rests (Φ_U,
-    // Φ_M) places none, so keepS's resting store leaves the Loan's record at its site.
-    private void DefaultStored(int set, int location, int first)
-    {
-        if (this.Resting(set))
-        {
-            return;
-        }
-
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
-        {
-            if (this.SlotLoan(element) is >= 0 and var loan && !CollectionsMarshal.AsSpan(this.defaultStores)[first..].Contains((loan, location)))
+            if (this.SlotLoan(element) is >= 0 and var loan)
             {
                 this.defaultStores.Add((loan, location));
                 this.defaultHeld[loan] |= HeldByStore;

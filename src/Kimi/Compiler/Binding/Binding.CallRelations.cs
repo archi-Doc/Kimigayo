@@ -188,10 +188,10 @@ public sealed partial class Binding
                 this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
 
                 // G147 ruling 75 Q-B: a clause letting another Origin outlive (or equal) an input raw layer's Origin summarizes a fit the
-                // callee may make into that layer, so the call forms that raw fit (the second source of rawFits).
-                if (this.FormsBorrows && (this.InputRawLayerStates(selected, relation.Shorter) || (relation.Equality && this.InputRawLayerStates(selected, relation.Longer))))
+                // callee may make into that layer, so the call forms that raw fit (the second source of rawFits, by its one entry rule).
+                if (this.InputRawLayerStates(selected, relation.Shorter) || (relation.Equality && this.InputRawLayerStates(selected, relation.Longer)))
                 {
-                    this.rawFits.Add(new(shorter, longer, relation.Equality));
+                    this.AddRawFit(this.rawFits, shorter, longer, relation.Equality);
                 }
             }
         }
