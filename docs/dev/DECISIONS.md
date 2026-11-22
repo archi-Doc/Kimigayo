@@ -7851,8 +7851,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     none): SPEC 15.6.5's Borrow reached through a borrow where the Semantics case decides the layer (B1 of review 1: r6's uniq case
     lost its R26 to an S that named both cases). Judge's chains and Outlives' Bounds read the class's kinds (`MirOrigins.KindOf`,
     formed by `Promote` in `ClassEdges`); a reader of Fixed alone (Fixed's index `Pin`, W's `IsFixed`) reads the view's; the per-Ref
-    class count is formed once per Judge (`Reaching`). Removal condition: design (B) (`middle\notes\z19-design.md`, "Revision 2 needed
-    for B1"), which promotes in every class.
+    class count is formed once per Judge (`Reaching`). Removal condition: PLAN G1293 (design (B), `middle\notes\z19-design.md`,
+    "Revision 2 needed for B1"), which promotes in every class.
   - Supersedes PD11's second sentence (the step-2 plan, R4-M74; R4-M72's Merge item "completed by 2g-5"), R4-M90's 2e-D row
     "R26-borrow vs the Origin stratum", R4-M98's "2g-5 drops an Origin-stratum problem whose chain end R26-borrow reported", R4-M104's
     "The PreparedInput pair stays grouping" and R4-M132's clause "2g-5's PreparedInput rule never drops a problem another names as a
