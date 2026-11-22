@@ -330,7 +330,7 @@ public sealed class TataraCommandTest : IDisposable
     internal static void WriteLibrary(string path)
     {
         Directory.CreateDirectory(path);
-        File.WriteAllText(Path.Combine(path, "Lib.kimiproj"), $"OutputKind=\"Library\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(path, "Lib.kimiproj"), $"OutputKind=\"Library\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(path, "lib.kimi"), "func one() -> i32 => 1\n");
     }
 

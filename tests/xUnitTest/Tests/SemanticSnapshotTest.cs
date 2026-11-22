@@ -111,7 +111,7 @@ public sealed class SemanticSnapshotTest
     internal static (Compilation Compilation, Kotonoha Module) Bind(string name)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source(name)));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);

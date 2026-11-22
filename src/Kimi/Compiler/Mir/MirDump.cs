@@ -101,7 +101,7 @@ internal static partial class MirDump
         for (var i = 0; i < body.OpaqueSites.Length; i++)
         {
             var site = body.OpaqueSites[i];
-            Source(text.Append("  opaque ").Append(i), site.Source).Append(':');
+            Source(text.Append("  opaque ").Append(i), site.Source).Append(site.Kept > 0 ? $" kept {site.Kept}" : string.Empty).Append(':');
             foreach (var use in body.OpaqueUses.Slice(site.Start, site.Count))
             {
                 Place(text.Append(' '), body, use);

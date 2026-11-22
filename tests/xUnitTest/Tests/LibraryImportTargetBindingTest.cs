@@ -326,11 +326,11 @@ public class LibraryImportTargetBindingTest
         {
             var c = Compilation.CreateForTest();
             c.IsTestBuild = testBuild;
-            c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+            c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal)
             {
                 ["codec"] = new() { Kind = "import" },
             };
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", marker + Declaration + Use));
             for (var pass = 0; pass < 2; pass++)
             {
@@ -406,12 +406,12 @@ public class LibraryImportTargetBindingTest
     public void OneExternalSymbolRequiresOneSupplyKind(string first, string second, bool conflict)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal)
         {
             ["codec"] = new() { Kind = first },
             ["codec2"] = new() { Kind = second },
         };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var source = "group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()\n" +
             "group B\n    #LibraryImport(\"codec2\", \"shared\")\n    public unsafe func call(value: i32) -> ()";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
@@ -427,8 +427,8 @@ public class LibraryImportTargetBindingTest
     public void ReservedSupplyKindsParticipateInSymbolAgreement(string library, string symbol, string requirement)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = requirement } };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = requirement } };
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var source = "group A\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func reserve(size: u64) -> raw/u8\n" +
             "group B\n    #LibraryImport(\"codec\", \"" + symbol + "\")\n    public unsafe func reserve(size: u64) -> raw/u8";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
@@ -448,8 +448,8 @@ public class LibraryImportTargetBindingTest
             "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
             configure: (root, library) =>
             {
-                root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-                library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
+                root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
             });
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd);
@@ -479,14 +479,14 @@ public class LibraryImportTargetBindingTest
             "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
             configure: (root, library) =>
             {
-                root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-                library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
             });
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd);
     }
 
-    // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (DECISIONS BU-92),
+    // IMPL 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (DECISIONS BU-92),
     // so its import of a library other than a reserved supply is the located Unsupported_Kd at the #LibraryImport, after the import's own checks:
     // a missing requirement stays the Language error alone. Either way the import is no LibraryImports entry publication would link.
     [Theory]
@@ -501,12 +501,12 @@ public class LibraryImportTargetBindingTest
             {
                 if (rootRequirement)
                 {
-                    root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                    root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
                 }
 
                 if (libraryRequirement)
                 {
-                    library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                    library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
                 }
             });
         Assert.False(c.Bind().IsComplete);
@@ -561,15 +561,15 @@ public class LibraryImportTargetBindingTest
         {
             if (combinedSupply)
             {
-                c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
+                c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
             }
             else
             {
-                c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "import" } };
+                c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "import" } };
             }
         }
 
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         return c;

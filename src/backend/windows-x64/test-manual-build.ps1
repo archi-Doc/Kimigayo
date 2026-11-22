@@ -7,7 +7,11 @@ $ErrorActionPreference = 'Stop'
 $manifestPath = (Resolve-Path -LiteralPath $Manifest).Path
 $original = Get-Content -LiteralPath $manifestPath -Raw
 $testPath = Join-Path (Split-Path -Parent $manifestPath) ('negative-' + [guid]::NewGuid().ToString('N') + '.link.json')
+# A renamed pair: build --Manifest builds the Name.ll beside Name.link.json (Tatara G1203), so each row's manifest names a copy of the IR.
+$testStem = $testPath.Substring(0, $testPath.Length - '.link.json'.Length)
+Copy-Item -LiteralPath ([IO.Path]::GetFullPath(($original | ConvertFrom-Json).irFile, (Split-Path -Parent $manifestPath))) -Destination "$testStem.ll"
 function Expect-Failure([object] $data, [string] $message) {
+    $data.irFile = Split-Path -Leaf "$testStem.ll"
     $data | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $testPath -Encoding utf8
     $failed = $false
     try { & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -Configuration $Configuration | Out-Null }
@@ -63,7 +67,8 @@ try {
     Write-Output 'Manual-build integrity and toolchain rejection tests passed.'
 }
 finally {
-    # Both paths are exact files derived from a fresh GUID alongside the explicit manifest.
-    Remove-Item -LiteralPath $testPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath ([IO.Path]::ChangeExtension($testPath, '.build.json')) -Force -ErrorAction SilentlyContinue
+    # Every path is derived from a fresh GUID alongside the explicit manifest: the pair, its record and lock, and the staged libraries.
+    foreach ($path in @($testPath, "$testStem.ll", "$testStem.link.build.json", "$testStem.link.build.lock", "$testStem.O0.native", "$testStem.O2.native")) {
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

@@ -129,7 +129,7 @@ public class OriginFragmentBindingTest
     private static Compilation Create()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         return c;
     }
 }

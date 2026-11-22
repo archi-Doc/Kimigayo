@@ -19,9 +19,9 @@ namespace XunitTest;
 // the rest of its process, so each runs in a child test process of its own (Fatal).
 public sealed class TataraExecutorTest : IDisposable
 {
-    private const string Triple = WindowsProfile.Target;
-
     private const string Windows = "Tatara and the LLVM tools run on Windows.";
+
+    private static readonly string Triple = TargetProfile.Windows.Target;
 
     private static readonly string[] Levels = ["O0", "O2"];
 
@@ -29,7 +29,7 @@ public sealed class TataraExecutorTest : IDisposable
 
     // What NativeBuild gives Tatara's calls, without a report or a cancellation.
     private static readonly TataraContext Context = new(
-        (_, _) => { }, CancellationToken.None, Triple, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel);
+        (_, _) => { }, CancellationToken.None, Triple, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-" + Guid.NewGuid().ToString("N"));
 
@@ -89,7 +89,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var rows = Corpus is { } corpus
             ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => ir + "|" + level)).ToArray()
-            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => Path.ChangeExtension(Path.ChangeExtension(m, null), ".ll") + "|" + Level(m))
+            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => ArtifactPaths.IrOf(m) + "|" + Level(m))
                 .Concat(Levels.Select(level => this.DebugIr() + "|" + level)).ToArray();
         await Run(rows, row => this.CompareWithTools(row));
     }
@@ -120,7 +120,8 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var manifest = Manifest(rows[i % 2]);
             await NativeToolchain.BuildManifest(manifest, (_, _) => { }, TestContext.Current.CancellationToken);
-            var products = Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".obj") + Hash(Path.ChangeExtension(manifest, null) + "." + Level(manifest) + ".exe");
+            var built = ArtifactPaths.Create(ArtifactPaths.IrOf(manifest), Level(manifest));
+            var products = ArtifactFiles.Hash(built.Stem + ".obj") + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
             first[i % 2] ??= products;
             Assert.Equal(first[i % 2], products);
         }
@@ -134,7 +135,7 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
-        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var invalid = Path.Combine(this.directory, "invalid.ll");
         File.WriteAllText(invalid, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f( {\n");
@@ -164,7 +165,7 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = await this.Generate("hello", Hello, "O0");
-        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var before = FilterOwner();
         tatara.Optimize(Context, ir, Path.Combine(this.directory, "hello.O2.ll"));
@@ -216,7 +217,7 @@ public sealed class TataraExecutorTest : IDisposable
     private static string Hash(string path) => File.Exists(path) ? ArtifactFiles.Hash(path) : "(none)";
 
     private static string[] LinkArguments(string obj, string exe)
-        => [obj, Kernel32, Backend, "/entry:" + WindowsProfile.EntrySymbol, "/subsystem:" + WindowsProfile.Subsystem, "/nodefaultlib", "/Brepro", "/out:" + exe];
+        => [obj, Kernel32, Backend, "/entry:" + TargetProfile.Windows.EntrySymbol, "/subsystem:" + TargetProfile.Windows.Subsystem, "/nodefaultlib", "/Brepro", "/out:" + exe];
 
     // Runs every row (in parallel for a corpus: the tools run concurrently, Tatara's calls are serialized by its lock), appends each
     // row's outcome to the corpus's results.tsv and fails with every row that differs.
@@ -378,7 +379,7 @@ public sealed class TataraExecutorTest : IDisposable
             yield return ("optimize", () => Tool("opt", tools, "-S", "-passes=default<O2>", "-mtriple=" + Triple, ir, "-o", toolIr), () => library.Optimize(Context, ir, tataraIr));
         }
 
-        yield return ("emit", () => Tool("llc", tools, "-" + level, "-filetype=obj", "-mtriple=" + Triple, "-mcpu=" + WindowsProfile.Cpu, "-mattr=" + WindowsProfile.Features, "-relocation-model=" + WindowsProfile.RelocationModel, "-code-model=" + WindowsProfile.CodeModel, toolIr, "-o", "input.obj"), () => library.Emit(Context, tataraIr, Path.Combine(tatara, "input.obj"), level[1] - '0'));
+        yield return ("emit", () => Tool("llc", tools, "-" + level, "-filetype=obj", "-mtriple=" + Triple, "-mcpu=" + TargetProfile.Windows.Cpu, "-mattr=" + TargetProfile.Windows.Features, "-relocation-model=" + TargetProfile.Windows.RelocationModel, "-code-model=" + TargetProfile.Windows.CodeModel, toolIr, "-o", "input.obj"), () => library.Emit(Context, tataraIr, Path.Combine(tatara, "input.obj"), level[1] - '0'));
         yield return ("inspect", async () =>
         {
             var (failure, facts) = await ToolFacts(tools, Path.Combine(tools, "input.obj"));

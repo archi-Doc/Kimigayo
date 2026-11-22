@@ -290,7 +290,7 @@ public sealed partial class MirBuildTest
         var source = "struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\nfunc pos(y: string) -> isize => 0\n" +
             $"func f<{types}>({parameters}) -> i32\n    {premises}\n    {statement}\npublic func main() => ()\n";
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
@@ -607,7 +607,7 @@ public sealed partial class MirBuildTest
     public void ARejectedJumpsOperandIsNotAcquired(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source + "public func main() => ()\n"));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);

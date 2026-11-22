@@ -88,7 +88,7 @@ public class InterpolationScanRecoveryTest(ITestOutputHelper output)
     public void AResourceStopKeepsEarlierErrorsAndOtherSourcesIndependent()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("deep.kimi", "let wrong: i32 = true\nlet text = " + Nest(129)));
         c.Kotonoha.AddSource(new SourceDocument("next.kimi", "let other: i32 = true"));
         c.Bind();

@@ -250,7 +250,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
     {
         var owner = new DiagnosticOwner();
         owner.GetOrAddCollection("main").For(new("main.kimi", "x")).Add(new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd);
-        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, new string('x', 1000), "main.kimi", owner.Finalize());
+        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, new InvalidOperationException(new string('x', 1000)), "main.kimi", owner.Finalize());
         Assert.Equal(["CheckFaulted_Kd", "IndentationLevelMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
         Assert.True(result.Diagnostics[0].Note!.Length <= DiagnosticLimits.NoteLength);
     }
