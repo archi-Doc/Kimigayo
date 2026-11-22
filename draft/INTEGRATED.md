@@ -1799,3 +1799,30 @@ withdrawn with it, and a remaining need becomes a new PLAN row.
   `Changes/2026-10-21 Closure Calls as Receiver Calls.md` are unchanged and read at the commit before this move; the path in
   `Sketches/A5 Step 0/prototype.md` is repointed. The moved files keep their folder depth, so their own relative links resolve as
   before.
+
+## 2026-11-22 — Callable and Local Region Implementation Plan closed
+
+The owner's instruction (K's dialog, 2026-11-22): asked whether to apply only the items the current specification keeps
+(「現行仕様に残る項目のみ適用しようと思います。いかがですか？」); after K's assessment (every unit already implemented on 2026-10-07,
+the Place parts removed by the language since), the owner answered, verbatim, 「今閉じる」.
+`Changes/2026-10-06 Callable and Local Region Implementation Plan.md`: 取り込み済み (closed 2026-11-22), moved from `Proposals/`
+with only its status sentence replaced. Every item now has a disposition:
+
+- §3 (D1, an Abort through a function value reports the actual call; an erasure's allocation failure the conversion): incorporated
+  (the 2026-10-07 entry). Its sections today: SPEC §22.5.1, referenced from §7.7.4 (the entry's "§7.6.4" before the 2026-10-15
+  rewrite); IMPL's former §21.4.2 sentence is now IMPL §21.3.4's `#CallerLocation` row ("which its private ABI carries"). The
+  observable rule is unchanged in SPEC §22.5.1.
+- U1 (N27b, references to length-generic functions), U2 (N24, block-bodied closure result inference), U3 (N25b, selection among
+  several Callable signatures), U6 (N27c, safe compiler-implemented functions as values), U7-U9 (LR, local region inference) and
+  U10: implemented on 2026-10-07 under existing rules (PLAN_HISTORY 2026-10-07); the local region analysis now lives in Binding's
+  local regions and MIR's A5 (STATUS), not in the components the plan names.
+- U4 and U5 (N26b, Place results), and the Place parts of U3, U6 and U9 and of §4's policies 1 and 3: superseded by the removal of
+  Place results (2026-10-16, DECISIONS PR-1; the 2026-10-16 entry recorded the design point as needing no further work). Running
+  them as written would revive `-> place ref/T`, now a syntax error.
+- Leftovers transferred to their PLAN rows: G10 and G78 (Callable inference and effect bounds), G988 (a constructor's Callable
+  Constraint), G1222 (a generic function reference's bound Origin), G1198 (length-argument records), G470 (SPEC 17.5.2's warning for
+  a return-inferred anonymous function), G194, G1201, G1208, G1209, G441, G1099 and G1105 (local regions and A5), and G396 (A5's
+  remainder); G65 was completed in its scope (PLAN_HISTORY 2026-10-07).
+- Links: the frozen `Changes/2026-10-07 G65 Fixed Origin Loan Retention Implementation Plan.md` and `Changes/2026-10-16 Complete
+  Polonius A5 Plan.md` name the plan as before; this file's earlier entries keep their `Proposals/` path, read at the commit before
+  this move. No SPEC or IMPL text changes.
