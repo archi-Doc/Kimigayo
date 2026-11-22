@@ -436,7 +436,8 @@ public sealed partial class Binding
         if (owner.Declaration is ContractKoto)
         {
             clause.BoundConstraint ??= this.InternConstraint(new(ConstraintKind.Error));
-            this.AddConstraintFact(scope.Constraints ??= new(), clause.BoundConstraint); // An Error fact fails alone (R7-C3 gate 2).
+            var fact = clause.BoundConstraint;
+            this.AddConstraintFact(scope.Constraints ??= new(), fact, origin: fact.Kind == ConstraintKind.Error ? clause : null); // An Error fact fails alone (R7-C3 gate 2), its origin the clause (R7-E5 c1).
 
             if (requirement is null)
             {

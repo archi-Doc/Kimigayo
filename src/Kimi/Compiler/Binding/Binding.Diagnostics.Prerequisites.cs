@@ -330,15 +330,16 @@ public sealed partial class Binding
 
         foreach (var fact in environment.Facts)
         {
-            this.FailPremise(environment, fact, owner);
+            this.FailPremise(environment, fact, owner, null);
         }
     }
 
     // R7-C3 (B1'): a premise failed alone (ConstraintEnvironment.FailPremise), counted in the change signal and in the Failed state's
-    // census when it newly failed: the environment's judgments read the remainder. True when it newly failed.
-    private bool FailPremise(ConstraintEnvironment environment, BoundConstraint fact, Koto owner)
+    // census when it newly failed: the environment's judgments read the remainder. True when it newly failed. `origin` is the clause
+    // whose own check failed it (a part of the clause), null where the premise's owner judged it (R7-E5 c1, Rev 2 R2.2 (1)).
+    private bool FailPremise(ConstraintEnvironment environment, BoundConstraint fact, Koto owner, IsKoto? origin)
     {
-        if (!environment.FailPremise(fact, owner))
+        if (!environment.FailPremise(fact, owner, origin))
         {
             return false;
         }

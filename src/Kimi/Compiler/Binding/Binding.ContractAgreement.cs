@@ -185,8 +185,8 @@ public sealed partial class Binding
 
             if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap))
             {
-                this.FailPremise(environment, a, scope.Owner); // R7-C3 gate 2: the disagreeing specifications fail (b where it is this one's)
-                this.FailPremise(environment, b, scope.Owner);
+                this.FailPremise(environment, a, scope.Owner, null); // R7-C3 gate 2: the disagreeing specifications fail (b where it is this one's)
+                this.FailPremise(environment, b, scope.Owner, null);
                 var (l, r, item) = (this.FactSite(left.Contract.Declaration), this.FactSite(right.Contract.Declaration), this.FactSite(left.Symbol.Declaration));
                 this.RecordNumbered(
                     scope.Owner,
