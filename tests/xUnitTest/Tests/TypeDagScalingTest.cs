@@ -176,9 +176,10 @@ public partial class TypeDagScalingTest
         var c = CompilationTestHelper.ParseSuccess(source);
         var complete = c.Bind().IsComplete;
         string[] issues = [.. c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)];
-        // The records 45c9fab40 gives (the field, each Z<S<D>> and S<D> occurrence the storage formation proves, and B<S<D>> where read).
-        string[] own = ["UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd let next: Array<Z<S<D>>>"];
-        string[] expected = !clause ? [] : read ? ["UnprovenConstraint_Kd B<S<D>>", "UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd S<D>", .. own] : own;
+        // The records 45c9fab40 gives (the field, each Z<S<D>> and S<D> occurrence the storage formation proves, and B<S<D>> where read),
+        // one per written occurrence (R7-V1c).
+        string[] own = ["UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd let next: Array<Z<S<D>>>"];
+        string[] expected = !clause ? [] : read ? ["UnprovenConstraint_Kd B<S<D>>", "UnprovenConstraint_Kd S<D>", .. own] : own;
         Assert.Equal(!clause, complete);
         Assert.Equal(expected, issues);
     }
