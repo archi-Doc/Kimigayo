@@ -6,10 +6,12 @@ namespace Kimi.Compiler;
 
 // The Origin-atom borrows (SPEC 5.7 Origins: "the outer Origin of a borrow value (an input's or, in a body, a local's) [belongs] to that
 // borrow"; 15.6.5: a finite Origin local to a body, a Borrow's; contract of Binding.RawOrigins.cs; originpub design Revision 3, G147
-// rulings 18 and 19; DECISIONS draft of PLAN G148 (1), Z6).
+// rulings 18, 19, 66 and 75; DECISIONS BU-243, Z6).
 // - Responsibility: for each Projection or Anchor atom, the Borrows Binding commits with it as their outer Origin (each such operand of a
 //   meet), each as RawMember(-1, referent, exclusive) by BorrowReferent of its Type, equal referents joining their modes, in commit order;
-//   and for any atom a published claim's Type states, its Claimed mark (5.7 Fits and claims).
+//   and for any atom, its limit marks (LimitMarks, one value per named limit): Claimed where a published claim's Type states it (5.7 Fits
+//   and claims), SharedAddress where a published address whose authority is shared does (5.2.1 condition 3, 5.4), FittedIntoHolder
+//   where a raw fit's target does, or at an invariant position its value (5.7 under O-498 Q1 (i)).
 // - Inputs: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each formed once by its writer, outside
 //   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36, 37): the node's own facts at BindNode's end
 //   (OwnBorrows: its written Borrow, Slice view or object view, its receiver operation, its calls' operations);
@@ -18,9 +20,15 @@ namespace Kimi.Compiler;
 //   (AcquireReferenceBindings, before the guards and bodies), a source call's selected operations by CompleteArguments (before an
 //   awaiting argument), an enum construction's payload operations by CompletePayloads (each at its write, before the payloads after
 //   it), a Closure's written capture entries by BindConcreteClosure (before its body); a recorded adaptation by the adaptations
-//   column's setter (AdaptationBorrow); and the claims the HIR publisher publishes (MarkClaim).
-// - Outputs: Borrows(atom, members, out claimed), read by the borrows' readers through OriginMembers, and RetentionState, the key field of
-//   TyCtxt's retention memo: the region and borrow versions until the pass's Check has run, Complete afterwards.
+//   column's setter (AdaptationBorrow); and the conversions the HIR publisher publishes, whose limit marks the publisher forms
+//   (MarkLimits: a claim's Origin, ClaimedOrigin; an address's, where its Place's path, folded once by PlaceAuthority's PathFold, is
+//   reached through shared, SPEC 15.6.2's shared layer anywhere on the path (a Deref through a `ref` or `objref` borrow, a pair layer in
+//   a shared case and a Slice element among them), or passes a conformance selection, SPEC 5.4 and 4.7.1 (a user index, an Array or
+//   Dictionary element: PathPrefix.Conformance)); and the pass's raw fits (Binding.ValueFits.cs' rawFits), which the publication's
+//   start reads once for FittedIntoHolder (BeginBorrowPublication).
+// - Outputs: Borrows(atom, members), the atom's entries; AtomMarks(atom), its limit marks (None without a row), the one row read of Z6's
+//   one Marks reader; and RetentionState, the key field of TyCtxt's retention memo: the region and borrow versions until the pass's
+//   Check has run, Complete afterwards.
 // - Invariants: an atom's forming Borrow is formed before any Type stating the atom can be read (a typed path, a Field read or a
 //   substitution states the atom only from a Type that carries it), except where the fact is not written yet while a part that states
 //   its atom binds: a call's operations while its waiting Closure parts bind (CompleteWaiting, before the selection completes): the
@@ -30,14 +38,31 @@ namespace Kimi.Compiler;
 //   reads it fails Owned, SPEC 7.7.4), and what Z6's reader answers there is Z6's (Q13). The rows may hold more than HIR publishes:
 //   a recorded adaptation whose operation the publisher's Adjust replaces (ChildAdjust) stays formed, and the census does not see it
 //   (both its sides read the recorded column there). The rows only grow within a
-//   pass, each new entry or changed mode moving borrowVersion (a mark does not: no versioned reader reads marks); a library body's rows
+//   pass, each new entry or changed mode moving borrowVersion; the marks are the publisher's own, cleared at its start
+//   (BeginBorrowPublication) and formed only by it, and move no version: the order keeps them safe without one. Every reader of a
+//   mark runs after the publication that formed it, under RetentionComplete: A5's StoredMembers (TyCtxt.RawMembers from
+//   MirTypes.Holding, keyed by its Holdings read) and retention's binder reading (TyCtxt's retention memo, keyed by RetentionState,
+//   reached from MirBorrows.CallRows, .Destructions, .Reach, .Storing and MirValidator.Calls); a Final pass publishes inside Check and
+//   any other at PublishHir, and a re-check (CheckBound) binds nothing, so it forms the same marks again. Binding's one retention read
+//   (ReceiverIndependence) runs while the pass's bodies bind, before its publication forms any mark of its part (a reset pass's
+//   rows have none; the library part's marks, formed by the library pass, never change after it); a library body's rows
 //   are the layer's part, written only by the library pass, an identical re-record by another pass writing nothing; at the publication
 //   the census (CheckBorrows) compares the rows with the borrows the HIR publisher itself writes (Published*, G147 ruling 28): misses
-//   always, extras and modes exactly where the publication met no failed node, a difference the internal-invariant form.
+//   always, extras and modes exactly where the publication met no failed node, a difference the internal-invariant form; it compares
+//   no mark.
 // - Rule (SPEC 5.4): an address `P@raw` is no Borrow ("checks like an immediately ending @ref ... and leaves no Loan"): no writer forms
-//   a borrow fact of it.
+//   a borrow fact of it, and its shared authority (its path reached through shared, or passing a conformance selection) is the
+//   SharedAddress mark alone. No form is left unmarked after G147 ruling 72; the mark only over-reads a pair layer by its weakest
+//   admitted case (its `uniq` case marked: dev's limit, not a hole). Z6's route (a) removes the mark, and with it that over-read.
+//   (SPEC 5.7, O-498 Q1 (i)) a fitted raw pointer keeps its source's authority: FittedIntoHolder's two sources are the placing fits'
+//   raw positions (FitOuterOrigins' pointer arm) and a call's substituted clause relating an input raw layer's Origin to another; a fit
+//   form that places a value without a placing entry is that form's defect, not a case here (G147 ruling 75). The raw fits are
+//   complete when the publication reads them (every placing fit runs while the pass binds, before the publication), so the row is
+//   safe without a version by the order above; Z6's route (a) removes it.
 // - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry, no
-//   second list of borrow facts; RegionVersion is not moved; no reader but OriginMembers, the validator and tests.
+//   second list of borrow facts; no mark outside the publication, no second flag beside LimitMarks (a new named limit is a value of it,
+//   with its removal condition); RegionVersion is not moved; no reader but Z6's (the entries by the binder reading; the marks by A5's
+//   StoredMembers and retention's binder reading, both through Z6's one Marks reader, G147 ruling 67), the validator and tests.
 public sealed partial class Binding
 {
     // RetentionState's value once the pass's borrow writers have run: outside every sum of the two versions within a run.
@@ -58,6 +83,35 @@ public sealed partial class Binding
     // between Binds.
     private bool borrowsComplete;
 
+    // A row's limit marks (DECISIONS BU-243; G147 rulings 66, 67): one value per named limit, a fact about the atom that its Borrows do
+    // not show and that bounds what a raw layer stating the atom addresses. Z6's one Marks reader reads them for a marked atom with an
+    // exclusive member: A5's StoredMembers answers the limit (the located Unsupported_Kd), retention's binder reading gives no members.
+    // Each value names its removal condition.
+    [Flags]
+    internal enum LimitMarks : byte
+    {
+        None = 0,
+
+        // SPEC 5.7 Fits and claims: a published claim's Type states the atom. An address has no mode, so neither which borrow a claimed
+        // value's Origin is nor whether an address it carries lies in what that Origin covers is bounded (Z6's R2.3, named limit 1).
+        // Removal: per-layer address provenance in A5.
+        Claimed = 1,
+
+        // SPEC 5.2.1 condition 3: a published address `P@raw` whose authority is shared states the atom: P's path is reached through
+        // shared, or passes a conformance selection, through which the address selects `index` (SPEC 5.4, 4.7.1). It has no write
+        // authority, which its members do not show, since an address forms no borrow fact (SPEC 5.4; Z6's R6.1; G147 ruling 72).
+        // Removal: Z6's route (a), A5's W reading condition 3 per address (O-498 Q2 (b)'s removal condition, a later stream Z row).
+        SharedAddress = 2,
+
+        // SPEC 5.7 under O-498 Q1 (i): a value whose raw layer states another Origin is fitted into a raw layer stating the atom (a
+        // raw fit's target; at an invariant position its value too), so the layer may hold a pointer with that source's authority, which
+        // the atom's members do not show. Its sources (Binding.ValueFits.cs' rawFits): the placing fits' raw positions, and a call's
+        // substituted clause relating an input raw layer's Origin to another (G147 ruling 75). It bounds both arms; the address mark
+        // stays at the binder arm (Z6 R7.1.2). Removal: Z6's route (a), the fit's source Origins published and read, so that a fitted
+        // layer is read by the join of its sources' members (O-498 Q2 (b)'s removal condition).
+        FittedIntoHolder = 4,
+    }
+
     // The key field of TyCtxt's retention memo (DECISIONS G570, as the publication amends it): until the rows are complete, the region
     // graph's and the borrows' versions, which only rise within a run, so distinct states have distinct sums; Complete afterwards, which
     // no mid-binding answer has.
@@ -76,12 +130,11 @@ public sealed partial class Binding
         => node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType: { } target } conversion &&
             target.IsPointer && target.RawOrigin is { } stated && KotoHelper.IsUnsafeContext(conversion) ? stated : null;
 
-    // The Borrows of `atom`, appended to `members`, and its Claimed mark; false where the atom has no entry (its reader's limit, never a
-    // default).
-    internal bool Borrows(BoundOrigin atom, List<RawMember> members, out bool claimed)
+    // The Borrows of `atom`, appended to `members`; false where the atom has no entry (its reader's limit, never a default). It reads no
+    // mark (R6.2): the marks are AtomMarks'.
+    internal bool Borrows(BoundOrigin atom, List<RawMember> members)
     {
         _ = PassPart.Find(PassPart.Parts(this.Library.Layer.Part.Borrows, this.borrows), atom, out var row);
-        claimed = row?.Claimed ?? false;
         if (row is not { Count: > 0 })
         {
             return false;
@@ -93,6 +146,14 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // The atom's limit marks, None for an atom without a row: the one row read of Z6's one Marks reader (R6.2), which joins a meet's
+    // operands' marks with `|` and reads each named limit's answer from the joined value.
+    internal LimitMarks AtomMarks(BoundOrigin atom)
+    {
+        _ = PassPart.Find(PassPart.Parts(this.Library.Layer.Part.Borrows, this.borrows), atom, out var row);
+        return row?.Marks ?? LimitMarks.None;
     }
 
     // An atom as the validator's message names it: its kind, slot and binder's source location.
@@ -233,7 +294,7 @@ public sealed partial class Binding
         }
 
         // The write's row: one find in `rows`. Only an atom it has no row for can be the layer's: a pass's part makes no row of a library
-        // atom (this check runs before it would, and a claim marks only the Origins its own module's body states), so the layer is read
+        // atom (this check runs before it would, and a mark marks only the Origins its own module's body states), so the layer is read
         // only at a new row.
         if (!rows.TryGetValue(atom, out var row))
         {
@@ -259,7 +320,7 @@ public sealed partial class Binding
         }
     }
 
-    // A claim's row in the running part (the one find, else a new row).
+    // A mark's row in the running part (the one find, else a new row).
     private BorrowList BorrowRow(BoundOrigin atom)
     {
         if (!this.borrows.TryGetValue(atom, out var row))
@@ -276,7 +337,7 @@ public sealed partial class Binding
     // node Binding resolved is a broken contract the publisher records itself, Hir.Broken), a Borrow node's Type or a Slice view's (a
     // slicing index has no Borrow node; an address's Op is no Borrow, SPEC 5.4), an object upcast's view borrow (ViewBorrow), a Closure's
     // capture entries whose Adjust borrows or Reborrows, a match's Subject borrow and the Pattern bindings whose published Adjust borrows;
-    // and its claim mark. The forms after the Borrow node's are disjoint, so one dispatch on the node's form reads each (the publisher's
+    // and its limit marks. The forms after the Borrow node's are disjoint, so one dispatch on the node's form reads each (the publisher's
     // visit runs this at every node: the sealed forms first, then MatchKoto, the one with a subclass, TryKoto, whose test is the dearest).
     private void PublishedNode(Koto node, HirOp op)
     {
@@ -297,7 +358,7 @@ public sealed partial class Binding
                     this.RecordEntry(this.publishedBorrows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
                 }
 
-                this.MarkClaim(conversion);
+                this.MarkLimits(conversion);
                 break;
             case FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure }:
                 for (var i = 0; i < closure.Captures.Count; i++)
@@ -364,22 +425,34 @@ public sealed partial class Binding
         }
     }
 
-    // A published claim: its Origin's atoms, as its Type states them (each operand of a meet), marked Claimed in the running part.
-    private void MarkClaim(Koto node)
+    // A published conversion's limit mark, one row per named limit (LimitMarks): Claimed, a claim's Origin (ClaimedOrigin);
+    // SharedAddress, an address's whose authority is shared: its Place's path, folded once (PathFold), is reached through shared (SPEC
+    // 15.6.2) or passes a conformance selection, through which the address selects `index` (SPEC 5.4).
+    private void MarkLimits(ConversionKoto conversion)
     {
-        if (ClaimedOrigin(node) is not { } claimed)
+        if (ClaimedOrigin(conversion) is { } claimed)
         {
-            return;
+            this.Mark(claimed, LimitMarks.Claimed);
         }
-
-        for (var i = 0; i < (claimed.Kind == OriginKind.Intersection ? claimed.Operands.Count : 1); i++)
+        else if (conversion is { ConversionBinding: ConversionBinding.Address, BoundType.RawOrigin: { } address } &&
+            this.PathFold(conversion.Left, []) is { Access: SemanticsKind.Ref } or { Conformance: true })
         {
-            this.BorrowRow(claimed.Kind == OriginKind.Intersection ? claimed.Operands[i] : claimed).Claimed = true;
+            this.Mark(address, LimitMarks.SharedAddress);
+        }
+    }
+
+    // The one writer of the marks: `mark` on each atom `stated` names (each operand of a meet), in the running part.
+    private void Mark(BoundOrigin stated, LimitMarks mark)
+    {
+        for (var i = 0; i < (stated.Kind == OriginKind.Intersection ? stated.Operands.Count : 1); i++)
+        {
+            this.BorrowRow(stated.Kind == OriginKind.Intersection ? stated.Operands[i] : stated).Marks |= mark;
         }
     }
 
     // The publication's start (PublishPass): its publication side emptied and the running part's marks cleared, so a republication
-    // reads none of an earlier one.
+    // reads none of an earlier one; then the FittedIntoHolder row, formed from the pass's raw fits once, every fit being decided
+    // before the publication: each atom a raw fit's target states and, at an invariant position, each its value states.
     private void BeginBorrowPublication()
     {
         this.publishedFailure = false;
@@ -390,7 +463,16 @@ public sealed partial class Binding
 
         foreach (var row in this.borrows.Values)
         {
-            row.Claimed = false;
+            row.Marks = LimitMarks.None;
+        }
+
+        foreach (var fit in this.rawFits)
+        {
+            this.Mark(fit.Target, LimitMarks.FittedIntoHolder);
+            if (fit.Equality)
+            {
+                this.Mark(fit.Value, LimitMarks.FittedIntoHolder);
+            }
         }
     }
 
@@ -435,14 +517,14 @@ public sealed partial class Binding
         }
     }
 
-    // An atom's Borrows in one pass, equal referents joined, and its Claimed mark; reused across passes (a warm pass allocates nothing).
+    // An atom's Borrows in one pass, equal referents joined, and its limit marks; reused across passes (a warm pass allocates nothing).
     internal sealed class BorrowList
     {
         private RawMember[] items = new RawMember[2];
 
         internal int Count { get; private set; }
 
-        internal bool Claimed { get; set; }
+        internal LimitMarks Marks { get; set; }
 
         internal ReadOnlySpan<RawMember> Items => this.items.AsSpan(0, this.Count);
 
@@ -486,6 +568,6 @@ public sealed partial class Binding
             return true;
         }
 
-        internal void Reset() => (this.Count, this.Claimed) = (0, false);
+        internal void Reset() => (this.Count, this.Marks) = (0, LimitMarks.None);
     }
 }

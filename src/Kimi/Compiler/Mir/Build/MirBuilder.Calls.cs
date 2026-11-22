@@ -206,20 +206,22 @@ internal sealed partial class MirBuilder
 
     // SPEC 5.3, 8.15.3 (PLAN G597's L2; the owner's O-490 (a)): a Form function's call, the MIR form its lang item names, on the operands
     // pushed since start: Storage.viewStart<P, R>(storage, start)'s is the view's first element's address from the raw pointer Place
-    // `storage` (First), decided by the substitution's R as a copy's fold decides its key again (Refirst). Another lang item, an operand
-    // that is no Place or no R is a broken contract.
+    // `storage` (First), decided by the substitution's R as a copy's fold decides its key again (Refirst). An operand that is no Place's
+    // copy or move (a constant: `viewStart(null, 0)`, SPEC 5.3) is held in a temp first, whose Place the Storage reads. Another lang item
+    // or no R is a broken contract.
     private void Form(MirPlace destination, BindingSymbol function, Subst? subst, int start, Koto node)
     {
         var (storage, offset) = (this.arguments[start], this.arguments[start + 1]);
         this.arguments.RemoveRange(start, this.arguments.Count - start);
-        if (function.LibraryDeclaration != KimiDeclarationId.ViewStart || storage.Kind is not (MirOperandKind.Copy or MirOperandKind.Move) ||
-            subst is not { Types: [_, { } key] })
+        if (function.LibraryDeclaration != KimiDeclarationId.ViewStart || subst is not { Types: [_, { } key] })
         {
             this.Invariant(node, destination);
             return;
         }
 
-        var view = MirStatement.Assign(destination, MirRvalue.Storage(storage.Place, this.body.TypeOf(storage.Place)!), this.Info(node));
+        var place = storage.Kind is MirOperandKind.Copy or MirOperandKind.Move ? storage.Place
+            : this.Temporary(this.TypeOf(storage), MirRvalue.Use(this.body.AddOperand(storage)), node).Place;
+        var view = MirStatement.Assign(destination, MirRvalue.Storage(place, this.body.TypeOf(place)!), this.Info(node));
         this.Refirst(view, offset, key);
     }
 
