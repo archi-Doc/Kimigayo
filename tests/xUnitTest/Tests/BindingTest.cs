@@ -1178,7 +1178,7 @@ public class BindingTest
             "chain" => CompilationEntryTest.LabeledDos(SyntaxNestingTest.LevelsWithin("labeled do")),
             "arms" => "func f(x: Option<i32>) => match x\n" + string.Concat(Enumerable.Range(0, 120).Select(static i => $"    .Some(let n) if n > {i} => ()\n")) +
                 "    .Some(_) => ()\n    .None => ()",
-            _ => string.Concat(Enumerable.Range(0, 1000).Select(static i => $"func f{i}() => ()\n")),
+            _ => string.Concat(Enumerable.Range(0, 1000).Select(static i => $"func item{i}() => ()\n")),
         };
 
     private sealed class TestReplacement(CodeContext context) : ExpressionKoto(context, default)
