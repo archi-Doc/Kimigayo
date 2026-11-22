@@ -768,6 +768,28 @@ public class ClosureEnvironmentOriginTest
         }
     }
 
+    // SPEC 10.2, 23.1, DIAGNOSTICS "a call's implicit Borrow of an argument" (PLAN G265, R7-P1; BU's 2c-3B re-check 3, g7 00 and g6 13):
+    // a value call borrows its argument as a named call does, so its record is the named call's, the implicit Borrow `m` or `n` related,
+    // plainly and through the environment. Each row: the named call (a declared `f`) and the value call (a local Closure `f`). Both hold
+    // on dev 43fc18f6c (G265's two symptoms no longer occur): guard rows for R7-P3 and P10.
+    [Theory]
+    [InlineData("guard", "g265-plain", "func f(x: ref/i32) -> ref/i32 during x => x\nfunc use(p: ref/i32) -> ref/i32 during p\n    let m: i32 = 1\n    return f(m)\n", "func use(p: ref/i32) -> ref/i32 during p\n    let m: i32 = 1\n    let f = func (x: ref/i32) -> ref/i32 during x => x\n    return f(m)\n")]
+    [InlineData("guard", "g265-env", "func f(x: ref/i32) -> ref/i32 during x => x\nfunc use(p: ref/i32) -> i32\n    let n: i32 = 1\n    let c = func [n] () -> ref/i32 during p => f(n)\n    return 0\n", "func use(p: ref/i32) -> i32\n    let n: i32 = 1\n    let f = func (x: ref/i32) -> ref/i32 during x => x\n    let c = func [n, f] () -> ref/i32 during p => f(n)\n    return 0\n")]
+    [InlineData("guard", "g265-explicit", "func f(x: ref/i32) -> ref/i32 during x => x\nfunc use(p: ref/i32) -> ref/i32 during p\n    let m: i32 = 1\n    return f(m@ref)\n", "func use(p: ref/i32) -> ref/i32 during p\n    let m: i32 = 1\n    let f = func (x: ref/i32) -> ref/i32 during x => x\n    return f(m@ref)\n")]
+    public void AValueCallShowsItsImplicitBorrowAsANamedCallDoes(string unit, string form, string named, string value)
+    {
+        var (fromNamed, fromValue) = (Shown(named), Shown(value));
+        Assert.True(fromNamed.Length != 0 && fromNamed == fromValue, $"{form} [{unit}]: named [{fromNamed}], value [{fromValue}]");
+
+        static string Shown(string function)
+        {
+            var source = function + "public func main() => ()\n";
+            return string.Join(" | ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)} {x.Label} <- {string.Join(", ", (x.Related ?? []).Select(r => Text(source, r.Span)))}"));
+        }
+
+        static string Text(string source, SourceSpan? span) => span is { } at ? source.Substring(at.Start, at.Length) : string.Empty;
+    }
+
     // SPEC 23.1.2, DIAGNOSTICS (DECISIONS R4-M133; reviews B1, F3): a pending relation is recorded as a binding-time fit is: a local
     // annotation's fit at its initializer, under a Consuming receiver too (d3, Refuted; and d1 above), and a failure that no chain refutes
     // in a failed Origin environment a dependent of that failure only when a repair of the failed clause could prove it (DECISIONS BU-69;

@@ -266,7 +266,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                var proof = selection.Path is null ? ConstraintProof.Proven : ProjectedReceiverProof(accessor.Property.Symbol, accessor);
+                var proof = selection.Path is null ? ConstraintProof.Proven : this.ProjectedReceiverProof(accessor.Property.Symbol, accessor);
                 if (proof != ConstraintProof.Proven)
                 {
                     this.Fail(node, proof == ConstraintProof.Unknown ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);

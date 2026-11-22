@@ -44,7 +44,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());
         Assert.Equal(4, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("llvm-dlltool", libraries[0].GetProperty("generator").GetString());
-        Assert.Equal(Kernel32Imports.DefinitionSha256, libraries[0].GetProperty("definitionSha256").GetString());
+        Assert.Equal(ToolchainIdentity.Kernel32DefinitionSha256, libraries[0].GetProperty("definitionSha256").GetString());
         Assert.False(libraries[0].TryGetProperty("input", out _));
         Assert.Equal("kimi_backend", libraries[1].GetProperty("name").GetString());
         Assert.Equal("toolchain", libraries[1].GetProperty("resolution").GetString());

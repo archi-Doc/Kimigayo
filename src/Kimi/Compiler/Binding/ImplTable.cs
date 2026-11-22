@@ -17,15 +17,18 @@ using Kimi.Compiler.Parsing;
 //   Sweep at the end of a Bind (Binding.Bind); Builtin's Type and Contract symbol (its declaration's `#Lang` id), read through
 //   ArithmeticContracts.Supports, Binding.ComparisonKindOf, TyCtxt.OperatorTableRuns and Binding.WitnessGroup.
 // - Outputs: Paths, Identities and ByType (LayerList: the overlay's part, then the base's), InPass (the same lists of the running
-//   pass's stores only, PLAN G949 S1-r2), OfType(type), Find(type, contract),
-//   Path(key) and TryPath(key); PathsOf(identity), the one read of an identity's paths inside a pass; Builtin(type, contract), a
-//   built-in row (static: no store, pass or scope).
+//   pass's stores only, PLAN G949 S1-r2), OfType(type), Find(type, contract) and TryPath(key), each only what the running pass
+//   registered, as it reads it (an identity with a path, an Active path; R7-V2a2), Path(key), a path a registration names;
+//   PathsOf(identity), the one read of an identity's paths inside a pass; Builtin(type, contract), a built-in row (static: no store,
+//   pass or scope).
 // - Invariants: the overlay never holds a library Type, by construction: StoreOf routes each key by its Type's module; from the library's
 //   freeze (Freeze, PLAN G949 S1-1) the base is never begun or registered into again: its Begin and a Register routed to it throw the
 //   internal-invariant form (EnsureWritable, InternalInvariant_Kd); an identity or path carries the pass of its last reset (Stamp) and
 //   reads as unregistered while stale (Current); the table resets it at its first access through the table in a pass (Find, Path,
 //   TryPath, Register), so no reader sees an earlier pass's state; a path is Active from its registration in the pass to the end of the
-//   pass, a per-pass flag the reset clears (not "Stamp current": a lookup can reach a path before the pass registers it); a store's lists
+//   pass, a per-pass flag the reset clears (not "Stamp current": a registration names a root path before its own call registers it); so
+//   neither Find, TryPath nor OfType's lists hand out an identity or path the pass did not register, and their readers test for none
+//   (Path and Identities hand out what a registration names, which may not be registered yet); a store's lists
 //   are emptied at its first access in a pass; a path joins Paths and its identity's paths only at its first registration in a pass, so
 //   both follow the registrars' order and a derived Type's follow its base's; Identities lists the pass's identities in the order the
 //   pass first names them; Register names the root path and the root's own call registers it; each key keeps one object while each pass
@@ -270,7 +273,8 @@ internal sealed class ImplTable
     /// <returns>Whether they are admitted.</returns>
     internal bool Admits(BindingSymbol type, AdmissionPoint point) => this.holdsBase || !ReferenceEquals(this.StoreOf(type), this.library) || this.step >= point;
 
-    /// <summary>Gets a Type's identities registered in this pass, or null for a Type never registered.</summary>
+    /// <summary>Gets a Type's identities registered in this pass, each with a path as the pass reads it (PathsOf), or null for a Type never
+    /// registered.</summary>
     /// <param name="type">The conforming Type declaration.</param>
     /// <returns>The list, possibly empty.</returns>
     internal List<BoundConformance>? OfType(BindingSymbol type)
@@ -289,14 +293,14 @@ internal sealed class ImplTable
         => !identity.Current || !this.Admits(identity.Type, identity.Point) ? this.noPaths
             : this.Admits(identity.Type, identity.LastPoint) ? identity.PathStorage : identity.PointOnePaths!;
 
-    /// <summary>Gets the identity of a Type and Contract, registered in this pass or not, or null if not named.</summary>
+    /// <summary>Gets the identity of a Type and Contract registered in this pass, as the pass reads it (PathsOf), or null.</summary>
     /// <param name="type">The conforming Type declaration.</param>
     /// <param name="contract">The Contract identity.</param>
-    /// <returns>The identity.</returns>
+    /// <returns>The identity, with at least one path.</returns>
     internal BoundConformance? Find(BindingSymbol type, BindingSymbol contract)
     {
         var store = this.StoreOf(type);
-        return store.identities.GetValueOrDefault((type, contract)) is { } identity ? this.Read(store, identity) : null;
+        return store.identities.GetValueOrDefault((type, contract)) is { } identity && this.Read(store, identity) is { } read && this.PathsOf(read).Count != 0 ? read : null;
     }
 
     /// <summary>Gets a path named in a registration: an ancestor path of the same declaration and root.</summary>
@@ -313,7 +317,7 @@ internal sealed class ImplTable
             ?? throw new InvalidOperationException($"A registration named the path of `{type.Name}` to `{contract.Name}` before its registrar step (InternalInvariant; PLAN G949 S1-r1b rule (a)).");
     }
 
-    /// <summary>Gets a path, registered in this pass or not, or null if not named.</summary>
+    /// <summary>Gets a path registered in this pass (Active), as the pass reads it, or null.</summary>
     /// <param name="type">The conforming Type declaration.</param>
     /// <param name="contract">The Contract identity.</param>
     /// <param name="declaration">The declaring clause.</param>
@@ -322,7 +326,7 @@ internal sealed class ImplTable
     internal BoundConformancePath? TryPath(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root)
     {
         var store = this.StoreOf(type);
-        return store.paths.GetValueOrDefault((type, contract, declaration, root)) is { } path ? this.Read(store, path) : null;
+        return store.paths.GetValueOrDefault((type, contract, declaration, root)) is { } path && this.Read(store, path) is { Active: true } read ? read : null;
     }
 
     /// <summary>Registers a path in this pass, in its Type's store: on its first registration it joins Paths and its identity's paths.</summary>
