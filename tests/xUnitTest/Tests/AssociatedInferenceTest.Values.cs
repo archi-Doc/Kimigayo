@@ -106,6 +106,9 @@ public partial class AssociatedInferenceTest
     // invalid: SPEC 8.5.5 Completion: M.Q has q1's i64 and q2's N.V = i32 (no dependence on A): a conflict at M.
     private const string C4GenericConflict = "contract HA\n    associate X\n    func x(self: ref/Self) -> Self.X\ncontract FC\n    associate U\n    func u(self: ref/Self) -> Self.U\ncontract MC\n    associate Q\n    func q1(self: ref/Self) -> Self.Q\n    func q2(self: ref/Self) -> Self.Q\ncontract EC\n    associate W is FC\n    func w(self: ref/Self) -> Self.W\nstruct G<T>\n    Self is FC\n    public func u(self: ref/Self) -> T => $abort(\"u\")\nstruct S\n    Self is EC\n    public func w(self: ref/Self) -> G<M> => $abort(\"w\")\ncontract NC\n    associate V\n    func v(self: ref/Self) -> Self.V\nstruct N\n    Self is NC\n    public func v(self: ref/Self) -> i32 => 0\nstruct M\n    Self is MC\n    public func q1(self: ref/Self) -> i64 => 0\n    public func q2(self: ref/Self) -> N.(NC).V => $abort(\"q2\")\nstruct A\n    Self is HA\n    public func x(self: ref/Self) -> S.(EC).W.(FC).U.(MC).Q => $abort(\"x\")\n()\n";
 
+    // valid: SPEC 8.5.5, 9.6: D.X = Outer<E.W>.Inner = Outer<i32>.Inner, read through a nested Type's qualifier argument (E.W = i32).
+    private const string C4NestedPath = "contract DC\n    associate X\n    func a(self: ref/Self) -> Self.X\ncontract EC\n    associate W\n    func w(self: ref/Self) -> Self.W\nstruct Outer<T>\n    public struct Inner\n        public init() => ()\nstruct D\n    Self is DC\n    public func a(self: ref/Self) -> Outer<E.(EC).W>.Inner => $abort(\"a\")\nstruct E\n    Self is EC\n    public func w(self: ref/Self) -> i32 => 0\n()\n";
+
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records).
     [Theory]
     [InlineData("guard", "n1-d", C4N1D, "*: * | ...")]
@@ -140,6 +143,7 @@ public partial class AssociatedInferenceTest
     [InlineData("guard", "ov12-r", C4Ov12R, "")]
     [InlineData("C4", "generic", C4Generic, "", Explicit = true)]
     [InlineData("C4", "generic-conflict", C4GenericConflict, "AssociatedTypeInferenceFailed_Kd: Self is MC | ...", Explicit = true)]
+    [InlineData("guard", "nested-path", C4NestedPath, "")]
     public void EveryValueFollowsItsEvidenceInEveryOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program, records);
 
@@ -178,6 +182,7 @@ public partial class AssociatedInferenceTest
     [InlineData("C4Ov12R", C4Ov12R)]
     [InlineData("C4Generic", C4Generic)]
     [InlineData("C4GenericConflict", C4GenericConflict)]
+    [InlineData("C4NestedPath", C4NestedPath)]
     public void EveryReadLiesInTheReadersReach(string form, string program)
         => Assert.Equal((form, 0), (form, MinimalEmissionTest.Analyze(program).Binding.InferenceReachMisses));
 }

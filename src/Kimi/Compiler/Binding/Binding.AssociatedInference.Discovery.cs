@@ -145,6 +145,17 @@ public sealed partial class Binding
                 this.DiscoverWritten(batch, generic.TypeArguments[i], scope, subject);
             }
 
+            // A nested Type's qualifiers write Types of their own (`Outer<E.(EC).W>.Inner`), each bound by BindContainerReference: their
+            // generic arguments are the path's reads.
+            for (var qualifier = use is MemberAccessKoto nested ? UseNode(nested.Left) : null; qualifier is not null;
+                qualifier = qualifier is MemberAccessKoto outer ? UseNode(outer.Left) : null)
+            {
+                for (var i = 0; qualifier is GenericsKoto written && i < written.TypeArguments.Count; i++)
+                {
+                    this.DiscoverWritten(batch, written.TypeArguments[i], scope, subject);
+                }
+            }
+
             return path.Symbol;
         }
 
