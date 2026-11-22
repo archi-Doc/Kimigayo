@@ -877,8 +877,9 @@ public sealed partial class FunctionCodegenTest
     // SPEC 5.3, 8.15.3 (PLAN G597's L2 U2, B's ruling 14): a Storage over a raw pointer Place, the form MirValidatorTest's rows admit and
     // Storage.viewStart's call takes, is the pointer's value (Buffer): unkeyed in both instances, and keyed where the instance's key starts
     // at the storage, the load of p with no stride; keyed where the key displaces, that value plus the start times the element's stride,
-    // Displace's statement (fail-before: the pointer's home was read as a handle's record, through a `data` word it has no). No producer
-    // calls viewStart before U3, so h's built `p + start` Add is rewritten in place into the Storage over its pointer operand's Place.
+    // Displace's statement. Each instance stores the value it loads through p's home, directly or as the displacement's base (fail-before:
+    // the pointer's home was read as a handle's record, through a `data` word it has no). No producer calls viewStart before U3, so h's
+    // built `p + start` Add is rewritten in place into the Storage over its pointer operand's Place.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -898,6 +899,7 @@ public sealed partial class FunctionCodegenTest
         var texts = ItemTexts(c, "h");
         Assert.Equal(2, texts.Length);
         Assert.All(texts, static x => Assert.DoesNotContain("__kimi_abort", x, StringComparison.Ordinal));
+        Assert.All(texts, static x => Assert.Matches(@"(%t\d+) = load ptr, ptr %[\w.]+, align 8\n(?:  .*\n)*?  (?:(%t\d+) = getelementptr i8, ptr \1, i64 %t\d+\n  store ptr \2|store ptr \1), ", x));
         Assert.Equal(keyed ? 1 : 2, texts.Count(static x => !x.Contains(" = mul ", StringComparison.Ordinal) && !x.Contains("getelementptr", StringComparison.Ordinal)));
         Assert.Equal(keyed ? 1 : 0, texts.Count(static x => Regex.IsMatch(x, @" = mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n")));
     }

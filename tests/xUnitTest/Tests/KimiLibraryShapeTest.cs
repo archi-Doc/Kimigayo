@@ -359,7 +359,7 @@ public partial class KimiLibraryShapeTest
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the
     // library registers as the intrinsic it calls; a direct line's fixed arm invokes Text.writer's body since R8-W2 b2-1. PLAN G597's
-    // L2 (the owner's O-490 (a)): the one Form function, whose call the builder writes as its MIR form, is the bodyless Storage.viewStart.
+    // L2 (the owner's O-490 (a)): the one Form function, whose call the builder writes as its MIR form, is Storage.viewStart.
     [Fact]
     public void ServedFunctionsHaveTheirDeclarations()
     {
@@ -369,7 +369,6 @@ public partial class KimiLibraryShapeTest
             new[] { KimiDeclarationId.RawSlice }.Select(x => library.GetSymbol(x)!.Definition.Id));
         var forms = library.RegisteredSymbols.ToArray().Where(static x => x.Definition.Kind == DispositionKind.Form).ToArray();
         Assert.Equal([KimiDeclarationId.ViewStart], forms.Select(static x => x.LibraryDeclaration!.Value));
-        Assert.True(forms[0].Declaration is FunctionKoto { Name: "viewStart", Body: null, ExpressionBody: null, MissingBody: false });
     }
 
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below

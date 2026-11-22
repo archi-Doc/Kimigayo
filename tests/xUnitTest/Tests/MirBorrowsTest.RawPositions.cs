@@ -518,9 +518,9 @@ public sealed partial class MirBorrowsTest
     // SPEC 5.3 (PLAN G597's L2; the Middle's C-459 ruling, B's ruling 12 C2): a Storage over a raw pointer Place is `copy p`'s value, so
     // its element step is p's raw referent (MirSteps.Index's table), never p's own storage. Twin r4, labelled from SPEC first, valid in
     // each form, where v's referent is written while the view v lives: after the remainder's raw word p is overwritten ("overwrite") or
-    // moved ("move"), and while a shared borrow r of p is live ("borrowed"). A5 reports nothing. A control (B's rulings 15 and 16): the
-    // Index reading (`&raw p[i]` as p's own storage) reports nothing either, its plain address entry of p being no conflict candidate, so
-    // r4 pins no difference between the readings. A hand-built body: no producer calls Storage.viewStart before L2's U3.
+    // moved ("move"), and while a shared borrow r of p is live ("borrowed"). A5 reports nothing. A valid-program control: it passes with
+    // and without MirSteps.Index's raw row in all three forms, so it pins no difference between the readings (B's ruling 15); the pin is
+    // L2's U3 body-level twin (ruling 16). A hand-built body: no producer calls Storage.viewStart before U3.
     [Theory]
     [InlineData("overwrite")]
     [InlineData("move")]
