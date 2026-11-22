@@ -3665,6 +3665,108 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     public void AHolderLeavingADoByItsExitsIsWitnessedByItsUse(string source, string problem)
         => Assert.Equal([problem], Witnessed(source));
 
+    // DIAGNOSTICS A6 `Store` (Z18b, PLAN G396 (4)'s E1): a problem whose element (a Loan, or for err(ended) the guard value's γ_H) the
+    // check found in E names E's store: the nearest location backward from the access, along the edges the forward solve carries a
+    // state on (MirDataflow.Carries), whose entries put the element into E (MirBorrows.Flow's eStores), never past one that ends it. An
+    // access: a write and the storage end (also in a closure's body), a call's W, a derived one (Cause, rule W); two stores on disjoint
+    // paths, each access naming its own path's; a loop's back edge; a path whose Loan ended before the access (short = 4) names the
+    // other path's; err(ended) via E, derived (one save) and shown (two); an activation (its Reservation kept); a raw pointer's store
+    // and a destruction's Keep into E; assumed paths (SPEC 14.10.3: after a return, both sides, and a store there that never reaches the
+    // real path, no problem); a nearer store into E without the Loan (.None) skipped; nested loops; the access's own ending read on the
+    // back edge. The effect rule's row: AnEffectOnALoanKeptInEIsWitnessedByItsStore. Fail-before (28ea0beac): each Store was the
+    // access's own subject.
+    [Theory]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@ref)\n    short = 3\n" +
+        "    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n",
+        "let short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n" +
+        "    slot@follow = v\nfunc bad(s: uniq/(ref/i32 during q)) -> i32\n    var short = 2\n" +
+        "    put7(s, short@ref, (short@ref, .None))\n    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store put7(s, short@ref, (short@ref, .None))")]
+    [InlineData(
+        "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n" +
+        "    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n" +
+        "        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n",
+        "let short = 2: Anchor short@ref, Store put7(s, short@ref, (short@ref, .None))")]
+    [InlineData(
+        "func put(slot: uniq/(Option<ref/i32 during a>), v: ref/i32 during a) => slot@follow = .Some(v)\n" +
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    put(p, short@ref)\n    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store put(p, short@ref), Cause short@ref")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        return 1\n    p@follow = .Some(r)\n    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(r) | var short = 2: Anchor short@ref, Store p@follow = .Some(r)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        short = 3\n        return 1\n    p@follow = .Some(r)\n    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(r) | var short = 2: Anchor short@ref, Store p@follow = .Some(r)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    while c\n        short = 3\n" +
+        "        p@follow = .Some(short@ref)\n    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref) | var short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        short = 4\n    else\n        p@follow = .Some(r)\n    short = 3\n    return 0\n",
+        "short = 4: Anchor short@ref, Store p@follow = .Some(r) | short = 3: Anchor short@ref, Store p@follow = .Some(r)")]
+    [InlineData(
+        "struct Data\n    public var value: i32 = 0\n    public init() => ()\nenum Packet\n    Data(Data)\n    Empty\n" +
+        "func save(slot: uniq/(ref/Data during s), value: ref/Data during s) -> bool => true\n" +
+        "func escE(slot: uniq/(ref/Data during s))\n    let packet: Packet = .Data(Data.init())\n    match packet\n" +
+        "        .Data(let d) if save(slot, d) => ()\n        _ => ()\n",
+        "let d: Anchor let d, Store save(slot, d), Cause d | let packet: Packet = .Data(Data.init()): Anchor packet, Store save(slot, d), Cause d")]
+    [InlineData(
+        "struct Data\n    public var value: i32 = 0\n    public init() => ()\nenum Packet\n    Data(Data)\n    Empty\n" +
+        "func save(slot: uniq/(ref/Data during s), value: ref/Data during s) -> bool => true\n" +
+        "func escE(slot: uniq/(ref/Data during s))\n    let packet: Packet = .Data(Data.init())\n    match packet\n" +
+        "        .Data(let d) if save(slot, d) and save(slot, d) => ()\n        _ => ()\n",
+        "let d: Anchor let d, Store save(slot, d) | let packet: Packet = .Data(Data.init()): Anchor packet, Store save(slot, d)")]
+    [InlineData(
+        "struct Meter\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+        "func bad(p: uniq/(Option<ref/Meter during q>)) -> i32\n    var m = Meter.init()\n    p@follow = .Some(m@ref)\n    m.bump()\n" +
+        "    return 0\n",
+        "m.bump(): Anchor m@ref, Store p@follow = .Some(m@ref), Reservation m | var m = Meter.init(): Anchor m@ref, Store p@follow = .Some(m@ref)")]
+    [InlineData(
+        "func bad(p: raw/(raw/i32)) -> i32\n    var short = 2\n    let r: ref/i32 = short@ref\n    unsafe => *p = r@follow@raw\n" +
+        "    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store *p = r@follow@raw")]
+    [InlineData(
+        "struct WriterI\n    public var p: raw/(raw/i32)\n    public var q: raw/i32\n    public init(q: raw/i32)\n" +
+        "        self.p = null\n        self.q = q\n    drop\n        unsafe => *self.p = self.q\nfunc bad(p: raw/(raw/i32)) -> i32\n" +
+        "    var short = 2\n    let r: ref/i32 = short@ref\n    var x = WriterI.init(q: null)\n    x.q = r@follow@raw\n    x.p = p\n" +
+        "    x = WriterI.init(q: null)\n    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store x = WriterI.init(q: null)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@ref)\n    return 0\n" +
+        "    short = 3\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref) | var short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    return 0\n    p@follow = .Some(short@ref)\n" +
+        "    short = 3\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    if c\n        return 0\n" +
+        "        p@follow = .Some(short@ref)\n    short = 3\n    return 1\n",
+        "")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@ref)\n    p@follow = .None\n" +
+        "    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool, d: bool) -> i32\n    var short = 2\n    while c\n        short = 3\n" +
+        "        while d\n            p@follow = .Some(short@ref)\n    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref) | var short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<uniq/i32 during q>), c: bool) -> i32\n    var short = 2\n    p@follow = .Some(short@uniq)\n" +
+        "    while c\n        let a = short\n        p@follow = .Some(short@uniq)\n        short = 4\n    return 0\n",
+        "short: Anchor short@uniq, Store p@follow = .Some(short@uniq) | short@uniq: Anchor short@uniq, Store p@follow = .Some(short@uniq) | short = 4: Anchor short@uniq, Store p@follow = .Some(short@uniq) | var short = 2: Anchor short@uniq, Store p@follow = .Some(short@uniq)")]
+    public void ALoanFoundInEIsWitnessedByItsStore(string source, string problems)
+        => Assert.Equal(problems.Length == 0 ? [] : problems.Split(" | ").Order(StringComparer.Ordinal), Witnessed(source).Order(StringComparer.Ordinal));
+
     // V16 (A3 6.3, shapes 1–6): N Copies of one reference, N loops with three live references and N writes through one reference keep the
     // work linear; a straight line of N borrowed locals, N borrow/write pairs of one root and N borrow/write pairs in loops grow it within
     // the bound's dense terms, quadratically at most: each write, StorageLive and StorageDead ends its Loans in every holder, each borrow's
@@ -3724,7 +3826,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // arguments with K holders live across it, N retention rows of one argument carrying K Loans and N rows into one output carrying K cost
     // N + K, not N × K. N × K is linear in each, so the rule is the mixed difference over N = 32, 128 and K = 32, 64, which cancels the
     // terms in N or K alone: within a quarter step per (N, K) pair. The work and ν are also linear in N at K = 32 and, where the shape
-    // builds its K holders linearly (the copies), in K at N = 32.
+    // builds its K holders linearly (the copies), in K at N = 32. N stores into E in a loop of a value carrying K Loans (Z18b's E stores,
+    // gathered at each entry into E: one union per entry, in every pass that plans the location) stay linear in N.
     [Theory]
     [InlineData(
         "func shape()\n«K:    var x{0} = {0}\n»    let t = («K:x{0}@ref, »1)\n    var z = 1\n    let q = z@ref\n    _ = («N:t, »z)\n    inspect(q)\n",
@@ -3741,6 +3844,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         "func fillN(out: uniq/(ref/i32 during a), «N:v{0}: ref/i32 during a, »n: i32) => ()\n" +
         "func shape(flag: bool, v: ref/i32 during a, «K:o{0}: uniq/(ref/i32 during a), »m: i32)\n    var p = o0@follow@uniq\n" +
         "«K:    if flag\n        p = o{0}@follow@uniq\n»    fillN(p, «N:v, »0)\n",
+        false)]
+    [InlineData(
+        "func shape(flag: bool, out: uniq/(ref/i32 during a), «K:x{0}: uniq/i32 during a, »m: i32)\n    var v = x0@follow@ref\n" +
+        "«K:    if flag\n        v = x{0}@follow@ref\n»    while flag\n«N:        out@follow = v\n»",
         false)]
     public void ALocationReadsEachEntryOnce(string template, bool linearInK)
     {
@@ -3801,6 +3908,38 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     {
         var (_, bytes) = this.Scaled("    var x = 0\n    var r = x@ref\n", "    x = {0}\n    r = x@ref\n    inspect(r)\n", string.Empty);
         Assert.True(Grows(bytes, 2), $"bytes {string.Join(", ", bytes)}");
+    }
+
+    // V16, DIAGNOSTICS A6 `Store` (Z18b, design review 1's C6): N reads of `short` meet its unique Loan kept in E by one store, each
+    // record's Store that store. The checks cost O(1) per record (81a7be6f5: work 3,439 / 6,387 / 12,343 at N = 32, 64, 128), and each
+    // record's backward search crosses the reads before it, O(records × path), the class of NextUse's O(records × chain), only on a
+    // rejected body (a PLAN open issue): the work stays within the dense bound.
+    [Fact]
+    public void AStoreWitnessCostsItsPath()
+    {
+        var (sizes, work) = (new[] { 32, 64, 128 }, new long[3]);
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var text = new StringBuilder("func bad(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@uniq)\n");
+            for (var k = 0; k < sizes[i]; k++)
+            {
+                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, "    let a{0} = short\n", k);
+            }
+
+            var c = MirBuildTest.Compile(text.Append("    return 0\n").ToString());
+            var program = c.BuildMir();
+            var stratum = new Stratum(c.Types);
+            stratum.Run(program);
+            work[i] = stratum.Borrows.Work;
+            Assert.Equal(
+                [$"{sizes[i] + 1} p@follow = .Some(short@uniq)"],
+                program.Problems.All.ToArray().Select((x, j) => (x, j)).Where(static x => LoanCodes.Contains(x.x.Code))
+                    .GroupBy(x => string.Join(",", program.Problems.Facts(x.j).ToArray().Where(static f => f.Kind == ProblemFactKind.Store).Select(f => Line(c, f.Site))))
+                    .Select(static g => $"{g.Count()} {g.Key}"));
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
     }
 
     // V16 (re-review): a view's work is its own: after a body of 512 Loans, a small body takes the steps it takes alone, since a view clears

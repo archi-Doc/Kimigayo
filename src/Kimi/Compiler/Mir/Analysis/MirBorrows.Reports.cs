@@ -14,7 +14,8 @@ namespace Kimi.Compiler.Mir;
 // conflict only the drop tier gives at its drop-live holder's declaration (Report, Ended), as beside an own-step Warning only the drop
 // tier gives (DroppedDeparture); one per failure, recorded where its check fails (one check's facts met at its one verdict are joined
 // first, MirOutcome.Join), so independent checks at one subject keep their own records (SPEC 23.1.2);
-// InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136). Every rejection but a limit record is
+// InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136) and where E holds what a check found
+// but no store of the body put it there (Found). Every rejection but a limit record is
 // recorded through
 // Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Found(code, found, via, at,
 // reservation, effect), keyed by what the check found, A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step
@@ -43,10 +44,18 @@ internal sealed partial class MirBorrows
     }
 
     // A Loan problem at a location (A3 6.4) of what the check found (a Loan's or a guard marker's element, None for a destruction's own
-    // hold): its subject and facts as MirBorrows.Witnesses builds them, recorded under the four Loan codes' requirement.
+    // hold): its subject and facts as MirBorrows.Witnesses builds them, recorded under the four Loan codes' requirement; where E holds it
+    // and no store of the body put it there (no facts), a broken contract, InternalInvariant_Kd at the location.
     private void Found(DiagnosticCode code, int found, int via, MirLocation at, int reservation, ProblemFact? effect)
     {
         var (subject, count) = this.Facts(found, via, at, reservation, effect);
+        if (count == 0)
+        {
+            this.causes.Clear();
+            this.Internal(at);
+            return;
+        }
+
         this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.CauseFacts(count));
     }
 
