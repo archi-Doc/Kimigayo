@@ -14609,7 +14609,7 @@ resumed by R4-M86 (2026-10-20).
   item's selector and Name are resolved with the item and not indexed, so their rows are reset by `Binding.RowReset` before the item
   is indexed, and the rebind after an append gives the fresh compilation's verdict.
   - Removal: at R7-D2 c, whose pre-order walk reaches every node (COMPILER_ARCHITECTURE's temporaries list).
-  - Removed by R7-M79 (R7-D2 c, Q-667; the landing commit): the indexer's one iterative walk reaches every node in a slot, so
+  - Removed by R7-M79 (R7-D2 c, Q-667; the landing commit 8a90275af): the indexer's one iterative walk reaches every node in a slot, so
     `Binding.RowReset` is deleted.
   - Rejected: clearing each module's base columns at the pass start (R7-D2 c's change); a reset in `EffectTarget` or
     `BindEffectBound` (consumers deciding the indexer's reset).
