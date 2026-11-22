@@ -208,7 +208,8 @@ public partial class SyntaxIdTest
     // ArithmeticConformanceFailures, a conformance to Addable<string> (ArithmeticContractTest); CallableConstraints, a callee needing
     // `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UnboundSlots, a call whose slot nothing binds,
     // and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter; B1b-2's
-    // MemberSelections, a stored Field read and a method call; D-986's
+    // MemberSelections, a stored Field read and a method call, and InferredConstructionTargets, a generic struct's construction
+    // without its Type arguments; D-986's
     // FormReads, the kept operands `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query
     // memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
     // result; the guess rule's is written only after a Bind, by the lint report and MIR:
@@ -258,6 +259,7 @@ public partial class SyntaxIdTest
     [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
     [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
     [InlineData("MemberSelections", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
+    [InlineData("InferredConstructionTargets", "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet b = Box.init(1)\n")]
     [InlineData("FormReads", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("Prerequisites", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("PartPrerequisites", "#Layout(\"bad\")\nstruct S\n", DiagnosticCode.InvalidLayoutAttribute_Kd)]

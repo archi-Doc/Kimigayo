@@ -41,7 +41,6 @@ public sealed partial class Binding
     // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
     private void ResetPass(BindingMode mode)
     {
-        this.inferredConstructionTargets.Clear();
         this.clausesBindable = false;
         this.verifiedClause = null;
         this.earlyObjectForms?.Clear();
