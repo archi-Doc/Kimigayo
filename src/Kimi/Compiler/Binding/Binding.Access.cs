@@ -299,7 +299,7 @@ public sealed partial class Binding
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
         => type is not null && type.Semantics is not (SemanticsKind.Raw or SemanticsKind.Parameter) &&
             (this.Library.MembersOf(owner.Declaration) is { } members
-                ? WitnessReceiver(members, type) : SameType(EffectiveCore(type), this.DeclarationSelf(owner)));
+                ? WitnessReceiver(members, type) : ReferenceEquals(EffectiveCore(type), this.DeclarationSelf(owner)));
 
     // SPEC 9.4.1-9.4.2, 23.1.2: a clause, base clause or enum case whose projection access fails records its own problem (Record), beside
     // any earlier failure of that part. Its owner (here and in ValidateBaseProjections, ValidateEnumProjections, ValidateApiAccess) keeps
