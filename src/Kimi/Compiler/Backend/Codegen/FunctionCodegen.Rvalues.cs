@@ -62,12 +62,12 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A Storage (SPEC 4.8.1; IMPL 21.1.3; O-92 (a)): a sequence Place's first element's address, which reads no layout of the element: a
-    // fixed array's own address, an Array's or Slice's buffer word, a raw pointer's value (SPEC 5.3; Storage.viewStart's form, PLAN G597's
-    // L2) (Buffer, which an Index's element address starts from too). A keyed one
-    // (SPEC 8.15.3; PLAN G597) is that address displaced by its start times the element's stride where its key, in the item's instance,
-    // has the Element need (LayoutNeeds), the statement of displacement a raw p + n uses (Displace). A key without an instance Type, or
-    // whose start is still open there, is a broken contract: the collector made every Type of an admitted item and admits closed items only.
+    // A Storage (SPEC 4.8.1; IMPL 21.1.3; O-92 (a)): a sequence Place's first element's address (Buffer, which an Index's element address
+    // starts from too), which reads no layout of the element: a fixed array's own address, an Array's or Slice's buffer word, a raw
+    // pointer's value (SPEC 5.3; Storage.viewStart's form, PLAN G597's L2). A keyed one (SPEC 8.15.3; PLAN G597) is that address displaced
+    // by its start times the element's stride where its key, in the item's instance, has the Element need (LayoutNeeds), the statement of
+    // displacement a raw p + n uses (Displace). A key without an instance Type, or whose start is still open there, is a broken contract:
+    // the collector made every Type of an admitted item and admits closed items only.
     private void Storage(in MirStatement statement)
     {
         var place = statement.Rvalue.Place;
@@ -96,14 +96,11 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A Len's or Storage's sequence Place: its address and its handle's record, or null for a fixed array, whose length and first element
-    // are its Type's and its own address, and for a raw pointer, a Storage's only (MirValidator), whose first element is its value; false
-    // after a record.
+    // A Len's or Storage's sequence Place: its address and its record (RecordOf); false after a record.
     private bool Sequence(MirPlace place, BoundType type, out ValueLowering? record, out Value address)
     {
-        var unrecorded = type.Kind == BoundTypeKind.FixedArray || type.IsPointer;
-        record = unrecorded ? null : this.LoweringOf(place);
-        return this.Address(place, out address) && (record is not null || unrecorded);
+        var recorded = this.RecordOf(place, type, out record);
+        return this.Address(place, out address) && recorded;
     }
 
     // An Adapt (SPEC 8.14, 13.5.3): the ordinary rvalue of the operation the item's view selects (MirCases.Adapt), written by that rvalue's
