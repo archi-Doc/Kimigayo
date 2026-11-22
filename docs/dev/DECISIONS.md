@@ -25503,6 +25503,28 @@ R8-M* and R9-M* by the stage of the recording unit.
   merges a marker's two writes, a count change); the excluded test's row alone resetting its chain (the narrow (B): misses a nested
   function's marker, a second resetting row and a mode on the entry); a column clear at the pass start (a second reset site);
   `SyntaxTable.Nodes`' id order (a try's deferred arms are no pre-order id range: `TryKoto.SelectOption`).
+- **R7-M80 A written Type occurrence outside a base clause is one Constraint record, at its Type node** (Front, 2026-11-22; R7-V1c,
+  PLAN G373, Q-670, D-1107; Major, a record mover, no acceptance move; F's V1c rulings 1-4; design `front\notes\V1\design-v1c.md`;
+  the implementation review REVISE (B1, B2), fixed by ruling 3, then its delta read ACCEPT, ruling 6) SPEC 8.3.1, 23.1.2.
+  ValidateConstraintUses judged every node whose BoundType is a constructed Type with clauses, and a written Type is several such
+  nodes (the parser's transparent TypeSemanticsKoto wrapper, the parentheses of SPEC 8.3.1, an explicit `owner/`, and the Type node
+  they hold), so each failing clause was recorded once per layer at one occurrence in every Type position. A layer of Type syntax (a
+  TypeKoto with one Type component) whose formed Type is that component's, by the identity judge (SameCompleteType), is that
+  occurrence (`SameTypeOperand`, decided by the Type the layer forms, not by its syntax kind: wrappers, parentheses and `owner/`
+  alike); a layer forming another Type (`ref/`, `uniq/`, a pair layer, `T?`) is not. One predicate, `JudgedOccurrence`, reads it:
+  the walk judges an occurrence once, at its outermost such layer with a constructed Type that has clauses, and skips every other
+  layer. A formed wrapper's Type carries the written Origin arguments (and its inner layers carry the same completed Type), so the
+  clauses are proved under them; a wrapper whose annotation failed has no Type, so it is not the occurrence below it, which is judged
+  at its own node (both independent failures are reported, SPEC 23.1.2). The record is at the Type node, the Type the Constraint is
+  about. Each layer between the judged node and the Type node is that Type (rule W, `RestLayersOnType`: Invalid resting on it through
+  `RestOnPart` with no failure of its own, or Unresolved with it), so readers of a declaration's written Type read a failed Type as
+  before; RestOnPart, rule W's owner, signals its state change (Invalidated). A check that recorded at a node first keeps its record
+  (a written Origin's check at the wrapper). A base clause keeps `ValidateBaseDeclarations`' record beside the walk's (PLAN G1279).
+  Rejected: the record at the wrapper (ruling 2, Q3: the Type node's span is the Type's); dropping duplicates at publication
+  (suppression afterwards); G373's narrow form (ValidateAccessor stops entering Function Types), which leaves every other double; a
+  wrapper-only skip test (phase 3: it lost a failed wrapper's occurrence and kept one record per parenthesis, the two halves reading
+  different nodes); a list of transparent syntax kinds (phase 4: `owner/` kept its own record, one more case of an open family).
+  Records at other nodes resting on the same failure: PLAN G1278.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
