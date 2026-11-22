@@ -97,6 +97,17 @@ public class NeverContinuationTest
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 12.3.1 ("Otherwise a Type comes from the operands"), 12.3.3 (PLAN G51, F's P1 ruling 1, reading (A)): a declared Type is
+    // no expected Type of a built-in operator's operands, and `1 & stop()` is not literal-only, so `1` defaults to i32 and the i64
+    // declaration rejects it, in either operand order; a literal-only expression and a typed counterpart give the operation i64.
+    [Theory]
+    [InlineData("g51-l", "let value: i64 = 1 & stop()\n", "TypeMismatch_Kd: let value: i64 = 1 & stop()")]
+    [InlineData("g51-r", "let value: i64 = stop() & 1\n", "TypeMismatch_Kd: let value: i64 = stop() & 1")]
+    [InlineData("g51-lit", "let value: i64 = 1 + 2\n", "")]
+    [InlineData("g51-wide", "let wide: i64 = 2\nlet value: i64 = 1 & wide\n", "")]
+    public void ADeclaredTypeIsNoExpectedTypeOfAnOperatorsOperands(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, Stop + program, records);
+
     [Theory]
     [InlineData("func f() -> i32\n    +(return 1)", DiagnosticCode.OperatorNotDefined_Kd)]
     [InlineData("func f() -> Never => +stop()", DiagnosticCode.OperatorNotDefined_Kd)]
