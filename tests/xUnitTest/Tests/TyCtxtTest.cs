@@ -923,7 +923,8 @@ public sealed partial class TyCtxtTest
     // passes the shared c before a member and a follow. u01's `t[0]@raw`, u01x (a later `t@uniq`), u01r's `r[0]@raw` through an
     // exclusive receiver, u02's Array element `ra[0]@raw`, s01's `s.items[0]@raw` (s: `uniq/G<ref/i32>`) and d01's Dictionary element
     // `rd[1]@raw` pass a conformance selection whatever their receiver's path grants (u01's t row also lists the exclusive receiver
-    // borrow of the user index's indexUniq call, which Binding forms with index's). The twins take SPEC 5.4's writing pointer,
+    // borrow of the user index's indexUniq call, which Binding forms with index's; u01r's and d01's stated Origin is a meet of the
+    // receiver variable's two regions, each operand marked). The twins take SPEC 5.4's writing pointer,
     // `u@follow@raw` from an exclusive path (`r`, or an `indexUniq` element `u = ...[0]@uniq`), and mark nothing. The address forms no
     // entry (SPEC 5.4).
     // Labels from SPEC (`G147\z6f-b\labels.txt`, before any run): the marked rows V (condition 3: the address has no write authority,
@@ -936,13 +937,13 @@ public sealed partial class TyCtxtTest
     [InlineData("var t = Two.init(x@ref)", "t[0]@raw", "t", "", "var t = Two.init(x@ref) Projection 0: Two<ref/i32> X SharedAddress")]
     [InlineData("var t = Two.init(x@ref)", "t[0]@raw", "t", "|let k = t@uniq|inspect(k)", "var t = Two.init(x@ref) Projection 0: Two<ref/i32> X SharedAddress")]
     [InlineData("var t = Two.init(x@ref)|let u = t[0]@uniq", "u@follow@raw", "t", "", "")]
-    [InlineData("var t = Two.init(x@ref)|var r = t@uniq", "r[0]@raw", "t", "", "var r = t@uniq Inference -1:  SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)|var r = t@uniq", "r[0]@raw", "t", "", "var r = t@uniq Inference -1:  SharedAddress|var r = t@uniq Inference -2:  SharedAddress")]
     [InlineData("var t = Two.init(x@ref)|var r = t@uniq|let u = r[0]@uniq", "u@follow@raw", "t", "", "")]
     [InlineData("var arr: Array<ref/i32> = [x@ref]|var ra = arr@uniq", "ra[0]@raw", "arr", "", "var ra = arr@uniq Inference -1:  SharedAddress")]
     [InlineData("var arr: Array<ref/i32> = [x@ref]|var ra = arr@uniq|let u = ra[0]@uniq", "u@follow@raw", "arr", "", "")]
     [InlineData("var st = G.init([x@ref])|var s = st@uniq", "s.items[0]@raw", "st", "", "var s = st@uniq Inference -1:  SharedAddress")]
     [InlineData("var st = G.init([x@ref])|var s = st@uniq|let u = s.items[0]@uniq", "u@follow@raw", "st", "", "")]
-    [InlineData("var d: Dictionary<i64, ref/i32> = [:]|_ = d.tryInsert(1, x@ref)|var rd = d@uniq", "rd[1]@raw", "d", "", "var rd = d@uniq Inference -1:  SharedAddress")]
+    [InlineData("var d: Dictionary<i64, ref/i32> = [:]|_ = d.tryInsert(1, x@ref)|var rd = d@uniq", "rd[1]@raw", "d", "", "var rd = d@uniq Inference -1:  SharedAddress|var rd = d@uniq Inference -2:  SharedAddress")]
     public void AnAddressPastASharedPathMarksItsAtoms(string setup, string address, string inspected, string tail, string marked)
     {
         var c = MinimalEmissionTest.Analyze(BorrowsPrelude + "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
