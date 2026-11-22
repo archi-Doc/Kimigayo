@@ -9,6 +9,7 @@ using Kimi;
 using Kimi.Build;
 using Kimi.Command;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -764,10 +765,12 @@ public sealed class NativeToolchainTest : IDisposable
 
     // IMPL 21.4, read as the ABI's unwind information (T's ruling): an entry for each function that allocates stack, saves a nonvolatile
     // register or calls, none for a frameless leaf; so the object inspection judges no unwind entry and keeps its other refusals. Each row
-    // builds at O2: forever's loop folds __kimi_start into a frameless leaf, whose executable has no exception table, and it builds (dev
-    // 9ec1e3d02 refused it: "Invalid _fltused definition, unwind information or hidden default library."); its twin that calls builds
-    // with entries; that twin's IR naming a default library (a linker option, the manifest's irSha256 updated), built from its manifest,
-    // is refused before the link. On the installed toolchain.
+    // builds at O2: forever's loop folds __kimi_start into a frameless leaf, its IR without the memory part (the runtime's memcmp,
+    // memcpy, memmove and memset, which every module defines and which save nonvolatile registers at O2; Tatara B7r4) built from its
+    // manifest, so no function of the object has an entry: its executable has no exception table, and it builds (dev 9ec1e3d02 refused
+    // it: "Invalid _fltused definition, unwind information or hidden default library."); its twin that calls builds with entries; that
+    // twin's IR naming a default library (a linker option), built from its manifest, is refused before the link. An edited IR's
+    // manifest takes its irSha256. On the installed toolchain.
     [Theory]
     [InlineData("leaf")]
     [InlineData("call")]
@@ -778,19 +781,32 @@ public sealed class NativeToolchainTest : IDisposable
         var token = TestContext.Current.CancellationToken;
         var project = row == "leaf" ? this.Main("func forever(a: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)\n") : this.Hello("Hello");
         var paths = ArtifactPaths.Create(project);
+        Assert.True(row == "call" ? await project.Build(token) : await project.Generate(token), this.console.Text);
+        if (row != "call")
+        {
+            var ir = File.ReadAllText(paths.Ir);
+            var edited = row == "leaf"
+                ? ir.Replace(LlvmModuleText.MemoryRuntime, string.Empty, StringComparison.Ordinal)
+                : ir + "\n!llvm.linker.options = !{!9000}\n!9000 = !{!\"/DEFAULTLIB:libcmt.lib\"}\n";
+            Assert.NotEqual(ir, edited);
+            File.WriteAllText(paths.Ir, edited);
+            var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+            manifest["irSha256"] = ArtifactFiles.Hash(paths.Ir);
+            File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        }
+
         if (row != "default library")
         {
-            Assert.True(await project.Build(token), this.console.Text);
+            if (row == "leaf")
+            {
+                await NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, token);
+            }
+
             using var executable = new PEReader(File.OpenRead(paths.Executable));
             Assert.Equal(row == "call", executable.PEHeaders.PEHeader!.ExceptionTableDirectory.Size != 0);
             return;
         }
 
-        Assert.True(await project.Generate(token), this.console.Text);
-        File.AppendAllText(paths.Ir, "\n!llvm.linker.options = !{!9000}\n!9000 = !{!\"/DEFAULTLIB:libcmt.lib\"}\n");
-        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
-        manifest["irSha256"] = ArtifactFiles.Hash(paths.Ir);
-        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, token));
         Assert.Equal("Invalid _fltused definition or hidden default library.", error.Message);
         Assert.False(File.Exists(paths.Executable));
@@ -854,6 +870,58 @@ public sealed class NativeToolchainTest : IDisposable
             Assert.Equal($"Native library '{name}' does not match its manifest Sha256 assertion.", error.Message);
             Assert.False(File.Exists(paths.Executable));
         }
+    }
+
+    // IMPL 20.4, 21.4.7 (the Tatara plan's decision 24, change W5; B7r4): a supplied static library's member that the link pulls (for
+    // codec_add) and that gives a non-weak memcpy beside the module's fails the link whatever the library's name, before kimi_backend in
+    // name order or after it: LLD's duplicate between the module's object and the staged library's member; the member that only defines
+    // memset, never pulled, adds nothing. The same member's weak memcpy yields to the module's, and the program runs (C-445 C3's probe).
+    // The program's Array growth copies through memcpy. Fail-before: codec built with the library's memcpy, and zlib's duplicate was the
+    // backend archive's member's.
+    [Theory]
+    [InlineData("codec", false)]
+    [InlineData("zlib", false)]
+    [InlineData("codec", true)]
+    public async Task ASuppliedMemoryFunctionIsADuplicateOfTheModules(string name, bool weak)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var native = Path.Combine(this.directory, "native");
+        Directory.CreateDirectory(native);
+        const string Copy = "void *memcpy(void *d, const void *s, unsigned long long n) { char *x = d; const char *y = s; while (n--) *x++ = *y++; return d; }\n";
+        File.WriteAllText(Path.Combine(native, "needed.c"), "int codec_add(int a, int b) { return a + b; }\n" + (weak ? "__attribute__((weak)) " : string.Empty) + Copy);
+        File.WriteAllText(Path.Combine(native, "other.c"), "void *memset(void *d, int c, unsigned long long n) { char *x = d; while (n--) *x++ = (char)c; return d; }\n");
+        foreach (var member in new[] { "needed", "other" })
+        {
+            string[] compile = ["--target=" + TargetProfile.Windows.Target, "-O2", "-fno-builtin", "-fno-autolink", "-fno-stack-protector", "-c", member + ".c", "-o", member + ".obj"];
+            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", native, compile));
+        }
+
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", native, $"/out:{name}.lib", "needed.obj", "other.obj"));
+        var project = this.Hello("unused");
+        var source = $"group Codec\n    #LibraryImport(\"{name}\", \"codec_add\")\n    public unsafe func add(a: i32, b: i32) -> i32\npublic func main()\n" +
+            "    var sum: i32 = 0\n    unsafe => sum = Codec.add(40, -2)\n    require sum == 38 else => $abort(\"add\")\n    var values: Array<i32> = []\n" +
+            "    for i in 0..100\n        values.append(i)\n    require values.length == 100 else => $abort(\"append\")\n    Console.writeLine(\"ffi ok\")\n";
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
+        project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = "static", Input = $"native/{name}.lib" } };
+        var built = await project.Build(TestContext.Current.CancellationToken);
+        if (weak)
+        {
+            Assert.True(built, this.console.Text);
+            var start = new ProcessStartInfo(ArtifactPaths.Create(project).Executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+            using var process = Process.Start(start)!;
+            Assert.Equal("ffi ok\n", await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken));
+            await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(0, process.ExitCode);
+            return;
+        }
+
+        Assert.False(built, this.console.Text);
+        var text = this.console.Text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var module = Path.Combine(this.directory, "out", "Hello.O2.obj");
+        var staged = ArtifactFiles.Hash(Path.Combine(native, name + ".lib")) + ".lib"; // LLD names the staged copy by its file name.
+        Assert.Contains($"Tatara failed: link\nlld-link: error: duplicate symbol: memcpy\n>>> defined at {module}\n>>> defined at {staged}(needed.obj)\n", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("memset", text, StringComparison.Ordinal);
+        Assert.False(File.Exists(ArtifactPaths.Create(project).Executable));
     }
 
     [Fact]

@@ -6,7 +6,7 @@
 // Input: none. Output: the rows (Rows) and each row's columns: the triple, the profile name, data layout, CPU, features and code
 // generation settings, the entry and subsystem, the reserved runtime name, the reserved supplies (Supplies: each one's name, kind and
 // symbol set; Supply(name)) and the reserved external names (ReservedSymbols, IMPL 21.2), the runtime's import declarations, and the
-// bound below which the system maps no address.
+// bound below which the system maps no address; table-wide, the C memory functions every runtime defines (MemorySymbols).
 // Invariants: constants and arrays only; each row's supplies distinct, in Ordinal name order (publication interleaves a program's
 // supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2); a row's reserved external
 // names are its float marker and its backend supply's symbols; the native build checks the embedded backend record against them and
@@ -19,6 +19,11 @@ namespace Kimi.Compiler;
 /// <summary>A row of the target table: one executable target profile (SPEC 22). This is a partial language implementation.</summary>
 internal sealed class TargetProfile
 {
+    /// <summary>The C memory functions every runtime defines in its module's IR, whatever the row (IMPL 21.4.7; the Tatara plan's
+    /// decision 24): the names the Backend's memory part (MemoryRuntime.ll.in) defines, in Ordinal order. Static initializers run in
+    /// text order: this before the Windows row's values.</summary>
+    internal static readonly string[] MemorySymbols = ["memcmp", "memcpy", "memmove", "memset"];
+
     // The Windows row's values that two of its columns share, stated once. Static initializers run in text order: these before Windows,
     // Windows before Rows (a reversed pair reads null).
     private const string WindowsFloatMarker = "_fltused";
@@ -39,8 +44,9 @@ internal sealed class TargetProfile
         ("SetHandleInformation", "4p44"),
     ];
 
-    // The backend supply's helper symbols in catalog order (IMPL 21.4.7), which its supply and the reserved external names share.
-    private static readonly string[] WindowsBackendSymbols = ["__chkstk", "memcmp", "memcpy", "memmove", "memset"];
+    // The backend supply's helper symbols in catalog order (IMPL 21.4.7), which its supply and the reserved external names share: the
+    // archive still holds members for the memory functions, which no link pulls since every module defines them.
+    private static readonly string[] WindowsBackendSymbols = ["__chkstk", .. MemorySymbols];
 
     /// <summary>Gets the windows-x64 row, the pinned, module-local Windows execution profile (IMPL 21.4). Its reserved supplies (IMPL
     /// 20.4), in Ordinal name order: kernel32, the generated import library, whose symbol set is the runtime declarations' symbols, then
