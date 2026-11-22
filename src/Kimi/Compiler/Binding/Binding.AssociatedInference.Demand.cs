@@ -17,8 +17,8 @@ namespace Kimi.Compiler;
 //   dropped at its end (capacity kept); a state's runs go back to their batch's pool when it is answered, so a request holds about two
 //   runs per open state, and a pool keeps at most InferenceRunsKept runs across requests (C4 ruling 15); a binding is written once, at
 //   its request's end; problems are recorded by the definition's run (the hold of its bindings, made at publication), never by a held run.
-// - Prohibitions: no held answer outside its request; no read of a later component's binding (the validator); no identification cached
-//   inside a request (a held answer is Provisional).
+// - Prohibitions: no held answer outside its request; no read of a later component's binding (the validator); no identification made
+//   inside a request is kept (a held answer is Provisional; the pass's, made before the request, is read: IdentifyRequirement).
 public sealed partial class Binding
 {
     // OQ2's items limit (BU-29; the owner's O-484 (2 x); SPEC 8.3.3 Limits): a component's request holds at most this many held states.

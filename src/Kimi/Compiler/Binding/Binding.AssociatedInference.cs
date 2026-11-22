@@ -571,12 +571,13 @@ public sealed partial class Binding
     }
 
     // The pass's identification of a requirement in a path, kept on the path (BoundConformancePath.RequirementMatches) until the pass
-    // ends; a pending one is identified again.
+    // ends; a pending one is identified again. R7-C4 (C4 ruling 19 P1): a request's runs read the kept one too, made before the request
+    // (BindBeforeRequest) where a binding of the component reads pending, so a kept identification read no held answer and is a function
+    // of (path, requirement) for every state; one made inside a request may read a held answer (Provisional) and is never kept.
     private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity)
     {
         var identified = path.RequirementMatches ??= new();
-        var cached = this.inferenceRequest < 0; // R7-C4: inside a request a key may read a held answer (Provisional): never cached.
-        if (cached && MatchIndex(identified, identity) is var known and >= 0 && identified[known].Match.State != RequirementMatchState.Pending)
+        if (MatchIndex(identified, identity) is var known and >= 0 && identified[known].Match.State != RequirementMatchState.Pending)
         {
             return identified[known].Match;
         }
@@ -611,7 +612,7 @@ public sealed partial class Binding
 
         var state = selection.Ambiguous || matches > 1 ? RequirementMatchState.Ambiguous : pending ? RequirementMatchState.Pending : selected is null ? RequirementMatchState.Missing : RequirementMatchState.Unique;
         var result = new RequirementMatch(state, selected, selection);
-        if (!cached)
+        if (this.inferenceRequest >= 0)
         {
             return result;
         }
