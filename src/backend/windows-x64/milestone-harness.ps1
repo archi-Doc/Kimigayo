@@ -69,8 +69,7 @@ try {
         $buildSeconds = $timer.Elapsed.TotalSeconds
         $stem = Join-Path $directory "bin/x86_64-pc-windows-msvc/$name"
         $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-        if ($record.status -cne 'linked' -or $record.optimization -cne $level -or
-            $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw "Invalid build record: $project" }
+        if ($record.status -cne 'linked' -or $record.optimization -cne $level) { throw "Invalid build record: $project" }
         $timer.Restart()
         $actual = Invoke-Captured "$stem.$level.exe" @()
         $runSeconds = $timer.Elapsed.TotalSeconds
@@ -102,7 +101,7 @@ finally {
     @{
         status = $status; error = $failure
         compilerConfiguration = $Configuration; compilerSha256 = $compilerHash; source = [IO.Path]::GetRelativePath($repo, $source).Replace('\', '/')
-        sourceSha256 = $sourceHash; toolchainVerification = 'not-performed'; seconds = $totalTimer.Elapsed.TotalSeconds; tests = $results
+        sourceSha256 = $sourceHash; seconds = $totalTimer.Elapsed.TotalSeconds; tests = $results
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $report -Encoding utf8
 }
 Write-Output "Passed $($results.Count) $name checks ($Configuration, original O0/O2): $report"

@@ -96,6 +96,21 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Equal(project, Assert.Single(solution.Projects).Key);
     }
 
+    // IMPL 20.3.1: a directory holding more than one .kimisln is an error naming them, before any project loads (one selects it:
+    // DirectoryKeepsSolutionDiscoveryAndNeverCollectsLooseSources); a named .kimisln beside another selects that solution.
+    [Fact]
+    public void SeveralSolutionsInADirectoryAreAnErrorAndANamedOneIsSelected()
+    {
+        this.Write("A.kimiproj", "Targets={\"x86_64-pc-windows-msvc\"} OutputKind=\"Application\"");
+        var project = this.Write("B.kimiproj", "Targets={\"x86_64-pc-windows-msvc\"} OutputKind=\"Application\"");
+        var first = this.Write("A.kimisln", "Projects={\"A.kimiproj\"}");
+        var second = this.Write("B.kimisln", "Projects={\"B.kimiproj\"}");
+        var exception = Assert.Throws<CommandInputException>(() => this.Load(this.directory));
+        Assert.Contains(first, exception.Message, StringComparison.Ordinal);
+        Assert.Contains(second, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(project, Assert.Single(this.Load(second).Projects).Key);
+    }
+
     [Fact]
     public async Task ImplicitProjectEmitsOnlyTheSelectedSourceAndUsesExplicitTarget()
     {
