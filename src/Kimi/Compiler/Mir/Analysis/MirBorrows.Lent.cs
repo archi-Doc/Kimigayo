@@ -5,16 +5,16 @@ namespace Kimi.Compiler.Mir;
 // A5's exact lent positions (SPEC 15.6.3: a Reborrow carries its parent's Loans and lends a part of its referent; 15.6 Addresses and 5.7
 // Reading a Field through a dereference: a read states the Origin of the last borrow or raw pointer dereferenced; Z5-F, the owner's O-482
 // (a)): the storage a Place denotes, where the body forms it exactly, as a position, a root key (Key) and a run of steps that passes no
-// borrow or raw Deref, for a Place of the view (Lent) and for a borrow by its location (LentAt). A Place that passes no borrow or raw Deref
-// is its own position. Past one, its position is the lent position of the borrow whose reference the last such Deref goes through
-// (Lender), followed by the steps after that Deref; that borrow is found by the stores of the reference's root (MirBorrows.Loans' store
+// borrow or raw Deref, for a Place of the view (Lent). A Place that passes no borrow or raw Deref is its own position. Past one, its
+// position is the lent position of the borrow whose reference the last such Deref goes through (Lender), followed by the steps after
+// that Deref; that borrow is found by the stores of the reference's root (MirBorrows.Loans' store
 // record, the one writer of a local's stores): its one store, through whole Copies and Moves and a Tuple's or fixed array's operands.
 // There is none (-1) where no one borrow forms the reference: an argument's, a call's result, a local stored twice, into a part or
 // written through a pointer (Exposed), a reference reached past a Deref, a runtime Index or a Downcast, a Cast, an Adt or Fill aggregate.
 // A position's steps keep their kinds, classes, arguments and prefixes; a resolved step's Prefix is its own Place's, whose Type it reads.
 // Inputs: the view's body, the Loans' store record and Exposed, final once the Addresses pre-pass has run (it completes Exposed with the
-// holders a direct address names), and MirSteps' walk. Precondition: no Lent or LentAt before the view's Addresses pre-pass has walked
-// its uses (its Place asks every position after the walk and before any own-step entry it makes).
+// holders a direct address names), and MirSteps' walk. Precondition: no Lent before the view's Addresses pre-pass has walked its uses
+// (its Place asks every position after the walk and before any own-step entry it makes).
 // Cost: positions are made on demand, the first time a view asks (none in a view that asks none), and kept per view: a read's by its Place,
 // a borrow's by its location and a whole local's lender by the local, so each store is followed and each position's run copied once per
 // view; the lender chain is a loop, not a recursion. Each store followed and each step copied is Work. Reader: MirBorrows.Addresses' Place (R-C).
@@ -33,7 +33,7 @@ internal sealed partial class MirBorrows
     private int[] lentAt = []; // By location: a borrow's exact lent position, -1 for none, or Unmade.
     private int[] lenderOf = []; // By local: the borrow its whole reference holds (Lender), -1 for none, or Unmade.
     private int lentStepCount;
-    private bool lentBegun; // Whether the view's positions are begun (Lend), at its first Lent or LentAt.
+    private bool lentBegun; // Whether the view's positions are begun (Lend), at its first Lent.
 
     /// <summary>Gets a Place's exact lent position (see <see cref="LentRun"/>), -1 for none; after the view's Addresses pre-pass.</summary>
     /// <param name="place">A Place of the view's body.</param>
@@ -52,27 +52,8 @@ internal sealed partial class MirBorrows
         return lent;
     }
 
-    /// <summary>Gets a borrow's exact lent position by its location (a Ref's or Storage's Place, a Storage's with its element step, or the
-    /// referent of the Place a Reborrow acquires), -1 for none; after the view's Addresses pre-pass.</summary>
-    /// <param name="location">The location of a Ref, a Storage or a PairAcquire the view makes a Reborrow.</param>
-    /// <returns>The position.</returns>
-    internal int LentAt(int location)
-    {
-        this.Lend();
-        if (this.lentAt[location] != Unmade)
-        {
-            return this.lentAt[location];
-        }
-
-        this.lending.Clear();
-        this.lending.Add((0, 0, location));
-        this.lentAt[location] = -1; // Being made: a cycle of stores lends nothing exactly.
-        var count = this.Borrowed(location, out var root);
-        return this.Resolve(root, count);
-    }
-
     /// <summary>Gets a position's steps and root key.</summary>
-    /// <param name="position">A position of the view (<see cref="Lent"/>, <see cref="LentAt"/>).</param>
+    /// <param name="position">A position of the view (<see cref="Lent"/>).</param>
     /// <param name="root">Its root key (Key).</param>
     /// <returns>Its steps, which pass no borrow or raw Deref.</returns>
     internal ReadOnlySpan<MirStep> LentRun(int position, out int root)
@@ -84,7 +65,7 @@ internal sealed partial class MirBorrows
     // Forgets the view's positions, at the start of its Loans.
     private void Unlend() => this.lentBegun = false;
 
-    // Begins the view's positions at its first Lent or LentAt.
+    // Begins the view's positions at its first Lent.
     private void Lend()
     {
         if (this.lentBegun)
