@@ -469,28 +469,25 @@ public sealed partial class Binding
         return fails;
     }
 
-    // SPEC 10.5.1, 10.1, 23.1.2 (ArgFlow ruling 146; G812 rulings 122, 123): an argument's fit in a run as the Item's one candidate's
-    // check, reading the published verdicts of the parts awaiting their call at the Types the run formed (FitChecked: one judge, never
-    // a second judgment here): a part that does not check there fails the fit, with its checked failure (CheckedPartFailure, taken
-    // right after the fit); a part the fit kept whose selection there, or a part's below it, is unproven (UnprovenWaiting: an
-    // obligation of the selected candidate, SPEC 10.1) fails the run at that part. The failing waiting part is the run's (runWaiting),
-    // with its Type, and argumentMisfit the components from the argument down to it.
+    // SPEC 10.5.1, 10.1, 23.1.2 (ArgFlow rulings 146, 152 C2; G812 rulings 122, 123): an argument's fit in a run as the Item's one
+    // candidate's check, reading the published verdicts of the parts awaiting their call at the Types the run formed (FitChecked: one
+    // judge, never a second judgment here) in source order: a part the fit kept, before any failure, whose selection there, or a part's
+    // below it, is unproven (UnprovenWaiting: an obligation of the selected candidate, SPEC 10.1) fails the run at that part; else a
+    // part that does not check there fails the fit, with its checked failure (CheckedPartFailure, taken right after the fit). The
+    // failing waiting part is the run's (runWaiting), with its Type, and argumentMisfit the components from the argument down to it.
     private bool RunFitFails(Koto argument, BoundType parameter, BindingScope scope, Koto use)
     {
-        if (this.FitArgument(argument, parameter, scope, use, out _) == CandidateApplicability.Inapplicable)
+        var fails = this.FitArgument(argument, parameter, scope, use, out _) == CandidateApplicability.Inapplicable;
+        var failed = fails ? this.TakeTrialChecked(use) : null;
+        if (this.UnprovenWaiting() is { } unproven)
         {
-            this.runWaiting = this.TakeTrialChecked(use) is { } failed ? (failed.Part, failed.Expected) : default;
+            this.runWaiting = (KotoHelper.UnwrapParentheses(unproven.Part), unproven.Type);
+            this.argumentMisfit = unproven.Unproven;
             return true;
         }
 
-        if (this.UnprovenWaiting() is not { } unproven)
-        {
-            return false;
-        }
-
-        this.runWaiting = (KotoHelper.UnwrapParentheses(unproven.Part), unproven.Type);
-        this.argumentMisfit = unproven.Unproven;
-        return true;
+        this.runWaiting = failed is { } part ? (part.Part, part.Expected) : default;
+        return fails;
     }
 
     // One part of a Function Item's signature as its value call reads it (TryCallable: ItemType, then the scope's contract Type).
