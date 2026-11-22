@@ -319,7 +319,7 @@ public sealed partial class Binding
             switch (step.Kind)
             {
                 case NameStepKind.Head:
-                    this.gatheredGroups?.GetValueOrDefault(step.Use)?.Clear();
+                    GatheredGroupRows.GetValueOrDefault(step.Use)?.Clear();
                     this.qualificationStops?.Remove((step.Use, !InValueNamespace(step.Role)));
                     if (step.Import.Environment is not null)
                     {

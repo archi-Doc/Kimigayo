@@ -135,7 +135,8 @@ public partial class SyntaxIdTest
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
     // its container's list; OverrideEntries: a Type's implementations by original; SpecializationStorage: Milestone11's specialization
     // entries, reused by every Bind; KnownBases: j4's known base, which the Binds after its first start from; Refusals: the refusal a
-    // losing candidate's request past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by
+    // losing candidate's request past the round bound holds, unsettled, in a valid program, G881b's xovm; GatheredGroups: a call's
+    // group gathered from two aliases' groups, the same list refilled at each Bind, R7-N5 B1b-1). The column is read by
     // reflection, since the families' rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each
     // Final check's start empties them, so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
     // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`.
@@ -164,6 +165,7 @@ public partial class SyntaxIdTest
     [InlineData("ResolvedKeys", "milestone:Milestone27")]
     [InlineData("MatchPlans", "milestone:Milestone10")]
     [InlineData("Refusals", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\npublic func main() => ()\n")]
+    [InlineData("GatheredGroups", "alias A\nalias B\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet n = pick(7)\n")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source
