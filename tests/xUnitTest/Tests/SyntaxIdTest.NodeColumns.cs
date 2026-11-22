@@ -139,7 +139,9 @@ public partial class SyntaxIdTest
     // group gathered from two aliases' groups, the same list refilled at each Bind, R7-N5 B1b-1). The column is read by
     // reflection, since the families' rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each
     // Final check's start empties them, so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
-    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`.
+    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`. IndexedPatterns (R7-N5
+    // B1b-1) has none either: this theory compares a row by reference, and its row is a `(bool, bool)` value; d7 covers its moves, and
+    // SyntaxEditInvalidationTest.AnEditedRoleLeavesNoStalePatternRow fails without ResetMatches' `Empty()`.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]

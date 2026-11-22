@@ -116,6 +116,7 @@ public sealed partial class Binding
         this.earlyReads = new(this);
         this.resolvedSlices = new(this);
         this.matchPlans = new(this);
+        this.indexedPatterns = new(this);
         this.prerequisites = new(this);
         this.partPrerequisites = new(this);
         this.prerequisiteVisits = new(this);
