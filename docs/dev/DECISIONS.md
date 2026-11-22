@@ -29550,3 +29550,18 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     thread per child; the poll; a linked token source cancelled by the deadline and the streams; `Task.Delay(remaining, token)`
     raced with the exit; the host rule checked again at `run`'s call site; a deferred input; `StandardInput` guarded by
     `OperatingSystem.IsWindows()`; a test seam for the host.
+- **T-M20 `run --no-build` compares the record's input** (Tatara, 2026-11-22; PLAN G1256, Q-664, D-1098; design
+  `artifacts\handoff\tatara\units\G1256\design.md` Revision 0; C-466: the Middle's review, ACCEPT WITH CONDITIONS; T took C1 and
+  C2). Closes PLAN G1256.
+  - The input is stored once, published once and named by every pair and record. `Project.Input` is derived, never stored: the
+    project file (`FilePath`) of a `.kimiproj` input, the one source file of a `.kimi` input's implicit project, its full path as
+    resolution gives it; none for a project made in memory (C1). Publication writes it into the link manifest (`input`, relative to
+    the output directory as the manifest's other paths are, absent when the project names none); every native build's record names
+    the manifest's input resolved there (a Library's record, the project's); `run --no-build` runs only a record that names the
+    project's input, compared ignoring case (G1202's Q3), else "The latest build record names another input: <input>" or "names no
+    input" (a record written before G1256: one `kimi build` rewrites it). `build --Manifest` names the pair's input, so
+    `emit; build --Manifest; run --no-build` of one project runs.
+  - Rejected: the manifest build's record naming the manifest (changes test-cli's manifest rows and names neither file kind IMPL
+    20.3.1 lists); accepting a record without the member (keeps the hole for every earlier record); an absolute manifest path (an
+    equal pair in two folders differs); a second `Project` member holding the input (equal to `FilePath` for every `.kimiproj`
+    project; C1).
