@@ -29228,13 +29228,17 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `test`); its planned later owner is B7b8's `TargetProfile.Host` (design B7b), where the check moves.
   - `RunExecutable` passes Kimi's standard input, awaits the exit on a thread of its own, kills the job after the exit and at the
     cancellation, then drains the copies. `Process.Start` and `Kill(entireProcessTree)` leave `run`, and `NativeToolchain.Wait`
-    with them: its last reader went, and this unit's merge after B6b3 removes it (T-M6 as T-M11 amends it).
+    with them: its last reader went, and this unit's merge after B6b3 removes it (T-M6 as T-M11 amends it). Superseded in part by
+    T-M19 (`run` shares the input through `JobProcess`'s `sharesInput` and awaits `JobProcess.Exited`).
   - "No input" (commits 3/4 and 4/4; C-446 N1, T's rulings; C-442 review 2 R2-N2): only run's `NativeToolchain.StandardInput` decides
     that Kimi has none (no handle, or no open handle of the process). `JobProcess` duplicates the input it is given (inheritable) or
     fails the start, and gives a child with no input a closed one, the one form of "a child with no input": the read end of an
     anonymous pipe whose write end closes before the start, so the child reads end of input at once, never its hidden console's input
     (which a child with no input handle got, so a read blocked). `TestProcess` passes none. So design §5 (6)'s "gives the program
-    none" holds: "none" is a closed input.
+    none" holds: "none" is a closed input. Superseded in part by T-M19 (C-446 N1's reason no longer holds): `JobProcess`, not
+    `run`'s `NativeToolchain.StandardInput`, decides that Kimi has none, after its host check; it duplicates the shared input it
+    reads (`sharesInput`), not an input it is given, or fails the start; and `TestProcess` shares none (`sharesInput: false`)
+    instead of passing none. The closed input of a child with no input stays.
   - Stated changes: a descendant the program leaves ends when `run` returns (as a test case's); the program inherits only its standard
     handles; no error dialog on an unhandled exception; a breakaway fails; a failure names its call and a start's the executable
     (N6); `run` refuses a non-x64 Windows host; a program `run` starts while Kimi has no standard input reads end of input.
@@ -29469,3 +29473,38 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: r3 §4's full column set now (columns without a reader that differs); `Find`/`Host` now (no reader that
     `TargetProfile.Windows` does not serve; B7b's selection); `WindowsProfile` kept as an alias or the triple as a second `const`
     (two names for one fact); a constructor (positional columns); the rename by hand (not regenerable at landing).
+- **T-M19 `JobProcess`'s exit and input, one form each** (Tatara, 2026-11-22; PLAN G1243, G1244, Q-662, D-1090; Major,
+  prototype-first; design `artifacts\handoff\tatara\units\G1243\design.md` Revision 0; C-455: the Middle's review, the Front's
+  consent, the Back's consent with condition C1). Amends T-M12; closes PLAN G1243 and G1244.
+  - **The exit:** `JobProcess.Exited`, a task the thread pool's registered wait on the process handle completes
+    (`UnsafeRegisterWaitForSingleObject`, once; continuations run asynchronously), is the one awaitable of a child's exit until
+    `Dispose` (which unregisters the wait; C-455 N3): it never faults or is cancelled, no thread blocks per child and nothing polls.
+    The process handle's one owner is a private `WaitHandle`, whose handle the registration references; `Dispose` unregisters first.
+    `Wait(int)` is removed; `ExitCode` is read once `Exited` has completed. The readers bound the wait (`Task.WaitAsync`): `run`
+    with its token (Ctrl+C kills, drains and returns 130 as before); `test` with the run's token, the case's deadline (by the
+    Stopwatch from before the start, IMPL 20.6.3; a wait whose timer ends early waits again for the rest, rounded up to a whole
+    millisecond, `WaitAsync`'s unit, so the loop never spins: C-455 C1) and its streams' first failure. Of two near-simultaneous
+    events (an exit just after the deadline, a stream failure just before an exit), the first one the runner has seen decides the
+    label, as the old poll's tick did; `Exited` trails the kernel by its callback, so a case that writes a malformed frame and exits
+    at once now likely reads "runnerError" where the base read "crash" (exit code 3 either way; only the `termination` label moves)
+    (C-455 N1). `RunExecutable`'s `StartNew(LongRunning)` and `TestWorker`'s 10 ms exit poll are gone; its recovery loop after the
+    kill is unchanged (awaiting the drains first measured no gain; the job's end has no awaitable short of a completion port).
+  - **The input:** `JobProcess` takes whether the child shares this process's standard input (`sharesInput`: `run`'s, Tatara
+    decision 15; a test case's is closed, IMPL 20.6.3) and reads that input itself, after its host check, so off a Windows x64 host
+    `run <file.exe>` and `run --no-build` are refused ("Running a program requires Windows x64.", exit 1) instead of ending as
+    Faulted (`CheckFaulted_Kd`). **Supersedes T-M12's "only run's `NativeToolchain.StandardInput` decides that Kimi has none":**
+    `JobProcess` reads the input it shares after its host check, and this process having none (no handle, or no open handle of it)
+    gives the closed input. C-446 N1's reason (an invalid handle *from a reader* would be read as "no input" and hide a broken
+    handle) no longer holds: no reader passes a handle, and the conversion applies only to this process's own input, which only
+    `run` shares; N1's property stays (nothing hides a reader's broken handle). `StandardInput` and its two kernel32 imports move
+    from Build into `JobProcess` (Build declares no kernel32 import of its own); `Inheritable`'s invalid-handle `ArgumentException`
+    goes.
+  - Limits: the refusal is not reachable from xUnit on the Windows x64 test host (no seam; B7b8's `TargetProfile.Host` is where a
+    host fact becomes published); a WSL reproducer covers it (`artifacts\tatara\g1243\impl\g1244-wsl.log`), and its row (G1244-1)
+    lands as an xUnit row in B7b8, where the host becomes `TargetProfile.Host` (C-455 N2). The NativeAOT `kimi.exe`'s registered
+    wait is run by no check (AGENTS runs NativeAOT tests only on explicit instruction; C-455 N4). No row pins C1's rounding (the
+    spin changed no outcome, and no seam sets the timer).
+  - Rejected: `Task<uint>` (the code read in the wait's callback); a `WaitForExitAsync(token)` method (a second form); a blocked
+    thread per child; the poll; a linked token source cancelled by the deadline and the streams; `Task.Delay(remaining, token)`
+    raced with the exit; the host rule checked again at `run`'s call site; a deferred input; `StandardInput` guarded by
+    `OperatingSystem.IsWindows()`; a test seam for the host.
