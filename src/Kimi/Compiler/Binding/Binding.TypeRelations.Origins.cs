@@ -151,25 +151,24 @@ public sealed partial class Binding
     // It reads this Binding's premises, the binder's, whether or not the walk asking has a premises reader (PLAN G758).
     // RelationWalk, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision; each states the comparison
     // its relation belongs to (InactiveOuterOrigin), `default` outside any comparison. A placing fit's walk passes its raw-fit sink
-    // (`fits`, Binding.ValueFits.cs' rawFits) and whether the position is invariant: at a raw layer whose Origin differs from the value's
-    // that the value states, outside a Callable comparison, a candidate trial and a collected fit (FormsBorrows), the decision appends
-    // the raw fit (G147 ruling 75); it is otherwise pure.
+    // (`fits`, Binding.ValueFits.cs' rawFits; null where the fit places no value) and whether the position is invariant: at a raw layer,
+    // outside a Callable comparison, the decision appends the raw fit by its one entry rule (AddRawFit; G147 rulings 75, 76); it is
+    // otherwise pure.
     private (OuterOriginFit Fit, BoundOrigin Longer, BoundOrigin Shorter) FitOuterOrigins(
-        BoundType actual, BoundType expected, Koto? use, in CallableInstance comparison, List<RawFit>? fits = null, bool invariant = false)
+        BoundType actual, BoundType expected, Koto? use, in CallableInstance comparison, List<RawFit>? fits, bool invariant)
     {
         if (actual.IsPointer)
         {
-            // SPEC 5.7: a raw layer's Origins relate by their regions; a missing one is Unstated, the one producer of that end (S4). A raw
-            // fit needs both ends stated: `null` states none (SPEC 5.1), and a layer stating none has no atom.
+            // SPEC 5.7: a raw layer's Origins relate by their regions; a missing one is Unstated, the one producer of that end (S4).
             var (value, target) = (actual.RawOrigin, expected.RawOrigin);
             if (ReferenceEquals(value, target))
             {
                 return (OuterOriginFit.None, value ?? BoundOrigin.Unstated, target ?? BoundOrigin.Unstated);
             }
 
-            if (fits is not null && (value, target) is ({ } source, { } holder) && comparison.Expected is null && this.FormsBorrows)
+            if (fits is not null && comparison.Expected is null)
             {
-                fits.Add(new(holder, source, invariant));
+                this.AddRawFit(fits, target, value, invariant);
             }
 
             return (OuterOriginFit.Relation, value ?? BoundOrigin.Unstated, target ?? BoundOrigin.Unstated);

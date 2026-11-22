@@ -15,7 +15,7 @@ namespace Kimi.Compiler;
 // - Outputs: the verdict and, for FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
 //   that records the failure passes on (FailMismatch, RecordMismatch); CheckTypeUse records the obligations of a fit whose structure
 //   holds, among them the region conjuncts its comparisons that held left in the row sink (FormComparisonRows); the placing fits
-//   (FitsValueAt, CheckTypeUse) append the pass's raw fits (rawFits) through their walks' raw-fit sink.
+//   (FitsValueAt, CheckTypeUse, a placing caller's FitsTypeAt) append the pass's raw fits (rawFits) through their walks' raw-fit sink.
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations and the placing
 //   fits' raw fits; nothing below the root fits by Never (a Type holding Never is an ordinary Type). CheckTypeUse walks the relation
 //   once at its root and reads each part's answer from that walk (RelationWalk.FitPart), and once more at each invariant part the relation meets reversed, in the fit's
@@ -29,9 +29,10 @@ public sealed partial class Binding
 
     // SPEC 5.7 under O-498 Q1 (i) (G147 ruling 75; DECISIONS BU-243): the running pass's raw fits, Binding's record that a value of another
     // Origin is fitted into a raw layer (a fitted pointer keeps its source's authority, which the layer's Origin does not show). Formed
-    // by the placing fits (FitsValueAt, CheckTypeUse, JudgeCallFit's decomposition), each at FitOuterOrigins' pointer arm through its
-    // walk's raw-fit sink, outside Callable comparisons, candidate trials and collected fits, and by a call's substituted clause that
-    // relates an input raw layer's Origin to another (JudgeCallClauses: the callee's fit its signature summarizes); an entry may repeat.
+    // by the placing fits (FitsValueAt, CheckTypeUse, JudgeCallFit's decomposition, a join's source fits in ResultPropagation), each at
+    // FitOuterOrigins' pointer arm through its walk's raw-fit sink outside Callable comparisons, and by a call's substituted clause that
+    // relates an input raw layer's Origin to another (JudgeCallClauses: the callee's fit its signature summarizes), both through the one
+    // entry rule (AddRawFit: outside candidate trials and collected fits, both ends stated and different); an entry may repeat.
     // Read only by the publisher, once, for LimitMarks.FittedIntoHolder (BeginBorrowPublication); emptied at the pass's start
     // (ResetPass), reused (warm 0 B). No HIR column. Removal: Z6's route (a), the fit's source Origins published and read.
     private readonly List<RawFit> rawFits = new();
@@ -51,8 +52,9 @@ public sealed partial class Binding
     /// <returns>Whether the implemented rules prove the relation.</returns>
     public bool FitsType(BoundType actual, BoundType expected) => NeverFits(actual) || this.IsSubtype(actual, expected);
 
-    // `rawFits`: FitsValueAt's raw-fit sink, none for a test.
-    internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure, List<RawFit>? rawFits = null)
+    // `rawFits`: a placing fit's raw-fit sink (FitsValueAt's; a join's bound source and a waited source's late Type, ResultPropagation);
+    // null for a fit that places no value.
+    internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure, List<RawFit>? rawFits)
     {
         this.comparisonFacts.Clear();
         this.comparisonRoot = default;
@@ -92,6 +94,18 @@ public sealed partial class Binding
 
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
+
+    // The raw fit's one entry rule (G147 ruling 76 C4), for both sources (FitOuterOrigins' pointer arm, a call's substituted clause): a
+    // fit of a value whose raw layer states `value` into a raw layer stating `target` forms one where it places (FormsBorrows: outside a
+    // candidate trial and a collected fit) and both ends are stated (`null` states none, SPEC 5.1; a layer stating none has no atom) and
+    // differ (one atom is no fit of another Origin).
+    private void AddRawFit(List<RawFit> fits, BoundOrigin? target, BoundOrigin? value, bool equality)
+    {
+        if (this.FormsBorrows && (target, value) is ({ } holder, { } source) && !ReferenceEquals(holder, source))
+        {
+            fits.Add(new(holder, source, equality));
+        }
+    }
 
     // SPEC 10.2, 15.4.4, 15.6.1: a value at a value position: the fit at the use, or else the use-site fit at `value`, whose Origin
     // positions are rows A5 judges (R7-O1). A fit that holds by a resting position (fitRested) leaves its positions as rows too, as its
@@ -241,8 +255,8 @@ public sealed partial class Binding
             return rested; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
         }
 
-        // A value's fit is judged at its use, in no comparison (default).
-        var (outer, longer, shorter) = this.FitOuterOrigins(actual, expected, use, default);
+        // A value's fit is judged at its use, in no comparison (default); the part's walk formed its raw fit (no sink).
+        var (outer, longer, shorter) = this.FitOuterOrigins(actual, expected, use, default, null, false);
         switch (outer)
         {
             case OuterOriginFit.Mismatch:

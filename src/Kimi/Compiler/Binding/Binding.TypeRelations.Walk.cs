@@ -248,8 +248,8 @@ public sealed partial class Binding
         // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
         internal List<BindingObligation>? Rows { get; init; }
 
-        // The query's raw-fit sink, set by a placing fit's walk (FitsValueAt's, CheckTypeUse's; G147 ruling 75 Q-A (a)); none: the walk
-        // places no value.
+        // The query's raw-fit sink, set by a placing fit's walk (FitsTypeAt's for a placing caller, CheckTypeUse's; G147 ruling 75 Q-A
+        // (a)); none: the walk places no value.
         internal List<RawFit>? RawFits { get; init; }
 
         // SPEC 3.8: the relation; Never relates only to itself. A Function Type's own syntax binds its per-call inputs (SPEC 8.10).
