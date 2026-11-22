@@ -151,8 +151,26 @@ public sealed partial class Binding
         try
         {
             var originDeclaration = this.BeginOriginDeclaration(alias, scope);
-            var symbol = this.TypeName(targetSyntax, scope);
-            if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto))
+            var path = this.NamePath(targetSyntax, scope);
+            var symbol = path.Symbol;
+            if (symbol is null)
+            {
+                // SPEC 23.1.2 (rule W): a walk that failed its use (an ambiguity, a refused component) is the alias's record; a miss records
+                // nothing at the target, so it is the alias's own, the walk's code (as dev's plain targets recorded it).
+                if (this.RecordedFailure(path.Use) != BindingFailure.None)
+                {
+                    this.CompleteDependent(alias, path.Use);
+                }
+                else
+                {
+                    this.Fail(alias, BindingFailure.MissingName, true);
+                }
+
+                RestPendingOn(originDeclaration, alias);
+                return null;
+            }
+
+            if (symbol.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto))
             {
                 this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
                 RestPendingOn(originDeclaration, alias);
