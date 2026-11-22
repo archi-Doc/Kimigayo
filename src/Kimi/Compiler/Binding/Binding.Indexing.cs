@@ -4,27 +4,132 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Indexing (Index, IndexLibrary, IndexVisitor, TestSyntaxVisitor): the walk over the pass's source modules and the embedded library
-// after ResetPass, before any header, Type or expression is bound. One part enters later: a try propagation's arms are deferred
+// Indexing (Index, IndexLibrary, IndexWalk, IndexMatchArms): the walk over the pass's source modules and the embedded library after
+// ResetPass, before any header, Type or expression is bound. One part enters later: a try propagation's arms are deferred
 // (SemanticsIndexed false), and BindMatch indexes them during body binding (IndexMatchArms), once the Subject's Type selects Option
 // or Result (Binding.Patterns.cs).
-// - Responsibility: per node, its semantic fields reset (the HIR row, plan activity, conversion and clause bindings; an effect item's
-//   selector and Name, which are not indexed, have their HIR rows reset by RowReset), its scopes
-//   created and its symbols declared (containers, functions, parameters, locals, generic and length parameters, enum cases,
-//   pattern bindings and guard candidates); a test function the build does not include is resolved without indexing its signature
-//   or body, and TestSyntaxVisitor records only its Layout and misplaced Test attributes; a valid one is still declared, so its
-//   declaration is judged in every build (SPEC 6.7.2, 18.6), and access keeps it from every product candidate set.
+// - Responsibility: one iterative pre-order walk over the child slots (IndexWalk, over IndexStack's entries). It reaches each node in
+//   a slot of the trees it walks (the source roots; the library's non-intrinsic root containers and root members) once per holding
+//   slot, in one context (IndexEntryKind), and resets it once before the first write to it in the pass (ResetEntry: at its entry,
+//   or, for an attribute of a leading chain, at its chain owner's entry, since the declaration's row judges the Attributes that
+//   attach to it, SPEC 6.7). In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
+//   functions, parameters, locals, generic and length parameters, enum cases, pattern bindings and guard candidates); a test function
+//   the build does not include is resolved without indexing its signature or body, which the ExcludedTest context walks for its
+//   Layout and misplaced Test attributes only; a valid one is still declared, so its declaration is judged in every build (SPEC
+//   6.7.2, 18.6), and access keeps it from every product candidate set. A node no context indexes (an effect item's selector and
+//   Name, SPEC 8.11.1; a handled attribute's operand) has only its row reset (ResetOnly). The steps keep each action after the
+//   subtree it follows: a loop binding's declaration after its entry, an arm's candidates after its Pattern's subtree, a match's arms
+//   after its Expression's.
 // - Inputs: the numbered source trees and the restored library (Library.Restore); the scopes and symbols kept across passes.
 // - Outputs: the pass's nodes, pattern nodes, aliases, scopes and symbols, and the failures recorded in this file: Duplicate (Declare,
 //   a repeated Semantics parameter), InvalidTypeFormation (a second self parameter, a property with neither storage nor getter),
 //   Unsupported (an unknown marker on an excluded test), InvalidTestDefinition and InvalidLayoutAttribute (IndexInvalidTestAttribute,
 //   IndexLayoutAttribute), with the attributes' targets invalidated (InvalidateAttributeTarget).
-// - Invariants: a recursive descent as deep as the syntax (R7-D3 bounds it); R7-D2 c replaces the walk with SyntaxTable's pre-order.
-// - Prohibitions: no name is resolved and no written Type, header or expression is bound here.
+// - Invariants: the walk's depth is its stack's, not the host's; the stack is one array kept across passes, never re-entered, and
+//   emptied when a walk ends, a faulted one included, so no edited-away tree stays reachable and a faulted Bind faults no later one.
+//   A try's arms are the one deferred part: reached when BindMatch selects them, after TryKoto.SelectOption put the selected Pattern
+//   and value in the slots (the swapped-out ones are in no slot); a try whose Subject fails or is neither Option nor Result leaves its
+//   arms unreached in that pass.
+// - Prohibitions: no name is resolved and no written Type, header or expression is bound here; no row resets a node (ResetEntry does).
 public sealed partial class Binding
 {
-    private readonly IndexVisitor indexer;
-    private TestSyntaxVisitor? testSyntaxVisitor;
+    private readonly IndexStack indexStack = new();
+
+    // An entry of the walk: a context, in which a node's row runs (Index; Pattern, a match arm's Pattern and its subtree: pattern
+    // nodes and their locals; ExcludedTest, an excluded test's subtree; ResetOnly, rows reset and nothing indexed), or a step a row
+    // places after a subtree (Declare, a loop binding's declaration; Candidates, an arm's guard candidates; Arms, a match's arms).
+    private enum IndexEntryKind : byte
+    {
+        Index,
+        Pattern,
+        ExcludedTest,
+        ResetOnly,
+        Declare,
+        Candidates,
+        Arms,
+    }
+
+    // The walk's one reset step: a node's row is reset before the first write to it in the pass. An entry resets its node and the
+    // node's leading attribute chain, which its row may write (an excluded test's markers, a nested function's marker); an attribute
+    // of a leading chain (its Parent's chain is it) was reset at its chain owner's entry. A parameter's chain is a function's slot:
+    // its head resets itself and the rest of that chain.
+    private static void ResetEntry(Koto node)
+    {
+        if (ReferenceEquals(node.Parent?.AttributeChain, node))
+        {
+            return;
+        }
+
+        ResetRow(node);
+        for (var attribute = node.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            ResetRow(attribute);
+        }
+    }
+
+    // A node's per-pass fields: its HIR row, its comparison, arithmetic and formatting plans' activity, its identity premise, its
+    // conversion binding and a clause's constraint and runtime test.
+    private static void ResetRow(Koto node)
+    {
+        HirTables.Reset(node);
+        if (node is BinaryKoto binary)
+        {
+            binary.ComparisonActive = false;
+            if (binary.ArithmeticStorage is { } arithmetic)
+            {
+                arithmetic.Active = false;
+            }
+
+            ClearIdentityPremise(binary);
+        }
+
+        if (node is UnaryKoto { ArithmeticStorage: { } unaryArithmetic })
+        {
+            unaryArithmetic.Active = false;
+        }
+
+        if (node.FormattingStorage is { } formatting)
+        {
+            formatting.Active = false;
+        }
+
+        if (node is ConversionKoto conversion)
+        {
+            conversion.ConversionBinding = ConversionBinding.None;
+        }
+
+        if (node is IsKoto clause)
+        {
+            clause.BoundConstraint = null;
+            clause.BoundRuntimeTest = null;
+        }
+    }
+
+    private static void ResetAccessor(BoundAccessor accessor, PropertyAccessorKoto? declaration, bool present)
+    {
+        accessor.Declaration = declaration;
+        if (accessor.SignatureSymbol is { } signature && !ReferenceEquals(signature.Declaration, declaration))
+        {
+            accessor.SignatureSymbol = null;
+        }
+
+        accessor.IsPresent = present;
+        accessor.Receiver = accessor.Input = accessor.Result = null;
+        if (accessor.SelfSymbol is { } self)
+        {
+            self.Type = null;
+        }
+
+        if (accessor.ValueSymbol is { } value)
+        {
+            value.Type = null;
+        }
+
+        if (accessor.StorageSymbol is { } storage)
+        {
+            storage.Type = null;
+        }
+    }
 
     // The indexer resets every semantic field of the pass's modules before any header or expression is evaluated: its source trees and
     // their module references, then, when it binds the library, the library's.
@@ -32,8 +137,7 @@ public sealed partial class Binding
     {
         foreach (var module in this.pass.Sources)
         {
-            this.indexer.Scope = this.GetScope(module.RootKoto, null);
-            this.indexer.Visit(module.RootKoto);
+            this.IndexWalk(new(module.RootKoto, this.GetScope(module.RootKoto, null), IndexEntryKind.Index));
         }
 
         this.IndexModuleReferences();
@@ -48,533 +152,555 @@ public sealed partial class Binding
     {
         this.Library.Restore();
         this.scopes[library.RootKoto] = this.Library.Scope;
-        this.indexer.Scope = this.Library.Scope;
         var libraryRoot = library.RootKoto;
         for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
         {
             var declaration = libraryRoot.NestedContainers[i];
             if (declaration.BoundSymbol?.Intrinsic is null or IntrinsicKind.None)
             {
-                this.indexer.Visit(declaration);
+                this.IndexWalk(new(declaration, this.Library.Scope, IndexEntryKind.Index));
             }
         }
 
         for (var i = 0; i < libraryRoot.Members.Count; i++)
         {
-            this.indexer.Visit(libraryRoot.Members[i]);
+            this.IndexWalk(new(libraryRoot.Members[i], this.Library.Scope, IndexEntryKind.Index));
         }
     }
 
-    // Resets the rows of a subtree the indexer does not index, so no lookup a pass published on it (NamePath) is read by the next.
-    // Temporary (PLAN G799): removed when R7-D2 c replaces this walk with SyntaxTable's pre-order, which reaches every node.
-    private sealed class RowReset : KotoVisitor
-    {
-        internal static readonly RowReset Instance = new();
+    // A try's arms, once BindMatch selected them (TryKoto.SelectOption): the entries a match's Arms step pushes.
+    private void IndexMatchArms(MatchKoto match, BindingScope scope) => this.IndexWalk(new(match, scope, IndexEntryKind.Arms));
 
-        public override void Visit(Koto node)
+    // Walks the trees below one entry to their end, an entry at a time in the order the rows push them.
+    private void IndexWalk(IndexEntry first)
+    {
+        var stack = this.indexStack;
+        if (stack.Count != 0)
         {
-            HirTables.Reset(node);
-            node.VisitChildren(this);
+            throw new InvalidOperationException("The indexer's walk is entered while it walks (InternalInvariant; R7-D2 c).");
+        }
+
+        try
+        {
+            stack.Push(first);
+            while (stack.Count != 0)
+            {
+                var entry = stack.Pop();
+                switch (entry.Kind)
+                {
+                    case IndexEntryKind.Declare:
+                        var name = (IdentifierNameKoto)entry.Node;
+                        this.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, entry.Scope);
+                        break;
+                    case IndexEntryKind.Candidates:
+                        this.IndexArmCandidates((MatchKoto)entry.Node, entry.Arm, entry.Scope);
+                        break;
+                    case IndexEntryKind.Arms:
+                        this.PushArms((MatchKoto)entry.Node, entry.Scope);
+                        break;
+                    default:
+                        ResetEntry(entry.Node);
+                        this.IndexNode(entry.Node, entry.Scope, entry.Kind);
+                        break;
+                }
+            }
+        }
+        finally
+        {
+            stack.Clear();
         }
     }
 
-    private sealed class TestSyntaxVisitor(Binding binding) : KotoVisitor
+    // A node's row in its context; the children it pushes take their context from it.
+    private void IndexNode(Koto node, BindingScope scope, IndexEntryKind context)
     {
-        public override void Visit(Koto node)
+        var stack = this.indexStack;
+        if (context == IndexEntryKind.ResetOnly)
         {
-            if (node is AttributeKoto { Kind: AttributeKind.Layout } layout)
-            {
-                binding.IndexLayoutAttribute(layout);
-                if (layout.AttributeChain is { } precedingAttribute)
-                {
-                    this.Visit(precedingAttribute);
-                }
-
-                return;
-            }
-
-            var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
-            if (node is AttributeKoto { Kind: AttributeKind.Test } attribute &&
-                (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null))
-            {
-                marker = attribute;
-            }
-
-            if (marker is not null)
-            {
-                binding.IndexInvalidTestAttribute(marker);
-            }
-
-            node.VisitChildren(this);
-        }
-    }
-
-    private sealed class IndexVisitor(Binding binding) : KotoVisitor
-    {
-        private void IndexCandidates(Koto syntax, bool guarded)
-        {
-            syntax = KotoHelper.UnwrapParentheses(syntax);
-            if (syntax is not SyntaxFormKoto form)
-            {
-                return;
-            }
-
-            if (form.Akind == KotoKind.BindingPattern && form.Operands[0] is IdentifierNameKoto name)
-            {
-                if (!guarded)
-                {
-                    binding.symbols.Remove(name);
-                    return;
-                }
-
-                if (binding.symbols.TryGetValue(name, out var candidate) && candidate.Name != name.IdentifierName)
-                {
-                    binding.symbols.Remove(name);
-                }
-
-                var bodySymbol = form.BoundSymbol;
-                binding.Declare(name, name.IdentifierName, BindingSymbolKind.PatternCandidate, form, this.Scope);
-                form.BoundSymbol = bodySymbol;
-                return;
-            }
-
-            foreach (var operand in form.Operands)
-            {
-                this.IndexCandidates(operand, guarded);
-            }
+            stack.PushChildren(node, scope, IndexEntryKind.ResetOnly, IndexEntryKind.ResetOnly);
+            return;
         }
 
-        private int patternDepth;
-
-        internal BindingScope Scope { get; set; } = null!;
-
-        public void IndexMatchArms(MatchKoto match, BindingScope scope)
+        if (context == IndexEntryKind.ExcludedTest)
         {
-            var previous = this.Scope;
-            this.Scope = scope;
-            var outer = this.Scope;
-            for (var i = 0; i < match.Arms.Count; i++)
-            {
-                var arm = match.Arms[i];
-                var armScope = binding.GetScope(arm.Pattern, outer);
-                this.Scope = armScope;
-                this.patternDepth++;
-                this.Visit(arm.Pattern);
-                this.patternDepth--;
-                if (arm.Guard is { } guard)
-                {
-                    this.Scope = binding.GetScope(guard, outer);
-                    binding.pass.Part.CandidateScopes.Add(guard);
-                    this.IndexCandidates(arm.Pattern, true);
+            this.IndexExcludedTestNode(node, scope);
+            return;
+        }
 
-                    this.Visit(guard);
+        if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker && !TestDefinition.IsIncluded(this.compilation, test))
+        {
+            this.IndexExcludedTest(test, marker, scope);
+            return;
+        }
+
+        if (node is AttributeKoto attribute && this.IndexAttribute(attribute))
+        {
+            stack.PushChildren(attribute, scope, context, IndexEntryKind.ResetOnly);
+            return;
+        }
+
+        if (node is EffectBoundKoto)
+        {
+            // SPEC 8.11.1: the selector and Name of an effect item designate a Contract and its requirement; they are
+            // resolved with the item, never as expressions, so they are reset here without being indexed.
+            this.nodes.Add(node);
+            stack.PushChildren(node, scope, IndexEntryKind.ResetOnly, IndexEntryKind.ResetOnly);
+            return;
+        }
+
+        this.nodes.Add(node);
+        if (context == IndexEntryKind.Pattern)
+        {
+            this.pass.Part.PatternNodes.Add(node);
+            if (node is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
+            {
+                if (this.symbols.TryGetValue(pattern, out var existing) && existing.Name != name.IdentifierName)
+                {
+                    this.symbols.Remove(pattern);
+                }
+
+                this.Declare(pattern, name.IdentifierName, BindingSymbolKind.Local, pattern, scope);
+            }
+
+            stack.PushChildren(node, scope, IndexEntryKind.Pattern, IndexEntryKind.Pattern);
+            return;
+        }
+
+        if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source)
+        {
+            scope = this.DocumentScope(source, this.ModuleScope(node), node.Parent);
+        }
+
+        switch (node)
+        {
+            case IsKoto or SyntaxFormKoto when AssociatedHead(node) is OriginApplicationKoto:
+                scope = this.GetScope(node, scope);
+                break;
+            case ForKoto iteration:
+                var iterationStart = stack.Count;
+                stack.Push(new(iteration.Iterable, scope, IndexEntryKind.Index));
+                var body = this.GetScope(iteration.Body, scope);
+                for (var i = 0; i < iteration.Bindings.Count; i++)
+                {
+                    // A loop's binding name is a node of the pass as a pattern's binding is: visited (its rows reset, then
+                    // declared), so the summary counts its state and publishes its failure, such as a repeated name's (SPEC 6.1,
+                    // 23.1.2), which no other walk reaches.
+                    stack.Push(new(iteration.Bindings[i], body, IndexEntryKind.Index));
+                    stack.Push(new(iteration.Bindings[i], body, IndexEntryKind.Declare));
+                }
+
+                stack.Push(new(iteration.Body, body, IndexEntryKind.Index));
+                stack.Reverse(iterationStart);
+                return;
+            case MatchKoto match:
+                this.IndexMatch(match);
+                var matchStart = stack.Count;
+                stack.Push(new(match.Expression, scope, IndexEntryKind.Index));
+                if (match is TryKoto propagation)
+                {
+                    propagation.SemanticsIndexed = false;
                 }
                 else
                 {
-                    this.IndexCandidates(arm.Pattern, false);
+                    stack.Push(new(match, scope, IndexEntryKind.Arms));
                 }
 
-                this.Scope = armScope;
-                this.Visit(arm.Body);
-                this.Scope = outer;
-            }
-
-            this.Scope = previous;
-        }
-
-        public override void Visit(Koto node)
-        {
-            HirTables.Reset(node);
-            if (node is BinaryKoto binary)
-            {
-                binary.ComparisonActive = false;
-                if (binary.ArithmeticStorage is { } arithmetic)
+                stack.Reverse(matchStart);
+                return;
+            case SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto } enumeration when TryEnumPayload(enumeration, out _) && enumeration.Operands[0] is IdentifierNameKoto caseName:
+                var caseSymbol = this.Declare(node, caseName.IdentifierName, BindingSymbolKind.EnumCase, node, scope);
+                caseSymbol.EnumCase ??= new(caseSymbol, scope.Owner.BoundSymbol!);
+                caseSymbol.EnumCase.Owner = scope.Owner.BoundSymbol!;
+                break;
+            case SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto }:
+                scope = this.GetScope(node, scope);
+                scope.ConformancePath = null;
+                break;
+            case DeclarationContainerKoto container:
+                if (!container.IsRoot)
                 {
-                    arithmetic.Active = false;
+                    var kind = container is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type;
+                    var symbol = this.Declare(node, container.Name, kind, node, scope);
+                    if (kind == BindingSymbolKind.Type)
+                    {
+                        symbol.Type ??= this.types.Intern(BoundTypeKind.Nominal, symbol, SemanticsKind.Owner, []);
+                    }
+
+                    // The declared symbol carries the Kimi catalog identity (SPEC 22.1).
+                    (container as StructKoto)?.PrepareImplicitConstructor(KimiLibraryCatalog.ManagesRepresentation(symbol));
                 }
 
-                ClearIdentityPremise(binary);
-            }
-
-            if (node is UnaryKoto { ArithmeticStorage: { } unaryArithmetic })
-            {
-                unaryArithmetic.Active = false;
-            }
-
-            if (node.FormattingStorage is { } formatting)
-            {
-                formatting.Active = false;
-            }
-
-            if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker && !TestDefinition.IsIncluded(binding.compilation, test))
-            {
-                // Product lookup and analysis never visit the test's signature names or body.
-                test.BoundType = BoundType.Unit;
-                test.BindingState = BindingState.Resolved;
-                if (!TestDefinition.IsValidSyntax(test))
+                scope = container.IsRoot ? this.ModuleScope(node) : this.GetScope(node, scope);
+                break;
+            case FunctionKoto function:
+                function.PrepareBaseInitializer();
+                if (function.IsAnonymous)
                 {
-                    // Its signature has names to bind, so it stays undeclared: its declaration's own records appear only in a Test
-                    // build (PLAN G660's records-only part).
-                    binding.IndexInvalidTestAttribute(marker);
-                    binding.InvalidateAttributeTarget(marker);
+                    if (!this.symbols.TryGetValue(function, out var closureSymbol))
+                    {
+                        closureSymbol = new(string.Empty, BindingSymbolKind.Function, function, scope);
+                        DeclaredSymbols.Add(function, closureSymbol);
+                    }
+
+                    closureSymbol.Scope = scope;
+                }
+
+                if (!function.IsGenerated && !function.IsAnonymous)
+                {
+                    this.DeclareFunction(function, scope);
+                }
+
+                scope = this.GetScope(node, scope);
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    this.DeclareParameter(function, i, scope);
+                }
+
+                node.BoundSymbol = this.symbols.GetValueOrDefault(node);
+                this.IndexSpecialReceiver(function, scope);
+                break;
+            case PropertyAccessorKoto accessor:
+                scope = this.GetScope(node, scope);
+                this.IndexAccessor(accessor, scope);
+                break;
+            case CodeBlockKoto:
+                if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
+                    (node.Parent is MatchKoto && this.pass.Part.PatternNodes.Contains(scope.Owner)))
+                {
+                    this.scopes[node] = scope;
+                }
+                else if (node.Parent is not FunctionKoto)
+                {
+                    scope = this.GetScope(node, scope);
                 }
                 else
                 {
-                    // A valid definition's header holds no name to bind: its declaration is declared and judged like any function's
-                    // (kind conflicts, signatures, inherited Names, virtual eligibility, protected placement); access keeps it from every
-                    // product candidate set.
-                    this.DeclareFunction(test);
-                    binding.GetScope(test, this.Scope);
-                    binding.nodes.Add(test);
-                    for (var attribute = test.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
-                    {
-                        if (!ReferenceEquals(attribute, marker))
-                        {
-                            if (attribute.Kind == AttributeKind.Layout)
-                            {
-                                // The syntax visitor reports Layout's wrong target below.
-                                continue;
-                            }
-
-                            // No Mod marker registry exists yet; selection does not recognize an unknown marker.
-                            binding.ClearFailure(attribute);
-                            binding.Fail(attribute, BindingFailure.Unsupported, true);
-                            binding.nodes.Add(attribute);
-                        }
-                    }
+                    this.scopes[node] = scope;
                 }
 
-                test.VisitChildren(binding.testSyntaxVisitor ??= new(binding));
-                return;
-            }
-
-            if (node is AttributeKoto { Kind: AttributeKind.Test } invalidTest)
-            {
-                if (invalidTest.Parent is FunctionKoto testOwner && TestDefinition.IsIncluded(binding.compilation, testOwner) && TestDefinition.IsValidSyntax(testOwner))
+                break;
+            case VariableKoto variable:
+                var declarationScope = node is PropertyKoto && scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? scope.Parent! : scope;
+                var variableSymbol = this.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, declarationScope);
+                variableSymbol.ConditionalDeclaration = ReferenceEquals(declarationScope, scope) ? null : (SyntaxFormKoto)scope.Owner;
+                if (node is PropertyKoto property)
                 {
-                    invalidTest.BoundType = BoundType.Unit;
-                    invalidTest.BindingState = BindingState.Resolved;
-                    if (invalidTest.AttributeChain is { } earlier)
+                    var bound = variableSymbol.Property ??= new(variableSymbol);
+                    bound.IsVerified = false;
+                    var getter = property.GetAccessor(PropertyAccessorKind.Get);
+                    ResetAccessor(bound.Getter, getter, bound.IsStored || getter is not null);
+                    ResetAccessor(bound.Setter, property.GetAccessor(PropertyAccessorKind.Set), property.DeclarationKind == PropertyDeclarationKind.Var || property.GetAccessor(PropertyAccessorKind.Set) is not null);
+                    if (!bound.IsStored && getter is null)
                     {
-                        this.Visit(earlier);
+                        this.Fail(property, BindingFailure.InvalidTypeFormation);
                     }
-
-                    return;
                 }
 
-                binding.IndexInvalidTestAttribute(invalidTest);
-                binding.InvalidateAttributeTarget(invalidTest);
-
-                if (invalidTest.AttributeChain is { } precedingMarker)
+                break;
+            case GenericParameterKoto parameter:
+                var typeSymbol = this.Declare(node, parameter.Identifier, parameter.SemanticsParameter is null ? BindingSymbolKind.TypeParameter : BindingSymbolKind.SemanticsTarget, node, scope);
+                typeSymbol.Slot = scope.Types.Count - 1;
+                typeSymbol.WholeType ??= this.types.Parameter(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
+                typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : this.types.Parameter(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
+                if (parameter.SemanticsParameter is not null)
                 {
-                    this.Visit(precedingMarker);
+                    // The Semantics symbol is the kept target symbol's Pair (its listed slot, DECISIONS BU-220), made once.
+                    var semanticsSymbol = typeSymbol.Pair ?? new(parameter.SemanticsParameter, BindingSymbolKind.SemanticsParameter, node, scope);
+                    semanticsSymbol.Scope = scope;
+                    semanticsSymbol.Pair = typeSymbol;
+                    typeSymbol.Pair = semanticsSymbol;
+                    this.PairOuterOrigin(typeSymbol); // SPEC 8.1.1: the binder's outer Origin, interned with its binder (PLAN G949 S1-e).
+                    if (!scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
+                    {
+                        this.Fail(node, BindingFailure.Duplicate);
+                    }
                 }
 
-                return;
+                break;
+            case LengthParameterKoto parameter:
+                this.Declare(node, parameter.Identifier, BindingSymbolKind.LengthParameter, node, scope).Type = BoundType.ISize;
+                break;
+            case AliasKoto alias:
+                this.aliases.Add(alias);
+                break;
+        }
+
+        stack.PushChildren(node, scope, IndexEntryKind.Index, IndexEntryKind.Index);
+    }
+
+    // An attribute's row: true when its operand is no expression to bind (a Test marker, Layout, a function's LibraryImport, an
+    // implementation Attribute), so the walk resets the operand only and walks the leading chain in the attribute's context.
+    private bool IndexAttribute(AttributeKoto attribute)
+    {
+        if (attribute.Kind == AttributeKind.Test)
+        {
+            if (attribute.Parent is FunctionKoto testOwner && TestDefinition.IsIncluded(this.compilation, testOwner) && TestDefinition.IsValidSyntax(testOwner))
+            {
+                attribute.BoundType = BoundType.Unit;
+                attribute.BindingState = BindingState.Resolved;
+            }
+            else
+            {
+                this.IndexInvalidTestAttribute(attribute);
+                this.InvalidateAttributeTarget(attribute);
             }
 
-            if (node is AttributeKoto { Kind: AttributeKind.Layout } layout)
+            return true;
+        }
+
+        if (attribute.Kind == AttributeKind.Layout)
+        {
+            this.IndexLayoutAttribute(attribute);
+            return true;
+        }
+
+        if (attribute.Kind == AttributeKind.LibraryImport && AttributeTarget(attribute) is FunctionKoto)
+        {
+            // SPEC 22.6: the operand names a library and symbol; it is validated, never evaluated.
+            this.ClearFailure(attribute);
+            attribute.BindingState = BindingState.Unvisited;
+            attribute.BoundType = null;
+            this.nodes.Add(attribute);
+            return true;
+        }
+
+        if (attribute.IsImplementation)
+        {
+            // IMPL 21.3.4: an implementation Attribute states a fact about its declaration, which the Kimi library's registration
+            // owns; its operand is a Name or a code, never an expression to bind. The kinds exist only in the library's sources.
+            attribute.BoundType = BoundType.Unit;
+            attribute.BindingState = BindingState.Resolved;
+            return true;
+        }
+
+        // Other selected attributes still bind their own lookup failure.
+        this.InvalidateAttributeTarget(attribute);
+        return false;
+    }
+
+    // A test function the build does not include: product lookup and analysis never visit its signature names or body, which the
+    // ExcludedTest context walks.
+    private void IndexExcludedTest(FunctionKoto test, AttributeKoto marker, BindingScope scope)
+    {
+        test.BoundType = BoundType.Unit;
+        test.BindingState = BindingState.Resolved;
+        if (!TestDefinition.IsValidSyntax(test))
+        {
+            // Its signature has names to bind, so it stays undeclared: its declaration's own records appear only in a Test
+            // build (PLAN G660's records-only part).
+            this.IndexInvalidTestAttribute(marker);
+            this.InvalidateAttributeTarget(marker);
+        }
+        else
+        {
+            // A valid definition's header holds no name to bind: its declaration is declared and judged like any function's
+            // (kind conflicts, signatures, inherited Names, virtual eligibility, protected placement); access keeps it from every
+            // product candidate set.
+            this.DeclareFunction(test, scope);
+            this.GetScope(test, scope);
+            this.nodes.Add(test);
+            for (var attribute = test.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
             {
-                binding.IndexLayoutAttribute(layout);
-                if (layout.AttributeChain is { } precedingAttribute)
+                if (!ReferenceEquals(attribute, marker))
                 {
-                    this.Visit(precedingAttribute);
-                }
+                    if (attribute.Kind == AttributeKind.Layout)
+                    {
+                        // The ExcludedTest context reports Layout's wrong target.
+                        continue;
+                    }
 
+                    // No Mod marker registry exists yet; selection does not recognize an unknown marker.
+                    this.ClearFailure(attribute);
+                    this.Fail(attribute, BindingFailure.Unsupported, unresolved: true);
+                    this.nodes.Add(attribute);
+                }
+            }
+        }
+
+        this.indexStack.PushChildren(test, scope, IndexEntryKind.ExcludedTest, IndexEntryKind.ExcludedTest);
+    }
+
+    // The ExcludedTest context's row: a Layout attribute's wrong target, whose operand is reset only, a misplaced Test marker and the
+    // marker of a nested function that cannot be a test definition (SPEC 6.7.2).
+    private void IndexExcludedTestNode(Koto node, BindingScope scope)
+    {
+        if (node is AttributeKoto { Kind: AttributeKind.Layout } layout)
+        {
+            this.IndexLayoutAttribute(layout);
+            this.indexStack.PushChildren(layout, scope, IndexEntryKind.ExcludedTest, IndexEntryKind.ResetOnly);
+            return;
+        }
+
+        var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
+        if (node is AttributeKoto { Kind: AttributeKind.Test } attribute &&
+            (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null))
+        {
+            marker = attribute;
+        }
+
+        if (marker is not null)
+        {
+            this.IndexInvalidTestAttribute(marker);
+        }
+
+        this.indexStack.PushChildren(node, scope, IndexEntryKind.ExcludedTest, IndexEntryKind.ExcludedTest);
+    }
+
+    // A match's arms, in order: per arm its Pattern (Pattern context, the arm's scope), its candidates step (in the guard's scope when it
+    // has a Guard), its Guard and its Body (the arm's scope).
+    private void PushArms(MatchKoto match, BindingScope outer)
+    {
+        var stack = this.indexStack;
+        var start = stack.Count;
+        for (var i = 0; i < match.Arms.Count; i++)
+        {
+            var arm = match.Arms[i];
+            var armScope = this.GetScope(arm.Pattern, outer);
+            stack.Push(new(arm.Pattern, armScope, IndexEntryKind.Pattern));
+            if (arm.Guard is { } guard)
+            {
+                var guardScope = this.GetScope(guard, outer);
+                stack.Push(new(match, guardScope, IndexEntryKind.Candidates, i));
+                stack.Push(new(guard, guardScope, IndexEntryKind.Index));
+            }
+            else
+            {
+                stack.Push(new(match, armScope, IndexEntryKind.Candidates, i));
+            }
+
+            stack.Push(new(arm.Body, armScope, IndexEntryKind.Index));
+        }
+
+        stack.Reverse(start);
+    }
+
+    // An arm's guard candidates, after its Pattern's subtree, whose binding patterns' Declare set the form's BoundSymbol: a guarded
+    // arm's are declared in the guard's scope (its CandidateScopes entry), an unguarded arm's are dropped.
+    private void IndexArmCandidates(MatchKoto match, int arm, BindingScope scope)
+    {
+        var guard = match.Arms[arm].Guard;
+        if (guard is not null)
+        {
+            this.pass.Part.CandidateScopes.Add(guard);
+        }
+
+        this.IndexCandidates(match.Arms[arm].Pattern, guard is not null, scope);
+    }
+
+    private void IndexCandidates(Koto syntax, bool guarded, BindingScope scope)
+    {
+        syntax = KotoHelper.UnwrapParentheses(syntax);
+        if (syntax is not SyntaxFormKoto form)
+        {
+            return;
+        }
+
+        if (form.Akind == KotoKind.BindingPattern && form.Operands[0] is IdentifierNameKoto name)
+        {
+            if (!guarded)
+            {
+                this.symbols.Remove(name);
                 return;
             }
 
-            if (node is AttributeKoto { Kind: AttributeKind.LibraryImport } import && AttributeTarget(import) is FunctionKoto)
+            if (this.symbols.TryGetValue(name, out var candidate) && candidate.Name != name.IdentifierName)
             {
-                // SPEC 22.6: the operand names a library and symbol; it is validated, never evaluated.
-                binding.ClearFailure(import);
-                import.BindingState = BindingState.Unvisited;
-                import.BoundType = null;
-                binding.nodes.Add(import);
-                if (import.AttributeChain is { } precedingImport)
+                this.symbols.Remove(name);
+            }
+
+            var bodySymbol = form.BoundSymbol;
+            this.Declare(name, name.IdentifierName, BindingSymbolKind.PatternCandidate, form, scope);
+            form.BoundSymbol = bodySymbol;
+            return;
+        }
+
+        foreach (var operand in form.Operands)
+        {
+            this.IndexCandidates(operand, guarded, scope);
+        }
+    }
+
+    // A named function's symbol in its member scope, an excluded test's included (G660): the declaration is judged in every build.
+    private void DeclareFunction(FunctionKoto function, BindingScope scope)
+    {
+        var memberScope = scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? scope.Parent! : scope;
+        var conditional = scope.Owner as SyntaxFormKoto;
+        if (IsRootMain(function))
+        {
+            memberScope = this.ModuleScope(function);
+        }
+
+        var symbol = this.Declare(function, function.Name, BindingSymbolKind.Function, function, memberScope);
+        symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
+        // The members of the fixed array and the integer Position witness are receiver functions of internal
+        // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
+        if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || this.Library.IsBuiltinMemberGroup(memberScope.Owner))
+        {
+            for (var p = 0; p < function.Parameters.Count; p++)
+            {
+                if (function.Parameters[p].InternalName == "self")
                 {
-                    this.Visit(precedingImport);
+                    if (symbol.ReceiverIndex >= 0)
+                    {
+                        this.Fail(function, BindingFailure.InvalidTypeFormation);
+                    }
+
+                    symbol.ReceiverIndex = p;
                 }
-
-                return;
             }
+        }
+    }
 
-            if (node is AttributeKoto { IsImplementation: true } implementation)
+    private readonly record struct IndexEntry(Koto Node, BindingScope Scope, IndexEntryKind Kind, int Arm = 0);
+
+    // The walk's pending entries: one array, grown by doubling and kept across passes, so a warm Bind allocates nothing. As a visitor
+    // it pushes the children Koto.VisitChildren walks, which PushChildren gives their scope and context and reverses, so they pop in
+    // slot order.
+    private sealed class IndexStack : KotoVisitor
+    {
+        private IndexEntry[] entries = [];
+
+        internal int Count { get; private set; }
+
+        public override void Visit(Koto node) => this.Push(new(node, null!, IndexEntryKind.Index));
+
+        internal void Push(IndexEntry entry)
+        {
+            if (this.Count == this.entries.Length)
             {
-                // IMPL 21.3.4: an implementation Attribute states a fact about its declaration, which the Kimi library's registration
-                // owns; its operand is a Name or a code, never an expression to bind. The kinds exist only in the library's sources.
-                implementation.BoundType = BoundType.Unit;
-                implementation.BindingState = BindingState.Resolved;
-                if (implementation.AttributeChain is { } precedingImplementation)
-                {
-                    this.Visit(precedingImplementation);
-                }
-
-                return;
+                Array.Resize(ref this.entries, Math.Max(16, this.Count * 2));
             }
 
-            if (node is AttributeKoto selectedAttribute)
-            {
-                // Handled attributes returned above. Other selected attributes still bind their own lookup failure.
-                binding.InvalidateAttributeTarget(selectedAttribute);
-            }
+            this.entries[this.Count++] = entry;
+        }
 
-            if (node is EffectBoundKoto)
-            {
-                // SPEC 8.11.1: the selector and Name of an effect item designate a Contract and its requirement; they are
-                // resolved with the item, never as expressions, so they are reset here without being indexed (PLAN G799).
-                node.VisitChildren(RowReset.Instance);
-                binding.nodes.Add(node);
-                return;
-            }
+        internal IndexEntry Pop()
+        {
+            var entry = this.entries[--this.Count];
+            this.entries[this.Count] = default;
+            return entry;
+        }
 
-            if (node is ConversionKoto conversion)
-            {
-                conversion.ConversionBinding = ConversionBinding.None;
-            }
-
-            if (node is IsKoto clause)
-            {
-                clause.BoundConstraint = null;
-                clause.BoundRuntimeTest = null;
-            }
-
-            binding.nodes.Add(node);
-            if (this.patternDepth != 0)
-            {
-                binding.pass.Part.PatternNodes.Add(node);
-                if (node is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
-                {
-                    if (binding.symbols.TryGetValue(pattern, out var existing) && existing.Name != name.IdentifierName)
-                    {
-                        binding.symbols.Remove(pattern);
-                    }
-
-                    binding.Declare(pattern, name.IdentifierName, BindingSymbolKind.Local, pattern, this.Scope);
-                }
-
-                node.VisitChildren(this);
-                return;
-            }
-
-            var previous = this.Scope;
-            if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source)
-            {
-                this.Scope = binding.DocumentScope(source, binding.ModuleScope(node), node.Parent);
-            }
-
-            switch (node)
-            {
-                case IsKoto or SyntaxFormKoto when AssociatedHead(node) is OriginApplicationKoto:
-                    this.Scope = binding.GetScope(node, this.Scope);
-                    break;
-                case ForKoto iteration:
-                    this.Visit(iteration.Iterable);
-                    this.Scope = binding.GetScope(iteration.Body, this.Scope);
-                    for (var i = 0; i < iteration.Bindings.Count; i++)
-                    {
-                        // A loop's binding name is a node of the pass as a pattern's binding is: visited (its rows reset, then
-                        // declared), so the summary counts its state and publishes its failure, such as a repeated name's (SPEC 6.1,
-                        // 23.1.2), which no other walk reaches.
-                        var name = iteration.Bindings[i];
-                        this.Visit(name);
-                        binding.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, this.Scope);
-                    }
-
-                    this.Visit(iteration.Body);
-                    this.Scope = previous;
-                    return;
-                case MatchKoto match:
-                    binding.IndexMatch(match);
-                    this.Visit(match.Expression);
-                    if (match is TryKoto propagation)
-                    {
-                        propagation.SemanticsIndexed = false;
-                    }
-                    else
-                    {
-                        this.IndexMatchArms(match, this.Scope);
-                    }
-
-                    this.Scope = previous;
-                    return;
-                case SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto } enumeration when TryEnumPayload(enumeration, out _) && enumeration.Operands[0] is IdentifierNameKoto caseName:
-                    var caseSymbol = binding.Declare(node, caseName.IdentifierName, BindingSymbolKind.EnumCase, node, this.Scope);
-                    caseSymbol.EnumCase ??= new(caseSymbol, this.Scope.Owner.BoundSymbol!);
-                    caseSymbol.EnumCase.Owner = this.Scope.Owner.BoundSymbol!;
-                    break;
-                case SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto }:
-                    this.Scope = binding.GetScope(node, this.Scope);
-                    this.Scope.ConformancePath = null;
-                    break;
-                case DeclarationContainerKoto container:
-                    if (!container.IsRoot)
-                    {
-                        var kind = container is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type;
-                        var symbol = binding.Declare(node, container.Name, kind, node, this.Scope);
-                        if (kind == BindingSymbolKind.Type)
-                        {
-                            symbol.Type ??= binding.types.Intern(BoundTypeKind.Nominal, symbol, SemanticsKind.Owner, []);
-                        }
-
-                        // The declared symbol carries the Kimi catalog identity (SPEC 22.1).
-                        (container as StructKoto)?.PrepareImplicitConstructor(KimiLibraryCatalog.ManagesRepresentation(symbol));
-                    }
-
-                    this.Scope = container.IsRoot ? binding.ModuleScope(node) : binding.GetScope(node, this.Scope);
-                    break;
-                case FunctionKoto function:
-                    function.PrepareBaseInitializer();
-                    if (function.IsAnonymous)
-                    {
-                        if (!binding.symbols.TryGetValue(function, out var closureSymbol))
-                        {
-                            closureSymbol = new(string.Empty, BindingSymbolKind.Function, function, this.Scope);
-                            DeclaredSymbols.Add(function, closureSymbol);
-                        }
-
-                        closureSymbol.Scope = this.Scope;
-                    }
-
-                    if (!function.IsGenerated && !function.IsAnonymous)
-                    {
-                        this.DeclareFunction(function);
-                    }
-
-                    this.Scope = binding.GetScope(node, this.Scope);
-                    for (var i = 0; i < function.Parameters.Count; i++)
-                    {
-                        binding.DeclareParameter(function, i, this.Scope);
-                    }
-
-                    node.BoundSymbol = binding.symbols.GetValueOrDefault(node);
-                    binding.IndexSpecialReceiver(function, this.Scope);
-                    break;
-                case PropertyAccessorKoto accessor:
-                    this.Scope = binding.GetScope(node, this.Scope);
-                    binding.IndexAccessor(accessor, this.Scope);
-                    break;
-                case CodeBlockKoto:
-                    if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
-                        (node.Parent is MatchKoto && binding.pass.Part.PatternNodes.Contains(this.Scope.Owner)))
-                    {
-                        binding.scopes[node] = this.Scope;
-                    }
-                    else if (node.Parent is not FunctionKoto)
-                    {
-                        this.Scope = binding.GetScope(node, this.Scope);
-                    }
-                    else
-                    {
-                        binding.scopes[node] = this.Scope;
-                    }
-
-                    break;
-                case VariableKoto variable:
-                    var declarationScope = node is PropertyKoto && this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
-                    var variableSymbol = binding.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, declarationScope);
-                    variableSymbol.ConditionalDeclaration = ReferenceEquals(declarationScope, this.Scope) ? null : (SyntaxFormKoto)this.Scope.Owner;
-                    if (node is PropertyKoto property)
-                    {
-                        var bound = variableSymbol.Property ??= new(variableSymbol);
-                        bound.IsVerified = false;
-                        var getter = property.GetAccessor(PropertyAccessorKind.Get);
-                        Reset(bound.Getter, getter, bound.IsStored || getter is not null);
-                        Reset(bound.Setter, property.GetAccessor(PropertyAccessorKind.Set), property.DeclarationKind == PropertyDeclarationKind.Var || property.GetAccessor(PropertyAccessorKind.Set) is not null);
-                        if (!bound.IsStored && getter is null)
-                        {
-                            binding.Fail(property, BindingFailure.InvalidTypeFormation);
-                        }
-                    }
-
-                    break;
-                case GenericParameterKoto parameter:
-                    var typeSymbol = binding.Declare(node, parameter.Identifier, parameter.SemanticsParameter is null ? BindingSymbolKind.TypeParameter : BindingSymbolKind.SemanticsTarget, node, this.Scope);
-                    typeSymbol.Slot = this.Scope.Types.Count - 1;
-                    typeSymbol.WholeType ??= binding.types.Parameter(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
-                    typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : binding.types.Parameter(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
-                    if (parameter.SemanticsParameter is not null)
-                    {
-                        // The Semantics symbol is the kept target symbol's Pair (its listed slot, DECISIONS BU-220), made once.
-                        var semanticsSymbol = typeSymbol.Pair ?? new(parameter.SemanticsParameter, BindingSymbolKind.SemanticsParameter, node, this.Scope);
-                        semanticsSymbol.Scope = this.Scope;
-                        semanticsSymbol.Pair = typeSymbol;
-                        typeSymbol.Pair = semanticsSymbol;
-                        binding.PairOuterOrigin(typeSymbol); // SPEC 8.1.1: the binder's outer Origin, interned with its binder (PLAN G949 S1-e).
-                        if (!this.Scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
-                        {
-                            binding.Fail(node, BindingFailure.Duplicate);
-                        }
-                    }
-
-                    break;
-                case LengthParameterKoto parameter:
-                    binding.Declare(node, parameter.Identifier, BindingSymbolKind.LengthParameter, node, this.Scope).Type = BoundType.ISize;
-                    break;
-                case AliasKoto alias:
-                    binding.aliases.Add(alias);
-                    break;
-            }
-
+        // A node's children: its leading chain, its first slot (Koto.ForEachSlot), in `chain`; its other slots in `slots`.
+        internal void PushChildren(Koto node, BindingScope scope, IndexEntryKind chain, IndexEntryKind slots)
+        {
+            var start = this.Count;
             node.VisitChildren(this);
-            this.Scope = previous;
+            for (var i = start; i < this.Count; i++)
+            {
+                this.entries[i] = new(this.entries[i].Node, scope, i == start && node.AttributeChain is not null ? chain : slots);
+            }
+
+            this.Reverse(start);
         }
 
-        private static void Reset(BoundAccessor accessor, PropertyAccessorKoto? declaration, bool present)
+        // The entries pushed since `start` reversed, so the first pushed pops first.
+        internal void Reverse(int start) => Array.Reverse(this.entries, start, this.Count - start);
+
+        internal void Clear()
         {
-            accessor.Declaration = declaration;
-            if (accessor.SignatureSymbol is { } signature && !ReferenceEquals(signature.Declaration, declaration))
-            {
-                accessor.SignatureSymbol = null;
-            }
-
-            accessor.IsPresent = present;
-            accessor.Receiver = accessor.Input = accessor.Result = null;
-            if (accessor.SelfSymbol is { } self)
-            {
-                self.Type = null;
-            }
-
-            if (accessor.ValueSymbol is { } value)
-            {
-                value.Type = null;
-            }
-
-            if (accessor.StorageSymbol is { } storage)
-            {
-                storage.Type = null;
-            }
-        }
-
-        // A named function's symbol in its member scope, an excluded test's included (G660): the declaration is judged in every build.
-        private void DeclareFunction(FunctionKoto function)
-        {
-            var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
-            var conditional = this.Scope.Owner as SyntaxFormKoto;
-            if (IsRootMain(function))
-            {
-                memberScope = binding.ModuleScope(function);
-            }
-
-            var symbol = binding.Declare(function, function.Name, BindingSymbolKind.Function, function, memberScope);
-            symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
-            // The members of the fixed array and the integer Position witness are receiver functions of internal
-            // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
-            if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || binding.Library.IsBuiltinMemberGroup(memberScope.Owner))
-            {
-                for (var p = 0; p < function.Parameters.Count; p++)
-                {
-                    if (function.Parameters[p].InternalName == "self")
-                    {
-                        if (symbol.ReceiverIndex >= 0)
-                        {
-                            binding.Fail(function, BindingFailure.InvalidTypeFormation);
-                        }
-
-                        symbol.ReceiverIndex = p;
-                    }
-                }
-            }
+            Array.Clear(this.entries, 0, this.Count);
+            this.Count = 0;
         }
     }
 }

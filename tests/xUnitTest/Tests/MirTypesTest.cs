@@ -475,7 +475,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     [Fact]
     public void TheBuiltinArithmeticRowsAreTheBuildersOperators()
     {
-        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.Supports(BoundType.Primitives["i32"], x)).ToArray();
+        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => TyCtxt.HasBuiltinArithmetic(BoundType.Primitives["i32"], x)).ToArray();
         Assert.Equal(6, contracts.Length);
         foreach (var contract in contracts)
         {

@@ -152,7 +152,7 @@ public sealed partial class Binding
             propagation.SelectOption(subject.Symbol == this.Library.Option);
             if (!propagation.SemanticsIndexed)
             {
-                this.indexer.IndexMatchArms(propagation, scope);
+                this.IndexMatchArms(propagation, scope);
                 propagation.SemanticsIndexed = true;
             }
 

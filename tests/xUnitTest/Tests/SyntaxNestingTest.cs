@@ -136,6 +136,10 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         return deepest;
     }
 
+    // The most levels whose tree lies within L.
+    internal static int LevelsWithin(string shape)
+        => (L - Offset(shape)) / PerLevel(shape);
+
     private static string Source(string shape, int levels)
         => shape switch
         {
@@ -168,10 +172,6 @@ public class SyntaxNestingTest(ITestOutputHelper output)
 
     private static int Offset(string shape)
         => Depth(Parsed(Source(shape, 1))) - PerLevel(shape);
-
-    // The most levels whose tree lies within L.
-    private static int LevelsWithin(string shape)
-        => (L - Offset(shape)) / PerLevel(shape);
 
     private static Koto Parsed(string source)
     {
