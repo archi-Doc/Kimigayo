@@ -518,10 +518,9 @@ public sealed partial class MirBorrowsTest
     // SPEC 5.3 (PLAN G597's L2; the Middle's C-459 ruling, B's ruling 12 C2): a Storage over a raw pointer Place is `copy p`'s value, so
     // its element step is p's raw referent (MirSteps.Index's table), never p's own storage. Twin r4, labelled from SPEC first, valid in
     // each form, where v's referent is written while the view v lives: after the remainder's raw word p is overwritten ("overwrite") or
-    // moved ("move"), and while a shared borrow r of p is live ("borrowed"). A5 reports nothing. The Index reading (`&raw p[i]` as p's own
-    // storage) reports the "borrowed" form, the write through v reaching p under r's Loan (fail-before: one Loan conflict there); the two
-    // others report nothing under either reading (no Loan of p is live), which the probe of B's ruling 14 found. A hand-built body: no
-    // producer calls Storage.viewStart before L2's U3.
+    // moved ("move"), and while a shared borrow r of p is live ("borrowed"). A5 reports nothing. A control (B's rulings 15 and 16): the
+    // Index reading (`&raw p[i]` as p's own storage) reports nothing either, its plain address entry of p being no conflict candidate, so
+    // r4 pins no difference between the readings. A hand-built body: no producer calls Storage.viewStart before L2's U3.
     [Theory]
     [InlineData("overwrite")]
     [InlineData("move")]
@@ -560,5 +559,46 @@ public sealed partial class MirBorrowsTest
         body.Terminate(block, MirTerminator.Return(At(7)));
         new Stratum(c.Types).Run(program, Validated(c, body));
         Assert.Empty(program.Problems.All.ToArray());
+    }
+
+    // SPEC 5.3 (PLAN G597's L2; the Middle's C-459 answer, B's ruling 16): twins r5 ("stored") and r5r ("returned"), labelled from SPEC
+    // first, both valid. `p[n]` is `*(p + n)`, so `v = storage(p)` over the raw pointer parameter p is p's value: v addresses p's
+    // referent, the caller's, never p's own storage. r5 keeps v in `(*out).w`, a raw word the caller holds through the exclusive
+    // parameter `out`; r5r returns v. A5 reports nothing. Controls too (B's ruling 16 (a)): the Index reading reports nothing in either
+    // form, so MirSteps.Index's raw row is unpinned until L2's U3, whose body-level twin carries its fail-before. A hand-built body: no
+    // producer calls Storage.viewStart before U3.
+    [Theory]
+    [InlineData("stored")]
+    [InlineData("returned")]
+    public void AStorageOverARawPointerParameterAddressesItsReferent(string form)
+    {
+        var stored = form == "stored";
+        var c = MirBuildTest.Compile(stored ? "struct Out\n    var w: raw/i32\nfunc w(p: raw/i32, out: uniq/Out)\n    out.w = p\n" : "func w(p: raw/i32) -> raw/i32 => p\n");
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var shape = Body(program, "w");
+        var body = new MirBody();
+        body.Reset(shape.Key, default);
+        foreach (var local in shape.Locals[..(stored ? 3 : 2)])
+        {
+            body.AddLocal(local); // The Return local and the Arg locals p (and out), as the builder gives them.
+        }
+
+        var (p, pointer) = (new MirPlace(1), shape.Locals[1].Type!);
+        var v = new MirPlace(body.AddLocal(new(pointer, MirLocalKind.Var, default)));
+        SourceInfo At(int id) => new(new(0, id), 0, true);
+        var block = body.AddBlock();
+        body.Push(block, MirStatement.Assign(v, MirRvalue.Storage(p, pointer), At(1)));
+        var holder = stored ? body.Project(c.Types, body.Project(c.Types, new(2), MirProjectionKind.Deref, 0), MirProjectionKind.Field, 0) : new MirPlace(0);
+        body.Push(block, MirStatement.Assign(holder, MirRvalue.Use(body.AddOperand(MirOperand.Copy(v))), At(2)));
+        if (stored)
+        {
+            var unit = body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit, 0))));
+            body.Push(block, MirStatement.Assign(new(0), MirRvalue.Use(unit), At(3)));
+        }
+
+        body.Terminate(block, MirTerminator.Return(At(4)));
+        new Stratum(c.Types).Run(program, Validated(c, body));
+        Assert.Empty(program.Problems.All.ToArray().Select(static x => $"{x.Code} {x.Subject.Id}"));
     }
 }
