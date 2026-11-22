@@ -17228,10 +17228,89 @@ resumed by R4-M86 (2026-10-20).
   contract.
   - **Representation.** `Binding.RawOrigins.Borrows` (`PassPart.Borrows`): for each Projection or Anchor atom, the Borrows Binding
     commits with it as their outer Origin, each a `RawMember` (Input -1, referent and mode by `BorrowReferent`, equal referents joining
-    their modes), and the `Claimed` mark of each atom a published claim's Type states (`ClaimedOrigin`, `MarkClaim`). The rows only
-    grow within a pass, each new entry or mode moving the borrows' version; a library body's rows are the library pass's part. An
-    address `P@raw` is no Borrow (SPEC 5.4: it leaves no Loan), so no writer forms it. Its verdict reader is Z6's; until then only the
-    census and tests read it.
+    their modes), and the row's **limit marks** (`Binding.LimitMarks`, one value per named limit, each with its removal condition in
+    its comment). The rows only grow within a pass, each new entry or mode moving the borrows' version; a library body's rows are the
+    library pass's part. An address `P@raw` is no Borrow (SPEC 5.4: it leaves no Loan), so no writer forms it. Its verdict reader is
+    Z6's; until then only the census and tests read it. From Z6's M3a on, the marks are read by A5's `StoredMembers` and retention's
+    binder reading, both through Z6's one `Marks` reader (R6.2).
+  - **Limit marks** (Z6-F, Front, 2026-11-22; Q-685, D-1141; F's G147 rulings 66, 67 and 72; Z6 Revision 6 R6.1 and R6.4; Major, a
+    representation change, no verdict moved until Z6's M3a reads it) SPEC 5.7 Fits and claims; 5.2.1 condition 3; 5.4; 4.7.1; 15.6.2.
+    A mark is a fact about an atom that its Borrows do not show and that bounds what a raw layer stating the atom addresses. Its
+    readers, from Z6's M3a on (Z6-F lands first, alone: O-503 (a)), are A5's `StoredMembers` and retention's binder reading, both
+    through Z6's one `Marks` reader (R6.2; the Middle's F6-1 (b2)): each reads the row's named limits as a predicate on `LimitMarks`
+    (a further named limit is a value, not a case). Three values:
+    - `Claimed`: a published claim's Type states the atom (`ClaimedOrigin`; Z6's R2.3, named limit 1). Removal condition:
+      per-layer address provenance in A5.
+    - `SharedAddress`: a published address `P@raw` whose authority is shared states the atom (each atom of the address's Type's raw
+      Origin, each operand of a meet; Z6's R6.1): P's path is reached through shared, or **passes a conformance selection**, through
+      which the address selects `index` and has `index`'s shared authority whatever the receiver's path grants (SPEC 5.4; 4.7.1:
+      Array through `Indexable<isize>`, Dictionary through `UniqIndexable<K>`; G147 ruling 72). The address has no write authority
+      (5.2.1 condition 3), which the atom's members do not show, since an address forms no borrow fact (5.4). Removal condition:
+      Z6's route (a), A5's W reading condition 3 per address (O-498 Q2 (b)'s removal condition, a later stream Z row; it also
+      removes x01t's false records and restores p05, t11s, p17).
+    - `FittedIntoHolder` (Z6-F2, Front, 2026-11-22; G147 rulings 71, 73 and 75; Z6 R7.4, R7.1.1, R7.1.2; O-498 Q1 (i)) SPEC 5.7 Fits
+      and claims, 5.2.1 condition 3: a value whose raw layer states another Origin is fitted into a raw layer stating the atom (a raw
+      fit's target, each operand of a meet; at an invariant position the value's atoms too, swap's two-way flow), so the layer may
+      hold a pointer with that source's authority, which the atom's members do not show. It bounds **both** arms (the address mark
+      stays binder-only). `null` states no Origin and forms none; a layer stating none has no atom. Removal condition: Z6's route (a),
+      the fit's source Origins published and read, so that a fitted layer is read by the join of its sources' members (O-498 Q2 (b)'s
+      removal condition).
+    - **Formation:** the HIR publisher alone (`MarkLimits` at `PublishedNode`, replacing `MarkClaim`); cleared at
+      `BeginBorrowPublication`; no version moved; no census compares a mark. "Shared" and "a conformance selection" are two facts of
+      PlaceAuthority's one fold (`PathFold`, read once per address): its access (`ReachedThroughShared`'s reading, SPEC 15.6.2: a
+      shared layer anywhere on the path, a Deref through a `ref` or `objref` borrow, a Slice element and a pair layer by its weakest
+      admitted case among them) and `PathPrefix.Conformance`, set at the fold's UserIndex, ArrayElement and Array or Dictionary
+      BorrowedElement steps (a fixed array's element is a built-in projection, 4.7.1) and reset at a root, a raw dereference included.
+    - **Order (no version):** every reader of a mark runs after the publication that formed it, under `RetentionComplete`: A5's
+      `StoredMembers` (`TyCtxt.RawMembers` from `MirTypes.Holding`, keyed by its Holdings read) and retention's binder reading
+      (TyCtxt's retention memo, keyed by `RetentionState`, reached from `MirBorrows.CallRows`, `.Destructions`, `.Reach`, `.Storing`
+      and `MirValidator.Calls`). A Final pass publishes inside `Check`, any other pass at `PublishHir`; a re-check (`CheckBound`)
+      binds nothing and forms the same marks again. Binding's one retention read (`ReceiverIndependence`) runs while the pass's bodies
+      bind, before its publication forms any mark of its part (a reset pass's rows have none; the library part's marks, formed by
+      the library pass, never change after it).
+    - **Output:** `Borrows(atom, members)` gives the entries and reads no mark (R6.2); `AtomMarks(atom)` gives the atom's
+      `LimitMarks` (None without a row), the one row read of Z6's one `Marks` reader, which joins a meet's operands' marks with `|`;
+      tests read `BorrowList.Marks`.
+    - **The stand-in's swap (F, 14:59, as G147 ruling 72's C2 changes it):** Z6-P's stand-in maps to: `BorrowList.Claimed` /
+      `SharedAddress` (bools) -> `BorrowList.Marks` (`LimitMarks.Claimed` / `LimitMarks.SharedAddress`); `MarkClaim` +
+      `MarkSharedAddress` -> `MarkLimits`; `AtomMarks(atom)` returns `LimitMarks` (Z6-M joins operands with `|` and reads each row's
+      answer as a predicate on it; no `RawMarks` copy); `Borrows(origin, members)` has no `out`.
+    - **Rejected:** a second bool beside `Claimed` (the stand-in `SharedAddress`: one flag per limit grows a case per limit and a
+      second reader rule); the mark formed by a writer other than the publisher (`BindAddress`: a binding-time mark would need the
+      publication's clearing and its own republication rule; the claim's marks are the publisher's); a walk of its own over the
+      Place's Derefs reading each borrow's `BorrowReferent` mode (ruling 66's wording) or over its selections (ruling 72): a second
+      copy of PathFold's per-step rule, whose owner is PlaceAuthority; a mode parameter on PathFold's `Then`; the stand-in's spelled
+      `ref`/`objref` test; a PLAN row alone for the conformance forms (u01r, u02: a conservative Language error on valid programs
+      once M3a reads the marks).
+    - **Residue:** none left unmarked after ruling 72; the mark only over-reads a pair layer by its weakest admitted case (its `uniq`
+      case marked: dev's limit, not a hole). Route (a) removes the mark and with it that over-read.
+    - **The raw fit (Z6-F2; a new Binding representation, private to Binding; no HIR column):** `Binding.RawFit(Target, Value,
+      Equality)`, the running pass's list `rawFits` (`Binding.ValueFits.cs`), emptied at `ResetPass`, reused. Two sources, both
+      through one entry rule (`AddRawFit`: the fit places, outside a candidate trial and a collected fit (`FormsBorrows`,
+      FitConjunct's rule), and its two ends are stated and different; G147 ruling 76 C4): (1) each placing fit (`FitsValueAt`,
+      `CheckTypeUse`, `JudgeCallFit`'s decomposition `CollectCallRelations`, and ResultPropagation's `FitsTypeAt` of a join's bound
+      source and of a waited source's late Type) appends one at `FitOuterOrigins`' pointer arm through its walk's raw-fit sink
+      (`RelationWalk.RawFits`, the query's output, as `RelationWalk.Rows`), outside a Callable comparison; every other walk passes no
+      sink (an explicit `null`); (2) a selected call appends one for each substituted clause whose shorter end (for `==`, either end)
+      a raw layer of a callee parameter Type states (`JudgeCallClauses`, `InputRawLayerStates`): the callee's fit its signature
+      summarizes (ruling 75 Q-B). An entry may repeat. A fit form that places a value without a placing entry is that form's defect,
+      not a case of the mark.
+    - **Formation of the row:** the publication's start (`BeginBorrowPublication`, after the marks are cleared) reads `rawFits` once
+      and marks through `Mark(stated, mark)`, the one writer of a row's marks (`MarkLimits` is a classifier plus `Mark`). Order: every
+      placing fit runs while the pass binds, before the publication, so the list is complete when read and the row needs no version
+      (the order bullet above holds unchanged).
+    - **Rejected (Z6-F2):** a site per fit path (an open family: the eight paths are three entries, and later forms reach one);
+      forming the mark in the pure arm (a side effect in comparisons, trials and the failure explanation); a pass state the placing
+      entries raise (ruling 75 Q-A (b)); a second mark for clauses (one fact, two sources); marking an unstated target
+      (`BoundOrigin.Unstated` is one shared atom: it would limit every unstated layer); Z6's stand-in `MarkFitted` (a syntax
+      classification pairing components by index, no call path, `null` marked); a "proven equal" test at the arm for two atoms of
+      one Origin (a second equality rule; ruling 76 (a)).
+    - **The stand-in's swap (Z6-M):** `MarkFitted` goes; the fit mark is `AtomMarks(atom) & LimitMarks.FittedIntoHolder` behind
+      `Marks`, in both `LimitsDeclared` and `LimitsBinder`.
+    - **Restructuring (behaviour unchanged):** `FitOuterOrigins` returns `(Fit, Longer, Shorter)` and takes no `binding` (every
+      walk's Binding is null or its owner, which the decision read in both uses): 4 parameters and no `out` (was 7 with 2 `out`), so
+      the sink and the position's variance fit the parameter limits. `FitOuterOrigins`' sink and variance and `FitsTypeAt`'s sink are
+      explicit arguments at every caller, no optional parameter (Z6-F c, ruling 76 N1).
   - **Formation by writer.** Each writer forms its part once, outside candidate trials and collected fits: BindNode's end
     (`OwnBorrows`: the node's written Borrow, Slice view or object view, its receiver operation, its calls' operations from their
     plans, a synthesized call's at its consumer, and its capture entries); `BindMatch` (the Subject borrow, before the arms);
