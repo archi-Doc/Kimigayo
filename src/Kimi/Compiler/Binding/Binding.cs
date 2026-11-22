@@ -120,6 +120,7 @@ public sealed partial class Binding
         this.partPrerequisites = new(this);
         this.prerequisiteVisits = new(this);
         this.duplicateDeclarations = new(this);
+        this.resolvingTypes = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
         this.issuesView = new(own.Issues, layer.Issues);

@@ -374,6 +374,7 @@ internal struct NodeColumns
     internal StampedColumn<Koto?, Binding.PassCounter> PartPrerequisites; // Work: the part a declaration-level check read outside a frame, the running pass's dependence store, released at the freeze (Binding.Diagnostics.Prerequisites.cs).
     internal StampedColumn<uint, Binding.PassCounter> PrerequisiteVisits; // Work: the publication walks' visited set (RestsOnRecoveryOrLimit, AddPrerequisiteKeys), a row carrying the walk's number, a row of another walk absent, released at the freeze (Binding.Diagnostics.Prerequisites.cs).
     internal StampedColumn<(Koto? Parent, Koto? Next), Binding.PassCounter> DuplicateDeclarations; // Pass: a declaration's duplicate group row, its parent toward the group's first and the first's earliest later declaration, written by the pairwise checks and read by RecordDuplicateGroups (Binding.DuplicateDiagnostics.cs).
+    internal StampedColumn<bool, Binding.PassCounter> ResolvingTypes; // Work: BindType's cycle guard, whether a Type syntax's BindType is on the stack, the running pass's working state, released at the freeze (Binding.Types.cs).
 
     internal void Resize(int length)
     {
@@ -452,6 +453,7 @@ internal struct NodeColumns
         this.PartPrerequisites.Grow(length);
         this.PrerequisiteVisits.Grow(length);
         this.DuplicateDeclarations.Grow(length);
+        this.ResolvingTypes.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -505,6 +507,7 @@ internal struct NodeColumns
         this.PartPrerequisites.Release();
         this.PrerequisiteVisits.Release();
         this.DuplicateDeclarations.Freeze(binding);
+        this.ResolvingTypes.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -588,6 +591,7 @@ internal struct NodeColumns
             PartPrerequisites = this.PartPrerequisites.Renumbered(length),
             PrerequisiteVisits = this.PrerequisiteVisits.Renumbered(length),
             DuplicateDeclarations = this.DuplicateDeclarations.Renumbered(length),
+            ResolvingTypes = this.ResolvingTypes.Renumbered(length),
         };
         return columns;
     }

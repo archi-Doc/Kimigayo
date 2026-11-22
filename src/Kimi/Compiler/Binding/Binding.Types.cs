@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<Koto> resolvingTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly ResolvingTypeRows resolvingTypes;
 
     /// <summary>Tests whether a Type name is written directly as the target of an object form such as <c>objref/T</c>.</summary>
     private static bool IsDirectObjectTarget(Koto syntax)
@@ -480,5 +480,29 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(buffer, clearArray: true);
         }
+    }
+
+    /// <summary>The `resolvingTypes` family's one accessor (DECISIONS BU-220): a pass family, BindType's cycle guard, the Type syntax whose
+    /// BindType is on the stack, a `bool` row in the syntax's module's NodeColumns at its SyntaxId, set at BindType's start and reset in its
+    /// finally. Its rows are the running pass's working state, all reset when no BindType runs, so the freeze releases them
+    /// (NodeColumns.Freeze). Its members keep the names its readers use.</summary>
+    private readonly struct ResolvingTypeRows(Binding binding)
+    {
+        // False when the syntax is already on the stack (a cycle), as HashSet.Add.
+        internal bool Add(Koto syntax)
+        {
+            ref var row = ref HirTables.Of(syntax).Families.ResolvingTypes.Ref(syntax.SyntaxId, binding);
+            if (row)
+            {
+                return false;
+            }
+
+            row = true;
+            return true;
+        }
+
+        internal void Remove(Koto syntax) => HirTables.Of(syntax).Families.ResolvingTypes.Ref(syntax.SyntaxId, binding) = false;
+
+        internal bool Contains(Koto syntax) => syntax.SyntaxOwner is { } table && table.Hir.Families.ResolvingTypes.Get(syntax.SyntaxId, binding);
     }
 }
