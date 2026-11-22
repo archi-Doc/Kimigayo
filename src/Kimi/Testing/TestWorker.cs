@@ -42,13 +42,16 @@ internal static class TestWorker
             var stderr = Drain(child.Stderr, error, settings.LogBytes, budget, ioCancellation.Token);
 
             // The case runs until its exit, else until a stream fails, the run is cancelled or its deadline passes (IMPL 20.6.3: from
-            // launch to exit), by the Stopwatch: a wait whose timer ends it early waits again for the rest.
+            // launch to exit), by the Stopwatch: a wait whose timer ends it early waits again for the rest. The rest is rounded up to a
+            // whole millisecond, WaitAsync's unit, which completes at once for less than one, so the loop never spins.
             var deadline = TestSettings.Duration(settings.Timeout);
+
+            // A Task, not WhenAny's Task<Task>: SuppressThrowing throws on a Task<TResult> (CA2261).
             var wait = (Task)Task.WhenAny(child.Exited, Failure(channel, stdout, stderr));
             TimeSpan remaining;
             while (!wait.IsCompleted && !cancellationToken.IsCancellationRequested && (remaining = deadline - Stopwatch.GetElapsedTime(started)) > TimeSpan.Zero)
             {
-                await wait.WaitAsync(remaining, cancellationToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                await wait.WaitAsync(TimeSpan.FromMilliseconds(Math.Ceiling(remaining.TotalMilliseconds)), cancellationToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
 
             if (!child.Exited.IsCompleted)
