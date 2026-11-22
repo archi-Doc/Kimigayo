@@ -77,6 +77,7 @@ public sealed partial class Binding
         this.obligations.Clear();
         this.ResetLocalRegions();
         this.ResetBorrows();
+        this.rawFits.Clear();
         this.obligationSet.Clear();
         this.ResetCapabilities(mode);
         this.ResetContracts();

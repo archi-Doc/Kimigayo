@@ -154,10 +154,10 @@ public partial class PropertyBindingTest
 
     // Dev's records beside those accessors, which a formation failure keeps (AUseOfAWronglyTypedAccessorIsJudgedAgainstItsPropertysType).
     private const string UnformedGetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd get() -> W<NC>;UnsatisfiedConstraint_Kd W<NC>;" +
-        "UnsatisfiedConstraint_Kd W<NC>;TypeMismatch_Kd return storage;ArithmeticSelection_Kd h.x += 4;UnsatisfiedConstraint_Kd h.x;TypeMismatch_Kd let v: i32 = h.x;" +
+        "TypeMismatch_Kd return storage;ArithmeticSelection_Kd h.x += 4;UnsatisfiedConstraint_Kd h.x;TypeMismatch_Kd let v: i32 = h.x;" +
         "UnsatisfiedConstraint_Kd h.x";
 
-    private const string UnformedSetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd W<NC>;UnsatisfiedConstraint_Kd W<NC>;" +
+    private const string UnformedSetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd W<NC>;" +
         "UnsatisfiedConstraint_Kd h.x;TypeMismatch_Kd 5;TypeMismatch_Kd h.x += 4";
 
     // A group Property beside a custom `get` of another Type, and a bare update inside its group.
@@ -181,8 +181,8 @@ public partial class PropertyBindingTest
     [Theory]
     [InlineData(StoredWitnessNamesItsConformance, "clean")]
     [InlineData(ComputedWitnessNamesItsConformance, "clean")]
-    [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 6*InvalidConstraint_Kd 2*UninitializedPlace_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UninitializedPlace_Kd 9*UnsatisfiedConstraint_Kd")]
+    [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 5*InvalidConstraint_Kd 2*UninitializedPlace_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UninitializedPlace_Kd 8*UnsatisfiedConstraint_Kd")]
     [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the user of the failed witness rests
     [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
     public void APropertyWitnessFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));

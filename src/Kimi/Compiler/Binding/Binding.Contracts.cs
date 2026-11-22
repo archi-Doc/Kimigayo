@@ -78,44 +78,62 @@ public sealed partial class Binding
             _ => false,
         };
 
-    /// <summary>
-    /// SPEC 8.6, 8.6.1: the registered conformance of a Type declaration to a Contract, whether registered under the
-    /// Contract declaration itself or under one bound reference of it. Several bound references of one declaration are
-    /// distinct conformances, so a query by declaration alone is ambiguous there.
-    /// </summary>
-    private BoundConformance? ConformanceByDeclaration(BindingSymbol type, BindingSymbol contract, out bool ambiguous)
-    {
-        ambiguous = false;
-        if (this.ConformanceOf(type, contract) is { } direct)
-        {
-            return direct;
-        }
+    // A Contract symbol's selection (SelectConformance): its bound reference, or none for a declaration (a query by declaration).
+    private BoundConformance? SelectConformance(BoundType receiver, BindingSymbol contract, BindingScope scope, out int candidates)
+        => this.SelectConformance(receiver, contract, IsBoundContractReference(contract) ? contract.Type : null, scope, out candidates);
 
-        if (IsBoundContractReference(contract) || this.ConformancesOf(type) is not { } identities)
+    /// <summary>
+    /// SPEC 8.6.1, 8.4.3, 8.9 (R7-C3 b, PLAN G302): the one selection of a Type's conformance by a Contract, the declaration of
+    /// `contract` with its bound reference `reference` (SPEC 8.6.1's pair) or with none (a query by declaration, which the compiler asks,
+    /// SPEC 8.4.3). Its candidates are the identities of `receiver`'s declaration that IsSelectionCandidate admits. Candidates naming one
+    /// bound reference are one conformance (SPEC 8.6.1: an explicit one and those implied by refinement; 8.9.2: merging paths, PLAN G798's
+    /// `Gx&lt;i32&gt;`), so any member represents it: their bindings and mappings must agree, and a disagreement is the declaration's error
+    /// (8.9.2). The selection returns the first member in declaration order (ConformancesOf's registration order), the set's
+    /// representative, not a preference among members.
+    /// Two declared directly are distinct conformances that collide (SPEC 8.9.1; the clause has its DuplicateBinding_Kd), and without a
+    /// reference several are distinct (SPEC 8.4.3): both are ambiguous, none is selected, and each reader says what an ambiguity is for
+    /// it. `candidates` counts the candidates read: 0 for none; with a selection, the members of the one conformance it represents (a
+    /// reader binding one member, a specification, reads it: BindAssociatedName); without one, more than one, an ambiguity. A query by
+    /// declaration reads declarations only and not `scope` (ContractSolver's unthreaded list); a bound reference's selection is a judgment.
+    /// </summary>
+    private BoundConformance? SelectConformance(BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, out int candidates)
+    {
+        candidates = 0;
+        if (receiver.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
         {
             return null;
         }
 
         BoundConformance? found = null;
+        var direct = false;
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration))
+            if (!this.IsSelectionCandidate(identity.Contract, receiver, contract, reference, scope))
             {
                 continue;
             }
 
-            if (found is not null)
+            candidates++;
+            if ((found is not null && reference is null) || (direct && identity.DirectClause is not null))
             {
-                ambiguous = true;
                 return null;
             }
 
-            found = identity;
+            direct |= identity.DirectClause is not null;
+            found ??= identity;
         }
 
         return found;
     }
+
+    // SPEC 8.6.1: a conformance's Contract `candidate` is a candidate of the selection by `contract`'s declaration with `reference` (none: a
+    // query by declaration) when it is of that declaration and, for a bound reference, its reference is `reference` as written or,
+    // instantiated for `receiver`, identical with it in `scope` (NamesReference, the judge's). The selection's one admission test, which
+    // SpecifiesContract reads for a path's Contracts.
+    private bool IsSelectionCandidate(BindingSymbol candidate, BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope)
+        => ReferenceEquals(candidate.Declaration, contract.Declaration) && (reference is null || ReferenceEquals(candidate.Type, reference) ||
+            (candidate.Type is { } formal && this.NamesReference(formal, receiver, reference, scope)));
 
     private void ResetContracts()
     {

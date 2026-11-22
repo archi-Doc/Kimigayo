@@ -184,6 +184,49 @@ public sealed partial class MirBorrowsTest
         ["inv-var-gen"] = "func g<T>(p: uniq/(ref/T during a) during u, y: T) -> i32\n    var r = p@move\n    r@follow = y@ref\n    return 0\n",
     };
 
+    // Z19's programs (the design's f9 twins, the design reviews' r, rw and q twins), each with a `public func main`.
+    private static readonly Dictionary<string, string> JudgedSources = new()
+    {
+        ["f9a"] = "func f(n: i32, y: ref/i32 = n@ref) -> i32 => y@follow\nfunc caller() -> i32 => f(3)\n",
+        ["f9b"] = "func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\n",
+        ["f9c"] = "func f(n: i32, y: ref/i32 during a = n@ref) -> ref/i32 during a => y\n",
+        ["f9d"] = "func f(x: uniq/i32 during a, y: (ref/i32 during a, i32) = (x, 1)) => ()\n",
+        ["f9e2"] = "func f(n: i32, y: (ref/i32 during a, i32) = (n@ref, 1)) -> ref/i32 during a => y.0\n",
+        ["f9h"] = "func f(n: i32, y: ref/i32 = label w: do\n    let r = n@ref\n    exit to w r\n) -> i32 => y@follow\n",
+        ["f9i"] = "func f(n: i32, y: ref/i32 = n@ref, z: ref/i32 = n@ref) -> i32 => y@follow\n",
+        ["f9j"] = "func f(n: i32, p: raw/(ref/i32 during a), y: i32 = label w: do\n    unsafe => p[0] = n@ref\n    exit to w 0\n) => ()\n",
+        ["f9l"] = "func f(n: i32, q: ref/i32 during a, y: i32 = label w: do\n    let r: ref/i32 during a = n@ref\n    exit to w 0\n) => ()\n",
+        ["r1"] = "func f(x: uniq/i32 during a, n: i32, y: ref/i32 during a = n@ref, z: ref/i32 during a = x) -> i32 => y@follow + z@follow\n",
+        ["r2"] = "func g(x: uniq/i32 during a, n: i32, c: bool, y: ref/i32 during a = label w: do\n    if c\n        exit to w n@ref\n" +
+            "    exit to w x\n) -> i32 => y@follow\n",
+        ["r5"] = "func h2(n: i32, c: bool, y: ref/i32 = label w: do\n    var i = 0\n    while i < 3\n        if c\n            exit to w n@ref\n" +
+            "        i = i + 1\n    $abort(\"none\")\n) -> i32 => y@follow\n",
+        ["r11"] = "func same(v: ref/i32 during q) -> ref/i32 during q => v\nfunc sc(n: i32, y: ref/i32 during a = same(n@ref)) -> i32 => y@follow\n",
+        ["r12"] = "func putr(p: raw/(ref/i32 during a), v: ref/i32 during a) => unsafe => p[0] = v\n" +
+            "func cs(n: i32, p: raw/(ref/i32 during a), y: i32 = label w: do\n    putr(p, n@ref)\n    exit to w 0\n) => ()\n",
+        ["r6"] = "func kv<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during b = x@follow@ref) -> i32\n    s is owner or uniq\n    return y@follow\n",
+        ["r6g"] = "func ku2<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during b = x@follow@ref) -> i32\n    s is uniq\n    return y@follow\n",
+        ["r6o"] = "func ko<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during b = x@follow@ref) -> i32\n    s is owner\n    return y@follow\n",
+        ["q6"] = "func q6<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during b = x@follow@ref) -> i32\n    s is owner or ref or uniq\n" +
+            "    return y@follow\n",
+        ["q7"] = "func q7<s/T, t/U>(x: s/(t/i32 during b) during b, m: s/T, n: t/U, y: ref/i32 during b = x@follow@follow@ref) -> i32\n" +
+            "    s is owner or uniq\n    t is owner or uniq\n    return y@follow\n",
+        ["q10"] = "func q10<s/T>(x: s/i32 during b, m: s/T, p: raw/(ref/i32 during c), y: i32 = label w: do\n" +
+            "    unsafe => p[0] = x@follow@ref\n    exit to w 0\n)\n    s is owner or uniq\n    return\n",
+        ["tc"] = "func kc<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during c = x@follow@ref) -> i32\n    s is owner or uniq\n    return y@follow\n",
+        ["rw3"] = "func kv3<s/T>(x: s/i32 during b, m: s/T, p: uniq/(ref/i32 during b))\n    s is owner or uniq\n    var y = x@move\n" +
+            "    p@follow = y@follow@ref\n    y@follow = 2\n",
+        ["rw3g"] = "func kv3g<s/T>(x: s/i32 during b, m: s/T, p: uniq/(ref/i32 during b))\n    s is uniq\n    var y = x@move\n" +
+            "    p@follow = y@follow@ref\n    y@follow = 2\n",
+        ["rw3o"] = "func kv3o<s/T>(x: s/i32 during b, m: s/T, p: uniq/(ref/i32 during b))\n    s is owner\n    var y = x@move\n" +
+            "    p@follow = y@follow@ref\n    y@follow = 2\n",
+        ["q1"] = "func q1<s/T>(x: s/i32 during b, m: s/T, out: uniq/(ref/i32 during c))\n    s is owner or uniq\n    out@follow = x@follow@ref\n",
+        ["q5"] = "func q5<s/T>(x: ref/i32, z: s/i32 during x, m: s/T) -> ref/i32 during x\n    s is owner or uniq\n    let values = [1, 2, 3]\n" +
+            "    let sl = values[0..2]\n    var view = z@follow@ref\n    view = sl[0]@ref\n    return view\n",
+        ["q13"] = "func id(v: ref/i32 during q) -> ref/i32 during q => v\nfunc q13<s/T>(x: s/i32 during b, m: s/T, out: uniq/(ref/i32 during b))\n" +
+            "    s is owner or uniq\n    let r = id(x@follow@ref)\n    out@follow = r\n",
+    };
+
     // SPEC 15.6.5 (R4-M122's text; DECISIONS R4-M132): a conflict whose Loan every carrier past the access keeps only in the result in
     // transit (a Result temp, _0) or storage the body does not own (E), received as the borrow or a Copy or Reborrow of it into a part
     // every Origin of which is Fixed, is derived from the Refuted problems of its Borrow's Origin: a return through locals, a Reborrow and
@@ -343,8 +386,8 @@ public sealed partial class MirBorrowsTest
         Assert.Equal((2, false), (stratum.Origins.Classes, stratum.ViewDependent));
     }
 
-    // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a
-    // requirement of its own that rule W never derives: no problem of the program carries a Cause fact.
+    // SPEC 7.2.3 (R26): a default template's Reborrow its result keeps is DefaultArgumentBorrow_Kd, a requirement of its own that rule W
+    // does not derive: no Refuted chain, so no problem of the program carries a Cause fact.
     [Fact]
     public void ADefaultArgumentBorrowRecordsNoCause()
     {
@@ -352,6 +395,81 @@ public sealed partial class MirBorrowsTest
         Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.DefaultArgumentBorrow_Kd);
         Assert.Empty(DerivedProblems(program));
     }
+
+    // SPEC 7.2.3, 15.6.5, 23.1.2 (Z19, the owner's O-496 (a)): a default keeping a new Borrow of a preceding slot whose relation is Refuted
+    // fails once, so DefaultArgumentBorrow_Kd is derived from the relation by rule W where every carrier holds the Loan as its direct
+    // arrival: kept by the result, through a local, by two defaults, by a raw store, from inside a loop, by a call's result or store, and
+    // one of two Loans of a default (r1's and r2's Reborrow stays direct). Fail-before: R26 carried no cause.
+    [Theory]
+    [InlineData("f9a", "n@ref UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("f9c", "n@ref UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("f9h", "r UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- r")]
+    [InlineData(
+        "f9i",
+        "n@ref UnsatisfiedOriginRelation_Kd views 1",
+        "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref",
+        "n@ref UnsatisfiedOriginRelation_Kd views 1",
+        "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("f9j", "n@ref UnsatisfiedOriginRelation_Kd views 1", "p[0] = n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("r1", "n@ref UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref", "x DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("r2", "n@ref UnsatisfiedOriginRelation_Kd views 1", "x DefaultArgumentBorrow_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("r5", "n@ref UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("r11", "same(n@ref) UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- same(n@ref)")]
+    [InlineData("r12", "n@ref UnsatisfiedOriginRelation_Kd views 1", "putr(p, n@ref) DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    public void ADefaultsBorrowWithARefutedRelationIsDerived(string name, params string[] expected)
+        => Assert.Equal(expected, Judged(JudgedSources[name]));
+
+    // SPEC 7.2.3, 15.6.5 (Z19): where rule W does not derive, each record stays direct: a Reborrow of a preceding argument (no Refuted
+    // chain, alone or inside a Tuple), the slot's Borrow kept inside an aggregate (not a Copy, R4-M104), and an annotated local's Refuted
+    // relation with nothing kept past entry (no R26 failure). Pins: each passes before.
+    [Theory]
+    [InlineData("f9b", "x DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("f9d", "x DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("f9e2", "(n@ref, 1) UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("f9l", "n@ref UnsatisfiedOriginRelation_Kd views 1")]
+    public void ADefaultsBorrowAnotherCarrierKeepsStaysDirect(string name, params string[] expected)
+        => Assert.Equal(expected, Judged(JudgedSources[name]));
+
+    // SPEC 15.6.5, 15.6.3 (Z19's rule (A)): where the Semantics case decides whether a Ref passes a borrow layer, the Ref's own Origin is an
+    // inferred region in the classes passing one, so its relation is judged per case (views: owner 1, then each further case's bit): a
+    // Refuted relation names the owner case only and a record it does not cause stays direct in the other cases (B1: r6, r6g, r6o; the
+    // default with a third case, whose ref case forms no Loan, or two pair binders, q6, q7; with a raw store and an Unproven relation in the
+    // uniq case, q10, tc; a conflict, rw3, rw3g, rw3o); a requirement above the containment is still judged in the promoted class (q1's P),
+    // a Ref through a slice keeps its relation in both cases (q5), and a call retention's pair reads the class's kinds (q13, CR3); the
+    // owner case's end of the parameter, caused only by the relation, is derived (q1, q13). Fail-before: the relation named every case
+    // (r6g, rw3g and rw3o pass before).
+    [Theory]
+    [InlineData("r6", "x@follow@ref UnsatisfiedOriginRelation_Kd views 1", "x@follow@ref DefaultArgumentBorrow_Kd views 3")]
+    [InlineData("r6g", "x@follow@ref DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("r6o", "x@follow@ref UnsatisfiedOriginRelation_Kd views 1", "x@follow@ref DefaultArgumentBorrow_Kd views 1 <- x@follow@ref")]
+    [InlineData("q6", "x@follow@ref UnsatisfiedOriginRelation_Kd views 1", "x@follow@ref DefaultArgumentBorrow_Kd views 5")]
+    [InlineData("q7", "x@follow@follow@ref UnsatisfiedOriginRelation_Kd views 1", "x@follow@follow@ref DefaultArgumentBorrow_Kd views 15")]
+    [InlineData(
+        "q10",
+        "x@follow@ref UnsatisfiedOriginRelation_Kd views 1",
+        "x@follow@ref UnprovenOriginRelation_Kd views 2",
+        "p[0] = x@follow@ref DefaultArgumentBorrow_Kd views 3")]
+    [InlineData(
+        "tc",
+        "x@follow@ref UnsatisfiedOriginRelation_Kd views 1",
+        "x@follow@ref UnprovenOriginRelation_Kd views 2",
+        "x@follow@ref DefaultArgumentBorrow_Kd views 3")]
+    [InlineData("rw3", "y@follow@ref UnsatisfiedOriginRelation_Kd views 1", "y@follow = 2 ComparisonLoanConflict_Kd views 3")]
+    [InlineData("rw3g", "y@follow = 2 ComparisonLoanConflict_Kd views 1")]
+    [InlineData("rw3o", "y@follow@ref UnsatisfiedOriginRelation_Kd views 1", "y@follow = 2 ComparisonLoanConflict_Kd views 1 <- y@follow@ref")]
+    [InlineData(
+        "q1",
+        "x@follow@ref UnsatisfiedOriginRelation_Kd views 1",
+        "x@follow@ref UnprovenOriginRelation_Kd views 2",
+        "s/i32 during b ComparisonLoanConflict_Kd views 1 <- x@follow@ref")]
+    [InlineData(
+        "q5",
+        "view UnsatisfiedOriginRelation_Kd views 1",
+        "view UnsatisfiedOriginRelation_Kd views 3",
+        "let values = [1, 2, 3] ComparisonLoanConflict_Kd views 3")]
+    [InlineData("q13", "r UnsatisfiedOriginRelation_Kd views 1", "s/i32 during b ComparisonLoanConflict_Kd views 1 <- r")]
+    public void ACaseDecidedBorrowLayerJudgesEachCase(string name, params string[] expected)
+        => Assert.Equal(expected, Judged(JudgedSources[name]));
 
     // V16 (DECISIONS R4-M132; the design review's A-B1): rule W keeps A5 within its dense bound where every stored Loan is a W element: N
     // locals borrowed and stored through a parameter, stored on one branch (joined), read through the parameter after each store (A-B1's
@@ -518,6 +636,20 @@ public sealed partial class MirBorrowsTest
             .Select(x => $"{Function(c.SyntaxOf(x.Problem.Subject))}: {Line(c, x.Problem.Subject)}{Code(x.Problem.Code)}" + Causes(c, program, x.Index))];
 
         static string Code(DiagnosticCode code) => code == DiagnosticCode.ComparisonLoanConflict_Kd ? string.Empty : " " + code;
+    }
+
+    // A program's Origin, Loan and R26-borrow problems in report order: the subject's first line, the code, the views and its causes'
+    // subjects; the MIR the driver analyzed, with no validator finding.
+    private static string[] Judged(string source)
+    {
+        DiagnosticCode[] codes = [.. LoanCodes, DiagnosticCode.UnsatisfiedOriginRelation_Kd, DiagnosticCode.UnprovenOriginRelation_Kd,
+            DiagnosticCode.DefaultArgumentBorrow_Kd];
+        var c = MirBuildTest.Compile(source + "public func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        return [.. program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i))
+            .Where(x => codes.Contains(x.Problem.Code) && x.Problem.Subject.Module == 0)
+            .Select(x => $"{Line(c, x.Problem.Subject)} {x.Problem.Code} views {x.Problem.Views}" + Causes(c, program, x.Index))];
     }
 
     // The problems rule W derived, with Cause facts (their tail).

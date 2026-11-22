@@ -20,9 +20,10 @@ internal sealed partial class MirBorrows
     private const byte ExclusiveReference = 4; // named: a referring store gives the local an exclusive reference (Referred).
     private const byte OtherStore = 8; // named: a store into the local's whole Place is no referring one (Referring; MirBorrows.Lent's Lender).
     private const byte PartStore = 16; // named: a store into a part of the local, so its stores are not followed (Referring, Lender).
+    private const byte OwnerExposed = 32; // named: an own-step entry exposes its owner's storage in the local (Exposed), which Lender never passes.
 
     private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
-    private byte[] named = []; // By local: NamedHolder, ExposedHolder, ExclusiveReference, OtherStore and PartStore.
+    private byte[] named = []; // By local: NamedHolder, ExposedHolder, ExclusiveReference, OtherStore, PartStore and OwnerExposed.
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
     private int[] referFirst = []; // By local: its last whole store in referStores, -1 for none (Referred).
     private int[] referStores = []; // The whole stores, two entries each: the location, and its local's store before it.
@@ -46,7 +47,11 @@ internal sealed partial class MirBorrows
     // Whether a local is an exposed holder (PLAN G598; SPEC 5.2, 5.5): a non-shared direct Loan or address of the body names it, or an
     // Opaque site touched it, so a pointer the body formed may write its bytes at any later point, also where A5 reads no store (a
     // callee's scalar store, a pun); no other pointer reaches a local. A shared Loan gives no write authority (SPEC 5.2.1 condition 3).
-    private bool Exposed(int local) => (this.named[local] & ExposedHolder) != 0;
+    // An own-step entry exposes its owner's storage only (OwnerExposed): a `during self` pointer addresses storage the value holding the
+    // layer owns, an own step of that value (SPEC 5.7's Origin table), a defined access stays within it (5.7 Fits and claims), and an
+    // owning handle's pointer its payload; MirBorrows.Lent's Lender never passes such storage, so it reads ExposedHolder alone, the plain
+    // address's bit (15.6 Addresses: `P@raw` through no dereference addresses the holder at the root).
+    private bool Exposed(int local) => (this.named[local] & (ExposedHolder | OwnerExposed)) != 0;
 
     // Whether a local's reference refers only to Places its stores name, and the last of those stores (the one before each in
     // referStores): every store of the body into a Place rooted at the local is a referring one, a non-raw Ref of a Place, a Reborrow
@@ -56,7 +61,7 @@ internal sealed partial class MirBorrows
     private bool Referring(int local, out int store)
     {
         store = this.referFirst[local];
-        return (this.named[local] & (ExposedHolder | OtherStore | PartStore)) == 0;
+        return !this.Exposed(local) && (this.named[local] & (OtherStore | PartStore)) == 0;
     }
 
     // The Place the last non-raw Ref into a local's whole Place lent into it, or the local itself: a Call's input temp's target and its

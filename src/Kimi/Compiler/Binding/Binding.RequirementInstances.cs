@@ -65,22 +65,8 @@ public sealed partial class Binding
             return recorded;
         }
 
-        if (reference is null || self.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
-        {
-            return null;
-        }
-
-        var scope = this.ConstraintScope(owner.Declaration);
-        for (var i = 0; i < identities.Count; i++)
-        {
-            // A conformance of a generic Type names its reference in the Type's own parameters (`Self is Indexable<K>`).
-            if (identities[i].Contract.Type is { } formal && (ReferenceEquals(formal, reference) || this.NamesReference(formal, self, reference, scope)))
-            {
-                return identities[i].Contract;
-            }
-        }
-
-        return null;
+        // A conformance of a generic Type names its reference in the Type's own parameters (`Self is Indexable<K>`): as written.
+        return reference is null || self.Symbol is not { } owner ? null : this.SelectConformance(self, recorded, reference, this.ConstraintScope(owner.Declaration), out _)?.Contract;
     }
 
     // SPEC 21.3.1: a witness's Origin in its requirement call's terms, the call's Origins and inputs over the requirement's binder; an
