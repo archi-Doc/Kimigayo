@@ -426,26 +426,30 @@ public sealed class CommandExecutionTest : IDisposable
             }
         }
 
-        // Two selected Projects with one identity are an error (IMPL 20.6.2; 20.6.4: 2), compared as the identities are spelled: a
-        // solution's implicit A.kimi and A.KIMI in two folders are two identities (PLAN G1273), two A.kimi one.
+        // Two selected Projects with one identity are an error (IMPL 20.6.2; 20.6.4: 2), compared as the identities are spelled, and the
+        // result document lists the projects in their inputs' order (PLAN G1273): a solution's implicit A.kimi and A.KIMI are two
+        // identities, in two folders or as one folder's two spellings (one file on a case-insensitive disk, selected twice: PLAN G1289);
+        // two A.kimi are one; b/A.kimi follows a/B.kimi.
         [Theory]
-        [InlineData("b/A.KIMI", 0)]
-        [InlineData("b/A.kimi", 2)]
-        public async Task ImplicitProjectsConflictOnlyByTheirSpelledIdentities(string second, int expected)
+        [InlineData("a/A.kimi", "b/A.KIMI", 0, "A.kimi A.KIMI")]
+        [InlineData("a/A.kimi", "b/A.kimi", 2, "A.kimi")]
+        [InlineData("a/A.kimi", "a/A.KIMI", 0, "A.KIMI A.kimi")]
+        [InlineData("b/A.kimi", "a/B.kimi", 0, "B.kimi A.kimi")]
+        public async Task SolutionProjectsConflictByTheirSpelledIdentitiesAndFollowTheirInputs(string first, string second, int expected, string identities)
         {
-            foreach (var source in new[] { "a/A.kimi", second })
+            foreach (var source in new[] { first, second })
             {
                 Directory.CreateDirectory(Path.Combine(this.directory, Path.GetDirectoryName(source)!));
                 File.WriteAllText(Path.Combine(this.directory, source), Passes);
             }
 
             var solution = Path.Combine(this.directory, "S.kimisln");
-            File.WriteAllText(solution, $"Projects = {{ \"a/A.kimi\", \"{second}\" }}\n");
+            File.WriteAllText(solution, $"Projects = {{ \"{first}\", \"{second}\" }}\n");
             var (exit, document) = await this.List(solution);
             using (document)
             {
                 Assert.Equal(expected, exit);
-                Assert.Equal(expected == 0 ? 2 : 1, document.RootElement.GetProperty("projects").GetArrayLength());
+                Assert.Equal(identities, string.Join(' ', document.RootElement.GetProperty("projects").EnumerateArray().Select(x => x.GetProperty("identity").GetString())));
             }
         }
 
