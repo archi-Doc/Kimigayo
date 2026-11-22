@@ -29,7 +29,7 @@ public sealed partial class Binding
     // - Owner: Check.
     // - Reset: ResetSyntheticCalls' Clear, its capacity kept, so a warm rebind allocates nothing; the rows read absent by the pass stamp,
     //   so both are empty at a pass's start.
-    // - Invariant: a call is listed iff its row is present; one site writes both (AddSynthesizedCall).
+    // - Invariant: a call is listed iff its row is present; one site writes both (SynthesizedCallRows.Add).
     // - Removal: it goes with the column if SettleSynthesizedCalls stops walking the calls; otherwise it is the pass's working order.
     private readonly List<InvocationKoto> synthesizedOrder = [];
 
@@ -151,12 +151,7 @@ public sealed partial class Binding
     private void AddSynthesizedCall(Koto consumer, InvocationKoto call)
     {
         this.nodes.Add(call);
-        if (!this.synthesizedCalls.ContainsKey(call))
-        {
-            this.synthesizedOrder.Add(call);
-        }
-
-        this.synthesizedCalls[call] = consumer;
+        this.synthesizedCalls.Add(call, consumer);
     }
 
     // The pass's synthesized calls in the order their row was first written (synthesizedOrder), each with its consumer's latest row.
@@ -223,9 +218,17 @@ public sealed partial class Binding
     /// releases them (NodeColumns.Freeze). Its members keep the names its readers use.</summary>
     private readonly struct SynthesizedCallRows(Binding binding)
     {
-        internal Koto this[InvocationKoto call]
+        // A call's row and its listing (synthesizedOrder's invariant): a call is listed at its row's first write; a later write
+        // replaces its consumer.
+        internal void Add(InvocationKoto call, Koto consumer)
         {
-            set => HirTables.Of(call).Families.SynthesizedCalls.Ref(call.SyntaxId, binding) = value;
+            ref var row = ref HirTables.Of(call).Families.SynthesizedCalls.Ref(call.SyntaxId, binding);
+            if (row is null)
+            {
+                binding.synthesizedOrder.Add(call);
+            }
+
+            row = consumer;
         }
 
         internal Koto? GetValueOrDefault(InvocationKoto call) => call.SyntaxOwner is { } table ? table.Hir.Families.SynthesizedCalls.Get(call.SyntaxId, binding) : null;
