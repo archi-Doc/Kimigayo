@@ -15,6 +15,13 @@ public sealed partial class Binding
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
     private BindingSymbol? activeRequirementContract;
 
+    // SPEC 8.6.4 (F's ruling N1-7 (1)): a requirement is reached through its subject Type: the requirement group a Constraint gave the
+    // use's member lookup, or a callee its creator pinned with its bound Contract. A Name that selected one without (an opened Contract's
+    // direct member at stage 5) names no Type to call it through, as `Empty.empty()` does not: the call binder and BindReference read this,
+    // and the Name records the miss that use records (UnresolvedBinding_Kd).
+    private bool LacksRequirementSubject(Koto use, BindingSymbol head)
+        => head.Declaration is FunctionKoto { IsRequirement: true } && use is not RequirementCalleeKoto && this.ReferenceRequirements(use) is null;
+
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
         // SPEC 9.6, 13.3.3, 13.4.1, 22.10.2: requirements are gathered from Constraints, so only a Type parameter, a projection or a

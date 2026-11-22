@@ -134,6 +134,11 @@ public sealed partial class Binding
             this.BindHeader(symbol);
             if (IsValueUse(node))
             {
+                if (this.LacksRequirementSubject(node, symbol))
+                {
+                    return this.FailUnselected(node, BindingFailure.MissingName);
+                }
+
                 var group = this.GroupOf(node, symbol);
                 if (this.GatheredGroupFails(node, group))
                 {

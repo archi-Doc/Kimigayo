@@ -146,6 +146,24 @@ public class ContainerNestingTest
         Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.InternalInvariant_Kd);
     }
 
+    // SPEC 8.6.4 (F's ruling N1-7 (1); G656's remainder): an opened Contract's Type-function requirement that an unqualified Name selects
+    // has no subject Type to be called through, so the Name records the miss `Empty.empty()` records, at a call and at a value use alike;
+    // a receiver requirement keeps 9.5's qualification record (r06j).
+    [Theory]
+    [InlineData("alias P\nfunc g() -> i32 => make()", "UnresolvedBinding_Kd", "make")]
+    [InlineData("alias C<i32>\nfunc g() -> i32 => make()", "UnresolvedBinding_Kd", "make")]
+    [InlineData("alias P\nfunc g()\n    let f = make", "UnresolvedBinding_Kd", "make")]
+    [InlineData("alias Q\nfunc g() -> i32 => m(1)", "QualificationRequired_Kd", "m")]
+    public void AnOpenedRequirementHasNoSubjectType(string source, string code, string name)
+    {
+        var c = CompilationTestHelper.Parse(source + "\ncontract C<T>\n    func make() -> T\ncontract P\n    func make() -> i32\n" +
+            "contract Q\n    func m(self: ref/Self, x: i32) -> i32");
+        Assert.False(c.Bind().IsComplete);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(code, issue.Code.ToString());
+        Assert.Equal(name, issue.Node.ToString());
+    }
+
     // SPEC 23.1.2, 9.1, 9.4.1, 9.7.1 (PLAN G250 (4)): the qualifier of an inaccessible member is bound in its container role, so its own
     // failures, independent of the access, are reported beside the member's: an arity mismatch, omitted outer arguments and an
     // inaccessible argument.

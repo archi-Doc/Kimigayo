@@ -200,6 +200,12 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
+        if (this.LacksRequirementSubject(callee, group))
+        {
+            this.FailUnselected(callee, BindingFailure.MissingName);
+            return Complete(call, null);
+        }
+
         var requirementGroup = candidates.Requirements;
         var (evaluated, self, shape) = this.NamedCandidates(callee, group, candidates, scope);
 
