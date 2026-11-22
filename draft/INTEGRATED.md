@@ -1465,6 +1465,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 113 (2026-11-22, plan §14; the Front's Q-648 and D-1062, F's P1 ruling 1, R7-P1's rows): P1's row records its rows
   as complete, landed in W-311 (Q-648) (fail-first for P2, P3, P4 T4, R1e and I3; the cost rows; SP1's T rows labelled from D-1042's
   text); its Explicit open row ix-mis (two `Indexable` conformances, an index fitting neither) is PLAN G1252. Nothing frozen.
+- Revision 114 (2026-11-22, plan §14; the Back's Q-663 and D-1093, B's U10 rulings 4 and 6, R7-T2 U10's landing): T2's row records
+  U10's split of the root `ArithmeticContracts` by owner: `Supports` into `TyCtxt.HasBuiltinArithmetic`, `IsArithmetic` and `IsLeft`
+  into `KimiLibraryCatalog.IsArithmeticContract` and `IsLeftContract`; the compiler root holds only P3's `StrictBestCandidate.cs`.
+  Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1

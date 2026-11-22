@@ -25306,6 +25306,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Staged.** The Composed row's proof and the primitive refutation move to Prove with R7-C9; SPEC 8.7.4's supplies, stated five
     times, become one statement with R7-C9 or C2 (PLAN G1235). Outside the table stay the intrinsic Contracts (SPEC 8.7.1,
     `IntrinsicContract`).
+  - Amended by R7-T2 U10 (2026-11-22; 36b1fd233): the arithmetic Target rows read `TyCtxt.HasBuiltinArithmetic` (was
+    `ArithmeticContracts.Supports`).
 - **R7-M75 Family 2's problems record through `Record`; a fact-less own site records `Record(node, X, [])`** (Back, 2026-11-21;
   R7-E3 E3a-1, Q-629, D-1025; Major unit of a Major design, R7 plan §5.1 E3; design `back\notes\r7-e3\e3-design.md` §§2-4 with B's
   E3 rulings 1-7; the Front's design review on C-439, ACCEPT WITH CONDITIONS, C1 for this unit) SPEC 23.1.2, 23.3.
@@ -26521,6 +26523,11 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves:** none (probes, snapshots, compare-fixtures; the commit states them).
   - Amended by R7-T2 U7 (R7-M56's amending line): `ReferenceTypes.IsPointer` is `BoundType.IsPointer`, a Type's own fact (the same
     set); the builder's read stays, and every open-coded raw-layer test in Binding, MIR and the Backend reads it.
+  - Amended by R7-T2 U10 (2026-11-22; 36b1fd233): no root statement is left (U3, U7, U10), so the domain's statements are `TyCtxt`'s
+    and `BoundType`'s. The root `ArithmeticContracts` is deleted: `Supports` is `TyCtxt.HasBuiltinArithmetic` (`TyCtxt.Comparison.cs`,
+    beside `OperatorCompares`; the same set), a pure `TyCtxt` function the MIR builder reads; `IsArithmetic` and `IsLeft` are
+    `KimiLibraryCatalog.IsArithmeticContract` and `IsLeftContract`; `ArithmeticContractSyntax` stays Binding's; the staged removal
+    (PLAN G708) reads `HasBuiltinArithmetic`.
 
 - **R8-M26 MIR publishes whether an rvalue kind has a Place: `MirDescriptor.HasPlace`** (Middle, 2026-11-10; PLAN G668's remainder,
   G668c; Minor, behavior-preserving; review ACCEPT by the Middle's reviewer, who wrote none of it; amends R4-M62).
@@ -27551,6 +27558,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `drop`; its sites report the location its drop glue receives, the Drop's (SPEC 22.5.1). `Array.sort(by:)`, which destroys its
     by-value `by` inside the operation, carries `#CallerLocation` (the search by ownership found no other library body destroying a
     possibly destructor-bearing value without it). No glue or MIR change.
+  - Amended by R7-T2 U10 (2026-11-22; 36b1fd233): a shim's arithmetic Contract is `KimiLibraryCatalog.IsArithmeticContract` (was the
+    root `ArithmeticContracts.IsArithmetic`, G1-4b's "Shims").
   - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
     facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
     `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
