@@ -21939,6 +21939,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R9-M10: the project's own result (`Project.BuildTargetsAndPublish`) and the build's own result (`Project.Build`) end
     as Faulted the same way, beside the front end's and the Emission result; under `Project.Build` the toolchain's classification
     applies only around its own calls.
+    - Amended by PLAN G1011 (R9 part A, Q-669, 2026-11-22): the project's own result is `Project.OwnResult` (was
+      `Project.BuildTargetsAndPublish`), the product's and the test unit's (`PrepareTests`).
 - **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, PLAN G332; the owner approved the departure from K
   package 4.6/KD9 together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known
   limit)
@@ -28820,6 +28822,13 @@ R8-M* and R9-M* by the stage of the recording unit.
     prints as the toolchain's failure; any other type is the build's or the command's fault. The embedded catalog
     (`ToolchainIdentity`) keeps its reads: its static constructor's exceptions reach callers as `TypeInitializationException`, never
     a listed type.
+  - Amended by PLAN G1014 and G1011 (R9 part A, Q-669, 2026-11-22): the fault's Note is no longer "its message": it is the
+    exception's chain, each link the type's full name and its message, outer first, joined by ` ---> `, its head kept under the Note
+    limit, formed by `DiagnosticFaults.Create` alone (DIAGNOSTICS §6). The project's own result is `Project.OwnResult` (was
+    `BuildTargetsAndPublish`), shared by `check`, `emit` and `build` and by the test unit's `PrepareTests`, whose configuration,
+    TestSources, test-setting, test-identity, test-target and lock records it finalizes the same way; `Project.SelectTargets` is both
+    results' one target selection. The Rejected helper stays rejected: `OwnResult` is one finalization point, the project's own
+    result, shared by its callers, not a helper across the four (`BuildTarget`, `PublishArtifacts` and `Build` keep their own).
 - **R9-M11 The generation result carries the link facts; the link manifest is one table with its readers (R9-B1)** (Middle,
   2026-11-18; the R7-R9 plan's §5.3 unit B1, parts 1 and 2; Major; under R9-M6 and R9-M10; design review REVISE then ACCEPT WITH
   NOTES; the Back's consent on its codegen half, C-389; W-256)
@@ -28922,6 +28931,11 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends R9-M10 (its known limit (3) closes: outside `Project.Build` the set applies only around a command's own toolchain calls
     and `kimi test`'s native build) and R5-M169 (its rejected catch in `CommandExecution` concerned generation's exceptions, which
     the Emission result owns; the command's own result has this one).
+  - Amended by PLAN G1014 and G1011 (R9 part A, Q-669, 2026-11-22): the command's fault's Note is no longer "its message": it is
+    the exception's chain, as on every fault path (R9-M10's amendment; DIAGNOSTICS §6). The Open line's `PrepareTests`' fault path
+    (G1011) and the note's form (G1014) close: an exception in test preparation is the test unit's own result's fault
+    (`Project.OwnResult`), `CheckFaulted_Kd` at the project file, `kimi test` exit 2 (IMPL 20.6.4), and its test-target failures
+    are `ProjectPreparationFailed_Kd` records.
 
 ## Tatara (adopted 2026-11-19)
 
