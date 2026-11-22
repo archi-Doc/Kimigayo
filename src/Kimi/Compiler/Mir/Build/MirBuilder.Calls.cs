@@ -172,13 +172,13 @@ internal sealed partial class MirBuilder
             }
 
             (this.leastAfter[after + i], least) = (least, Math.Min(least, MirCallee.Position(function, argument.ParameterIndex)));
-            last = last == -2 && Evaluated(given, argument.Source) is null && Builds(argument.Source!) ? i : last;
+            last = last == -2 && Evaluated(given, argument.Source) is null && Builds(argument.Source!, HirTables.AdjustOf(argument.Source!)) ? i : last;
         }
 
         if (earliest >= 0)
         {
             this.leastAfter[after + earliest] = least;
-            last = last == -2 && Evaluated(given, first) is null && Builds(first!) ? -1 : last;
+            last = last == -2 && Evaluated(given, first) is null && Builds(first!, HirTables.AdjustOf(first!)) ? -1 : last;
         }
 
         return last;
