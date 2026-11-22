@@ -1775,6 +1775,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   `UnsatisfiedEffectBound_Kd` at the member's declaration with a new requirement `Ownership.PlatformStatic`, `OwnershipRequirement`
   +1, this answer its approval under the enum's rule; no new code); §11: the question before B9c2 is answered. No other decision
   changes. No SPEC or IMPL text: B9c2 carries DIAGNOSTICS' requirement row. Nothing frozen.
+- Revision 14 (2026-11-22, T's D-1115; a wording correction): §7's B10 row names the six units of B10's accepted design (Revision
+  2.1 §11.1, C-457 ACCEPT) where it named five: OSF3a interrupt declarations, OSF3b interrupt entries, OSF3c the interrupt run under
+  QEMU (after B9h and OSF3b), and cites the design's revision. No decision changes (36-43 stand). No SPEC or IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 
