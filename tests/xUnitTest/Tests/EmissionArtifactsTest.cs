@@ -336,11 +336,14 @@ public sealed class EmissionArtifactsTest : IDisposable
     // (ArtifactFiles.CheckPath, PublishArtifacts' fault). Code generation's row, a source path with an embedded NUL, left with G346's fix
     // (DECISIONS R5-M175: naming a source never throws); generation runs outside Publish's classifying catches (R5-M169's amendment),
     // and no program makes it throw without a production seam.
-    // The toolchain boundary (R9-B2): the project's own result (BuildTargetsAndPublish) has the same fault path, one CheckFaulted_Kd, in
+    // The toolchain boundary (R9-B2): the project's own result (Project.OwnResult) has the same fault path, one CheckFaulted_Kd, in
     // check and emit alike: its checks read a null target list (it escaped Check and Generate), and the host's console throws
     // InvalidOperationException at the report of the published pair (it escaped Generate; the pair stays, published before the report).
+    // The test unit's own result (PrepareTests through Project.OwnResult, PLAN G1011) has the same fault path: its checks read a null
+    // target list (it escaped the preparation; kimi test printed "Internal test runner error", 3).
     [Theory]
     [InlineData("check: project checks", 0)]
+    [InlineData("test: project checks", 0)]
     [InlineData("project checks", 0)]
     [InlineData("front end", 0)]
     [InlineData("report", 2)]
@@ -361,6 +364,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             project.AddKimiFile(null!);
         }
 
+        var ct = TestContext.Current.CancellationToken;
         if (phase == "publication")
         {
             var c = this.Create();
@@ -368,9 +372,12 @@ public sealed class EmissionArtifactsTest : IDisposable
 
             Assert.False(project.PublishArtifacts(c, null, null));
         }
+        else if (phase.StartsWith("test", StringComparison.Ordinal))
+        {
+            Assert.Null(project.PrepareTests(ct));
+        }
         else
         {
-            var ct = TestContext.Current.CancellationToken;
             Assert.False(await (phase.StartsWith("check", StringComparison.Ordinal) ? project.Check(ct) : project.Generate(ct)));
         }
 

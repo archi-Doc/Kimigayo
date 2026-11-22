@@ -3,7 +3,8 @@
 namespace Kimi.Compiler;
 
 // Binding's pairing of the arithmetic Contracts (SPEC 13.3.3's table) with source: each Contract's operator token and requirement
-// method, and the identity of a declared Contract's Symbol. The Types' facts are the root ArithmeticContracts'.
+// method, and the identity of a declared Contract's Symbol. The Types' facts are TyCtxt.HasBuiltinArithmetic's, the
+// identity ranges KimiLibraryCatalog's.
 internal static class ArithmeticContractSyntax
 {
     internal static Parsing.KotoKind Operator(KimiDeclarationId id) => id switch
@@ -18,7 +19,7 @@ internal static class ArithmeticContractSyntax
     };
 
     internal static KimiDeclarationId? Identity(BindingSymbol? contract)
-        => contract?.Declaration.BoundSymbol?.LibraryDeclaration is { } id && ArithmeticContracts.IsArithmetic(id) ? id : null;
+        => contract?.Declaration.BoundSymbol?.LibraryDeclaration is { } id && KimiLibraryCatalog.IsArithmeticContract(id) ? id : null;
 
     internal static string Method(KimiDeclarationId id) => id switch
     {
