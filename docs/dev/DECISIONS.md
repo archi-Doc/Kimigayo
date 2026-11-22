@@ -28386,6 +28386,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `tatara.dll` file and takes no `LlvmBin` (`check-toolchain.ps1` checks the root). `NativeToolchain.Wait`'s `internal`, which
     was for `ToolProcess`, serves only `RunExecutable`; once B6b3 and G1188 have both landed `Wait` has no reader, and the second
     of them to land removes it in its merge (T's ruling on C-444 N3).
+  - Amended by T-M15 (unit B6b4, 2026-11-22): the command line's option is removed (an error naming its removal; PLAN G1173
+    closed).
 - **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
@@ -28498,6 +28500,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M14 (unit B6b2, 2026-11-22): the published form is one file: `kimi.exe` links Tatara's objects, the managed copy
     reaches no NativeAOT publish (its item is conditioned on `'$(PublishAot)' != 'true'`), and the published folder is `Kimi.exe`
     alone (PLAN G1225 closed).
+  - Amended by T-M15 (unit B6b4, 2026-11-22): the build's interim ends: the options are errors, and the development scripts
+    refuse `KIMI_TOOLCHAIN_ROOT` (PLAN G1224 closed).
 - **T-M10 `LlvmBin` removed from projects and manifests** (Tatara, 2026-11-21; the plan's unit B6b5, Q-627, D-1022; Major;
   design `artifacts\handoff\tatara\units\B6\design-b6b.md` §6; design review C-437; implementation review C-443, ACCEPT;
   the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line.
@@ -28677,3 +28681,46 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `build.ps1`'s report table (a formatted table; `identity.ps1` is the one rule both read); `build.ps1` publishing its object
     list for both links (it changes `src/Tatara` and its build identity, while the emptied folder gives the same list); O-485 (b),
     the pair kept, and (c), B6b2 held for a unit that measures where the 4 ms go.
+- **T-M15 The command line's toolchain options removed** (Tatara, 2026-11-22; the plan's unit B6b4, PLAN G1224 and G1173's
+  command-line part, Q-644, D-1054; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §5 and §13; design review
+  C-437 C4, C5, N4-1..N4-4; the Middle's implementation review C-449, B1 fixed by T's ruling (A), the repeated review ACCEPT;
+  the owner's decision 20 (O-469 Q2 (a))). Amends T-M6's `LlvmBin` line and T-M9's interim; closes PLAN G1173 and G1224.
+  - **The removed options:** `KimiOptions.Removed`, one table of removed command-line options, each a name and its text:
+    `ToolchainRoot` ("--ToolchainRoot was removed: Kimi carries its toolchain.") and `LlvmBin` ("--LlvmBin was removed: Kimi carries
+    its toolchain."). A later removal adds a row. A removed option is an invalid option of the command it was given to, reported with
+    the table's text by that command's own invalid-option path: `KimiOptions.RemovedOption(argument)` supplies only the text, and its
+    two readers decide the outcome. `CommandExecution.Execute` (the command layer's entry for every command but `test` and `lsp`)
+    reads the arguments the parser handed the command before its action: each occurrence's text on standard error, exit 1 (IMPL
+    20.3), the action not run, so `check --Format json` writes no document (SPEC 23.3), `run` fails with 1 before launch, and a `kimi
+    tatara` line fails alone. `TestOptions`' unknown-option throw reads the same text: `test`'s 2 (IMPL 20.6.4) and, under
+    `--format json`, its result document. The same form as `ProjectFile.Removed` (B6b5) under another owner and contract.
+  - **Reading (C4, N1, N2):** an argument names a removed option when it is an option word (`SimpleParserHelper.IsOptionName`) whose
+    name after its leading `-` equals a row's, ignoring case: the parser's own lookup (`OptionSet.ParseCore`: `TrimStart('-')`, then
+    the `OrdinalIgnoreCase` `LongNameToOption`), internal to SimpleCommandLine 0.47.0, so it is restated at the table's read.
+    `CommandOptionsTest.ARemovedOptionIsNamedAsTheParserBindsAnOption` pins the agreement with the real parser's binding and the
+    arguments it hands the command. The readers read the parser's own arguments, so its tokens and boundaries hold by construction:
+    nothing after an unenclosed `|` (the parser reads the first command only), and an option word after `--` is named (the parser has
+    no `--` boundary, and no Kimi command forwards arguments after it: `run` takes no program arguments, IMPL 20.3).
+  - **N4-2:** each occurrence is one text (SPEC 23.1.2: independent), in order, where the command layer reads the arguments; **N4-3:**
+    the texts go to standard error, nothing to standard output, and no file is written.
+  - **Accepted consequences (T's ruling (A)):** (1) `lsp` reads no arguments, so it reports no removal (PLAN G1251); (2) a help
+    request (`kimi help ...`, `kimi build help ...`) runs no command and reports none; (3) a quoted `"--ToolchainRoot"` is reported:
+    the parser hands the command the word unwrapped; (4) a line whose other option fails to parse (`--Target --ToolchainRoot`) shows
+    only the parser's error, since it runs no command; (5) `test` reports its first invalid option, as for every `test` option error
+    (`TestOptions` throws at the first).
+  - **N4-4:** `toolchain.ps1`'s `Resolve-KimiToolchainRoot` reads no `KIMI_TOOLCHAIN_ROOT` and throws while it is set
+    ("KIMI_TOOLCHAIN_ROOT was removed: unset it (the scripts take -ToolchainRoot <directory>)."), with or without `-ToolchainRoot`: a
+    permanent statement of a removed input, so a shell that still sets it never has setup write a worktree's junction to the shared
+    root. The scripts' order is `-ToolchainRoot`, else the checkout's `toolchain/`.
+  - **N7 (C-444):** `tests/scripts/run-tatara-corpus.ps1` tests the `tatara.dll` the test host loads (the xUnit output's copy, B6b1)
+    and names it, a missing one as missing (C-449 N5); its `-Dll` and private root go (a DLL of a unit's own reaches the test host
+    through a toolchain directory of the worktree's own, then a build).
+  - **Deleted:** `KimiOptions.ToolchainRoot` and `LlvmBin`, `TestOptions`' two names, 49 script parameters (the milestone harness,
+    its 40 milestone scripts, four benchmarks, test-modules, manual-build, test-manual-build's dormant `-MismatchedLlvmBin` row),
+    the Kimi-child `KIMI_TOOLCHAIN_ROOT` of test-cli, test-modules and the corpus run, BuildChain's `--toolchain` and `toolchainRoot`.
+  - Rejected: deleting the properties alone (design fact 3: `--ToolchainRoot C:\tc` would read as the input, "Input not found"); a
+    check in each command; one check in `CommandUnit.Product.Execute` before the parser (C-449 B1: `test` passes it too, so it gave
+    `test` 1, IMPL 20.6.4's code for a failed case; avoiding that needs a `test` clause); an IMPL revision giving `test` 1 (T: no
+    IMPL change); an ordinal `--Name` match (C4: narrower than the parser's rule); the first hit only in the command layer (N4-2); the
+    command's console writer (standard output, where `check --Format json` puts its document); copying `-Dll` beside the test
+    output's `Kimi.dll` (an output the next `PreserveNewest` build does not restore).
