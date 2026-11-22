@@ -92,7 +92,7 @@ public sealed partial class Binding
 
     // SPEC 10.1, 10.4, 8.3: whether a selection's classification is the call's own failure, as BindCall records it: no candidate, an
     // ambiguity, or a premise of the candidates not proven (Unproven: Constraints take part in applicability); not UnformedSplit, where
-    // BindCall rests (WaitingFails, SelectionOnSplit).
+    // BindCall rests (SelectionOnSplit).
     private static bool SelectionFails(CallSelection kind) => kind is CallSelection.NoneApplicable or CallSelection.Ambiguous or CallSelection.Unproven;
 
     // SPEC 10.4: the candidates of an evaluation that applied (Applicable or Waiting), as bits of their indices (the first 64).

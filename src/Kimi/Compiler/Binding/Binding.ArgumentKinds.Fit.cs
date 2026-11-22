@@ -6,14 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 10.5.1 (G812 rulings 122, 123): the parts awaiting their call (a contextual Case, a named Call) that the last argument fit
-    // met, each with the Type at its position and the components down to it from the argument (WaitingPart). The outermost fit
-    // (FitArgument) starts it; a part's fit within it (FitArgumentPart) adds to it, and the arms that add a step add it to these
-    // too. Only a value call on the split reads it (ItemCallFails), right after the fit, as its one candidate's check of them.
+    // SPEC 10.5.1 (G812 rulings 122, 123; ArgFlow ruling 146): the parts awaiting their call (a contextual Case, a named Call, a Case
+    // construction) that the last argument fit kept, each with the Type at its position, the components down to it from the argument
+    // and its checked verdict's classification there (WaitingPart). The outermost fit (FitArgument) starts it; a part's fit within it
+    // (FitArgumentPart) adds to it, and the arms that add a step add it to these too. A value call's run on the split reads it right
+    // after the fit (RunFitFails), and a construction's check below its payloads (FitConstructionAt): UnprovenWaiting.
     private readonly List<WaitingPart> waitingParts = new();
-
-    // The waiting parts a value call's split check is judging (WaitingPartFails), each judgment's from its own mark.
-    private readonly List<WaitingPart> judgedParts = new();
 
     // Where the current fit's waiting parts start: those below are an enclosing fit's, which a query inside it keeps
     // (BeginSelectionQuery sets it, EndSelectionQuery restores it).
@@ -22,24 +20,10 @@ public sealed partial class Binding
     // DECISIONS BU-240 (the owner's O-392 (c), G812 rulings 109, 111; temporary, removed with (R)): the components down to the part
     // where the last argument fit failed (FitArgument's Inapplicable): a Tuple or array literal's element (ProbeAggregateArgument)
     // or a join's child position (FitsPosition), below the layer it is borrowed at (FitComposite), then, below a typed part, the
-    // components its structural fit names (FitTyped); none where the failure is the argument's own. A value call on the split
-    // reads it right after the fit and blames that part's bindings (ItemCallFails).
+    // components its structural fit names (FitTyped), below a part awaiting its call, its checked verdict's (FitChecked,
+    // CheckedVerdict.Misfit); none where the failure is the argument's own. A value call on the split reads it right after the fit and
+    // blames that part's bindings (ArgumentPartFails).
     private ComponentPath argumentMisfit;
-
-    // SPEC 6.5.2: the ordinal of the Case a contextual Case names in `type`'s enum, else -1.
-    private static int CaseOrdinal(Koto node, BoundType type)
-    {
-        var name = ((SyntaxFormKoto)((node as InvocationKoto)?.Method ?? node)).Operands is [IdentifierNameKoto identifier] ? identifier.IdentifierName : null;
-        for (var i = 0; AdtDef.Case(type, i) is { } found; i++)
-        {
-            if (found.Symbol.Name == name)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
 
     // The component of `type` (an instance of the Case's enum) that payload `i` of Case `found` takes: its slot where the payload's
     // declared Type is the enum's slot, else -1 (the position no component path names: ComponentPath).
@@ -144,44 +128,6 @@ public sealed partial class Binding
             default:
                 return this.FitTyped(part, node, type, scope, use, out operation);
         }
-    }
-
-    // SPEC 6.5.2, 10.5.1 (G812 rulings 118, 122, 123): a contextual Case awaiting its call, judged at the Type its position has, as its
-    // selected call completes it (ItemCallFails' judgment of a waiting part): it resolves in that Type's enum with its payload count
-    // (its own shape, ShapeFits), and each payload, prepared before the search (PrepareWaitingCases), fits its Type there as an
-    // argument, read only; a payload whose declared Type is the enum's slot leaves the Type at that argument (ComponentPath), any other
-    // none, and the waiting parts met in it are published below the Case the same way. A Case that fits waits for its call.
-    private CandidateApplicability FitCaseAt(Koto part, BoundType type, BindingScope scope)
-    {
-        var node = KotoHelper.UnwrapParentheses(part);
-        if (!NeedsEnumContext(node))
-        {
-            return CandidateApplicability.Waiting;
-        }
-
-        var call = node as InvocationKoto;
-        var payloads = AdtDef.CaseTypes(this.types, type);
-        var ordinal = payloads is null ? -1 : CaseOrdinal(node, type);
-        var found = ordinal >= 0 ? AdtDef.Case(type, ordinal) : null;
-        if (!this.ShapeFits(found is not null && payloads![ordinal] is not null && EnumArityMatches(found.Payload.Length, call)))
-        {
-            return CandidateApplicability.Inapplicable;
-        }
-
-        for (var i = 0; call is not null && i < call.ArgumentNodes.Count; i++)
-        {
-            var met = this.waitingParts.Count;
-            var fit = this.FitArgumentPart(call.ArgumentNodes[i], payloads![ordinal]!.Components[i], scope, call, out _);
-            var index = PayloadSlot(type, found!, i);
-            this.WaitingWithin(met, index);
-            if (fit == CandidateApplicability.Inapplicable)
-            {
-                this.argumentMisfit = index >= 0 ? this.argumentMisfit.Within(index) : default;
-                return CandidateApplicability.Inapplicable;
-            }
-        }
-
-        return CandidateApplicability.Waiting;
     }
 
     // SPEC 4.3, 4.6.2, 10.5.1: a Tuple or array literal or a mixed range fits a candidate's Type by its shape and parts, read only: each

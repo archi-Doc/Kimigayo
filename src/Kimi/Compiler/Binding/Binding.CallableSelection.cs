@@ -18,9 +18,9 @@ public sealed partial class Binding
     private readonly List<SplitPart> splitParts = [];
 
     // DECISIONS BU-240 with rule W (G812 rulings 123-132; temporary with the search): of a value call's split check, the part awaiting
-    // its call (a named Call or a contextual Case) that failed the current part of a run, with the Type the run formed for its
-    // position (runWaiting, WaitingFails); the current run's failure, the part (an argument's index, the result's after them, -1 the
-    // call's argument count) with that waiting part, none for a misfit (runFailure, ItemPartFails); and the failure of the search's
+    // its call (a named Call, a contextual Case or a Case construction) that failed the current part of a run, with the Type the run
+    // formed for its position (runWaiting, RunFitFails); the current run's failure, the part (an argument's index, the result's after
+    // them, -1 the call's argument count) with that waiting part, none for a misfit (runFailure, ItemPartFails); and the failure of the search's
     // first run, the canonical case (each binding at its first admitted Semantics, the combination the first run takes whatever order
     // later runs take; ruling 130), with whether every failing run failed at that same part and waiting part (splitFailure,
     // FoldRunFailure; null before the first run).
@@ -400,8 +400,8 @@ public sealed partial class Binding
     // so the run blames the bindings its layers read and not its siblings' (the owner's O-392 (c), G812 rulings 109, 111; the
     // contract fit's member is the same reading, ContractFits). A failure at the own shape of a part that formation keeps (a Tuple's
     // arity, an array's kind) reads no binding: the failing part forms nothing, so the run blames none (ruling 116). The Item is the
-    // selected candidate, so the parts awaiting their call that the fit met are judged at the Types the run formed (WaitingPartFails;
-    // rulings 118, 122, 123). The argument's parameter and whether the run read a split layer for it are kept (splitParts), and a
+    // selected candidate, so the parts awaiting their call that the fit met are read at the Types the run formed (RunFitFails;
+    // rulings 118, 122, 123; ArgFlow ruling 146). The argument's parameter and whether the run read a split layer for it are kept (splitParts), and a
     // failure is the run's (runFailure).
     private bool ItemPartFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected, int parts, int i)
     {
@@ -449,17 +449,16 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1, 23.1.2 (G812 rulings 109, 111, 122, 123, 156): in a run, whether an argument fails at the parameter `form` gives its
-    // declared Type (`parameter`; none: it fails nothing), with whether that formation read a split layer (`split`): by its fit, or at
-    // a part awaiting its call that the fit met (WaitingPartFails). A failing component the fit names (argumentMisfit) is formed again on
-    // its own as the failing part, so the run blames the bindings its layers read. A value call's part forms at its Item (ItemPart), a
-    // named call's at the canonical run's candidate (FailUnformedCall).
+    // declared Type (`parameter`; none: it fails nothing), with whether that formation read a split layer (`split`): by its fit, the
+    // Item's one candidate's check (RunFitFails). A failing component the fit names (argumentMisfit) is formed again on its own as the
+    // failing part, so the run blames the bindings its layers read. A value call's part forms at its Item (ItemPart), a named call's
+    // at the canonical run's candidate (FailUnformedCall).
     private bool ArgumentPartFails<TState>(
         Koto argument, BoundType? declared, TState state, Func<Binding, TState, BoundType, BoundType?> form, BindingScope scope, Koto use, out BoundType? parameter, out bool split)
     {
         var (stamp, mark) = (this.splitReads, this.unformedWrites);
         parameter = declared is null ? null : form(this, state, declared);
-        var fails = parameter is not null &&
-            (this.FitArgument(argument, parameter, scope, use, out _) == CandidateApplicability.Inapplicable || this.WaitingPartFails(scope));
+        var fails = parameter is not null && this.RunFitFails(argument, parameter, scope, use);
         split = this.ReadSplitSince(stamp, mark);
         if (fails && this.argumentMisfit.Names(declared!, out var element))
         {
@@ -470,66 +469,28 @@ public sealed partial class Binding
         return fails;
     }
 
-    // SPEC 10.5.1, 23.1.2 (G812 rulings 122, 123): the value call's one candidate checks the parts awaiting their call that its
-    // argument's fit met (waitingParts), each at the Type the run formed for its position, as the selected candidate completes them
-    // (WaitingFails); a part met inside a Case's payload is judged below the Case. The failing part's components from the argument
-    // are argumentMisfit's. The parts are copied first (judgedParts), since a Call's probe fits its own arguments.
-    private bool WaitingPartFails(BindingScope scope)
+    // SPEC 10.5.1, 10.1, 23.1.2 (ArgFlow ruling 146; G812 rulings 122, 123): an argument's fit in a run as the Item's one candidate's
+    // check, reading the published verdicts of the parts awaiting their call at the Types the run formed (FitChecked: one judge, never
+    // a second judgment here): a part that does not check there fails the fit, with its checked failure (CheckedPartFailure, taken
+    // right after the fit); a part the fit kept whose selection there, or a part's below it, is unproven (UnprovenWaiting: an
+    // obligation of the selected candidate, SPEC 10.1) fails the run at that part. The failing waiting part is the run's (runWaiting),
+    // with its Type, and argumentMisfit the components from the argument down to it.
+    private bool RunFitFails(Koto argument, BoundType parameter, BindingScope scope, Koto use)
     {
-        var first = this.judgedParts.Count;
-        for (var i = this.waitingBase; i < this.waitingParts.Count; i++)
+        if (this.FitArgument(argument, parameter, scope, use, out _) == CandidateApplicability.Inapplicable)
         {
-            this.judgedParts.Add(this.waitingParts[i]);
-        }
-
-        try
-        {
-            for (var i = first; i < this.judgedParts.Count; i++)
-            {
-                if (this.WaitingFails(this.judgedParts[i], scope))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        finally
-        {
-            this.judgedParts.RemoveRange(first, this.judgedParts.Count - first);
-        }
-    }
-
-    // One waiting part at its position's Type: a contextual Case by FitCaseAt, whose own waiting parts join the judged ones below it;
-    // a named Call by its own selection there, judged in full (ProbeSelection, SelectionFails: no candidate, an ambiguity or an unproven premise
-    // is its failure, at its position). Any other selection, or another part, waits for its call. A failing one is the run's
-    // (runWaiting), with that Type.
-    private bool WaitingFails(in WaitingPart waiting, BindingScope scope)
-    {
-        var node = KotoHelper.UnwrapParentheses(waiting.Part);
-        if (this.KindOf(node) != PartKind.Case)
-        {
-            var fails = node is InvocationKoto nested && SelectionFails(this.ProbeSelection(nested, scope, waiting.Type).Kind);
-            this.argumentMisfit = waiting.Path; // After the probe, whose own fits clear it.
-            this.runWaiting = fails ? (node, waiting.Type) : default;
-            return fails;
-        }
-
-        var met = this.waitingParts.Count;
-        if (this.FitCaseAt(node, waiting.Type, scope) == CandidateApplicability.Inapplicable)
-        {
-            this.argumentMisfit = this.argumentMisfit.Within(waiting.Path);
-            this.runWaiting = (node, waiting.Type);
+            this.runWaiting = this.TakeTrialChecked(use) is { } failed ? (failed.Part, failed.Expected) : default;
             return true;
         }
 
-        for (var k = met; k < this.waitingParts.Count; k++)
+        if (this.UnprovenWaiting() is not { } unproven)
         {
-            this.judgedParts.Add(this.waitingParts[k] with { Path = this.waitingParts[k].Path.Within(waiting.Path) });
+            return false;
         }
 
-        this.waitingParts.RemoveRange(met, this.waitingParts.Count - met);
-        return false;
+        this.runWaiting = (KotoHelper.UnwrapParentheses(unproven.Part), unproven.Type);
+        this.argumentMisfit = unproven.Unproven;
+        return true;
     }
 
     // One part of a Function Item's signature as its value call reads it (TryCallable: ItemType, then the scope's contract Type).

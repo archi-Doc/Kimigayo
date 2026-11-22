@@ -13,9 +13,13 @@ namespace Kimi.Compiler;
 //   part's scope. Its verdict at E is its own resolution's, as a query that publishes nothing: a call's selection (SelectCallAt,
 //   Binding.CallSelection) and a Case construction's fit (FitConstructionAt, Binding.Enums).
 // - Outputs: Inapplicable where the part's resolution at E has no applicable candidate or is ambiguous (Rd1), with the failed check
-//   as the trial's fact (LeaveChecked, CheckedPartFailure); otherwise Waiting with the class its resolution gives (CheckedClass), a
-//   Pending premise, a nested declaration or signature failure and a correlation failure included (O-335 (a): a refusal read in a
-//   losing candidate's trial never decides the call; the selected candidate's completion binds the part at E and reports them).
+//   as the trial's fact (LeaveChecked, CheckedPartFailure) and its components (argumentMisfit); otherwise Waiting with the class its
+//   resolution gives (CheckedClass), a Pending premise, a nested declaration or signature failure and a correlation failure included
+//   (O-335 (a): a refusal read in a losing candidate's trial never decides the call; the selected candidate's completion binds the
+//   part at E and reports them), the part kept (waitingParts) with its selection there (Unproven: an obligation, SPEC 10.1).
+// - Readers (ArgFlow ruling 146, one judge): a candidate trial reads Inapplicable and the failed check (SPEC 10.5.1, R1.7); a value
+//   call's run on BU-240's split, whose Item is the selected candidate, reads the same failure and the kept parts' Unproven as the
+//   run's failure at that part (RunFitFails); neither judges the part again.
 // - Invariants: dependentChecks keys a part by its core's syntax identity (SourceRef, argumentParts' key) and E by reference (an
 //   interned Type); it lives for one pass (ResetPass) and a query starts only on a miss, so each part is checked once per distinct E;
 //   the queries one outermost resolution starts are counted (resolutionWork) and past ResolutionWorkLimit (IMPL A.4) no query runs:
@@ -48,6 +52,7 @@ public sealed partial class Binding
         if (verdict.Failure is { } failure)
         {
             operation = default;
+            this.argumentMisfit = verdict.Misfit; // The enclosing arms add their components (ComponentPath.Within).
             this.LeaveChecked(new(node, type, failure));
             return CandidateApplicability.Inapplicable;
         }
