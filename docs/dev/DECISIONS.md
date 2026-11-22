@@ -26507,10 +26507,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     order stated again as a sort key); a walk with an ascending arm no Type has; A2 publishing the destroyed parts as rows; an
     unordered Mir walk; a walk parameterized by a part enumerator; a check of the child-row invariant in the walk or in
     `MirValidator`.
-  - **Temporary, with its removal condition.** `MirDropTable.Level` gives a fixed array without an element one empty Run: a need of
-    the Backend's stated in Mir's level, not of the order. The instance collector requests the element's glue from that Run and code
-    generation reads that target for `[0 of T]`; it writes no loop (the Run has no element), so the checked set and generated code
-    are as before G702. It goes with the unit that stops requesting and reading that target (a candidate B holds).
+  - **Temporary, with its removal condition.** Removed by R8-M57 (R8-X1 U3, commit d218a76e2).
 - **R8-M30 Built-in formatting is the witness table's: bool, char and Unit are Kimigayo bodies on the writer's leaf** (Back,
   2026-11-09 to 2026-11-11; R8-S2a with R8-S2a-2, plan §5.2 S2; Major; family `G:R8-format`, design review 3 ACCEPT; B's reviewer's
   implementation reviews 1 REJECT (I-B1), 2 REVISE, 3 ACCEPT, and S2a-2 review 1 ACCEPT; the Front's C-230, the Middle's C-182 and
@@ -28173,6 +28170,42 @@ R8-M* and R9-M* by the stage of the recording unit.
     (they break R4-M133, 15.3.6, SPEC 23.1.2 and AGENTS' Diagnostics); the declaration's bound row kept for every `let` region (an atom
     and a row per `let` slot in every slice, needed only where a comparison names the region); the value row formed by `LeavesBodyRows`
     (a second copy of the declaration's bound, recorded again in Binding's graph).
+- **R8-M57 A fixed array without an element destroys nothing: the destruction walk's Type fact (SPEC 4.1)** (Back, 2026-11-22;
+  R8-X1 U3, Q-654; the owner's O-486 part 4 (a), verbatim 「3a 4a（推奨）」; Major: a Type fact of Mir changes its contract, with
+  acceptance moves in A4 and A5; the Middle's consent C-454 with C1-C3, and RP17).
+  - **Supersedes in part.** R8-M29's "Temporary, with its removal condition" (the empty Run of `[0 of T]` in `MirDropTable.Level`):
+    its removal condition is met by this unit, which stops the collector's request and code generation's read of that Run's target.
+    R8-M29's Rule otherwise stands. R8-M10 ("a Drop that destroys nothing asks no drop glue") now holds for `[0 of T]` too.
+  - **Rule.** `MirTypes.Parts` (`Mir/MirTypes.Destruction.cs`), the parts of the one destruction walk, gives a fixed array of
+    constant length 0 (`LengthExpression: null, Length: 0`, exactly SPEC 4.1's evaluated length 0: `[(1 - 1) of T]` and
+    `[(Dim.Zero) of T]` too) no part: it destroys nothing, whatever its element; a symbolic length (`LengthExpression`) still walks
+    its element (its length may be other than 0). Every reader of destruction passes through it, with no case of its own:
+    `MayNeedDrop` (the builder's Drops, A2's Elide, the collector's glue admission, code generation's skips), A4's walk, A5's
+    `Observation` and retention. So no Drop of a concrete `[0 of T]` is built, no glue item of a `[0 of T]` Type is admitted, and
+    an element glue only `[0 of T]` requested leaves the checked set (the element Type's declared drop stays a checked nongeneric
+    body). The destruction walk's level (`MirDrops.Destroyed.cs`) states "every Run has an element (`First <= Last`)", met by
+    construction (no glue function's level of `[0 of T]`; no Move Path names an element of one, SPEC 15.1.3; without the arm
+    `Elements` writes no Run at count 0 anyway); code generation's `First <= Last` test is removed.
+  - **What stays.** T is still checked (SPEC 4.1): Binding's checks of T, the layout facts (`alignment(T)` for N = 0, `[0 of Self]`
+    inline a recursive layout error, 8.15.3's obligations at a `[0 of T]` local) and the holding facts (G810's `HoldFlags.Empty`,
+    `MirTypes.HoldsLoans`) are not destruction. The order fact (`LevelCount`, `LevelPart`) is unchanged. A generic body's Drop of
+    `[N of T]` stays; each instance's Backend decides on its closed Type (no glue at N = 0, the one-pass Run at N = 1). A generic
+    definition's summary keeps `Drop(T)` for a symbolic `[N of T]` (SPEC 15.6.4: once per declaration, in its Type parameters), so a
+    `confined` caller passing `[0 of Loud]` to `sink<length N, T>(a: [N of T])` still composes Loud's destruction (e12gen0, I by the
+    text; B's SPEC observation, the design's §6).
+  - **Moves (Q13).** Acceptance V, A4 (`IncompatibleContractImplementation_Kd` at `Self is Sink` gone): e12, e12tup, e12opt,
+    e12field, e12fieldd, e12arr, e12asg, e12genT and C-454's tconst, texpr, tnest20, tnest02, tself, tgenopt0, tcallee, ttemp;
+    tgrow (its `OwnershipDepthLimit_Kd` at `Self is Sink` and its `GenerationResourceLimit_Kd` gone: the walk stops at the empty
+    array, and no instance is required, SPEC 4.1, 8.15.3). Acceptance V, A5 (`ComparisonLoanConflict_Kd` at `x = 2` gone): a5obs,
+    atup, aopt, awrap. Generation only: growlocal accepted (its `GenerationResourceLimit_Kd` gone); agrow and agrowq lose their
+    `GenerationResourceLimit_Kd` and keep the call's `OwnershipDepthLimit_Kd` (the holding guard's, PLAN G1268). Checked set and
+    generated code only: e12main, e12maing, chold01 (no `[0 of Loud]` glue or Loud glue requested by it). Every I twin keeps its
+    record.
+  - **Rejected:** the empty Run's removal alone (e12 stays rejected: A4 walks `Drop([0 of Loud])` itself; the glue stays admitted
+    with an empty body; A5 still observes); a length test in each reader (A4's `Dropped`, the collector's `Destroys`, codegen's
+    `Step`: SPEC 4.1 copied per reader); a `BoundType` predicate shared with `Binding.Holdings`' `Empty` (same meaning, different
+    contracts, a cross-area member for two property patterns; a candidate if a third reader appears); keeping the Temporary as
+    lasting (O-486 4 (c): rejects valid programs against SPEC 4.1).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
