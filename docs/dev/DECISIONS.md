@@ -15918,11 +15918,6 @@ resumed by R4-M86 (2026-10-20).
       own, read through the running pass's part; one declaration each (the node-keyed table ratchet). `BindNodeCore`'s pattern guard
       reads the running part's `PatternNodes`, so a library pattern node bound outside the library pass would not trip it; no such
       bind exists, and S1-1's freeze (a library node written outside the library pass is `InternalInvariant_Kd`) closes it.
-      - Amended by R7-N5 B1b-1: the current run's pattern nodes and guard scopes are the kept family `IndexedPatterns` (a node's
-        `(Pattern, Guard)` row in its module's NodeColumns), no longer `PassPart` collections; only the previous-run lists
-        (`PreviousPatternNodes`, `PreviousCandidateScopes`) stay in the part. `BindNodeCore`'s pattern guard reads the node's own row,
-        so a library pattern node bound in a program pass would trip it (stricter; no such bind exists, and the freeze refuses its
-        write).
     - The contract solver's Closure(view) index and its free entries (`PassPart.EnumerateIndex`, `PassPart.EnumerateIndexPool`; a
       per-pass memo the driver hands over as the solver's fields): each pass's own; an entry lasts its pass and returns to the free
       entries of the pass that formed it when that pass runs again (`ClearClosure`), so no pass returns an entry to another pass's
@@ -16094,23 +16089,6 @@ resumed by R4-M86 (2026-10-20).
     16 explanation stores now (work E3 and E4 delete). Readings: SPEC 23.1.2 (the same records and `DerivedFrom` keys), 6.1 and
     9.1 (duplicate declarations), DIAGNOSTICS 4.3; the B2a-2, B4 and B6b lines above, D-986's FormReads form, G949 S1. Ratchet
     ("Node-keyed table members in Binding"): this batch removes four; the limit is set to the merged tree's count when it lands.
-  - **R7-N5 B1b-1** (the Back's batch, Q-686, D-1134; design `b1b1-design.md`, B's rulings 1-6; the Front's review
-    `review-n5-b1b1.md`, C1-C5, N1-N5): BindType's cycle guard `resolvingTypes` and the synthesized calls' consumers
-    `synthesizedCalls` become the Work pass families `ResolvingTypes` and `SynthesizedCalls`, released at the freeze (every row lives
-    inside its pass, and no reader after the freeze reads a library row; ResetSyntheticCalls' Clear goes; the census's S class of
-    `resolvingTypes` corrected to Work). SettleSynthesizedCalls, a walk that records, walks `synthesizedOrder`, the pass's calls in
-    the order their row was first written, in R7-N5 E's `duplicateOrder` form (one site, AddSynthesizedCall; reset at
-    ResetSyntheticCalls with its capacity kept; listed iff its row is present; it goes with the column if the walk stops walking the
-    calls), so each call is settled once and a consumer with several failed calls rests on the last walked, as dev's Dictionary
-    enumerated them. `gatheredGroups` becomes the kept family `GatheredGroups` (a use's list made at its first gathering and reused
-    in place; a removed use's row leaves at renumbering). `PassPart.PatternNodes` and `PassPart.CandidateScopes` become one kept
-    family `IndexedPatterns` with a `(Pattern, Guard)` row (rule 3: a fixed pair of set slots is an inline row in any column class),
-    copied into the part's previous-run lists and emptied over the running pass's modules at ResetMatches. Rejected: the column's d8
-    order for the Settle walk (a synthesized call's id is the history of the passes that first wrote it), walking `nodes` (a call
-    joins `nodes` again when its consumer is bound again in the pass), two `bool` families or a row carrying the previous run,
-    `resolvingTypes` kept, and a counter beside the column for DirectBase's `Count != 0` shortcut. Readings: SPEC 6.2.2 and 9.5 (a
-    base clause in progress), 9.5.1 (alias-stage groups), 10.1 and 23.1.2 (a synthesized call's verdict at its consumer; no record
-    moves), 14.8 (patterns and guards); the B2a-2, B5a and E lines above. Ratchet ("Node-keyed table members in Binding"): 24 -> 19.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
