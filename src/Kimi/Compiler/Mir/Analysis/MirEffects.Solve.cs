@@ -250,7 +250,7 @@ internal sealed partial class MirEffects
             {
                 var atom = this.atoms[a];
                 // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
-                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
+                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, past Binding's storage bound: Deep (Process).
                 var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
                 this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Call);
             }
@@ -271,7 +271,7 @@ internal sealed partial class MirEffects
         if (type is null || kind == Drop)
         {
             var glue = new Glue(this);
-            this.found |= type is null ? Limit : (byte)0;
+            this.found |= type is null ? Deep : (byte)0; // An instance past Binding's storage bound (R4-M153), as A5 reads retention's.
             MirTypes.Destruction(types, type, ref glue);
             return;
         }

@@ -26,9 +26,10 @@ namespace Kimi.Compiler.Mir;
 //   once per entry location in the checks replay (Entering), before its plan, at the entries the pre-pass finds (Entries: each copy's
 //   first location in the replay's order, which dominates the copy; MirValidator's Entry rule, R5-M90).
 // Input: the view's Loans with their steps and issue locations, the checks replay's state and live bits, the location's writes. Output:
-// each R26 record with the parameter, the PreparedInput's own location (its Type node, R4-M90 D6), as its Anchor fact, through Record, and
-// R26-borrow's limit record through Limit; Covered, which the conflicts relation's selection, err(ended) and R3 read (MirBorrows.Checks,
-// MirBorrows.Effects).
+// each R26 record with the parameter, the PreparedInput's own location (its Type node, R4-M90 D6), as its Anchor fact, through Record, a
+// DefaultArgumentBorrow_Kd with rule W's Cause facts where its Loan is a W element no carrier keeps (MirBorrows.Causes' DefaultCauses,
+// Z19), and R26-borrow's limit record through Limit; Covered, which the conflicts relation's selection, err(ended) and R3 read
+// (MirBorrows.Checks, MirBorrows.Effects).
 // Invariants: Covered holds only where a copy's template reports the failure in the view its case selects (the package's 5.6); a copy
 // that issues no Loan gets no gather, and a body without one pays one scan of its scopes.
 // Must not report a Move of a slot (A1's DefaultArgumentMove_Kd, R4-M69), a write or Loan past a raw pointer's referent, or the same Loan
@@ -37,9 +38,10 @@ internal sealed partial class MirBorrows
 {
     private const byte HeldByResult = 1; // defaultHeld: the result's own value carries the Loan at a Return.
     private const byte HeldByStore = 2; // defaultHeld: a store that does not rest puts the Loan in E.
+    private const byte HeldIndirect = 4; // defaultHeld: a carrier keeps the Loan other than as rule W's direct arrival (MirBorrows.Causes).
 
     private readonly List<(int Loan, int Location)> defaultStores = []; // The checks replay's stores of slot-rooted Loans in E, each pair once.
-    private byte[] defaultHeld = []; // By Loan: HeldByResult and HeldByStore, what keeps it past entry; DefaultAccesses reads and clears it.
+    private byte[] defaultHeld = []; // By Loan: the Held bits, what keeps it past entry and how; DefaultAccesses reads and clears it.
     private MirOutcome[] defaulted = []; // By Loan: R26-borrow's verdict in the view, joined over its Returns; DefaultAccesses records and clears it.
     private int[] entrySet = []; // By scope: an issuing copy's Entry(B) (0 until its gather), -1 for a copy that issues no Loan.
     private int[] entryAt = []; // By scope: an Inlined scope's entry location, -1 before the pre-pass reaches it.
@@ -90,17 +92,24 @@ internal sealed partial class MirBorrows
         this.Drain(state);
         this.pending.Clear();
         MirDataflow.Grow(ref this.defaulted, this.loanCount);
+        MirDataflow.Grow(ref this.defaultHeld, this.loanCount);
         for (var c = 0; c < this.candidateCount; c++)
         {
             var loan = this.candidates[c].Loan;
-            if (!this.defaulted[loan].IsDecided && this.SlotRooted(loan))
+            if (!this.SlotRooted(loan))
+            {
+                continue;
+            }
+
+            if (!this.defaulted[loan].IsDecided)
             {
                 this.defaulted[loan] = this.defaulted[loan].Join(this.candidates[c].Outcome(TakesStores));
             }
+
+            this.defaultHeld[loan] |= this.candidates[c].Kept ? HeldIndirect : (byte)0; // Every candidate at every Return (rule W's Kept).
         }
 
         this.Work += this.candidateCount;
-        MirDataflow.Grow(ref this.defaultHeld, this.loanCount);
         if (this.slots[0] >= 0)
         {
             this.DefaultKept(Placed(state[this.slots[0]]));
@@ -146,7 +155,7 @@ internal sealed partial class MirBorrows
             if (this.SlotLoan(element) is >= 0 and var loan)
             {
                 this.defaultStores.Add((loan, location));
-                this.defaultHeld[loan] |= HeldByStore;
+                this.defaultHeld[loan] |= this.MarkedIn(placed, loan) ? (byte)(HeldByStore | HeldIndirect) : HeldByStore; // Every arrival of every store (Sure).
             }
         }
     }
@@ -160,6 +169,7 @@ internal sealed partial class MirBorrows
         if (MirSteps.Prepared(this.body, place.Root) && this.placeSteps.Walk(place, reborrow: false, ref this.walk) is var count &&
             this.SlotRooted(place.Root, this.walk.AsSpan(0, count)))
         {
+            this.causes.Clear(); // An Access record carries no cause (SPEC 15.6.7: the exclusive access is its own failure).
             this.Default(DiagnosticCode.DefaultArgumentAccess_Kd, OwnershipRequirement.DefaultArgumentAccess, this.Subject(at), place.Root);
         }
     }
@@ -181,6 +191,7 @@ internal sealed partial class MirBorrows
         {
             if (this.defaulted[loan].IsDecided)
             {
+                this.DefaultCauses(loan, this.defaultHeld[loan]);
                 this.Default(DiagnosticCode.DefaultArgumentBorrow_Kd, OwnershipRequirement.DefaultArgumentBorrow, this.body.Subject(this.Source(location)), this.loans[loan].Root);
             }
         }
@@ -189,12 +200,16 @@ internal sealed partial class MirBorrows
         {
             var (found, held) = (this.defaulted[loan], this.defaultHeld[loan]);
             (this.defaulted[loan], this.defaultHeld[loan]) = (MirOutcome.None, 0);
-            if (found.IsDecided && held != HeldByStore)
+            if (found.IsDecided && (held & (HeldByResult | HeldByStore)) != HeldByStore)
             {
+                this.DefaultCauses(loan, held);
                 this.Default(DiagnosticCode.DefaultArgumentBorrow_Kd, OwnershipRequirement.DefaultArgumentBorrow, this.Site(loan), this.loans[loan].Root);
             }
             else if (this.loans[loan].Mode is MirRefKind.Uniq or MirRefKind.TwoPhaseUniq && this.SlotRooted(loan))
             {
+                // A Binding-valid program keeps no exclusive slot Borrow in its result (SPEC 7.1), so the site record above never stands for
+                // this failure, and the Access record carries no cause.
+                this.causes.Clear();
                 this.Default(DiagnosticCode.DefaultArgumentAccess_Kd, OwnershipRequirement.DefaultArgumentAccess, this.Site(loan), this.loans[loan].Root);
             }
             else if (!found.IsNone && !found.IsDecided)
@@ -207,11 +222,12 @@ internal sealed partial class MirBorrows
         this.defaultStores.Clear();
     }
 
-    // An R26 record (D6, D7): at its subject, with the parameter its slot-rooted Place is on as the Anchor fact and no witness.
+    // An R26 record (D6, D7): at its subject, with the parameter its slot-rooted Place is on as the Anchor fact and no witness, then the
+    // causes its caller gathered (DefaultCauses for a DefaultArgumentBorrow_Kd, none for an Access record).
     private void Default(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, int root)
     {
         this.facts[0] = new(ProblemFactKind.Anchor, this.body.Subject(this.body.Locals[root].Source));
-        this.Record(code, requirement, subject, this.facts.AsSpan(0, 1));
+        this.Record(code, requirement, subject, this.CauseFacts(1));
     }
 
     // Whether a failure is its template's (D11): the copy holding the operation's scope and the issues of its Loan and reservation (-1:
