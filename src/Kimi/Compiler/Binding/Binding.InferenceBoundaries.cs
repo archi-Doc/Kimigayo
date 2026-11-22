@@ -80,10 +80,18 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8: the required structural and length slots that no evidence binds, other than an F that a waiting argument binds (SPEC
-    // 10.5).
+    // 10.5); a slot whose binding holds an open atom is as unbound for the candidate's Constraints (Binding.OpenSlots, PLAN G924 v3-A).
     private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, int[] mapping, ref SlotSet unsolved)
     {
         UnboundSlots(function, arguments, lengths, ref unsolved);
+        for (var g = 0; g < CallOwnSlots(function).Count; g++)
+        {
+            if (arguments[g] is { ContainsOpenSlot: true } || lengths[g] is { ContainsOpenSlot: true })
+            {
+                unsolved.Add(g);
+            }
+        }
+
         var waiting = new WaitingSlots(ref unsolved, CallSlotOwner(function));
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {

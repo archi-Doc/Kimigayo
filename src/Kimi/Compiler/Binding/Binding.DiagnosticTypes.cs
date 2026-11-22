@@ -382,9 +382,9 @@ public sealed partial class Binding
     private static void AppendDiagnosticLength(StringBuilder text, BoundLength length, HoverBudget? budget = null)
     {
         using var guard = budget?.Enter();
-        if (length.Parameter is { } parameter)
+        if ((length.Parameter ?? length.OpenSlot) is { } parameter)
         {
-            text.Append(parameter.Name);
+            text.Append(parameter.Name); // A length atom shows its slot's name (Binding.OpenSlots), as a Type atom does.
         }
         else if (length.IsConstant)
         {

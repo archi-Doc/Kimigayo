@@ -22,7 +22,9 @@ namespace Kimi.Compiler;
 // - Invariants: no array or mutable span of a frame leaves this file, so the compiler admits no unlogged write but the environment
 //   judgments', which are written only with no snapshot open (asserted); no snapshot is open and the log is empty between two solves;
 //   a frame is returned only with no snapshot open (asserted); Rollback undoes in reverse order; the frames and the log are pooled and
-//   reused (warm 0 B).
+//   reused (warm 0 B). PLAN G924 AF-3b v3-A (Binding.OpenSlots' contract): an atom is never bound, so a SetType or SetLength into the
+//   frame of an in-flight owner (PushOwner to PopOwner) is InternalInvariant_Kd, and so is one writing a Type or length that holds an
+//   atom while no owner is in flight (atoms never outlive their owners).
 // - Prohibitions: no rule is decided here (fit, meet, applicability, formation, an Origin relation); no syntax is read. The Origin and
 //   input-Origin slots, the All* saves of a comparison and the slot arrays of solves that infer nothing (explicit arguments of a Function
 //   Item, a specialization, a contract match) are not frames.
@@ -133,6 +135,10 @@ public sealed partial class Binding
         // Typed, so outside the object?[] log: written only with no snapshot open (asserted).
         private PendingJudgment?[][] environments = new PendingJudgment?[8][];
         private int[] free = new int[8];
+        // PLAN G924 AF-3b v3-A: the in-flight owners' frames by level (an owner's level is its index), and per frame whether it is one.
+        private int[] owners = new int[4];
+        private bool[] owning = new bool[8];
+        private int ownerCount;
         private int frameCount;
         private int freeCount;
         private Undo[] log = new Undo[32];
@@ -158,6 +164,7 @@ public sealed partial class Binding
                     Array.Resize(ref this.marks, this.frameCount * 2);
                     Array.Resize(ref this.environments, this.frameCount * 2);
                     Array.Resize(ref this.free, this.frameCount * 2);
+                    Array.Resize(ref this.owning, this.frameCount * 2);
                 }
 
                 id = this.frameCount++;
@@ -263,8 +270,33 @@ public sealed partial class Binding
             this.environments[id][slot] = value;
         }
 
+        // PLAN G924 AF-3b v3-A: the next in-flight owner's level (Binding.OpenSlots: OpenType forms the atoms of that level).
+        internal int OwnerCount => this.ownerCount;
+
+        // PLAN G924 AF-3b v3-A: the frame `id` becomes the in-flight owner at the next level, which this returns.
+        internal int PushOwner(int id)
+        {
+            if (this.ownerCount == this.owners.Length)
+            {
+                Array.Resize(ref this.owners, this.ownerCount * 2);
+            }
+
+            this.owners[this.ownerCount] = id;
+            this.owning[id] = true;
+            return this.ownerCount++;
+        }
+
+        // Ends the innermost owner's flight, `id`'s.
+        internal void PopOwner(int id)
+        {
+            Debug.Assert(this.ownerCount > 0 && this.owners[this.ownerCount - 1] == id, "Owners end in reverse order.");
+            this.owning[id] = false;
+            this.ownerCount--;
+        }
+
         internal void SetType(int id, int slot, BoundType? value)
         {
+            this.CheckOpenWrite(id, value is { ContainsOpenSlot: true });
             var frame = this.types[id];
             this.Push(frame, slot);
             frame[slot] = value;
@@ -272,6 +304,7 @@ public sealed partial class Binding
 
         internal void SetLength(int id, int slot, BoundLength? value)
         {
+            this.CheckOpenWrite(id, value is { ContainsOpenSlot: true });
             var frame = this.lengths[id];
             this.Push(frame, slot);
             frame[slot] = value;
@@ -336,6 +369,15 @@ public sealed partial class Binding
             }
 
             frame.AsSpan(0, count).Clear();
+        }
+
+        // The contract's open-slot invariant at the one place a slot's Type or length is written.
+        private void CheckOpenWrite(int id, bool holdsAtom)
+        {
+            if (this.owning[id] || (holdsAtom && this.ownerCount == 0))
+            {
+                throw new InvalidOperationException("An in-flight owner's frame is never written, nor an atom outside its owner's flight (InternalInvariant).");
+            }
         }
 
         private void Push(object?[] frame, int index)

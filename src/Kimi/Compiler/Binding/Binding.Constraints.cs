@@ -174,6 +174,13 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
+        // PLAN G924 AF-3b v3-A (Binding.OpenSlots; SPEC 10.8 Unbound slots, 8.3.2): an operand holding an open atom is an unbound slot's,
+        // so its Constraint is not judged: the prover's one intake guard (UnsolvedSlots keeps a candidate's own Constraints from it).
+        if (proposition.Subject is { ContainsOpenSlot: true } || proposition.RequiredType is { ContainsOpenSlot: true })
+        {
+            return ConstraintProof.Unknown;
+        }
+
         // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2; design R1.1): an identity, Callable or Semantics atom is judged on its subject's Member
         // (MemberOf); the Contract and capability judges read it at their own entries (ProveConformance, RequestCapability).
         if (proposition.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Callable or ConstraintKind.Semantics &&

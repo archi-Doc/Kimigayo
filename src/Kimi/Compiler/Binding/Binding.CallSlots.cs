@@ -665,6 +665,13 @@ public sealed partial class Binding
             return true;
         }
 
+        // PLAN G924 AF-3b v3-A (Binding.OpenSlots; S1): an atom on the actual side holds against a pattern part that is no slot of the
+        // solve and binds nothing; a slot of the solve takes it above, as any first binding (a fill).
+        if (actual.Kind == BoundTypeKind.OpenSlot)
+        {
+            return true;
+        }
+
         // An interned leaf that passes these tests differs from the pattern in its Origin alone, which is evidence or a later relation
         // where Origins are not compared here: a pair layer's outer slot is such an Origin (SPEC 8.1.2, 15.3.6; PLAN G758).
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
