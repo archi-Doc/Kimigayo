@@ -22140,6 +22140,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
   - Amended by T-M13 (B7a1): the reserved supplies are the profile's `Supplies` (`TargetSupply`) and `ReservedSymbols`;
     `Kernel32Library`, `BackendLibrary`, `Kernel32Symbols` and `ProvidedSymbols` are deleted. The split stands.
+  - Amended by T-M18 (B7a2): `WindowsProfile` is `TargetProfile.Windows`, the first row of Core's target table `TargetProfile.Rows`
+    (`Core/TargetProfile.cs`); the split stands.
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -29448,3 +29450,22 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     locks); one lock per output directory; the record and the lock named from the IR (a manifest that fails to read would
     invalidate no record); the stem named from the manifest with any IR accepted (Revision 0: a manifest's IR can be one of its own
     build's files, C-450 B1, and the second derivation stays, B2).
+- **T-M18 The target table** (Tatara, 2026-11-22; the plan's unit B7a2, Q-660, D-1087; Major, behaviour-preserving; design
+  `artifacts\handoff\tatara\units\B7\design-b7a.md` Revision 1 §2.1; design review C-440; the Middle's implementation review C-453,
+  ACCEPT). Amends R5-M174.
+  - **The row:** `WindowsProfile` (a static class of constants) is `TargetProfile.Windows`, the first row of `TargetProfile.Rows`
+    (`Core/TargetProfile.cs`, `internal sealed`, the SPEC's name "executable target profile"). The row is an object initializer of
+    `required init` columns: each column is named where the row states it (fifteen, eleven of them strings, which a positional list
+    could swap silently) and the compiler rejects a row missing one; C# makes a `required` member as visible as its type, so the
+    type is `internal` (its readers are Kimi, `Benchmark` and `xUnitTest`). The values two columns share are private statics before
+    `Windows`, and `Windows` precedes `Rows` (static initializers run in text order). `Supply(name)` is an instance loop. Every
+    member keeps its name; the columns are today's, B7b adding each of r3 §4's others with its reader.
+  - **The rename:** `artifacts\tatara\b7\rename-windows-profile.py <worktree root>`, one whole-word pass (`\bWindowsProfile\b` →
+    `TargetProfile.Windows`) over the C# files of `src/Kimi`, `src/Benchmark` and `tests/xUnitTest` naming it, BOM and line endings
+    kept; its post-condition (no such file but the profile's own) exits non-zero listing each remaining line. A branch adding a
+    `WindowsProfile` reference re-runs it. Const contexts: `LlvmModuleText.Footer` is `static readonly` (the same string, built
+    once); the three `[InlineData]` take the literal `"x86_64-pc-windows-msvc"`, which `CoreModelTest` ties to
+    `TargetProfile.Windows.Target`; `TataraExecutorTest.Triple` is `static readonly`.
+  - Rejected: r3 §4's full column set now (columns without a reader that differs); `Find`/`Host` now (no reader that
+    `TargetProfile.Windows` does not serve; B7b's selection); `WindowsProfile` kept as an alias or the triple as a second `const`
+    (two names for one fact); a constructor (positional columns); the rename by hand (not regenerable at landing).
