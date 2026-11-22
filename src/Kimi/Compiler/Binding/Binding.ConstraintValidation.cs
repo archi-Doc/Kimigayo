@@ -542,30 +542,19 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
             }
 
-            // R7-V1c (SPEC 8.6.3, 23.1.2): the walk visits a written Type once. A transparent wrapper is the Type it wraps
-            // (UnwrapTransparentType), not a second occurrence: the occurrence is visited at its outermost node, whose Type is the
-            // complete written Type (its Origin arguments included), and its record is at the wrapped node, the Type the Constraint is
-            // about; the wrapper's verdict is that node's (rule W, RestOnPart). A check that recorded at either node first keeps its record.
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructionTargets.Contains(node) &&
-                (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) && !(node.Parent is TypeSemanticsKoto { IsTransparentWrapper: true } wrapper && ReferenceEquals(wrapper.Type, node)))
+            // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names. A check that
+            // recorded at a node first keeps its record.
+            if (this.JudgedOccurrence(node) is { Symbol.Declaration: DeclarationContainerKoto container } type)
             {
-                var written = UnwrapTransparentType(node)!;
+                var written = UseNode(node);
                 var scope = this.ConstraintScope(node);
                 var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
                 var frame = this.BeginConsultation(use);
                 var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
                 this.RequireConstraintInFrame(use, result, mode, frame);
-                if (result != ConstraintProof.Proven && !ReferenceEquals(written, node) && this.RecordedState(node) != BindingState.Invalid &&
-                    this.RecordedState(written) is var state and not BindingState.Resolved)
+                if (result != ConstraintProof.Proven)
                 {
-                    if (state == BindingState.Invalid)
-                    {
-                        this.RestOnPart(node, written);
-                    }
-                    else
-                    {
-                        this.SetRecordedState(node, state);
-                    }
+                    this.RestLayersOnType(node, written);
                 }
 
                 if (node.BindingState == BindingState.Invalid)
@@ -605,6 +594,58 @@ public sealed partial class Binding
         }
 
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
+    }
+
+    // R7-V1c (SPEC 8.3.1, 8.6.3, 23.1.2): the Type ValidateConstraintUses judges at `node`, or null. A written Type occurrence is one Type
+    // node (UseNode) under its transparent layers, the wrappers and parentheses UseNode sees through, each the Type it wraps, so the
+    // walk judges it once: at the outermost node of that chain with a constructed Type that has clauses. A wrapper's Type carries the
+    // written Origin arguments; a wrapper whose annotation failed has none, and the occurrence is judged at the layer below it.
+    private BoundType? JudgedOccurrence(Koto node)
+    {
+        if (this.ConstrainedType(node) is not { } type)
+        {
+            return null;
+        }
+
+        var named = UseNode(node);
+        for (var outer = node.Parent; outer is not null && ReferenceEquals(UseNode(outer), named); outer = outer.Parent)
+        {
+            if (this.ConstrainedType(outer) is not null)
+            {
+                return null;
+            }
+        }
+
+        return type;
+    }
+
+    private BoundType? ConstrainedType(Koto node)
+        => node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto { ConstraintNodes.Count: not 0 } } type &&
+            !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) ? type : null;
+
+    // SPEC 23.1.2 (rule W): the layers of a written Type occurrence from its judged node down to its Type node `written` are that Type;
+    // when the Type's judgment leaves it failed or unproven, a layer with no failure of its own rests on it (RestOnPart) or takes its
+    // unproven state, so a reader of the declaration's written Type reads a failed Type.
+    private void RestLayersOnType(Koto judged, Koto written)
+    {
+        var state = this.RecordedState(written);
+        for (var layer = written; state != BindingState.Resolved && !ReferenceEquals(layer, judged);)
+        {
+            layer = layer.Parent!;
+            if (this.RecordedState(layer) == BindingState.Invalid)
+            {
+                continue;
+            }
+
+            if (state == BindingState.Invalid)
+            {
+                this.RestOnPart(layer, written);
+            }
+            else
+            {
+                this.SetRecordedState(layer, state);
+            }
+        }
     }
 
     // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and

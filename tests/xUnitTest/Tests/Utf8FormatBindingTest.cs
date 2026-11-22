@@ -140,7 +140,7 @@ public class Utf8FormatBindingTest
     // SPEC 3.1.1, 8.3, 23.1.2 (R8-S2d1's move (a), pinned by R8-S2b1): a header that applies `Holder<E>` (`E is Utf8Format`) to a
     // Wrapping<T> over a T not proven PrimitiveInteger reports the Type's formation record (one per written occurrence, R7-V1c) and no
     // verdict of Holder's own over that failed child: the WrappingFormat row's construction arm proves the conformance, and the formation
-    // is always checked (fail-before: a third UnprovenConstraint_Kd, Holder's, at S2c's head).
+    // is always checked (fail-before: a second UnprovenConstraint_Kd, Holder's, at S2c's head).
     [Fact]
     public void AHolderOverAnIllFormedWrappingReportsOnlyItsFormation()
     {

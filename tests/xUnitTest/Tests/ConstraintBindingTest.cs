@@ -596,7 +596,9 @@ public class ConstraintBindingTest
     // SPEC 8.6.3, 23.1.2 (R7-V1c, PLAN G373): a written Type's failing clause is one record at its occurrence wherever the Type is
     // written (a parameter, a Function Type's result in a Field, a Field, a result, a local's annotation, a nested argument); two
     // occurrences are two records. A transparent wrapper and the Type it wraps are one occurrence: dev recorded the clause at both.
-    // Records of the declarations that carry the Type (at other spans) are not counted here.
+    // Parentheses are transparent (SPEC 8.3.1): `(Box<S>)`, `((Box<S>))` and a one-parameter Function Type's `(Box<S>) -> i32` are one
+    // occurrence each, recorded at the Type they hold (dev: one record per layer). Records of the declarations that carry the Type (at
+    // other spans) are not counted here.
     [Theory]
     [InlineData("func g(x: Box<S>) => ()", "7:11")]
     [InlineData("struct H\n    public var f: (i32) -> Box<S>", "8:28")]
@@ -605,14 +607,30 @@ public class ConstraintBindingTest
     [InlineData("func g()\n    let b: Option<Box<S>> = .None", "8:19")]
     [InlineData("func g(x: Array<Option<Box<S>>>) => ()", "7:24")]
     [InlineData("func g(x: Box<S>, y: Box<S>) => ()", "7:11 7:22")]
+    [InlineData("func g(x: (Box<S>)) => ()", "7:12")]
+    [InlineData("func g(x: ((Box<S>))) => ()", "7:13")]
+    [InlineData("func g(f: (Box<S>) -> i32) => ()", "7:12")]
+    [InlineData("struct H\n    public var f: (Box<S>) -> i32", "8:20")]
+    [InlineData("func g(f: (Box<S>, i32) -> i32) => ()", "7:12")]
     [InlineData("func g(x: Array<Option<Box<K>>>) => ()", "")]
+    [InlineData("func g(x: (Box<K>)) => ()", "")]
     [InlineData("struct H\n    public var f: (i32) -> Box<K>", "")]
     public void AWrittenTypesFailingClauseIsOneRecordAtItsOccurrence(string declaration, string occurrences)
     {
         var records = DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n");
-        Assert.Equal(occurrences, string.Join(' ', records.Select(static x => x.Split(' ', 4)).Where(static x => x.Length > 2 && x[2].StartsWith("Box<", StringComparison.Ordinal)).Select(static x => x[1])));
+        Assert.Equal(occurrences, string.Join(' ', records.Select(static x => x.Split(' ', 4)).Where(static x => x.Length > 2 && x[2].TrimStart('(').StartsWith("Box<", StringComparison.Ordinal)).Select(static x => x[1])));
         Assert.All(records, static x => Assert.StartsWith("UnsatisfiedConstraint_Kd ", x, StringComparison.Ordinal));
     }
+
+    // SPEC 23.1.2, 15.3.1 (R7-V1c, F's V1c ruling 3): the walk judges a written occurrence once, at the outermost layer of it whose Type is
+    // formed. A wrapper whose `during` binds no slot (Box has none) forms no Type, so the occurrence is judged at the Type below it and
+    // both independent failures are reported, the Origin's and `S is C`'s (ee393bf26 judged nothing there); with a slot the wrapper's
+    // Type, its Origin arguments included, is judged and recorded at the Type node.
+    [Theory]
+    [InlineData("struct Box<T>\n    T is C", "InvalidOriginBinding_Kd 5:28 Box<S> during r | UnsatisfiedConstraint_Kd 5:28 Box<S>")]
+    [InlineData("struct Box<T> {h}\n    T is C\n    public let w: ref/i32 during h", "UnsatisfiedConstraint_Kd 6:28 Box<S>")]
+    public void AnOccurrenceIsJudgedAtItsOutermostFormedLayer(string box, string records)
+        => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\n" + box + "\nstruct S\nfunc g(r: ref/i32, x: ref/(Box<S> during r)) -> i32 => 0\npublic func main() => ()\n").Order(StringComparer.Ordinal)));
 
     // SPEC 7.5: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
