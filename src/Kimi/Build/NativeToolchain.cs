@@ -163,7 +163,7 @@ internal static partial class NativeToolchain
     // 15; when Kimi has none, StandardInput, the program reads end of input); its output is copied to Kimi's raw standard streams and
     // is complete when this returns or throws: the copies take no token and are awaited after the job's end, so the pipes reach their
     // end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome and the
-    // cancellation is rethrown. The exit is awaited on a thread of its own.
+    // cancellation is rethrown. The exit is JobProcess's (Exited).
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -176,15 +176,14 @@ internal static partial class NativeToolchain
         var output = Task.WhenAll(
             program.Stdout.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
             program.Stderr.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
-        var exit = Task.Factory.StartNew(() => program.Wait(Timeout.Infinite), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            await exit.WaitAsync(cancellationToken);
+            await program.Exited.WaitAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
             program.Kill();
-            await exit;
+            await program.Exited;
             await output.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             throw;
         }
