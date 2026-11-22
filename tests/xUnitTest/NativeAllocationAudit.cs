@@ -16,8 +16,9 @@ internal static class NativeAllocationAudit
     // Storage.transferBytes), through which Array and Dictionary growth copy high-water storage once, at its anchor.
     private const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
 
-    // Besides LLVM intrinsics, an audited module declares only the runtime's imports and the backend helpers (IMPL 21.4.7);
-    // any other declaration in any linkage, such as a second allocator, would escape the counters.
+    // Besides LLVM intrinsics, an audited module declares only the runtime's imports and the backend helpers (IMPL 21.4.7; the memory
+    // functions among them are the module's own definitions since the Tatara plan's decision 24, so no line declares them); any other
+    // declaration in any linkage, such as a second allocator, would escape the counters.
     private static readonly string[] Declarations =
     [
         "GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess",

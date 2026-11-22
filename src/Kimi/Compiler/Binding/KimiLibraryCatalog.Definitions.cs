@@ -155,6 +155,10 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ArraySwapPositions, Row: None),
         new(KimiDeclarationId.ArraySwapRemove, Row: None),
         new(KimiDeclarationId.ArrayReverse, Row: None),
+        // SPEC 5.3, 8.15.3 (the owner's O-490 (a)): a view's first element's address from a raw pointer, which the MIR builder writes
+        // as a Storage keyed by the start and the range's Type (MirBuilder.First), never a Call.
+        new(KimiDeclarationId.ViewStart, Form: true),
+        new(KimiDeclarationId.RawReadVolatile), // SPEC 5.6: its storage's NoStore row (KimiLibraryCatalog.Rows.cs).
     ];
 
     // The public declaration of each linked implementation, by ID; -1 elsewhere.
