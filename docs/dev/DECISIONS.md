@@ -28494,6 +28494,11 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     (`Supply`); the Ordinal-order invariant is the row's, checked by `CoreModelTest`, and `ToolchainIdentity`'s initializer checks
     that its material's keys are the row's supplies in the row's order (InvalidDataException otherwise); `ToolchainIdentity.Backend`
     is the row's supply the catalog's `library` names. `NativeConfiguration.Reserved` reads the row.
+  - Amended by T-M16 (unit B6b6, 2026-11-22): the temporary structure is removed. Setup installs neither library (`build.ps1`
+    keeps building and checking both candidates against the catalog and installs none), every script and test reads the committed
+    files through `kernel32.ps1`'s `Get-KimiKernel32` and `toolchain.ps1`'s `Get-KimiBackendArchive` (each the one place naming its
+    file), `check-toolchain.ps1` reads no `windows_x64`, and `ToolchainIdentity.BackendFile` is deleted; existing roots keep the
+    folder, which nothing reads (PLAN G1210 closed).
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -28611,6 +28616,12 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: verify keeping kernel32's content inspection (a tool, or an ABI change, for a property of adopted bytes); a second
     PowerShell copy of the inspection; `check-toolchain.ps1` loading `tatara.dll` (T's ruling: no change under `src/Tatara`); a
     `-Report` for `check-toolchain.ps1` (no reader: `verify.ps1` keeps its log).
+  - Amended by T-M16 (unit B6b6, 2026-11-22; C-444 N6, T's ruling): verify has two steps, its Tatara and its supplies; the
+    compiler no longer embeds kernel32's definition (`Kimi.Kernel32.def`, `Kernel32Imports.Definition`/`DefinitionSha256` and their
+    initializer's comparison removed), since it carried the file only to check it, so the self-check's third step and the failure
+    semantics' definition mismatch go: the manifest's `definitionSha256` is the catalog's and `Kernel32ImportsTest` compares the
+    committed file with the catalog. The development check's `windows_x64` checks (N3-1) ended with the root's copy, and the tool
+    rules it shares with setup have one owner, `toolchain.ps1` (PLAN G1228 and G1230 closed).
 - **T-M12 `run`'s program in a kill-on-close job: `JobProcess`** (Tatara, 2026-11-22; PLAN G1188, Q-637, D-1045; Major; design
   `artifacts\handoff\tatara\units\G1188\design.md`; the Middle's review C-442, review 2 ACCEPT WITH CONDITIONS; the Front's and the
   Back's consent C-446). Amends T-M5's SP1 limit; closes PLAN G1188.
@@ -28764,3 +28775,46 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     IMPL change); an ordinal `--Name` match (C4: narrower than the parser's rule); the first hit only in the command layer (N4-2); the
     command's console writer (standard output, where `check --Format json` puts its document); copying `-Dll` beside the test
     output's `Kimi.dll` (an output the next `PreserveNewest` build does not restore).
+- **T-M16 The toolchain root's `windows_x64` removed** (Tatara, 2026-11-22; the plan's unit B6b6, PLAN G1210 and G1228-G1230,
+  Q-649, D-1066; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §7; design review C-437 with T's rulings N6-1 and
+  N6-2, and T's rulings on C-444's N4-N6 (`units\B6\brief-b6b6-impl.md`); the Middle's implementation review C-452, ACCEPT, C1 met
+  on the refreshed head; the owner's decision 20 (O-469 (a), (a), (a))). Ends T-M8's temporary structure and amends T-M11's verify
+  and development check; closes PLAN G1210, G1228, G1229 and G1230.
+  - **The committed files are the only copies:** the compiler carries `kernel32.lib` and the backend archive (T-M8), and no root
+    holds a copy. Setup installs neither library: `build.ps1` still builds both candidates and checks them against the catalog
+    (B6a's C3), and its install branch is deleted. Every script and test that linked the root's copy reads the committed file
+    through the one place naming it, `kernel32.ps1`'s `Get-KimiKernel32` (T's N6-1: `Get-KimiInstalledKernel32` renamed, with no
+    root parameter and no fallback) or `toolchain.ps1`'s `Get-KimiBackendArchive`; `build.ps1` names its candidates after them
+    (C-452 R4), and `TataraExecutorTest`'s tool control links both sides with them. `ToolchainIdentity.BackendFile` is deleted.
+    Existing roots, the shared one included, keep their `windows_x64` (setup deletes nothing); nothing reads it.
+  - **Nothing checks a root's libraries (N6-2):** `check-toolchain.ps1` checks the tools, the supporting DLLs and `tatara.dll`
+    against `installation.json` and the catalog; its `windows_x64` checks (the backend's and kernel32's hashes, kernel32's
+    generation record, definition and content; T-M11's N3-1 interim) go with `test-toolchain-verification.ps1`'s rows for them.
+    kernel32's content is inspected where its bytes are adopted (`New-KimiKernel32Library`, run by setup and an LLVM update).
+  - **No definition carried only to check it (C-444 N6, T's ruling):** the embedded `Kimi.Kernel32.def`,
+    `Kernel32Imports.Definition` and `DefinitionSha256` and their initializer's comparison are deleted, and `toolchain verify` has
+    two steps, its Tatara and its supplies' bytes against the catalog (IMPL 20.3.2 loses the definition mismatch). Before the
+    deletion every reader was grepped: a manifest's `definitionSha256` reads the catalog (`ToolchainIdentity`'s kernel32 row).
+    `Kernel32ImportsTest` compares the committed `kernel32.def` with the catalog's `definitionSha256` and with the profile's
+    kernel32 symbols. `Kernel32Imports` keeps the DLL and generator names its supply's manifest entry carries (C-452 R7 not taken:
+    the two constants stay with `Kernel32Imports`, whose subject they are, though only `ToolchainIdentity` reads them).
+  - **One PowerShell owner per installation rule (C-444 N4):** `toolchain.ps1` owns the rules setup and `check-toolchain.ps1` both
+    read: `Get-KimiToolchainToolNames` (the nine tools), `Get-KimiToolchainToolSha256` (a tool's identity: the version banner of the
+    seven that print one, `llvm-dlltool`'s pin through `Get-KimiDlltoolIdentity`, moved from `kernel32.ps1`, and `llvm-lib`'s hash)
+    and `Get-KimiSha256`, which the builder scripts' hashes read; `kernel32.ps1` reads `toolchain.ps1`, never the reverse (C-452
+    R5). The one observable difference: a tool whose hash matches its record but not its identity (an `llvm-dlltool` off
+    `profile.json`'s pin) fails as "Tool identity mismatch: <file>. Run <setup> after an intentional update (<cause>)" (C-452 R1;
+    `test-toolchain-verification.ps1`'s `dlltool-pin` row), not "Tool executable SHA-256 mismatch".
+  - **The inspection's rejection rows (C-444 N5):** `test-kernel32.ps1` checks `Test-KimiKernel32Library` at its one owner: the
+    adopted library passes, and each library crafted by `llvm-dlltool` from the shared definition fails for its one difference
+    (another DLL name, an ARM64 library, a missing, an extra and a duplicate symbol). The "no Format" row reads the adopted library
+    through `llvm-readobj` with its Format lines dropped, since no library has members listed without one; a member-less archive
+    (one `llvm-ar` or `llvm-lib` writes from no input) as a real library on which `llvm-readobj` prints no Format line is
+    unverified, so the row keeps the shim (C-452 R6). The function's failure splits into "unexpected architecture" and "unexpected
+    import symbol set".
+  - **Open (C-452 O1, pre-existing; PLAN G1255):** the tool-control comparison accepts "equal failure" for every row; on the base a
+    root without `windows_x64` made it pass comparing no executable. B6b6 removed that cause, and an input both sides lack still
+    passes vacuously until the rows that must link are required to link.
+  - Rejected: a root parameter or fallback in `Get-KimiKernel32` (T's N6-1: a second copy of one supply); setup deleting an
+    existing root's `windows_x64` (older bases on the machine keep working, design fact 12); keeping verify's definition step for a
+    file no product reads (N6).

@@ -1459,6 +1459,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   records V2e as landed in W-310: SPEC 9.1's duplicate check compares only functions of one `SignatureHash` over `FnSig`
   (DECISIONS R7-M77, superseding R7-M37's `SignatureKey` clause: no key type); the group checks left pairwise are PLAN
   G1249. Nothing frozen.
+- Revision 112 (2026-11-22, plan §14; the Front's Q-647 and D-1059, F's C8 rulings 1 and 4, R7-C8 U-D3r's landing): C8's
+  row records U-D3r as landed in W-311: fail-first rows for InputOrigins and SameExceptOmittedOrigins;
+  AddTypeClauseObligations, Mentions and SolveOmittedOrigins stay reading only past their old counts. Nothing frozen.
+- Revision 113 (2026-11-22, plan §14; the Front's Q-648 and D-1062, F's P1 ruling 1, R7-P1's rows): P1's row records its rows
+  as complete, landed in W-311 (Q-648) (fail-first for P2, P3, P4 T4, R1e and I3; the cost rows; SP1's T rows labelled from D-1042's
+  text); its Explicit open row ix-mis (two `Indexable` conformances, an index fitting neither) is PLAN G1252. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
@@ -1729,3 +1735,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   D-1061): §7: B7's row states the order B7 lands in, in eight windows: B7a1 and B7a2, then B7b1 (W1), B7r4 (W2), B7r1-B7r3
   (W3, all or none), B7b2, B7b6 and B7b5 (W4), B7r5 and B7b4 (W5), B7b7 (W6), B7b8 (W7) and B7b9 (W8), replacing revision 8's
   order (the group B7r first, from the design's Revision 1). No decision of the owner changes. Nothing frozen.
+- Revision 10 (2026-11-22, the owner's answers to O-488 in T's dialog, verbatim 「O-488 (a) a (b) a (c) a (d) a (e) a (f) 全てa」,
+  and in the same message 「さらに、「言語側の OS 機能」の設計も開始してください。」; T's D-1065): §2 gains decisions 29-35 (B9's
+  platform contract: a root struct `Self is Platform` judged as startup selection is, the runtime-held platform value and its
+  members, the Limine boot protocol with the compiler's linker script, the Condition value `os == "none"`, compiler-rt's soft-float
+  builtins, the SPEC §22 and IMPL §21.6 statements and no new vocabulary entry; and the language-side OS features in design);
+  §7: B9's row names decisions 29-34 and its design outline, and a new row B10 (the language-side OS features, design only);
+  §11: the question before B9 is answered, and one before B10's units is added. Decision 22's "not started" for the OS features
+  is superseded by decision 35; no other decision changes. No SPEC or IMPL text: B9's units carry it, each with an independent
+  review. Nothing frozen.
