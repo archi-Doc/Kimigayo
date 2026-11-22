@@ -663,7 +663,7 @@ public sealed partial class Binding
 
     // A projection a member's written Type makes on an inferring definition (Discovery): the definition, the associated name, and whether it
     // is the subject of another projection (value-dependent: `E.(EC).W.(FC).U`).
-    internal readonly record struct MemberRead(FunctionKoto Member, AssociatedInference Read, string? Name, bool Dependent);
+    internal readonly record struct WrittenRead(FunctionKoto Member, AssociatedInference Read, string? Name, bool Dependent);
 
     internal readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
 
@@ -752,7 +752,7 @@ public sealed partial class Binding
 
         // Each projection on an inferring definition its members' written Types make, per member (Discovery: a binding's reads are its
         // sources' candidates'), and, while its component's request is open, its bindings' range in the request's entries.
-        internal List<MemberRead> MemberReads { get; } = new();
+        internal List<WrittenRead> MemberReads { get; } = new();
 
         internal int FirstEntry { get; set; }
 

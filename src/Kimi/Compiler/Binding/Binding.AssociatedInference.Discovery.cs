@@ -36,11 +36,11 @@ public sealed partial class Binding
     // Per binding of the component under request, by its entry (DiscoverValues; C4 ruling 11): its sources and its direct reads (canonical
     // entries) in two arenas, the strongly connected components of the bindings under those reads (Tarjan's state per entry), and each such
     // component's Reach as sorted entries in an arena, made at its first need. Request-local, capacity kept.
-    private readonly List<(BoundConformancePath Path, BoundRequirement Requirement)> inferenceSources = new();
+    private readonly List<(BoundConformancePath Path, BoundRequirement Requirement)> inferenceValueSources = new();
 
     private readonly List<int> inferenceEdges = new();
 
-    private readonly List<(int Sources, int SourceCount, int Edges, int EdgeCount)> inferenceFacts = new();
+    private readonly List<(int Sources, int SourceCount, int Edges, int EdgeCount)> inferenceValueFacts = new();
 
     private readonly List<int> inferenceValueIndex = new();
 
@@ -352,20 +352,20 @@ public sealed partial class Binding
     private void DiscoverValues(int component)
     {
         var entries = this.inferenceBindings;
-        this.inferenceSources.Clear();
+        this.inferenceValueSources.Clear();
         this.inferenceEdges.Clear();
-        this.inferenceFacts.Clear();
+        this.inferenceValueFacts.Clear();
         this.inferenceReachArena.Clear();
         this.inferenceReachOf.Clear();
         for (var e = 0; e < entries.Count; e++)
         {
-            var (sources, edges) = (this.inferenceSources.Count, this.inferenceEdges.Count);
+            var (sources, edges) = (this.inferenceValueSources.Count, this.inferenceEdges.Count);
             if (this.inferenceBindingIndex[entries[e].Binding] == e)
             {
                 this.DiscoverSources(entries[e], edges, component);
             }
 
-            this.inferenceFacts.Add((sources, this.inferenceSources.Count - sources, edges, this.inferenceEdges.Count - edges));
+            this.inferenceValueFacts.Add((sources, this.inferenceValueSources.Count - sources, edges, this.inferenceEdges.Count - edges));
         }
 
         this.ConnectValues();
@@ -387,7 +387,7 @@ public sealed partial class Binding
                 if (identity.Contract == path.Contract && identity.Symbol.Declaration is FunctionKoto requirement &&
                     (requirement.BoundSymbol?.Type is not { } required || NamesAssociated(required, entry.Identity.Symbol.Name)))
                 {
-                    this.inferenceSources.Add((path, identity));
+                    this.inferenceValueSources.Add((path, identity));
                     this.AddValueReads(batch, requirement.Name, edges, component);
                 }
             }
@@ -424,7 +424,7 @@ public sealed partial class Binding
         }
     }
 
-    private void AddValueReads(MemberRead read, int edges, int component)
+    private void AddValueReads(WrittenRead read, int edges, int component)
     {
         if (!read.Dependent)
         {
@@ -489,7 +489,7 @@ public sealed partial class Binding
             while (work.Count > 0)
             {
                 var (e, cursor) = work[^1];
-                var facts = this.inferenceFacts[e];
+                var facts = this.inferenceValueFacts[e];
                 if (cursor < facts.EdgeCount)
                 {
                     work[^1] = (e, cursor + 1);
@@ -577,7 +577,7 @@ public sealed partial class Binding
                 var e = work[^1];
                 work.RemoveAt(work.Count - 1);
                 arena.Add(e);
-                var facts = this.inferenceFacts[e];
+                var facts = this.inferenceValueFacts[e];
                 for (var i = 0; i < facts.EdgeCount; i++)
                 {
                     var x = this.inferenceEdges[facts.Edges + i];
@@ -600,10 +600,10 @@ public sealed partial class Binding
     // Whether `owner`'s sources include the requirement named `requirement` on `path` (the own run's filter, the definition run's validator).
     private bool SourceOf(int owner, BoundConformancePath path, string requirement)
     {
-        var (sources, count) = (this.inferenceFacts[owner].Sources, this.inferenceFacts[owner].SourceCount);
+        var (sources, count) = (this.inferenceValueFacts[owner].Sources, this.inferenceValueFacts[owner].SourceCount);
         for (var i = sources; i < sources + count; i++)
         {
-            if (ReferenceEquals(this.inferenceSources[i].Path, path) && this.inferenceSources[i].Requirement.Symbol.Name == requirement)
+            if (ReferenceEquals(this.inferenceValueSources[i].Path, path) && this.inferenceValueSources[i].Requirement.Symbol.Name == requirement)
             {
                 return true;
             }

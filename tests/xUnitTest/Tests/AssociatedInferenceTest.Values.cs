@@ -201,6 +201,7 @@ public partial class AssociatedInferenceTest
     [InlineData("C4ParamPending", C4ParamPending)]
     [InlineData("Mutual", Mutual + MutualUses)]
     [InlineData("C4ContractArgument", C4ContractArgument)]
+    [InlineData("OwnRead", "contract C\n    associate Item\n    associate Other\n    func read() -> (Self.Item, Self.Other)\n    func other() -> Self.Other\nstruct S\n    Self is C\n    public func read() -> (ref/i32, Self.Other)\n        $abort(\"unused\")\n    public func other() -> i32 => 1\n()\n")]
     public void EveryReadLiesInTheReadersReach(string form, string program)
         => Assert.Equal((form, 0), (form, MinimalEmissionTest.Analyze(program).Binding.InferenceReachMisses));
 }

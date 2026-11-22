@@ -274,7 +274,7 @@ public sealed partial class Binding
         this.inferenceValues[(binding, hold)] = new(null, HeldState.Open);
         var entry = this.inferenceBindings[index];
         var ownRun = this.InferenceRun(entry.Batch, this.HoldWith(hold, index, null), index);
-        var frozenRun = this.InferenceRun(entry.Batch, this.HoldWith(hold, -1, entry.Batch), -1);
+        var frozenRun = this.InferenceRun(entry.Batch, this.HoldWith(hold, -1, entry.Batch), index);
         BoundType? found = null;
         var conflict = false;
         if (ownRun.Usable.TryGetValue(binding, out var owned) && frozenRun.Usable.TryGetValue(binding, out var held))
@@ -361,9 +361,10 @@ public sealed partial class Binding
 
     // A collection of `batch`'s evidence under `hold` (a run), once per request: identification, extraction and each hole's usable
     // positions (SPEC 8.5.5 Completion: the source path's premises proven under the run's hold), with every read of another binding of
-    // the component answered under the hold (ResolveAssociated). An own run (`owner`, a binding's entry; C4 ruling 11) collects only that
-    // binding's sources (DiscoverValues); the definition's run (-1) collects every source, and the root's records the problems. Both read
-    // the requirements' Types in the definition's run of the hold with the definition's bindings held (as dev's batch held them).
+    // the component answered under the hold (ResolveAssociated). A held state's two runs (`owner`, its binding's entry; C4 rulings 11 and
+    // 12) collect only that binding's sources (DiscoverValues), as the rule's judgment reads them; the requirements' Types are read in the
+    // run of the hold with the definition's bindings held (as dev's batch held them). The definition's run (-1), made only at publication,
+    // collects every source under the definition's bindings: it records the problems and gives the evidence sources.
     private AssociatedInference InferenceRun(AssociatedInference batch, int hold, int owner)
     {
         if (this.inferenceRuns.TryGetValue((batch, hold, owner), out var run))
@@ -371,7 +372,8 @@ public sealed partial class Binding
             return run;
         }
 
-        var frozen = owner < 0 ? null : this.InferenceRun(batch, this.HoldWith(hold, -1, batch), -1);
+        var held = this.HoldWith(hold, -1, batch);
+        var frozen = held == hold ? null : this.InferenceRun(batch, held, owner);
         run = batch.RentRun();
         run.Hold = hold;
         run.Owner = owner;
