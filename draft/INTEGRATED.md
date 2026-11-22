@@ -1459,6 +1459,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   records V2e as landed in W-310: SPEC 9.1's duplicate check compares only functions of one `SignatureHash` over `FnSig`
   (DECISIONS R7-M77, superseding R7-M37's `SignatureKey` clause: no key type); the group checks left pairwise are PLAN
   G1249. Nothing frozen.
+- Revision 112 (2026-11-22, plan §14; the Front's Q-647 and D-1059, F's C8 rulings 1 and 4, R7-C8 U-D3r's landing): C8's
+  row records U-D3r as landed in W-311: fail-first rows for InputOrigins and SameExceptOmittedOrigins;
+  AddTypeClauseObligations, Mentions and SolveOmittedOrigins stay reading only past their old counts. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
