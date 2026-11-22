@@ -223,6 +223,18 @@ public sealed partial class Binding
                     if (this.InferenceHole(conformance, identity))
                     {
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
+                        if (binding.Problem == InferenceProblem.Limit)
+                        {
+                            // SPEC 8.3.3 Limits, 23.1.1-23.1.2: the component's one Resource record at its least definition by name;
+                            // another definition's failure rests on it (a pending part: its state is read at publication).
+                            if (ReferenceEquals(binding.ProblemDetail, conformance.Use))
+                            {
+                                return Invalid(BindingFailure.AnalysisLimit, [new(ProblemFactKind.Reason, this.FactSite(conformance.Use), (long)AnalysisBound.InferenceStates)]);
+                            }
+
+                            this.AddPendingPrerequisite(conformance.Use, binding.ProblemDetail!);
+                        }
+
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
                         {
                             return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous, []);

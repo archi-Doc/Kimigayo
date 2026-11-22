@@ -67,13 +67,23 @@ public sealed partial class Binding
         => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
 
     // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row;
-    // AnalysisLimit_Kd, OQ1's one shared analysis-limit record (the owner's O-484 (3 ii)), names its bound as its second argument.
+    // AnalysisLimit_Kd, OQ1's one shared analysis-limit record (the owner's O-484 (3 ii)), names its bound as its second argument. A
+    // failure without facts is the premise closure's (RefuseProof's, the identity table's Limit class); a problem names its bound by its
+    // Reason fact (ReportProblem).
     private static (long Limit, string? Bound)? ImplementationLimit(BindingFailure failure)
         => failure switch
         {
             BindingFailure.TypeHeightLimit => (TypeHeightLimit, null),
-            BindingFailure.AnalysisLimit => (PremiseClosureLimit, "rounds of the premises' closure (a request's extension rounds, or one associated-Type binding's uses along a chain of completed bindings)"),
+            BindingFailure.AnalysisLimit => AnalysisLimitOf(AnalysisBound.PremiseClosure),
             _ => null,
+        };
+
+    // Each analysis limit under AnalysisLimit_Kd: its bound and the text naming it.
+    private static (long Limit, string? Bound) AnalysisLimitOf(AnalysisBound bound)
+        => bound switch
+        {
+            AnalysisBound.PremiseClosure => (PremiseClosureLimit, "rounds of the premises' closure (a request's extension rounds, or one associated-Type binding's uses along a chain of completed bindings)"),
+            _ => (InferenceStateLimit, "held states of one component of associated-Type inference"),
         };
 
     // SPEC 4.3.4: a noinit directive's closed reason, with the declaration it initializes.

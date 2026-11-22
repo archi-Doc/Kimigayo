@@ -292,6 +292,14 @@ internal enum BindingFailure : byte
     Internal,
 }
 
+// The analysis limits under BindingFailure.AnalysisLimit (OQ1's one shared record AnalysisLimit_Kd; the owner's O-484 (3 ii); SPEC 8.3.3
+// Limits): each a row of Binding.AnalysisLimitOf, its bound and the text naming it.
+internal enum AnalysisBound : byte
+{
+    PremiseClosure,
+    InferenceStates,
+}
+
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
 public sealed class BindingSymbol
 {

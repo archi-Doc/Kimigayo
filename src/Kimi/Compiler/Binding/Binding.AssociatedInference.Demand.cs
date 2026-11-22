@@ -40,8 +40,15 @@ public sealed partial class Binding
 
     private readonly Dictionary<(AssociatedInference Batch, int Hold, int Owner), AssociatedInference> inferenceRuns = new();
 
+    // OQ2's items limit (BU-29; the owner's O-484 (2 x); SPEC 8.3.3 Limits): a component's request holds at most this many held states.
+    internal const int InferenceStateLimit = 65536;
+
     // The held states the requests evaluated in this compilation (design §6, D2-C3: the cost per state is the time over this count).
     internal int InferenceStates { get; private set; }
+
+    // Whether the open request reached InferenceStateLimit (HeldValue): no state is evaluated after it, and the component is decided at
+    // the limit (DecideAtLimit).
+    private bool inferenceLimited;
 
     // The component whose request is open, or -1.
     private int inferenceRequest = -1;
@@ -247,14 +254,22 @@ public sealed partial class Binding
                 this.HeldValue(this.inferenceBindings[i].Binding, empty);
             }
 
-            for (var i = 0; i < this.inferenceBindings.Count; i++)
+            if (this.inferenceLimited)
             {
-                this.PublishInferred(this.inferenceBindings[i], empty);
+                this.DecideAtLimit(start, end);
+            }
+            else
+            {
+                for (var i = 0; i < this.inferenceBindings.Count; i++)
+                {
+                    this.PublishInferred(this.inferenceBindings[i], empty);
+                }
             }
         }
         finally
         {
             this.inferenceRequest = -1;
+            this.inferenceLimited = false;
             for (var b = start; b < end; b++)
             {
                 var batch = this.inferenceComponents[b];
@@ -281,6 +296,14 @@ public sealed partial class Binding
             // Each step of a request adds its binding to the hold, and a binding that reads v keeps v in its Reach: a state open here was
             // reached by a read outside a Reach (the validator's broken contract).
             return known.State != HeldState.Open ? known : throw new InvalidOperationException("A held state reads itself: a read lies outside its reader's Reach (InternalInvariant; R7-C4).");
+        }
+
+        if (this.inferenceLimited || this.inferenceValues.Count == InferenceStateLimit)
+        {
+            // SPEC 8.3.3 Limits: past OQ2's items no state is evaluated; the open runs unwind with pending answers, which nothing keeps
+            // (the component is decided at the limit, DecideAtLimit).
+            this.inferenceLimited = true;
+            return new(null, HeldState.Pending);
         }
 
         this.inferenceValues[(binding, hold)] = new(null, HeldState.Open);
@@ -565,6 +588,80 @@ public sealed partial class Binding
         {
             throw new InvalidOperationException("A conflict of Value(v | {}) has no two supplying positions (InternalInvariant; R7-C4).");
         }
+    }
+
+    // SPEC 8.3.3 Limits ("the Proven and Error results it gave stand"; design §3.4; the owner's O-484 (2 x)): past OQ2's items the
+    // component is decided without its held states, each binding by its own run under the hold of every binding of the component, where
+    // a source reading the component is pending and supplies nothing. A binding whose Reach holds no other binding of the component is its
+    // value there (a Type, missing or a conflict, as Value(v | {}) gives it); another is a conflict when two supplying sources differ (an
+    // Error that stands), else a Resource failure (InferenceProblem.Limit), whose one record is the component's least definition's by
+    // name (SPEC 8.3.3: "may depend on declaration names"), every other definition's failure resting on it (VerifyConformance). A run
+    // records no problem here; the request's runs are dropped first, so the runs reuse their pooled objects.
+    private void DecideAtLimit(int start, int end)
+    {
+        this.inferenceRuns.Clear();
+        for (var b = start; b < end; b++)
+        {
+            this.inferenceComponents[b].RunsRented = 0;
+        }
+
+        var all = this.inferenceEmptyHold;
+        for (var i = 0; i < this.inferenceBindings.Count; i++)
+        {
+            all = this.HoldAdd(all, this.inferenceBindingIndex[this.inferenceBindings[i].Binding]);
+        }
+
+        BoundConformancePath? least = null;
+        for (var i = 0; i < this.inferenceBindings.Count; i++)
+        {
+            var (binding, batch, path, _) = this.inferenceBindings[i];
+            var index = this.inferenceBindingIndex[binding];
+            var run = this.InferenceRun(batch, all, index);
+            if (run.Usable.TryGetValue(binding, out var usable))
+            {
+                for (var u = 0; u < usable.Count; u++)
+                {
+                    var (source, type) = usable[u];
+                    if (!this.SuppliesInBoth(usable, u, usable))
+                    {
+                        continue;
+                    }
+
+                    if (binding.Inferred is not null && !this.SameCompleteType(binding.Inferred, type))
+                    {
+                        binding.InferenceConflict = true;
+                        binding.Problem = InferenceProblem.Conflict;
+                        binding.ProblemSource = source.Source;
+                        binding.ProblemDetail = null;
+                    }
+
+                    binding.Inferred ??= type;
+                    binding.InferenceSource ??= source.Source;
+                    binding.EvidenceSources.Add(source);
+                }
+            }
+
+            if (!binding.InferenceConflict && this.ReachesAnotherBinding(index))
+            {
+                binding.Inferred = null;
+                binding.InferenceSource = null;
+                binding.EvidenceSources.Clear();
+                binding.Problem = InferenceProblem.Limit;
+                least = least is null || LeastByName(path.RootPath.Type, least.Type) ? path.RootPath : least;
+            }
+        }
+
+        for (var i = 0; i < this.inferenceBindings.Count; i++)
+        {
+            if (this.inferenceBindings[i].Binding is { Problem: InferenceProblem.Limit } limited)
+            {
+                limited.ProblemDetail = least!.Use; // the component's one record (VerifyConformance)
+            }
+        }
+
+        static bool LeastByName(BindingSymbol a, BindingSymbol b)
+            => StringComparer.Ordinal.Compare(a.Name, b.Name) is var order && (order < 0 ||
+                (order == 0 && StringComparer.Ordinal.Compare(a.Declaration.CodeContext.Kotonoha.Name, b.Declaration.CodeContext.Kotonoha.Name) < 0));
     }
 
     // Holds (C4 ruling 13 (3); one owner of the hold form): a hold is a set of the component's canonical entries, stored as its parent plus

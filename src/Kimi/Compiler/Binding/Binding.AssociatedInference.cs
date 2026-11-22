@@ -659,6 +659,9 @@ public sealed partial class Binding
         Conflict,
         Missing,
         Ambiguous,
+
+        // Past OQ2's items (SPEC 8.3.3 Limits; DecideAtLimit): ProblemDetail is the conformance use holding the component's one record.
+        Limit,
     }
 
     // A projection a member's written Type makes on an inferring definition (Discovery): the definition, the associated name, and whether it

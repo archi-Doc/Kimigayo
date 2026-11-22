@@ -595,6 +595,26 @@ public sealed partial class Binding
     private bool ReachCoversComponent(int index)
         => this.inferenceReachOf.Count == 1 || this.ReachOf(this.inferenceValueScc[index]).Count == this.inferenceCanonicalCount;
 
+    // Whether `index`'s Reach holds another binding of the component (design §3.4: its value reads the component; DecideAtLimit).
+    private bool ReachesAnotherBinding(int index)
+    {
+        if (this.inferenceReachOf.Count == 1)
+        {
+            return this.inferenceCanonicalCount > 1;
+        }
+
+        var (start, count) = this.ReachOf(this.inferenceValueScc[index]);
+        for (var i = start; i < start + count; i++)
+        {
+            if (this.inferenceBindingIndex[this.inferenceBindings[this.inferenceReachArena[i]].Binding] != index)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // The binding component `a`'s Reach as sorted entries in the arena, made at its first need.
     private (int Start, int Count) ReachOf(int a)
     {
