@@ -28453,6 +28453,15 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     the token (read only in the wait), writes the invalidation, and closes the handle on any exception after the open.
     `Project.Build` holds it until `NativeToolchain.Build` or `RecordLibrary` returns; `BuildManifest` to its return; `test` builds
     in private directories and takes none. Keyed by the record, so O0, O2 and `--Manifest` of one `.link.json` exclude each other.
+  - Amended (PLAN G1205; the owner's O-491 (d), 2026-11-22, verbatim 「(d) で」; 85bfb54e2): when a build cannot begin, its lock's
+    open failing (not busy) or its first invalidation not written, the limit stays as IMPL 20.3.2 states it (decision 19: the
+    earlier success stays), and the build says so: `Begin` leaves the record as it was and fails with one `IOException` "The build
+    could not begin, so its record keeps its last state: <record>. <the system's message>" (the cause its inner exception; still an
+    output failure, so exit codes and the classification are unchanged; IMPL unchanged). `Directory.CreateDirectory`'s failure
+    stays as it was (no record can exist then). Rejected: (a) the stated limit with no text (a pathless "Access to the path is
+    denied." that does not say the earlier build stays); (b) a second invalidation channel (a try-then-fallback chain; never closes
+    a held record or a write-denied folder; (b2) departs from decisions 2 and 18); (c) `run --no-build` comparing the inputs'
+    fingerprint (it changes the command's meaning for every edit, a decision of its own).
   - Rejected: O-467 (b) (the record alone); generation directories (decision 2); the report after the move; failing at once when
     busy; the lock in `NativeBuild.Run` only (another build's success could overwrite an invalidation); a delete-on-close lock
     (delete-pending reads as access denied); a reader lock in `run --no-build`; the lock in `emit` (not in B5: it needs the paths
