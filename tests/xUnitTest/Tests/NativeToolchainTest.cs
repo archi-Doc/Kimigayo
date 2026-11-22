@@ -9,6 +9,7 @@ using Kimi;
 using Kimi.Build;
 using Kimi.Command;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -764,10 +765,12 @@ public sealed class NativeToolchainTest : IDisposable
 
     // IMPL 21.4, read as the ABI's unwind information (T's ruling): an entry for each function that allocates stack, saves a nonvolatile
     // register or calls, none for a frameless leaf; so the object inspection judges no unwind entry and keeps its other refusals. Each row
-    // builds at O2: forever's loop folds __kimi_start into a frameless leaf, whose executable has no exception table, and it builds (dev
-    // 9ec1e3d02 refused it: "Invalid _fltused definition, unwind information or hidden default library."); its twin that calls builds
-    // with entries; that twin's IR naming a default library (a linker option, the manifest's irSha256 updated), built from its manifest,
-    // is refused before the link. On the installed toolchain.
+    // builds at O2: forever's loop folds __kimi_start into a frameless leaf, its IR without the memory part (the runtime's memcmp,
+    // memcpy, memmove and memset, which every module defines and which save nonvolatile registers at O2; Tatara B7r4) built from its
+    // manifest, so no function of the object has an entry: its executable has no exception table, and it builds (dev 9ec1e3d02 refused
+    // it: "Invalid _fltused definition, unwind information or hidden default library."); its twin that calls builds with entries; that
+    // twin's IR naming a default library (a linker option), built from its manifest, is refused before the link. An edited IR's
+    // manifest takes its irSha256. On the installed toolchain.
     [Theory]
     [InlineData("leaf")]
     [InlineData("call")]
@@ -778,19 +781,32 @@ public sealed class NativeToolchainTest : IDisposable
         var token = TestContext.Current.CancellationToken;
         var project = row == "leaf" ? this.Main("func forever(a: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)\n") : this.Hello("Hello");
         var paths = ArtifactPaths.Create(project);
+        Assert.True(row == "call" ? await project.Build(token) : await project.Generate(token), this.console.Text);
+        if (row != "call")
+        {
+            var ir = File.ReadAllText(paths.Ir);
+            var edited = row == "leaf"
+                ? ir.Replace(LlvmModuleText.MemoryRuntime, string.Empty, StringComparison.Ordinal)
+                : ir + "\n!llvm.linker.options = !{!9000}\n!9000 = !{!\"/DEFAULTLIB:libcmt.lib\"}\n";
+            Assert.NotEqual(ir, edited);
+            File.WriteAllText(paths.Ir, edited);
+            var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+            manifest["irSha256"] = ArtifactFiles.Hash(paths.Ir);
+            File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        }
+
         if (row != "default library")
         {
-            Assert.True(await project.Build(token), this.console.Text);
+            if (row == "leaf")
+            {
+                await NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, token);
+            }
+
             using var executable = new PEReader(File.OpenRead(paths.Executable));
             Assert.Equal(row == "call", executable.PEHeaders.PEHeader!.ExceptionTableDirectory.Size != 0);
             return;
         }
 
-        Assert.True(await project.Generate(token), this.console.Text);
-        File.AppendAllText(paths.Ir, "\n!llvm.linker.options = !{!9000}\n!9000 = !{!\"/DEFAULTLIB:libcmt.lib\"}\n");
-        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
-        manifest["irSha256"] = ArtifactFiles.Hash(paths.Ir);
-        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, token));
         Assert.Equal("Invalid _fltused definition or hidden default library.", error.Message);
         Assert.False(File.Exists(paths.Executable));
