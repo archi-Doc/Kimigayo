@@ -593,3 +593,15 @@ internal group Storage
     /// Returns the stride of `T` (IMPL 21.1.3), the byte distance between adjacent elements.
     #Intrinsic("Stride")
     internal func stride<T>() -> isize
+
+    /// Returns the address of the element at `start` among those from `storage`, `storage + start` (SPEC 5.3).
+    ///
+    /// `P` is a raw pointer Type `raw/E`, whose Origin the result keeps. The compiler writes the address in each
+    /// instance of `R`, without the element's stride where `R`'s start boundary is `Start`, the static zero (SPEC
+    /// 4.6.1, 8.15.3).
+    ///
+    /// - safety: `start >= 0`, and `storage + start` is defined (SPEC 5.3): a nonzero displacement needs live
+    ///   storage, and `storage` and the result lie within its provenance or one past its end.
+    #Lang("ViewStart")
+    internal unsafe func viewStart<P, R>(storage: P, start: isize) -> P
+        R is PositionRange

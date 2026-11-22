@@ -334,6 +334,59 @@ public sealed partial class MirBorrowsTest
                     .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown))}"));
     }
 
+    // DIAGNOSTICS A6 `Store` (Z18b, design review 1's R1): the effect rule's Loan problem via E names E's store. A `match` Subject's
+    // shared Loan on olog (SPEC 22.4.3) bound to v is stored into *p, so writeOlog's write key meets it in E (SPEC 15.6.4) and the store
+    // witnesses (e), also after the match, since E keeps the value carrying the Loan (eEnded); a v used past the call is witnessed by its
+    // use (eHeld); a v dead before the call, never stored, meets nothing (eDead). Fail-before (81a7be6f5): e's and eEnded's Store was the
+    // call itself.
+    [Fact]
+    public void AnEffectOnALoanKeptInEIsWitnessedByItsStore()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public var olog: Option<i32> = .Some(0)
+                public func writeOlog() => olog = .Some(7)
+                public func e(p: uniq/(Option<ref/i32 during q>)) -> i32
+                    match State.olog
+                        .Some(let v)
+                            p@follow = .Some(v)
+                            State.writeOlog()
+                            return 0
+                        .None => return 0
+                public func eEnded(p: uniq/(Option<ref/i32 during q>)) -> i32
+                    match State.olog
+                        .Some(let v) => p@follow = .Some(v)
+                        .None => ()
+                    State.writeOlog()
+                    return 0
+                public func eHeld() -> i32
+                    match State.olog
+                        .Some(let v)
+                            State.writeOlog()
+                            return v@follow
+                        .None => return 0
+                public func eDead() -> i32
+                    var k = 0
+                    match State.olog
+                        .Some(let v) => k = v@follow
+                        .None => ()
+                    State.writeOlog()
+                    return k
+
+            """);
+        var program = c.BuildMir();
+        Assert.Empty(c.Binding.Issues);
+        new Stratum(c.Types).Run(program);
+        Assert.Equal(
+            [
+                "e: State.writeOlog(): Anchor State.olog, Store p@follow = .Some(v), EffectWrite public var olog: Option<i32> = .Some(0)",
+                "eEnded: State.writeOlog(): Anchor State.olog, Store p@follow = .Some(v), EffectWrite public var olog: Option<i32> = .Some(0)",
+                "eHeld: State.writeOlog(): Anchor State.olog, Use v@follow, EffectWrite public var olog: Option<i32> = .Some(0)",
+            ],
+            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => !x.x.IsRecord && x.x.Subject.Module == 0 && LoanCodes.Contains(x.x.Code))
+                .Select(x => $"{Function(c.SyntaxOf(x.x.Subject))}: {Line(c, x.x.Subject)}: " +
+                    string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))));
+    }
+
     // SPEC 15.6.4, 22.4.3 (Z7, Z7b; G224: a `match` Subject borrows a static Shared, so its Loan reaches A5 from source): the row with the
     // initializations of the statics every path passes a Borrow of left out decides a conflict. f1's Subject Borrow of ox dominates the
     // call, so ox is proved and nothing conflicts, as at f1c, whose Loan has ended (the Borrow, not its Loan, proves); f1e's Borrow is on

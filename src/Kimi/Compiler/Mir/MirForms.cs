@@ -91,8 +91,9 @@ internal readonly record struct MirRvalue(
 
     internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
 
-    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, of the raw pointer Type to
-    // its element; its access is a raw borrow of the Place, as `&raw P[i]`'s is.
+    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, or of a raw pointer Place,
+    // whose elements start at its value (SPEC 5.3; Storage.viewStart's form), of the raw pointer Type to its element; its access is a raw
+    // borrow of the Place, as `&raw P[i]`'s is.
     internal static MirRvalue Storage(MirPlace place, BoundType type) => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, Type: type);
 
     // SPEC 4.8.1, 8.15.3 (G597): a keyed Storage, of a key selection whose key's start is open in the body (MirTypes.StartsAtStorage), which
