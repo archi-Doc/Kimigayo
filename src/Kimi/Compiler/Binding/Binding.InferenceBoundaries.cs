@@ -81,7 +81,7 @@ public sealed partial class Binding
 
     // SPEC 10.8: the required structural and length slots that no evidence binds, other than an F that a waiting argument binds (SPEC
     // 10.5).
-    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, int[] mapping, ref SlotSet unsolved)
+    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<int> mapping, ref SlotSet unsolved)
     {
         UnboundSlots(function, arguments, lengths, ref unsolved);
         var waiting = new WaitingSlots(ref unsolved, CallSlotOwner(function));
@@ -125,7 +125,7 @@ public sealed partial class Binding
 
     // An open position stays open only while its parameter Type still holds an unsolved slot; a later literal default may have closed it,
     // and then the position was never fitted, so the candidate stays pending.
-    private bool OpenPositionsHold(in SlotSolution solution, int[] mapping, SlotSet open, SlotSet openSignatures, SlotSet unsolved)
+    private bool OpenPositionsHold(in SlotSolution solution, SlotSet open, SlotSet openSignatures, SlotSet unsolved)
     {
         var call = solution.Call;
         var function = solution.Function;
@@ -136,7 +136,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var pattern = function.Parameters[mapping[i]].Type.BoundType!;
+            var pattern = function.Parameters[solution.Mapping[i]].Type.BoundType!;
             var signature = open.Contains(i) ? pattern : this.ExpectedCallSignature(function, pattern);
             if (signature is null || !MentionsSlots(signature, CallSlotOwner(function), unsolved) ||
                 solution.Type(signature) is not null)
@@ -201,7 +201,7 @@ public sealed partial class Binding
     // the open slot leaves without a Type, rests on the call. Where every unsolved slot stands at a position with a part whose own
     // binding failed (RestSlots), the call rests on such a part instead (SPEC 23.1.2; DECISIONS U1.6h-1): its record is that part's.
     // Otherwise the Reason names the slots that do not rest (`boundary`): a slot at a failed part's position is no independent fact.
-    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, ReadOnlySpan<BoundType?> slots, ReadOnlySpan<BoundLength?> lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType)
+    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, ReadOnlySpan<BoundType?> slots, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType)
     {
         var unsolved = this.RentSlotSet(CallSlotCount(selected));
         this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved);

@@ -15,7 +15,6 @@ public sealed partial class Binding
     // inference-boundary record (FailUnboundSlots).
     private CandidateApplicability TryCandidate(
         SlotSolution solution,
-        int[] mapping,
         CallArgumentMap argumentMap,
         BoundType? expected,
         Span<BoundArgumentOperation> operations,
@@ -40,7 +39,6 @@ public sealed partial class Binding
         {
             var result = this.TryCandidateCore(
                 ref solution,
-                mapping,
                 argumentMap,
                 expected,
                 operations,
@@ -115,7 +113,7 @@ public sealed partial class Binding
     // nothing), and those it formed are inferred again. Called before the expected result, after it (for a binder only the
     // expected result fixes) and after the late pass (for one only a Literal's default fixes); one still open keeps its open parts
     // unbound. An input whose own pattern forms no Type is judged by UnformedPart instead.
-    private bool SettleWaiting(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced)
+    private bool SettleWaiting(ref SlotSolution solution, ref SlotSet waiting, ref SlotSet sourced)
     {
         var call = solution.Call;
         var function = solution.Function;
@@ -125,9 +123,9 @@ public sealed partial class Binding
             var settled = false;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                if (waiting.Contains(i) && !this.HasOpenApplication(function.Parameters[mapping[i]].Type.BoundType!, owner, solution.Frame))
+                if (waiting.Contains(i) && !this.HasOpenApplication(function.Parameters[solution.Mapping[i]].Type.BoundType!, owner, solution.Frame))
                 {
-                    if (!this.InferWaiting(ref solution, mapping, i))
+                    if (!this.InferWaiting(ref solution, i))
                     {
                         return false;
                     }
@@ -148,7 +146,7 @@ public sealed partial class Binding
                 if (waiting.Contains(i) && !sourced.Contains(i))
                 {
                     sourced.Add(i);
-                    if (!this.InferWaiting(ref solution, mapping, i))
+                    if (!this.InferWaiting(ref solution, i))
                     {
                         return false;
                     }
@@ -165,9 +163,9 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8: infers waiting input i; false when it fails, unless it failed through its own pattern's formation (UnformedPart).
-    private bool InferWaiting(ref SlotSolution solution, int[] mapping, int i)
+    private bool InferWaiting(ref SlotSolution solution, int i)
     {
-        var type = solution.Function.Parameters[mapping[i]].Type.BoundType!;
+        var type = solution.Function.Parameters[solution.Mapping[i]].Type.BoundType!;
         var part = solution.Call.ArgumentNodes[i];
         var mark = this.unformedWrites;
         return (solution.Pattern(type) is { } evidencePattern ? solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is null) ||
@@ -312,11 +310,11 @@ public sealed partial class Binding
     // record a whole. So they alternate until a round's wholes fix no slot. The measure is SourcedSlots, the slots with a Type or a
     // selector: neither pass ever unbinds one within a candidate's trial, so the count never decreases, a round that raises it continues
     // and one that does not ends the settle, so the rounds are at most the call's slots. False when the candidate is inapplicable.
-    private bool SettleSources(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced, int wholes, bool late)
+    private bool SettleSources(ref SlotSolution solution, ref SlotSet waiting, ref SlotSet sourced, int wholes, bool late)
     {
         while (true)
         {
-            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
+            if (!this.SettleWaiting(ref solution, ref waiting, ref sourced))
             {
                 return false;
             }
@@ -387,7 +385,6 @@ public sealed partial class Binding
 
     private CandidateApplicability TryCandidateCore(
         ref SlotSolution solution,
-        int[] mapping,
         CallArgumentMap argumentMap,
         BoundType? expected,
         Span<BoundArgumentOperation> operations,
@@ -404,6 +401,7 @@ public sealed partial class Binding
         var frame = solution.Frame;
         var generic = solution.Generic;
         var self = solution.Self;
+        var mapping = solution.Mapping;
         var origins = solution.Origins;
         var inputs = solution.Inputs;
         var declaringType = solution.DeclaringType;
@@ -530,8 +528,8 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.SettleSources(ref solution, mapping, ref waiting, ref sourced, wholes, late: false) ||
-                !solution.InferCallableSignatures(mapping, operations))
+            if (!this.SettleSources(ref solution, ref waiting, ref sourced, wholes, late: false) ||
+                !solution.InferCallableSignatures(operations))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -547,17 +545,17 @@ public sealed partial class Binding
             var expectedStructure = this.InferExpectedResult(ref solution, expected);
 
             // SPEC 10.8: the expected result is the last source of a binder; an input formed only now is inferred now.
-            if (!this.SettleSources(ref solution, mapping, ref waiting, ref sourced, wholes, late: false))
+            if (!this.SettleSources(ref solution, ref waiting, ref sourced, wholes, late: false))
             {
                 return CandidateApplicability.Inapplicable;
             }
 
             if (argumentMap.DefaultsUsed != 0)
             {
-                DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
+                DefaultSlots(function, mapping, receiverSlot, ref defaults);
             }
 
-            if (!this.SolveLate(ref solution, mapping, defaults, ref waiting, ref sourced, ref unboundSlots))
+            if (!this.SolveLate(ref solution, defaults, ref waiting, ref sourced, ref unboundSlots))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -768,7 +766,7 @@ public sealed partial class Binding
             this.UnsolvedSlots(call, function, frame.Types, frame.Lengths, mapping, ref unsolvedSlots);
             var environment = this.EnvironmentJudgment(function, frame, unsolvedSlots);
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
-                (environment is not null || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
+                (environment is not null || !this.OpenPositionsHold(solution, open, openSignatures, unsolvedSlots)))
             {
                 return this.PendingOnEnvironment(environment);
             }
@@ -838,7 +836,7 @@ public sealed partial class Binding
             this.premiseReadsSplit = proof == ConstraintProof.Unknown && (splitDecided || this.SelectsUnformed(frame.Selectors[..CallSlotCount(function)]));
 
             var failure = ClauseFailure(this.TakeTrialClause(call), function.BoundSymbol); // The trial's clause fact, before a later proof's.
-            if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
+            if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(operations))
             {
                 proof = ConstraintProof.Proven;
             }
@@ -877,7 +875,7 @@ public sealed partial class Binding
 
             if (proof == ConstraintProof.Refuted)
             {
-                closureReceiver = this.PermittedClosureReceiver(mapping, solution, waitingCallables);
+                closureReceiver = this.PermittedClosureReceiver(solution, waitingCallables);
             }
 
             // Retain only a condition actually reached after the argument/result checks.
@@ -917,7 +915,7 @@ public sealed partial class Binding
     // solved, after the variables that a waiting part bounds too are opened (J2, SlotSolution.OpenWaited); false when the candidate is
     // inapplicable. Before the walk it publishes the slots that steps 3 and 4 left unbound in `left` (SlotSolution.Left): only they take
     // their literals whole in it (SPEC 4.3.1 Places, 10.8).
-    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet waiting, ref SlotSet sourced, ref SlotSet left)
+    private bool SolveLate(ref SlotSolution solution, in SlotSet defaults, ref SlotSet waiting, ref SlotSet sourced, ref SlotSet left)
     {
         var call = solution.Call;
         var function = solution.Function;
@@ -930,7 +928,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (function.Parameters[mapping[i]].Type.BoundType is not { } parameter)
+            if (function.Parameters[solution.Mapping[i]].Type.BoundType is not { } parameter)
             {
                 continue;
             }
@@ -945,13 +943,13 @@ public sealed partial class Binding
 
         // SPEC 10.8, 10.2.1: the defaults bind what no evidence bound (the owner's O-343 (a), O-347 (a)); an input formed only now is
         // inferred now, and the wholes the defaults or it give are bound (SettleSources).
-        if (!this.SettleSources(ref solution, mapping, ref waiting, ref sourced, wholes, late: true))
+        if (!this.SettleSources(ref solution, ref waiting, ref sourced, wholes, late: true))
         {
             return false;
         }
 
         solution.OpenSlotVariables(); // G1128: before the rows read the slots.
-        solution.Contribute(mapping);
+        solution.Contribute();
         solution.FirstSolve = !solution.FixedConstruction && !solution.ChildSlice.IsEmpty && solution.ChildSlice[1] < 0; // Before the rows are composed.
         this.CollectPositionPremises(ref solution);
         try
@@ -984,7 +982,7 @@ public sealed partial class Binding
                 // G1128: the solve's values replace the slot variables; the root rows read them, then J2 opens the waited slots over them.
                 if (solution.RestoreSlotValues(slotValues.AsSpan(0, slotCount)))
                 {
-                    solution.Contribute(mapping);
+                    solution.Contribute();
                 }
             }
             finally
