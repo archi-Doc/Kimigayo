@@ -29032,7 +29032,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: O-467 (b) (the record alone); generation directories (decision 2); the report after the move; failing at once when
     busy; the lock in `NativeBuild.Run` only (another build's success could overwrite an invalidation); a delete-on-close lock
     (delete-pending reads as access denied); a reader lock in `run --no-build`; the lock in `emit` (not in B5: it needs the paths
-    before the check or a nested acquisition; the race is PLAN G1202).
+    before the check or a nested acquisition; the race is closed by T-M17's hold).
 - **T-M8 The compiler's supplies** (Tatara, 2026-11-21; the plan's unit B6a, Q-617, D-1004; Major; the owner's decision 20 (O-469
   (a), (a), (a)): the reserved libraries are supplied by the compiler, and a program cannot supply them; design review C-434;
   implementation review C-436)
@@ -29403,3 +29403,48 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: a root parameter or fallback in `Get-KimiKernel32` (T's N6-1: a second copy of one supply); setup deleting an
     existing root's `windows_x64` (older bases on the machine keep working, design fact 12); keeping verify's definition step for a
     file no product reads (N6).
+- **T-M17 A native build's files are its own** (Tatara, 2026-11-22; PLAN G1202 and G1203, Q-659, D-1086; Major; design
+  `artifacts\handoff\tatara\units\G1202\design.md` Revision 1; design reviews C-450 (REVISE, then ACCEPT); the Middle's implementation
+  review C-460, ACCEPT, and the Back's read of the script hunk; T's rulings Q1 (a), Q2 (c5), Q3 (a); amends T-M7). IMPL 20.3.2.
+  - **The hold (G1202):** `NativeBuild.Run` checks the pair's names (`CheckPair`: the manifest's `irFile`, resolved beside it, is
+    `paths.Ir`; the optimization), then opens the IR once with read sharing only (`File.OpenRead`), hashes it from that handle
+    (`ArtifactFiles.Hash(Stream)`) and compares the hash with `irSha256` ("IR/manifest SHA-256 mismatch."), and keeps the handle to
+    the build's end (`using` over `Run`). The hold's start is structural: the hash is read from the held handle, so no write falls
+    between the hash and the hold. Its extent is the build's (one scope; releasing after `Compile` needs a second disposal point for
+    at most the link). Tatara's LLVM opens the path for reading, which the hold admits; every writer is refused while it is held:
+    `emit`'s replacement (`Replace` retries about 1 s, then `ArtifactPublicationFailed_Kd` with the system's message, the pair
+    unchanged), an in-place write, a delete or a rename. The platform check follows the hash check, so a mismatched pair fails as
+    itself on every platform (dev's order: the hash's failure before the platform's).
+  - **One owner of an output's names (G1203):** `ArtifactPaths.Create(ir, optimization)` names an output's files from its IR:
+    manifest `Name.link.json`, record `RecordOf(ir)` = `Name.link.build.json` (Begin keeps its lock beside it), stem
+    `Name.O0`/`Name.O2`. `Create(Project)`, `TestCommand`'s private builds, `BuildManifest` and `Project.Emit`'s message read it;
+    `.link.json` has one spelling in the compiler. For a project and for `test` the four strings equal the earlier construction's,
+    so their paths and bytes are unchanged.
+  - **`build --Manifest` takes the pair as `emit` writes it:** `ArtifactPaths.IrOf` gives the `Name.ll` beside `Name.link.json`
+    (the suffix compared ignoring case); a manifest of another name fails before any write ("A link manifest is named
+    Name.link.json, as emit writes it."). The build begins `RecordOf(ir)` (the file `ChangeExtension(path, ".build.json")` named
+    before), reads and validates the manifest and builds `Create(ir, optimization)`; it no longer reads `irFile` for a path.
+    `CheckPair`'s existing path check now rejects a manifest naming any other IR ("IR/manifest path mismatch: a link manifest
+    Name.link.json names the IR Name.ll beside it."), before any IR is opened, so no IR is one of its own build's files
+    (`Y.link.json` naming `Y.O2.ll`) and one IR has one manifest and one output under one lock (`Alt.link.json` naming `Hello.ll`).
+    "Before any write," precisely: a manifest naming another IR fails after `Begin`, so it writes its own record's invalidation and
+    its lock and nothing else (IMPL 20.3.2: "A build first invalidates"); only a manifest of another name fails before `Begin`.
+  - **The path check's case rule (Q3, C-450 P1):** the comparison is `StringComparison.OrdinalIgnoreCase`, which approximates the
+    default Windows rule, the only host the native build runs on; a manifest given in another case (`hello.link.json`) or naming
+    its IR in another case (`OutputPath` `Hello.LL`) builds into the same files. The rule reaches acceptance only: the build opens
+    `paths.Ir`, the name-derived path, never `irFile`, and the held handle's hash decides the bytes, so a case-sensitive directory
+    (`fsutil file setCaseSensitiveInfo`) stays safe: a different `hello.ll` fails the hash check, and equal bytes build. The given
+    case reaches the object's `.file`, the O2 `.ll`'s module name and the record's `executable` member, as a source build's names
+    follow the given project path; nothing checks them.
+  - **Residuals (no wrong code):** an `emit` that replaces the IR after a build read the manifest and before it opened the IR fails
+    the build's hash check (a spurious but safe failure; only a lock shared with `emit` removes it). A build's outputs are its
+    record's names, and one of them can be another output's IR (`Y.O2.ll` is `OutputPath` `Y.ll`'s optimized IR at O2 and
+    `OutputPath` `Y.O2.ll`'s IR, under two records): safe, since while the second output's build holds it the first's optimize
+    cannot open it for writing and fails, and otherwise the second output's next build fails its hash check.
+  - Rejected: a private copy of the IR (its path reaches the O2 `.ll` and the object; a second redaction root; one more write and
+    read per build); the IR's bytes to Tatara (a `tatara.h` change and a new ABI); one lock over the pair and the outputs with
+    `emit` included (a mode parameter or a per-process table of held locks, `Begin` split, a departure from R5-M181, and only
+    Kimi's `emit` covered); a second lock over the stem; private intermediates (two builds still publish into one output under two
+    locks); one lock per output directory; the record and the lock named from the IR (a manifest that fails to read would
+    invalidate no record); the stem named from the manifest with any IR accepted (Revision 0: a manifest's IR can be one of its own
+    build's files, C-450 B1, and the second derivation stays, B2).
