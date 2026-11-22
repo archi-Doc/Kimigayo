@@ -22352,6 +22352,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by T-M27 (B7r2): `VirtualAlloc` and `VirtualFree` are runtime declarations, so the kernel32 supply's symbols are the
     runtime declarations' symbols, then `VirtualProtect`, `QueryPerformanceCounter` and `QueryPerformanceFrequency`, each once
     (`VirtualFree` now precedes `VirtualProtect`; no reader reads the order).
+  - Amended by T-M28 (B7r3): the runtime declarations and the kernel32 set lose `GetProcessHeap`, `HeapAlloc` and `HeapFree` (11
+    symbols).
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -30295,3 +30297,27 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Class:** a behaviour change, measured in W3 (RP8 and the memory gate).
   - Rejected: Revision 0's 16-byte classes (above); location parameters or a null-heap check (the reason is gone); the allocator in
     Kimigayo (above); a second copy of the adapter's heap fakes (N11: the fakes move in the commit that first calls `VirtualAlloc`).
+- **T-M28 kernel32's set loses the process heap's three** (Tatara, 2026-11-22; the plan's unit B7r3, decision 23, Q-697, D-1146;
+  Major; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.3 §3.4, §7.1-§7.3; implementation review C-490, the
+  Middle's ACCEPT WITH CONDITIONS with C1 met in 27b19808a, the Back's ACCEPT, the Front's read of the Binding test hunks). Lands in
+  window W3 with T-M26 and T-M27 (all or none). Amends R5-M174's kernel32 set.
+  - **The catalog:** after B7r2 no runtime routine calls `GetProcessHeap`, `HeapAlloc` or `HeapFree`, so the windows-x64 layer
+    template's three declarations and their `TargetProfile.Windows.RuntimeDeclarations` rows go, and the catalog follows:
+    `kernel32.def` loses the three lines (11 symbols left), the pinned `llvm-dlltool` regenerates the committed `kernel32.lib` (old
+    SHA-256 `7ff5239191780386a2dabcddd3703d04d526adfdc6458b8cc6493589fc5374c3`, new
+    `1659d7ee924948faee51de6931404d58d6087ed03f499ff172134169fe829441`), and `profile.json` pins the new library and definition hashes
+    (definition `0494d8c5...f197` -> `b4057369c7072b3705334019a1f7815ae7fb1f6da609dd7eda8d43992b18b71d`; T-M8's rule: the binary and
+    its hashes in one commit).
+  - **Change W3a (an acceptance change through Core's data, no Binding code):** an import of any of the three, accepted with the
+    runtime's signature on the base, is `UnavailableReservedImport_Kd` at native resolution, as any kernel32 function outside the set
+    (IMPL 20.4, unchanged).
+  - **W3a's other side (IMPL 21.2; C-490 C1):** with no runtime declaration carrying the three, another library's import of them no
+    longer conflicts: `#LibraryImport("codec", "HeapAlloc")` with a `codec` requirement goes from `ConflictingRuntimeSymbol_Kd` to
+    accepted (pinned in `RuntimeDeclarationsAreSharedOnlyByAgreeingImports`), a kernel32 import of them under another signature from
+    `ConflictingRuntimeSymbol_Kd` to `UnavailableReservedImport_Kd`, and the `ConflictingRuntimeSymbol_Kd` beside
+    `MissingNativeRequirement_Kd` (a `codec` import without a requirement) or `UnavailableReservedImport_Kd` (`kimi_backend`) leaves.
+  - **Products:** the executables and objects are byte-equal (no module references the three after B7r2; W3's comparison: every
+    `docs/examples` project and milestone at O0 and O2, 142 executables); every module's IR text loses the three declarations, so each
+    `.ll`, `irSha256` and the records' kernel32 identity (`definitionSha256`, `sha256`) change.
+  - **The audit:** the native allocation audit's whitelist loses the three; B7r1's process-heap row becomes a declaration row there
+    (a module declaring `HeapAlloc` fails before any run).
