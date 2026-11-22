@@ -917,21 +917,44 @@ public sealed partial class TyCtxtTest
     }
 
     // SPEC 5.2.1 condition 3, 5.4, 5.7 Typed paths (G147 ruling 66, Z6's R6.1): an address taken past a shared path marks the atoms its
-    // Type states SharedAddress. x01's `c@follow@follow@raw` reaches w through c's shared borrow of r and states r's region (the last
-    // borrow it is reached through, a `var` region read as itself); its direct twin `r@follow@raw` reaches w through r's exclusive borrow
-    // alone and marks nothing. The address forms no entry (SPEC 5.4). Labels from SPEC: x01 V (condition 3: the address has no write
-    // authority, so put stores nothing in w); the twin I (5.7 Calls, 15.6.4: put may store z's borrow in w through r's exclusive path,
-    // so `z = 5` conflicts with `inspect(w)`).
+    // Type states SharedAddress, where its path is reached through shared or passes a conformance selection (SPEC 5.4: `x[k]@raw`
+    // selects `index` and has its shared authority; 4.7.1; G147 ruling 72). x01's `c@follow@follow@raw` reaches w through c's shared
+    // borrow of r and states r's region (the last borrow it is reached through, a `var` region read as itself); t7's `c.0@follow@raw`
+    // passes the shared c before a member and a follow. u01's `t[0]@raw`, u01x (a later `t@uniq`), u01r's `r[0]@raw` through an
+    // exclusive receiver, u02's Array element `ra[0]@raw`, s01's `s.items[0]@raw` (s: `uniq/G<ref/i32>`) and d01's Dictionary element
+    // `rd[1]@raw` pass a conformance selection whatever their receiver's path grants (u01's t row also lists the exclusive receiver
+    // borrow of the user index's indexUniq call, which Binding forms with index's). The twins take SPEC 5.4's writing pointer,
+    // `u@follow@raw` from an exclusive path (`r`, or an `indexUniq` element `u = ...[0]@uniq`), and mark nothing. The address forms no
+    // entry (SPEC 5.4).
+    // Labels from SPEC (`G147\z6f-b\labels.txt`, before any run): the marked rows V (condition 3: the address has no write authority,
+    // so put stores nothing through it), the twins I (5.7 Calls, 15.6.4: put may store z's borrow through the exclusive path, so
+    // `z = 5` conflicts with the inspected Loan).
     [Theory]
-    [InlineData("c@follow@follow@raw", true)]
-    [InlineData("r@follow@raw", false)]
-    public void AnAddressPastASharedPathMarksItsAtoms(string address, bool shared)
+    [InlineData("var w: ref/i32 = x@ref|var r = w@uniq|let c = r@ref", "c@follow@follow@raw", "w", "", "var r = w@uniq Inference -1:  SharedAddress")]
+    [InlineData("var w: ref/i32 = x@ref|var r = w@uniq|let c = r@ref", "r@follow@raw", "w", "", "")]
+    [InlineData("var w: ref/i32 = x@ref|var t = (w@uniq, 0)|let c = t@ref", "c.0@follow@raw", "w", "", "var t = (w@uniq, 0) Inference -1:  SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)", "t[0]@raw", "t", "", "var t = Two.init(x@ref) Projection 0: Two<ref/i32> X SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)", "t[0]@raw", "t", "|let k = t@uniq|inspect(k)", "var t = Two.init(x@ref) Projection 0: Two<ref/i32> X SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)|let u = t[0]@uniq", "u@follow@raw", "t", "", "")]
+    [InlineData("var t = Two.init(x@ref)|var r = t@uniq", "r[0]@raw", "t", "", "var r = t@uniq Inference -1:  SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)|var r = t@uniq|let u = r[0]@uniq", "u@follow@raw", "t", "", "")]
+    [InlineData("var arr: Array<ref/i32> = [x@ref]|var ra = arr@uniq", "ra[0]@raw", "arr", "", "var ra = arr@uniq Inference -1:  SharedAddress")]
+    [InlineData("var arr: Array<ref/i32> = [x@ref]|var ra = arr@uniq|let u = ra[0]@uniq", "u@follow@raw", "arr", "", "")]
+    [InlineData("var st = G.init([x@ref])|var s = st@uniq", "s.items[0]@raw", "st", "", "var s = st@uniq Inference -1:  SharedAddress")]
+    [InlineData("var st = G.init([x@ref])|var s = st@uniq|let u = s.items[0]@uniq", "u@follow@raw", "st", "", "")]
+    [InlineData("var d: Dictionary<i64, ref/i32> = [:]|_ = d.tryInsert(1, x@ref)|var rd = d@uniq", "rd[1]@raw", "d", "", "var rd = d@uniq Inference -1:  SharedAddress")]
+    public void AnAddressPastASharedPathMarksItsAtoms(string setup, string address, string inspected, string tail, string marked)
     {
         var c = MinimalEmissionTest.Analyze(BorrowsPrelude + "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
-            "    public func put<U>(self: uniq/Self, v: U) => ()\nfunc x01()\n    var x = 1\n    var z = 3\n    var w: ref/i32 = x@ref\n" +
-            $"    var r = w@uniq\n    let c = r@ref\n    var h = Wrap.init({address}@raw/u8)\n    h.put(z@ref)\n    z = 5\n    inspect(w)\n");
-        string[] marked = shared ? ["var r = w@uniq Inference -1:  SharedAddress"] : [];
-        Assert.Equal(marked, BorrowRows(c).Where(static x => x.EndsWith(nameof(Binding.LimitMarks.SharedAddress), StringComparison.Ordinal)));
+            "    public func put<U>(self: uniq/Self, v: U) => ()\nstruct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n" +
+            "    var first: T\n    public init(first: T) => self.first = first@move\n" +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\nstruct G<T>\n" +
+            "    public var items: Array<T>\n    public init(items: Array<T>) => self.items = items@move\nfunc p()\n    var x = 1\n    var z = 3\n" +
+            $"    {setup.Replace("|", "\n    ", StringComparison.Ordinal)}\n    var h = Wrap.init({address}@raw/u8)\n    h.put(z@ref)\n    z = 5\n" +
+            $"    inspect({inspected}){tail.Replace("|", "\n    ", StringComparison.Ordinal)}\n");
+        string[] expected = marked.Length == 0 ? [] : marked.Split('|');
+        Assert.Equal(expected, BorrowRows(c).Where(static x => x.EndsWith(nameof(Binding.LimitMarks.SharedAddress), StringComparison.Ordinal)));
     }
 
     // SPEC 8.6.1, 8.2.3, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct

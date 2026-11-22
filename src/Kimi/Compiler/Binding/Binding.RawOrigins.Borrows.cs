@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 // - Responsibility: for each Projection or Anchor atom, the Borrows Binding commits with it as their outer Origin (each such operand of a
 //   meet), each as RawMember(-1, referent, exclusive) by BorrowReferent of its Type, equal referents joining their modes, in commit order;
 //   and for any atom, its limit marks (LimitMarks, one value per named limit): Claimed where a published claim's Type states it (5.7 Fits
-//   and claims), SharedAddress where a published address taken past a shared path does (5.2.1 condition 3).
+//   and claims), SharedAddress where a published address whose authority is shared does (5.2.1 condition 3, 5.4).
 // - Inputs: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each formed once by its writer, outside
 //   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36, 37): the node's own facts at BindNode's end
 //   (OwnBorrows: its written Borrow, Slice view or object view, its receiver operation, its calls' operations);
@@ -20,11 +20,12 @@ namespace Kimi.Compiler;
 //   awaiting argument), an enum construction's payload operations by CompletePayloads (each at its write, before the payloads after
 //   it), a Closure's written capture entries by BindConcreteClosure (before its body); a recorded adaptation by the adaptations
 //   column's setter (AdaptationBorrow); and the conversions the HIR publisher publishes, whose limit marks the publisher forms
-//   (MarkLimits: a claim's Origin, ClaimedOrigin; an address's, where its Place's path grants shared access only: ReachedThroughShared,
-//   PlaceAuthority's one path rule, SPEC 15.6.2's shared layer anywhere on the path, a Deref through a `ref` or `objref` borrow or a
-//   pair layer in a shared case and a Slice element among them).
-// - Outputs: Borrows(atom, members, out marks), the atom's entries and limit marks; AtomMarks(atom), whether it carries any limit mark
-//   (Z6's one Marks reader reads it); and RetentionState, the key field of TyCtxt's retention memo: the region and borrow versions until the pass's
+//   (MarkLimits: a claim's Origin, ClaimedOrigin; an address's, where its Place's path, folded once by PlaceAuthority's PathFold, is
+//   reached through shared, SPEC 15.6.2's shared layer anywhere on the path (a Deref through a `ref` or `objref` borrow, a pair layer in
+//   a shared case and a Slice element among them), or passes a conformance selection, SPEC 5.4 and 4.7.1 (a user index, an Array or
+//   Dictionary element: PathPrefix.Conformance)).
+// - Outputs: Borrows(atom, members), the atom's entries; AtomMarks(atom), its limit marks (None without a row), the one row read of Z6's
+//   one Marks reader; and RetentionState, the key field of TyCtxt's retention memo: the region and borrow versions until the pass's
 //   Check has run, Complete afterwards.
 // - Invariants: an atom's forming Borrow is formed before any Type stating the atom can be read (a typed path, a Field read or a
 //   substitution states the atom only from a Type that carries it), except where the fact is not written yet while a part that states
@@ -36,13 +37,21 @@ namespace Kimi.Compiler;
 //   a recorded adaptation whose operation the publisher's Adjust replaces (ChildAdjust) stays formed, and the census does not see it
 //   (both its sides read the recorded column there). The rows only grow within a
 //   pass, each new entry or changed mode moving borrowVersion; the marks are the publisher's own, cleared at its start
-//   (BeginBorrowPublication) and formed only by it, so they move no version (no versioned reader reads them); a library body's rows
+//   (BeginBorrowPublication) and formed only by it, and move no version: the order keeps them safe without one. Every reader of a
+//   mark runs after the publication that formed it, under RetentionComplete: A5's StoredMembers (TyCtxt.RawMembers from
+//   MirTypes.Holding, keyed by its Holdings read) and retention's binder reading (TyCtxt's retention memo, keyed by RetentionState,
+//   reached from MirBorrows.CallRows, .Destructions, .Reach, .Storing and MirValidator.Calls); a Final pass publishes inside Check and
+//   any other at PublishHir, and a re-check (CheckBound) binds nothing, so it forms the same marks again. Binding's one retention read
+//   (ReceiverIndependence) runs while the pass's bodies bind, before its publication forms any mark of its part (a reset pass's
+//   rows have none; the library part's marks, formed by the library pass, never change after it); a library body's rows
 //   are the layer's part, written only by the library pass, an identical re-record by another pass writing nothing; at the publication
 //   the census (CheckBorrows) compares the rows with the borrows the HIR publisher itself writes (Published*, G147 ruling 28): misses
 //   always, extras and modes exactly where the publication met no failed node, a difference the internal-invariant form; it compares
 //   no mark.
 // - Rule (SPEC 5.4): an address `P@raw` is no Borrow ("checks like an immediately ending @ref ... and leaves no Loan"): no writer forms
-//   a borrow fact of it, and its shared path is the SharedAddress mark alone.
+//   a borrow fact of it, and its shared authority (its path reached through shared, or passing a conformance selection) is the
+//   SharedAddress mark alone. No form is left unmarked after G147 ruling 72; the mark only over-reads a pair layer by its weakest
+//   admitted case (its `uniq` case marked: dev's limit, not a hole). Z6's route (a) removes the mark, and with it that over-read.
 // - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry, no
 //   second list of borrow facts; no mark outside the publication, no second flag beside LimitMarks (a new named limit is a value of it,
 //   with its removal condition); RegionVersion is not moved; no reader but Z6's (the entries by the binder reading; the marks by A5's
@@ -81,9 +90,10 @@ public sealed partial class Binding
         // Removal: per-layer address provenance in A5.
         Claimed = 1,
 
-        // SPEC 5.2.1 condition 3: a published address `P@raw` whose Place's path grants shared access only states the atom; it has no
-        // write authority, which its members do not show, since an address forms no borrow fact (SPEC 5.4; Z6's R6.1). Removal: Z6's
-        // route (a), A5's W reading condition 3 per address (a later stream Z row).
+        // SPEC 5.2.1 condition 3: a published address `P@raw` whose authority is shared states the atom: P's path is reached through
+        // shared, or passes a conformance selection, through which the address selects `index` (SPEC 5.4, 4.7.1). It has no write
+        // authority, which its members do not show, since an address forms no borrow fact (SPEC 5.4; Z6's R6.1; G147 ruling 72).
+        // Removal: Z6's route (a), A5's W reading condition 3 per address (O-498 Q2 (b)'s removal condition, a later stream Z row).
         SharedAddress = 2,
     }
 
@@ -105,12 +115,11 @@ public sealed partial class Binding
         => node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType: { } target } conversion &&
             target.IsPointer && target.RawOrigin is { } stated && KotoHelper.IsUnsafeContext(conversion) ? stated : null;
 
-    // The Borrows of `atom`, appended to `members`, and its limit marks; false where the atom has no entry (its reader's limit, never a
-    // default).
-    internal bool Borrows(BoundOrigin atom, List<RawMember> members, out LimitMarks marks)
+    // The Borrows of `atom`, appended to `members`; false where the atom has no entry (its reader's limit, never a default). It reads no
+    // mark (R6.2): the marks are AtomMarks'.
+    internal bool Borrows(BoundOrigin atom, List<RawMember> members)
     {
         _ = PassPart.Find(PassPart.Parts(this.Library.Layer.Part.Borrows, this.borrows), atom, out var row);
-        marks = row?.Marks ?? LimitMarks.None;
         if (row is not { Count: > 0 })
         {
             return false;
@@ -124,12 +133,12 @@ public sealed partial class Binding
         return true;
     }
 
-    // Whether the atom carries a limit mark (any LimitMarks value): the row read of Z6's one Marks reader (R6.2), which reads each
-    // operand of a meet; false for an atom without a row.
-    internal bool AtomMarks(BoundOrigin atom)
+    // The atom's limit marks, None for an atom without a row: the one row read of Z6's one Marks reader (R6.2), which joins a meet's
+    // operands' marks with `|` and reads each named limit's answer from the joined value.
+    internal LimitMarks AtomMarks(BoundOrigin atom)
     {
         _ = PassPart.Find(PassPart.Parts(this.Library.Layer.Part.Borrows, this.borrows), atom, out var row);
-        return row is { Marks: not LimitMarks.None };
+        return row?.Marks ?? LimitMarks.None;
     }
 
     // An atom as the validator's message names it: its kind, slot and binder's source location.
@@ -400,13 +409,14 @@ public sealed partial class Binding
     }
 
     // A published conversion's limit mark, one row per named limit (LimitMarks): Claimed, a claim's Origin (ClaimedOrigin);
-    // SharedAddress, an address's whose Place's path grants shared access only (ReachedThroughShared). Its atoms, as its Type states
+    // SharedAddress, an address's whose authority is shared: its Place's path, folded once (PathFold), is reached through shared (SPEC
+    // 15.6.2) or passes a conformance selection, through which the address selects `index` (SPEC 5.4). Its atoms, as its Type states
     // them (each operand of a meet), are marked in the running part.
     private void MarkLimits(ConversionKoto conversion)
     {
         var (stated, mark) = ClaimedOrigin(conversion) is { } claimed ? (claimed, LimitMarks.Claimed)
             : conversion is { ConversionBinding: ConversionBinding.Address, BoundType.RawOrigin: { } address } &&
-                this.ReachedThroughShared(conversion.Left) ? (address, LimitMarks.SharedAddress)
+                this.PathFold(conversion.Left, []) is { Access: SemanticsKind.Ref } or { Conformance: true } ? (address, LimitMarks.SharedAddress)
             : ((BoundOrigin?)null, LimitMarks.None);
         for (var i = 0; stated is not null && i < (stated.Kind == OriginKind.Intersection ? stated.Operands.Count : 1); i++)
         {
