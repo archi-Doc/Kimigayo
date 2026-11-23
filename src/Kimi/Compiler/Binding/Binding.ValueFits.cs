@@ -33,7 +33,7 @@ public sealed partial class Binding
     // FitOuterOrigins' pointer arm through its walk's raw-fit sink outside Callable comparisons, and by a call's substituted clause that
     // relates an input raw layer's Origin to another (JudgeCallClauses: the callee's fit its signature summarizes), both through the one
     // entry rule (AddRawFit: outside candidate trials and collected fits, both ends stated and different); an entry may repeat.
-    // Read only by the publisher, once, for LimitMarks.FittedIntoHolder (BeginBorrowPublication); emptied at the pass's start
+    // Read only by the publisher, for LimitMarks.FittedIntoHolder and FittedExclusive (BeginBorrowPublication); emptied at the pass's start
     // (ResetPass), reused (warm 0 B). No HIR column. Removal: Z6's route (a), the fit's source Origins published and read.
     private readonly List<RawFit> rawFits = new();
 

@@ -1792,6 +1792,13 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   Linux row) and B7b2b (the import side), which follows B7b6 because before B7b6 puts the Kimi library's kernel32 imports under
   `#if windows` every Linux module would require `kernel32`. The owner's O-504 (Q1 (a), Q2 (i)): each call writes its own import's
   extension; B7b2a and B7b6 proceed while B7b2b's reading was open. No other decision changes. No SPEC or IMPL text. Nothing frozen.
+- Revision 17 (2026-11-23, T's D-1171; T-335's measurements): §8's later candidate 1 (direct O2 generation, LC1) is closed by its
+  measurement M1 (`artifacts/benchmarks/lc1-m1-20261123-1424`): the O2 text's second parse and verification cost 0.58% of
+  Milestone30's O2 build, 0.02% of Large's and 1.55% serial (about 0.26% of wall time at `-Parallel 6`) of the native check, all
+  below the 1% gate in wall time, so LC1 stops. Candidate 3 (link time by part, LC3) stays open on M-L
+  (`artifacts/benchmarks/lc3-ml-20261123-1427`; the whole link is 54% of Hello O0's warm build): S1 proceeds to a design, W2
+  (`/threads:1`) waits for a measured `kimi.exe` row, and read, resolve and the hash/record/move parts stop. No other decision
+  changes. No SPEC or IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 

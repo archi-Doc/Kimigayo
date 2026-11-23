@@ -26,9 +26,10 @@ internal enum MirWrites : byte
     /// DECISIONS R4-M177).</summary>
     Through,
 
-    /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not publish (a Type
-    /// argument supplies it, or the member walk is incomplete) leaves it undecided: a Call whose W reaches the value is the located
-    /// Unsupported_Kd at the call (DECISIONS R4-M147).</summary>
+    /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not answer
+    /// (<see cref="TyCtxt.RawMembers"/>'s named limits: its Origin's limit marks at the layer's arm, a raw layer's region slot, an Origin
+    /// kind without a row, an incomplete member walk) leaves it undecided: a Call whose W reaches the
+    /// value is the located Unsupported_Kd at the call (DECISIONS R4-M147; PLAN G148 (1), R7 plan Z6).</summary>
     Limit,
 
     /// <summary>No part gives the write fact or the Limit, and a part past the walk's bound, where the write fact would be read, leaves it
@@ -305,17 +306,19 @@ internal static partial class MirTypes
             (_, HoldContent.AnyOf) => (entry.Flags & HoldFlags.ExclusiveOrigin) != 0 ? new(false, MirOutcome.Decided) : default,
             (HoldStep.Shared, _) => default,
             (HoldStep.Own, _) => this.Holds(entry.Part, null, null, Own, depth),
-            (_, HoldContent.Members) when holder is not null
-                => this.Members(layer, written, holder, depth).Join(this.Holds(entry.Part, null, null, Exclusive, depth)),
+            (_, HoldContent.Members) when holder is not null => this.Members(entry, layer, written, holder, depth),
             _ => this.Holds(entry.Part, null, null, Exclusive, depth),
         };
 
-        // What a stored layer's members admit past it (TyCtxt.RawMembers): each exclusive member's referent past an exclusive reference, or
-        // the Limit where the members are unpublished (an incomplete walk, a layer a Type argument supplies).
-        private Facts Members(BoundType layer, BoundType? written, BoundType holder, int depth)
+        // What a stored layer's members admit past it (TyCtxt.RawMembers; SPEC 5.7 Calls, PLAN G148 (1), R7 plan Z6): each exclusive
+        // member's referent past an exclusive reference, and no pointee, which is no second admission past a layer stating an Origin; where
+        // the members are unanswered (Binding's named limits), the Limit, with the pointee past an exclusive reference, whose write fact
+        // still decides.
+        private Facts Members(in Hold entry, BoundType layer, BoundType? written, BoundType holder, int depth)
         {
             var first = members.Count;
-            var found = types.RawMembers(layer, written, holder, members) ? default : new Facts(false, MirOutcome.Limit);
+            var found = types.RawMembers(layer, written, holder, members) ? default
+                : new Facts(false, MirOutcome.Limit).Join(this.Holds(entry.Part, null, null, Exclusive, depth));
             for (var i = first; !found.Writes.IsDecided && i < members.Count; i++)
             {
                 found = found.Join(members[i].Exclusive ? this.Holds(members[i].Referent, null, null, Exclusive, depth) : default);
