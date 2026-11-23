@@ -715,9 +715,13 @@ internal struct PlanRow
     /// R4-M109), written at each call input of each pass; a by-case value call's Shared acquisition of its callee beside the Exclusive one
     /// the column keeps (<see cref="CallPlan.SharedReceiver"/>; SPEC 7.7.3, PLAN G13), the same call's two takes of one input; or a Place in
     /// Discard Context's bare acquisition (SPEC 14.2.2), written at each such
-    /// Place of each pass, where the column's unset value is the container discarding its item. Default otherwise: a publish clears every
-    /// row's first, so it is always that publish's, a read of a take's claim (Binding.Claimed) included. A node three or more
-    /// calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
+    /// Place of each pass, where the column's unset value is the container discarding its item. At a call input it is never an operand
+    /// take before the node's first call: each record of the uses resets its preceding input at a call (<c>Binding.EarlierAdjust</c>). The
+    /// reset is unobservable today (the implementation review's mutant M5): each operand that a node's first call also takes as its first
+    /// input (an index's key, an object creation's operand, a <c>for</c>'s Subject) is taken by the same Adjust both times. It keeps the row
+    /// a call's take, as <c>Binding.Claimed</c>, <c>UseOf</c> and the MIR builder's <c>Taken</c> read it, without resting on that.
+    /// Default otherwise: a publish clears every row's first, so it is always that publish's, a read of a take's claim (Binding.Claimed)
+    /// included. A node three or more calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
     internal HirAdjust Adjust;
 
     /// <summary>The Type of the value a container or an explicit discard discards (SPEC 14.2.2, 14.2.4; DECISIONS BU-98), at the Place
