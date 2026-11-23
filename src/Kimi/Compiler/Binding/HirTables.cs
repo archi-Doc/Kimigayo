@@ -351,7 +351,6 @@ internal struct NodeColumns
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
     internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
     internal StampedColumn<Binding.CallInferenceFailure, Binding.PassCounter> CallInferenceFailures; // Pass: the selection a construction's or shape contract's later check rejected (Binding.ConstructorValidation.cs).
-    internal StampedColumn<(bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other), Binding.PassCounter> CallableSelectionFailures; // Pass: a failed Callable value call's candidates and shape position (Binding.CallableSelection.cs).
     internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
     internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
@@ -428,7 +427,6 @@ internal struct NodeColumns
         this.InferredArrayLengths.Grow(length);
         this.ArrayInferenceShapes.Grow(length);
         this.CallInferenceFailures.Grow(length);
-        this.CallableSelectionFailures.Grow(length);
         this.BaseCallFailures.Grow(length);
         this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
@@ -482,7 +480,6 @@ internal struct NodeColumns
         this.InferredArrayLengths.Freeze(binding);
         this.ArrayInferenceShapes.Freeze(binding);
         this.CallInferenceFailures.Freeze(binding);
-        this.CallableSelectionFailures.Freeze(binding);
         this.BaseCallFailures.Freeze(binding);
         this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
@@ -562,7 +559,6 @@ internal struct NodeColumns
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
             ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
             CallInferenceFailures = this.CallInferenceFailures.Renumbered(length),
-            CallableSelectionFailures = this.CallableSelectionFailures.Renumbered(length),
             BaseCallFailures = this.BaseCallFailures.Renumbered(length),
             ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),

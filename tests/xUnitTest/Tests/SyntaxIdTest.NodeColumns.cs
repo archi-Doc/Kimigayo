@@ -198,7 +198,7 @@ public partial class SyntaxIdTest
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
     // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
     // under a holed annotation; CallInferenceFailures, ConstructorInferenceDiagnosticTest's changed constructor selection;
-    // CallableSelectionFailures, a Callable value call no bound applies to; BaseCallFailures, a `base` reference that calls nothing;
+    // BaseCallFailures, a `base` reference that calls nothing;
     // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
     // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
     // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UnboundSlots, a call whose slot
@@ -239,7 +239,6 @@ public partial class SyntaxIdTest
     [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
     [InlineData("ArrayInferenceShapes", "let values: [_ of i32] = []\n")]
     [InlineData("CallInferenceFailures", "struct C<T>\n    public init(x: ref/i32, y: ref/T) => ()\n    public init(x: ref/T, y: ref/T) => ()\nlet n: i32 = 42\nlet r = n@ref\nlet c = C.init(r@ref, n@ref)", DiagnosticCode.ConstructorSelectionChanged_Kd)]
-    [InlineData("CallableSelectionFailures", "func both<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i32>\n    return action(true)\n", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("BaseCallFailures", "open struct Base\n    public let value: i32 = 7\n    public func read(self: ref/Self) -> i32 => 1\nstruct Derived : Base\n    func f(self: ref/Self) -> i32 => base()\n()", DiagnosticCode.InvalidBaseCall_Kd)]
     [InlineData("ObjectErasureFailures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return other.ordinary()\n()", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("ReachedThroughBorrow", "struct S1\n    internal var x: Array<i32>\nstruct S2\n    internal var x: Array<S1>\nfunc f(s: S2) -> i32 => s.x[0].x[0]\n")]
