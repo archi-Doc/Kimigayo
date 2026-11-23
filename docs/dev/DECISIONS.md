@@ -26461,6 +26461,38 @@ R8-M* and R9-M* by the stage of the recording unit.
     without commit 3 and was removed in the unit (ruling 349 (1)), with `CloseConsultation` (ruling 351 C3).
   - **Moves (Q13).** None: diagnostic snapshot 0 and semantic HIR+MIR 0 against shared-base/f227e33ce on the head f72940d32 (merged
     with dev f227e33ce).
+- **R7-M88 A Field step of no Type is a Place its write defines** (Middle, 2026-11-23; PLAN G1184, Z28's MIR half, Q-713, D-1188, a
+  joint unit with the Front's F; Major; design `middle\notes\z28-design.md` Revisions 0-2 and its reviews; the order: M, then the
+  Front's F on M, then M3 on F) SPEC 23.1.2, 6.3.3, 6.3.4, 13.7.1.
+  - `MirBody.Selects` is the one projection rule: whether a Place of a Type admits a step, and the Type it selects, none only for a
+    stored Field whose own slot failed (BU-234's failed slot: the Field's symbol has no Type, `AdtDef.FieldSlotFailed`; its body-free
+    arms are `SelectsPart`). `AdtDef.FieldType` is null for two more causes, an instance part past IMPL A.4's height (R7-T1) and a part
+    that does not substitute: neither is a part, so the builder's `Stored` (which reads the rule) gives none and `Field` derives it, as
+    before. `Project` interns by the rule and the validator's `Admits` checks by it; `ProjectedType` is its Type-only answer for the
+    readers that take none as no part (A2's drop tree, the validator's aggregate components).
+  - The validator's rule for a Place of no Type (`Bounded`, R7-M64) covers every **admitted** Place of no Type: a whole slot as
+    `Bounded` admits it, and a last Field step of no Type (admitted by its prefix's Type, its root's for a first step: D1) only written
+    (an Assign's or Call's destination) with its Kills; a step that is not admitted keeps its one `Projection` finding. A term of its
+    own beside R4-M132's, `placing`, admits the write's value in transit (`MirLocalRole.Assigned`, a whole temp of no Type) moved by
+    the Use that places it into a destination of no Type.
+  - The builder's `Stored` gives a stored Field whose own slot failed its Place, so its initializer is placed (`Construct`) and, once
+    Binding publishes the Field Place (the Front's F), a write into it is an ordinary `Assign` (path 1; `Replace` holds the value at
+    the target's published Type, `KnownType`: none), no longer a derived write (G1022's `DerivedWrite` keeps every other Error target,
+    R4-M232's rejection of `Defines` at a derived target standing); `Field`'s derived branch keeps only a receiver of no Type.
+  - A case reader of a written Place takes rule W (`MirCases.KnownTypeOf`), as A5's receiving part does: the pun rule's `Punning` with
+    it (a Place of no Type has no bytes to pun); every other case reader reads a Place the validator states typed, by D1's first-step
+    check (a step's prefix or the storage below a layer, `MirCases.Layer` included; a read, moved, borrowed, dropped or called Place,
+    `MirCases.Reborrows` included; Binding's key walk `PlaceKeys.Select` gives such a Field's key no Type, BU-36's unbound part).
+  - Records (Q13): unit M alone moves none (its new Places are reached by initializers only; every G1184 row needs F's publication);
+    with F the false `UninitializedPlace_Kd` beside the Weak limit (e.w2, Milestone 41 11:9) and at a later read, and the false
+    `MovedPlace_Kd` at a failed Field beside a moved sibling or over a partly moved root go. No acceptance move, no generated code.
+  - Amends R7-M64's `Bounded` scope (a whole slot: now every admitted Place of no Type), adds `placing` beside R4-M132's term, and
+    retires the builder's "a Field Binding formed no stored Type for has no Place" (`Stored`, `Construct`). Rejected: a `MirAccess` or
+    projection kind for the step (a vocabulary entry); a second copy of the struct test in the validator (the prototype's `Admits`
+    term); skipping a first step in the admitted-step test (the prototype's `row.Prefix != 0`: `Copy(_1.w)` would pass, D1); admitting
+    every null stored part (`AdtDef.FieldType` null; the review's C-ir1 and N-e: it would make a part the instance does not store, one
+    past IMPL A.4's height or unsubstituted, a Place of no Type, which a typed node could read or borrow (a validator finding);
+    unreached by the U2b corpus and h0-h2); the target's own derived site defining its Move Path (R4-M232).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
