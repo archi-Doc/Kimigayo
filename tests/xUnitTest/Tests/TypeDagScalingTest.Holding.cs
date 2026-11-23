@@ -48,15 +48,16 @@ public partial class TypeDagScalingTest
         """;
 
     // R1: a raw leaf below the written region (D's `x: T` writes nothing) is read at each meeting of its keyed parent, in reach of the
-    // bound (the leaves of T_30 lie at depth 31): Origin-less and `static` leaves hold a Loan with no write fact; an Exclusive leaf, whose
-    // members are unpublished below the region, is the Limit. T_12's answers are the per-position walk's.
+    // bound (the leaves of T_30 lie at depth 31): Origin-less and `static` leaves hold a Loan with no write fact; so does an Exclusive
+    // leaf, whose members are read where its Origin is bound (`e: raw/i32 during x`, x's `uniq/i32`: an i32 admits no Loan; PLAN G148 (1),
+    // R7 plan Z6; FAIL-FIRST: the Limit). T_12's answers are the per-position walk's.
     [Theory]
     [InlineData("a", 12, "True None")]
     [InlineData("a", 30, "True None")]
     [InlineData("b", 12, "True None")]
     [InlineData("b", 30, "True None")]
-    [InlineData("e", 12, "True Limit")]
-    [InlineData("e", 30, "True Limit")]
+    [InlineData("e", 12, "True None")]
+    [InlineData("e", 30, "True None")]
     public void ARawLeafBelowTheWrittenRegionIsReadOncePerType(string leaf, int size, string answer)
     {
         var (c, p) = HoldingProbe();
@@ -89,15 +90,16 @@ public partial class TypeDagScalingTest
     }
 
     // R2: the Stored bit decides. `Te` outside a stored part reads its Exclusive layer as unstated (no write fact); as Wrap's part (`value:
-    // E` writes nothing) the layer steps Exclusive with unpublished members, the Limit, in either order of the two parts.
+    // E` writes nothing) the layer steps Exclusive and reads x's members where x is bound (an i32: no write fact; PLAN G148 (1), R7 plan Z6;
+    // FAIL-FIRST: the Limit), in either order of the two parts.
     [Fact]
     public void AnInlinePartOfAStoredPartIsKeyedApartFromItsType()
     {
         var (c, p) = HoldingProbe();
         var te = Tuple(c, p["e"], BoundType.I32);
         var wrapped = With(c, p["w"], te);
-        Assert.Equal("True Limit", Holding(c, Tuple(c, te, wrapped), out _));
-        Assert.Equal("True Limit", Holding(c, Tuple(c, wrapped, te), out _));
+        Assert.Equal("True None", Holding(c, Tuple(c, te, wrapped), out _));
+        Assert.Equal("True None", Holding(c, Tuple(c, wrapped, te), out _));
     }
 
     // R3: the written Type decides. Q2's part keeps one interned Tuple at [0], which the declaration writes (its layers capped Shared by
