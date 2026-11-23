@@ -271,8 +271,8 @@ public sealed partial class Binding
 
     // SPEC 7.4: a group contract's correlation at a slot that the call's inputs and fixed bindings do not establish (CheckCallShapeContracts):
     // the check with the slot's ordinal above it (Reason), the group contract (role 0), the corresponding declaration (role 1), when it is
-    // another, and, where both are known, the slot's two bindings at its Type parameter: the group contract's required (Expected), the
-    // corresponding declaration's found (Actual).
+    // another, and, where both are known, the slot's two bindings at its Type parameter, Actual then Expected as the candidate builder's
+    // pair: the corresponding declaration's found (Actual), the group contract's required (Expected).
     private void RecordCorrelation(InvocationKoto call, FunctionKoto group, FunctionKoto corresponding, int slot, BoundType? left, BoundType? right)
     {
         this.candidateFacts.Add(new(ProblemFactKind.Reason, SourceRef.Of(call), (long)ConstructionCheck.AcquisitionCorrelation | ((long)slot << 8)));
@@ -285,23 +285,24 @@ public sealed partial class Binding
         if (left is not null && right is not null)
         {
             var parameter = this.FactSite(CallOwnSlots(group)[slot]);
-            this.candidateFacts.Add(new(ProblemFactKind.Expected, parameter, this.report.Keep(left)));
             this.candidateFacts.Add(new(ProblemFactKind.Actual, parameter, this.report.Keep(right)));
+            this.candidateFacts.Add(new(ProblemFactKind.Expected, parameter, this.report.Keep(left)));
         }
 
         this.RecordSelection(call, BindingFailure.UnprovenAcquisitionCorrelation);
     }
 
-    // SPEC 7.4, 10.8, 23.3: a constructor check's record from its facts, read by position (Reject, RecordCorrelation): the check and a
-    // correlation's slot, the two declarations labelled by the check, the Note by the check, and as evidence the construction or the slot
-    // with its two bindings.
+    // SPEC 7.4, 10.8, 23.3: a constructor check's record from its facts (Reject, RecordCorrelation): the check and a correlation's slot, the
+    // two declarations labelled by the check (the second read by its role), the Note by the check, and as evidence the construction or the
+    // slot with its two bindings in the group contract's order. The record has no Cause fact (RecordSelection's record), so its tail is the
+    // pair, read by position.
     private void ReportConstructionCheck(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
         var facts = this.report.Facts(index);
         var check = (ConstructionCheck)(byte)facts[0].Value;
         var selected = (FunctionKoto)this.compilation.SyntaxOf(facts[1].Site);
         var correlation = check == ConstructionCheck.AcquisitionCorrelation;
-        (string Role, Koto At, string? Label)[] related = facts[(correlation ? 2 : 3)..] is [{ Kind: ProblemFactKind.Related } other, ..]
+        (string Role, Koto At, string? Label)[] related = facts[(correlation ? 2 : 3)..] is [{ Kind: ProblemFactKind.Related, Value: 1 } other, ..]
             ? [("declaration", selected, correlation ? "Group contract" : "Tentative selection"), ("declaration", this.compilation.SyntaxOf(other.Site), correlation ? "Corresponding declaration" : "Fixed-binding check")]
             : [("declaration", selected, "Tentative selection")];
         var note = check switch
@@ -312,8 +313,8 @@ public sealed partial class Binding
             _ => "The original constructor group, including inference-rejected candidates, no longer has the same unique Best Candidate when the construction Type is fixed (SPEC 10.8)",
         };
         object[] evidence = !correlation ? [DiagnosticTypeName(this.report.Value(facts[2]))]
-            : facts[^1] is { Kind: ProblemFactKind.Actual } right
-                ? [CallOwnSlots(selected)[(int)(facts[0].Value >> 8)].Identifier, DiagnosticTypeName(this.report.Value(facts[^2])), DiagnosticTypeName(this.report.Value(right))]
+            : facts[^1] is { Kind: ProblemFactKind.Expected } left
+                ? [CallOwnSlots(selected)[(int)(facts[0].Value >> 8)].Identifier, DiagnosticTypeName(this.report.Value(left)), DiagnosticTypeName(this.report.Value(facts[^2]))]
                 : [CallOwnSlots(selected)[(int)(facts[0].Value >> 8)].Identifier];
         node.ReportIn(store, problem.Requirement, problem.Code, evidence: evidence, related: related, note: note, condition: problem.Condition);
     }
