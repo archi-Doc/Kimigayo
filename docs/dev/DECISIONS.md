@@ -11733,6 +11733,8 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-240 (G886-p3, Q-594): a third kind, `UnformedSplit`, written once by a trial that rests only on an unformed split
     (`TryCandidate`'s Pending verdict) and read by the selection as `CallSelection.UnformedSplit`; temporary, removed with PLAN G886
     (R).
+  - Amended by R7-M75's E3b-2 line: the record carries the argument and the slot's Type parameter as related locations (roles 6 and 7,
+    the latter shown as `declaration`), not the Note's sentence; `pendingJudgments` is deleted.
 
 - **BU-84 TransferRequired is judged in Binding** (2026-11-03; superseded in part by R5-M185; R6-check H1; the owner's Q8 approval
   「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-package.md` §3.7 and `Q8-design-2.md` §2.7; H0's division, R5-M182; Q14's runs 1
@@ -16064,9 +16066,10 @@ resumed by R4-M86 (2026-10-20).
   - **R7-N5 B2a-1** (the Back's batch, Q-563; design `b2a-design.md` §4, B's rulings 1-6; the Front's C-403): six tables become pass
     families of `NodeColumns` (`StampedColumn<T, Binding.PassCounter>`), one accessor each, their Clears deleted:
     `inferredArrayLengths` and `arrayInferenceShapes` (written through `HirTables.Of`), `callInferenceFailures`,
-    `callableSelectionFailures`, `baseCallFailures` and `objectErasureFailures` (failure facts stored through the recorder,
-    `SetRecordedFact`). The library writes none of them (six `NotStamps` rows). `receiverOperations` and `resultContexts` are B2a-2's
-    (released at the freeze, B's ruling 1); `noInitFailures` and `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet 67 -> 61.
+    `callableSelectionFailures`, `baseCallFailures` and `objectErasureFailures` (deleted by R7-E3 E3b-2) (failure facts stored through
+    the recorder, `SetRecordedFact`). The library writes none of them (six `NotStamps` rows). `receiverOperations` and `resultContexts`
+    are B2a-2's (released at the freeze, B's ruling 1); `noInitFailures` and `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet
+    67 -> 61.
   - **R7-N5 B2a-2** (the Back's batch, Q-577, D-936; design `b2a2-design.md` §1-§4, B's rulings 1-5 and B's ruling 6 on
     `b2a-design.md`; the Front's R1-R4 and C1-C7 on C-403, 2026-11-20): a family no reader after the freeze reads a library row of
     (its rows are its pass's working state: the binding steps, reports and HIR publication of the pass that wrote them) has no
@@ -26084,6 +26087,30 @@ R8-M* and R9-M* by the stage of the recording unit.
     10.8)") and the reference's Notes (UnboundReferenceNote, "binds its Type parameters only from explicit Type arguments (SPEC 10.5)",
     and its length-parameter variant, "binds its Type and length parameters only from a complete explicit argument list (SPEC 10.5)",
     for a function with a length parameter, LengthFunctionReferenceTest's `let f = keep`), M4 an `And` premise candidate's span (s11a).
+  - **E3b-2 (Q-710, D-1189).** `ConstraintFailureOf` is the one table of a proof's outcome to its failure (Refuted
+    UnsatisfiedConstraint, Unknown UnprovenConstraint, Error InvalidConstraint); every site that maps an outcome reads it, including
+    the two that still fail without a record: an enum construction's Type formation (Enums 725) and `ValidatePatternType`
+    (Patterns 566) (ruling 13, B-1). `RecordConstraint(use, proof, facts)` is the constraint family's one recorder: it records only at
+    a use without a failure, else fails the use (E2-5a's drop at ConstraintValidation's Refuted arm kept, spelled once; R7-E5, D-924);
+    its callers are RequireConstraint's Refuted arm and final Unknown (through FailUnprovenConstraint's fact-less branch),
+    FailConstraint's record, a requirement's named cause (Constraints.Requirements, ruling 11), Enums' and Specializations' Error and
+    Refuted outcomes (Enums keeps its own gate, PLAN G418), FailIterationSubject (whose spelled read moves into it) and
+    FunctionReferences' fact-less pending proof. RequireConstraint takes the caller's proposition (only the object-View erasure passes
+    one, `S is Owned`), kept as the record's Constraint fact. FailClauseRecord maps through `ConstraintFailureOf` and records always
+    (E2-5b); **the candidate trial publishes a Pending candidate's clause fact at the clause's verdict, BU-240's split Unknown included
+    (TryCandidateCore; ruling 11 (a) as narrowed by ruling 12: a row the erased-argument check refutes keeps its clause's own outcome,
+    which AsSelected reads)**. **The stamp's second reader (ruling 13, C-1):** AsSelected (ArgumentKinds 129) now keeps an
+    acquisition-failed row whose clause fact a split converted Inapplicable, where the stale `Proof: Refuted` before made it selected
+    despite the failure: a correction by SPEC 10.1 and G680 ("past every argument and result check"); no probe reaches it. The Error
+    outcome (R3): FailConstraint keeps its guard and cause at RequireConstraint (R7-E5) and records through `RecordConstraint`; the
+    other Error sites record it fact-less through it. Exception until R7-E4: FailUnprovenConstraint's Callable branch and
+    FailCallableSelection keep `callableConstraints`. Deleted: `pendingJudgments` (ratchet "Node-keyed table members in Binding" 12 ->
+    11), `objectErasureFailures` (the column, its accessor, four HirTables rows), the old two-argument `RecordConstraint(use, cause)`.
+    The erasure's record is its proposition alone (a ReportProblem row keyed on a record of one Constraint fact): **its Note is
+    rendered from that fact ("The use requires S is Owned; this condition cannot be proven", ruling 12), and an Unknown one shows the
+    subject and the Contract as evidence**. The pending judgment is the selection's deferral (`RecordSelection`): UnprovenConstraint_Kd
+    with role 6 "argument" and role 7 shown as a related `declaration` (the slot's Type parameter), which the adapter reads by role
+    (ruling 13, n1). Moves: M3 the erasure Note's text (from the fact) and the pending Note (gone); M4 the pending slot related.
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
