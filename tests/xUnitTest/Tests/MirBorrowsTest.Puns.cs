@@ -1498,6 +1498,251 @@ public sealed partial class MirBorrowsTest
             kk = 2
         """;
 
+    // The body read forms' declarations (ARawPointerABodyReadsPunnedReachesUnownedStorage).
+    private const string BodyReadShapes = """
+        func usep<T>(p: raw/T) => ()
+        struct Node
+            public var v: i32
+            public init(v: i32) => self.v = v
+        #Layout("C")
+        struct PS
+            public var p: raw/u16
+            public var n: u64
+            public init()
+                self.p = null
+                self.n = 7
+
+        """;
+
+    // Each body read form's statements after its head (BodyRead): kk, its `uniq` borrow r and spare, a raw pointer that holds r's Loan.
+    private static readonly Dictionary<string, string> BodyReadForms = new()
+    {
+        ["uRefBytesBodyBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uUniqBytesBodyBad"] = """
+                var y: i32 = 5
+                var w: uniq/i32 = y@uniq
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uScalarPartBodyBad"] = """
+                var y: i32 = 5
+                var w: (u64, ref/i32) = (7@u64, y@ref)
+                unsafe
+                    let q = *(w.0@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesBodyArrBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let q = (*(w@raw@raw/[1 of raw/(raw/u8)]))[0]
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesIndexBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let p = w@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let q = p[0]
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesBodySharedBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let rw = w@ref
+                unsafe
+                    let q = *(rw@follow@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesBodyMoveBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let q = (*(w@raw@raw/(raw/(raw/u8))))@move
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesBodyWholeArrBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let t = *(w@raw@raw/[1 of raw/(raw/u8)])
+                    let q = t[0]
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesBorrowBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@ref
+                    let q = b@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesUniqBorrowBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@uniq
+                    let q = b@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["uSliceBytesBodyBad"] = """
+                let values = [2 of 3@u64]
+                var sl: Slice<u64> = values[..]
+                unsafe
+                    let q = *(sl@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uPtrTupleBodyOk"] = """
+                var other: raw/u8 = null
+                var w: (raw/u16, u64) = (other@raw@raw/u16, 7@u64)
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uFieldViaBorrowBodyOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let q = (rs@follow).1@raw
+                unsafe
+                    let v = *q
+                    *v = spare
+                kk = 2
+            """,
+        ["uHandleBytesBodyBad"] = """
+                var h: obj/Node = Node.init(5)@obj
+                unsafe
+                    let q = *(h@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uScalarBytesBodyBad"] = """
+                var w: u64 = 7
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uPtrBytesBodyBad"] = """
+                var other: raw/u8 = null
+                var w: raw/u16 = other@raw@raw/u16
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+                usep(other)
+            """,
+        ["uPtrFieldBodyOk"] = """
+                var other: raw/u8 = null
+                var w = PS.init()
+                w.p = other@raw@raw/u16
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uReborrowFieldBad"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let rr = (rs@follow).1@ref
+                unsafe
+                    let v = rr@follow
+                    *v = spare
+                kk = 2
+                usep(other)
+            """,
+        ["uRefBytesBodyOk"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    *q = null
+                kk = 2
+            """,
+        ["uScalarPartBodyOk"] = """
+                var y: i32 = 5
+                var w: (u64, ref/i32) = (7@u64, y@ref)
+                unsafe
+                    let q = *(w.0@raw@raw/(raw/(raw/u8)))
+                    *q = null
+                kk = 2
+            """,
+        ["uPtrBytesBodyOk"] = """
+                var other: raw/u8 = null
+                var w: raw/u16 = other@raw@raw/u16
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesBodyReadOk"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    let v = *q
+                    usep(v)
+                kk = 2
+            """,
+        ["uRefBytesBodyTypedOk"] = """
+                var other: u8 = 0
+                var pw: raw/u8 = other@raw
+                unsafe
+                    let q = *(pw@raw)
+                    *q = 5
+                kk = 2
+            """,
+        ["uRefBytesBorrowOk"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@ref
+                    let q = b@follow
+                    *q = null
+                kk = 2
+            """,
+        ["uPtrBorrowTypedOk"] = """
+                var o: u8 = 0
+                var other: raw/u8 = o@raw
+                var pw: raw/(raw/u8) = other@raw
+                unsafe
+                    let b = (*(pw@raw))@ref
+                    let q = b@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["uReborrowFieldOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let rr = (rs@follow).1@ref
+                unsafe
+                    let v = rr@follow
+                    *v = spare
+                kk = 2
+            """,
+    };
+
     // PLAN G667b, SPEC 15.6 (a write may reach every Place its pointer's value carries a non-shared direct Loan or address of), 5.2.1
     // condition 1 (bounded to that Place), 5.2, 5.5: a scalar written over q, a raw pointer, at a Type q does not designate, leaves q
     // reaching only storage the body does not own, where stash may store spare, used after kk = 2 (the Bad rows, each accepted before):
@@ -1799,16 +2044,62 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal));
     }
 
+    // PLAN G785, the pun rule's read site (SPEC 15.6 Holders, example punnedRef; 5.2; 5.5): a raw pointer a body reads punned over bytes
+    // no raw pointer wrote reaches storage the body does not own, whatever else the holder carries. Each Bad row reads q at
+    // `raw/(raw/u8)` over w's bytes, stores spare through it and uses r after (kk = 2): over a reference's bytes (5.5), a `uniq` one's,
+    // an `owner` Scalar part's beside a Loan, an element of a punned fixed array, `p[0]`, a Take, the whole array then its element, past
+    // a shared layer (the body's store has no shared exception: 15.6) and through a raw Place's borrow (5.2: "a read of it, also through
+    // its borrow"), each accepted before. Where the Place holds a raw pointer's byte beside such a byte, or its structure does not state
+    // its bytes, which bytes the read covers is the layout's (IMPL 21.1): undecided, the located Unsupported_Kd where the conflict rests
+    // on it, never a Language error (a Slice's bytes; a Tuple's by layout, uPtrTupleBodyOk; a pointer formed past a borrow through a
+    // component step names the whole holder, R4-M198's Position per value: uFieldViaBorrowBodyOk, the owner's O-517 (a)). A safe
+    // reborrow of a part reads at its own Type (its lend designates it: uReborrowFieldOk). The controls keep their verdicts.
+    [Theory]
+    [InlineData("uRefBytesBodyBad", "uRefBytesBodyBad: kk = 2")] // I, 15.6's example punnedRef in the body
+    [InlineData("uUniqBytesBodyBad", "uUniqBytesBodyBad: kk = 2")] // I, a `uniq` reference's bytes
+    [InlineData("uScalarPartBodyBad", "uScalarPartBodyBad: kk = 2")] // I, an `owner` Scalar part of a holder that holds a Loan
+    [InlineData("uRefBytesBodyArrBad", "uRefBytesBodyArrBad: kk = 2")] // I, an element of a punned fixed array
+    [InlineData("uRefBytesIndexBad", "uRefBytesIndexBad: kk = 2")] // I, `p[0]` (5.3)
+    [InlineData("uRefBytesBodySharedBad", "uRefBytesBodySharedBad: kk = 2")] // I, past a shared layer: the body's store has no shared exception
+    [InlineData("uRefBytesBodyMoveBad", "uRefBytesBodyMoveBad: kk = 2")] // I, a Take
+    [InlineData("uRefBytesBodyWholeArrBad", "uRefBytesBodyWholeArrBad: kk = 2")] // I, the whole punned array, then its element
+    [InlineData("uRefBytesBorrowBad", "uRefBytesBorrowBad: kk = 2")] // I, through a raw Place's shared borrow (5.2)
+    [InlineData("uRefBytesUniqBorrowBad", "uRefBytesUniqBorrowBad: kk = 2")] // I, through a raw Place's `uniq` borrow
+    [InlineData("uSliceBytesBodyBad", "uSliceBytesBodyBad: kk = 2 Unsupported_Kd")] // I, a Slice's bytes are not stated (PlaceBytes Open)
+    [InlineData("uPtrTupleBodyOk", "uPtrTupleBodyOk: kk = 2 Unsupported_Kd")] // by layout: w.0's raw pointer (V) or w.1's u64 (I)
+    [InlineData("uFieldViaBorrowBodyOk", "uFieldViaBorrowBodyOk: kk = 2 Unsupported_Kd")] // V, R4-M198's limit (O-517 (a))
+    [InlineData("uHandleBytesBodyBad", "uHandleBytesBodyBad: kk = 2")] // I, a handle's bytes
+    [InlineData("uScalarBytesBodyBad", "uScalarBytesBodyBad: kk = 2")] // I, a lone u64's bytes
+    [InlineData("uPtrBytesBodyBad", "uPtrBytesBodyBad: kk = 2")] // I, a raw pointer's bytes: its provenance, other used after
+    [InlineData("uPtrFieldBodyOk", "uPtrFieldBodyOk: kk = 2")] // I, PS.init()'s untied raw layer (15.6.4)
+    [InlineData("uReborrowFieldBad", "uReborrowFieldBad: kk = 2")] // I, other holds spare and is used after
+    [InlineData("uRefBytesBodyOk", "")] // V, nothing stored through q
+    [InlineData("uScalarPartBodyOk", "")] // V, as uRefBytesBodyOk
+    [InlineData("uPtrBytesBodyOk", "")] // V, a raw pointer's bytes: other, unused after
+    [InlineData("uRefBytesBodyReadOk", "")] // V, a read through q, no store
+    [InlineData("uRefBytesBodyTypedOk", "")] // V, a typed read
+    [InlineData("uRefBytesBorrowOk", "")] // V, as uRefBytesBodyOk through the borrow
+    [InlineData("uPtrBorrowTypedOk", "")] // V, a typed raw Place's borrow
+    [InlineData("uReborrowFieldOk", "")] // V, a safe reborrow of s.1 at its own Type
+    public void ARawPointerABodyReadsPunnedReachesUnownedStorage(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(BodyReadShapes + BodyRead(form) + "public func main() => ()\n");
+        var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
     // V16 (DECISIONS R4-M140, C-189's readers): after a rebind, the pun rule's key memo, its scans and its walks past a call's first step
     // run again over a store pun, a walk past a holder, an undecided write, a stated layer and a no-store input, and the gather's Limit
-    // read keys (a holder reached only through a set carrying Φ_U, its state and its stores; PLAN G775), and allocate nothing.
+    // read keys (a holder reached only through a set carrying Φ_U, its state and its stores; PLAN G775), and a body's punned reads
+    // (through a raw Deref, a raw Place's borrow and a typed reborrow; PLAN G785), and allocate nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ThePunRuleAllocatesNothingWarm()
     {
         var head = PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)];
         var c = MirBuildTest.Compile(Prelude + head + Form(PunForms, "storePunBad") + Form(PunForms, "pastPunBad") + Form(PunForms, "arrayMidBad") +
-            Form(PunForms, "statedOk") + Form(PunForms, "sliceReadOk") + Form(PunForms, "closureMixedRests") + Form(PunForms, "selfStoreRests"));
+            Form(PunForms, "statedOk") + Form(PunForms, "sliceReadOk") + Form(PunForms, "closureMixedRests") + Form(PunForms, "selfStoreRests") +
+            BodyRead("uRefBytesBodyBad") + BodyRead("uRefBytesBorrowBad") + BodyRead("uReborrowFieldOk"));
         var stratum = new Stratum(c.Types);
         stratum.Run(c.BuildMir());
         MirProgram? program = null;
@@ -1818,7 +2109,13 @@ public sealed partial class MirBorrowsTest
             stratum.Run(program = c.BuildMir());
         }));
         Assert.Contains("pastPunBad: kk = 2", Problems(c, program!, LoanCodes));
+        Assert.Contains("uRefBytesBorrowBad: kk = 2", Problems(c, program!, LoanCodes));
     }
+
+    // A body read form (BodyReadForms) as its function: the head, kk, its `uniq` borrow r and spare (a raw pointer holding r's Loan),
+    // then its statements.
+    private static string BodyRead(string form)
+        => $"func {form}()\n    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n{BodyReadForms[form]}\n";
 
     // A copy of a body with each Place `(*_x)...` of the local `_x` rebased onto the Place X its Ref `_x = &X` borrows (Copied), every other
     // row as built: a match Subject's (its bindings, discriminant and reads), or a binding's (its stores).

@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Mir;
 // its Origin promises). One fact per raw access and entry decides it: the Place the entry names, the pointer value's Position (on: an
 // address where the Place's leading chain starts; off: Δ or Φ_N in the value; the value's, not an entry's: one entry off marks them
 // all) and the Type written there. The judgement over those three is MirBorrows.PunTypes' (the chain, the one reading of a length, the
-// designation judge, the step rule); a key's layer facts are MirBorrows.PunKeys'. This file holds the rule at its two sites and
+// designation judge, the step rule); a key's layer facts are MirBorrows.PunKeys'. This file holds the rule at its three sites and
 // Position's dataflow.
 // Inputs: A5's sets and entries (G667a), the stored Place's steps (MirSteps), Binding's Place facts through TyCtxt (PlaceKey, Select,
 // Base, Leading, OwnLayers, SameStructure, NoStore; C-189, C-211) under the case view, and SPEC 5.2's punnable set (TyCtxt.Punnable).
@@ -26,7 +26,11 @@ namespace Kimi.Compiler.Mir;
 // each input its contract may store through (TyCtxt.NoStore), every raw Place within the Types its input's layers lead to
 // (TyCtxt.OwnLayers at the input's root key), then, past each holder its entries name, within those the parameter's next layers lead
 // to (OwnLayers at each Past key; unknown past an abstract part): the parameter's Type expression gives the Types at every depth, A5's
-// state the holders.
+// state the holders. A body's read (SPEC 5.2: only a raw Place may designate a punned Place, "a read of it, also through its
+// borrow"; 5.5; 15.6 Holders, example punnedRef), at each Deref of the one step walk (MirBorrows.Values' Prefix) that reads a raw
+// Place: the pointer's entries of any mode, judged at the read Type as the call's first step judges them, by one Place-side answer
+// (MirBorrows.PunTypes' NoProvenance), give the read's markers (PunRead): surely, {Φ_E} (5.5's pointer, D8); may, {Φ_E, Φ_M} unless
+// it carries Φ_E already; Φ_W only from an entry not shared (R4-M170).
 // Invariants: each (holder state, key) is scanned once per run; a warm run allocates nothing; Φ_U is a set's, not an element's: what
 // a set carrying it holds otherwise is tagged with it, E's later content included; the own-step Warning and an activation's own scan
 // do not read it.
@@ -39,6 +43,7 @@ internal sealed partial class MirBorrows
     private readonly List<int> scanChildren = []; // Scan's scratch: its (holder, key) pairs.
     private readonly List<int> punQueue = []; // PunCall's walk: (holder, key index) pairs past the first step.
     private readonly HashSet<(int Holder, int Key)> punPairs = []; // The walk's queued pairs.
+    private readonly List<PlaceKey> readRows = []; // PunRead's scratch: the read Type's raw pointer rows (RawPointers).
 
     // What a write does at a Place.
     private enum PunWrite : byte
@@ -129,6 +134,97 @@ internal sealed partial class MirBorrows
             this.Children(this.Scan(Placed(held), this.punQueue[i + 1]));
             this.Children(this.Scan(Shared(held), this.punQueue[i + 1]));
         }
+    }
+
+    // The pun rule at a body's read through the walk buffer's Deref step `i` from `root` (MirBorrows.Values' Prefix), `pointer` the value
+    // it goes through and `read` its layer: a raw Deref reads at its pointee; a borrow Deref of a local whose reference lends Places
+    // (MirBorrows.Loans' Referring, as MirBorrows.Values' Referent reads them) reads by each lend (LentRead); where none is published (a
+    // reference read from a part, an argument's, a call's result) it reads at its referent where punnable (through a borrow layer only a
+    // punnable referent puns, as MirBorrows.Reach's Punned reads a borrow input).
+    private int PunRead(int root, int i, int pointer, int read)
+    {
+        var prefix = root < 0 ? null : cases.TypeOf(new MirPlace(root, this.walk[i].Prefix));
+        if (this.walk[i].Class == MirStepClass.Raw || prefix?.SafeReferent is not { } referent)
+        {
+            return prefix is { IsPointer: true, Components: [var to] } ? this.PunRead(cases.Type(to), pointer, read) : read;
+        }
+
+        var lent = this.walk[i].Prefix == 0 ? this.LentRead(root, pointer, read) : -1;
+        if (lent >= 0)
+        {
+            return lent;
+        }
+
+        return types.Punnable(cases.Type(referent)) ? this.PunRead(cases.Type(referent), pointer, read) : read;
+    }
+
+    // A borrow Deref's read by the lends of its local's reference (PunRead), -1 where one is not published (a store with no Loan): a raw
+    // Place borrow's lend, whose last Deref is raw (Loan.Anchored), reads at that raw step's pointee; a lend of a typed Place reads
+    // nothing new (its referent designates it at its own Type; a punned read before its last Deref is in its parents).
+    private int LentRead(int local, int pointer, int read)
+    {
+        if (!this.Referring(local, out var store) || store < 0)
+        {
+            return -1;
+        }
+
+        for (; store >= 0; store = this.referStores[(2 * store) + 1])
+        {
+            var loan = this.loanAt[this.referStores[2 * store]];
+            if (loan < 0)
+            {
+                return -1;
+            }
+
+            var (lend, last) = (this.loans[loan], -1);
+            for (var s = lend.Start; lend.Anchored && s < lend.Start + lend.Count; s++)
+            {
+                last = this.loanSteps[s].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? s : last;
+            }
+
+            if (last >= 0 && this.loanSteps[last].Class == MirStepClass.Raw &&
+                cases.TypeOf(lend.Place with { Projection = this.loanSteps[last].Prefix }) is { IsPointer: true, Components: [var to] })
+            {
+                read = this.PunRead(cases.Type(to), pointer, read);
+            }
+        }
+
+        return read;
+    }
+
+    // The read site's judgement at the read Type `type` (SPEC 5.2, 5.5, 15.6 Holders): where it has a raw pointer raw Place
+    // (RawPointers), each Place a direct entry of the pointer names, of any mode as the body's store reads them (ReadEntry), that the
+    // Type does not designate at the value's Position answers NoProvenance; the most of them: surely, the read also carries {Φ_E}, the
+    // pointer 5.5 restores from an integer (D8); may, {Φ_E, Φ_M}, the write site's undecided answer (a check only such finds meet is the
+    // located Unsupported_Kd), unless the read carries Φ_E already; Φ_W only from an entry not shared (R4-M170).
+    private int PunRead(BoundType type, int pointer, int read)
+    {
+        var (on, answer, writable) = (!this.OffGrid(pointer), Extent.None, false);
+        this.Work += this.sets.Count(pointer);
+        foreach (var element in this.sets.Elements(pointer))
+        {
+            if (this.ReadEntry(element) is >= 0 and var entry && cases.TypeOf(this.loans[entry].Place) is var place &&
+                !this.Designates(place, type, on) && this.NoProvenance(place) is var lacks and not Extent.None)
+            {
+                answer = Most(answer, lacks);
+                writable |= this.loans[entry].Mode != MirRefKind.Shared;
+            }
+        }
+
+        if (answer == Extent.None || (answer == Extent.Open && this.sets.Contains(read, Escaped)))
+        {
+            return read;
+        }
+
+        this.readRows.Clear();
+        this.RawPointers(PlaceKey.Root(type), this.readRows);
+        if (this.readRows.Count == 0)
+        {
+            return read;
+        }
+
+        var add = answer == Extent.Positive ? this.escapedSet : this.maybeSet;
+        return this.sets.Union(read, writable ? add : this.sets.Remove(add, this.writableSet));
     }
 
     // The call's output through the input at `position` (the plan's Writes, as Keep reads them), null where none.
