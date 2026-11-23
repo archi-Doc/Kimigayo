@@ -7,6 +7,7 @@ using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Kimi;
 using Kimi.Build;
@@ -862,20 +863,53 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
     }
 
+    // IMPL 20.4 "Each input is hashed when read" (LC3 S1's boundary, its design §5; C-508 M1): a program's supply is copied into its
+    // snapshot before its hash is known, so a later build denied creating files in <stem>.native fails creating that copy, an output
+    // failure, where the compiler's supplies alone are reused without one (ABuildLinksTheCompilersSuppliesAsStagedSnapshots). On the
+    // installed toolchain.
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public async Task AProgramsSupplyIsCopiedBeforeItIsHashed()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = await this.Codec("codec", true);
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        var folder = ArtifactPaths.Create(project).Stem + ".native";
+        var allow = DenyCreatingFiles(new DirectoryInfo(folder));
+        try
+        {
+            Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        }
+        finally
+        {
+            allow();
+        }
+
+        Assert.Matches($@"Access to the path '{Regex.Escape(folder)}\\[0-9a-f]{{32}}\.tmp' is denied\.", this.console.Text);
+    }
+
     // IMPL 20.4 "its hash assertions are checked" (Tatara B6a): a compiler's supply's manifest entry may assert a SHA-256 as a program's
-    // may, and the build checks it against the staged bytes: the catalog's hash builds, another fails before the link. On the installed
-    // toolchain.
+    // may, and the build checks it against the staged bytes: the catalog's hash builds, another fails before the link. Also on a build
+    // that reuses the copies an earlier build staged (LC3 S1: the hash is then the catalog's; C-508 M2). On the installed toolchain.
     [Theory]
-    [InlineData("kernel32", true)]
-    [InlineData("kernel32", false)]
-    [InlineData("kimi_backend", true)]
-    [InlineData("kimi_backend", false)]
-    public async Task ACompilerSupplysHashAssertionIsChecked(string name, bool adopted)
+    [InlineData("kernel32", true, false)]
+    [InlineData("kernel32", false, false)]
+    [InlineData("kimi_backend", true, false)]
+    [InlineData("kimi_backend", false, false)]
+    [InlineData("kimi_backend", true, true)]
+    [InlineData("kimi_backend", false, true)]
+    public async Task ACompilerSupplysHashAssertionIsChecked(string name, bool adopted, bool reused)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var project = this.Create();
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
+        if (reused)
+        {
+            await NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken);
+            File.Delete(paths.Executable);
+        }
+
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
         var entry = manifest["libraries"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == name)!;
         entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name)!.Sha256 : new string('0', 64);
@@ -907,24 +941,7 @@ public sealed class NativeToolchainTest : IDisposable
     public async Task ASuppliedMemoryFunctionIsADuplicateOfTheModules(string name, bool weak)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var native = Path.Combine(this.directory, "native");
-        Directory.CreateDirectory(native);
-        const string Copy = "void *memcpy(void *d, const void *s, unsigned long long n) { char *x = d; const char *y = s; while (n--) *x++ = *y++; return d; }\n";
-        File.WriteAllText(Path.Combine(native, "needed.c"), "int codec_add(int a, int b) { return a + b; }\n" + (weak ? "__attribute__((weak)) " : string.Empty) + Copy);
-        File.WriteAllText(Path.Combine(native, "other.c"), "void *memset(void *d, int c, unsigned long long n) { char *x = d; while (n--) *x++ = (char)c; return d; }\n");
-        foreach (var member in new[] { "needed", "other" })
-        {
-            string[] compile = ["--target=" + TargetProfile.Windows.Target, "-O2", "-fno-builtin", "-fno-autolink", "-fno-stack-protector", "-c", member + ".c", "-o", member + ".obj"];
-            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", native, compile));
-        }
-
-        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", native, $"/out:{name}.lib", "needed.obj", "other.obj"));
-        var project = this.Hello("unused");
-        var source = $"group Codec\n    #LibraryImport(\"{name}\", \"codec_add\")\n    public unsafe func add(a: i32, b: i32) -> i32\npublic func main()\n" +
-            "    var sum: i32 = 0\n    unsafe => sum = Codec.add(40, -2)\n    require sum == 38 else => $abort(\"add\")\n    var values: Array<i32> = []\n" +
-            "    for i in 0..100\n        values.append(i)\n    require values.length == 100 else => $abort(\"append\")\n    Console.writeLine(\"ffi ok\")\n";
-        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
-        project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = "static", Input = $"native/{name}.lib" } };
+        var project = await this.Codec(name, weak);
         var built = await project.Build(TestContext.Current.CancellationToken);
         if (weak)
         {
@@ -940,7 +957,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(built, this.console.Text);
         var text = this.console.Text.Replace("\r\n", "\n", StringComparison.Ordinal);
         var module = Path.Combine(this.directory, "out", "Hello.O2.obj");
-        var staged = ArtifactFiles.Hash(Path.Combine(native, name + ".lib")) + ".lib"; // LLD names the staged copy by its file name.
+        var staged = ArtifactFiles.Hash(Path.Combine(this.directory, "native", name + ".lib")) + ".lib"; // LLD names the staged copy by its file name.
         Assert.Contains($"Tatara failed: link\nlld-link: error: duplicate symbol: memcpy\n>>> defined at {module}\n>>> defined at {staged}(needed.obj)\n", text, StringComparison.Ordinal);
         Assert.DoesNotContain("memset", text, StringComparison.Ordinal);
         Assert.False(File.Exists(ArtifactPaths.Create(project).Executable));
@@ -1031,7 +1048,7 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // Denies the current user creating files in the folder, by a rule its files do not inherit, and returns the action that removes the
-    // rule again (LC3 S1's row 3).
+    // rule again (LC3 S1's row 3 and C-508 M1).
     [SupportedOSPlatform("windows")]
     private static Action DenyCreatingFiles(DirectoryInfo folder)
     {
@@ -1076,6 +1093,31 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         var paths = ArtifactPaths.Create(project);
         return (project, paths, ArtifactFiles.Hash(paths.Executable));
+    }
+
+    // Hello.kimiproj whose main.kimi calls codec_add from native/<name>.lib, a program's static supply built here: a member defining
+    // codec_add and memcpy (weak or not), and one defining only memset. The program also grows an Array and writes "ffi ok".
+    private async Task<Project> Codec(string name, bool weak)
+    {
+        var native = Path.Combine(this.directory, "native");
+        Directory.CreateDirectory(native);
+        const string Copy = "void *memcpy(void *d, const void *s, unsigned long long n) { char *x = d; const char *y = s; while (n--) *x++ = *y++; return d; }\n";
+        File.WriteAllText(Path.Combine(native, "needed.c"), "int codec_add(int a, int b) { return a + b; }\n" + (weak ? "__attribute__((weak)) " : string.Empty) + Copy);
+        File.WriteAllText(Path.Combine(native, "other.c"), "void *memset(void *d, int c, unsigned long long n) { char *x = d; while (n--) *x++ = (char)c; return d; }\n");
+        foreach (var member in new[] { "needed", "other" })
+        {
+            string[] compile = ["--target=" + TargetProfile.Windows.Target, "-O2", "-fno-builtin", "-fno-autolink", "-fno-stack-protector", "-c", member + ".c", "-o", member + ".obj"];
+            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", native, compile));
+        }
+
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", native, $"/out:{name}.lib", "needed.obj", "other.obj"));
+        var project = this.Hello("unused");
+        var source = $"group Codec\n    #LibraryImport(\"{name}\", \"codec_add\")\n    public unsafe func add(a: i32, b: i32) -> i32\npublic func main()\n" +
+            "    var sum: i32 = 0\n    unsafe => sum = Codec.add(40, -2)\n    require sum == 38 else => $abort(\"add\")\n    var values: Array<i32> = []\n" +
+            "    for i in 0..100\n        values.append(i)\n    require values.length == 100 else => $abort(\"append\")\n    Console.writeLine(\"ffi ok\")\n";
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
+        project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = "static", Input = $"native/{name}.lib" } };
+        return project;
     }
 
     // Hello.kimiproj at O2 into out/Hello.ll, its main.kimi writing the text, on the test's console.
