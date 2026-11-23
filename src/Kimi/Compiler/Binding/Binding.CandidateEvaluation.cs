@@ -290,9 +290,11 @@ public sealed partial class Binding
             // bindings never rank, even inside Function Types), or the candidates are incomparable; open slots are never identical, and a
             // Type holding an atom is identical only to itself (Binding.OpenSlots: a pair whose walk met an atom is incomparable; a
             // reference-equal pair is skipped above; SPEC 10.8 Unbound slots, ArgFlow ruling 166). A waiting checked part (a Call or Case,
-            // checked at each candidate's Type, 10.5.1) is compared like any source argument (ArgFlow ruling 173). Only a waiting
-            // callable's signature, which 10.5.4 checks after selection, never ranks: its position is walked only when a side holds an
-            // atom, the only thing it can meet there.
+            // checked at each candidate's Type, 10.5.1) is compared like any source argument (ArgFlow ruling 173). The one position not
+            // compared is a waiting callable's at a parameter `F`, `ref/F` or `uniq/F` that it binds (its operation is not an Erasure):
+            // SPEC 10.8 Unbound slots compares such an F by its form, "equal forms compare equal in step 2", and the candidates acquire it
+            // in one mode (ComparableCallableSlots), so the position ties (ArgFlow ruling 175 C3); it is walked only when a side holds an
+            // atom, the only thing it can meet there. At a Function Type the callable's operation is an Erasure, compared as above.
             var callable = a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
                 left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source && this.IsWaitingCallable(source);
             var metOpenSlot = false;
