@@ -16161,6 +16161,8 @@ resumed by R4-M86 (2026-10-20).
     stays while a family is written through it, and the batch converting the last one (E) deletes it. `PairAdmitted` and
     `ImplicitPairAdmitted` keep `EnsurePassNode` for good (amended by R7-N5 B2a-2, below).
     `originInferences` stays out (B's ruling 2, PLAN G1078). Ratchet ("Node-keyed table members in Binding") 76 -> 70.
+    - Amended by BU-255 (Q-719; PLAN G1078 closed): `originInferences` is deleted, not migrated; an Origin solve's state lives as
+      long as its solve or its call's evaluation.
   - **R7-N5 B5b** (the Back's batch, Q-541; design `b4b5b-design.md` §4-§5, B's rulings 4, 7, 9): `effectBoundRejections` and
     `callablePremiseFailures`, step-cleared at `PrepareEffectBounds`, become pass families of `NodeColumns`
     (`StampedColumn<T, Binding.PassCounter>`), their Clears deleted: the order probe found no read or write of either before its step
@@ -17996,6 +17998,19 @@ resumed by R4-M86 (2026-10-20).
     options), a record at the Case Pattern, `RestOnPart` for it, binding the read siblings and resting them by a second walk, reading
     each payload twice; form L (`BoundMatch.Unheld` and the late recheck of the leaf's dropped positions: it kept only a dependent
     record; ruling 7, "Short").
+- **BU-255 An Origin solve's state lives as long as its solve or its call's evaluation (PLAN G1078, R7-N5)** (Back, 2026-11-24;
+  Binding; Q-719, D-1201; Major; design `back\notes\r7-n5\g1078-design.md`, B's rulings 1-6, its design review C-470; the Front's
+  implementation review and the Middle's RP17 consent on C-513; commits a067e2678, 95375fdf1) SPEC 8.6.4, 8.6.1, 23.1.2. An Origin
+  solve's state lives as long as its solve or its call's evaluation, with no table: a call keeps one state per candidate
+  (`CallEvaluation.Inferences`, `SlotSolution.Kept`) across the candidate's trial, re-trials, fixed re-check and judgment, returned
+  clean at `ReturnEvaluation`; a contract comparison, `ContractFits`, a value call and a Case construction rent a clean state and
+  return it in their own function. `Binding.originInferences` and `InferenceOf` are gone (ratchet "Node-keyed table members in
+  Binding" 11 -> 10). It fixes a defect: SPEC 8.6.4 with 8.6.1 makes one requirement reached through two bound references two
+  candidates with one declaration, which shared one state, so the later rejected candidate's solve cleared the winner's published
+  failure (Marked) and the call reported dependent records that rule W rests (SPEC 23.1.2); CallOriginRelationTest's SwapK/SwapC rows
+  pin it. It also removes the table's growth across edits. Rejected: (a) keying by the comparison's site (changes `Use`: a semantic
+  unit, the site not proven a program node); (b) a pool outside NodeColumns keyed as today (an owner-approved ratchet exception that
+  keeps the growth).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -31805,3 +31820,23 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: M2 (a PowerShell port of musl's object list: a second copy of musl's build) and M3 (LLVM's Linux archive in WSL: a
     second download) while M1 works; patching musl's sources or `libc.a`; a Linux backend archive for the three helpers (C1); the
     runtime defining the three helpers in IR (compiler-rt's builtins are the canonical owner, and B9e builds them anyway).
+- **T-M38 An import's providing library is its reserved supply or its Kotonoha's name; one final symbol table over every import**
+  (Tatara, 2026-11-24; unit ProvidingLibrary, PLAN G1326 (D-1181), the Front's C-501 C1 and C2; Q-733, D-1216; Major; design
+  `artifacts\handoff\tatara\units\ProvidingLibrary\design.md` Revisions 1-1b; T's rulings 1, 1a, 2-4 and the briefs' rulings 1-5;
+  the review C-524, the Front's and the Middle's ACCEPT) SPEC 22.6, IMPL 20.4, 21.2.
+  - Rule: `ValidateLibraryImports` keys each external symbol by its first import's providing library (`Provider`: a reserved supply
+    by name, else the defining Kotonoha and logical name) and first known physical signature; a later import with another provider
+    is `ConflictingImportSupply_Kd`, with another known signature `ConflictingImportSignature_Kd`, both when both differ (SPEC
+    23.1.2); every import joins once its name arguments pass, whatever its requirement or Types; the Kind comparison goes (one
+    provider, one Kind); the runtime join compares the same provider (`provider != name` goes, no record moves). The checks precede
+    the import's limits, so a later import's limit `Unsupported_Kd` (BU-92's edge, the row limit) gives way to the conflict (BU-92;
+    T's ruling 1a); a record the import's own checks make stands beside it. The program pass's table starts from the frozen
+    library's imports (`LibraryImport.Signature`, ImportAbi's code).
+  - Moves: acceptance, rows 1, 2, 9, 10, 22, 23, 26, 27, 28 of the design's §1 and K1 (the old import/import row); records, rows 5,
+    6, 12, 14, 15, 25, 34, 35 and the cross-module signature pair (a record beside), 18, 20, 29, 30 (an `Unsupported_Kd` replaced).
+  - Rejected: the resolved input as identity (reads files; target-dependent); the Kind proxy; the runtime declarations as table
+    seeds (a code's deletion).
+  - Catalog: `ConflictingImportSupply_Kd` "LibraryImport declarations of one external symbol must name one providing library: the
+    same reserved supply, or the same logical name of one Kotonoha"; `UnavailableReservedImport_Kd` "A reserved supply provides only
+    its implementation-defined symbol set, and no profile's supply of this name provides the symbol"; requirement
+    `Binding.ConflictingImportSupply` "the imports of one symbol agree on their providing library".

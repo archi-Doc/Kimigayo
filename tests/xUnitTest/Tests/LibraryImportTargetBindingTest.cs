@@ -12,6 +12,16 @@ public class LibraryImportTargetBindingTest
 {
     private const string Import = "#LibraryImport(\"codec\", \"symbol\")";
 
+    // The ProvidingLibrary design's §1 targets and signatures, and its pl-W and pl-L imports (BindImports' form).
+    private const string W = "x86_64-pc-windows-msvc";
+    private const string L = "x86_64-unknown-linux-musl";
+    private const string N = "x86_64-unknown-linux-gnu";
+    private const string VP = "(address: raw/u8, size: u64, protect: u32, old: raw/u32) -> i32";
+    private const string WR = "(fd: i32, data: raw/u8, count: u64) -> i64";
+    private const string SH = "(value: i32) -> ()";
+    private const string PlW = "kernel32 VirtualProtect " + VP + "|codec VirtualProtect " + VP;
+    private const string PlL = "c write " + WR + "|codec write " + WR;
+
     [Theory]
     [InlineData("contract C\n#LibraryImport(\"library\", \"symbol\")\nstruct S\n    Self is C")]
     [InlineData("#LibraryImport(\"library\", \"symbol\")\ncontract C\nstruct S\n    Self is C")]
@@ -401,62 +411,92 @@ public class LibraryImportTargetBindingTest
         Assert.Equal(!conflict, c.Binding.Result.IsComplete);
     }
 
+    // IMPL 21.2: the imports of one external symbol agree in their physical signature and their providing library, which is the reserved
+    // supply an import names (every Kotonoha's, every row's), or else its defining Kotonoha's logical name (SPEC 22.6, IMPL 20.4; the
+    // ProvidingLibrary design §2, R1): two libraries of one Kotonoha are two providers even with one input or one Kind (rows 9-11, K1),
+    // and Kind is never compared (one provider, one Kind). Each requirement is its own record at the later import (SPEC 23.1.2, T's ruling
+    // 1); a later import's limit Unsupported_Kd gives way to its conflict, a record its own checks make stands beside it (ruling 1a). The
+    // old equal-Kind rows' acceptance was unsound (C-501 C1): their conflict is a stronger expectation, not a weaker one. Arguments: the
+    // design's row (K: the replaced tests' forms), the target, the configuration and the imports (Configure, Groups).
     [Theory]
-    [InlineData("static", "static", false)]
-    [InlineData("import", "import", false)]
-    [InlineData("static", "import", true)]
-    [InlineData("import", "static", true)]
-    public void OneExternalSymbolRequiresOneSupplyKind(string first, string second, bool conflict)
+    [InlineData("1", W, "codec=import", PlW, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("2", L, "codec=static", PlL, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("3-W", W, "codec=static", "codec shared " + SH + "|codec shared " + SH)]
+    [InlineData("3-L", L, "codec=static", "codec shared " + SH + "|codec shared " + SH)]
+    [InlineData("4", L, "codec=static", PlW, "Unsupported_Kd@Hello.kimi:G0", "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("5", W, "codec=static", PlL, "Unsupported_Kd@Hello.kimi:G0", "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("6", N, W + ">codec=import", PlW, "ConflictingImportSupply_Kd@Hello.kimi:G1", "MissingNativeRequirement_Kd@Hello.kimi:G1")]
+    [InlineData("7-W", W, "", "kernel32 VirtualProtect " + VP + "|kernel32 VirtualProtect " + VP)]
+    [InlineData("7-L", L, "", "kernel32 VirtualProtect " + VP + "|kernel32 VirtualProtect " + VP, "Unsupported_Kd@Hello.kimi:G0", "Unsupported_Kd@Hello.kimi:G1")]
+    [InlineData("8-L", L, "", "c write " + WR + "|c write " + WR)]
+    [InlineData("8-W", W, "", "c write " + WR + "|c write " + WR, "Unsupported_Kd@Hello.kimi:G0", "Unsupported_Kd@Hello.kimi:G1")]
+    [InlineData("9", W, "codec=static codec2=static", "codec shared " + SH + "|codec2 shared " + SH, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("10", W, "codec=static:native/codec.lib codec2=static:native/codec.lib", "codec shared " + SH + "|codec2 shared " + SH, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("11", W, "codec=static codec2=import", "codec shared " + SH + "|codec2 shared " + SH, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("12", W, "codec=static codec2=static", "codec shared " + SH + "|codec2 shared (value: i64) -> ()", "ConflictingImportSignature_Kd@Hello.kimi:G1", "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("13", W, "codec=static", "codec shared " + SH + "|codec shared (value: i64) -> ()", "ConflictingImportSignature_Kd@Hello.kimi:G1")]
+    [InlineData("14", W, "codec=import", "kernel32 VirtualProtect " + VP + "|codec VirtualProtect (address: raw/u8, flag: bool) -> i32", "ConflictingImportSupply_Kd@Hello.kimi:G1", "Unsupported_Kd@Hello.kimi:bool")]
+    [InlineData("15", W, "", PlW, "ConflictingImportSupply_Kd@Hello.kimi:G1", "MissingNativeRequirement_Kd@Hello.kimi:G1")]
+    [InlineData("25", W, "codec=import", "kernel32 GetLastError () -> u32|codec GetLastError () -> u32", "ConflictingImportSupply_Kd@Hello.kimi:G1", "ConflictingRuntimeSymbol_Kd@Hello.kimi:G1")]
+    [InlineData("28", W, "codec=import", "codec VirtualProtect " + VP + "|kernel32 VirtualProtect " + VP, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("29", W, "codec=static", "codec write " + WR + "|c write " + WR, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("30", L, "codec=import", "codec VirtualProtect " + VP + "|kernel32 VirtualProtect " + VP, "Unsupported_Kd@Hello.kimi:G0", "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("31", L, "codec=static", "codec VirtualProtect " + VP + "|kernel32 VirtualProtect " + VP, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("32", L, "codec=import", PlL, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("33", W, "codec=static", "codec shared (value: bool) -> ()|codec shared " + SH + "|codec shared (value: i64) -> ()", "Unsupported_Kd@Hello.kimi:bool", "ConflictingImportSignature_Kd@Hello.kimi:G2")]
+    [InlineData("34", W, "codec=import", "codec VirtualProtect (address: raw/u8, flag: bool) -> i32|kernel32 VirtualProtect " + VP, "Unsupported_Kd@Hello.kimi:bool", "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("35", W, "codec=import", "kernel32 FooBar () -> i32|codec FooBar () -> i32", "UnavailableReservedImport_Kd@Hello.kimi:G0", "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("K1", W, "codec=import codec2=import", "codec shared " + SH + "|codec2 shared " + SH, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("K1b", W, "codec=import codec2=static", "codec shared " + SH + "|codec2 shared " + SH, "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("K2", W, "codec=static", "kernel32 VirtualProtect (size: u64) -> raw/u8|codec VirtualProtect (size: u64) -> raw/u8", "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    [InlineData("K3", W, "codec=import", "kimi_backend kimi_helper (size: u64) -> raw/u8|codec kimi_helper (size: u64) -> raw/u8", "UnavailableReservedImport_Kd@Hello.kimi:G0", "ConflictingImportSupply_Kd@Hello.kimi:G1")]
+    public void OneExternalSymbolHasOneProvidingLibrary(string row, string target, string configuration, string imports, params string[] expected)
     {
-        var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal)
-        {
-            ["codec"] = new() { Kind = first },
-            ["codec2"] = new() { Kind = second },
-        };
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
-        var source = "group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()\n" +
-            "group B\n    #LibraryImport(\"codec2\", \"shared\")\n    public unsafe func call(value: i32) -> ()";
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        c.Bind();
-        Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd));
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.InvalidImportSignature_Kd or
-            DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+        _ = row;
+        AssertRecordsAtImports(BindImports(target, configuration, imports), expected);
     }
 
+    // IMPL 20.4, SPEC 22.6: a program library's name is its own Kotonoha's, so two modules' imports of one symbol from their own codec name
+    // two providing libraries, whatever their Kinds; a reserved supply is every module's (DECISIONS BU-92 as T-M13 amends it). The root's
+    // import is first; the dependency's conflict replaces BU-92's limit at its import (ruling 1a). Arguments: the design's row, the target,
+    // then the root's and the dependency's configuration and imports.
     [Theory]
-    [InlineData("kernel32", "VirtualProtect", "static")]
-    [InlineData("kimi_backend", "kimi_helper", "import")]
-    public void ReservedSupplyKindsParticipateInSymbolAgreement(string library, string symbol, string requirement)
+    [InlineData("16", L, "", "c write " + WR, "", "c write " + WR)]
+    [InlineData("17", W, "", "kernel32 VirtualProtect " + VP, "", "kernel32 VirtualProtect " + VP)]
+    [InlineData("18", W, "codec=static", "codec shared " + SH, "codec=static", "codec shared " + SH, "ConflictingImportSupply_Kd@library.kimi:G0")]
+    [InlineData("19", W, "codec=static", "codec shared " + SH, "codec=import", "codec shared " + SH, "ConflictingImportSupply_Kd@library.kimi:G0")]
+    [InlineData("20", W, "", "kernel32 VirtualProtect " + VP, "codec=import", "codec VirtualProtect " + VP, "ConflictingImportSupply_Kd@library.kimi:G0")]
+    [InlineData("26", W, "codec=import", "codec VirtualProtect " + VP, "", "kernel32 VirtualProtect " + VP, "ConflictingImportSupply_Kd@library.kimi:G0")]
+    [InlineData("27", L, "codec=static", "codec write " + WR, "", "c write " + WR, "ConflictingImportSupply_Kd@library.kimi:G0")]
+    public void AProgramLibraryNameIsItsModules(string row, string target, string rootConfiguration, string root, string libraryConfiguration, string library, params string[] expected)
     {
-        var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = requirement } };
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
-        var source = "group A\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func reserve(size: u64) -> raw/u8\n" +
-            "group B\n    #LibraryImport(\"codec\", \"" + symbol + "\")\n    public unsafe func reserve(size: u64) -> raw/u8";
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        c.Bind();
-
-        // A reserved supply's kind is fixed (IMPL 20.4: kernel32 an import supply, kimi_backend a static one); the requirement's disagrees.
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.ConflictingImportSignature_Kd or
-            DiagnosticCode.ConflictingRuntimeSymbol_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
-    }
-
-    [Fact]
-    public void SupplyKindsAgreeAcrossSourceModules()
-    {
+        _ = row;
         var c = ModuleBindingTest.Create(
-            "func main() => ()\ngroup Root\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
-            "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
-            configure: (root, library) =>
+            "func main() => ()\n" + Groups(root),
+            Groups(library),
+            configure: (rootFile, libraryFile) =>
             {
-                root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-                library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
-            });
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+                Configure(rootFile, target, rootConfiguration);
+                Configure(libraryFile, target, libraryConfiguration);
+            },
+            row: TargetProfile.Find(target));
+        c.Bind();
+        AssertRecordsAtImports(c, expected);
+    }
+
+    // IMPL 21.2 (the ProvidingLibrary design's R3): the Kimi library's imports are imports of the compilation, so a program's import of
+    // Kimi.Windows' kernel32 QueryPerformanceCounter shares its symbol only with its signature and library; on linux-x64 the group is not
+    // declared (SPEC 22.8.3), so no other import of the symbol exists there. Arguments: the design's row, the target, the configuration
+    // and the import.
+    [Theory]
+    [InlineData("21", W, "", "kernel32 QueryPerformanceCounter (value: uniq/i64) -> i32")]
+    [InlineData("22", W, "", "kernel32 QueryPerformanceCounter () -> i64", "ConflictingImportSignature_Kd@Hello.kimi:G0")]
+    [InlineData("23", W, "codec=static", "codec QueryPerformanceCounter (value: uniq/i64) -> i32", "ConflictingImportSupply_Kd@Hello.kimi:G0")]
+    [InlineData("24", L, "", "kernel32 QueryPerformanceCounter () -> i64", "Unsupported_Kd@Hello.kimi:G0")]
+    public void ProgramImportsShareTheLibrarysSymbolTable(string row, string target, string configuration, string imports, params string[] expected)
+    {
+        _ = row;
+        AssertRecordsAtImports(BindImports(target, configuration, imports), expected);
     }
 
     // The process heap's three left kernel32's set with the runtime's declarations (the Tatara plan's decision 23, B7r3): an import with the
@@ -480,6 +520,7 @@ public class LibraryImportTargetBindingTest
         Assert.Equal(!unavailable, c.Binding.Result.IsComplete);
     }
 
+    // Row 12 across modules: the dependency's import disagrees in signature and providing library (its own codec), two records.
     [Fact]
     public void ImportSignaturesAreSharedAcrossSourceModules()
     {
@@ -492,7 +533,7 @@ public class LibraryImportTargetBindingTest
                 library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
             });
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd);
+        AssertRecordsAtImports(c, ["ConflictingImportSignature_Kd@library.kimi:G0", "ConflictingImportSupply_Kd@library.kimi:G0"]);
     }
 
     // IMPL 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (DECISIONS BU-92),
@@ -574,7 +615,7 @@ public class LibraryImportTargetBindingTest
     {
         var import = "#LibraryImport(\"" + library + "\", \"" + symbol + "\")";
         var c = AnalyzeImport("group Native\n    " + import + "\n    public unsafe func imported() -> i32", requirement, target: target);
-        AssertRecordsAtImports(c, code, [import]);
+        AssertRecordsAtImports(c, code.Length == 0 ? [] : [code + "@Hello.kimi:G0"]);
     }
 
     // The Tatara plan's B7b5 (IMPL 20.4, Q3a (a); design §5 row 13): the project file accepts an import Kind under the Linux key, and each
@@ -588,7 +629,7 @@ public class LibraryImportTargetBindingTest
         Assert.Equal("import", file.NativeRequirements[TargetProfile.Linux.Target]["codec"].Kind);
         string[] imports = ["#LibraryImport(\"codec\", \"first\")", "#LibraryImport(\"codec\", \"second\")"];
         var c = AnalyzeImport(string.Concat(imports.Select(static (x, i) => $"group G{i}\n    {x}\n    public unsafe func imported() -> i32\n")), "codec", target: target);
-        AssertRecordsAtImports(c, code, imports);
+        AssertRecordsAtImports(c, code.Length == 0 ? [] : [code + "@Hello.kimi:G0", code + "@Hello.kimi:G1"]);
     }
 
     // The Tatara plan's G1 (i) (SPEC 22 ¶1, IMPL 21.2; design §5 row 45): a runtime declaration's conflict is judged against every row's
@@ -670,15 +711,69 @@ public class LibraryImportTargetBindingTest
         return c;
     }
 
-    // Each import's record of one code (none: "") at the #LibraryImport, and the verdict, in this pass and after a rebind.
-    private static void AssertRecordsAtImports(Compilation c, string code, string[] imports)
+    // A program of groups G0, G1, ... importing `library symbol signature` each (`|` between them), bound for a target (Configure).
+    private static Compilation BindImports(string target, string configuration, string imports)
+    {
+        var c = Compilation.CreateForTest();
+        Configure(c.Project.ProjectFile, target, configuration);
+        Assert.True(c.Prepare(target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Groups(imports)));
+        c.Bind();
+        return c;
+    }
+
+    // Groups G0, G1, ..., each one import `library symbol signature` (`|` between them) of a function call.
+    private static string Groups(string imports)
+        => string.Concat(imports.Split('|').Select(static (x, i) =>
+        {
+            var parts = x.Split(' ', 3);
+            return $"group G{i}\n    #LibraryImport(\"{parts[0]}\", \"{parts[1]}\")\n    public unsafe func call{parts[2]}\n";
+        }));
+
+    // A project file's native entries, space-separated: `name=Kind` a requirement, `name=Kind:input` a supply with that Input, under the
+    // target's key, or under another target's key `target>name=...`.
+    private static void Configure(ProjectFile file, string target, string configuration)
+    {
+        foreach (var entry in configuration.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var at = entry.IndexOf('>');
+            var key = at < 0 ? target : entry[..at];
+            var parts = entry[(at + 1)..].Split('=', ':');
+            if (parts.Length == 3)
+            {
+                if (!file.NativeLibraries.TryGetValue(key, out var supplies))
+                {
+                    file.NativeLibraries[key] = supplies = new();
+                }
+
+                supplies[parts[0]] = new() { Kind = parts[1], Input = parts[2] };
+            }
+            else
+            {
+                if (!file.NativeRequirements.TryGetValue(key, out var requirements))
+                {
+                    file.NativeRequirements[key] = requirements = new(StringComparer.Ordinal);
+                }
+
+                requirements[parts[0]] = new() { Kind = parts[1] };
+            }
+        }
+    }
+
+    // Each expected record in order, `Code@document:G<i>` at the i-th #LibraryImport of its document (by span order) or `Code@document:text`
+    // at another node, and the verdict (complete exactly when none is expected), in this pass and after a rebind.
+    private static void AssertRecordsAtImports(Compilation c, string[] expected)
     {
         for (var pass = 0; pass < 2; pass++)
         {
-            Assert.Equal(code.Length == 0 ? [] : imports.Select(x => $"{code} {x}"), CompilationTestHelper.BindingErrors(c).Select(static x => $"{x.Code} {x.Text}"));
-            Assert.Equal(code.Length == 0, c.Binding.Result.IsComplete);
+            Assert.Equal(expected, CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code}@{x.Path}:{At(c, x)}"));
+            Assert.Equal(expected.Length == 0, c.Binding.Result.IsComplete);
             c.Bind();
         }
+
+        static string? At(Compilation c, TestDiagnostic record)
+            => record.Text?.StartsWith("#LibraryImport", StringComparison.Ordinal) != true ? record.Text
+                : $"G{c.Diagnostics.FindDocument(record.Path!)!.SourceText.AsSpan(0, record.Span.Start).Count("#LibraryImport".AsSpan())}";
     }
 
     // The import's one record and its location, an error at the import and Unsupported at its Type, in this pass and after a rebind.

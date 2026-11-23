@@ -466,6 +466,7 @@ public sealed partial class Binding
         var fixedLengths = this.lengthScratch.Rent(slots);
         var rows = this.rowScratch.Rent(count);
         var childSlice = this.indexScratch.Rent(2);
+        var kept = this.inferenceScratch.Rent(1);
         var childBase = this.childRows.Count;
         var positionBase = this.positionOperations.Count;
         Array.Clear(origins, 0, originCount);
@@ -491,6 +492,7 @@ public sealed partial class Binding
             solution.Fixed = new(declaration, anyFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots));
             solution.Rows = rows.AsSpan(0, count);
             solution.ChildSlice = ResetSlice(childSlice);
+            solution.Kept = kept.AsSpan(0, 1);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
             {
                 return null;
@@ -626,6 +628,7 @@ public sealed partial class Binding
         finally
         {
             this.rowScratch.Return(rows, clearArray: true);
+            this.ReturnInferences(kept, 1);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
             this.positionOperations.RemoveRange(positionBase, this.positionOperations.Count - positionBase);

@@ -338,12 +338,13 @@ public sealed partial class Binding
             return;
         }
 
+        var inference = solution.OriginInference;
         if (row.Contribution == Contribution.Signature)
         {
-            solution.OriginInference ??= this.BeginOriginInference(solution.Call, solution.Binder);
-            this.DiscoverPremiseOrigins(solution, solution.OriginInference, type);
+            inference = solution.BeginInference();
+            this.DiscoverPremiseOrigins(solution, inference, type);
         }
-        else if (solution.OriginInference is null || KotoHelper.UnwrapParentheses(row.Part) is not { BindingFailure: BindingFailure.None } part ||
+        else if (inference is null || KotoHelper.UnwrapParentheses(row.Part) is not { BindingFailure: BindingFailure.None } part ||
             part.BoundType?.StoresOrigin == false)
         {
             // An Evidence position that carries an Origin has begun the inference (InferFrom); one that carries none, or a failed one
@@ -351,7 +352,7 @@ public sealed partial class Binding
             return;
         }
 
-        this.CollectInputPremises(pattern, type, solution.OriginInference, solution.Call);
+        this.CollectInputPremises(pattern, type, inference, solution.Call);
     }
 
     // C3 (G216 (a) U2.2 U2; SPEC 10.5.1, 15.6.4 step 3; DECISIONS R4-M164, BU-99, BU-104): an argument `at` is judged by its positions'
