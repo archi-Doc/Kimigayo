@@ -245,9 +245,11 @@ public sealed partial class Binding
             var (selection, winnerIndex) = this.SelectAt(ref evaluation, candidates);
             if (outermost && this.resolutionLimited)
             {
-                // SPEC 10.6 (the owner's O-351 (a)): the queries of this resolution passed the limit; no candidate is selected, and the
-                // call's waiting parts rest on its record.
-                return this.FailWaitingSelection(call, BindingFailure.ResolutionWorkLimit);
+                // SPEC 10.6 (the owner's O-351 (a)), 23.1.1: the queries of this resolution passed the limit; no candidate is selected,
+                // and the call's waiting parts rest on its record, a Resource record with its limit as every implementation limit's
+                // (Fail, ImplementationLimit), not a selection's record of parties (RecordSelection).
+                this.MarkWaitingHeaders(call);
+                return this.Fail(call, BindingFailure.ResolutionWorkLimit, true);
             }
 
             var count = evaluation.Count;
