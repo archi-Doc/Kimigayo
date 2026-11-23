@@ -101,11 +101,11 @@ The allowed `#LibraryImport` signature Types and their C meanings are defined in
 - A Unit result is C `void`.
 - `dllimport` and the native supply follow the library kind ([§20.4](20-compilation-configuration.md#204-native-libraries)).
 
-On linux-x64 an import uses the System V x86-64 C calling convention (LLVM `ccc`): an `i8` or `i16` parameter or result is sign-extended and a `u8` or `u16` one zero-extended to 32 bits (`signext`, `zeroext`), as C compilers for that ABI expect, each call by the Types of the import it calls (imports of one symbol that differ only in an 8- or 16-bit Type's signedness share one external declaration and each pass and read their own); there is no `inreg`, `byval` or `sret`. The floating-point control state at every foreign call is the same as on windows-x64.
-
 At every call into and return from foreign code, the floating-point control state is the Windows x64 default: round to nearest even, denormals not flushed (DAZ and FTZ off), FP exceptions masked. Foreign code that changes it restores it before returning; the runtime never repairs it. Status flags left by Kimigayo code are unspecified. Generated code has no exception handlers (see [§22.6](../spec/22-core-execution-and-foreign-functions.md#226-foreign-function-imports) for the no-unwinding promise).
 
-The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library ([§20.4](20-compilation-configuration.md#204-native-libraries)). On every target an import is also compared with each profile's runtime import of its symbol ([§21.4.7](#2147-native-imports-and-backend-support)): `#LibraryImport("codec", "GetLastError")` is an error for linux-x64 too.
+On linux-x64 an import uses the System V x86-64 C calling convention (LLVM `ccc`) with no `inreg`, `byval` or `sret`; the borrow, `Option` and Unit rules above apply. An `i8` or `i16` parameter or result is sign-extended, and a `u8` or `u16` one zero-extended, to 32 bits (`signext`, `zeroext`), as C compilers for that ABI expect. Each call extends by the Types of the import it calls, so two imports of one symbol that differ only in an 8- or 16-bit Type's signedness share one external declaration and each extend by their own Types. The floating-point control state at every foreign call is the same as on windows-x64.
+
+The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library ([§20.4](20-compilation-configuration.md#204-native-libraries)). Signatures agree when their parameters and results agree in physical form: integer Types of one width count as equal, as do all pointers. On every target an import is also compared with each profile's runtime import of its symbol ([§21.4.7](#2147-native-imports-and-backend-support)): `#LibraryImport("codec", "GetLastError")` is an error for linux-x64 too.
 
 ```kimi
 group Native
@@ -249,4 +249,4 @@ Allocation follows [§21.4.3](#2143-memory) over anonymous private pages that `m
 
 ### 21.5.5. Elapsed time
 
-`Time.Stopwatch` reads `clock_gettime(CLOCK_MONOTONIC)` as a counter of nanoseconds (frequency 10^9); a failed read is a clock failure (`KIMI_E_CLOCK`).
+`Time.Stopwatch` ([§22.8.2](../spec/22-core-execution-and-foreign-functions.md#2282-stopwatch)) reads the `clock_gettime` system call's `CLOCK_MONOTONIC` clock as a counter of nanoseconds, with frequency 10^9. A failed read or a negative value is a clock failure (`KIMI_E_CLOCK`, [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes)).
