@@ -119,12 +119,15 @@ public sealed partial class Binding
         return unbound;
     }
 
-    // SPEC 6.5.2 steps 2-3, 9.7: whether a construction qualifier omits its own Type-argument list (no list, no parentheses, no Semantics,
-    // not `Self`), so the expected owned Type of the same enum supplies it.
-    private static bool OmitsOwnList(Koto qualifier)
-        => qualifier is not (ParenthesizedTypeKoto or TypeSemanticsKoto { Type: not null } or GenericsKoto) &&
-            !(qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto) &&
-            TypeSpelling(qualifier) != "Self";
+    // SPEC 6.5.2 steps 2-3, 9.7: whether a construction qualifier writes its own Type-argument list (a list, parentheses or Semantics).
+    private static bool WritesOwnList(Koto qualifier)
+        => qualifier is ParenthesizedTypeKoto or TypeSemanticsKoto { Type: not null } or GenericsKoto ||
+            (qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto);
+
+    // SPEC 6.5.2 steps 2-3, 9.1, 9.7: whether a construction qualifier omits its own Type-argument list, so the expected owned Type of the
+    // same enum supplies it: it writes none and its symbol is no Self (a Self names its declaration with all its bindings, 9.1; Binding
+    // publishes it as the symbol's SelfOf).
+    private static bool OmitsOwnList(Koto qualifier, BindingSymbol symbol) => !WritesOwnList(qualifier) && symbol.SelfOf is null;
 
     // SPEC 9.7, 9.7.1: whether such a qualifier keeps an environment from its path (ConstructionTargetType): a structure, a member access,
     // or a nested Container with slots or Origins; otherwise it is the supplied Type or, open in every slot, its declaration Type.
@@ -144,7 +147,7 @@ public sealed partial class Binding
         {
             type = this.BindType(qualifier, scope, this.TypeContext(qualifier, scope) with { SuppressOuter = true });
         }
-        else if (!OmitsOwnList(qualifier) && TypeSpelling(qualifier) != "Self")
+        else if (WritesOwnList(qualifier))
         {
             // Only nested complete Type arguments carry annotations here. Enum Origin slots
             // are determined by the construction's expected Type and payloads.
@@ -152,7 +155,7 @@ public sealed partial class Binding
         }
         else if (symbol.SelfOf is not null)
         {
-            type = symbol.Type; // SPEC 9.1: a Self names its declaration with all its bindings.
+            type = symbol.Type; // SPEC 9.1: a Self (the published SelfOf) names its declaration with all its bindings.
         }
         else
         {
@@ -175,7 +178,7 @@ public sealed partial class Binding
     private BoundType? QualifiedEnumAt(Koto qualifier, BindingSymbol symbol, BoundType expected)
     {
         var published = qualifier.BoundType;
-        if (!OmitsOwnList(qualifier) || this.SuppliedOwner(symbol, expected) is not { } supplied)
+        if (!OmitsOwnList(qualifier, symbol) || this.SuppliedOwner(symbol, expected) is not { } supplied)
         {
             return published;
         }
