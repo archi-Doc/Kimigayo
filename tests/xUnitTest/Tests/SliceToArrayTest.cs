@@ -30,9 +30,9 @@ public class SliceToArrayTest
     public void AllocationFailureReportsThePublicCall(string name, string use, string location)
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("let values: [2 of i32] = [1, 2]\n" + use));
-        Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal);
-        ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @fail_allocate(", StringComparison.Ordinal);
-        ir += "\ndefine internal ptr @fail_allocate(ptr %heap, i32 %flags, i64 %size) { ret ptr null }\n";
+        Assert.Contains("call ptr @__kimi_heap_allocate(", ir, StringComparison.Ordinal);
+        ir = ir.Replace("call ptr @__kimi_heap_allocate(", "call ptr @fail_allocate(", StringComparison.Ordinal);
+        ir += "\ndefine internal ptr @fail_allocate(i64 %size) { ret ptr null }\n";
         ScalarEmissionTest.WriteFixture("SliceToArrayFailure" + name, ir, string.Empty, 1, location + ": abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 

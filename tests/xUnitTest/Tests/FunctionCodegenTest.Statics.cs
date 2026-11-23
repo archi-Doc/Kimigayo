@@ -62,7 +62,7 @@ public sealed partial class FunctionCodegenTest
         var ensure = ir.Function(slot + "_ensure");
         Assert.Equal("internal void (ptr, i64)", ensure.Signature);
         Assert.Equal(
-            ["load i8, ptr @, align 1", "icmp ne i8 %, 0", "br i1 %, label %, label %", "call void @(i32 17, ptr %, i64 %, i64 -2)", "unreachable",
+            ["load i8, ptr @, align 1", "icmp ne i8 %, 0", "br i1 %, label %, label %", "call void @(i32 16, ptr %, i64 %, i64 -2)", "unreachable",
                 "store i8 1, ptr @, align 1", .. initialize, "store i8 2, ptr @, align 1", "ret void"],
             ensure.Instructions.Select(static x => x.Shape));
         Assert.Equal(ensure.Parameters, ensure.Instructions[3].Operands);

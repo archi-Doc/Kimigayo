@@ -53,7 +53,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
             }
 
             var identities = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var project in solution.Projects.Values.OrderBy(x => x.FilePath ?? x.Name, StringComparer.Ordinal))
+            foreach (var project in solution.Projects.Values.OrderBy(x => x.Input, StringComparer.Ordinal))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 project.KimiOptions = options.Compiler;
@@ -422,7 +422,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
             {
                 writer.WriteStartObject();
                 writer.WriteString("identity", compilation.Tests.ProjectId);
-                writer.WriteString("path", project.FilePath ?? project.Directory);
+                writer.WriteString("path", project.Input);
                 writer.WriteString("target", compilation.BuildMetadata!.TargetTriple);
                 writer.WriteString("timeout", settings.Timeout);
                 writer.WriteString("recoveryGrace", settings.RecoveryGrace);

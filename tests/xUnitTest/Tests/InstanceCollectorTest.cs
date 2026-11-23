@@ -969,13 +969,15 @@ public sealed partial class InstanceCollectorTest
         Assert.All(records, static x => Assert.StartsWith("let ", x.Text, StringComparison.Ordinal));
     }
 
-    // R7-T1 (N1; PLAN G651): only the collector's run answers a height refusal after Binding's run, to the formation owning it. On chain20,
-    // f19's call composed with f19's instance (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding
-    // nothing. In the collector's answer frame, TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns
-    // no refusal, gives Incomplete and the frame records Binding's site-less broken contract at its close; outside the frame Answered owns
-    // nothing either (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
+    // R7-T1 (N1; PLAN G651): only the collector's run answers a requesting site's height refusal after Binding's run (TyCtxt.Answered),
+    // to the formation owning it (an instance's stored Types are answered in every frame after the run, PLAN G651 U2a:
+    // AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame). On chain20, f19's call composed with f19's instance
+    // (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing. In the collector's answer frame,
+    // TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the
+    // frame records Binding's site-less broken contract at its close; outside the frame Answered owns nothing either
+    // (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
     [Fact]
-    public void OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal()
+    public void OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal()
     {
         var c = MirBuildTest.Compile(DeepSource("chain20"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
@@ -996,6 +998,45 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([nameof(DiagnosticCode.InternalInvariant_Kd)], TestDiagnostics.Of(c).Select(static x => x.Code));
         var outside = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
         Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (outside.Subst, outside.Cause));
+    }
+
+    // PLAN G651 U2a (IMPL A.4, 21.3.2; R7-T1): an instance whose stored Type passes IMPL A.4's height, first formed after Binding's run
+    // outside the collector's answer frame (main's MIR reads D<W^8000<i32>>, main's p40 lifted 40 times, its Field W^250<T> forming
+    // 8,250), publishes the refusal as its HeightLimit in every frame, so Layout records TypeHeightLimit_Kd at each least use (count's
+    // parameter, noneD's result, the call forming the instance), never Rejected's located InternalInvariant_Kd; its Field behind raw
+    // (raw192: raw/W^192<T>, 8,193) the same; at exactly H (raw191: 8,192) the instance forms and the program is accepted. G651's
+    // site-less InternalInvariant_Kd at the project stays beside it until U2b gives the after-run readers a site. The default's copy
+    // (copy250, f-stored), built since PLAN G396 (3)'s B3, records the same at its least uses, the copy's `.None` at its operation in the
+    // template (before B3 it was B3's Unsupported_Kd at the omitting call). In a Closure literal's body (clo250) the same records (beside
+    // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1).
+    // Fail-before: dev gives InternalInvariant_Kd at each use.
+    [Theory]
+    [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("raw191", "")]
+    [InlineData("copy250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>>.None InternalInvariant_Kd@-")]
+    [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
+    {
+        var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
+        var name = shape[..shape.IndexOfAny("0123456789".ToCharArray())];
+        var statement = name switch
+        {
+            "copy" => "taked(p40)",
+            "stored" => "taked(p40, count(noneD(p40)))", // The copy's written twin.
+            "clo" => "let c = func () -> i32 => count(noneD(p40))\n    _ = c()",
+            _ => "_ = count(noneD(p40))",
+        };
+        var c = MinimalEmissionTest.Check(Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement));
+        var seen = TestDiagnostics.Of(c).Where(x => name != "clo" || x.Code != nameof(DiagnosticCode.OwnershipDepthLimit_Kd)); // A4's own, clo250's alone.
+        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
+
+        // W^8000<i32> by 40 lifts of 200 levels, each within the height and within its frame.
+        static string Lifted(string stored, string statement)
+            => $"struct W<T>\n    public var v: T\nstruct D<T>\n    public var v: {stored}\nfunc lift<T>(p: raw/T) -> raw/{Nest("W", 200, "T")} => null\n" +
+                "func count<U>(u: U) -> i32 => 0\nfunc noneD<T>(p: raw/T) -> Option<D<T>> => .None\n" +
+                "func taked<T>(p: raw/T, k: i32 = count(Option<D<T>>.None)) => ()\npublic func main() -> ()\n    let p0: raw/i32 = null\n" +
+                string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    {statement}\n    return\n";
     }
 
     // R7-T1 (IMPL 21.3.1, SPEC 6.1; the owner's RQ12): a finite Type past Binding's storage bound that no called signature carries is an
@@ -1075,20 +1116,24 @@ public sealed partial class InstanceCollectorTest
 
     // R7-T1 c4 (IMPL A.4, 21.3.2; SPEC 8.6.1, 8.8.2, 8.9.1; c4\labels.tsv, c4-fix\labels.tsv; the Front's design review C1a, C2 and its
     // implementation review C1, C2; B's review C1): a requirement call's witness resolution is the call's formation. After f19's chain (T = Box^8100<i32>), U.get()
-    // through `U is C<i32>` at S<Box^90<T>>, whose S declares `Self is C<Box<Box<T>>>` first, forms that other conformance's formal past
-    // the height (8,193): one TypeHeightLimit_Kd at the call (names), and none in the other clause order, which forms only the matching
-    // formal (namesSwap); w == w over W<Box^90<T>>, Equatable when T is Eqv<Box^8<T>>, forms that conditional conformance's premise past
-    // the height (8,198) with its operands within (8,192): one TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80)
-    // (fail-before of all four: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's formation, names' record is
+    // through `U is C<i32>` at S<Box^90<T>>, whose S declares `Self is C<Box<Box<T>>>` beside `Self is C<i32>`, forms that other
+    // conformance's formal past the height (8,193): the selection judges every member (SPEC 8.6.1, 8.9.1's selection has no clause order;
+    // R7-C3 b's SelectConformance), so both clause orders record one TypeHeightLimit_Kd at the call (names90, namesSwap90; F's C3b ruling
+    // (A), C-481) and at Box^80, within the height, both accept (names80, namesSwap80); w == w over W<Box^90<T>>, Equatable when T is
+    // Eqv<Box^8<T>>, forms that conditional conformance's premise past the height (8,198) with its operands within (8,192): one
+    // TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80) (c4's fail-before of names90, namesSwap90, premise90 and
+    // premise80: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's formation, names' record is
     // the frame's site-less InternalInvariant_Kd). Through a requirement Item (namesItem: `let f = U.get`) the record at `f` is the Item's own Type
     // formation's (In, through TyCtxt.Answered, before Callee's Witness), on dev too: a control, no fail-before of Callee's reading. A
     // standard property witness over Ph<Box^90<T>> agrees with no refusal and meets R5-M170's type-driven key limit at the call (prop90;
     // fail-before: the gate's Unsupported_Kd); one level deeper the receiver refuses at the receiver `x` before any witness (prop91, as
     // before).
     [Theory]
+    [InlineData("names80", "")]
     [InlineData("names90", "TypeHeightLimit_Kd U.get()")]
     [InlineData("namesItem90", "TypeHeightLimit_Kd f")]
-    [InlineData("namesSwap90", "")]
+    [InlineData("namesSwap80", "")]
+    [InlineData("namesSwap90", "TypeHeightLimit_Kd U.get()")]
     [InlineData("premise90", "TypeHeightLimit_Kd w == w")]
     [InlineData("premise80", "")]
     [InlineData("prop90", "GenerationResourceLimit_Kd x.n")]
@@ -2672,8 +2717,8 @@ public sealed partial class InstanceCollectorTest
     // K 4.9 with a second, non-root module: a record caused in its inlined default moves to the root module's omitting call, and one caused
     // in its body to the root-module call that first admitted the chain. take's default, grow<u8>(1, 3), instantiates under the call, so
     // the builder copies it (DECISIONS R4-M127) with no record of its own, and its resource limit arises inside the copy, at its call in
-    // main's Inlined scope at the library's location; a default its call does not instantiate is no copy, but the builder's Unsupported_Kd at
-    // the call (MirBuildTest.ACopyTheCallDoesNotInstantiateIsAnOpaqueValue, this test's former probe<Array<…65…>> default).
+    // main's Inlined scope at the library's location; a default over an instance past Binding's storage bound is such a copy too
+    // (MirBuildTest.ACopyOverAnInstancePastBindingsBoundIsBuilt, this test's former probe<Array<…65…>> default).
     [Fact]
     public void TheLocationRuleLeavesNonRootModules()
     {

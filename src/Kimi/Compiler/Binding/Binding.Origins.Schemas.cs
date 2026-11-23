@@ -111,6 +111,11 @@ public sealed partial class Binding
                 symbol.Schema = schema = new(slots, bindings);
             }
 
+            if (symbol.SelfSymbol is { } self)
+            {
+                self.Type = this.DeclarationSelf(symbol); // SPEC 9.1: Self is the declaration applied to its own slots (DeclareSelf).
+            }
+
             for (var i = 0; i < schema!.GenericSlots.Count; i++)
             {
                 schema.GenericSlots[i].OriginVariance = OriginVariance.Unused;

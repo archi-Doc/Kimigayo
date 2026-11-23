@@ -162,7 +162,7 @@ public sealed class FunctionKoto : DeclarationKoto
 
     /// <summary>Gets a value indicating whether the declaration omits its Body because the compiler supplies its definition (SPEC 22.1,
     /// IMPL 21.3.4): a function or constructor carrying <c>#Intrinsic</c>, <c>#Unsupported</c> or <c>#Lang</c> (a linked constructor, or
-    /// a function whose call the MIR builder writes as a form, <see cref="DispositionKind.Form"/>). Those kinds exist only in the Kimi
+    /// a function whose call the MIR builder writes as a form). Those kinds exist only in the Kimi
     /// library (<see cref="AttributeKoto"/>'s classification), so no user declaration omits its Body.</summary>
     internal bool OmitsBody => this.FindAttribute(AttributeKind.Intrinsic) is not null || this.FindAttribute(AttributeKind.Unsupported) is not null ||
         this.FindAttribute(AttributeKind.Lang) is not null;

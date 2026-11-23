@@ -90,9 +90,16 @@ public sealed partial class Binding
     // A body or operand that supplies its construct's value (SPEC 14.9); none in Discard Context.
     private static Koto? ResultOf(Koto? source) => source is not null && IsValueContext(source) ? source : null;
 
-    // SPEC 13.7.2, 11.3 (DECISIONS R4-M109): the Adjust of a call input that a later call of its consumer replaces by another (a compound
-    // update's getter before its setter), which the builder still builds as the input's plan-row Adjust; none at the first call.
-    private static HirAdjust EarlierAdjust(int call, HirAdjust earlier, HirAdjust later) => call > 0 && earlier != later ? earlier : default;
+    // SPEC 13.7.2, 11.3, 7.7.3 (DECISIONS R4-M109, R4-M145; PLAN G13): the Adjust of a call input that a later take by its consumer's calls
+    // replaces by another, which the builder still builds as the input's plan-row Adjust: the earlier of two takes of one input by one
+    // consumer. The input `child` of the call `call` has an earlier take by those calls at an earlier call (`call > 0`: a compound update's
+    // getter before its setter) or as the same call's `preceding` input (a by-case value call's Shared acquisition of its callee before the
+    // Exclusive one, the only call that takes one node as two consecutive inputs); none at a first take. Each record of the uses (RowUses,
+    // TakeRecord) keeps its call's preceding input, reset by Call, so an operand take before Call(0) is never one (a for's Subject, a
+    // compound assignment's right side). FormReads keeps no such field on its own ground, met by a by-case receiver too (a resolved
+    // invocation published as an Error keeps its plan): it writes no plan row and keeps whichever take of a node reads its Place.
+    private static HirAdjust EarlierAdjust(int call, Koto child, Koto? preceding, HirAdjust earlier, HirAdjust later)
+        => (call > 0 || ReferenceEquals(child, preceding)) && earlier != later ? earlier : default;
 
     // The operand a parent projects, updates, groups or borrows.
     private static Koto? Operand(Koto? parent) => (parent as BinaryKoto)?.Left ?? (parent as UnaryKoto)?.Operand;
@@ -262,18 +269,14 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (call.Kind == CalleeKind.Value && call.ReceiverOperation.Source is null)
+            // A by-case value call's callee is taken twice (PLAN G13; DECISIONS R4-M145): its Shared acquisition, then the Exclusive one,
+            // the column's.
+            if (call.CaseDecider is not null)
             {
-                // An owned callee, which a reference's or a payload's acquisition does not take (Binding.ValueCalls' AcquireValueCallee).
-                var mode = call.ReceiverKind == SemanticsKind.Owner ? HirAdaptation.None
-                    : call.ReceiverKind == SemanticsKind.Uniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow;
-                uses.Use(call.CalleeValue, mode);
-            }
-            else
-            {
-                uses.Use(call.Kind == CalleeKind.Value ? call.ReceiverOperation.Source : call.Receiver, call.ReceiverOperation);
+                Receiver(call, call.SharedReceiver, SemanticsKind.Ref, ref uses);
             }
 
+            Receiver(call, call.ReceiverOperation, call.ReceiverKind, ref uses);
             foreach (ref readonly var argument in call.ArgumentOperations)
             {
                 uses.Use(argument.Source, argument);
@@ -281,6 +284,22 @@ public sealed partial class Binding
         }
 
         uses.Call(-1);
+
+        // A call's receiver taken by an acquisition in a receiver mode: a value call's owned callee, which a reference's or a payload's
+        // acquisition does not take (Binding.ValueCalls' AcquireValueCallee), borrowed in that mode; any other by its operation.
+        static void Receiver(CallPlan call, in BoundArgumentOperation operation, SemanticsKind kind, ref T uses)
+        {
+            if (call.Kind == CalleeKind.Value && operation.Source is null)
+            {
+                var mode = kind == SemanticsKind.Owner ? HirAdaptation.None
+                    : kind == SemanticsKind.Uniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow;
+                uses.Use(call.CalleeValue, mode);
+            }
+            else
+            {
+                uses.Use(call.Kind == CalleeKind.Value ? operation.Source : call.Receiver, operation);
+            }
+        }
     }
 
     // The Adjust of a child its consumer acquires or uses: an adaptation Binding recorded at the node itself (at its fixed expected Type,
@@ -388,15 +407,16 @@ public sealed partial class Binding
     {
         // The call of the node whose inputs AdjustChildren gives, by its CallPlan.Of ordinal; -1 outside its calls (FixAdjust).
         private int callOrdinal = -1;
+        private Koto? preceding; // The call's preceding input (EarlierAdjust), reset by Call.
 
-        public void Call(int ordinal) => this.callOrdinal = ordinal;
+        public void Call(int ordinal) => (this.callOrdinal, this.preceding) = (ordinal, null);
 
         // Its inputs are the census's too: Binding committed the call (Binding.RawOrigins.Borrows).
         public readonly void Unselected(CallPlan call) => binding.PublishedCall(call);
 
         // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it;
         // a borrowing operation is the census's input (Binding.RawOrigins.Borrows).
-        public readonly void Use(Koto? child, in BoundArgumentOperation operation)
+        public void Use(Koto? child, in BoundArgumentOperation operation)
         {
             if (child is not null)
             {
@@ -409,7 +429,7 @@ public sealed partial class Binding
         }
 
         // A child its consumer acquires or uses, as that use and its own facts give it (ChildAdjust), with the capability its takes claimed.
-        public readonly void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
+        public void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
         {
             if (child is not null)
             {
@@ -417,18 +437,20 @@ public sealed partial class Binding
             }
         }
 
-        // Only the nodes of the module being published. At a call input the earlier call's Adjust (EarlierAdjust) is the input's plan-row
+        // Only the nodes of the module being published. At a call input the earlier take's Adjust (EarlierAdjust) is the input's plan-row
         // Adjust, the column keeping the later; at any other call input the row states none. The child's recorded adaptation, which
         // ChildAdjust reads first, is the census's input (Binding.RawOrigins.Borrows).
-        public readonly void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place)
+        public void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place)
         {
+            var preceding = this.preceding;
+            this.preceding = child;
             if (this.Owns(child))
             {
                 binding.PublishedAdaptation(child!);
                 ref var column = ref table.Hir.Adjusts![child!.SyntaxId];
                 if (this.callOrdinal >= 0)
                 {
-                    var earlier = EarlierAdjust(this.callOrdinal, column, adjust);
+                    var earlier = EarlierAdjust(this.callOrdinal, child!, preceding, column, adjust);
                     HirTables.PlanFor(child, earlier != default).Adjust = earlier;
                 }
 
@@ -544,7 +566,7 @@ public sealed partial class Binding
         }
 
         // The capability a node's use needs (NeedOf): Shared, ByCase or Exclusive, and with ByCase its decider, the Type of the Place whose
-        // standing take is by case, whose case Type decides the selection in each admitted case (HirTables.IndexCaseDecider).
+        // standing take is by case, whose case Type decides the selection in each admitted case (HirTables.CaseDecider).
         private readonly record struct UseNeed(PlaceUse Use, BoundType? Decider)
         {
             // A node's own need, its own Type deciding a by-case one (Take's ByCase holds a Type).

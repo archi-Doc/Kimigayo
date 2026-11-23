@@ -155,7 +155,7 @@ public sealed partial class Binding
         foreach (var symbol in this.symbols.Values.In(this.pass))
         {
             symbols.Add(symbol);
-            AddSymbol(symbols, symbol.ContractSelf?.Symbol);
+            AddSymbol(symbols, symbol.SelfSymbol);
             AddAccessor(symbols, symbol.Property?.Getter);
             AddAccessor(symbols, symbol.Property?.Setter);
         }
@@ -163,6 +163,8 @@ public sealed partial class Binding
         foreach (var scope in this.scopes.Values.In(this.pass))
         {
             AddDeclared(symbols, scope.Types);
+            AddDeclared(symbols, scope.Parameters?.Types);
+            AddDeclared(symbols, scope.Parameters?.Values);
             AddDeclared(symbols, scope.Values);
         }
 
@@ -192,8 +194,13 @@ public sealed partial class Binding
         }
 
         // A scope's declarations by name, each with the symbols it shadows (Next).
-        static void AddDeclared(HashSet<BindingSymbol> symbols, Dictionary<string, BindingSymbol> declared)
+        static void AddDeclared(HashSet<BindingSymbol> symbols, Dictionary<string, BindingSymbol>? declared)
         {
+            if (declared is null)
+            {
+                return;
+            }
+
             foreach (var first in declared.Values)
             {
                 var symbol = first;

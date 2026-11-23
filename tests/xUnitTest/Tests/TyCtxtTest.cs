@@ -101,6 +101,42 @@ public sealed partial class TyCtxtTest
     // A generic function whose closure an instance closes, called with two lengths.
     private const string BorrowsPrelude = "func inspect<T>(value: ref/T) => ()\npublic func main() -> () => ()\n";
 
+    // Z6-F2's rows (AFitFromAnotherOriginMarksTheHoldersAtoms): the holders, t6's setup and tail around a row's holder and fit (h's layer
+    // states the atom `s@follow@raw` states, w's projection: SharedAddress by the address, FittedIntoHolder by the fit), d04's holder in
+    // parts, and t9's Cell.
+    private const string FitsPrelude = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
+        "    public func put<U>(self: uniq/Self, v: U) => ()\nstruct Box<E>\n    public var value: E\n    public init(value: E) => self.value = value@move\n" +
+        "    public func put<U>(self: uniq/Self, v: U) => ()\n    public func set(self: uniq/Self, v: E) => self.value = v@move\n";
+
+    private const string FitHead = "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|let s = w@ref|var r = v@uniq|";
+
+    private const string FitTail = "|h.put(z@ref)|z = 5|inspect(v)";
+
+    private const string FitS = "var w: ref/i32 = x@ref Projection 0: ref/i32 S SharedAddress, FittedIntoHolder";
+
+    private const string FitStore = "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b)|" +
+        "    origin b outlives a|    h@follow = Wrap.init(q)|";
+
+    // ce2's callee (`origin b outlives a`), ce2t's (`origin a outlives b`) and their caller, whose `static` arguments leave a's solution
+    // kx's Origin.
+    private const string FitClause = "func store2(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during b)|" +
+        "    origin b outlives a|    h@follow = q|";
+
+    private const string FitClauseT = "func store5(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during a)|" +
+        "    origin a outlives b|    h@follow = q|";
+
+    private const string FitClauseCaller = "func ce2(ks: ref/i32 during static, qs: raw/u8 during static)|    var x = 1|    let kx = x@ref|" +
+        "    var hp = kx@follow@raw@raw/u8|    ";
+
+    private const string FitHolderStruct = "struct HF {s}|    var p: ";
+
+    private const string FitHolderBody = "|        self.p = q|        self.k = k|    public func put<U>(self: uniq/Self, v: U) => ()|";
+
+    private const string FitHolderUse = "var x = 1|var y = 2|var z = 3|var v: ref/i32 = y@ref|var r = v@uniq|var h = HF.init(x@ref, r@follow@raw";
+
+    private const string FitCell = "struct Cell {o}|    var p: raw/u8 during o|    var k: uniq/i32 during o|    public init(p: raw/u8 during o, k: uniq/i32 during o)|" +
+        "        self.p = p|        self.k = k|    public func put<U>(self: uniq/Self, v: U) => ()|";
+
     private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
         "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
 
@@ -242,7 +278,7 @@ public sealed partial class TyCtxtTest
     [
         "(*p)@uniq Anchor 0: i32 X",
         "let n = match o@ref Projection 0: i32 S",
-        "let s = w@ref Inference -1:  claimed",
+        "let s = w@ref Inference -1:  Claimed",
         "let view = values[0..2] Projection 0: Slice<i32> S",
         "var b = (0, x@ref) Projection 0: i32 X",
         "var h = 4 Projection 0: i32 S",
@@ -306,7 +342,7 @@ public sealed partial class TyCtxtTest
             var own = new List<BoundType?>();
             foreach (var symbol in c.Binding.Semantics.Declarations)
             {
-                own.AddRange([symbol.WholeType, symbol.Type, symbol.ContractSelf]);
+                own.AddRange([symbol.WholeType, symbol.Type, symbol.SelfSymbol?.Type]);
             }
 
             int[] ids = [.. interned.Concat(own.OfType<BoundType>()).Where(static x => x.Id > BoundType.StaticCount).Distinct().Select(static x => x.Id).Order()];
@@ -916,6 +952,105 @@ public sealed partial class TyCtxtTest
         Assert.DoesNotContain(BorrowRows(c), static x => x.StartsWith("var k", StringComparison.Ordinal));
     }
 
+    // SPEC 5.2.1 condition 3, 5.4, 5.7 Typed paths (G147 ruling 66, Z6's R6.1): an address taken past a shared path marks the atoms its
+    // Type states SharedAddress, where its path is reached through shared or passes a conformance selection (SPEC 5.4: `x[k]@raw`
+    // selects `index` and has its shared authority; 4.7.1; G147 ruling 72). x01's `c@follow@follow@raw` reaches w through c's shared
+    // borrow of r and states r's region (the last borrow it is reached through, a `var` region read as itself); t7's `c.0@follow@raw`
+    // passes the shared c before a member and a follow. u01's `t[0]@raw`, u01x (a later `t@uniq`), u01r's `r[0]@raw` through an
+    // exclusive receiver, u02's Array element `ra[0]@raw`, s01's `s.items[0]@raw` (s: `uniq/G<ref/i32>`) and d01's Dictionary element
+    // `rd[1]@raw` pass a conformance selection whatever their receiver's path grants (u01's t row also lists the exclusive receiver
+    // borrow of the user index's indexUniq call, which Binding forms with index's; u01r's and d01's stated Origin is a meet of the
+    // receiver variable's two regions, each operand marked). The twins take SPEC 5.4's writing pointer,
+    // `u@follow@raw` from an exclusive path (`r`, or an `indexUniq` element `u = ...[0]@uniq`), and mark nothing. The address forms no
+    // entry (SPEC 5.4).
+    // Labels from SPEC (`G147\z6f-b\labels.txt`, before any run): the marked rows V (condition 3: the address has no write authority,
+    // so put stores nothing through it), the twins I (5.7 Calls, 15.6.4: put may store z's borrow through the exclusive path, so
+    // `z = 5` conflicts with the inspected Loan).
+    [Theory]
+    [InlineData("var w: ref/i32 = x@ref|var r = w@uniq|let c = r@ref", "c@follow@follow@raw", "w", "", "var r = w@uniq Inference -1:  SharedAddress")]
+    [InlineData("var w: ref/i32 = x@ref|var r = w@uniq|let c = r@ref", "r@follow@raw", "w", "", "")]
+    [InlineData("var w: ref/i32 = x@ref|var t = (w@uniq, 0)|let c = t@ref", "c.0@follow@raw", "w", "", "var t = (w@uniq, 0) Inference -1:  SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)", "t[0]@raw", "t", "", "var t = Two.init(x@ref) Projection 0: Two<ref/i32> X SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)", "t[0]@raw", "t", "|let k = t@uniq|inspect(k)", "var t = Two.init(x@ref) Projection 0: Two<ref/i32> X SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)|let u = t[0]@uniq", "u@follow@raw", "t", "", "")]
+    [InlineData("var t = Two.init(x@ref)|var r = t@uniq", "r[0]@raw", "t", "", "var r = t@uniq Inference -1:  SharedAddress|var r = t@uniq Inference -2:  SharedAddress")]
+    [InlineData("var t = Two.init(x@ref)|var r = t@uniq|let u = r[0]@uniq", "u@follow@raw", "t", "", "")]
+    [InlineData("var arr: Array<ref/i32> = [x@ref]|var ra = arr@uniq", "ra[0]@raw", "arr", "", "var ra = arr@uniq Inference -1:  SharedAddress")]
+    [InlineData("var arr: Array<ref/i32> = [x@ref]|var ra = arr@uniq|let u = ra[0]@uniq", "u@follow@raw", "arr", "", "")]
+    [InlineData("var st = G.init([x@ref])|var s = st@uniq", "s.items[0]@raw", "st", "", "var s = st@uniq Inference -1:  SharedAddress")]
+    [InlineData("var st = G.init([x@ref])|var s = st@uniq|let u = s.items[0]@uniq", "u@follow@raw", "st", "", "")]
+    [InlineData("var d: Dictionary<i64, ref/i32> = [:]|_ = d.tryInsert(1, x@ref)|var rd = d@uniq", "rd[1]@raw", "d", "", "var rd = d@uniq Inference -1:  SharedAddress|var rd = d@uniq Inference -2:  SharedAddress")]
+    public void AnAddressPastASharedPathMarksItsAtoms(string setup, string address, string inspected, string tail, string marked)
+    {
+        var c = MinimalEmissionTest.Analyze(BorrowsPrelude + "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
+            "    public func put<U>(self: uniq/Self, v: U) => ()\nstruct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n" +
+            "    var first: T\n    public init(first: T) => self.first = first@move\n" +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\nstruct G<T>\n" +
+            "    public var items: Array<T>\n    public init(items: Array<T>) => self.items = items@move\nfunc p()\n    var x = 1\n    var z = 3\n" +
+            $"    {setup.Replace("|", "\n    ", StringComparison.Ordinal)}\n    var h = Wrap.init({address}@raw/u8)\n    h.put(z@ref)\n    z = 5\n" +
+            $"    inspect({inspected}){tail.Replace("|", "\n    ", StringComparison.Ordinal)}\n");
+        string[] expected = marked.Length == 0 ? [] : marked.Split('|');
+        Assert.Equal(expected, BorrowRows(c).Where(static x => x.EndsWith(nameof(Binding.LimitMarks.SharedAddress), StringComparison.Ordinal)));
+    }
+
+    // SPEC 5.7 under O-498 Q1 (i), G147 rulings 75 and 76 (Z6-F2): a value whose raw layer states another Origin, fitted into a raw
+    // layer, marks the atom that layer states FittedIntoHolder (the raw fit's target; at swap's invariant position its value's too),
+    // whatever form places it: an assignment (t6, t6t, the written-Type t6w, n01), a written-Type initializer (t4k), an argument through
+    // Self's E (t6m) or a callee's own Origin (t6c), replace and swap (t6r, t6rx), a generic result (t6g), a Field write (t6f), a write
+    // through `h@uniq` (t6p), a conversion restating the Origin outside unsafe (t6x), a constructor's slot (d04, d04t: each operand of its
+    // meet), and a callee's clause relating an input raw layer's Origin to another (the raw fit's second source). ce2 isolates the clause
+    // (`origin b outlives a`): `a and static` is a (SPEC 15.2.2), so a's solution is kx's Origin and every argument's raw Origin is its
+    // parameter's, and x's projection is marked by the clause alone (store2's own body fit marks its `a`); its twin ce2t (`origin a
+    // outlives b`, the shorter end on no raw layer) marks none. t6e does not isolate it: the clause also makes a's solution a meet (`a
+    // and b`: w's and y's projections), so h's own argument fit marks both operands without it (store's body fit marks its `a`). t6's
+    // reassignment also as an overloaded call's argument (t6o) and in a Closure body (t6k). `null` and an equal Origin form
+    // none (p02, t08x, x01, d01, t9, t9k). h's layer states the atom `s@follow@raw` states, w's projection (which also carries
+    // SharedAddress), and `during s` names s's own region: by SPEC one Origin, the outer Origin of s's borrow (5.4, 15.2.1), which
+    // Binding splits into two atoms (PathOrigin reads a `let` borrow's region as its initializer borrow's atom, the Origin expression the
+    // let's own region), so t6w's, t6wn's and p10's initializers are raw fits too, a sound over-mark (labels.txt's addendum (2)). The
+    // split is a PLAN open issue (Front); its removal unmarks t6wn and p10. Labels from SPEC (`G147\z6f2i\labels.txt`, before any run;
+    // t6c's and t6e's forms after their invalid first forms; ce2 and ce2t `G147\z6f\dl\labels.txt`): the marked rows but ce2 I (h's layer
+    // may hold r's exclusive address of v, so put may store z's borrow in v), ce2, ce2t, t6wn, x01, d01, t9 and t9k V, p02, p10 and t08x
+    // I for other reasons.
+    [Theory]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => h = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw)|if c => h = Wrap.init(r@follow@raw)" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)|if c => h = Wrap.init(r@follow@raw@raw/u8)" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder")]
+    [InlineData("", FitHead + "var h = Box.init(s@follow@raw@raw/u8)|if c => h.set(r@follow@raw@raw/u8)" + FitTail, FitS)]
+    [InlineData("func setp(h: uniq/Wrap<raw/u8 during o>, q: raw/u8 during o, anchor: ref/i32 during o) => h@follow = Wrap.init(q)|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => setp(h@uniq, r@follow@raw@raw/u8, x@ref)" + FitTail, FitS + "|var x = 1 Projection 0: i32 S FittedIntoHolder")]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => Kimi.Intrinsics.replace(h@uniq, with: Wrap.init(r@follow@raw@raw/u8))" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|var g = Wrap.init(r@follow@raw@raw/u8)|if c => Kimi.Intrinsics.swap(h@uniq, g@uniq)" + FitTail, "var r = v@uniq Inference -1:  FittedIntoHolder|" + FitS)]
+    [InlineData("func pick<T>(a: T, b: T) -> T => a@move|", FitHead + "var h = Wrap.init(pick(s@follow@raw@raw/u8, r@follow@raw@raw/u8))" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Box.init(s@follow@raw@raw/u8)|if c => h.value = r@follow@raw@raw/u8" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c|    let hr = h@uniq|    hr@follow = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
+    [InlineData(FitStore, FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => store(h@uniq, r@follow@raw@raw/u8, w@ref, y@ref)" + FitTail, "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b) Parameter 0:  FittedIntoHolder|" + FitS + "|var y = 2 Projection 0: i32 S FittedIntoHolder")]
+    [InlineData(FitClause + FitClauseCaller + "store2(kx, ks, hp@uniq, qs)|", "return", "func store2(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during b) Parameter 0:  FittedIntoHolder|var x = 1 Projection 0: i32 S SharedAddress, FittedIntoHolder")]
+    [InlineData(FitClauseT + FitClauseCaller + "store5(kx, ks, hp@uniq, kx@follow@raw@raw/u8)|", "return", "")]
+    [InlineData("", FitHead + "var h = Wrap.init(r@follow@raw@(raw/u8 during s))" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder")]
+    [InlineData("func g(v: ()) => ()|func g(v: i32) => ()|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => g(h = Wrap.init(r@follow@raw@raw/u8))" + FitTail, FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|let pr = r@follow@raw@raw/u8|let hr = h@uniq|var put2 = func [hr, pr] () => hr@follow = Wrap.init(pr)|if c => put2()" + FitTail, FitS)]
+    [InlineData("", "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|var k = v@uniq|var r = w@uniq|let q: raw/u8 during k = r@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "var k = v@uniq Inference -1:  FittedIntoHolder")]
+    [InlineData(FitHolderStruct + "raw/u8 during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/u8 during s)" + FitHolderBody, FitHolderUse + "@raw/u8)" + FitTail, "var x = 1 Projection 0: i32 S FittedIntoHolder")]
+    [InlineData(FitHolderStruct + "raw/(ref/i32 during s) during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/(ref/i32 during s) during s)" + FitHolderBody, FitHolderUse + ")" + FitTail, "var r = v@uniq Inference -2:  FittedIntoHolder|var x = 1 Projection 0: i32 S FittedIntoHolder")]
+    [InlineData("", "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|var r = w@uniq|var u = v@uniq|var q = r@follow@raw@raw/u8|if c => q = u@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "var r = w@uniq Inference -1:  FittedIntoHolder")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|let s = w@ref|var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)|h.put(z@ref)|z = 5|inspect(w)", "let s = w@ref Inference -1:  FittedIntoHolder")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|var r = w@uniq|var h = Wrap.init(r@follow@raw@raw/u8)|h.put(z@ref)|z = 5|inspect(w)", "")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|let s = w@ref|let q: raw/u8 during s = s@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "let s = w@ref Inference -1:  FittedIntoHolder")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|var r = w@uniq|var q: raw/u8 during r = null|unsafe => q = w@raw@(raw/u8 during r)|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "")]
+    [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|var r = w@uniq|let c2 = r@ref|var h = Wrap.init(c2@follow@follow@raw@raw/u8)|h.put(z@ref)|z = 5|inspect(w)", "")]
+    [InlineData("struct HD {s}|    var p: raw/u8 during s|    var k: ref/i32 during s|    var m: uniq/i32 during s|    public init(k: ref/i32 during s, m: uniq/i32 during s)|        self.p = k@follow@raw@raw/u8|        self.k = k|        self.m = m|    public func put<U>(self: uniq/Self, v: U) => ()|    public func store(self: uniq/Self)|        var z = 3|        self.put(z@ref)|        z = 5|", "return", "")]
+    [InlineData(FitCell, "var z = 3|var b = (0, 1)|let s = b.0@ref|let a = s@follow@raw@raw/u8|var h = Cell.init(null, b.0@uniq)|h.put(z@ref)|z = 5|inspect(b)", "")]
+    [InlineData(FitCell, "var z = 3|var b = (0, 1)|var k = b.0@uniq|let s = k@ref|let a = s@follow@follow@raw@raw/u8|var h = Cell.init(null, k)|h.put(z@ref)|z = 5", "")]
+    public void AFitFromAnotherOriginMarksTheHoldersAtoms(string declarations, string body, string marked)
+    {
+        var c = MinimalEmissionTest.Analyze(BorrowsPrelude + FitsPrelude + declarations.Replace("|", "\n", StringComparison.Ordinal) +
+            $"func p(c: bool)\n    {body.Replace("|", "\n    ", StringComparison.Ordinal)}\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        string[] expected = marked.Length == 0 ? [] : marked.Split('|');
+        Assert.Equal(expected, BorrowRows(c).Where(static x => x.Contains(nameof(Binding.LimitMarks.FittedIntoHolder), StringComparison.Ordinal)));
+    }
+
     // SPEC 8.6.1, 8.2.3, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct
     // or enum subject by the subject's conformance, as a kept part of the subject: a binding the subject's declaration writes states
     // Unstated (Src's, an enum subject's, DerI's base clause's argument, a nested binding's through Src3<Src>), one the subject's argument
@@ -1517,8 +1652,8 @@ public sealed partial class TyCtxtTest
     // DECISIONS R5-M61, R7-M54 (R7-T1 c4): Witness reads no storage verdict, so a Self whose storage nests past Binding's depth bound has
     // what its conformance gives, here none: Wrap^80<i32> is no Shape, so area's target is None, the whole target default (Cause Formed,
     // so no refused resolution), not an exception (fail-before: the Limit target, before any conformance was read); a conforming deep Self has its witness's Body (ARejectedSelfRunsItsWitness's deep rows). A
-    // caller's instance that makes a requirement call's Self nest past it composes the substitution, its Self formed, with the Limit
-    // verdict, so no substitution without its Self reaches Witness (PLAN G157 (4)).
+    // caller's instance that makes a requirement call's Self nest past it composes the substitution, its Self formed (Compose reads no
+    // storage, PLAN G396 (3)), so no substitution without its Self reaches Witness (PLAN G157 (4)).
     [Fact]
     public void ADeepSelfHasNoLimitTarget()
     {
@@ -1537,7 +1672,7 @@ public sealed partial class TyCtxtTest
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
 
         // Option^40<i32> (storage height 80) is past the bound whatever Witness prepared before it (Wrap^80, whose Type argument no Field
-        // stores, is refused too; DECISIONS BU-11, BU-12): the caller's instance composes the substitution with the Limit verdict.
+        // stores, is refused too; DECISIONS BU-11, BU-12): the caller's instance composes the substitution, its Self formed.
         var option = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Symbol.Name: "Option" })!;
         var nested = BoundType.I32;
         for (var i = 0; i < 40; i++)
@@ -1548,8 +1683,7 @@ public sealed partial class TyCtxtTest
         var instance = new CallPlan();
         instance.Set(c.Binding, outer.Target, outer.ReturnType, null, [], [nested]);
         var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!);
-        Assert.Equal((TyCtxt.Formation.Formed, Binding.StorageOutcome.Limit), (composed.Cause, composed.Storage));
-        Assert.Same(nested, composed.Part);
+        Assert.Equal(TyCtxt.Formation.Formed, composed.Cause);
         Assert.Same(nested, composed.Subst!.Self);
     }
 
@@ -1626,9 +1760,9 @@ public sealed partial class TyCtxtTest
         Assert.Throws<InvalidOperationException>(() => complete.Types.ReadableInstance(parameter, complete.Types.SubstOf(call)!));
     }
 
-    // DECISIONS BU-36, R4-M139: a reader of an instance may read Prepared and Rejected storage, not a Limit (Readable, which retention,
-    // the MIR builder, A4 and MirCases read); Rejected rests on a Binding failure, so in a complete compilation it is a broken contract
-    // (the guard, as the collector's Derived): an incomplete compilation reads it, a complete one throws.
+    // DECISIONS BU-36, R4-M139: a reader of an instance's storage may read Prepared and Rejected storage, not a Limit (Binding.Readable,
+    // which retention, A4 and MirCases read through TyCtxt.ReadableInstance); Rejected rests on a Binding failure, so in a complete
+    // compilation it is a broken contract (the guard, as the collector's Derived): an incomplete compilation reads it, a complete one throws.
     [Fact]
     public void ARejectedVerdictIsReadableOnlyBesideABindingFailure()
     {
@@ -1636,9 +1770,9 @@ public sealed partial class TyCtxtTest
         var complete = MirBuildTest.Compile("struct Good\n    public var m: i32\nfunc f(b: ref/Good) => ()\n");
         Assert.False(failed.Binding.Result.IsComplete);
         Assert.True(complete.Binding.Result.IsComplete);
-        Assert.Equal([true, true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit }.Select(x => failed.Types.Readable(BoundType.I32, x)));
-        Assert.Equal([true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Limit }.Select(x => complete.Types.Readable(BoundType.I32, x)));
-        Assert.Throws<InvalidOperationException>(() => complete.Types.Readable(BoundType.I32, Binding.StorageOutcome.Rejected));
+        Assert.Equal([true, true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit }.Select(x => failed.Binding.Readable(BoundType.I32, x)));
+        Assert.Equal([true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Limit }.Select(x => complete.Binding.Readable(BoundType.I32, x)));
+        Assert.Throws<InvalidOperationException>(() => complete.Binding.Readable(BoundType.I32, Binding.StorageOutcome.Rejected));
     }
 
     // SPEC 23.1.2 (DECISIONS BU-38, R7-M54 (R7-T1 c4)): what a requirement call runs does not depend on its Self's storage, so a conforming
@@ -1658,28 +1792,24 @@ public sealed partial class TyCtxtTest
         Assert.Equal(expected, c.Types.Witness(requirement, zero, c.Types.Synthesized(requirement, bad, zero.Type!)).Kind.ToString());
     }
 
-    // DECISIONS BU-38: Compose carries the worst verdict of its parts' storage in the outer instance. inner's call in outer's instance at
-    // Bad<i32>, whose Field m did not bind, is Rejected with its composed substitution; beside a Type argument nested past the bound it is a
-    // Limit in either order, its substitution formed and kept: a null Subst is only a part that does not form, with its cause (Formation).
-    // The verdict's deciding part (R4-M139) is the first part reaching it, none when Prepared: Bad<i32> when Rejected, also before
-    // Bad<i64>, and the nested Type beside it in either order; a Rejected composition always has one.
+    // DECISIONS R7-M54 (PLAN G396 (3)): Compose forms a substitution by the substitution alone, whatever its parts' storage in the outer
+    // instance: inner's call in outer's instance at Bad<i32>, whose Field m did not bind, beside Bad<i64> or a Type argument nested past
+    // Binding's storage bound, in either order, is Formed with the outer instance's Types: a null Subst is only a part that does not form,
+    // with its cause (Formation).
     [Theory]
-    [InlineData("i32", "i32", "Prepared", -1)]
-    [InlineData("Bad<i32>", "i32", "Rejected", 0)]
-    [InlineData("Bad<i32>", "Bad<i64>", "Rejected", 0)]
-    [InlineData("Bad<i32>", RetentionTest.Box65, "Limit", 1)]
-    [InlineData(RetentionTest.Box65, "Bad<i32>", "Limit", 0)]
-    public void ComposeHasTheWorstVerdictOfItsParts(string first, string second, string expected, int part)
+    [InlineData("i32", "i32")]
+    [InlineData("Bad<i32>", "i32")]
+    [InlineData("Bad<i32>", "Bad<i64>")]
+    [InlineData("Bad<i32>", RetentionTest.Box65)]
+    [InlineData(RetentionTest.Box65, "Bad<i32>")]
+    public void ComposeFormsWhateverItsPartsStorage(string first, string second)
     {
         var c = MirBuildTest.Compile(RetentionTest.Box + "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc inner<A, B>(a: uniq/A, b: uniq/B) => ()\n" +
             $"func outer<A, B>(a: uniq/A, b: uniq/B) => inner(a, b)\nfunc g(x: uniq/{first}, y: uniq/{second}) => outer(x, y)\n");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).ToDictionary(static x => x.Target.Name);
-        var (subst, cause, storage, decided) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
-        Assert.Equal(expected, storage.ToString());
-        Assert.Same(part < 0 ? null : c.Types.SubstOf(calls["outer"])!.Types[part], decided);
-        Assert.True(storage != Binding.StorageOutcome.Rejected || decided is not null);
+        var (subst, cause) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
         Assert.Equal(TyCtxt.Formation.Formed, cause);
-        Assert.NotNull(subst);
+        Assert.Equal(c.Types.SubstOf(calls["outer"])!.Types.ToArray(), subst!.Types.ToArray());
     }
 
     // SPEC 8.6.1 (DECISIONS R5-M126; PLAN G157 (16)): the Contract that declares a requirement, also of the built-in target a requirement
@@ -2233,8 +2363,8 @@ public sealed partial class TyCtxtTest
 
     // The program part's rows with an entry or a mark: the atom's binder (its first line) and kind, then each entry's referent and mode.
     private static string[] BorrowRows(Compilation c) => [.. c.Binding.ProgramBorrows
-        .Where(static x => x.Value.Count > 0 || x.Value.Claimed)
+        .Where(static x => x.Value.Count > 0 || x.Value.Marks != default)
         .Select(static x => $"{x.Key.Binder?.ToString()?.Split('\n')[0].Trim()} {x.Key.Kind} {x.Key.Slot}: " +
-            string.Join(", ", x.Value.Items.ToArray().Select(static m => $"{m.Referent} {(m.Exclusive ? "X" : "S")}")) + (x.Value.Claimed ? " claimed" : string.Empty))
+            string.Join(", ", x.Value.Items.ToArray().Select(static m => $"{m.Referent} {(m.Exclusive ? "X" : "S")}")) + (x.Value.Marks != default ? $" {x.Value.Marks}" : string.Empty))
         .Order(StringComparer.Ordinal)];
 }

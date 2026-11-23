@@ -1,16 +1,24 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the runtime ABI of the windows-x64-v1 profile (SPEC 21.3.1, 22.1-22.7; DECISIONS R5-M15): the representations of Unit,
+// Owns the runtime ABI of the executable target profiles (SPEC 21.3.1, 22.1-22.7; DECISIONS R5-M15): the representations of Unit,
 // string values and string handles, the string release kinds, the zero-sized buffer address, and the FunctionAbi of each
-// runtime routine that generated code defines or calls, with the routines whose template definitions are spliced from them, and the
-// text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes (the zero-sized buffer address at
-// `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at `{{static_release_kind}}`
-// and `{{heap_release_kind}}`, and TargetProfile.Windows's unmapped bound at `{{unmapped_bound}}`).
-// Input: none; the entry symbol and the unmapped bound come from TargetProfile.Windows; a marker's name and the expanded text being written.
-// Output: the records, read by code generation and by LlvmModuleText's runtime splice; a constant marker's text appended.
+// runtime routine that generated code defines or calls, the platform layer's routines (PlatformRoutines, which the common runtime and
+// the allocator call and the layer template defines; the Tatara plan's decision 22), one RuntimeLayer record per platform layer (its
+// template's resource name, which a target row's Layer column names; its OS-error prefix; its definition list, the routines whose
+// template definitions are spliced from them), and
+// the text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes: the target-free ones (the
+// zero-sized buffer address at `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at
+// `{{static_release_kind}}` and `{{heap_release_kind}}`) and a row's (RowConstants: the row's unmapped bound at `{{unmapped_bound}}`,
+// and its layer's OS-error prefix at `{{os_prefix}}` with its length at `{{os_prefix_length}}`), which only the row's runtime expansion
+// is given.
+// Input: a target row (its Layer and UnmappedBound); the Windows row's entry symbol; a marker's name, the row's constants and the
+// expanded text being written.
+// Output: the records, read by code generation and by LlvmModuleText's frame and runtime splice; a row's layer and constants; a
+// constant marker's text appended.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
-// RuntimeDefinitions lists each routine whose `{{name}}` marker the runtime template holds exactly once; a template spells a
-// marker's constant only through its marker, and a writer through the constant.
+// layers' template names distinct; a layer's definition list lists each routine whose `{{name}}` marker its runtime templates (the
+// layer, the common part and the allocator) hold exactly once; a template spells a marker's constant only through its marker, and a
+// writer through the constant.
 // Must not take BoundType, syntax or MIR types, or hold a per-module record.
 
 using System.Globalization;
@@ -24,13 +32,13 @@ internal static class RuntimeAbi
     /// <summary>The Static string releaseKind: compiler constant backing that is never freed (the string representation, IMPL 21.1.3).</summary>
     internal const int StaticReleaseKind = 0;
 
-    /// <summary>The Heap string releaseKind: bytes of a process heap block, which the string's destruction frees. A buffer's string
+    /// <summary>The Heap string releaseKind: bytes of a heap block (Kimi's allocator's), which the string's destruction frees. A buffer's string
     /// takes its kind as the library's HeapBuffer.intoString writes it, 1 for an allocation and 0 for none, so Heap is 1 and Static 0
     /// (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
     internal const int HeapReleaseKind = 1;
 
     /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
-    /// element, and below TargetProfile.Windows.UnmappedBound, so it is never allocated or released (__kimi_free skips it).</summary>
+    /// element, and below every row's TargetProfile.UnmappedBound, so it is never allocated or released (__kimi_free skips it).</summary>
     internal const int ZeroSizedBuffer = 4096;
 
     /// <summary>The runtime Abort's os_error for a failure without an operating system error, which the runtime does not print (it prints
@@ -124,6 +132,27 @@ internal static class RuntimeAbi
 
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
+    // The platform layer's write (IMPL 21.4.2): a nonempty checked range to standard output (stream 1) or error (2); -1 when written,
+    // else the OS error or NoOsError.
+    internal static readonly FunctionAbi Write = new("__kimi_write", "i64", [new("i32", "stream"), new("ptr", "data"), new("i64", "length")]);
+
+    // The layer's pages (IMPL 21.4.3; the Tatara plan's decision 23): a page-aligned run of at least a byte count, readable and writable,
+    // at or above the unmapped bound, null on failure; a run's release, by its start and byte count, -1 when released, else the OS error.
+    internal static readonly FunctionAbi Pages = new("__kimi_pages", "ptr", [new("i64", "bytes")]);
+
+    internal static readonly FunctionAbi ReleasePages = new("__kimi_release_pages", "i64", [new("ptr", "pages"), new("i64", "bytes")]);
+
+    // Kimi's allocator (IMPL 21.4.3; the Tatara plan's decision 23; HeapRuntime.ll.in, common to every target) over the layer's pages: a
+    // 16-aligned block of a byte size at most isize's maximum, null without pages; a block's release, -1 when released, else the OS error.
+    internal static readonly FunctionAbi HeapAllocate = new("__kimi_heap_allocate", "ptr", [new("i64", "bytes")]);
+
+    internal static readonly FunctionAbi HeapRelease = new("__kimi_heap_release", "i64", [new("ptr", "block")]);
+
+    /// <summary>Gets the platform layer's routines, which the common runtime and the allocator call and only the layer template defines;
+    /// every kernel32 call of the runtime in a program module lies in their definitions, each routine's own calls pinned by
+    /// NativeAllocationAudit.AssertOsCallsInLayer (the test runtime's calls and a program's own imports are outside the layer).</summary>
+    internal static readonly FunctionAbi[] PlatformRoutines = [Exit, Write, Pages, ReleasePages];
+
     // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue
     // from its condition and the site's number in the test catalog and sends the values held for it; the issue's message, a borrowed string;
     // a $require's Abort of the case; a compared value held until the observation, by its side, its frame kind and width and its bits.
@@ -146,14 +175,19 @@ internal static class RuntimeAbi
         "void",
         [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
-    /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, Abort, AbortMessage];
-
-    // The constants a runtime template spells through a marker, by the marker's name (Expand).
-    private static readonly (string Name, long Value)[] Constants =
+    /// <summary>Gets the platform layers' records, one per layer template, which the target rows' Layer columns name (the Tatara plan's
+    /// B7b2a): windows-x64's (WindowsPlatform.ll.in, over kernel32), whose runtime is the layer, the common part (Runtime.ll.in) and the
+    /// allocator (HeapRuntime.ll.in), with the layer's routines, the allocator's, then the common part's compiler-facing ones.</summary>
+    internal static readonly RuntimeLayer[] Layers =
     [
-        ("zero_sized_buffer", ZeroSizedBuffer), ("no_os_error", NoOsError), ("static_release_kind", StaticReleaseKind),
-        ("heap_release_kind", HeapReleaseKind), ("unmapped_bound", TargetProfile.Windows.UnmappedBound),
+        new("WindowsPlatform.ll.in", " (win32=", [.. PlatformRoutines, HeapAllocate, HeapRelease, DestroyString, Abort, AbortMessage]),
+    ];
+
+    // The target-free constants a runtime template spells through a marker, by the marker's name (Expand), each as its text.
+    private static readonly (string Name, string Text)[] Constants =
+    [
+        ("zero_sized_buffer", Number(ZeroSizedBuffer)), ("no_os_error", Number(NoOsError)), ("static_release_kind", Number(StaticReleaseKind)),
+        ("heap_release_kind", Number(HeapReleaseKind)),
     ];
 
     /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>
@@ -162,18 +196,59 @@ internal static class RuntimeAbi
     /// <summary>Gets the byte length parameter of the hidden diagnostic location.</summary>
     internal static AbiParameter LocationLength => new("i64", "location_length", AbiParameterKind.LocationLength);
 
-    // Appends the text of a runtime template's ABI constant marker, the constant's number; false for any other marker.
-    internal static bool Expand(ReadOnlySpan<char> marker, StringBuilder runtime)
+    /// <summary>Gets the record of a row's platform layer, the one its Layer column names; a row naming none is a broken contract.</summary>
+    /// <param name="row">The target row.</param>
+    /// <returns>The layer's record.</returns>
+    internal static RuntimeLayer Layer(TargetProfile row)
     {
-        foreach (var (name, value) in Constants)
+        foreach (var layer in Layers)
+        {
+            if (layer.Template == row.Layer)
+            {
+                return layer;
+            }
+        }
+
+        throw new InvalidOperationException("The target row's Layer must name a runtime layer.");
+    }
+
+    /// <summary>Gets a row's runtime constants by marker name, the data of the row's runtime expansion: the row's unmapped bound and its
+    /// layer's OS-error prefix with its length.</summary>
+    /// <param name="row">The target row.</param>
+    /// <returns>Each constant's marker name and text.</returns>
+    internal static (string Name, string Text)[] RowConstants(TargetProfile row)
+    {
+        var prefix = Layer(row).OsErrorPrefix;
+        return [("unmapped_bound", Number(row.UnmappedBound)), ("os_prefix", prefix), ("os_prefix_length", Number(prefix.Length))];
+    }
+
+    // Appends the text of a runtime template's constant marker, a target-free one or one of the row's constants the expansion is given
+    // (none for a target-free template); false for any other marker.
+    internal static bool Expand(ReadOnlySpan<char> marker, ReadOnlySpan<(string Name, string Text)> rowConstants, StringBuilder runtime)
+        => Append(marker, Constants, runtime) || Append(marker, rowConstants, runtime);
+
+    private static bool Append(ReadOnlySpan<char> marker, ReadOnlySpan<(string Name, string Text)> constants, StringBuilder runtime)
+    {
+        foreach (var (name, text) in constants)
         {
             if (marker.SequenceEqual(name))
             {
-                runtime.Append(value.ToString(CultureInfo.InvariantCulture));
+                runtime.Append(text);
                 return true;
             }
         }
 
         return false;
     }
+
+    private static string Number(long value) => value.ToString(CultureInfo.InvariantCulture);
 }
+
+/// <summary>A platform layer's runtime record (the Tatara plan's B7b2a): the layer a target row's Layer column names.</summary>
+/// <param name="Template">The layer template's resource name, the row's Layer.</param>
+/// <param name="OsErrorPrefix">The Abort report's OS-error prefix (IMPL 21.5.4): the layer template defines <c>@__kimi_os_prefix</c> from
+/// it and the common runtime writes its length from it, so a layer's prefix of another length changes no common rule (the Tatara plan's
+/// B7b revision 2.2). A <c>c"..."</c> literal spells it as is.</param>
+/// <param name="Definitions">The routines whose definitions the row's runtime splices at their markers, each exactly once: the layer's
+/// routines, the allocator's, then the common part's compiler-facing ones.</param>
+internal sealed record RuntimeLayer(string Template, string OsErrorPrefix, FunctionAbi[] Definitions);

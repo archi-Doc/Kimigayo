@@ -325,7 +325,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
-                    this.SpecifiesContract(clause, conformance.Contract))
+                    this.SpecifiesContract(clause, conformance.Type, conformance.Contract))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -571,7 +571,12 @@ public sealed partial class Binding
                 return (ConstraintProof.Unknown, null);
             }
 
-            this.AddConstraintFact(environment, this.ContractConstraint(constraint, premises, self));
+            var instance = this.ContractConstraint(constraint, premises, self);
+            this.AddConstraintFact(environment, instance);
+            if (!ReferenceEquals(instance, constraint))
+            {
+                environment.AddStatement(instance, requirement, constraint); // at Self (SPEC 8.11.4); an unchanged one is in place
+            }
         }
 
         this.ExpandScopeContractPremises(premises);

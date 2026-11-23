@@ -3,14 +3,17 @@
 // Owns the target table (IMPL 21.4, SPEC 22; Tatara r3 §4; DECISIONS R5-M174): one row per executable target profile, today windows-x64
 // (Windows), which Binding's native resolution, the Backend's module frame and runtime ABI, target selection (Project, Solution, LSP),
 // project configuration and the native build read.
-// Input: none. Output: the rows (Rows) and each row's columns: the triple, the profile name, data layout, CPU, features and code
-// generation settings, the entry and subsystem, the reserved runtime name, the reserved supplies (Supplies: each one's name, kind and
-// symbol set; Supply(name)) and the reserved external names (ReservedSymbols, IMPL 21.2), the runtime's import declarations, and the
-// bound below which the system maps no address; table-wide, the C memory functions every runtime defines (MemorySymbols).
-// Invariants: constants and arrays only; each row's supplies distinct, in Ordinal name order (publication interleaves a program's
-// supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2); a row's reserved external
-// names are its float marker and its backend supply's symbols; the native build checks the embedded backend record against them and
-// keys its material by the supplies' names (ToolchainIdentity).
+// Input: none. Output: the rows (Rows), the row of a triple (Find), and each row's columns: the triple, the profile name, data layout,
+// CPU, features and code generation settings, the module frame's extra function attributes (FunctionAttributes), the entry and
+// subsystem, the reserved runtime name, the platform layer (Layer: its template's resource name), the reserved supplies (Supplies: each
+// one's name, kind and symbol set; Supply(name)) and the reserved external names (ReservedSymbols, IMPL 21.2), the runtime's import
+// declarations, and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines
+// (MemorySymbols).
+// Invariants: constants and arrays only; triples distinct; each row's Layer names exactly one of the Backend's RuntimeLayer records
+// (Core names no Backend type, so CoreModelTest pins it); each row's supplies distinct, in Ordinal name order (publication interleaves
+// a program's supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2); a row's reserved
+// external names are its float marker and its backend supply's symbols; the native build checks the embedded backend record against
+// them and keys its material by the supplies' names (ToolchainIdentity).
 // Must not read a file, a resource or the toolchain (the native build's material is ToolchainIdentity's), nor stand for the checked
 // triple (Compilation.TargetTriple and IrTarget: any triple a check selects).
 
@@ -29,19 +32,19 @@ internal sealed class TargetProfile
     private const string WindowsFloatMarker = "_fltused";
 
     // The kernel32 declarations the generated runtimes emit, with their import-ABI physical signatures: the ordinary runtime of SPEC
-    // 21.4.7 and the two test-runtime APIs, which one source can reach in either build. A null signature marks a declaration no
-    // expressible LibraryImport can share: the ExitProcess declaration is noreturn, an ABI attribute no import carries (SPEC 21.2).
+    // 21.4.7, the two test-runtime APIs, which one source can reach in either build, then the platform layer's pages (the Tatara plan's
+    // decision 23, B7r2). A null signature marks a declaration no expressible LibraryImport can share: the ExitProcess declaration is
+    // noreturn, an ABI attribute no import carries (SPEC 21.2).
     private static readonly (string Symbol, string? Signature)[] WindowsRuntimeDeclarations =
     [
-        ("GetProcessHeap", "p"),
-        ("HeapAlloc", "pp48"),
-        ("HeapFree", "4p4p"),
         ("GetStdHandle", "p4"),
         ("WriteFile", "4pp4pp"),
         ("GetLastError", "4"),
         ("ExitProcess", null),
         ("GetEnvironmentVariableA", "4pp4"),
         ("SetHandleInformation", "4p44"),
+        ("VirtualAlloc", "pp844"),
+        ("VirtualFree", "4p84"),
     ];
 
     // The backend supply's helper symbols in catalog order (IMPL 21.4.7), which its supply and the reserved external names share: the
@@ -50,7 +53,7 @@ internal sealed class TargetProfile
 
     /// <summary>Gets the windows-x64 row, the pinned, module-local Windows execution profile (IMPL 21.4). Its reserved supplies (IMPL
     /// 20.4), in Ordinal name order: kernel32, the generated import library, whose symbol set is the runtime declarations' symbols, then
-    /// the VirtualAlloc test family and the Windows counter APIs; and kimi_backend, the backend archive, a static library of its helper
+    /// VirtualProtect and the Windows counter APIs; and kimi_backend, the backend archive, a static library of its helper
     /// catalog (IMPL 21.4.7).</summary>
     internal static TargetProfile Windows { get; } = new()
     {
@@ -62,9 +65,11 @@ internal sealed class TargetProfile
         RelocationModel = "pic",
         CodeModel = "small",
         UnwindTables = "async",
+        FunctionAttributes = [],
         EntrySymbol = "__kimi_start",
         Subsystem = "console",
         FloatMarker = WindowsFloatMarker,
+        Layer = "WindowsPlatform.ll.in",
         UnmappedBound = 65536,
         RuntimeDeclarations = WindowsRuntimeDeclarations,
         Supplies =
@@ -74,7 +79,7 @@ internal sealed class TargetProfile
                 "import",
                 [
                     .. WindowsRuntimeDeclarations.Select(static x => x.Symbol),
-                    "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency",
+                    "VirtualProtect", "QueryPerformanceCounter", "QueryPerformanceFrequency",
                 ]),
             new("kimi_backend", "static", WindowsBackendSymbols),
         ],
@@ -104,12 +109,20 @@ internal sealed class TargetProfile
 
     internal required string UnwindTables { get; init; }
 
+    /// <summary>Gets the LLVM function attributes the module frame adds to the profile attributes of every generated definition (#0),
+    /// each attribute's text; Windows has none.</summary>
+    internal required string[] FunctionAttributes { get; init; }
+
     // Application entry (SPEC 22.4.3) and reserved runtime name (IMPL 21.2) identities.
     internal required string EntrySymbol { get; init; }
 
     internal required string Subsystem { get; init; }
 
     internal required string FloatMarker { get; init; }
+
+    /// <summary>Gets the resource name of the row's platform layer template, which names the row's RuntimeLayer record in the Backend's
+    /// RuntimeAbi (the layer's OS-error prefix and runtime definitions).</summary>
+    internal required string Layer { get; init; }
 
     /// <summary>Gets the bound below which the system maps no address (Windows: the null-pointer partition, 64 KiB): no heap block lies
     /// below it, so the runtime's release skips such an address.</summary>
@@ -124,6 +137,22 @@ internal sealed class TargetProfile
 
     /// <summary>Gets the row's reserved external names (IMPL 21.2): the float marker and the backend supply's symbols.</summary>
     internal required string[] ReservedSymbols { get; init; }
+
+    /// <summary>Gets the row of a target triple.</summary>
+    /// <param name="triple">The target triple.</param>
+    /// <returns>The row whose <see cref="Target"/> is <paramref name="triple"/>, or null when the table has none.</returns>
+    internal static TargetProfile? Find(string triple)
+    {
+        foreach (var row in Rows)
+        {
+            if (row.Target == triple)
+            {
+                return row;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>Gets the reserved supply of a library name.</summary>
     /// <param name="name">The library name.</param>
