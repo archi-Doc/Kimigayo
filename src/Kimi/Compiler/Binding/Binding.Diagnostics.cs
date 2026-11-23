@@ -620,15 +620,12 @@ public sealed partial class Binding
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();
-        this.qualificationStops?.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
         this.pendingJudgments?.Clear();
-        this.arithmeticSelectionFailures?.Clear();
-        this.arithmeticDirectionFailures?.Clear();
         this.writeTargets?.Clear();
         this.takeLayers?.Clear();
         this.captureFailures?.Clear();
@@ -716,7 +713,7 @@ public sealed partial class Binding
             return null;
         }
 
-        this.Fail(member, BindingFailure.Access);
+        this.RecordAccess(member, first!, null); // SPEC 9.4: every candidate is inaccessible; the first the walk met is related.
         return member;
     }
 

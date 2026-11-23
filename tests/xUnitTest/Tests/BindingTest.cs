@@ -22,8 +22,8 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
     }
 
-    // PLAN G724, B4: a member access's side is published beside its selection in a table cleared each pass, so a warm Bind of Type-side,
-    // value-side, constructor and Case accesses allocates nothing.
+    // PLAN G724, B4: a member access's side is published beside its selection in a pass family (MemberSelections, R7-N5 B1b-2), so
+    // a warm Bind of Type-side, value-side, constructor and Case accesses allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindOfMemberSidesAllocatesNothing()
@@ -770,21 +770,29 @@ public class BindingTest
     // program fails one today (the census), so each row fails one through the private writer after a Final Bind, as a check of the
     // program pass would (ALibraryNodeTheProgramPassFailsIsRecordedOnce): a qualification stop's QualificationRequired (B1a's
     // `qualificationFailures`, written by FailUnselected, the resolver's miss (R7-E2 E2-0), where B1a's HirTables.Of refused the frozen
-    // library table) and FailExplained's per-call Origin fact (MissingOrigin).
+    // library table) and FailExplained's per-call Origin fact (MissingOrigin). A program pass never stops a library use's lookup, and
+    // the frozen library's QualificationStops column refuses such a stop (R7-N5 B1b-2), so the row writes the two effects FailUnselected
+    // writes after it reads one: the stop as the failure's fact, and the failure.
     [Fact]
     public void AFactALibraryNodesFailureCarriesIsRecordedWithIt()
     {
         var c = CompilationTestHelper.Parse("struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n");
         Assert.False(c.Bind().IsComplete);
-        var stops = (Dictionary<(Koto Use, bool Type), Binding.QualificationFact>)typeof(Binding).GetField("qualificationStops", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        var stop = Assert.Single(stops).Value;
+        var stops = typeof(Binding).GetField("qualificationStops", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Koto failed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().Single(x => x.FailureOf(c) == BindingFailure.QualificationRequired);
+        object?[] read = [(failed, false), null];
+        Assert.True((bool)stops.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(stops, read)!);
+        var stop = (Binding.QualificationFact)read[1]!;
         Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
-        stops[(node, false)] = stop with { At = node };
-        typeof(Binding).GetMethod("FailUnselected", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, BindingFailure.MissingName]);
+        var record = typeof(Binding).GetMethod("RecordQualificationStop", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var refused = Assert.IsType<InvalidOperationException>(Assert.Throws<TargetInvocationException>(() => record.Invoke(c.Binding, [node, stop])).InnerException);
+        Assert.Contains("wrote the frozen library table", refused.Message);
+        var rows = typeof(Binding).GetField("qualificationFailures", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        rows.GetType().GetProperty("Item", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(rows, stop with { At = node }, [node]);
+        typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic, [typeof(Koto), typeof(BindingFailure), typeof(bool)])!.Invoke(c.Binding, [node, BindingFailure.QualificationRequired, false]);
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Equal((node, BindingFailure.QualificationRequired), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
         Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
-        var rows = typeof(Binding).GetField("qualificationFailures", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Equal(stop with { At = node }, rows.GetType().GetProperty("Item", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rows, [node]));
         Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.QualificationFailures.Used);
         Assert.Empty(c.Library.Layer.Part.ForeignFailures); // So the library part's ForeignFacts has no row a reader reaches.

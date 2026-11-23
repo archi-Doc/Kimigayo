@@ -415,9 +415,9 @@ public class ArchitectureRulesTest
         "Binding.TypeRelations.cs:CompatibleSignature=1 unchanged",
         "Binding.TypeRelations.cs:SubstituteTypeCore=3 unchanged",
         "Binding.Types.cs:BindTypeStructure=1 kind",
-        "Binding.ValueCalls.cs:AcquireValueCallee=1 unchanged",
         "Binding.ValueCalls.cs:BindValueCall=1 kind",
         "Binding.ValueCalls.cs:CallableClosure=1 unchanged",
+        "Binding.ValueCalls.cs:FormValueCallee=1 unchanged",
         "Binding.ValueCalls.cs:IndirectObjectCallee=1 unchanged",
         "Binding.ValueCalls.cs:TryCallable=1 unchanged",
         "Binding.ValueContext.cs:DiscardsFunctionBody=1 kind",
@@ -508,7 +508,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 24)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 13)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -574,7 +574,9 @@ public class ArchitectureRulesTest
     // be an enum, which keeps its whole list until PrepareStorage fails it, or a Contract, whose refinements are many (BuildContract).
     [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]
     // R7-N1a (RP6): ResolvePath reads the Type namespace; the others are the alias and module walks (R7-N1 e) and their own tables. PublishPath
-    // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
+    // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b. R7-N1 f: a scope's formal
+    // parameters (BindingScope.Parameters.Types) are Type-namespace reads too: TypeStage's (the root path reads its root through it) and
+    // the library witness rows' own slots.
     [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.ResolvePath.cs=1")]
     // PLAN G647: a walk of one Type's parts has no count of its own, so a depth or count compared with a literal stays at the census's

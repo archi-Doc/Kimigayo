@@ -88,10 +88,11 @@ public class UnresolvedRefinementBindingTest
     // since a later source can still supply it, and a missing name's records at the final Bind.
     [Theory]
     // A parent (Contract Reference): a struct or a group of its name beside it, a struct supplied later, and a nearer group passed
-    // for the Contract a later source supplies (v07).
-    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Target", null, "InvalidConstraint_Kd Target|InvalidConstraint_Kd contract Child")]
-    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Api", null, "InvalidConstraint_Kd Api|InvalidConstraint_Kd contract Child")]
-    [InlineData("public contract Child: Future", "public struct Future", "InvalidConstraint_Kd Future|InvalidConstraint_Kd contract Child")]
+    // for the Contract a later source supplies (v07). The missing name's record is UnresolvedBinding_Kd since R7-E2 E2-4b (the resolver's
+    // miss rule, PLAN G1207; it was InvalidConstraint_Kd).
+    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Target", null, "InvalidConstraint_Kd contract Child|UnresolvedBinding_Kd Target")]
+    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Api", null, "InvalidConstraint_Kd contract Child|UnresolvedBinding_Kd Api")]
+    [InlineData("public contract Child: Future", "public struct Future", "InvalidConstraint_Kd contract Child|UnresolvedBinding_Kd Future")]
     [InlineData("public group G\n    group Future\n        func z() -> i32 => 0\n    public contract Child: Future", "public contract Future", "")]
     // A requirement's Type argument (Core): a Contract of its name (v11).
     [InlineData("public contract C\n    func m(self: ref/Self) -> i32\npublic struct Box<T>\ngroup G\n    func f<T>(x: T)\n        T is Box<C>\n        ()", null, "InvalidConstraint_Kd Box<C>|InvalidConstraint_Kd func f<T>(x: T)\n    T is Box<C>\n    ()|UnresolvedBinding_Kd C")]

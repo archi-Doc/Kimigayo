@@ -256,7 +256,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Equal(string.Empty, await Tool("clang", work, [.. oracle, Path.Combine(tests, "native.c"), "-o", "native.obj"]));
         Assert.Equal(string.Empty, await Tool("clang", work, "--target=" + Triple, "-c", Path.Combine(tests, "probe.S"), "-o", "probe.obj"));
         var memory = Path.Combine(work, "memory.ll");
-        File.WriteAllText(memory, $"target triple = \"{Triple}\"\ntarget datalayout = \"{TargetProfile.Windows.DataLayout}\"\n{LlvmModuleText.MemoryRuntime}{LlvmModuleText.Footer}");
+        File.WriteAllText(memory, $"target triple = \"{Triple}\"\ntarget datalayout = \"{TargetProfile.Windows.DataLayout}\"\n{LlvmModuleText.MemoryRuntime}{LlvmModuleText.Frame(TargetProfile.Windows).Footer}");
         foreach (var level in Levels)
         {
             var ir = level == "O2" ? Path.Combine(work, "memory.O2.ll") : memory;

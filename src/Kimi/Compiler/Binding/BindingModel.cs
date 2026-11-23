@@ -374,11 +374,22 @@ public sealed class BindingSymbol
     // requirement checked at the conformance, never a reference input condition (SPEC 6.1.4, 8.7.1).
     internal bool IsGenericInput => this.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter && this.SelfOf is null;
 
-    // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
+    // SPEC 6.1.5, 8.4, 9.1: the declaration whose Self this symbol is: a Contract's dedicated Self Type parameter (the conforming-Type
+    // binder), a struct's or enum's Self (Kind Type, the declaration with all its bindings); null for any other symbol.
     internal BindingSymbol? SelfOf { get; set; }
 
-    // SPEC 8.4: the dedicated Self Type parameter of a Contract, created at its first use.
-    internal BoundType? ContractSelf { get; set; }
+    // SPEC 6.1.5, 9.5: the Self this declaration's scope declares beside its formal parameters (BindingScope.Parameters), made once and
+    // kept: a Contract's Self Type parameter (Binding.ContractSelfType), a struct's or enum's Self symbol (Binding.DeclareSelf).
+    internal BindingSymbol? SelfSymbol { get; set; }
+
+    // SPEC 6.1.5, 9.1: the declaration this selection names: a struct's or enum's Self names its declaration (SelfOf); every other symbol,
+    // a Contract's Self (a binder, BU-150) among them, names itself. Read where a selection's declaration facts (its raw Type, Schema or
+    // identity) are asked, never its Type as written (a Self symbol's Type is the declaration applied to its own parameters).
+    internal BindingSymbol Named => this.SelfOf is { Declaration: not ContractKoto } declaration ? declaration : this;
+
+    // SPEC 9.1, 9.7: the symbol's own generic arity, which a written argument list must match: a Type declaration's generic parameter
+    // count (length slots included); none for a Self, which takes no Type arguments, and for every other symbol.
+    internal int GenericArity => this.SelfOf is null && this.Declaration is DeclarationContainerKoto container ? container.GenericParameterNodes.Count : 0;
 
     internal BindingSymbol? Pair { get; set; }
 
@@ -929,8 +940,15 @@ internal sealed class BindingScope(Koto owner)
 
     internal FunctionKoto? Function { get; set; }
 
+    // The scope's Type-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
 
+    // SPEC 9.1, 9.5, 9.6, 4.4.1: the formal parameters the scope's declaration declares, by namespace as its members are, found by the
+    // stage walk at their declaring position and never a member a path or an opening alias reaches; null until the scope declares one
+    // (AddParameters), so a scope that declares none allocates no table.
+    internal ScopeParameters? Parameters { get; private set; }
+
+    // The scope's Value-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Values { get; } = new(StringComparer.Ordinal);
 
     internal Dictionary<string, BoundOrigin>? Origins { get; set; }
@@ -961,9 +979,13 @@ internal sealed class BindingScope(Koto owner)
         set => this.Link(ref this.conformancePath, value);
     }
 
+    internal ScopeParameters AddParameters() => this.Parameters ??= new();
+
     internal void Reset()
     {
         this.Types.Clear();
+        this.Parameters?.Types.Clear();
+        this.Parameters?.Values?.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
         this.OriginSets?.Clear();
@@ -980,6 +1002,17 @@ internal sealed class BindingScope(Koto owner)
             this.LinkVersion++;
         }
     }
+}
+
+// A scope's formal parameters by namespace (BindingScope.Parameters): Type parameters, pair targets and their binders in Types, a
+// function's length slots (SPEC 4.4.1) in Values, null until the scope declares one (AddValues), as Parameters itself is.
+internal sealed class ScopeParameters
+{
+    internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
+
+    internal Dictionary<string, BindingSymbol>? Values { get; private set; }
+
+    internal Dictionary<string, BindingSymbol> AddValues() => this.Values ??= new(StringComparer.Ordinal);
 }
 
 /// <summary>How a check judged a repair condition from its own facts (SPEC 23.1.3); a refuted condition withholds the candidate.</summary>

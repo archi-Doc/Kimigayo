@@ -135,10 +135,13 @@ public partial class SyntaxIdTest
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
     // its container's list; OverrideEntries: a Type's implementations by original; SpecializationStorage: Milestone11's specialization
     // entries, reused by every Bind; KnownBases: j4's known base, which the Binds after its first start from; Refusals: the refusal a
-    // losing candidate's request past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by
+    // losing candidate's request past the round bound holds, unsettled, in a valid program, G881b's xovm; GatheredGroups: a call's
+    // group gathered from two aliases' groups, the same list refilled at each Bind, R7-N5 B1b-1). The column is read by
     // reflection, since the families' rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each
     // Final check's start empties them, so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
-    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`.
+    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`. IndexedPatterns (R7-N5
+    // B1b-1) has none either: this theory compares a row by reference, and its row is a `(bool, bool)` value; d7 covers its moves, and
+    // SyntaxEditInvalidationTest.AnEditedRoleLeavesNoStalePatternRow fails without ResetMatches' `Empty()`.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]
@@ -164,6 +167,7 @@ public partial class SyntaxIdTest
     [InlineData("ResolvedKeys", "milestone:Milestone27")]
     [InlineData("MatchPlans", "milestone:Milestone10")]
     [InlineData("Refusals", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\npublic func main() => ()\n")]
+    [InlineData("GatheredGroups", "alias A\nalias B\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet n = pick(7)\n")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source
@@ -200,18 +204,21 @@ public partial class SyntaxIdTest
     // under a holed annotation; CallInferenceFailures, ConstructorInferenceDiagnosticTest's changed constructor selection;
     // CallableSelectionFailures, a Callable value call no bound applies to; BaseCallFailures, a `base` reference that calls nothing;
     // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
-    // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's
-    // ArithmeticConformanceFailures, a conformance to Addable<string> (ArithmeticContractTest); CallableConstraints, a callee needing
-    // `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UnboundSlots, a call whose slot nothing binds,
-    // and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter; D-986's
-    // FormReads, the kept operands `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query
-    // memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
+    // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
+    // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UnboundSlots, a call whose slot
+    // nothing binds, and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
+    // B1b-2's MemberSelections, a stored Field read and a method call, InferredConstructionTargets, a generic struct's construction
+    // without its Type arguments, and QualificationStops, an instance member named without `self`; D-986's FormReads, the kept operands
+    // `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query memos written in a Bind: the
+    // result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
     // result; the guess rule's is written only after a Bind, by the lint report and MIR:
     // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes; D-932's
     // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;
     // B2b-2's ResolvedSlices, a slice selected by a range value; R7-N5 E's Prerequisites, the consultation range of `s == missing`,
     // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute; PrerequisiteVisits, the walk of a
-    // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`).
+    // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`; B1b-1's ResolvingTypes,
+    // a written Type's BindType, whose rows are reset as it returns, so the column holds carved pages, not rows; SynthesizedCalls,
+    // Milestone23's range calls).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -245,11 +252,13 @@ public partial class SyntaxIdTest
     [InlineData("ObjectErasureFailures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return other.ordinary()\n()", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("ReachedThroughBorrow", "struct S1\n    internal var x: Array<i32>\nstruct S2\n    internal var x: Array<S1>\nfunc f(s: S2) -> i32 => s.x[0].x[0]\n")]
     [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
-    [InlineData("ArithmeticConformanceFailures", "struct Bad\n    Self is Addable<string>\n    associate Output is i32\n()", DiagnosticCode.InvalidArithmeticConformance_Kd)]
     [InlineData("CallableConstraints", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("UnboundSlots", "func make<T>() -> i32 => 1\nlet x = make()\n", DiagnosticCode.UnboundTypeArgument_Kd)]
     [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
     [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
+    [InlineData("MemberSelections", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
+    [InlineData("InferredConstructionTargets", "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet b = Box.init(1)\n")]
+    [InlineData("QualificationStops", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
     [InlineData("FormReads", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("Prerequisites", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("PartPrerequisites", "#Layout(\"bad\")\nstruct S\n", DiagnosticCode.InvalidLayoutAttribute_Kd)]
@@ -260,6 +269,8 @@ public partial class SyntaxIdTest
     [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("EarlyReads", BaseInputFormationBindingTest.J4)]
     [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
+    [InlineData("ResolvingTypes", "let x: i32 = 1\n")]
+    [InlineData("SynthesizedCalls", "milestone:Milestone23")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
