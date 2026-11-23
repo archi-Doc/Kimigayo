@@ -1031,10 +1031,10 @@ public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount,
     public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0;
 }
 
-/// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol and the supply kind
-/// that selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6).</summary>
+/// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol, the supply kind
+/// that selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6), and its physical signature (ImportAbi).</summary>
 // R5-M25: the extern names its definition the way MirDefKey does; a syntax reader takes Decl.Declaration.
-internal readonly record struct LibraryImport(BindingSymbol Decl, string Library, string Symbol, string Kind);
+internal readonly record struct LibraryImport(BindingSymbol Decl, string Library, string Symbol, string Kind, string Signature);
 
 /// <summary>An Origin relation that a fit leaves unproven (SPEC 15.6.1): <c>Longer outlives Shorter</c>, or <c>==</c> at an invariant
 /// position, at the value that supplies the longer end; <c>Refuted</c> when the longer end is a body-local finite Origin.</summary>
