@@ -16,7 +16,7 @@ namespace XunitTest;
 // decides (R6-check H5; H3b T51, class 4: records
 // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), `mir` is the MIR's record beside Binding's: A5's
 // UnprovenOriginRelation_Kd at m1's, v1's and v2's container fit; x1's constructor has none, as its Field has no stored Type (SPEC
-// 23.1.2; PLAN G105, G522; DECISIONS Q13).
+// 23.1.2; DECISIONS Q13).
 public partial class PropertyBindingTest
 {
     private const string ViewHead = "struct View {source}\n    public let data: ref/i32 during source\n    public let ";

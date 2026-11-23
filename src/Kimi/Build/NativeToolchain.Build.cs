@@ -69,9 +69,10 @@ internal static partial class NativeToolchain
         }
     }
 
-    // SPEC 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable
-    // original; a staged copy is reused only when its bytes still have that hash. The input is a stream (a program's file or the
-    // compiler's resource), which the caller disposes.
+    // IMPL 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable original; a staged copy is reused
+    // only when its bytes still have that hash (IsStaged). A program's input is copied first and named by the copy's hash; a compiler's
+    // supply is found by its catalog hash (StageSupply). The input is a stream (a program's file or the compiler's resource), which the
+    // caller disposes.
     internal static string StageInput(Stream input, string stem, out string hash)
     {
         var directory = stem + ".native";
@@ -85,8 +86,7 @@ internal static partial class NativeToolchain
             }
 
             hash = Hash(temporary);
-            var staged = Path.Combine(directory, hash + ".lib");
-            if (!File.Exists(staged) || Hash(staged) != hash)
+            if (!IsStaged(stem, hash, out var staged))
             {
                 Replace(temporary, staged);
             }
@@ -97,6 +97,29 @@ internal static partial class NativeToolchain
         {
             File.Delete(temporary);
         }
+    }
+
+    // A compiler's supply staged (IMPL 20.4; LC3 S1): the copy its catalog hash names is reused when its bytes, the whole file hashed,
+    // still have that hash, and the resource is not opened; otherwise the resource is staged as an input is, named by the copy's hash.
+    // The build compares nothing with the catalog: the catalog row test owns the resource's hash (DECISIONS T-M8).
+    internal static string StageSupply(CompilerSupply supply, string stem, out string hash)
+    {
+        if (IsStaged(stem, supply.Sha256, out var staged))
+        {
+            hash = supply.Sha256;
+            return staged;
+        }
+
+        using var input = supply.Open();
+        return StageInput(input, stem, out hash);
+    }
+
+    // IMPL 20.4's reuse rule, stated once: the staged copy the hash names, <stem>.native/<hash>.lib, is reused only when it exists and its
+    // bytes still have that hash.
+    private static bool IsStaged(string stem, string hash, out string staged)
+    {
+        staged = Path.Combine(stem + ".native", hash + ".lib");
+        return File.Exists(staged) && Hash(staged) == hash;
     }
 
     // The external functions the module declares, keyed by symbol, with their dllimport form: the manifest's externalDeclarations, which
@@ -133,18 +156,18 @@ internal static partial class NativeToolchain
     /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> runs the steps once, in order: the pair's
     /// identity, with the input the manifest names, resolved as its other paths are (absent for a pair emitted from memory or by an
     /// earlier compiler), Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
-    /// version), the libraries (each staged: the compiler's supplies from its resources, a program's from its input), the object, its
-    /// inspection, the link to a private file, the report and the commit; the steps fill the record and <see cref="Run"/> writes each of
-    /// its states. The commit, after the report and the last cancellation point, writes the success record, which names the private
-    /// file's hash, and then moves the file to the executable's path, so an Application publishes its executable only on success (IMPL
-    /// 20.3.2; Tatara decision 18): a step that fails before the commit, the report included, throws and leaves the previous executable
-    /// and the record at the last incomplete state written, and a failed move writes the invalidation again and rethrows the move's
-    /// failure. The private file is deleted on every outcome. IMPL 20.3.2 states the two windows (the owner's decision 19, O-468 (a)):
-    /// should the process end between the success record and the move, or the move and the invalidation both fail (one IOException
+    /// version), the libraries (each staged: the compiler's supplies found by their catalog hash or staged from their resources, a program's
+    /// from its input), the object, its inspection, the link to a private file, the report and the commit; the steps fill the record and
+    /// <see cref="Run"/> writes each of its states. The commit, after the report and the last cancellation point, writes the success record,
+    /// which names the private file's hash, and then moves the file to the executable's path, so an Application publishes its executable
+    /// only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the commit, the report included, throws and leaves the
+    /// previous executable and the record at the last incomplete state written, and a failed move writes the invalidation again and rethrows
+    /// the move's failure. The private file is deleted on every outcome. IMPL 20.3.2 states the two windows (the owner's decision 19, O-468
+    /// (a)): should the process end between the success record and the move, or the move and the invalidation both fail (one IOException
     /// naming both, the move's as its inner exception), the attempt's success record stays, naming a hash no file at the path has. run
-    /// --no-build runs only an executable whose hash the record names, so it refuses that one, and the next build invalidates the
-    /// record. From the pair's hash to its end the build holds its IR open for reading only (G1202): a write, replacement or deletion of
-    /// it fails meanwhile, so Tatara compiles the bytes the record names.</summary>
+    /// --no-build runs only an executable whose hash the record names, so it refuses that one, and the next build invalidates the record.
+    /// From the pair's hash to its end the build holds its IR open for reading only (G1202): a write, replacement or deletion of it fails
+    /// meanwhile, so Tatara compiles the bytes the record names.</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -269,9 +292,10 @@ internal static partial class NativeToolchain
         }
 
         // The manifest's libraries in its order, each staged (the file the linker receives), checked against its assertions and
-        // identified in the record by its staged path and hash (SPEC 20.4). A reserved name is the compiler's supply: its entry the one
-        // this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies); any other is a program's, staged
-        // from its input and checked against the project's supply. Every compiler's supply is listed.
+        // identified in the record by its staged path and hash (IMPL 20.4). A reserved name is the compiler's supply: its entry the one
+        // this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies), found by their catalog hash or
+        // staged from its resource (StageSupply); any other is a program's, staged from its input and checked against the project's
+        // supply. Every compiler's supply is listed.
         private List<string> ResolveLibraries()
         {
             var libraries = new List<string>();
@@ -287,16 +311,24 @@ internal static partial class NativeToolchain
                 }
 
                 var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name);
+                string path;
+                string hash;
                 if (supply is not null)
                 {
                     LinkManifest.CheckCompilerSupply(item, supply);
+                    path = StageSupply(supply, this.paths.Stem, out hash);
                 }
-
-                using var input = supply is null ? File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory)) : supply.Open();
-                var path = StageInput(input, this.paths.Stem, out var hash);
-                if (this.project is not null && supply is null)
+                else
                 {
-                    CheckSupply(this.project, name, kind, hash);
+                    using (var input = File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory)))
+                    {
+                        path = StageInput(input, this.paths.Stem, out hash);
+                    }
+
+                    if (this.project is not null)
+                    {
+                        CheckSupply(this.project, name, kind, hash);
+                    }
                 }
 
                 if (LinkManifest.OptionalText(item, "libraries.sha256") is { } assertion &&

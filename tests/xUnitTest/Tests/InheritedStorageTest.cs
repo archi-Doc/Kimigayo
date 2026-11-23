@@ -59,7 +59,7 @@ public class InheritedStorageTest
 
     // SPEC 6.3.4, 11.7: the construction receiver also forbids inherited Field and computed access, custom accessor calls and
     // a Non-Copy Move, each one Language record at the access. Since the MIR decides acceptance (R6-check H5), a rejected read
-    // while a Field is uninitialized also has A1's `mir` record at the access (PLAN G105): published directly until A6's 2g-1
+    // while a Field is uninitialized also has A1's `mir` record at the access (PLAN G1324): published directly until A6's 2g-1
     // (DECISIONS R5-M184; H3b T51, class 4).
     [Theory]
     [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32\n    public init()\n        self.y = self.x\n", "self.x", nameof(DiagnosticCode.UninitializedPlace_Kd))]
@@ -82,7 +82,7 @@ public class InheritedStorageTest
     // whatever the receiver form: one InvalidAssignment_Kd at the call's own `self` (an empty snippet), the call resting on it. The call's
     // independent failures keep their records (SPEC 23.1.2): a failed argument, a mismatched one, a failed Type argument, a waiting
     // anonymous function, an object-borrow receiver's fit. A Type function named through `self` takes no receiver and keeps the general
-    // rules' record; before placement A1's record stays (PLAN G105). Each record is a code and the snippet it spans, after the call.
+    // rules' record; before placement A1's record stays (PLAN G1324). Each record is a code and the snippet it spans, after the call.
     [Theory]
     [InlineData(Placed + "        let h = self.peek()\n    func peek(self: ref/Self) -> i32 => self.a\n", "self.peek()", "InvalidAssignment_Kd|")]
     [InlineData(Placed + "        self.bump()\n    func bump(self: uniq/Self) => self.a += 1\n", "self.bump()", "InvalidAssignment_Kd|")]
