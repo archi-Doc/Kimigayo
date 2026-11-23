@@ -340,7 +340,7 @@ internal struct NodeColumns
     internal PagedColumn<Binding.TypeRoleCause> FormationCauses; // Kept: a pair occurrence's Language formation causes, emptied at each Final check (Binding.ConstraintValidation.cs).
     internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
-    internal StampedColumn<Koto?, Binding.PassCounter> FailingSteps; // Pass: the qualifier a use's published Unresolved lookup failed at, its failing step (Binding.ResolvePath.cs).
+    internal StampedColumn<Koto?, Binding.PassCounter> FailingSteps; // Pass: the step a use's published Unresolved lookup failed at, where it is not the use (Binding.ResolvePath.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
     internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).

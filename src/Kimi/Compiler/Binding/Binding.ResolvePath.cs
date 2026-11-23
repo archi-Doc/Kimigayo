@@ -22,7 +22,7 @@ namespace Kimi.Compiler;
 //   ordinary path ends at that Name, a `::` path at its outer member node). No publication arm judges.
 // - Prohibited: reading an outcome from anywhere but the result; a second stage walk; a publish on the way.
 // - Published per use (R7-N1e2-1R): a Type-name use's lookup is published on the use (HirTables.Lookups: its end; its selection in the
-//   Symbols column; an Unresolved end's failing step, a qualifier of the use, in the FailingSteps family: F's ruling N1-13 B1), once;
+//   Symbols column; an Unresolved end's failing step, wherever it is not the use, in the FailingSteps family: F's ruling N1-13 B1), once;
 //   NamePath, the only entry outside this file, reads the published lookup on every later call, so every reader of a failed walk
 //   (UnselectedTypeSite's record, the node an alias rests on) reads the step the walk failed at. The row is the use's position's (UseRow),
 //   which no caller passes and no column stores.
@@ -221,7 +221,7 @@ public sealed partial class Binding
     // Publishes a use's lookup once: a later publication (a path's walk evaluating a published qualifier again) must be equal, and a
     // different end is a broken contract, as a different selection is (the Symbols entry's write, HirTables.WriteSymbol). Every
     // publication of a use is in UseRow's row (NamePath's and the walk's left), so the column stores no row. An Unresolved end carries
-    // the step its walk failed at when that is a qualifier of the use (`failed`: FailingSteps), which PublishedStep reads back.
+    // the step its walk failed at when that is not the use (`failed`: FailingSteps), which PublishedStep reads back.
     private void PublishUse(Koto use, PathEnd end, BindingSymbol? symbol, Koto? failed)
     {
         var published = HirTables.LookupOf(use);
