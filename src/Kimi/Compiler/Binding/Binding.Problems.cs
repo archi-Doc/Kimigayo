@@ -195,9 +195,9 @@ public sealed partial class Binding
     }
 
     // A failed node's problem, the slot's (index -1 for a slot without one) or a further one: derived when its own requirement rests on the
-    // inputs its check read (IsDerived, rule W), else direct (SPEC 23.1.2).
+    // node's recorded inputs (IsDerived, rule W), else direct (SPEC 23.1.2).
     private void CollectProblem(Koto node, BindingFailure failure, DiagnosticCode code, int problem)
-        => (this.IsDerived(node, failure, code, problem) ? this.derivedIssues : this.issues).Add(new(node, code) { Failure = failure, Problem = problem });
+        => (this.IsDerived(node, failure, code) ? this.derivedIssues : this.issues).Add(new(node, code) { Failure = failure, Problem = problem });
 
     // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
     // its own, direct or derived by its own requirement (CollectProblem). An Origin record beyond the first is published with the node's first

@@ -619,7 +619,6 @@ public sealed partial class Binding
         this.invalidations = 0;
         this.caseBinders?.Clear();
         this.report.Clear();
-        this.problemInputs.Clear(); // Indexed by the report's problems.
         this.nameSteps.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
@@ -645,8 +644,6 @@ public sealed partial class Binding
         this.consulted.Clear();
         this.consultationStart = -1;
         this.consultationNode = null;
-        this.consultationPart = null;
-        this.framedProblems.Clear();
         this.missingExpectation = null;
     }
 
