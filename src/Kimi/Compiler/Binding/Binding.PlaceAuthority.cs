@@ -11,6 +11,8 @@ namespace Kimi.Compiler;
 //   case assignment (SPEC 8.15.2: each assigned pair binder's layers take its case, every other layer its weakest case; the empty
 //   assignment is every layer at its weakest case, which an operation valid in every case reads) and the
 //   one diagnostic for a capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority);
+//   whether the path passes a conformance selection (PathPrefix.Conformance, SPEC 4.7.1, 5.4: an address through one has `index`'s
+//   shared authority; the address mark reads it);
 //   whether a Place offers Write (Writable), as a whole Place, the question of an assignment's whole target and of a pair layer's
 //   owner-case operand (WritablePlace), and what a part's owner grants it or lends it (WritableOwner, LendsOwner: the one reading
 //   of SPEC 15.1.5's writable roots for a part, a writable temporary's included, WritableTemporary, whose whole Temporary Place no
@@ -214,17 +216,21 @@ public sealed partial class Binding
             PathStep.Receiver when Receiver(source)?.Parts == SemanticsKind.Uniq => PathGrant.Owner with { Authority = SemanticsKind.Uniq },
             _ => PathGrant.Owner,
         };
-        return new(root, root.Access, step == PathStep.RawFollow, this.Writes(source, root.Access, step == PathStep.RawFollow, null));
+        return new(root, root.Access, step == PathStep.RawFollow, this.Writes(source, root.Access, step == PathStep.RawFollow, null), false);
     }
 
     // One prefix of a fold, from the prefix it selects from (owner): its grant under the case assignment (Then), its access under the
-    // empty one, whether it is a raw Place's inline part (SPEC 5.2), and whether it offers Write (Writes).
+    // empty one, whether it is a raw Place's inline part (SPEC 5.2), whether it offers Write (Writes), and whether the path passes a
+    // conformance selection (SPEC 4.7.1: a user index's element, or an Array's or Dictionary's, owned or through a borrow; a fixed array's
+    // is a built-in projection).
     private PathPrefix Prefix(Koto source, PathStep step, Koto next, in PathPrefix owner, ReadOnlySpan<PairCase> assignment)
     {
         var grant = this.Then(owner.Grant, step, source, next, owner, assignment);
         var access = assignment.IsEmpty ? grant.Access : this.Then(PathGrant.Owner with { Authority = owner.Access }, step, source, next, owner, []).Access;
         var raw = owner.Raw && source is BinaryKoto part && this.IsInlinePart(part);
-        return new(grant, access, raw, this.Writes(source, access, raw, owner));
+        var conformance = owner.Conformance || step is PathStep.UserIndex or PathStep.ArrayElement ||
+            (step == PathStep.BorrowedElement && next.BoundType?.SafeReferent?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary);
+        return new(grant, access, raw, this.Writes(source, access, raw, owner), conformance);
     }
 
     // One step of PathFold: what `source`'s path grants under a case assignment, from what the path of `next`, the prefix it selects
@@ -875,8 +881,10 @@ public sealed partial class Binding
 
     // One prefix of a Place's path, folded from its root (PathFold): Grant under the query's case assignment; Access, the path's access
     // under the empty assignment (ReachedThroughShared's reading); Raw, whether the prefix is a raw Place's root or an inline part of
-    // one (SPEC 5.2); Writable, whether it offers Write (Writes).
-    private readonly record struct PathPrefix(PathGrant Grant, SemanticsKind Access, bool Raw, bool Writable);
+    // one (SPEC 5.2); Writable, whether it offers Write (Writes); Conformance, whether the path passes a conformance selection since its
+    // root (Prefix), through which an address selects `index` and has its shared authority whatever the path grants (SPEC 5.4; the
+    // address mark, MarkLimits).
+    private readonly record struct PathPrefix(PathGrant Grant, SemanticsKind Access, bool Raw, bool Writable, bool Conformance);
 
     // One prefix of a lending fold (LendFold): its path (PathFold's prefix), the query's mode, whether SPEC lends it in that mode, and
     // the static Field or static storage at the root of the path that lends it (LendsPlace).

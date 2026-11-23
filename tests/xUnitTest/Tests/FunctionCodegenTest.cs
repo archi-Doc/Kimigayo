@@ -377,6 +377,19 @@ public sealed partial class FunctionCodegenTest
             "Console.writeLine(\"\\(x1) \\(x2) \\(x3) \\(x4) \\(x5) \\(x6) \\(x7) \\(x8) \\(x9)\")\n",
             "20 10 30 10 20 10 20 10 30\n"
         },
+        {
+            // PLAN G597's L2: sliceUniq's view starts at Storage.viewStart's keyed Storage over the remainder's raw pointer, so a write
+            // through each view lands at its first element's offset: an Array's whole, displaced and from-end views, a fixed array's
+            // displaced view, a zero-sized element's displaced view (stride 0) and an empty Array's whole and zero-start views (its
+            // storage null at capacity 0, IMPL 21.1.3, which a zero displacement keeps, SPEC 5.3).
+            "RvalueKeyedRawStorage",
+            "var a: Array<i32> = [10, 20, 30]\nvar v1 = a.sliceUniq(..)\nv1[0] = 1\nvar v2 = a.sliceUniq(1..)\nv2[1] = 3\n" +
+            "var v3 = a.sliceUniq(..^1)\nv3[1] = 2\nlet n3 = v3.length\nvar f: [3 of i32] = [10, 20, 30]\nvar w = f.sliceUniq(1..)\nw[0] = 7\n" +
+            "var z: Array<()> = [(), (), ()]\nvar u = z.sliceUniq(1..)\nu[0] = ()\nlet nu = u.length\n" +
+            "var e: Array<i32> = []\nlet ne = e.sliceUniq(..).length\nlet nz = e.sliceUniq(0..).length\n" +
+            "Console.writeLine(\"\\(a[0]) \\(a[1]) \\(a[2]) \\(n3) \\(f[1]) \\(nu) \\(ne) \\(nz)\")\n",
+            "1 2 3 2 7 2 0 0\n"
+        },
     };
 
     // A requirement's witnesses (SPEC 8.6.3-8.6.4; DECISIONS R5-M93): a conformance's body, an inherited one and a generic Type's instance.
@@ -688,30 +701,30 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(type == "i128", text.Contains(LlvmModuleText.WideOverflowDeclarations, StringComparison.Ordinal));
     }
 
-    // SPEC 13.3.1: a quotient or remainder by zero Aborts with KIMI_E_INT_DIV_ZERO (7), a signed quotient also the minimum by -1 with
-    // KIMI_E_INT_OVERFLOW (6), its failure block selecting the reason; a dynamic signed divisor of -1 divides as 1, so a remainder is 0 and a
-    // wrapping quotient the negation; a shift count outside 0 <= count < N Aborts with KIMI_E_INT_SHIFT_COUNT (8) and only then takes the
+    // SPEC 13.3.1: a quotient or remainder by zero Aborts with KIMI_E_INT_DIV_ZERO (6), a signed quotient also the minimum by -1 with
+    // KIMI_E_INT_OVERFLOW (5), its failure block selecting the reason; a dynamic signed divisor of -1 divides as 1, so a remainder is 0 and a
+    // wrapping quotient the negation; a shift count outside 0 <= count < N Aborts with KIMI_E_INT_SHIFT_COUNT (7) and only then takes the
     // left operand's width. Each check precedes its instruction, which its success block computes.
     [Theory]
     [InlineData("func f(a: i32, b: i32) -> i32 => a / b", "sdiv i32 %, %", "load i32, ptr %, align 4", "icmp eq i32 %, 0", -1)]
-    [InlineData("func f(a: u32, b: u32) -> u32 => a / b", "udiv i32 %, %", "load i32, ptr %, align 4", "icmp eq i32 %, 0", 7)]
-    [InlineData("func f(a: i64, b: i64) -> i64 => a % b", "srem i64 %, %", "select i1 %, i64 1, i64 %", "icmp eq i64 %, 0", 7)]
-    [InlineData("func f(a: Wrapping<u16>, b: Wrapping<u16>) -> Wrapping<u16> => a % b", "urem i16 %, %", "load i16, ptr %, align 2", "icmp eq i16 %, 0", 7)]
-    [InlineData("func f(a: Wrapping<i32>, b: Wrapping<i32>) -> Wrapping<i32> => a / b", "sdiv i32 %, %", "select i1 %, i32 1, i32 %", "icmp eq i32 %, 0", 7)]
-    [InlineData("func f(a: i32, b: u8) -> i32 => a << b", "shl i32 %, %", "zext i8 % to i32", "icmp uge i8 %, 32", 8)]
-    [InlineData("func f(a: u64, b: i8) -> u64 => a >> b", "lshr i64 %, %", "zext i8 % to i64", "icmp uge i8 %, 64", 8)]
-    [InlineData("func f(a: Wrapping<i8>, b: i64) -> Wrapping<i8> => a >> b", "ashr i8 %, %", "trunc i64 % to i8", "icmp uge i64 %, 8", 8)]
-    [InlineData("func f(a: i32, b: i32) -> i32 => a << b", "shl i32 %, %", "load i32, ptr %, align 4", "icmp uge i32 %, 32", 8)]
+    [InlineData("func f(a: u32, b: u32) -> u32 => a / b", "udiv i32 %, %", "load i32, ptr %, align 4", "icmp eq i32 %, 0", 6)]
+    [InlineData("func f(a: i64, b: i64) -> i64 => a % b", "srem i64 %, %", "select i1 %, i64 1, i64 %", "icmp eq i64 %, 0", 6)]
+    [InlineData("func f(a: Wrapping<u16>, b: Wrapping<u16>) -> Wrapping<u16> => a % b", "urem i16 %, %", "load i16, ptr %, align 2", "icmp eq i16 %, 0", 6)]
+    [InlineData("func f(a: Wrapping<i32>, b: Wrapping<i32>) -> Wrapping<i32> => a / b", "sdiv i32 %, %", "select i1 %, i32 1, i32 %", "icmp eq i32 %, 0", 6)]
+    [InlineData("func f(a: i32, b: u8) -> i32 => a << b", "shl i32 %, %", "zext i8 % to i32", "icmp uge i8 %, 32", 7)]
+    [InlineData("func f(a: u64, b: i8) -> u64 => a >> b", "lshr i64 %, %", "zext i8 % to i64", "icmp uge i8 %, 64", 7)]
+    [InlineData("func f(a: Wrapping<i8>, b: i64) -> Wrapping<i8> => a >> b", "ashr i8 %, %", "trunc i64 % to i8", "icmp uge i64 %, 8", 7)]
+    [InlineData("func f(a: i32, b: i32) -> i32 => a << b", "shl i32 %, %", "load i32, ptr %, align 4", "icmp uge i32 %, 32", 7)]
     public void DivisionAndShiftChecksAbortBeforeTheirInstruction(string source, string instruction, string divisor, string condition, int reason)
     {
         var (ir, text) = Parse(source);
-        var operation = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == instruction);
+        var operation = Assert.Single(Internal(ir).SelectMany(static x => x.Instructions), x => x.Shape == instruction);
         var f = Assert.Single(ir.Functions, x => x.Instructions.Contains(operation));
         var check = Assert.Single(f.Blocks, x => x.Successors.Count == 2 && x.Successors[1].Instructions.Contains(operation));
         var abort = AssertAbort(ir, text, check.Successors[0], reason, source, source[(source.IndexOf("=> ", StringComparison.Ordinal) + 3)..]);
         if (reason < 0)
         {
-            Assert.Equal("select i1 %, i32 7, i32 6", Assert.Single(abort.Operands).Shape); // Zero, else the minimum by -1.
+            Assert.Equal("select i1 %, i32 6, i32 5", Assert.Single(abort.Operands).Shape); // Zero, else the minimum by -1.
         }
 
         Assert.Equal(("load", divisor), (operation.Operands[0].Opcode, operation.Operands[1].Shape));
@@ -812,23 +825,23 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 13.5.4, 22.5.2 (R5 C1b; DECISIONS R5-M80): a conversion that can fail tests its loaded operand, in the source Type, against each
-    // side of the target's range the source exceeds: an integer against the target's extremes (KIMI_E_INT_CONVERSION, 9); a floating-point
+    // side of the target's range the source exceeds: an integer against the target's extremes (KIMI_E_INT_CONVERSION, 8); a floating-point
     // value against the bounds its truncation toward zero must lie within, the minimum's predecessor where the significand holds it, with
-    // unordered predicates, so NaN and the infinities fail (9); a narrowing to f32 against the overflow threshold, ordered, and a finite input
-    // only, so NaN and the infinities convert (KIMI_E_FLOAT_CONVERSION, 11). The failure Aborts at the conversion's location text; the success
+    // unordered predicates, so NaN and the infinities fail (8); a narrowing to f32 against the overflow threshold, ordered, and a finite input
+    // only, so NaN and the infinities convert (KIMI_E_FLOAT_CONVERSION, 10). The failure Aborts at the conversion's location text; the success
     // block converts, or stores the operand where the representation is kept.
     [Theory]
-    [InlineData("func f(a: i32) -> u8 => a@u8", "internal i8 (i32)", "trunc i32 % to i8", "icmp slt i32 %, 0", "icmp sgt i32 %, 255", 9)]
-    [InlineData("func f(a: u64) -> i64 => a@i64", "internal i64 (i64)", null, null, "icmp ugt i64 %, 9223372036854775807", 9)]
-    [InlineData("func f(a: i8) -> u16 => a@u16", "internal i16 (i8)", "sext i8 % to i16", "icmp slt i8 %, 0", null, 9)]
-    [InlineData("func f(a: i128) -> u64 => a@u64", "internal i64 (i128)", "trunc i128 % to i64", "icmp slt i128 %, 0", "icmp sgt i128 %, 18446744073709551615", 9)]
-    [InlineData("func f(a: u128) -> i128 => a@i128", "internal i128 (i128)", null, null, "icmp ugt i128 %, 170141183460469231731687303715884105727", 9)]
-    [InlineData("func f(a: f64) -> i32 => a@i32", "internal i32 (double)", "fptosi double % to i32", "fcmp ule double %, 0xC1E0000000200000", "fcmp uge double %, 0x41E0000000000000", 9)]
-    [InlineData("func f(a: f32) -> i32 => a@i32", "internal i32 (float)", "fptosi float % to i32", "fcmp ult float %, 0xC1E0000000000000", "fcmp uge float %, 0x41E0000000000000", 9)]
-    [InlineData("func f(a: f64) -> i64 => a@i64", "internal i64 (double)", "fptosi double % to i64", "fcmp ult double %, 0xC3E0000000000000", "fcmp uge double %, 0x43E0000000000000", 9)]
-    [InlineData("func f(a: f32) -> u8 => a@u8", "internal i8 (float)", "fptoui float % to i8", "fcmp ule float %, 0xBFF0000000000000", "fcmp uge float %, 0x4070000000000000", 9)]
-    [InlineData("func f(a: f64) -> u64 => a@u64", "internal i64 (double)", "fptoui double % to i64", "fcmp ule double %, 0xBFF0000000000000", "fcmp uge double %, 0x43F0000000000000", 9)]
-    [InlineData("func f(a: f64) -> f32 => a@f32", "internal float (double)", "fptrunc double % to float", "fcmp ole double %, 0xC7EFFFFFF0000000", "fcmp oge double %, 0x47EFFFFFF0000000", 11)]
+    [InlineData("func f(a: i32) -> u8 => a@u8", "internal i8 (i32)", "trunc i32 % to i8", "icmp slt i32 %, 0", "icmp sgt i32 %, 255", 8)]
+    [InlineData("func f(a: u64) -> i64 => a@i64", "internal i64 (i64)", null, null, "icmp ugt i64 %, 9223372036854775807", 8)]
+    [InlineData("func f(a: i8) -> u16 => a@u16", "internal i16 (i8)", "sext i8 % to i16", "icmp slt i8 %, 0", null, 8)]
+    [InlineData("func f(a: i128) -> u64 => a@u64", "internal i64 (i128)", "trunc i128 % to i64", "icmp slt i128 %, 0", "icmp sgt i128 %, 18446744073709551615", 8)]
+    [InlineData("func f(a: u128) -> i128 => a@i128", "internal i128 (i128)", null, null, "icmp ugt i128 %, 170141183460469231731687303715884105727", 8)]
+    [InlineData("func f(a: f64) -> i32 => a@i32", "internal i32 (double)", "fptosi double % to i32", "fcmp ule double %, 0xC1E0000000200000", "fcmp uge double %, 0x41E0000000000000", 8)]
+    [InlineData("func f(a: f32) -> i32 => a@i32", "internal i32 (float)", "fptosi float % to i32", "fcmp ult float %, 0xC1E0000000000000", "fcmp uge float %, 0x41E0000000000000", 8)]
+    [InlineData("func f(a: f64) -> i64 => a@i64", "internal i64 (double)", "fptosi double % to i64", "fcmp ult double %, 0xC3E0000000000000", "fcmp uge double %, 0x43E0000000000000", 8)]
+    [InlineData("func f(a: f32) -> u8 => a@u8", "internal i8 (float)", "fptoui float % to i8", "fcmp ule float %, 0xBFF0000000000000", "fcmp uge float %, 0x4070000000000000", 8)]
+    [InlineData("func f(a: f64) -> u64 => a@u64", "internal i64 (double)", "fptoui double % to i64", "fcmp ule double %, 0xBFF0000000000000", "fcmp uge double %, 0x43F0000000000000", 8)]
+    [InlineData("func f(a: f64) -> f32 => a@f32", "internal float (double)", "fptrunc double % to float", "fcmp ole double %, 0xC7EFFFFFF0000000", "fcmp oge double %, 0x47EFFFFFF0000000", 10)]
     public void CheckedConversionsAbortOutsideTheirTarget(string source, string signature, string? cast, string? lower, string? upper, int reason)
     {
         var (ir, text) = Parse(source);
@@ -1141,7 +1154,7 @@ public sealed partial class FunctionCodegenTest
     {
         var (ir, text) = Parse(source);
         var definition = Assert.Single(
-            ir.Functions,
+            ir.Program,
             x => x.Signature == callee && !x.Instructions.Any(y => y.Opcode == "call" && y.Callee is { } c && c.Signature == callee));
         var site = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Opcode == "call" && x.Callee == definition);
         Assert.Equal(call, site.Shape);
@@ -1275,9 +1288,46 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func stop() => $abort(\"stop\")", @"\n  call void @__kimi_abort_message\(ptr %s0, ptr @\S+, i64 \d+\)\n  unreachable\n")]
     [InlineData(
         "func cut(a: ref/[4 of i32], n: isize) -> isize\n    let s = a[1..n]\n    return s.length",
-        @"\n  call void @__kimi_abort\(i32 10, ptr @\S+, i64 \d+, i64 -2\)\n  unreachable\n")]
+        @"\n  call void @__kimi_abort\(i32 9, ptr @\S+, i64 \d+, i64 -2\)\n  unreachable\n")]
     public void AnIntrinsicIsWrittenByItsRow(string source, string pattern)
         => Assert.Matches(pattern, Parse(source).Text);
+
+    // SPEC 5.6, IMPL 21.3: Raw.readVolatile and Raw.writeVolatile are one volatile load and store of their integer Type at the storage, with
+    // its alignment, where the call is: a device register polled until its ready bit is set is read in the loop's condition, which every
+    // iteration runs, and acknowledged once after the loop; a u128 is one volatile i128 access, which LLVM splits into two 8-byte accesses
+    // in no fixed order, so no machine order is asserted (keeping each access at O2 is LLVM's volatile guarantee: no O2 run).
+    [Fact]
+    public void AVolatileAccessIsOneVolatileLoadOrStore()
+    {
+        var ir = Parse("func waitReady(status: raw/u32)\n    unsafe\n        while (Raw.readVolatile(status) & 1) == 0 => ()\n        Raw.writeVolatile(status, 1)\n" +
+            "func wide(p: raw/u128) -> u128\n    unsafe => return Raw.readVolatile(p)").Ir;
+        var volatiles = ir.Functions.SelectMany(static x => x.Blocks)
+            .SelectMany(static x => x.Instructions.Where(static y => y.Shape.Contains(" volatile ", StringComparison.Ordinal)).Select(y => (y.Shape, Block: x))).ToArray();
+        string[] expected = ["load volatile i128, ptr %, align 16", "load volatile i32, ptr %, align 4", "store volatile i32 1, ptr %, align 4"];
+        Assert.Equal(expected, volatiles.Select(static x => x.Shape).Order(StringComparer.Ordinal));
+        Assert.Equal((true, false), (Cycles(volatiles.Single(x => x.Shape == expected[1]).Block), Cycles(volatiles.Single(x => x.Shape == expected[2]).Block)));
+
+        // Whether a block reaches itself through its successors: whether it is in a loop.
+        static bool Cycles(IrBlock block)
+        {
+            var seen = new HashSet<IrBlock>();
+            var pending = new Stack<IrBlock>(block.Successors);
+            while (pending.TryPop(out var next))
+            {
+                if (next == block)
+                {
+                    return true;
+                }
+
+                if (seen.Add(next))
+                {
+                    next.Successors.ForEach(pending.Push);
+                }
+            }
+
+            return false;
+        }
+    }
 
     // SPEC 5.1, 5.3 (DECISIONS R5-M92): p + n and p - n displace a raw pointer by n * stride(T) through the place writer's byte offset, a zero
     // stride keeping the pointer; == and != compare addresses, null the one pointer constant.
@@ -1302,7 +1352,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func same(p: uniq/raw/i32, q: raw/i32) -> bool => p == q", "eq", 2, 0)]
     public void AComparisonReadsEachOperandAtItsTerminal(string source, string predicate, int left, int right)
     {
-        var compare = Assert.Single(Parse(source).Ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == $"icmp {predicate} ptr %, %");
+        var compare = Assert.Single(Internal(Parse(source).Ir).SelectMany(static x => x.Instructions), x => x.Shape == $"icmp {predicate} ptr %, %");
         Assert.Equal([left, right], compare.Operands.Select(Loads));
     }
 
@@ -1365,6 +1415,29 @@ public sealed partial class FunctionCodegenTest
             Assert.Single(Regex.Matches(text, Regex.Escape(definition)));
             Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
             Assert.Contains(text, ir, StringComparison.Ordinal);
+        }
+    }
+
+    // IMPL 21.4.7 (the Tatara plan's decision 24, B7r4): every module, an Application's, a Library's and a test build's, defines the
+    // runtime's memory functions once, from the memory part after the runtime; its only other external definition is an entry (fail-before:
+    // no module defined them, so every link took the backend archive's).
+    [Fact]
+    public void EveryModuleDefinesTheMemoryFunctionsOnce()
+    {
+        var modules = new (string Text, string[] Entry)[]
+        {
+            (Generate("Console.writeLine(\"Hello\")"), [RuntimeAbi.Start.Name]),
+            (Generate(Analyze("func f() => ()", OutputKind.Library)), []),
+            (Generate(Verifications), [RuntimeAbi.Start.Name]),
+        };
+        foreach (var (text, entry) in modules)
+        {
+            var at = text.IndexOf(LlvmModuleText.MemoryRuntime, StringComparison.Ordinal);
+            Assert.InRange(at, 0, text.Length);
+            Assert.Equal(at, text.LastIndexOf(LlvmModuleText.MemoryRuntime, StringComparison.Ordinal));
+            Assert.Equal(
+                [.. TargetProfile.MemorySymbols, .. entry],
+                Regex.Matches(text, @"(?m)^define (?!internal )[^@]*@([\w.]+)\(").Select(static x => x.Groups[1].Value));
         }
     }
 
@@ -1940,6 +2013,10 @@ public sealed partial class FunctionCodegenTest
             return writer.ToString();
         })];
     }
+
+    // The module's internal functions: its generated code and runtime, without the runtime's memory functions, which every module defines
+    // with external linkage (IMPL 21.4.7).
+    private static IEnumerable<IrFunction> Internal(GeneratedIr ir) => ir.Functions.Where(static x => x.Signature.StartsWith("internal ", StringComparison.Ordinal));
 
     // The module's functions that body items' texts define.
     private static IrFunction[] Functions(GeneratedIr ir, string[] items)

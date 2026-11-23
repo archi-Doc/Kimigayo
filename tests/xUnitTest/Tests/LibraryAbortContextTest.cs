@@ -115,14 +115,12 @@ public class LibraryAbortContextTest
         Assert.True(valid);
     }
 
-    // A program whose every release fails (the runtime's HeapFree returns 0, GetLastError 5): its first release Aborts with KIMI_E_FREE.
+    // A program whose every release fails (the allocator's release returns the OS error 5): its first release Aborts with KIMI_E_FREE.
     private static void ReleaseFails(string name, string source, string location)
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source))
-            .Replace("call i32 @HeapFree(", "call i32 @fail_release(", StringComparison.Ordinal)
-            .Replace("call i32 @GetLastError()", "call i32 @fail_release_error()", StringComparison.Ordinal) +
-            "\ndefine internal i32 @fail_release(ptr %heap, i32 %flags, ptr %memory) {\nentry:\n  ret i32 0\n}\n" +
-            "define internal i32 @fail_release_error() {\nentry:\n  ret i32 5\n}\n";
+            .Replace("call i64 @__kimi_heap_release(", "call i64 @fail_release(", StringComparison.Ordinal) +
+            "\ndefine internal i64 @fail_release(ptr %block) {\nentry:\n  ret i64 5\n}\n";
         ScalarEmissionTest.WriteFixture(name, ir, string.Empty, 1, location + ": abort KIMI_E_FREE: Failed to free memory (win32=5)\n");
     }
 }

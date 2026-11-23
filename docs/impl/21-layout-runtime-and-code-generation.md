@@ -128,6 +128,8 @@ let a = identity(1)       // Generates identity<i32>.
 let b = identity("x")     // Generates a separate body, identity<string>.
 ```
 
+A volatile access of `i128` or `u128` (`Raw.readVolatile`, `Raw.writeVolatile`, [§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) is two 8-byte accesses in an unspecified order.
+
 ### 21.3.2. Limits
 
 Analysis and generation limits (a Compilation's module count, syntax depth, a syntax node's distance from its module root, a Type's height ([§A.4](appendices/A-compiler-requirements.md#a4-implementation-limits)), instantiation growth, context depth, a function body's size under default and `defer` expansion, analysis storage, string-interpolation nesting) are implementation-defined. Exceeding one is a Resource diagnostic ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) at the affected declaration, call, statement or token (a Type's height: at the expression, written Type or conformance clause that forms the Type; the module count: at the root Project's project file); it never makes the program semantically invalid and does not stop independent checks. A Compilation over the module count analyzes none of its modules: its configuration is still checked, its sources are not, and its result is Completed ([§23.2.2](../spec/23-compiler-services.md#2322-results-and-acceptance)). The body-size limit is checked where an expansion's copy would begin: no copy begins past it, and a copy of known size never ends past it; a refused copy is not built, and the omitting call or the `defer` statement reports it. Other layout failures are classified by [§8.15](../spec/08-generics-constraints-and-contracts.md#815-generic-body-checking) and [§23.1.1](../spec/23-compiler-services.md#2311-categories); inline storage cycles are not generation limits ([§21.1.1](#2111-common-rules)).
@@ -190,7 +192,7 @@ let n = Counter.next(2147483647)
 
 ### 21.4.3. Memory
 
-Allocation uses the process heap (`HeapAlloc`, `HeapFree`). Every heap allocation, including every `Raw.allocate` result of nonzero size, is aligned to 16 bytes. The largest alignment `Raw.allocate` supports is 16 ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)). The maximum object size is 2^63 − 1 bytes. A zero-byte `Raw.allocate` does not allocate. Allocation, release and size failures Abort with the codes of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes).
+Allocation uses the runtime's allocator over memory pages that the platform maps (`VirtualAlloc` and `VirtualFree` on windows-x64). A block of up to 256 KiB, its 16-byte header included, is taken from 1 MiB regions in power-of-two sizes and kept for reuse after it is released; a larger block is mapped alone and unmapped when it is released. Every heap allocation, including every `Raw.allocate` result of nonzero size, is aligned to 16 bytes. The largest alignment `Raw.allocate` supports is 16 ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)). The maximum object size is 2^63 − 1 bytes. A zero-byte `Raw.allocate` does not allocate. Allocation, release and size failures Abort with the codes of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes).
 
 ```kimi
 let p = Raw.allocate<u64>(4)    // 32 bytes, 16-byte aligned on windows-x64.
@@ -219,6 +221,6 @@ In steady state, task calls, waits, timers, channel operations, `shield` and rep
 
 ### 21.4.7. Native imports and backend support
 
-The runtime imports `kernel32` functions such as `GetProcessHeap`, `HeapAlloc`, `HeapFree`, `GetStdHandle`, `WriteFile`, `GetLastError` and `ExitProcess`; the reserved `kernel32` supply is defined in [§20.4](20-compilation-configuration.md#204-native-libraries).
+The runtime imports `kernel32` functions such as `VirtualAlloc`, `VirtualFree`, `GetStdHandle`, `WriteFile`, `GetLastError` and `ExitProcess`; the reserved `kernel32` supply is defined in [§20.4](20-compilation-configuration.md#204-native-libraries).
 
-The profile's backend support archive supplies `memcmp`, `memcpy`, `memmove`, `memset` and `__chkstk`, and every module defines `_fltused`. Toolchain adoption verifies that generated code needs no unsupplied backend helper; a missing helper fails adoption, never the linking of an individual program.
+Every module defines `memcmp`, `memcpy`, `memmove` and `memset`, which generated code may call ([§21.2](#212-foreign-function-abi) reserves the names). A member of a supplied library that is linked into the program and gives a non-weak definition of one of them is an error at the link whatever the library's name ([§20.4](20-compilation-configuration.md#204-native-libraries): never resolved by link order); a weak definition there yields to the module's. The profile's backend support archive supplies `__chkstk`; its members for the four functions are linked into no program. Every module defines `_fltused`. Toolchain adoption verifies that generated code needs no unsupplied backend helper; a missing helper fails adoption, never the linking of an individual program.

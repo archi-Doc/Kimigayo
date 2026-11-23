@@ -7,10 +7,29 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5's raw addresses (SPEC 15.6 Addresses and reach, 5.2.2, 5.7; DECISIONS R4-M95, R4-M116): a raw pointer carries the holders it
-/// addresses and the Loans it was formed through, a write through it reaches them, a stored raw layer is classed by its step, and the
-/// located Unsupported_Kd of a Borrow or read of a `during self` layer's enclosing Place.</summary>
+/// addresses and the Loans it was formed through, a write through it reaches them, a stored raw layer is classed by its step, and a read
+/// of a `during self` layer or of a Place enclosing one carries its owner's own-step entry.</summary>
 public sealed partial class MirBorrowsTest
 {
+    // Z5-R2's shapes beside LentShapes: a holder of a Type argument beside an enclosing Tuple, a fixed array of enclosing Tuples, and a
+    // holder whose Type argument holds a raw pointer (no `self`, SPEC 5.7 Origins).
+    private const string EnclosingShapes = """
+        func usen(n: i32) => ()
+        struct Hp<T>
+            internal var v: T
+            internal var pair: (raw/u8 during self, i32)
+            public init(v: T)
+                self.v = v@move
+                self.pair = (null, 0)
+        struct Arr
+            internal var ta: [2 of (raw/u8 during self, i32)]
+            public init() => self.ta = [(null, 1), (null, 2)]
+        struct W<T>
+            internal var v: T
+            public init(v: T) => self.v = v@move
+
+        """;
+
     // The raw shapes: a box whose raw Field states no Origin, a cursor over a Type argument, an owning buffer, a Field written by a call
     // the contract ties to nothing, a layer inside a Tuple Field, and the calls through them.
     private const string RawShapes = """
@@ -1588,15 +1607,16 @@ public sealed partial class MirBorrowsTest
                     inspect(slot@ref)
                 """));
 
-    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2), narrowed by Z5-R1: a Copy read of a Tuple or fixed-array Place enclosing a
-    // `during self` layer inline (also inside a nested Tuple) is a located Unsupported_Kd until Z5-R2 (R-A); a Borrow of a layer's Place or
+    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2), narrowed by Z5-R1 and Z5-R2: a Copy read of a Tuple or fixed-array Place
+    // enclosing a `during self` layer inline (also inside a nested Tuple) is read element by element and carries its owner's own-step
+    // entry (enclosingCopy, enclosingOnly, arrayCopy, nestedCopy); a Borrow of a layer's Place or
     // of an enclosing one issues its Loan, and a read through it is placed by its exact lent position (layerRef, enclosingRef; arrayRef
     // reads none), carrying its parents whole (SPEC 15.6 Holders): layerRef's read carries y's Loan, which b holds, into the generic
     // call, so y's end conflicts as for the same read through no dereference or through the holder's borrow (the base's CLC on those
     // twins; the Middle's ruling on Z5-R1, 11-22 13:0x); a Borrow of the holder, a read of the layer through it, a read of an element and
     // of a scalar beside the layer are precise.
     [Fact]
-    public void ACopyOfADuringSelfLayersEnclosingPlaceIsUnsupported()
+    public void ACopyOrBorrowOfADuringSelfLayersEnclosingPlaceIsPrecise()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + """
             struct Arrs
@@ -1653,10 +1673,59 @@ public sealed partial class MirBorrowsTest
                 return s.nest.1
             """);
         Assert.Equal(
-            "layerRef: var y: i32 = 1 | enclosingCopy: s.pair Unsupported_Kd | enclosingOnly: s.pair Unsupported_Kd | arrayCopy: a.arr Unsupported_Kd | " +
-                "nestedCopy: s.nest Unsupported_Kd",
+            "layerRef: var y: i32 = 1",
             string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd])));
     }
+
+    // Z5-R2 (SPEC 5.7 Reading and Writing a Field: an enclosing Tuple or fixed-array Place is read element by element, a Move reads the
+    // layer's element; 15.6 Holders; 5.2.1 (3)): a Copy or Move read of the Place through no dereference carries its owner's own-step
+    // entry with the holder's Loans, and the local it fills carries it whole, so the owning value's or an ancestor's Move, exclusive Borrow
+    // or replacing write while the value is used is the Warning (w1, ra5-ra8, ra14, rr5, rr6), a write under the holder's Loan conflicts
+    // (ra2f, ra3f), and a Move of the enclosing Place departs nothing (ra1, rr7); no `self` in a Type argument, no entry (rr9). A
+    // reference stored beside the owner in the same root keeps its exact lender (rr1-rr4, rv3, rv5, ex1: the own-step entry exposes its
+    // owner's storage only). Labels from SPEC (Z5-R2 design, Revision 1 R1.4).
+    [Theory]
+    [InlineData("ra1", "var b = Packet.init()|let t = b.pair|let m = b.pair@move|b.pair = (null, 2)|usep(t.0)|usep(m.0)", "")]
+    [InlineData("ra2vf", "var y: i32 = 1|let b = Hp.init(y@ref)|let t = b.pair|usep(t.0)|y = 2", "")]
+    [InlineData("ra13", "let b = Packet.init()|let n = b.pair.1|let c = b@move|usen(n)", "")]
+    [InlineData("rr5v", "let a = Arr.init()|let t = a.ta|usep(t[1].0)|let c = a@move", "")]
+    [InlineData("rr7", "var b = Packet.init()|let p = b.data|let m = b.pair@move|b.pair = (null, 2)|usep(p)|usep(m.0)", "")]
+    [InlineData("rr9", "let w = W.init((fresh, 1))|let t = w.v|let c = w@move|usep(t.0)", "")]
+    [InlineData("w1", "let b = Packet.init()|let t = b.pair|let c = b@move|usep(t.0)", "b OwnStepDeparture_Kd")]
+    [InlineData("ra5", "let b = Packet.init()|let t = b.arr|let c = b@move|usep(t[0])", "b OwnStepDeparture_Kd")]
+    [InlineData("ra6", "var b = Packet.init()|let t = b.pair|let w = b@uniq|usep(t.0)", "b@uniq OwnStepDeparture_Kd")]
+    [InlineData("ra7", "var b = Packet.init()|let t = b.pair|b = Packet.init()|usep(t.0)", "b = Packet.init() OwnStepDeparture_Kd")]
+    [InlineData("ra8", "let o = Outer.init()|let t = o.inner.pair|let c = o@move|usep(t.0)", "o OwnStepDeparture_Kd")]
+    [InlineData("ra14", "var b = Packet.init()|let m = b.nest.0@move|b.nest.0 = (null, 1)|let c = b@move|usep(m.0)", "b OwnStepDeparture_Kd")]
+    [InlineData("rr5", "let a = Arr.init()|let t = a.ta|let c = a@move|usep(t[1].0)", "a OwnStepDeparture_Kd")]
+    [InlineData("rr6", "let a = Arr.init()|let i: isize = 1|let e = a.ta[i]|let c = a@move|usep(e.0)", "a OwnStepDeparture_Kd")]
+    [InlineData("ra2f", "var y: i32 = 1|let b = Hp.init(y@ref)|let t = b.pair|y = 2|usep(t.0)", "y = 2")]
+    [InlineData("ra3f", "var y: i32 = 1|let b = Hp.init(y@ref)|let m = b.pair@move|y = 2|usep(m.0)", "y = 2")]
+    [InlineData("rr5i", "var a = Arr.init()|let r = a.ta[0]@ref|let m = a.ta@move|a.ta = [(null, 3), (null, 4)]|usen(r@follow.1)", "a.ta|a.ta = [(null, 3), (null, 4)]")]
+    [InlineData("rr7i", "var b = Packet.init()|let r = b.pair.0@ref|let m = b.pair@move|b.pair = (null, 2)|usep(r@follow)", "b.pair|b.pair = (null, 2)")]
+    [InlineData("rr1", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let n = tt.0.pair.1|let x = tt.1@follow.0|usep(x)|usen(n)", "")]
+    [InlineData("rr2", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let q = tt.0.pair@ref|let x = tt.1@follow.0|usep(x)|usen(q@follow.1)", "")]
+    [InlineData("rv3", "let d = Packet.init()|let tt = (Outer.init(), d.pair@ref)|let n = tt.0.inner.pair.1|let x = tt.1@follow.0|usep(x)|usen(n)", "")]
+    [InlineData("rr3", "let d = Packet.init()|let tt = (Packet.init(), d.pair@raw)|let n = tt.0.pair.1|unsafe|    let x = (*tt.1).0|    let c = d@move|    usep(x)|usen(n)", "d OwnStepDeparture_Kd")]
+    [InlineData("rr4", "let d = Packet.init()|let tt = (Packet.init(), d.pair@raw)|let t = tt.0.pair|unsafe|    let x = (*tt.1).0|    let c = d@move|    usep(x)|usep(t.0)", "d OwnStepDeparture_Kd")]
+    [InlineData("rv5", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let n = tt.0.pair.1|let c = d@move|usep(tt.1@follow.0)|usen(n)", "d")]
+    [InlineData("ex1", "let d = Packet.init()|let tt = (Packet.init(), d@ref)|let t = tt.0.pair|let x = tt.1@follow.pair.0|let c = d@move|usep(x)|usep(t.0)", "d|d OwnStepDeparture_Kd")]
+    public void AnEnclosingPlacesCopyOrMoveCarriesItsOwnersEntry(string id, string lines, string expected)
+        => Assert.Equal(OwnStepExpected(id, expected), OwnStepProblems(id, lines));
+
+    // Z5-R2's B1 (SPEC 5.7's Origin table: a `during self` pointer addresses storage the value holding the layer owns; 15.6 Addresses):
+    // an own-step entry exposes its owner's storage, not its whole root, so a reference stored beside the owner in the same root keeps
+    // its exact lender, whatever reads the owner's layer (an enclosing Copy, ex2; the layer's own read, q12, ex2p, q12w): q12's dependent
+    // Warning and q12w's Warning on a valid program (5.2.1 (3), Z5-F's t4c) are recovered, ex2 and ex2p leave the Unplaced limit. A plain
+    // address exposes the whole root (rv1: `tt.1@raw` may address the reference's own position), which stays at the limit.
+    [Theory]
+    [InlineData("q12", "let d = Packet.init()|let tt = (Packet.init(), d@ref)|let p = tt.0.pair.0|let x = tt.1@follow.pair.0|let m = d@move|usep(x)|usep(p)", "d|d OwnStepDeparture_Kd")]
+    [InlineData("q12w", "let d = Packet.init()|let tt = (Packet.init(), d@raw)|let p = tt.0.pair.0|unsafe|    let x = (*tt.1).pair.0|    let c = d@move|    usep(x)|usep(p)", "d OwnStepDeparture_Kd")]
+    [InlineData("ex2", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let t = tt.0.pair|let x = tt.1@follow.0|usep(x)|usep(t.0)", "")]
+    [InlineData("ex2p", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let p = tt.0.pair.0|let x = tt.1@follow.0|usep(x)|usep(p)", "")]
+    [InlineData("rv1", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let p = tt.1@raw|let x = tt.1@follow.0|usep(x)", "tt.1@follow.0 Unsupported_Kd")]
+    public void AnOwnStepEntryKeepsTheLenderOfAReferenceBesideIt(string id, string lines, string expected)
+        => Assert.Equal(OwnStepExpected(id, expected), OwnStepProblems(id, lines));
 
     // Z5-R1 (SPEC 15.6 Holders, 15.6 Addresses, 5.7 Reading a Field through a dereference, 5.2.1 (3); PQ-10 narrowed): a read of a
     // `during self` layer or an enclosing Place through a dereference carries its owner's own-step entry at its exact lent position
@@ -2475,4 +2544,15 @@ public sealed partial class MirBorrowsTest
                 $"    var t: [{n} of raw/(raw/u8)] = [null«K:, null»]\n«N:    t[{{0}}] = h[{{0}}]@raw\n»«N:    unsafe => *(t[{{0}}]) = spare\n»",
             n,
             n - 1);
+
+    // The rows' records, "id: subject" with the code where it is no Loan conflict, in order.
+    private static string OwnStepExpected(string id, string expected)
+        => expected.Length == 0 ? string.Empty : string.Join(" | ", expected.Split('|').Select(x => $"{id}: {x}").Order(StringComparer.Ordinal));
+
+    // A5's Loan conflicts, located Unsupported_Kd and own-step Warnings of a function `id` over LentShapes and EnclosingShapes, in order.
+    private static string OwnStepProblems(string id, string lines)
+    {
+        var c = MirBuildTest.Compile(LentShapes + EnclosingShapes + $"func {id}(fresh: raw/u8)\n" + string.Concat(lines.Split('|').Select(static x => "    " + x + "\n")));
+        return string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]).Order(StringComparer.Ordinal));
+    }
 }

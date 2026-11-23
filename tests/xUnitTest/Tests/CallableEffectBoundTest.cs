@@ -25,6 +25,10 @@ public class CallableEffectBoundTest
 
     private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n";
 
+    // A second slot of Base writing run's premise text on F with the bound (ABoundAnotherDeclarationWritesIsNotInherited).
+    private const string Walk = "    public virtual func walk(self: objref/Self, f: ref/F) -> i32\n        F is Callable<() -> i32>\n            effect confined\n" +
+        "        effect confined\n        return f()\n";
+
     [Fact]
     public void AcceptsAConfinedClosure()
     {
@@ -239,6 +243,58 @@ public class CallableEffectBoundTest
             Assert.Equal("IncompatibleContractImplementation_Kd", diagnostic.Code);
             Assert.Contains("confined", diagnostic.Label);
         }
+    }
+
+    // SPEC 6.4.2 step 3, 8.11.4 (Z3-B1, the Front's C-475): an override's inherited premise keeps the slot's clauses, and its bound list is
+    // the union over every premise it instantiates, whatever the written order (Derived<G> : Base<G, G> makes F's and H's one); no
+    // bounded premise, no bound. Each row but the last is rejected on dev 8a90275af (ovr-alias-r also with the first-match reader).
+    [Theory]
+    [InlineData("        F is Callable<() -> i32>\n            effect confined\n", "        effect confined\n", "f()", "")]
+    [InlineData("        F is Callable<() -> i32>\n            effect confined\n        H is Callable<() -> i32>\n", "        effect confined\n", "f()", "")]
+    [InlineData("        H is Callable<() -> i32>\n        F is Callable<() -> i32>\n            effect confined\n", "        effect confined\n", "f()", "")]
+    [InlineData("        F is Callable<() -> i32>\n            effect confined\n", "", "Apply.apply(f)", "")]
+    [InlineData("        F is Callable<() -> i32>\n        H is Callable<() -> i32>\n", "        effect confined\n", "f()", "UnsatisfiedEffectBound_Kd: override func run(self: objref/Self, f: ref/G, h: ref/G) -> i32")]
+    public void AnInheritedPremiseKeepsEveryStatementsBound(string premises, string slotBound, string call, string records)
+    {
+        var program = "group Apply\n    public func apply<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n            effect confined\n        return f()\n" +
+            "open struct Base<F, H>\n    public init() => ()\n    public virtual func run(self: objref/Self, f: ref/F, h: ref/H) -> i32\n" + premises + slotBound +
+            "        return 0\nstruct Derived<G> : Base<G, G>\n    override func run(self: objref/Self, f: ref/G, h: ref/G) -> i32\n        return " + call +
+            "\npublic func main() => ()\n";
+        CompilationTestHelper.AssertRecordsAtLines(call, program, records);
+    }
+
+    // SPEC 6.4.2 step 3, 8.11.4 (Z3-B1, the Front's C-475 C5): an override inherits its own slot's premises only, so a bound another
+    // declaration writes on the same proposition is no evidence for it: Derived's member `other` (the in-place Statement is the scope
+    // owner's) or Base's slot `walk` writing the same premise text (a recorded Statement is its declaration's); overriding walk inherits
+    // walk's bound. The first row is accepted where States drops the in-place owner test, the second where it drops the recorded owner
+    // (the Front's mutants M1 and M2); the third is rejected on dev 47a26bf9e.
+    [Theory]
+    [InlineData("    func other(self: ref/Self, g: ref/G) -> i32\n        G is Callable<() -> i32>\n            effect confined\n        return g()\n", "", "run", "UnsatisfiedEffectBound_Kd: override func run(self: objref/Self, f: ref/G) -> i32")]
+    [InlineData("", Walk, "run", "UnsatisfiedEffectBound_Kd: override func run(self: objref/Self, f: ref/G) -> i32")]
+    [InlineData("", Walk, "walk", "")]
+    public void ABoundAnotherDeclarationWritesIsNotInherited(string sibling, string slot, string overridden, string records)
+    {
+        var program = "open struct Base<F>\n    public init() => ()\n    public virtual func run(self: objref/Self, f: ref/F) -> i32\n        F is Callable<() -> i32>\n" +
+            "        effect confined\n        return 0\n" + slot + "struct Derived<G> : Base<G>\n" + sibling + "    override func " + overridden +
+            "(self: objref/Self, f: ref/G) -> i32\n        return f()\npublic func main() => ()\n";
+        CompilationTestHelper.AssertRecordsAtLines(overridden, program, records);
+    }
+
+    // SPEC 8.11.4 (Z3-B1): a requirement's premise at Self = W keeps its clause in the witness scope; one written at W and one at Self are one
+    // proposition there with the union of their bounds, in either order; a premise written twice is one Statement. The first, third and
+    // fifth rows are rejected on dev 8a90275af.
+    [Theory]
+    [InlineData("        F is Callable<(ref/Self) -> i32>\n            effect confined\n", "")]
+    [InlineData("        F is Callable<(ref/Self) -> i32>\n", "IncompatibleContractImplementation_Kd: Self is Work")]
+    [InlineData("        F is Callable<(ref/Self) -> i32>\n            effect confined\n        F is Callable<(ref/W) -> i32>\n", "")]
+    [InlineData("        F is Callable<(ref/Self) -> i32>\n        F is Callable<(ref/W) -> i32>\n            effect confined\n", "")]
+    [InlineData("        F is Callable<(ref/Self) -> i32>\n            effect confined\n        F is Callable<(ref/Self) -> i32>\n", "")]
+    public void ARequirementsPremiseAtSelfKeepsItsBound(string premises, string records)
+    {
+        var program = "contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n" +
+            "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n        F is Callable<(ref/Self) -> i32>\n            effect confined\n        return f(self)\n" +
+            "public func main() => ()\n";
+        CompilationTestHelper.AssertRecordsAtLines(premises, program, records);
     }
 
     // SPEC 8.11.4, 23.1.2 (R7-E2 E2-5b, M1): a refinement's conformance checks its parent's requirement on the ancestor path and its own on

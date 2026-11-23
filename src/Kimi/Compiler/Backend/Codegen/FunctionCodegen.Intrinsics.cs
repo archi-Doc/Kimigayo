@@ -9,11 +9,11 @@ namespace Kimi.Compiler.Backend;
 // through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes and transferBytes, whose routines the module
 // defines on request (Requested; DECISIONS R5-M145), Raw.allocate with its element stride, a creation's factory with its control value and a clone's
 // retain, FunctionCodegen.Objects), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort
-// reason, Raw.initialize's copy, Raw.slice's record, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test (FunctionCodegen.Objects), a
-// reserve witness's code address (FunctionCodegen.Formatting) and a verification's compared value, which the test runtime holds for its observation (Record;
-// DECISIONS R5-M136). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names
-// an item carries the collector's target, read once by the cursor (I8) and given to the row's writer. In a caller-location body a location is C3b's row
-// (Location).
+// reason, Raw.initialize's copy, Raw.slice's record, Raw.readVolatile's and Raw.writeVolatile's volatile access, a staticEnsure's state test
+// (FunctionCodegen.Statics), a runtime Type test (FunctionCodegen.Objects), a reserve witness's code address (FunctionCodegen.Formatting) and a
+// verification's compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes its operands at its
+// declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read
+// once by the cursor (I8) and given to the row's writer. In a caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
     private readonly Value[] slotless = new Value[1]; // A routine row's slot-less value (Routine): an allocation's stride, a creation's control.
@@ -55,6 +55,12 @@ internal sealed partial class FunctionCodegen
                 return;
             case IntrinsicWriter.Address:
                 this.Dispatch(call, target);
+                return;
+            case IntrinsicWriter.VolatileRead:
+                this.VolatileRead(call);
+                return;
+            case IntrinsicWriter.VolatileWrite:
+                this.VolatileWrite(call);
                 return;
             case IntrinsicWriter.Create or IntrinsicWriter.Clone:
                 return; // A broken contract, recorded by Routine.
@@ -191,6 +197,46 @@ internal sealed partial class FunctionCodegen
         var type = this.InstanceType(call.Place)!;
         this.StoreWord(type, slice, record, "data", buffer);
         this.StoreWord(type, slice, record, "length", count);
+        this.Finish(call, null);
+    }
+
+    // SPEC 5.6, IMPL 21.3: Raw.readVolatile(storage) is one volatile load of its result's Type, a PrimitiveInteger, at the storage with
+    // that Type's alignment, the access text LoadAt writes (WriteAccess) with the word `volatile`; LLVM splits an i128 into two 8-byte
+    // accesses in no fixed order.
+    private void VolatileRead(in MirTerminator call)
+    {
+        var storage = this.body.Operands[call.Start + ArgumentPosition(new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn), 0)];
+        if (!this.Operand(storage, out var address) || this.LoweringOf(call.Place) is not { } lowering)
+        {
+            return; // A broken contract, recorded.
+        }
+
+        var value = new Value('t', this.next++);
+        this.output.Write("  ");
+        this.WriteValue(value);
+        this.output.Write(" = load volatile ");
+        this.output.Write(lowering.Layout.StorageType);
+        this.WriteAccess(address, lowering.Layout);
+        this.Finish(call, value);
+    }
+
+    // SPEC 5.6, IMPL 21.3: Raw.writeVolatile(storage, value) is one volatile store of the value, a PrimitiveInteger, at the storage, as
+    // VolatileRead's load; the Place may hold a value, which has no destruction.
+    private void VolatileWrite(in MirTerminator call)
+    {
+        var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
+        var storage = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
+        var operand = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
+        if (!this.Operand(storage, out var address) || !this.Operand(operand, out var value) || this.LoweringOf(operand) is not { } lowering)
+        {
+            return; // A broken contract, recorded.
+        }
+
+        this.output.Write("  store volatile ");
+        this.output.Write(lowering.Layout.StorageType);
+        this.output.Write(' ');
+        this.WriteValue(value);
+        this.WriteAccess(address, lowering.Layout);
         this.Finish(call, null);
     }
 }

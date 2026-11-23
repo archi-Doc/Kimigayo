@@ -1,15 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled constants, the
-// Windows runtime template with its ABI definitions spliced in and its test variant, the erased writer's kept runtime
+// runtime, composed of windows-x64's platform layer (WindowsPlatform.ll.in, which owns every kernel32 call of the runtime in a program
+// module), the common part (Runtime.ll.in) and Kimi's allocator (HeapRuntime.ll.in) and expanded in one scan, with its ABI definitions
+// spliced in and its test variant, the memory part every module defines after it
+// (MemoryRuntime.ll.in: the runtime's memcmp, memcpy, memmove and memset, TargetProfile.MemorySymbols), the erased writer's kept runtime
 // (ErasedWriterRuntime.ll.in: the ErasedReserve intrinsic's routine, a module part on request), the float formatting part
 // (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the 128-bit
 // integer formatting part (FormatInteger128Runtime.ll.in: the FormatInteger128 intrinsic's routine and its division by ten, a module part
 // on request), the runtime routines a module defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte
 // copy), the checked one-scan expansion every runtime template takes (ExpandRuntime; TestRuntime's text too),
-// the external declarations, the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external
-// symbols, numbered names, numbers formatted on the stack and the bits of a floating constant's hexadecimal spelling. Code generation
-// writes the frame through it (PD2: promoted, never copied; Name came from the old writer with ObjectRuntime, R5-M69; Hexadecimal from
+// the external declarations, the overflow and memory intrinsic declarations, the footer's profile attributes (#0; #1, #0 plus
+// "no-builtins", for the memory part), the spelling of external symbols, numbered names, numbers formatted on the stack and the bits of
+// a floating constant's hexadecimal spelling. Code generation writes the frame through it (PD2: promoted, never copied; Name came from the old writer with ObjectRuntime, R5-M69; Hexadecimal from
 // FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, a
 // floating constant's IEEE bits, name prefixes and symbols; the runtime ABI records and constants (RuntimeAbi), the abort reasons (AbortReasons)
@@ -80,14 +83,18 @@ internal static partial class LlvmModuleText
         declare { i128, i1 } @llvm.umul.with.overflow.i128(i128, i128)
         """ + "\n";
 
-    // Every generated definition carries the same profile attributes (SPEC 21.3.1), built once.
-    internal static readonly string Footer =
-        "attributes #0 = { uwtable(" + TargetProfile.Windows.UnwindTables + ") \"target-cpu\"=\"" + TargetProfile.Windows.Cpu + "\" \"target-features\"=\"" +
-        TargetProfile.Windows.Features + "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
+    // Every generated definition carries the profile attributes (SPEC 21.3.1), built once: #0; the memory part's definitions take #1, #0
+    // plus "no-builtins", so no pass turns their loops into calls of themselves (the Tatara plan's decision 24).
+    internal static readonly string Footer = FooterText();
+
+    // IMPL 21.4.7 (the Tatara plan's decision 24): the runtime's C memory functions, which every module defines after the runtime template
+    // (WriteRuntime) and generated code may call: memcmp, memcpy, memmove and memset (TargetProfile.MemorySymbols), external so that code
+    // generation's libcalls bind to them after the IR passes, each under #1.
+    internal static readonly string MemoryRuntime = ExpandRuntime(Template("MemoryRuntime.ll.in"), []);
 
     // SPEC 21.4.3, 22.2: the nullable form of Alloc (RuntimeAbi.TryAllocateBytes), defined where a body calls it: null wherever Alloc
-    // would Abort (a size above isize's range, no process heap, a failed allocation); a zero-byte request allocates one byte, so the
-    // result is a fresh start; no location to report.
+    // would Abort (a size above isize's range, a failed allocation), the allocator's block (RuntimeAbi.HeapAllocate) otherwise, a fresh
+    // start; no location to report.
     internal static readonly string TryAllocate = ExpandRuntime(
         """
         {{__kimi_try_allocate}}
@@ -95,13 +102,7 @@ internal static partial class LlvmModuleText
           %invalid = icmp ugt i64 %bytes, 9223372036854775807
           br i1 %invalid, label %failed, label %heap
         heap:
-          %process_heap = call ptr @GetProcessHeap()
-          %no_heap = icmp eq ptr %process_heap, null
-          br i1 %no_heap, label %failed, label %try
-        try:
-          %zero = icmp eq i64 %bytes, 0
-          %actual = select i1 %zero, i64 1, i64 %bytes
-          %memory = call ptr @HeapAlloc(ptr %process_heap, i32 0, i64 %actual)
+          %memory = call ptr @__kimi_heap_allocate(i64 %bytes)
           ret ptr %memory
         failed:
           ret ptr null
@@ -130,7 +131,8 @@ internal static partial class LlvmModuleText
         "target datalayout = \"" + TargetProfile.Windows.DataLayout + "\"\n" +
         RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + TargetProfile.Windows.FloatMarker + " = global i32 0, align 4\n";
 
-    private static readonly string Runtime = ReadRuntime();
+    // The runtime: the platform layer (windows-x64's, over kernel32), the common part and the allocator, one text expanded in one scan.
+    private static readonly string Runtime = ExpandRuntime(RuntimeTemplate, RuntimeAbi.RuntimeDefinitions) + "\n";
 
     // A test build's runtime: each Abort definition first reports the aborted test to the test runtime.
     private static readonly string TestRuntimeBase = ReportTestAbort(ReportTestAbort(Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage);
@@ -145,10 +147,11 @@ internal static partial class LlvmModuleText
         }
     }
 
-    // The runtime template, in its test variant when a test build supplies its test runtime text, followed by that text.
+    // The runtime template, in its test variant when a test build supplies its test runtime text, then the memory part, then that text.
     internal static void WriteRuntime(TextWriter output, string? testRuntime)
     {
         output.Write(testRuntime is null ? Runtime : TestRuntimeBase);
+        output.Write(MemoryRuntime);
         output.Write(testRuntime);
     }
 
@@ -184,8 +187,9 @@ internal static partial class LlvmModuleText
         }
     }
 
-    // A runtime template (the Windows, formatting, Array and test runtimes) expanded in one ordered scan into one builder sized
-    // for the template and its definitions: `\r\n` becomes `\n`, each definition is spliced in at its `{{name}}` marker line and every
+    // A runtime template (the runtime, the memory part, the erased writer, the formatting parts and the test runtime) expanded in one
+    // ordered scan into one builder sized for the template and its definitions: `\r\n` becomes `\n`, each definition is spliced in at
+    // its `{{name}}` marker line and every
     // other marker takes its owner's text, an abort reason's (AbortReasons.Expand) or an ABI constant's (RuntimeAbi.Expand), whose
     // names are disjoint. Compiler-facing runtime signatures come from the same FunctionAbi records as calls and each is defined once,
     // so a missing or repeated definition marker, or a marker no owner expands, is a broken template. Every `{{` opens a marker, so a
@@ -237,6 +241,11 @@ internal static partial class LlvmModuleText
         return false;
     }
 
+    /// <summary>Gets the runtime's template: windows-x64's platform layer (WindowsPlatform.ll.in, the definitions of
+    /// RuntimeAbi.PlatformRoutines and every kernel32 call of the runtime in a program module), the common part (Runtime.ll.in), then
+    /// Kimi's allocator (HeapRuntime.ll.in), read as one text.</summary>
+    internal static string RuntimeTemplate => Template("WindowsPlatform.ll.in") + "\n" + Template("Runtime.ll.in") + "\n" + Template("HeapRuntime.ll.in");
+
     /// <summary>Gets the erased writer's kept runtime (ErasedWriterRuntime.ll.in), expanded once.</summary>
     internal static string ErasedWriterRuntime => ErasedWriter.Text;
 
@@ -248,11 +257,20 @@ internal static partial class LlvmModuleText
     /// its division by ten, expanded once, on first use.</summary>
     internal static string FormatInteger128Runtime => FormatInteger128.Text;
 
-    private static string ReadRuntime()
+    private static string FooterText()
     {
-        using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.WindowsRuntime.ll.in")!;
+        var profile = "uwtable(" + TargetProfile.Windows.UnwindTables + ") \"target-cpu\"=\"" + TargetProfile.Windows.Cpu + "\" \"target-features\"=\"" +
+            TargetProfile.Windows.Features + "\" \"denormal-fp-math\"=\"ieee,ieee\"";
+        return "attributes #0 = { " + profile + " }\nattributes #1 = { " + profile + " \"no-builtins\" }\n!llvm.module.flags = !{!0}\n" +
+            "!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
+    }
+
+    // A runtime template's text: the embedded resource of the file beside this one.
+    private static string Template(string file)
+    {
+        using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + file)!;
         using var reader = new StreamReader(stream);
-        return ExpandRuntime(reader.ReadToEnd(), RuntimeAbi.RuntimeDefinitions) + "\n";
+        return reader.ReadToEnd();
     }
 
     // Writes the marker that begins the rest of a template and returns the text after it: a definition's marker line (the marker
@@ -296,43 +314,20 @@ internal static partial class LlvmModuleText
     {
         internal static readonly FunctionAbi[] Definitions = [IntrinsicRows.Of(IntrinsicId.ErasedReserve).Routine!];
 
-        internal static readonly string Text = Read();
-
-        private static string Read()
-        {
-            using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.ErasedWriterRuntime.ll.in")!;
-            using var reader = new StreamReader(stream);
-            return ExpandRuntime(reader.ReadToEnd(), Definitions);
-        }
+        internal static readonly string Text = ExpandRuntime(Template("ErasedWriterRuntime.ll.in"), Definitions);
     }
 
     // The float formatting part, initialized on first use (a module without a float write never reads it): the FormatFloat routine's
     // template with its definition spliced from RuntimeAbi.FormatFloat, then Ryu, which has no marker.
     private static class FormatFloat
     {
-        internal static readonly string Text = Read();
-
-        private static string Read()
-        {
-            using var routine = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.Utf8FloatRuntime.ll.in")!;
-            using var routineReader = new StreamReader(routine);
-            using var ryu = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.Utf8FloatRyu.ll.in")!;
-            using var ryuReader = new StreamReader(ryu);
-            return ExpandRuntime(routineReader.ReadToEnd() + "\n" + ryuReader.ReadToEnd(), [RuntimeAbi.FormatFloat]);
-        }
+        internal static readonly string Text = ExpandRuntime(Template("Utf8FloatRuntime.ll.in") + "\n" + Template("Utf8FloatRyu.ll.in"), [RuntimeAbi.FormatFloat]);
     }
 
     // The 128-bit integer formatting part, initialized on first use (a module without an i128 or u128 write never reads it): the
     // FormatInteger128 routine's template with its definition spliced from RuntimeAbi.FormatInteger128.
     private static class FormatInteger128
     {
-        internal static readonly string Text = Read();
-
-        private static string Read()
-        {
-            using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.FormatInteger128Runtime.ll.in")!;
-            using var reader = new StreamReader(stream);
-            return ExpandRuntime(reader.ReadToEnd(), [RuntimeAbi.FormatInteger128]);
-        }
+        internal static readonly string Text = ExpandRuntime(Template("FormatInteger128Runtime.ll.in"), [RuntimeAbi.FormatInteger128]);
     }
 }

@@ -374,7 +374,6 @@ public class LibraryImportTargetBindingTest
 
     [Theory]
     [InlineData("kernel32", "GetLastError", "()", "i32", null, false)]
-    [InlineData("kernel32", "GetProcessHeap", "()", "raw/u8", null, false)]
     [InlineData("kernel32", "GetStdHandle", "(which: i32)", "raw/u8", null, false)]
     [InlineData("kernel32", "WriteFile", "(handle: raw/u8, data: raw/u8, length: u32, written: raw/u32, overlapped: raw/u8)", "i32", null, false)]
     [InlineData("kernel32", "GetLastError", "()", "i64", null, true)]
@@ -383,9 +382,12 @@ public class LibraryImportTargetBindingTest
     [InlineData("kernel32", "GetEnvironmentVariableA", "(name: raw/u8, buffer: raw/u8, size: u32)", "i32", null, false)]
     [InlineData("kernel32", "SetHandleInformation", "(handle: raw/u8, mask: u32, flags: u32)", "u32", null, false)]
     [InlineData("kernel32", "SetHandleInformation", "(handle: raw/u8, mask: u32, flags: u32)", "i64", null, true)]
-    [InlineData("kernel32", "VirtualAlloc", "()", "raw/u8", null, false)]
+    [InlineData("kernel32", "VirtualAlloc", "()", "raw/u8", null, true)]
+    [InlineData("kernel32", "VirtualAlloc", "(address: raw/u8, size: u64, kind: u32, protect: u32)", "raw/u8", null, false)]
+    [InlineData("kernel32", "VirtualFree", "(address: raw/u8, size: u64, kind: u32)", "i32", null, false)]
     [InlineData("kimi_backend", "GetLastError", "()", "i32", null, true)]
     [InlineData("codec", "GetLastError", "()", "i32", "codec", true)]
+    [InlineData("codec", "HeapAlloc", "(heap: raw/u8, flags: u32, bytes: u64)", "raw/u8", "codec", false)] // B7r3: no longer a runtime declaration.
     [InlineData("codec", "symbol", "()", "i32", "codec", false)]
     public void RuntimeDeclarationsAreSharedOnlyByAgreeingImports(string library, string symbol, string parameters, string result, string? requirement, bool conflict)
     {
@@ -422,7 +424,7 @@ public class LibraryImportTargetBindingTest
     }
 
     [Theory]
-    [InlineData("kernel32", "VirtualAlloc", "static")]
+    [InlineData("kernel32", "VirtualProtect", "static")]
     [InlineData("kimi_backend", "kimi_helper", "import")]
     public void ReservedSupplyKindsParticipateInSymbolAgreement(string library, string symbol, string requirement)
     {
@@ -456,16 +458,22 @@ public class LibraryImportTargetBindingTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
     }
 
+    // The process heap's three left kernel32's set with the runtime's declarations (the Tatara plan's decision 23, B7r3): an import with the
+    // signature the runtime declared them with is unavailable, as is an import of any other kernel32 function the set lacks; row 27's
+    // valid twin, VirtualProtect with HeapAlloc's signature, stays accepted.
     [Theory]
-    [InlineData("kernel32", "VirtualAlloc", false)]
-    [InlineData("kernel32", "GetLastError", false)]
-    [InlineData("kernel32", "CreateFileA", true)]
-    [InlineData("kernel32", "VirtualQuery", true)]
-    [InlineData("kimi_backend", "kimi_helper", true)]
-    public void AReservedSupplyProvidesOnlyItsCatalog(string library, string symbol, bool unavailable)
+    [InlineData("kernel32", "VirtualProtect", "() -> i32", false)]
+    [InlineData("kernel32", "VirtualProtect", "(heap: raw/u8, flags: u32, bytes: u64) -> raw/u8", false)]
+    [InlineData("kernel32", "GetLastError", "() -> i32", false)]
+    [InlineData("kernel32", "CreateFileA", "() -> i32", true)]
+    [InlineData("kernel32", "VirtualQuery", "() -> i32", true)]
+    [InlineData("kernel32", "GetProcessHeap", "() -> raw/u8", true)]
+    [InlineData("kernel32", "HeapAlloc", "(heap: raw/u8, flags: u32, bytes: u64) -> raw/u8", true)]
+    [InlineData("kimi_backend", "kimi_helper", "() -> i32", true)]
+    public void AReservedSupplyProvidesOnlyItsCatalog(string library, string symbol, string signature, bool unavailable)
     {
         // The backend catalog itself is made of reserved external names, so no kimi_backend import remains.
-        var c = AnalyzeImport("group Native\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func imported() -> i32", null);
+        var c = AnalyzeImport("group Native\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func imported" + signature, null);
         Assert.Equal(unavailable, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnavailableReservedImport_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.Equal(!unavailable, c.Binding.Result.IsComplete);
@@ -521,9 +529,9 @@ public class LibraryImportTargetBindingTest
     [Fact]
     public void ADependencyModuleImportsKernel32()
     {
-        var c = ModuleBindingTest.Create("func main() => ()", "group Native\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func imported() -> i32");
+        var c = ModuleBindingTest.Create("func main() => ()", "group Native\n    #LibraryImport(\"kernel32\", \"VirtualProtect\")\n    public unsafe func imported() -> i32");
         Assert.True(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.LibraryImports, x => x.Symbol == "VirtualAlloc" && x.Decl.Declaration.CodeContext.Kotonoha != c.Kotonoha);
+        Assert.Contains(c.Binding.LibraryImports, x => x.Symbol == "VirtualProtect" && x.Decl.Declaration.CodeContext.Kotonoha != c.Kotonoha);
     }
 
     // IMPL 20.4: the compiler links its reserved supplies for every module, so a dependency module's kimi_backend import has the
