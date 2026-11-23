@@ -116,7 +116,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            var headerScope = binding.scopes[literal];
+            var headerScope = binding.ClosureHeaderScope(literal);
             var header = new SignatureEvidence(literal, literal);
             for (var i = 0; i < count; i++)
             {

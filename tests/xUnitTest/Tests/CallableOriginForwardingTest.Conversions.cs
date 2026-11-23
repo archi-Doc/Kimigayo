@@ -602,8 +602,10 @@ public partial class CallableOriginForwardingTest
     // region's value is read where the judged Origin is a value the program stores, a capture's part (e-owsl) or a capture's unwritten slot
     // inside a nested body (e-owsinx), and in x's own body a written `during x` reads as x's value (e-owsly valid; e-owply, `x = p`, the
     // Unknown's record), also as a Closure's fixed signature Origin (e-owsig, 15.3.4: like any value whose Type names it). e-owsin, an
-    // Owned judgment inside c of a capture whose Type names x through c's signature, is invalid (a region a signature names stays the
-    // region there, SPEC 15.3.4, BU-28: `UnprovenConstraint_Kd d@move`) and accepted, as on dev: pinned to that behaviour, an open issue.
+    // Owned judgment inside c of a capture whose Type names x through c's signature, is invalid: a region a signature names stays the
+    // region there, which c does not carry (SPEC 15.3.4, 15.6.5's Closure sentence; R7-O2 A1's CarriedRegion closes D-862). Its
+    // relation form (C-488, the Front's O3 census): a_nf_lift_clo returns v, whose Type names r through lift's signature, as `during p`;
+    // lift carries nothing, so `r outlives p` has no premise there (R8-M56, O-443 (a)).
     [Theory]
     [InlineData("sel2", MkC + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
     [InlineData("sel1", "struct S {a, b, c}\n" + CB + "    public func p(self: ref/Self) -> i32\n        let r: Option<" + FnB + "> = self.mk(1)\n        return 0\n    public init() => ()\n    public func mk(self: ref/Self, x: i32) -> Option<" + FnC + "> => .None\n    public func mk<T>(self: ref/Self, x: T) -> Option<" + FnB + "> => .None\n", "AmbiguousBinding_Kd self.mk(1)")]
@@ -690,7 +692,8 @@ public partial class CallableOriginForwardingTest
     [InlineData("e-owply", RunOne + OwnStatic + "    let x = p\n    let y: ref/i32 during x = x\n    let c = func [y] (v: ref/i32 during q) -> i32 => y@follow\n    let g: (ref/i32 during q) -> i32 = c@move\n    return g(q)\n", "UnprovenConstraint_Kd c@move")]
     [InlineData("e-owsig", RunOne + OwnStatic + "    let x = s\n    let c = func [] (v: ref/(ref/i32 during x)) -> i32 => 0\n    let g: (ref/(ref/i32 during static)) -> i32 = c@move\n    return 0\n", "")]
     [InlineData("e-owsinx", RunOne + OwnStatic + "    let x = s\n    let c = func [x] () -> i32\n        let d = func [x] () -> i32 => x@follow\n        let g: () -> i32 = d@move\n        return g()\n    return c()\n", "")]
-    [InlineData("e-owsin", RunOne + OwnStatic + "    let x = s\n    let c = func [] (v: ref/i32 during x) -> i32\n        let d = func [v] () -> i32 => v@follow\n        let g: () -> i32 = d@move\n        return g()\n    return c(x)\n", "")] // invalid (`UnprovenConstraint_Kd d@move`), accepted as on dev: an open issue (B's Phase D)
+    [InlineData("e-owsin", RunOne + OwnStatic + "    let x = s\n    let c = func [] (v: ref/i32 during x) -> i32\n        let d = func [v] () -> i32 => v@follow\n        let g: () -> i32 = d@move\n        return g()\n    return c(x)\n", "UnprovenConstraint_Kd d@move")] // R7-O2 A1 (Q13, a class-1 row of D-862): accepted before
+    [InlineData("a_nf_lift_clo", "func f(p: ref/i32) -> ref/i32 during p\n    let r = p\n    let lift = func (v: ref/i32 during r) -> ref/i32 during p => v\n    return lift(r)\n", "UnprovenOriginRelation_Kd v")] // R7-O2 A1 (Q13, a class-1 row of D-862): accepted before
     [InlineData("e-owe", RunPair + "func k(p: ref/i32, q: ref/i32) -> i32\n    let c = func [] (x: ref/i32 during p) -> i32 => 0\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")] // t_b5/t_b6's Closure form (shape from the 11-07 board, sources lost)
     [InlineData("e-rcv", RunPair + RcvK + RcvP + "    return run(q, c@move)\n", "")]
     [InlineData("e-rcv0", RunPair + RcvK + RcvQ + "    return run(q, c@move)\n", "")]
@@ -708,8 +711,8 @@ public partial class CallableOriginForwardingTest
     // result that keeps the receiver (e-dep-*) leave `run<F>` selected; alone no candidate applies (the lone rows: SPEC 10.1's record at
     // the call, Q13 record moves from the argument's Constraint record). Refuted wins over a part decided only once the body is bound
     // (finref-q, x2-fr). A `var` region with no refuting bound recorded before the call is decided only once the body is bound: the
-    // located limit at the argument (O-406 (a): v-late-q, valid, a false AmbiguousBinding_Kd before; v-nolate-*, e-owul, fin1-q,
-    // invalid). Parameters alone stay Unknown, so ambiguous (n-ps-q, t-ss-q, sym-g; inh-* an inherited Type argument); a relation a
+    // located limit at the argument (O-406 (a): v-late-q, valid, a false AmbiguousBinding_Kd before; e-owul, valid by the region's
+    // candidate `static`, the owner's O-481 (b); v-nolate-*, fin1-q, invalid). Parameters alone stay Unknown, so ambiguous (n-ps-q, t-ss-q, sym-g; inh-* an inherited Type argument); a relation a
     // premise decides is its own record (e-dep-ok-*, pj-rp-q); an annotated `let` was accepted already (l-owr-*). A pair layer is judged
     // once over every admitted case (SPEC 8.15.2, the owner's O-417 (a); SymbolicCapability): a case borrowing a body local or an owner
     // parameter's own slot refutes it (sa-*, sax-*, sau2-*); every case Owned proves it (sarc2-*, sao2-*: ambiguous beside `run<F>`, an
@@ -843,8 +846,8 @@ public partial class CallableOriginForwardingTest
     // argument (e-owr, e-owr0): a Closure holding a borrow of a body local is not Owned and run<T> is selected, with an Origin difference
     // (n-tup-p, n-arr-p, n-tup2-p; dev accepted them, cdb04ab61 gave AmbiguousBinding_Kd) or without (n-tup-q, n-arr-q, n-tup2-q; dev and
     // cdb04ab61 gave AmbiguousBinding_Kd); a `var` region with no refuting bound is the located limit at the element (n-tupF-q, O-406
-    // (a); was AmbiguousBinding_Kd), also with a lone candidate (c-ntup, the Middle's s2c at an element; was the conversion's Constraint
-    // record there, UnprovenConstraint_Kd), and alone a refuted element leaves no candidate applicable (n-tup-lone; was the conversion's
+    // (a); was AmbiguousBinding_Kd), also with a lone candidate (c-ntup, the Middle's s2c at an element, valid by the region's candidate
+    // `static`, the owner's O-481 (b); was the conversion's Constraint record there, UnprovenConstraint_Kd), and alone a refuted element leaves no candidate applicable (n-tup-lone; was the conversion's
     // Constraint record at the element).
     [InlineData("n-tup-p", RunTuple + OwnK + OwnCp + "    return run(q, (c@move, q))\n", "")]
     [InlineData("n-arr-p", RunArray + OwnK + OwnCp + "    return run(q, [c@move])\n", "")]
