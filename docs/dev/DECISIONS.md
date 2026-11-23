@@ -7228,6 +7228,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     past a layer whose storage holds no Loan). (U6, U7) Unit A's Viewing(T) at every Loan-free Type (on the declared step the Place
     Type need not be the written storage's, and for a Type no entry names All is the sound answer); a Through guard on a Loan-free
     exposed holder; keeping the untracked rule beside the holders (dead; a second copy of `Exposed`'s condition).
+  - Superseded in part by R4-M241 (G841a, Q-722, 2026-11-24): U3c's "the pointee is judged at its own key" with `OwnPointer`'s
+    Loan test (deleted), "until their own unit" for rule 5's `Any` row's E (now rule 4's), the pointee's entry for rule 4 at an
+    `Any` layer (now `All`), and, in part, "Rule 4 ... is read where a node reads on" (also at a key that keeps the declared step).
 - **R4-M220 Rule H: a local that a store of the body gives a value read from a holder is an A5 holder, and a Loan-free Case payload
   of a call's result carries nothing (the Case bound)** (2026-11-19, landed with the A5 one-tree landing, Q-539; Middle, A5; Major,
   an acceptance mover; the owner's O-209, O-359 (a), O-364 (a), O-383 (b) (verbatim 「O-383  b」) and O-424 (a); implementation
@@ -8032,6 +8035,45 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - one reproducer per row in the Theory (`Rules` keeps them in one source, as `Requirements` does);
     - docs-first for a later A6 change (either order alone breaks dev);
     - a VERIFICATION row for docs a test reads (the review's option (b)): the verification-input rule already covers it.
+- **R4-M241 Rule 4 at every raw layer without an Origin of storage a composing call writes: past a Loan-free pointee and at a key that
+  keeps the declared step (PLAN G841, Revision 3's clause (4), rule D)** (2026-11-24; the Middle; G841a, Q-722, D-1212; Major, an
+  acceptance mover; the owner's O-353 (a), O-365 (a), O-373 (a) and O-389 (a); design `middle\notes\g841-design.md` Revision 3, its
+  review g841rv3's C1-C5, the implementation review g841air's A1 and A2) SPEC 15.6.4, 5.7 Calls, 15.8.2.
+  - **Rule.** The key table publishes per past entry the class of its layer (`MirBorrows.PunKeys`' `PastLayer`): Its, a raw layer at
+    the Place's own address stating no Origin that the walked Type expression writes; Any, one a declaration states
+    (`TyCtxt.RawStated`); Stated, a raw layer with any other step; Borrow. It is one column in place of `punPastRaw`, and
+    `Declared`'s per-part test reads the same class (C3). `OwnPointer` reads it per entry: where storage a composing call writes
+    (`walkComposes`) holds at a key's own address a raw layer of class Its or Any, E is a target with that layer's rule-5 record
+    (Its: the pointee's Reached entry, a kept pointee's kept entry; Any: the output's `All`); A5 judges no Type there, Binding's
+    entry being the bound (rule R, BU-231: oneLayer stays valid). `ReadAt` runs it at a key that keeps the declared step, after
+    that step, under the guard it takes at any other key.
+  - **Departs from R4-M219 (C1):**
+    - (i) U3c's "the pointee is judged at its own key" with `OwnPointer`'s test "past which a value that may carry a Loan is
+      stored" (`Holds(pointee)`, deleted; its hidden part, `PunKey.WhollyHidden`, R4-M221's `KeptKey` already replaced, and
+      `KeptEntry` stays). The reason that no longer holds: "storage of a Type that holds no Loan admits no value that carries a Loan
+      or an address", refuted past a declared layer by 5.7 Calls and past a parameter's by O-359 (a) (R4-M221's c1).
+    - (ii) U3c's "A key with any other part ... keeps the declared step ..., so rule 5's `Any` and `Members` rows stay the declared
+      walk's until their own unit (PLAN G939)": the `Any` row's E by rule 4 lands here (5.7 Calls' throughField; O-373 (a)). The
+      reason that no longer holds is "until their own unit": the `Any` row's E now has its rule (rule 4's predicate over the class
+      column). G939 keeps the holders' reading past such a layer and the `Members` row.
+    - (iii) U3c's "Rule 4's storage the body does not own takes ... its pointee's Reached entry (rule 5's `Its` row), not
+      `Reached.All`": at an `Any` layer it takes `All`, R4-M219's own `Any` record ("The `Any` row has one record, the output's
+      `All`"); the `Its` row keeps the pointee's entry.
+    - (iv) U3c's "Rule 4 (SPEC 15.6.4's composition) is read where a node reads on, at the first step and past a holder alike, by
+      the node's own guard", in part: rule 4 is also read at a key that keeps the declared step, where the node does not read on
+      (the declared step reads the holder), after that step and under the guard the node takes at any other key. The reason that
+      no longer holds: a part that is no layer the walked Type expression writes stops rule 4 at the key, while 5.7 Calls decides
+      per layer, so such a part does not stop it at the key's raw layers without an Origin (R-G841-5; xMixDeclBad, r4MixHopBad).
+  - O-254's "never at a `let` binding's" holds once G938 publishes the `let` mark; until then a Closure's `let` layer is `Its`
+    (cloLetPtrU8ThroughU stays accepted; cloLet*UsedBad are G941's).
+  - Records (Q13): invalid programs newly rejected only, with `ComparisonLoanConflict_Kd`: cloVarPtrU8Bad, cloVarPtrU8CellBad,
+    cloVarPtrU8NullWriteBad, cloVarPtrU8OtherVarBad, cloVarTupPtrU8Bad, enumPayloadPtrU8Bad, r4MixHopBad, xMixDeclBad, xRawDeclBad;
+    `MirBorrowsTest.Exposed`'s intPastComposedBad (was intPastOk), rvPastU64HolderBad, rvPastU8OwnBad; `MirBorrowsTest.Guard`'s er
+    and eh (O-373 (a)). No valid program moves.
+  - Rejected: a Closure-only arm; the pointee's entry at an `Any` layer (R4-M219's one record); keeping the Type test for a
+    Loan-free pointee (Binding's entry already bounds what that storage keeps).
+  - The departures of clauses (1)-(3) (U3b's first-step source, G785's "no single layer" bullet, rule 4's site at the result key)
+    are G841b's and G841c's entries.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
