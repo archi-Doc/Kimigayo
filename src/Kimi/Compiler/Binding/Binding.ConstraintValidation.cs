@@ -766,9 +766,9 @@ public sealed partial class Binding
     // The constraint family's one recorder (SPEC 8.3, 23.1.2; R7-E3 E3b delta 2.3): a proof's outcome at a use, through the one mapping
     // (ConstraintFailureOf), with the facts its caller built, recorded at a use without a failure; a use that already failed keeps its
     // first failure and drops them (the slot's drop). Its callers: RequireConstraint's Refuted arm, FailUnprovenConstraint's fact-less
-    // branch, FailConstraint's record, Enums', Specializations' and FailIterationSubject's outcomes, FunctionReferences' fact-less
-    // pending proof. FailClauseRecord records always (E2-5b); FailUnprovenConstraint's Callable branch and FailCallableSelection keep
-    // `callableConstraints` until R7-E4.
+    // branch, FailConstraint's record and a requirement's named cause (Constraints.Requirements), Enums', Specializations' and
+    // FailIterationSubject's outcomes, FunctionReferences' fact-less pending proof. FailClauseRecord records always (E2-5b);
+    // FailUnprovenConstraint's Callable branch and FailCallableSelection keep `callableConstraints` until R7-E4.
     [Transitional("R7", Reason = "Records only at a use without a failure, so the use keeps its first failure (E2-5a's drop: a Refuted constraint may rest on the use's own rejected registration, probe c2; FailIterationSubject's iterable that already failed, RangeDiagnosticTest's `missing..3`), until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
     private BoundType? RecordConstraint(Koto use, ConstraintProof proof, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
         => this.RecordedFailure(use) == BindingFailure.None

@@ -314,7 +314,7 @@ public sealed partial class Binding
 
     // SPEC 8.10, 7.7.4 (DECISIONS BU-86, amended by R7-E3 E3b-2): a selection that a single Pending candidate's EnvironmentResult judgment
     // blocks, the selection's deferral (RecordSelection): the argument whose result over its closure's environment is no evidence (role 6,
-    // "argument") and the slot's Type parameter it leaves unbound (role 7, "slot"), both shown as related locations.
+    // "argument") and the slot's Type parameter it leaves unbound (role 7, "declaration"), both shown as related locations.
     private BoundType? FailPendingJudgment(InvocationKoto call, PendingJudgment judgment)
     {
         this.MarkWaitingHeaders(call);

@@ -327,7 +327,8 @@ public sealed partial class Binding
                 this.ReportRangeIteration(node, store, index, problem);
                 break;
             case BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { Value: 6 }:
-                // Role 6, "argument": the argument a pending judgment found no slot evidence in, then role 7, "slot" (FailPendingJudgment).
+                // Role 6, "argument": the argument a pending judgment found no slot evidence in, then role 7, "declaration": the slot's
+                // Type parameter (FailPendingJudgment).
                 this.ReportPendingJudgment(node, store, index, problem);
                 break;
             case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is not null && this.FactOf(index, ProblemFactKind.Constraint) is not null:
