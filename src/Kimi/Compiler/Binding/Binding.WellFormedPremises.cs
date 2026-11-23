@@ -9,10 +9,9 @@ namespace Kimi.Compiler;
 // Responsibility: each relation a well-formed part assumes and each use proves: every Origin a borrow layer stores below it outlives that
 // layer's Origin (a pair layer's slot in its binder's borrow cases: WellFormedLayer, StoredSlot), and, for an input or a selected call's
 // result, each declared clause of its Types, substituted with the Origins of its occurrence, in the order the walk meets them. A
-// signature part is walked as the premise is formed: never into a nested Function Type's own layers (AddResultPremises), and below a
-// borrow layer a held Function Type is its closed call signature (StoredSignature, DECISIONS BU-73); beside an Evidence position's own
-// Type, which is well formed, only where the fit replaced an Origin; a slot of the pattern only beside such a Type, whose solution its
-// contributor proves otherwise (R1, DECISIONS BU-99).
+// signature part is walked as the premise is formed: never into a nested Function Type (AddResultPremises; below a borrow layer too,
+// EnterStored); beside an Evidence position's own Type, which is well formed, only where the fit replaced an Origin; a slot of the
+// pattern only beside such a Type, whose solution its contributor proves otherwise (R1, DECISIONS BU-99).
 // Input: the pattern part, the Type it stands for at the use (the pattern itself or its substitution), the argument's own Type beside it,
 // the subject (WellFormedSubject, with the named function for a result), the use, and the Callable comparison whose scope gives a pair
 // layer's cases (RelationScope; default outside one).
@@ -191,15 +190,18 @@ public sealed partial class Binding
         }
 
         // A part below a borrow layer: a layer stores every Origin its stored Type holds, a slot's solution included (SPEC 8.1.1, 15.3.7;
-        // DECISIONS BU-99), and of a held Function Type its fixed Origins, never its per-call ones (StoredSignature, DECISIONS BU-73). A
-        // pair layer of the pattern stores its slot whatever its substitution is, any other layer only beside the same shape.
+        // DECISIONS BU-99). A pair layer of the pattern stores its slot whatever its substitution is, any other layer only beside the same
+        // shape. A held Function Type adds none here, although its fixed Origins are stored (SPEC 15.2.3; StoredSignature, which the
+        // definition's premises and the judged relations read): reading StoredSignature here forms a use's input well-formedness
+        // obligation over it inside a whole-contract comparison, which the comparison does not discharge over the implementation's
+        // solvable call Origins (SPEC 15.3.7), rejecting valid conversions (TypeBindingTest.PerCallBinders l1v, e1v, b1v; SPEC 10.7).
+        // Until the comparison solves such an obligation (PLAN's O3-B2 issue, F's ruling O3-15), a call's instantiated result does not
+        // oblige a held Function Type's fixed Origins either (ResultPremiseTest call_bad, SPEC 15.6.4 step 3).
         private void EnterStored(BoundType pattern, BoundType type, BoundType? argument)
         {
             this.binding.OriginProofMetrics?.WellFormedPart();
-            pattern = this.binding.StoredSignature(pattern.Kind == BoundTypeKind.Parameter ? type : pattern);
-            type = this.binding.StoredSignature(type);
-            argument = argument is null ? null : this.binding.StoredSignature(argument);
-            if (!type.StoresOrigin || (!Shaped(pattern, type) && !TryPairLayer(pattern, out _, out _)))
+            pattern = pattern.Kind == BoundTypeKind.Parameter ? type : pattern;
+            if (!type.StoresOrigin || pattern.Kind == BoundTypeKind.Function || (!Shaped(pattern, type) && !TryPairLayer(pattern, out _, out _)))
             {
                 return;
             }

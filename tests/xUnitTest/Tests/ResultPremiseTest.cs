@@ -576,11 +576,12 @@ public partial class ResultPremiseTest
         Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
     }
 
-    // SPEC 15.6.1, 15.2.3, 15.6.4 step 3 (DECISIONS BU-73, R7-O3 O3-B2): a borrow layer holding a Function Type stores its fixed Origins
-    // and never its per-call ones, in every reader of that well-formedness: a definition's premise over its result (sres_fix, sres_use:
-    // UnprovenOriginRelation_Kd "b outlives q" at the result Type before; sres_bad keeps only its own record) and over an input (in_prem,
-    // in_prem_bad: unchanged), and a call's obligation over its instantiated result (call_ok; call_bad, whose local borrow the call's
-    // well-formedness carries past the body, was accepted beside mk's spurious record before).
+    // SPEC 15.6.1, 15.2.3 (DECISIONS BU-73, R7-O3 O3-B2): a borrow layer holding a Function Type stores its fixed Origins and never its
+    // per-call ones, in a definition's premise over its result (sres_fix, sres_use: UnprovenOriginRelation_Kd "b outlives q" at the result
+    // Type before; sres_bad keeps only its own record) and over an input (in_prem, in_prem_bad: unchanged); a call's fresh regions are
+    // solved small (call_ok, SPEC 15.6.4). call_bad is invalid by SPEC 15.6.4 step 3 (the call must prove its result well formed, which
+    // carries local's borrow past the body) and is accepted (mk's spurious record before): PLAN's O3-B2 issue, the comparison solving a
+    // use-site well-formedness obligation (F's ruling O3-15; WellFormedPremises.EnterStored's contract).
     [Theory]
     [InlineData(HeldFixed + "    return .None\n\n")] // sres_fix
     [InlineData(HeldFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use: the result premise proves the initializer
@@ -592,7 +593,7 @@ public partial class ResultPremiseTest
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32) -> i32) during q) -> ref/i32 during q\n    return b\n\n", Unproven + "b|requires b outlives q, which is not proven")] // in_prem_bad: per-call Origins relate nothing
     [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok: fresh regions solved small
     [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok_ctl
-    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/((ref/i32 during x) -> i32) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x)|requires the borrow local@ref outlives x, which is false")] // call_bad
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/((ref/i32 during x) -> i32) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n")] // call_bad: invalid, accepted (PLAN's O3-B2 issue)
     [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/(ref/i32 during x) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x)|requires the borrow local@ref outlives x, which is false")] // call_bad_ctl: the return's fit itself
     public void AHeldFunctionTypeStoresItsFixedOriginsInEveryReader(string program, params string[] records)
     {

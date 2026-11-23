@@ -905,8 +905,8 @@ public sealed partial class Binding
 
     // SPEC 15.2.3, 15.6.1 (DECISIONS BU-73): a Type as a borrow layer stores it: a held Function Type is its closed call signature (its
     // fixed Origins are stored, its per-call Origins never are: SPEC 15.3.4), every other Type is itself. The one reading of a held Function
-    // Type for every well-formedness walk of stored Origins: the judged relations (RetainInnerOutlives), the premises
-    // (StoredPremisePart) and a use's premises and obligations (WellFormedPremises.EnterStored).
+    // Type for the well-formedness walks of stored Origins: the judged relations (RetainInnerOutlives) and the premises
+    // (StoredPremisePart); a use's walk (WellFormedPremises.EnterStored) does not enter a held Function Type yet (its contract says why).
     private BoundType StoredSignature(BoundType type)
         => type.Kind == BoundTypeKind.Function && type.Binder is { } binder ? this.ClosedSignature(type, binder) : type;
 
