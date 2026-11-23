@@ -193,7 +193,7 @@ public sealed partial class Binding
             Source = stage.Source ?? target,
             Selectable = stage.Selectable || this.HasUnqualifiedCandidate(candidate, scope),
             Ambiguous = ambiguous,
-            Limited = limited,
+            Limited = stage.Limited || limited,
         };
 
         if (!ambiguous && !limited && alias.Environment is not null)
@@ -216,9 +216,10 @@ public sealed partial class Binding
 
     // One import stage's same-name value declarations merged so far: the selection (a gathered group's first source), the merged
     // environment, the first source, whether any candidate may be selected unqualified (HasUnqualifiedCandidate), a conflict and the
-    // two-environment limit; either ends the stage.
+    // two-environment limit, met at any source so far (F's ruling N1-13 B4: only the conflict ends the stage, so the sources' order never
+    // decides which of the two the use reports; ImportStageEnd reads the conflict first).
     private readonly record struct ValueImports(BindingSymbol? Imported, AliasImport Import, BindingScope? Source, bool Selectable, bool Ambiguous, bool Limited)
     {
-        internal bool Ends => this.Ambiguous || this.Limited;
+        internal bool Ends => this.Ambiguous;
     }
 }

@@ -166,6 +166,10 @@ public partial class ModuleBindingTest
         ("g633", "Box<i32> Other<i64>", TwoEnvironments + "let n = make(1)", Unsupported),
         ("g633i", "Box<i32> Other<i64>", TwoEnvironments + "let n = make(\"s\")", Unsupported),
 
+        // SPEC 9.5 (F's ruling N1-13 B4): a function and another value kind at one stage conflict whatever the environments, so the
+        // conflict, not the two-environment limit, is the record in every order.
+        ("g633c", "Box<i32> Other<i64> V", TwoEnvironments + "public struct V\n    public var make: i32 = 0\nlet n = make(1)", Ambiguous),
+
         // SPEC 8.6.4, 9.5.1 (F's ruling N1-13 B3): an opened Contract's requirement and a group's function gathered at stage 5 are one
         // group; only a selected requirement without a subject Type is rejected, at the Name, in every order (never a fault).
         ("r07", "P G", RequirementBeside + "let n = make(1)", string.Empty),
