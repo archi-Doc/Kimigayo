@@ -52,7 +52,7 @@ public sealed class NativeToolchainTest : IDisposable
         string Stage(out string stagedHash)
         {
             using var stream = File.OpenRead(input);
-            return NativeToolchain.StageInput(stream, Path.Combine(this.directory, "output"), out stagedHash);
+            return NativeToolchain.StageInput(stream, Path.Combine(this.directory, "output.native"), out stagedHash);
         }
     }
 
@@ -869,7 +869,7 @@ public sealed class NativeToolchainTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var (project, paths, v1) = await this.BuildHello();
-        var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Native, x.Sha256 + ".lib"), x.Sha256)).ToArray();
         string libraries;
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
@@ -884,7 +884,7 @@ public sealed class NativeToolchainTest : IDisposable
         }
 
         Assert.All(staged, static x => Assert.Equal(x.Sha256, ArtifactFiles.Hash(x.Path)));
-        var allow = DenyCreatingFiles(new DirectoryInfo(paths.Stem + ".native"));
+        var allow = DenyCreatingFiles(new DirectoryInfo(paths.Native));
         try
         {
             Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
@@ -915,7 +915,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var project = await this.Codec("codec", true);
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
-        var folder = ArtifactPaths.Create(project).Stem + ".native";
+        var folder = ArtifactPaths.Create(project).Native;
         var allow = DenyCreatingFiles(new DirectoryInfo(folder));
         try
         {
