@@ -101,9 +101,11 @@ The allowed `#LibraryImport` signature Types and their C meanings are defined in
 - A Unit result is C `void`.
 - `dllimport` and the native supply follow the library kind ([§20.4](20-compilation-configuration.md#204-native-libraries)).
 
+On linux-x64 an import uses the System V x86-64 C calling convention (LLVM `ccc`): an `i8` or `i16` parameter or result is sign-extended and a `u8` or `u16` one zero-extended to 32 bits (`signext`, `zeroext`), as C compilers for that ABI expect, each call by the Types of the import it calls (imports of one symbol that differ only in an 8- or 16-bit Type's signedness share one external declaration and each pass and read their own); there is no `inreg`, `byval` or `sret`. The floating-point control state at every foreign call is the same as on windows-x64.
+
 At every call into and return from foreign code, the floating-point control state is the Windows x64 default: round to nearest even, denormals not flushed (DAZ and FTZ off), FP exceptions masked. Foreign code that changes it restores it before returning; the runtime never repairs it. Status flags left by Kimigayo code are unspecified. Generated code has no exception handlers (see [§22.6](../spec/22-core-execution-and-foreign-functions.md#226-foreign-function-imports) for the no-unwinding promise).
 
-The names `_fltused`, `__chkstk`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. When the program is built for windows-x64, a `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library ([§20.4](20-compilation-configuration.md#204-native-libraries)).
+The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library ([§20.4](20-compilation-configuration.md#204-native-libraries)).
 
 ```kimi
 group Native
@@ -235,7 +237,7 @@ The linux-x64 runtime targets `x86_64-unknown-linux-musl` with the baseline x86-
 
 ### 21.5.2. Process entry and exit
 
-The runtime uses no C library: its platform operations (start, memory pages, writing and exit) are Linux system calls. An Application defines the external entry `__kimi_start` and uses no C runtime startup. It ignores `SIGPIPE`, so a write to a closed pipe fails with `EPIPE`. It then runs the program body ([§22.4](../spec/22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage)), completes shutdown and calls `exit_group(0)`. A Library defines no entry. An Abort writes the report of [§21.4.2](#2142-process-entry-and-exit) to standard error (file descriptor 2), with ` (errno=N)` in place of ` (win32=N)`, and calls `exit_group(1)`.
+The runtime uses no C library: its platform operations (start, memory pages, writing and exit) are Linux system calls. An Application that requires no native library defines the external entry `__kimi_start` and uses no C runtime startup; one that requires a native library (a supplied library or a `c` import, [§20.4](20-compilation-configuration.md#204-native-libraries)) is linked with the C library and defines `main`, starting through musl's `crt1.o`, which initializes the C library first. It ignores `SIGPIPE`, so a write to a closed pipe fails with `EPIPE`. It then runs the program body ([§22.4](../spec/22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage)), completes shutdown and ends with exit status 0: through `exit_group(0)` without a C library, or by returning 0 from `main` to C `exit`, which runs `atexit` handlers. A Library defines no entry. An Abort writes the report of [§21.4.2](#2142-process-entry-and-exit) to standard error (file descriptor 2), with ` (errno=N)` in place of ` (win32=N)`, and calls `exit_group(1)`.
 
 ### 21.5.3. Memory
 
@@ -244,3 +246,7 @@ Allocation follows [§21.4.3](#2143-memory) over anonymous private pages that `m
 ### 21.5.4. Console output
 
 `Console.writeLine` ([§22.7](../spec/22-core-execution-and-foreign-functions.md#227-console-output)) writes to file descriptor 1 with `write`, without a NUL terminator. A partial write continues after the bytes written, and an interrupted one (`EINTR`) is retried.
+
+### 21.5.5. Elapsed time
+
+`Time.Stopwatch` reads `clock_gettime(CLOCK_MONOTONIC)` as a counter of nanoseconds (frequency 10^9); a failed read is a clock failure (`KIMI_E_CLOCK`).
