@@ -294,8 +294,9 @@ Measured first; each one adopted is a unit of its own.
 3. **Link time by part:** read, resolve, write, close; then choose a measure.
    Measured 2026-11-23 (LC3's M-L, T-335): the whole link is 54% of Hello O0's warm build. Open: S1 (a staged compiler supply
    verified by its catalog hash, without the temporary copy; removable 2.72% of Hello O0 warm) proceeds to a design; W2
-   (`/threads:1`) waits for a measured `kimi.exe` row (it reaches 1% only of the estimated row, the LC3 design's rule 3); read,
-   resolve and the hash/record/move parts stop.
+   (`/threads:1`) waits for a measured `kimi.exe` row (it reaches 1% only of the estimated row, the LC3 design's rule 3); read
+   reaches the 1% gate (1.52% of Hello O0 warm) but has no candidate (the LC3 design's §5), so nothing is designed; resolve and
+   the hash/record/move parts stop.
 4. **Schema 5:** each external declaration names its supplier, with PLAN T1's schema 5.
 
 ## 9. Working rules
