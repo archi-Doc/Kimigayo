@@ -880,7 +880,7 @@ public sealed partial class Binding
             }
             else if (!fits)
             {
-                this.Fail(use, BindingFailure.TypeMismatch);
+                this.RecordTypeMismatch(use, source, adaptedType, type); // SPEC 23.3: at the payload that misfits, with its sides (ruling 13).
             }
 
             if (!fits || acquisition is not null)
