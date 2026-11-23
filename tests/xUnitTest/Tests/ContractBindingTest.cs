@@ -750,6 +750,30 @@ public class ContractBindingTest
     public void EachInaccessibleDeclarationOfAContractIsItsOwnRecord(string source, string records)
         => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
 
+    // SPEC 9.4, 9.5, 23.1.2 (PLAN G1207; R7-E2 E2-4b, probes x1, x1s, x1t, x2): a parent no lookup selects is the resolver's miss, explained
+    // by an inaccessible qualifier where one is: a qualified parent naming a private Contract or struct records InaccessibleBinding_Kd at
+    // its reference relating it, a missing one UnresolvedBinding_Kd; the Contract keeps its own record over its failed parent. Before E2-4b
+    // the reference recorded InvalidConstraint_Kd (another requirement's record). The twin is valid. The miss sits where a Type use's does
+    // (C-405 C1, probes x5, x2g with their Type-position twins x5t, x2gt): a walk at its failing qualifier step, a generic at its Name.
+    // The resolver's other outcomes keep their own records (C-405 C2): an inherited Contract reached without its qualifier is
+    // QualificationRequired_Kd relating the base clause and the declaration (x6; SPEC 9.5, before E2-4b InvalidConstraint_Kd), and an
+    // ambiguity is AmbiguousBinding_Kd alone (x7; its dependent InvalidConstraint_Kd went, M2). The qualified twins are valid.
+    [Theory]
+    [InlineData("group G\n    contract P\ncontract A: G.P\n", "InvalidConstraint_Kd 3:1 contract|InaccessibleBinding_Kd 3:13 G.P, inaccessible declaration 'P'")] // x1
+    [InlineData("group G\n    struct S\ncontract A: G.S\n", "InvalidConstraint_Kd 3:1 contract|InaccessibleBinding_Kd 3:13 G.S, inaccessible declaration 'S'")] // x1s
+    [InlineData("group G\n    public contract P\ncontract A: G.P\n", "")] // x1t
+    [InlineData("contract A: Nope\n", "InvalidConstraint_Kd 1:1 contract|UnresolvedBinding_Kd 1:13 Nope")] // x2
+    [InlineData("group G\n    public contract Q\ncontract A: G.Missing.P\n", "InvalidConstraint_Kd 3:1 contract|UnresolvedBinding_Kd 3:13 G.Missing")] // x5
+    [InlineData("group G\n    public contract Q\nfunc f(x: ref/G.Missing.P) -> () => ()\n", "UnresolvedBinding_Kd 3:15 G.Missing")] // x5t
+    [InlineData("contract A: Nope<i32>\n", "InvalidConstraint_Kd 1:1 contract|UnresolvedBinding_Kd 1:13 Nope")] // x2g
+    [InlineData("func f(x: ref/Nope<i32>) -> () => ()\n", "UnresolvedBinding_Kd 1:15 Nope")] // x2gt
+    [InlineData("open struct B\n    public contract P\n    public init() => ()\nstruct D: B\n    contract A: P\n    public init(): base() => ()\n", "InvalidConstraint_Kd 5:5 contract|QualificationRequired_Kd 5:17 P, base clause of D, inherited declaration")] // x6
+    [InlineData("open struct B\n    public contract P\n    public init() => ()\nstruct D: B\n    contract A: B.P\n    public init(): base() => ()\n", "")] // x6t
+    [InlineData("alias G1\nalias G2\ngroup G1\n    public contract P\ngroup G2\n    public contract P\ncontract A: P\n", "InvalidConstraint_Kd 7:1 contract|AmbiguousBinding_Kd 7:13 P")] // x7
+    [InlineData("alias G1\nalias G2\ngroup G1\n    public contract P\ngroup G2\n    public contract P\ncontract A: G1.P\n", "")] // x7t
+    public void AParentNoLookupSelectsIsTheResolversMiss(string source, string records)
+        => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
+
     [Theory]
     [InlineData("i32", true)]
     [InlineData("string", false)]
@@ -916,7 +940,7 @@ public class ContractBindingTest
     [InlineData("contract C: Callable", "InvalidConstraint_Kd")] // SPEC 8.7.1: Callable is written only as Callable<r, S> or Callable<S> in a Constraint.
     [InlineData("contract C: Callable<(i32) -> i32>", "InvalidConstraint_Kd")]
     [InlineData("func f<F>(g: F) -> F\n    F is Callable\n    return g@move", "InvalidConstraint_Kd")]
-    [InlineData("contract C: PrimitiveInteger, Nope", "InvalidConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger, Nope", "InvalidConstraint_Kd UnresolvedBinding_Kd")] // Nope: the resolver's miss (SPEC 9.5; PLAN G1207)
     [InlineData("contract C: Copy\nstruct S\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
     [InlineData("contract C\n    Self is Copy\nstruct S\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
     [InlineData("contract B: Copy\ncontract C: B\nenum E\n    Self is C\n    A", "UnsatisfiedConstraint_Kd")]
