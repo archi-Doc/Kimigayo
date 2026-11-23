@@ -13,7 +13,7 @@ public sealed partial class Binding
     // SPEC 14.9.2, 15.6.1: a search that fails gives its failure, the only record of a failed common Type: Shape for a structural difference,
     // else the first position whose Origins have no common Origin (a presence difference at a pair layer relates its slots, an invariant
     // position or Origin argument its Origins), whose relation the fit's record judges.
-    internal BoundType? CommonOriginType(BoundType left, BoundType right, out ComparisonFailure failure)
+    internal BoundType? CommonOriginType(BoundType left, BoundType right, QuerySite site, out ComparisonFailure failure)
     {
         failure = default;
         if (ReferenceEquals(left, right))
@@ -31,7 +31,7 @@ public sealed partial class Binding
 
         // SPEC 8.1.2: a pair layer's slot is its OuterOrigin, the original's implicit `o` included (PLAN G758).
         var (leftSlot, rightSlot) = (this.OuterOrigin(left), this.OuterOrigin(right));
-        if ((leftSlot is null) != (rightSlot is null) && !this.InactiveOuterOrigin(left, this, null, default))
+        if ((leftSlot is null) != (rightSlot is null) && !this.InactiveOuterOrigin(left, this, null, site, default))
         {
             failure = Unmet(rightSlot, leftSlot);
             return null;
@@ -50,7 +50,7 @@ public sealed partial class Binding
                 var part = ReferenceEquals(l, r) ? l : null;
                 if (covariant)
                 {
-                    part = this.CommonOriginType(l, r, out failure);
+                    part = this.CommonOriginType(l, r, site, out failure);
                 }
                 else if (part is null)
                 {
@@ -78,7 +78,7 @@ public sealed partial class Binding
 
             // SPEC 5.7 (Q-O6): differing raw Origins have the unstated common Type, never a meet.
             var origin = ReferenceEquals(left.RawOrigin, right.RawOrigin) ? left.RawOrigin : null;
-            if (!this.InactiveOuterOrigin(left, this, null, default) && leftSlot is { } a)
+            if (!this.InactiveOuterOrigin(left, this, null, site, default) && leftSlot is { } a)
             {
                 origin = this.Meet(a, rightSlot!);
             }
@@ -128,7 +128,7 @@ public sealed partial class Binding
     }
 
     // SPEC 8.1.2: a pair's conditional outer Origin participates only in admitted borrow cases. Internal Origins remain checked.
-    private bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use, in CallableInstance comparison)
+    private bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use, QuerySite site, in CallableInstance comparison)
     {
         if (!TryAdaptationSelector(type, out var whole) || whole.Symbol is not { } selector)
         {
@@ -138,7 +138,7 @@ public sealed partial class Binding
         binding ??= this;
         var scope = AdmittedScope(selector, binding.RelationScope(use, comparison));
         // An owner application preserves the target's borrow Origin, not the application's conditional slot.
-        var semantics = type.Kind == BoundTypeKind.SemanticsAdaptation ? binding.ResultSemantics(type, scope)
+        var semantics = type.Kind == BoundTypeKind.SemanticsAdaptation ? binding.ResultSemantics(type, scope, site)
             : binding.AdmittedSemantics(whole, scope);
         return (semantics & SemanticsMask.Borrow) == 0;
     }
@@ -155,7 +155,7 @@ public sealed partial class Binding
     // outside a Callable comparison, the decision appends the raw fit by its one entry rule (AddRawFit; G147 rulings 75, 76); it is
     // otherwise pure.
     private (OuterOriginFit Fit, BoundOrigin Longer, BoundOrigin Shorter) FitOuterOrigins(
-        BoundType actual, BoundType expected, Koto? use, in CallableInstance comparison, List<RawFit>? fits, bool invariant)
+        BoundType actual, BoundType expected, Koto? use, QuerySite site, in CallableInstance comparison, List<RawFit>? fits, bool invariant)
     {
         if (actual.IsPointer)
         {
@@ -174,7 +174,7 @@ public sealed partial class Binding
             return (OuterOriginFit.Relation, value ?? BoundOrigin.Unstated, target ?? BoundOrigin.Unstated);
         }
 
-        if (ReferenceEquals(actual.Origin, expected.Origin) || this.InactiveOuterOrigin(actual, this, use, comparison))
+        if (ReferenceEquals(actual.Origin, expected.Origin) || this.InactiveOuterOrigin(actual, this, use, site, comparison))
         {
             return (OuterOriginFit.None, null!, null!);
         }
