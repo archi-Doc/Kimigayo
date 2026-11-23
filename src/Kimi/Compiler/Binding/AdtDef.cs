@@ -117,6 +117,11 @@ internal sealed class AdtDef
 
     internal static PropertyKoto Field(BoundType type, int index) => Struct(type)!.Fields[index];
 
+    // BU-234: whether a stored Field's own slot failed, its symbol of no Type: the part every instance stores of no Type (a MIR Field step
+    // of no Type, MirBody.SelectsPart, PLAN G1184). FieldType is null for it, and also for a part past IMPL A.4's height (R7-T1) or one
+    // that does not substitute, which the instance does not store.
+    internal static bool FieldSlotFailed(BoundType type, int index) => Field(type, index).BoundSymbol is { Type: null };
+
     // SPEC 11.7: whether a constructor may place a stored Field only once: a let Field, or a var with a custom set.
     internal static bool PlacedOnce(BoundType type, int index)
         => Field(type, index) is not { VariableKind: VariableKind.Var, BoundSymbol.Property.Setter.IsStandard: true };
