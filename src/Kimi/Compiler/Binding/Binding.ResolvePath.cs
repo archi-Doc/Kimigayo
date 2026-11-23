@@ -802,7 +802,7 @@ public sealed partial class Binding
             }
 
             var evidence = ProjectionEvidence(associated, search.Reference, contract);
-            if (this.SuppliesPremises(type, evidence, environment))
+            if (this.SuppliesPremises(type, evidence, environment, projection))
             {
                 this.AddContractPremises(evidence.Contract!, type, environment);
             }

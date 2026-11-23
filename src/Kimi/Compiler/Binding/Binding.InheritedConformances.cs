@@ -163,7 +163,7 @@ public sealed partial class Binding
             => IsBoundContractReference(contract) ? this.BoundContractReference(this.StoredType(contract.Type!, baseType)!) : contract;
     }
 
-    private ConstraintProof VerifyInheritedConformance(BoundConformancePath path)
+    private ConstraintProof VerifyInheritedConformance(BoundConformancePath path, QuerySite site)
     {
         if (this.ReadOpen(new(null, null, path)))
         {
@@ -193,7 +193,7 @@ public sealed partial class Binding
             var proof = ConstraintProof.Proven;
             for (var i = 0; i < path.InheritedSourceCount; i++)
             {
-                proof = CombineProof(proof, this.VerifyConformance(path.InheritedSource(i)), true);
+                proof = CombineProof(proof, this.VerifyConformance(path.InheritedSource(i), site), true);
             }
 
             if (proof != ConstraintProof.Proven)
@@ -212,8 +212,8 @@ public sealed partial class Binding
             foreach (var ancestor in shape.AncestorStorage)
             {
                 var inheritedProof = IntrinsicContract.Of(ancestor.Intrinsic).Judged
-                    ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope)
-                    : this.VerifyConformance(this.impls.Path(path.Type, ancestor, path.Declaration, path.RootContract));
+                    ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope, path.Use)
+                    : this.VerifyConformance(this.impls.Path(path.Type, ancestor, path.Declaration, path.RootContract), site);
                 proof = CombineProof(proof, inheritedProof, true);
             }
 
@@ -238,7 +238,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                proof = CombineProof(proof, this.ProveRequirement(constraint, scope, self), true);
+                proof = CombineProof(proof, this.ProveRequirement(constraint, scope, self, path.Use), true);
             }
 
             for (var s = 0; s < path.InheritedSourceCount; s++)

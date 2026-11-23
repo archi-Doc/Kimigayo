@@ -4,10 +4,11 @@
 // one per Compilation.
 // Responsibility: one module of a program version from its checked set: every Generated item in admission order, a body item written by
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), which this owner gives from the item's own body to
-// its definition and every call (Signature), a called #LibraryImport function's C signature and declaration (Import), the native
-// libraries the module requires, the library and Kind of every validated #LibraryImport, called or not, one per library (Libraries; SPEC
-// 22.6: resolved when the program is built; moved here from the toolchain's publication, R9-B1), the output form
-// around the output roots (IMPL 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry, a
+// its definition and every call (Signature), a called #LibraryImport function's C signature under the row's C convention and its
+// declaration (Import), the native libraries the module requires, the library and Kind of every validated #LibraryImport, called or not,
+// one per library, then the row's C runtime when any is required (Libraries; SPEC 22.6: resolved when the program is built; moved here
+// from the toolchain's publication, R9-B1; IMPL 21.5.2), the output form around the output roots (IMPL 21.4.2, 21.5.2: an Application's
+// start calls its startup root and exits with 0, through main on the C path, a Library has no entry, a
 // test build's is the test runtime's, which runs the case the runner selects, each test root called in catalog order; DECISIONS R5-M136) and
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
 // declarations, overflow declarations, functions, entry, footer); a row per item kind and output form: DropGlue
@@ -80,6 +81,7 @@ internal sealed partial class ModuleCodegen
     internal ModuleCodegen(Layout layout, SourceLocationTable locations, TyCtxt types, IReadOnlyList<LibraryImport> imports, Testing.TestCatalog tests, TargetProfile row)
     {
         (this.Layout, this.Locations, this.types, this.imports, this.Tests, this.row) = (layout, locations, types, imports, tests, row);
+        this.importConvention = ImportConvention(row);
         this.bodies = new(this, types);
         this.caseCall = (output, index) => this.bodies.WriteEntryCall(output, this.cases[index]);
     }
@@ -136,8 +138,8 @@ internal sealed partial class ModuleCodegen
             return false;
         }
 
-        this.Assemble(output, start);
         this.Require();
+        this.Assemble(output, start);
         return true;
     }
 

@@ -575,7 +575,7 @@ public sealed partial class Binding
             this.ChildGroup(solution, i, out var start, out var end);
             if (start == end && actuals[i] is { } actual)
             {
-                this.CollectOriginInference(parameters.Components[i], actual, inference);
+                this.CollectOriginInference(parameters.Components[i], actual, inference, use);
             }
             else if (solution.Rows[i].Part is { } root)
             {
@@ -589,7 +589,7 @@ public sealed partial class Binding
                     !this.WaitsForValueCallSolve(part, pattern) &&
                     this.AdaptInput(part, FixedPattern.Of(this, pattern, solution.Fixed), this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
                 {
-                    this.CollectOriginInference(pattern, adapted, inference);
+                    this.CollectOriginInference(pattern, adapted, inference, use);
                 }
                 else if (this.childRows[j] is { Pattern: { } borrowed, Part: var temporary })
                 {

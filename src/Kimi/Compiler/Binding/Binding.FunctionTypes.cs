@@ -192,7 +192,10 @@ public sealed partial class Binding
     // receiver dependence, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
     // condition, the value's own failure, recorded here at `node` (FailOwnedConversion, RecordCondition; DECISIONS BU-107), on which every
     // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm. The conversion at the value is a
-    // reader of its comparison's region conjuncts: it forms them as the body's rows when the signature fits (FormComparisonRows).
+    // reader of its comparison's region conjuncts: it forms them as the body's rows when the signature fits (FormComparisonRows). An Owned
+    // part whose proof read a region with no answer yet (ValueIn's deferral fact, while a body is bound) is no verdict: the erasure's
+    // obligation (BindingObligationKind.Owned), judged once the body is bound (JudgeErasedOwned; the owner's O-471 (a)), its other parts
+    // judged here.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
         var unformedMark = this.unformedWrites;
@@ -236,11 +239,20 @@ public sealed partial class Binding
         OwnedFact owned = default;
         var independence = ConstraintProof.Proven;
         var shape = signature is null || !TyCtxt.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
+        var held = this.readsUnboundedRegion;
+        this.readsUnboundedRegion = false;
         var part = !SharedReceiver(actual) ? ErasurePart.Receiver
             : shape && !fits ? ErasurePart.Shape
-            : this.ProveErasedOwned(actual, node, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
-            : fits && (independence = this.ReceiverIndependence(actual)) != ConstraintProof.Proven ? ErasurePart.Dependence
+            : this.ProveErasedOwned(actual, node, this.formingBody, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
             : ErasurePart.Condition;
+        // R7-O2 O2-F: a target Type naming a deferred slot's atom is a reading with no answer yet, as the deferral fact.
+        var deferred = part == ErasurePart.Owned && (this.readsUnboundedRegion || this.DeferredAtomIn(expected) is not null) && this.formingBody.IsBody;
+        this.readsUnboundedRegion = held;
+        if (part == ErasurePart.Condition || deferred)
+        {
+            part = fits && (independence = this.ReceiverIndependence(actual)) != ConstraintProof.Proven ? ErasurePart.Dependence : ErasurePart.Condition;
+        }
+
         if (independence == ConstraintProof.Error)
         {
             this.Fail(node, BindingFailure.Unsupported); // A retention past its limits decides nothing: the located limit at `node`.
@@ -248,6 +260,11 @@ public sealed partial class Binding
 
         if (part == ErasurePart.Condition && fits)
         {
+            if (deferred)
+            {
+                this.AddObligation(new(BindingObligationKind.Owned, node, BindingDeadline.BodyOrigins, actual));
+            }
+
             return true;
         }
 
@@ -421,13 +438,13 @@ public sealed partial class Binding
             // required signature's quantifiers and fixed Origins remain rigid.
             this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
             inference.Source = ((byte)(i + 1), null, false);
-            this.CollectOriginInference(parameter, parameters.Components[i], inference);
+            this.CollectOriginInference(parameter, parameters.Components[i], inference, use);
         }
 
         if (Read(Declared(function.Parameters.Count)) is { } produced)
         {
             inference.Source = (ComparisonFailure.ResultStep, null, false);
-            this.CollectOriginInference(produced, required.Components[1], inference, result: true);
+            this.CollectOriginInference(produced, required.Components[1], inference, use, result: true);
         }
 
         // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.

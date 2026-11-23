@@ -74,6 +74,7 @@ public sealed partial class Binding
         this.aliases.Clear();
         this.ResetAliases();
         this.obligations.Clear();
+        this.completedDefaults = 0;
         this.ResetLocalRegions();
         this.ResetBorrows();
         this.rawFits.Clear();

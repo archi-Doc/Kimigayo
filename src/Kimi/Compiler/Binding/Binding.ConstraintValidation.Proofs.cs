@@ -84,8 +84,9 @@ public sealed partial class Binding
 
     // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request. It pushes a
     // clear slot; the enclosing scopes' reads stay in theirs. A judgment (a scope whose answer EndProof no longer combines) opens a frame
-    // and first drops the facts the last one left untaken (r2-6).
-    private void BeginProof()
+    // and first drops the facts the last one left untaken (r2-6). `site` is the judgment's (QuerySite; PLAN G651 a1): its opener names
+    // it, a nested scope Nested; it is an input only until R7-C6 a's second commit opens the site frame at the outermost scope.
+    private void BeginProof(QuerySite site)
     {
         if (this.proofNesting == 0)
         {

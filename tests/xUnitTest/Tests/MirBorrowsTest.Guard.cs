@@ -2365,9 +2365,11 @@ public sealed partial class MirBorrowsTest
     // O-507 (B) (a slot judged by the Type declaration that binds it; LimitMarks.FittedExclusive, which also reaches the holder's own
     // region): a declared layer whose slot keeps only `ref` Loans gives no write authority whatever was fitted (slotRefKept, valid, as on
     // dev), nor does a layer an abstract callee's Type does not show (slotAbstract, valid, SPEC 15.6.4); a `uniq`-kept slot's layer holding
-    // r's exclusive address keeps it (slotUniqKept, invalid: `put` may store z's borrow in v), its shared twin not (slotUniqShared, valid),
-    // and so does a pointer copied out of it into a Type argument's layer (slotUniqCopied, invalid), or into a second `uniq`-kept holder
-    // (slotUniqChained, invalid). The whitelist's cost (O-498 Q2 (b); valid, the located Unsupported_Kd, Q13 moves named on Q-702): the
+    // r's exclusive address keeps it (slotUniqKept), its shared twin not (slotUniqShared, valid), and so does a pointer copied out of it
+    // into a Type argument's layer (slotUniqCopied) or into a second `uniq`-kept holder (slotUniqChained). Those three are valid by the
+    // owner's O-512 R1 (SPEC 5.7 Calls: what the layer's Origin belongs to is judged where it is bound, HU's slot kept by an i32's `uniq`
+    // Loan, so `put` may store only an i32 through it, never z's borrow): their located Unsupported_Kd is the whitelist's cost. Further
+    // rows of that cost (O-498 Q2 (b); valid, the located Unsupported_Kd, Q13 moves named on Q-702): the
     // same copy out of a `ref`-kept layer (slotCopied, SPEC 5.2.1 condition 3's declared-layer sentence; dev limits it too), and into a
     // `uniq`-kept slot's layer, which dev accepts (slotUniqFromRefKept); a pointer read from a `uniq`-kept holder's layer fitted into a
     // second one, its source past a shared path (slotUniqChainedShared, SPEC 5.2.1 condition 3's first limit) or `null`

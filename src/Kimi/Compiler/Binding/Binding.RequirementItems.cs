@@ -42,7 +42,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var proof = this.ProveConformance(group.Self, contract, scope);
+                var proof = this.ProveConformance(group.Self, contract, scope, use);
                 if (proof == ConstraintProof.Error)
                 {
                     return this.Fail(use, BindingFailure.InvalidConstraint);
@@ -132,7 +132,7 @@ public sealed partial class Binding
             var context = new CallPlan();
             context.Set(this, item.Symbol!, result, null, [], [], conformingType: self, inputOrigins: inputs.AsSpan(0, InputOriginCount(function)), operations: operations);
             context.RequirementContract = contract;
-            return item.ContainsParameter ? context : this.InstantiateRequirementCall(context, context);
+            return item.ContainsParameter ? context : this.InstantiateRequirementCall(context, context, function);
         }
         finally
         {
