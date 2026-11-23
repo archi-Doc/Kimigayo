@@ -525,10 +525,13 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var call = body.Trim().Split('\n')[0][8..];
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), call), (error.Code, Text(source, error.Span)));
 
-        // DECISIONS BU-86: the record carries the judgment that left the candidate pending, the argument and the slot.
-        Assert.Equal("The result of c over its environment is no evidence for T", error.Note);
-        var argument = Assert.Single(error.Related!);
-        Assert.Equal(("argument", call[5..^1]), (argument.Role, Text(source, argument.Span)));
+        // DECISIONS BU-86 (amended by R7-E3 E3b-2): the record relates the judgment that left the candidate pending, the argument and the
+        // slot's Type parameter; it has no Note.
+        Assert.Null(error.Note);
+        Assert.Collection(
+            error.Related!,
+            argument => Assert.Equal(("argument", call[5..^1]), (argument.Role, Text(source, argument.Span))),
+            slot => Assert.Equal(("declaration", "T"), (slot.Role, Text(source, slot.Span))));
 
         var valid = "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\npublic func main() -> ()\n    var x: i32 = 5\n    let r = x@ref\n    let c = func [r] () => r\n    let s = make(c@ref)\n    x = 6\n    Console.writeLine(\"\\(s@follow)\")\n";
         var conflict = Assert.Single(DiagnosticCorpus.Check(valid).Diagnostics);
@@ -604,9 +607,11 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             (overload ? "func make<F, G>(" + closures + ", t: i32, v: i64) -> i32\n    return 2\n" : string.Empty) + EnvironmentClosure +
             "    let w: Array<i32> = [1]\n    let e = func [w@move] () => w@ref\n    let n: i32 = 1\n    let r = make(" + arguments + ", n, 2)\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(
-            (nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(" + arguments + ", n, 2)", "The result of e over its environment is no evidence for U"),
-            (error.Code, Text(source, error.Span), error.Note));
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(" + arguments + ", n, 2)"), (error.Code, Text(source, error.Span)));
+        Assert.Collection(
+            error.Related!,
+            argument => Assert.Equal(("argument", "e@ref"), (argument.Role, Text(source, argument.Span))),
+            slot => Assert.Equal(("declaration", "U"), (slot.Role, Text(source, slot.Span))));
     }
 
     [Trait("Purpose", "Allocation")]

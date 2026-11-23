@@ -563,7 +563,7 @@ public sealed partial class Binding
 
         plan.Invalid |= proof != ConstraintProof.Unknown;
         plan.Pending |= proof == ConstraintProof.Unknown;
-        this.Fail(syntax, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+        this.Fail(syntax, ConstraintFailureOf(proof), proof == ConstraintProof.Unknown);
         return false;
     }
 

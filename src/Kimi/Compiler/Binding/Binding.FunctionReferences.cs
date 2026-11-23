@@ -183,7 +183,7 @@ public sealed partial class Binding
 
             if (pendingProof)
             {
-                return pending is { } fact ? this.FailClauseRecord(use, fact, unresolved: false) : this.Fail(use, BindingFailure.UnprovenConstraint);
+                return pending is { } fact ? this.FailClauseRecord(use, fact, unresolved: false) : this.RecordConstraint(use, ConstraintProof.Unknown, []);
             }
 
             var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);

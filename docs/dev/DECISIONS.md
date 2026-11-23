@@ -11733,6 +11733,8 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-240 (G886-p3, Q-594): a third kind, `UnformedSplit`, written once by a trial that rests only on an unformed split
     (`TryCandidate`'s Pending verdict) and read by the selection as `CallSelection.UnformedSplit`; temporary, removed with PLAN G886
     (R).
+  - Amended by R7-M75's E3b-2 line: the record carries the argument and the slot's Type parameter as related locations (roles 6 and 7,
+    the latter shown as `declaration`), not the Note's sentence; `pendingJudgments` is deleted.
 
 - **BU-84 TransferRequired is judged in Binding** (2026-11-03; superseded in part by R5-M185; R6-check H1; the owner's Q8 approval
   「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-package.md` §3.7 and `Q8-design-2.md` §2.7; H0's division, R5-M182; Q14's runs 1
@@ -16064,9 +16066,10 @@ resumed by R4-M86 (2026-10-20).
   - **R7-N5 B2a-1** (the Back's batch, Q-563; design `b2a-design.md` §4, B's rulings 1-6; the Front's C-403): six tables become pass
     families of `NodeColumns` (`StampedColumn<T, Binding.PassCounter>`), one accessor each, their Clears deleted:
     `inferredArrayLengths` and `arrayInferenceShapes` (written through `HirTables.Of`), `callInferenceFailures`,
-    `callableSelectionFailures`, `baseCallFailures` and `objectErasureFailures` (failure facts stored through the recorder,
-    `SetRecordedFact`). The library writes none of them (six `NotStamps` rows). `receiverOperations` and `resultContexts` are B2a-2's
-    (released at the freeze, B's ruling 1); `noInitFailures` and `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet 67 -> 61.
+    `callableSelectionFailures`, `baseCallFailures` and `objectErasureFailures` (deleted by R7-E3 E3b-2) (failure facts stored through
+    the recorder, `SetRecordedFact`). The library writes none of them (six `NotStamps` rows). `receiverOperations` and `resultContexts`
+    are B2a-2's (released at the freeze, B's ruling 1); `noInitFailures` and `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet
+    67 -> 61.
   - **R7-N5 B2a-2** (the Back's batch, Q-577, D-936; design `b2a2-design.md` §1-§4, B's rulings 1-5 and B's ruling 6 on
     `b2a-design.md`; the Front's R1-R4 and C1-C7 on C-403, 2026-11-20): a family no reader after the freeze reads a library row of
     (its rows are its pass's working state: the binding steps, reports and HIR publication of the pass that wrote them) has no
@@ -26084,6 +26087,30 @@ R8-M* and R9-M* by the stage of the recording unit.
     10.8)") and the reference's Notes (UnboundReferenceNote, "binds its Type parameters only from explicit Type arguments (SPEC 10.5)",
     and its length-parameter variant, "binds its Type and length parameters only from a complete explicit argument list (SPEC 10.5)",
     for a function with a length parameter, LengthFunctionReferenceTest's `let f = keep`), M4 an `And` premise candidate's span (s11a).
+  - **E3b-2 (Q-710, D-1189).** `ConstraintFailureOf` is the one table of a proof's outcome to its failure (Refuted
+    UnsatisfiedConstraint, Unknown UnprovenConstraint, Error InvalidConstraint); every site that maps an outcome reads it, including
+    the two that still fail without a record: an enum construction's Type formation (Enums 725) and `ValidatePatternType`
+    (Patterns 566) (ruling 13, B-1). `RecordConstraint(use, proof, facts)` is the constraint family's one recorder: it records only at
+    a use without a failure, else fails the use (E2-5a's drop at ConstraintValidation's Refuted arm kept, spelled once; R7-E5, D-924);
+    its callers are RequireConstraint's Refuted arm and final Unknown (through FailUnprovenConstraint's fact-less branch),
+    FailConstraint's record, a requirement's named cause (Constraints.Requirements, ruling 11), Enums' and Specializations' Error and
+    Refuted outcomes (Enums keeps its own gate, PLAN G418), FailIterationSubject (whose spelled read moves into it) and
+    FunctionReferences' fact-less pending proof. RequireConstraint takes the caller's proposition (only the object-View erasure passes
+    one, `S is Owned`), kept as the record's Constraint fact. FailClauseRecord maps through `ConstraintFailureOf` and records always
+    (E2-5b); **the candidate trial publishes a Pending candidate's clause fact at the clause's verdict, BU-240's split Unknown included
+    (TryCandidateCore; ruling 11 (a) as narrowed by ruling 12: a row the erased-argument check refutes keeps its clause's own outcome,
+    which AsSelected reads)**. **The stamp's second reader (ruling 13, C-1):** AsSelected (ArgumentKinds 129) now keeps an
+    acquisition-failed row whose clause fact a split converted Inapplicable, where the stale `Proof: Refuted` before made it selected
+    despite the failure: a correction by SPEC 10.1 and G680 ("past every argument and result check"); no probe reaches it. The Error
+    outcome (R3): FailConstraint keeps its guard and cause at RequireConstraint (R7-E5) and records through `RecordConstraint`; the
+    other Error sites record it fact-less through it. Exception until R7-E4: FailUnprovenConstraint's Callable branch and
+    FailCallableSelection keep `callableConstraints`. Deleted: `pendingJudgments` (ratchet "Node-keyed table members in Binding" 12 ->
+    11), `objectErasureFailures` (the column, its accessor, four HirTables rows), the old two-argument `RecordConstraint(use, cause)`.
+    The erasure's record is its proposition alone (a ReportProblem row keyed on a record of one Constraint fact): **its Note is
+    rendered from that fact ("The use requires S is Owned; this condition cannot be proven", ruling 12), and an Unknown one shows the
+    subject and the Contract as evidence**. The pending judgment is the selection's deferral (`RecordSelection`): UnprovenConstraint_Kd
+    with role 6 "argument" and role 7 shown as a related `declaration` (the slot's Type parameter), which the adapter reads by role
+    (ruling 13, n1). Moves: M3 the erasure Note's text (from the fact) and the pending Note (gone); M4 the pending slot related.
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
@@ -26434,6 +26461,38 @@ R8-M* and R9-M* by the stage of the recording unit.
     without commit 3 and was removed in the unit (ruling 349 (1)), with `CloseConsultation` (ruling 351 C3).
   - **Moves (Q13).** None: diagnostic snapshot 0 and semantic HIR+MIR 0 against shared-base/f227e33ce on the head f72940d32 (merged
     with dev f227e33ce).
+- **R7-M88 A Field step of no Type is a Place its write defines** (Middle, 2026-11-23; PLAN G1184, Z28's MIR half, Q-713, D-1188, a
+  joint unit with the Front's F; Major; design `middle\notes\z28-design.md` Revisions 0-2 and its reviews; the order: M, then the
+  Front's F on M, then M3 on F) SPEC 23.1.2, 6.3.3, 6.3.4, 13.7.1.
+  - `MirBody.Selects` is the one projection rule: whether a Place of a Type admits a step, and the Type it selects, none only for a
+    stored Field whose own slot failed (BU-234's failed slot: the Field's symbol has no Type, `AdtDef.FieldSlotFailed`; its body-free
+    arms are `SelectsPart`). `AdtDef.FieldType` is null for two more causes, an instance part past IMPL A.4's height (R7-T1) and a part
+    that does not substitute: neither is a part, so the builder's `Stored` (which reads the rule) gives none and `Field` derives it, as
+    before. `Project` interns by the rule and the validator's `Admits` checks by it; `ProjectedType` is its Type-only answer for the
+    readers that take none as no part (A2's drop tree, the validator's aggregate components).
+  - The validator's rule for a Place of no Type (`Bounded`, R7-M64) covers every **admitted** Place of no Type: a whole slot as
+    `Bounded` admits it, and a last Field step of no Type (admitted by its prefix's Type, its root's for a first step: D1) only written
+    (an Assign's or Call's destination) with its Kills; a step that is not admitted keeps its one `Projection` finding. A term of its
+    own beside R4-M132's, `placing`, admits the write's value in transit (`MirLocalRole.Assigned`, a whole temp of no Type) moved by
+    the Use that places it into a destination of no Type.
+  - The builder's `Stored` gives a stored Field whose own slot failed its Place, so its initializer is placed (`Construct`) and, once
+    Binding publishes the Field Place (the Front's F), a write into it is an ordinary `Assign` (path 1; `Replace` holds the value at
+    the target's published Type, `KnownType`: none), no longer a derived write (G1022's `DerivedWrite` keeps every other Error target,
+    R4-M232's rejection of `Defines` at a derived target standing); `Field`'s derived branch keeps only a receiver of no Type.
+  - A case reader of a written Place takes rule W (`MirCases.KnownTypeOf`), as A5's receiving part does: the pun rule's `Punning` with
+    it (a Place of no Type has no bytes to pun); every other case reader reads a Place the validator states typed, by D1's first-step
+    check (a step's prefix or the storage below a layer, `MirCases.Layer` included; a read, moved, borrowed, dropped or called Place,
+    `MirCases.Reborrows` included; Binding's key walk `PlaceKeys.Select` gives such a Field's key no Type, BU-36's unbound part).
+  - Records (Q13): unit M alone moves none (its new Places are reached by initializers only; every G1184 row needs F's publication);
+    with F the false `UninitializedPlace_Kd` beside the Weak limit (e.w2, Milestone 41 11:9) and at a later read, and the false
+    `MovedPlace_Kd` at a failed Field beside a moved sibling or over a partly moved root go. No acceptance move, no generated code.
+  - Amends R7-M64's `Bounded` scope (a whole slot: now every admitted Place of no Type), adds `placing` beside R4-M132's term, and
+    retires the builder's "a Field Binding formed no stored Type for has no Place" (`Stored`, `Construct`). Rejected: a `MirAccess` or
+    projection kind for the step (a vocabulary entry); a second copy of the struct test in the validator (the prototype's `Admits`
+    term); skipping a first step in the admitted-step test (the prototype's `row.Prefix != 0`: `Copy(_1.w)` would pass, D1); admitting
+    every null stored part (`AdtDef.FieldType` null; the review's C-ir1 and N-e: it would make a part the instance does not store, one
+    past IMPL A.4's height or unsubstituted, a Place of no Type, which a typed node could read or borrow (a validator finding);
+    unreached by the U2b corpus and h0-h2); the target's own derived site defining its Move Path (R4-M232).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -29389,6 +29448,31 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Step`: SPEC 4.1 copied per reader); a `BoundType` predicate shared with `Binding.Holdings`' `Empty` (same meaning, different
     contracts, a cross-area member for two property patterns; a candidate if a third reader appears); keeping the Temporary as
     lasting (O-486 4 (c): rejects valid programs against SPEC 4.1).
+- **R8-M60 R8-X1: R8's exit gate (plan §10.2) item by item at 6e8ffd3b4, and the owner's review of R8's exceptions** (Back, 2026-11-23;
+  R8-X1 U4, records only; the owner's O-513 (c), verbatim 「O-513 c」, and O-514 (a), verbatim 「O-514 a」; results
+  `artifacts/benchmarks/r8-exit/`)
+  - Item 1: the Session (45,948 tests, 0 failed; natives 6,349 of 6,349 at O0 and O2, reused from the same commit's base; 0 snapshot
+    differences; semantic check PASS; 40 milestones; 7 CLI harnesses); the native outcome changes since R8's start are
+    `native-deviations.md`'s decided rows, among them 72316f5b3 (a failed `resolve` reports `KIMI_E_INDEX_BOUNDS`, SPEC 4.6.3, 22.5.2) and
+    3a0a09b51 (`KIMI_E_CLOCK`, SPEC 22.8.2), recorded here as one line; over 8a90275af..6e8ffd3b4 two more decided rows (G1135's re-spelt
+    `Access` row; R7-C3 C3b's `namesSwap90` replaced by `names80` and `namesSwap80`, R7-M82) and no unexplained change.
+  - Item 2: O2 against R8's start (3faea4edc, 13 kernels) every kernel faster or within, ArrayViews, ErasedCalls and VirtualDispatch by
+    code placement (R5-M135), Iterators by its corpus median inside R8 start's A=A with its aligned control faster, so R5-M147 is not
+    triggered (two matched pairs above A=A recorded); against the 49cb2b5d chain (12 kernels; ArrayViews not in the chain, 49cb2b5df
+    rejects it) eleven faster or within, Iterators by in-loop placement (the owner's O-513 (c)): with B's fix of the RP8 tool's code start
+    (both sides' runtime templates), T-338's 16 pairs matched at `main` put 5 above A=A (+0.8-2.2%), the round loop's instructions are
+    identical on both sides (203 IR, 159 x86 instructions), only the round counter's register (`rdx` against `r8`) and the loop's offset
+    in `main` differ, each side's own address spread (2.2-3.9%) exceeds A=A, and the 16-address mean is 1.003 (SE 0.003); R5-M147 stays as
+    written; O0 recorded; allocation tests and audits pass, warm 0 B.
+  - Item 3: every named deletion at 0; `IntrinsicId` R8's 27, 29 with OSF2's `VolatileRead` and `VolatileWrite` (O-489, T-M23).
+  - Item 4: Bind cold 0.005-0.064 and warm 0.001-0.061 of bfc2e1836's (12 rounds, CPU 2), cold bytes 0.2-2.0 MB against 8.3-9.0 MB, warm
+    0 B; Generate 0.92 (Hello) to 3.8-4.4 (Interpolation); the pipeline, analyze and collection runs unpinned with tiering on; the library's
+    freeze once per process allocates +0.63 MB and retains +49 KB (R8-M55's U6 line), its time not recorded; L1 adopted and landed
+    (R8-M51, R8-M53-M55).
+  - Item 5: texts landed (SP2, SP3, SP4, R1a; SP1 absorbed); the owner's answers O-486 1 (a), 2 (b), 3 (a), 4 (a), 5 (a) and O-490 (a);
+    E27 (PLAN G1268) a known limit; the owner's review of the Review rows: O-514 (a) (「O-514 a」, 2026-11-23): every Review row stays as
+    recorded, listed with X1's numbers.
+  - Area record `artifacts/benchmarks/r8-exit-areas.md`.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

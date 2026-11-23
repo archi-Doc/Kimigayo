@@ -533,6 +533,30 @@ public sealed partial class MirBuildTest
         Assert.Equal(receiver != "uniq/Self", body.HasOpaque);
     }
 
+    // PLAN G1184 (SPEC 6.3.3, 23.1.2; BU-234): a stored Field whose slot failed has its Field Place, of no Type (MirBody.Selects), so its
+    // constructor places its initializer there (MirBuilder.Stored, Construct), a literal Binding types and a receiverless struct function's
+    // call as the typed twin's literal, with no validator finding and no construction record (fail-before: not placed, no write into the
+    // Field).
+    [Theory]
+    [InlineData("Weak<rc/Node> = 5")]
+    [InlineData("Weak<rc/Node> = Node.mk()")]
+    [InlineData("i32 = 5")]
+    public void AFailedFieldsInitializerIsPlacedIntoItsFieldPlace(string field)
+    {
+        var c = Compile(
+            $"struct Node\n    public var w: {field}\n    public let v: i32\n    public init(v: i32)\n        self.v = v\n" +
+            "    public func mk() -> Weak<rc/Node>\n        return Node.mk()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+        var body = program.Bodies.ToArray().Single(static x => x.Source.Module == 0 && AdtDef.IsConstructor(x.Key.Decl));
+        bool Field(MirPlace place) => place is { Root: 0, Projection: > 0 } && body.Projections[place.Projection] is { Prefix: 0, Kind: MirProjectionKind.Field, Arg: 0 };
+        var written = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign).Select(static x => x.Place)
+            .Concat(body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(static x => x.Terminator.Place)).Where(Field).ToArray();
+        var place = Assert.Single(written);
+        Assert.Equal(field.StartsWith("i32", StringComparison.Ordinal), body.TypeOf(place) is not null);
+    }
+
     // PLAN G396 (3) Z1 (DECISIONS R4-M61; consumers trust validated IR): an arm of a closed HIR vocabulary, or of a fact a published Op
     // guarantees, that no published form takes is a broken contract, InternalInvariant_Kd at the node with an Opaque value in its place,
     // which the validator accepts. Each row publishes one node so by hand after the publish (fail-before: Unsupported_Kd at the same node):

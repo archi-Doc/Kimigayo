@@ -2054,6 +2054,62 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
+    // PLAN G1184 (SPEC 23.1.2, rule W; the Z28 design's C1 and D1): a Field step over a stored Field whose slot failed is admitted, of no
+    // Type (MirBody.Selects), and only written: an Assign's destination, also of a write's value in transit, an Assigned
+    // temp of no Type its Use places (the builder's Replace). Its FakeRead, Copy, Ref, Drop, Move into _0 and a propagating read of it (the
+    // step of an Unknown temp) are Local findings, on a first step (`n.w`) as on a deeper one (`(*r).w`); an Assigned temp of no Type moved
+    // into a typed destination is one too; a step below it is not admitted, a Projection finding only.
+    [Theory]
+    [InlineData("write", "")]
+    [InlineData("placing", "")]
+    [InlineData("placing typed", "Local")]
+    [InlineData("read", "Local")]
+    [InlineData("copy", "Local")]
+    [InlineData("borrow", "Local")]
+    [InlineData("drop", "Local")]
+    [InlineData("deliver", "Local")]
+    [InlineData("propagate", "Local")]
+    [InlineData("deeper", "Local")]
+    [InlineData("below", "Projection")]
+    public void AFieldStepOfNoTypeIsOnlyWritten(string form, string expected)
+    {
+        var c = MirBuildTest.Compile("struct N\n    public var w: Weak<rc/N> = 5\n    public var v: i32 = 0\n    public init() => ()\n");
+        var n = c.Semantics.SelfType(c.Kotonoha.RootKoto.NestedContainers.Single(static x => x.Name == "N").SymbolOf()!);
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, At));
+        var (owner, k, reference) = (MirModelTest.Local(body, n), MirModelTest.Local(body, BoundType.I32), MirModelTest.Local(body, c.Types.Reference(SemanticsKind.Ref, n)));
+        var (held, unknown) = (new MirPlace(body.AddLocal(new(null, MirLocalKind.Temp, At, Role: MirLocalRole.Assigned))), MirModelTest.Local(body, n, MirLocalKind.Temp));
+        var (block, next) = (body.AddBlock(), body.AddBlock());
+        var w = body.Project(c.Types, owner, MirProjectionKind.Field, 0);
+        Assert.Null(body.TypeOf(w));
+        MirRvalue Use(MirOperand operand) => MirRvalue.Use(AddOperands(body, [operand]));
+        body.Push(block, MirStatement.Assign(held, Use(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 5)))), At));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(n, body.AddOpaque(default, [], 0, 0)), At));
+        MirStatement? broken = form switch
+        {
+            "write" => MirStatement.Assign(w, Use(MirOperand.Copy(k)), Broken),
+            "placing" => MirStatement.Assign(w, Use(MirOperand.Move(held)), Broken),
+            "placing typed" => MirStatement.Assign(k, Use(MirOperand.Move(held)), Broken),
+            "read" => MirStatement.Of(MirStatementKind.FakeRead, w, Broken),
+            "copy" => MirStatement.Assign(k, Use(MirOperand.Copy(w)), Broken),
+            "borrow" => MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.Shared, w, body.TypeOf(reference)), Broken),
+            "deliver" => MirStatement.Assign(new(0), Use(MirOperand.Move(w)), Broken),
+            "propagate" => MirStatement.Assign(k, Use(MirOperand.Copy(body.Project(c.Types, unknown, MirProjectionKind.Field, 0))), Broken),
+            "deeper" => MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, body.Project(c.Types, reference, MirProjectionKind.Deref, 0), MirProjectionKind.Field, 0), Broken),
+            "below" => MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, w, MirProjectionKind.Field, 0), Broken),
+            _ => null,
+        };
+        if (broken is { } statement)
+        {
+            body.Push(block, statement);
+        }
+
+        body.Terminate(block, form == "drop" ? MirTerminator.Drop(w, next, Broken) : MirTerminator.Goto(next, At));
+        body.Terminate(next, MirTerminator.Return(At));
+        Assert.Equal(expected.Split(' ', StringSplitOptions.RemoveEmptyEntries), Validate(body, c.Types).Select(static x => x.Rule.ToString()));
+    }
+
     // PLAN G1073 (SPEC 23.1.2; BU-240): an EndBorrow ends the Loans a reference local holds. An Index over a receiver Binding rested (a use of
     // a failed getter, D-823) lends the receiver's Opaque temp of no Type through a stand-in of no Type, which holds none and agrees with a
     // reference: no finding (fail-before: EndBorrowLocal, InternalInvariant_Kd at the Index); the stand-in typed as no reference is one.
