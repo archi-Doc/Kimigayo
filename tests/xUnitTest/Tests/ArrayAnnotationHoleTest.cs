@@ -54,7 +54,6 @@ public class ArrayAnnotationHoleTest
     [InlineData("func identity<T>(value: T) -> T => value@move\nlet values = identity<[_ of i32]>([1])")]
     [InlineData("func zeros<length N>() -> [(N + 1) of i32] => [(N + 1) of 0]\nlet values: [_ of i32] = zeros()")]
     [InlineData("func unknown<T>() -> T => $abort(\"unknown\")\nlet values: [_ of i32] = unknown()")]
-    [InlineData("func zeros<T>() -> [3 of T]\n    T is PrimitiveInteger\n    return [3 of 0]\nlet values: [_ of bool] = zeros()")]
     [InlineData("let values: [_ of i32] = if true => [2 of 0] else => [3 of 0]")]
     [InlineData("let values: [_ of [_ of i32]] = if true => [] else => []")]
     [InlineData("let original: [2 of i32] = [1, 2]\nlet reference = original@ref\nlet values: [_ of i32] = reference")]
@@ -63,6 +62,16 @@ public class ArrayAnnotationHoleTest
         var compilation = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
         Assert.False(compilation.Generate(output));
+    }
+
+    // SPEC 10.3, 10.5.5, 23.1.2: the annotation's element refutes the only candidate's clause, so the call is NoApplicableOverload_Kd; the
+    // slot that evidence would bind is no record of its own (R7-E3 E3b-1 ruling 10: the selection's one recorder keeps the first failure).
+    [Fact]
+    public void RefutedResultEvidenceLeavesOnlyTheCallsRecord()
+    {
+        const string source = "func zeros<T>() -> [3 of T]\n    T is PrimitiveInteger\n    return [3 of 0]\nlet values: [_ of bool] = zeros()";
+        var compilation = MinimalEmissionTest.Analyze(source);
+        Assert.Equal("NoApplicableOverload_Kd zeros()", string.Join("; ", CompilationTestHelper.BindingErrors(compilation).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
     [Theory]

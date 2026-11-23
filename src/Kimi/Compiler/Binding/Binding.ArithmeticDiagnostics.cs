@@ -66,29 +66,6 @@ public sealed partial class Binding
         use.ReportIn(store, problem.Requirement, problem.Code, type, contract.BoundSymbol!.Name, note: note, evidence: [cause], related: [("contract", contract, "arithmetic Contract declaration")], condition: problem.Condition);
     }
 
-    private Koto ArithmeticFactUse(BoundConstraint fact, BindingScope scope)
-    {
-        var clauses = scope.Owner is FunctionKoto function ? function.TypeConstraints : scope.Owner is DeclarationContainerKoto container ? container.ConstraintNodes : [];
-        for (var i = 0; i < clauses.Count; i++)
-        {
-            if (clauses[i] is IsKoto clause && Contains(clause.BoundConstraint, fact))
-            {
-                return ContractUse(clause.Right, fact.Contract) ?? clause;
-            }
-        }
-
-        return scope.Owner;
-
-        static bool Contains(BoundConstraint? root, BoundConstraint fact)
-            => ReferenceEquals(root, fact) || (root?.Kind == ConstraintKind.And && (Contains(root.Left, fact) || Contains(root.Right, fact)));
-
-        // The requirement naming the premise's bound Contract reference (ContractReferenceOf: its Type, else its selection).
-        Koto? ContractUse(Koto node, BindingSymbol? contract)
-            => ReferenceEquals(this.ContractReferenceOf(node), contract) ? node
-            : node is BinaryKoto { Akind: KotoKind.And } conjunction ? ContractUse(conjunction.Left, contract) ?? ContractUse(conjunction.Right, contract)
-            : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
-    }
-
     // SPEC 13.3.4 under 8.2.3 and 8.3.2 (PLAN G882, x41n): the premises of a pair are rows. A scope with premises of its own takes as
     // seeds every parameter or projection occurring in an available premise of its view's chain (AbstractParts: one walk, each part once,
     // before any request), one per class key; each seed's available arithmetic rows (FirstRows: at every depth, through its identity
@@ -153,7 +130,7 @@ public sealed partial class Binding
 
     // Each available arithmetic row `X is Op<Y>` of `seed` in the view (not Negatable) with its opposite premise (OppositeRow); the
     // first pair that first meets here (not MetInParent) fails the owner, unless the owner holds its one record already (a later round of
-    // the pass finds the pair again and writes nothing). The record relates each premise's use (ArithmeticRowUse) with the Contract
+    // the pass finds the pair again and writes nothing). The record relates each premise's use (PremiseUse) with the Contract
     // instance it states; the adapter reads the pair from the two instances' arguments.
     private (PremiseRow Row, PremiseRow Other)? ValidateArithmeticRows(BoundType seed, BindingScope scope)
     {
@@ -183,7 +160,7 @@ public sealed partial class Binding
             if (this.RecordedFailure(scope.Owner) == BindingFailure.None)
             {
                 var (ordinary, reverse) = reversed ? (other, row) : (row, other);
-                var (here, there) = (this.FactSite(this.ArithmeticRowUse(ordinary, scope)), this.FactSite(this.ArithmeticRowUse(reverse, scope)));
+                var (here, there) = (this.FactSite(this.PremiseUse(ordinary, scope)), this.FactSite(this.PremiseUse(reverse, scope)));
                 this.Record(
                     scope.Owner,
                     BindingFailure.ArithmeticDirection,
@@ -256,11 +233,6 @@ public sealed partial class Binding
     // scope's premise stays valid in its own scope, so no other premise fails: a check reading none of the pair's facts is judged.
     private bool FailPairPremise(PremiseRow row, BindingScope scope)
         => row is { Raw: { } raw } && ReferenceEquals(row.Stated, scope) && this.FailPremise(scope.Constraints!, raw, scope.Owner);
-
-    // The related location of a premise row: its written fact at the scope stating it (ArithmeticFactUse), else that scope's owner (a
-    // clause instance's or an ancestor's: its Contract row's scope), else the view's.
-    private Koto ArithmeticRowUse(PremiseRow row, BindingScope view)
-        => row is { Raw: { } raw, Stated: { } where } ? this.ArithmeticFactUse(raw, where) : row.Stated?.Owner ?? view.Owner;
 
     // The opposite premise for the pair of `subject` and `counterpart`: an available Contract row of `counterpart` in the view (FirstRows:
     // every depth, through its identity class) of the Contract `oppositeId` whose argument is `subject` by the identity judge.
