@@ -502,7 +502,9 @@ internal sealed partial class MirEffects
     // library declaration's rows from the library alone, so their verdicts are the same in every program.
     // PLAN G651 U2b ruling 18: a row is judged in the site of its premise definition's body (the module's top-level statements when it has
     // none): an owing definition's at its body's Source, a fallback; a Callable binding's at its use, a node site where it has syntax. A row
-    // that reads past no body (no Callable, no owing body) opens none.
+    // that reads past no body (no Callable, no owing body) opens none. The site is keyed by that body's own key, the one lookup Owe reads
+    // (MirProgram.Callee: a function's, a Getter's or a Setter's body; ruling 25 N7), so a read there merges with the body's own; a #Test
+    // body, which Callee does not answer, keeps MirDefKey(Definition, Fn) (ruling 21's open issue).
     private void Obligations(int rootModules)
     {
         this.rows.Clear();
@@ -518,7 +520,8 @@ internal sealed partial class MirEffects
 
             (this.found, this.scratchCount, this.definition) = (0, 0, row.Definition);
             this.glued.Clear();
-            var owing = row.Callable is null && row.Definition is { } target ? this.program.Callee(new(MirCalleeKind.Fn, target)) : null;
+            var body = row.Definition is { } target ? this.program.Callee(new(MirCalleeKind.Fn, target)) : null;
+            var owing = row.Callable is null ? body : null;
             if (row.Callable is null && owing is null)
             {
                 this.Judge(row, null);
@@ -532,7 +535,7 @@ internal sealed partial class MirEffects
             }
             finally
             {
-                this.Close(site, new(row.Definition, MirBodyKind.Fn, row.Definition is null ? row.Subject.Module : 0));
+                this.Close(site, body?.Key ?? new(row.Definition, MirBodyKind.Fn, row.Definition is null ? row.Subject.Module : 0));
             }
         }
     }

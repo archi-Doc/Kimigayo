@@ -111,8 +111,9 @@ public sealed partial class InstanceCollectorTest
     // into it) or in a module's top-level statements, beside A4's own depth limit there and h's record at its parameter; never
     // InternalInvariant_Kd (fail-before: the obligation's read had no site, InternalInvariant_Kd at the project and main's fallback).
     // Known limit (ruling 21, PLAN's open issue on the Callable use's body): a use inside a Closure is keyed by main's body, not the
-    // Closure's, so the Closure body's own read keeps its record at the literal beside the use's; the row changes when Binding publishes
-    // the use's body. It also guards U2b commit (3): no throw and no InternalInvariant_Kd for a Closure use.
+    // Closure's, so the Closure body's own read keeps its record at the literal beside the use's (a #Test body likewise: the body lookup
+    // does not answer its kind); the row changes when Binding publishes the use's body. It also guards the after-run throw (U2b R13.1): no
+    // throw and no InternalInvariant_Kd for a Closure use.
     [Theory]
     [InlineData("public func main() -> ()\n    keep(h<L41<i32>>)\n    return\n", "h:T OwnershipDepthLimit_Kd@keep:h<L41<i32>> keep:h<L41<i32>>")]
     [InlineData("keep(h<L41<i32>>)\n", "h:T OwnershipDepthLimit_Kd@keep:h<L41<i32>> keep:h<L41<i32>>")]

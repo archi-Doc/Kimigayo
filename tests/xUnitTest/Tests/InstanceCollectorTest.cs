@@ -975,9 +975,9 @@ public sealed partial class InstanceCollectorTest
     // (TyCtxt.Answered) under the innermost after-run owner, which the read of it answers to. On chain20, f19's call composed with f19's
     // instance (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing. In a body site, Answered
     // gives HeightLimit and marks the site once at its subject as a fallback, with no record. In the collector's answer frame, Answered
-    // gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the frame records
-    // Binding's site-less broken contract at its close (U2b commit (3): R7-T1's throw); outside every owner Answered's formation still owns
-    // the refusal (HeightLimit) and its read is that broken contract (commit (3): a throw): never a silent null.
+    // gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the frame's close reports
+    // it with no record (R7-T1's broken contract, which the collector's run throws after the close); outside every owner Answered's
+    // formation still owns the refusal and its read throws (R13.1): never a silent null and no record.
     [Fact]
     public void OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal()
     {
@@ -1002,10 +1002,10 @@ public sealed partial class InstanceCollectorTest
         var composed = c.Types.Compose(call.Callee.Subst!, f19.Representative!);
         Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (composed.Subst, composed.Cause));
         Assert.Empty(TestDiagnostics.Of(c));
-        c.Types.CloseAnswer(frame);
-        Assert.Equal([nameof(DiagnosticCode.InternalInvariant_Kd)], TestDiagnostics.Of(c).Select(static x => x.Code));
-        var outside = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
-        Assert.Equal(((Subst?)null, TyCtxt.Formation.HeightLimit), (outside.Subst, outside.Cause));
+        Assert.True(c.Types.CloseAnswer(frame));
+        Assert.Empty(TestDiagnostics.Of(c));
+        Assert.Throws<InvalidOperationException>(() => c.Types.Answered(call.Callee.Subst!, f19.Representative!));
+        Assert.Empty(TestDiagnostics.Of(c));
     }
 
     // PLAN G651 U2a, U2b (IMPL A.4, 21.3.2; R7-T1): an instance whose stored Type passes IMPL A.4's height, first formed after Binding's
@@ -1016,7 +1016,10 @@ public sealed partial class InstanceCollectorTest
     // readers' reads mark their sites (U2b), whose uses merge with Layout's in each declaration: no site-less record. The default's copy
     // (copy250, f-stored), built since PLAN G396 (3)'s B3, records the same at its least uses, the copy's `.None` at its operation in the
     // template (before B3 it was B3's Unsupported_Kd at the omitting call). In a Closure literal's body (clo250) the same records (beside
-    // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1).
+    // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1). In a
+    // generic body never instantiated (open250, U2a's f-open) the builder's read of the refused instance is one record in that declaration,
+    // one per declaration that reads it (opentwo250, the Middle's f-open-2d); behind a handle (obj250, U2a's f-obj) A4's payload walk forms
+    // D past the height at `let o`, its record beside the handle key's own limit (ruling 25's rows).
     // Fail-before: dev gives InternalInvariant_Kd at each use.
     [Theory]
     [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40)")]
@@ -1024,6 +1027,9 @@ public sealed partial class InstanceCollectorTest
     [InlineData("raw191", "")]
     [InlineData("copy250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>>.None")]
     [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("open250", "TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("opentwo250", "TypeHeightLimit_Kd@noneD(p40) TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("obj250", "GenerationResourceLimit_Kd@let TypeHeightLimit_Kd@let")]
     public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
     {
         var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
@@ -1033,11 +1039,22 @@ public sealed partial class InstanceCollectorTest
             "copy" => "taked(p40)",
             "stored" => "taked(p40, count(noneD(p40)))", // The copy's written twin.
             "clo" => "let c = func () -> i32 => count(noneD(p40))\n    _ = c()",
+            "obj" => "let o = noneO(p40)",
             _ => "_ = count(noneD(p40))",
         };
-        var c = MinimalEmissionTest.Check(Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement));
+        var source = Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement);
+        if (name.StartsWith("open", StringComparison.Ordinal))
+        {
+            // The lifts and the statement in a generic function never instantiated (twice for opentwo), main empty.
+            var start = source.IndexOf("public func main() -> ()\n    let p0: raw/i32 = null\n", StringComparison.Ordinal);
+            var lifts = source[(start + "public func main() -> ()\n    let p0: raw/i32 = null\n".Length)..];
+            source = source[..start] + "func g<U>(p0: raw/U) -> ()\n" + lifts + (name == "opentwo" ? "func g2<U>(p0: raw/U) -> ()\n" + lifts : string.Empty) +
+                "public func main() -> ()\n    return\n";
+        }
+
+        var c = MinimalEmissionTest.Check(name == "obj" ? source.Replace("public func main", "func noneO<T>(p: raw/T) -> Option<obj/D<T>> => .None\npublic func main", StringComparison.Ordinal) : source);
         var seen = TestDiagnostics.Of(c).Where(x => name != "clo" || x.Code != nameof(DiagnosticCode.OwnershipDepthLimit_Kd)); // A4's own, clo250's alone.
-        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
+        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{(x.Text ?? "-").Split(' ')[0]}")); // A statement's text: its first word.
 
         // W^8000<i32> by 40 lifts of 200 levels, each within the height and within its frame.
         static string Lifted(string stored, string statement)

@@ -17,7 +17,7 @@
 // marked). Apply and Compose read no storage, so their cause is the substitution's alone; an instance's stored Types are formed by
 // Binding.Instance, which publishes its own cause beside them (AdtDef.InstanceStorage.HeightLimit), never Apply's or Compose's
 // (Instance's verdict walk may form them). Apply, Instance and Compose own no refusal, so one outside Answered, Witness and an instance
-// is the innermost after-run owner's: the frame's, recorded at its close as PLAN G651's site-less record (R7-T1, N1), or a site's mark.
+// is the innermost after-run owner's: the frame's, R7-T1's broken contract the collector's run throws after its close (N1), or a site's mark.
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
 // compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
 // grows are reused.
@@ -51,7 +51,8 @@ internal sealed partial class TyCtxt
 
         /// <summary>A step does not complete (BU-36's contract substitution that does not complete), or Binding.TypeHeight refused a
         /// Type no formation of this query owns, recording it itself (the consultation's node during the run; after it, the innermost
-        /// after-run owner's: a site's mark, else PLAN G651's site-less record, at once with no owner or at the collector frame's close).</summary>
+        /// after-run owner's: a site's mark, the collector frame's broken contract its run throws after the close (R7-T1), or with no owner
+        /// the throw (PLAN G651 U2b R13.1)).</summary>
         Incomplete,
 
         /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered it to this formation
@@ -194,8 +195,8 @@ internal sealed partial class TyCtxt
     // (InstanceCollector.Run, in a finally), so every substitution the run causes is inside it and none outside (Binding.TypeHeight).
     internal OwnerState OpenAnswer() => binding.OpenAnswer();
 
-    // Closes the collector's answer frame; a refusal no formation owned is recorded there as PLAN G651's site-less broken contract.
-    internal void CloseAnswer(OwnerState frame) => binding.CloseAnswer(frame);
+    // Closes the collector's answer frame: whether it took a refusal no formation owned (R7-T1's broken contract, which the run throws).
+    internal bool CloseAnswer(OwnerState frame) => binding.CloseAnswer(frame);
 
     // PLAN G651 U2b R2, R5 (DECISIONS: COMPILER_ARCHITECTURE's MIR builder and analyses rows): the after-run sites MIR's drivers open, a
     // body site per element every path of it passes through and a node site at each node it visits, the only non-pure TyCtxt members MIR

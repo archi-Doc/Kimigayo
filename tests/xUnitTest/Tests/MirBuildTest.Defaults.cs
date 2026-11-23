@@ -318,6 +318,7 @@ public sealed partial class MirBuildTest
     [Theory]
     [InlineData("copy191", "takeh(p40)", "takeh(p40, count(none(p40)))", null)]
     [InlineData("copy192", "takeh(p40)", "takeh(p40, count(none(p40)))", "TypeHeightLimit_Kd@takeh(p40)")]
+    [InlineData("nest192", "_ = count(takeh(p40))", "_ = count(takeh(p40, count(none(p40))))", "TypeHeightLimit_Kd@takeh(p40)")]
     [InlineData("outer192", "outer(p40)", "outerw(p40)", null)]
     public void ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft(string shape, string omitted, string written, string? records)
     {

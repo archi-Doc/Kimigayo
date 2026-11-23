@@ -62,7 +62,7 @@
 // a broken contract at the site (Report). An instance's stored Types past the height are its own cause (AdtDef.InstanceStorage.HeightLimit),
 // which every reader of the instance reads: Layout as its HeightLimit, mapped here (RecordOf) to TypeHeightLimit_Kd at the use, once per
 // erased Type and declaration (R5-M171), never Rejected. A part Binding rejected passes through to Layout's Rejected row (RecordOf), a
-// dependent of Binding's record. A refusal no formation owns is the frame's, PLAN G651's site-less broken contract at its close. TypeOf
+// dependent of Binding's record. A refusal no formation owns is the frame's, R7-T1's broken contract: Run throws after the close. TypeOf
 // reads TyCtxt.Apply, the same substitution outside a formation, for code generation and a Type whose cause its site already read (Rest's
 // operand and environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic
 // row's Type argument, a part of the Item Type its site made).
@@ -182,14 +182,18 @@ internal sealed partial class InstanceCollector
 
         this.RunCount++;
         var frame = this.types.OpenAnswer(); // R7-T1: every substitution the run causes is inside the collector's answer frame.
+        CheckedSet collected;
+        bool unowned;
         try
         {
-            return this.Collect(program, rootModules, set);
+            collected = this.Collect(program, rootModules, set);
         }
         finally
         {
-            this.types.CloseAnswer(frame);
+            unowned = this.types.CloseAnswer(frame);
         }
+
+        return unowned ? throw new InvalidOperationException("The collector's run took a height refusal no formation owned (InternalInvariant; R7-T1).") : collected;
     }
 
     /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
