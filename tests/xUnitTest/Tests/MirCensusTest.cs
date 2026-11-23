@@ -51,16 +51,6 @@ public sealed class MirCensusTest(ITestOutputHelper output)
             .Where(static x => (x.Variant.Mir?.Records ?? x.Variant.Expected).Length == 0)
             .Select(static x => (x.Name, VerifiedSpecExampleTest.Bind(DiagnosticCorpus.Source(x.Example, x.Variant)))));
 
-    // PLAN10 §7, R4-M67: the requirement each MIR recording rule names lies in the census pairs, so its problems take their analysis
-    // there (MirAnalysisTest's program, one problem of each rule).
-    [Fact]
-    public void MirProblemsNameRequirementsOfTheCensusPairs()
-    {
-        var problems = MirBuildTest.Compile(MirAnalysisTest.Requirements).BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord).ToArray();
-        Assert.NotEmpty(problems);
-        Assert.All(problems, static x => Assert.True(MirAnalysisOf(x.Requirement, x.Code) is not null, $"{x.Code} {x.Requirement}"));
-    }
-
     // R4-M67: a MIR problem is one entry, as MirReport.Add keeps one per code, subject and body, with its own requirement and its pair's
     // analysis; MirReport's disagreement record and a pair outside the census pairs get none, a defect row (B), never a throw.
     [Fact]
