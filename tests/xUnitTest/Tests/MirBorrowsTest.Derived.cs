@@ -238,7 +238,7 @@ public sealed partial class MirBorrowsTest
         "func f()\n    var p = P.init(\"s\", 1)\n    let r = p.s@uniq\n    let q = p.nofield\n    r@follow = \"t\"\n",
         "")]
     [InlineData("func k(a: uniq/i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let z = k(y@uniq, missing)\n    y = 2\n    return z\n", "")]
-    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let z = match y@uniq\n        .Nope => 1\n        _ => 2\n    y = .None\n", "")]
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let z = match y@uniq\n        .Some(_) => 1\n    y = .None\n", "")]
     [InlineData("func f()\n    var a: [2 of i32]\n    missing = a[0]\n", "f: a[0] UninitializedPlace_Kd")]
     [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    missing = r@follow\n    y = 2\n", "")]
     [InlineData("struct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f(p: ref/Q)\n    missing = p.n\n", "")]
@@ -302,7 +302,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let t = (Option.Some(y@uniq), g(y))\n", "ComparisonLoanConflict_Kd@4:35")] // cr-tw-opt
     [InlineData("func inspect(v: ref/[2 of i32]) => ()\nfunc k(x: i32) => ()\nfunc f()\n    var v: [2 of i32] = [1, 2]\n    var i = 0\n    let r = v@uniq\n    missing(v[i])\n    inspect(r)\n", "ComparisonLoanConflict_Kd@7:13")] // n27-ridx
     [InlineData("func inspect(v: ref/[2 of i32]) => ()\nfunc k(x: i32) => ()\nfunc f()\n    var v: [2 of i32] = [1, 2]\n    var i = 0\n    let r = v@uniq\n    k(v[i])\n    inspect(r)\n", "ComparisonLoanConflict_Kd@7:7 | ComparisonLoanConflict_Kd@7:5")] // n27-tw-ridx
-    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match
     [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n        _ => 2\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match-ok
     [InlineData("func f()\n    var h = 1\n    let r = h@uniq\n    let p = h@raw/Missing\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // z-raw-missing
     [InlineData("func f()\n    var h = 1\n    let r = h@uniq\n    let p = h@raw\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // z-raw-ok

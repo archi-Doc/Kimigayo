@@ -49,9 +49,11 @@ public sealed partial class Binding
     /// key resolution its Evaluated argument, an assignment or update of a Property its accessors' plans (an update's setter with its
     /// Evaluated argument) and, for an update with one standard accessor, the Property's symbol; an interpolation its Type, heap,
     /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and
-    /// its entry, step, iterator symbol and decomposition; a match or a try its current plan, valid (no Pattern or guard failed) and not
-    /// pending; a dictionary literal its lookup; a closure's creation its definition with a Signature (a closure's parts, which
-    /// HirPublisher.Parts publishes, its definition and its slots stated, whatever the creation, DECISIONS R5-M63 (1) as amended); a
+    /// its entry, step, iterator symbol and decomposition; a match or a try its current plan, settled (not pending), whose Invalid
+    /// positions are leaves that test, select and bind nothing and whose other positions are buildable
+    /// (<see cref="BoundPatternKind.Invalid"/>); a dictionary literal its lookup; a closure's creation its definition with a Signature
+    /// (a closure's parts, which HirPublisher.Parts publishes, its definition and its slots stated, whatever the creation, DECISIONS
+    /// R5-M63 (1) as amended); a
     /// conversion its binding (a case adaptation its plan); a Tuple literal its Type, an array literal a fixed-array Type or, without a
     /// fill, an Array Type, and an enum Case construction its plan; a declared local its symbol; a name its symbol and, but for a
     /// function's name Binding resolved, whose value its consumer forms from the selection, and an accessor's <c>storage</c> of a Field
@@ -97,7 +99,7 @@ public sealed partial class Binding
                     CallPlan.Of(this, node, 1) is { Receiver: { } receiver } step && Complete(entry) && Complete(step) && HirTables.Symbol(receiver) is not null &&
                     this.SlotsStated(node);
             case HirOp.Match or HirOp.Try:
-                return BoundMatch.Of(this, node) is { IsCurrent: true, Invalid: false, Pending: false } && this.SlotsStated(node);
+                return BoundMatch.Of(this, node) is { IsCurrent: true, Pending: false } && this.SlotsStated(node);
             case HirOp.DictionaryLiteral:
                 return CallPlan.Of(this, node) is { } find && Complete(find);
             case HirOp.Closure:
