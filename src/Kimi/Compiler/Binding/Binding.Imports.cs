@@ -33,6 +33,7 @@ public sealed partial class Binding
             {
                 if (this.DefaultAliasTarget(module.RootKoto, path) is null)
                 {
+                    // Transitional, R7-E5 (FailUnselected's reason): SelectQualifier may have recorded a segment's ambiguity at the root.
                     this.Fail(module.RootKoto, BindingFailure.MissingName, true);
                 }
             }

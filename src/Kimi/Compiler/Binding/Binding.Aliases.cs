@@ -183,6 +183,8 @@ public sealed partial class Binding
             var symbol = i == 0 && name == "Kimi" ? this.Library.Module : this.SelectQualifier(scope.Types.GetValueOrDefault(name), declarationScope, alias) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
             if (symbol is null || !this.Accessible(symbol, declarationScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
             {
+                // Transitional, R7-E5 (FailUnselected's reason): SelectQualifier may have recorded the segment's ambiguity at the alias, so the
+                // miss keeps the slot's Fail; a Record would publish a dependent miss beside it.
                 this.Fail(alias, BindingFailure.MissingName, true);
                 return null;
             }

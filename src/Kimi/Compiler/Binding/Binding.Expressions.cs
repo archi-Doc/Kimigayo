@@ -518,7 +518,7 @@ public sealed partial class Binding
 
                 return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
             case NullLiteralKoto:
-                return expected is { IsPointer: true } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
+                return expected is { IsPointer: true } ? Complete(node, expected) : this.Record(node, BindingFailure.MissingType, [], unresolved: true);
             case BaseReferenceKoto baseReference:
                 return this.BindBaseReference(baseReference, scope);
             case IdentifierNameKoto identifier:

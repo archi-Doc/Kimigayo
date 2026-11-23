@@ -715,7 +715,7 @@ public sealed partial class Binding
             return null;
         }
 
-        this.Fail(member, BindingFailure.Access);
+        this.RecordAccess(member, first!, null); // SPEC 9.4: every candidate is inaccessible; the first the walk met is related.
         return member;
     }
 
