@@ -458,7 +458,7 @@ public sealed partial class Binding
         if (position.Kind == BoundPatternKind.Invalid)
         {
             plan.Invalid = true;
-            this.Fail(syntax, BindingFailure.InvalidPattern);
+            this.Record(syntax, BindingFailure.InvalidPattern, []);
         }
         else if (unsupported)
         {
@@ -563,7 +563,7 @@ public sealed partial class Binding
 
         plan.Invalid |= proof != ConstraintProof.Unknown;
         plan.Pending |= proof == ConstraintProof.Unknown;
-        this.Fail(syntax, ConstraintFailureOf(proof), proof == ConstraintProof.Unknown);
+        this.RecordConstraint(syntax, proof, [], proof == ConstraintProof.Unknown); // The recheck meets a node its first check failed: the read keeps it.
         return false;
     }
 

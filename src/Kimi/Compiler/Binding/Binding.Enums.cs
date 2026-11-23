@@ -940,7 +940,7 @@ public sealed partial class Binding
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
-                this.Fail(use, ConstraintFailureOf(formation), formation == ConstraintProof.Unknown);
+                this.RecordConstraint(use, formation, [], formation == ConstraintProof.Unknown);
                 continue;
             }
 
