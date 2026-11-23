@@ -61,8 +61,9 @@ public sealed partial class Binding
     // ClosureEffects' record (TakeRecord), which keeps every child's once per consumer and selection.
     private interface IHirUses
     {
-        // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal (an application Binding did not resolve: 0, its one
-        // call, which has no plan); -1 after the last. Its inputs are the call's receiver and arguments (SPEC 15.6.7).
+        // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal (an application Binding did not resolve, or a target
+        // written through a `set` call it did not plan: 0, its one call, which has no plan); -1 after the last. Its inputs are the call's
+        // receiver and arguments (SPEC 15.6.7).
         void Call(int ordinal);
 
         // A call of the consumer Binding committed whose inputs the selection does not take (a user index's other call, SelectionMode).
@@ -151,6 +152,14 @@ public sealed partial class Binding
                 break;
             case MemberAccessKoto member when op is HirOp.Field or HirOp.PrimitiveOp: // A stored Field or Tuple element, or a sequence's metadata.
                 var adaptation = this.receiverOperations.TryGetValue(member, out var receiver) ? HirAdjust.Of(receiver) : HirAdaptation.None;
+                if (SetsByCall(member))
+                {
+                    // SPEC 11.3.1, 13.7.1, 15.6.7 (DECISIONS Z27): a target written through its `set` call Binding did not plan (an Error's
+                    // form: a planned one is a Call, NameOp) gives that call its receiver as its input, as an unresolved application gives
+                    // its arguments (G1178).
+                    uses.Call(0);
+                }
+
                 uses.Use(member.Left, adaptation, UseKind.InPlace);
                 break;
             case IndexKoto index when op == HirOp.Index:

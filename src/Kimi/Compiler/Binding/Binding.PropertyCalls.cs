@@ -23,6 +23,13 @@ public sealed partial class Binding
         return assignment || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
     }
 
+    // SPEC 11.3.1, 11.7, 13.7.1: whether a node, a write's or an update's target (IsWriteTarget), is written through its Property's `set`
+    // call, which acquires its receiver as `uniq/Self`, not through the storage: a custom, computed or required `set`, outside the
+    // synthesized direct storage and a constructor's own Field (its first placement writes the storage).
+    internal static bool SetsByCall(Koto node) => KotoHelper.UnwrapParentheses(node) is var place && place is not MemberAccessKoto { IsDirectStorage: true } &&
+        place.BoundSymbol?.Property is { Setter: { IsPresent: true, IsStandard: false } } && !(IsSpecialField(place, out var special) && special.IsConstructor) &&
+        IsWriteTarget(place, out _);
+
     // SPEC 11.3: the function a custom accessor executes. A library accessor's is made once, by the library steps
     // (MakeLibraryAccessorFunctions) or an earlier use after its header, and read from then on without a write (census §8 item 1): what
     // it writes is the library's syntax and its header's interned Types, the same in every pass. A program accessor's is refreshed at each use.

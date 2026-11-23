@@ -36,6 +36,10 @@ public sealed partial class MirBorrowsTest
     private const string TwoFields = "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n" +
         "        self.s = s@move\n        self.n = n\n";
 
+    // DECISIONS Z27's review twins (z27ir): a base struct whose `level` has a custom `set`, beside a part to move, name.
+    private const string SetLevel = "open struct Device\n    public var name: string\n    public var level: i32\n        set(value: i32) -> ()\n" +
+        "            storage = value\n    protected init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\n";
+
     // The codes PLAN G1022's write rows observe: A5's Loan conflicts and A1's MovedPlace_Kd and UninitializedPlace_Kd.
     private static DiagnosticCode[] WriteCodes => [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.UninitializedPlace_Kd];
 
@@ -343,7 +347,10 @@ public sealed partial class MirBorrowsTest
     // (p07, p08, p09), as a runtime index reads its array whole (t09) and the valid twin has none (p10). Step 2's operands are checked at
     // their own nodes (p11's uninitialized index at 4:7 and t11's second move at 3:16, fail-before: at the write; p12's MovedPlace_Kd at
     // 6:9 and p21's conflict, fail-before: none), after step 1 (t12, u1: the right side is read, or its failed take is a site at its node,
-    // before step 2 moves it). Each row: the program, then its records, Binding's and the analyses', code@line:col.
+    // before step 2 moves it). A target written through its `set` call takes its receiver whole (SPEC 11.3.1: `uniq/Self`), so Binding
+    // publishes the receiver as the call's input, a kept use: v1's inherited custom `set` after a base Field's Move keeps MovedPlace_Kd
+    // beside the limit (fail-before: Unsupported_Kd alone), as its decided twin v3 reports it. Each row: the program, then its records,
+    // Binding's and the analyses', code@line:col.
     [Theory]
     [InlineData(TwoFields + "func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    p.nofield = 1\n", "UnresolvedBinding_Kd@10:5")] // p03
     [InlineData(TwoFields + "func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    p.n = 2\n", "")] // p10, valid
@@ -364,6 +371,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("func at(t: string) -> isize => 0\nfunc f(y: string)\n    missing[at(y@move)] = y\n", "UnresolvedBinding_Kd@3:5 | TransferRequired_Kd@3:27")] // t12
     [InlineData("struct Q\n    public var m: string\n    public init(m: string) => self.m = m@move\nstruct P\n    public var q: Q\n    public var n: i32\n    public init(n: i32)\n        self.q = Q.init(\"m\")\n        self.q.nofield = 1\n        self.n = n\n", "UnresolvedBinding_Kd@9:9")] // t16
     [InlineData("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc at(b: Bad) -> isize => 0\nfunc f(b: Bad)\n    missing[at(b@move)] = b\n", "UnsatisfiedConstraint_Kd@2:5 | UnresolvedBinding_Kd@7:5")] // u1
+    [InlineData(SetLevel + "struct Lamp : Device\n    public init(name: string, level: i32) : base(name@move, level) => ()\nfunc g()\n    var owner = Lamp.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level = 30\n", "Unsupported_Kd@14:5 | MovedPlace_Kd@14:5")] // z27ir's v1
+    [InlineData("struct Device\n    public var name: string\n    public var level: i32\n        set(value: i32) -> ()\n            storage = value\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    var owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level = 30\n", "MovedPlace_Kd@12:5")] // z27ir's v3, decided
     [InlineData("tests/milestones/Milestone41.kimi", "Unsupported_Kd@8:26 | Unsupported_Kd@10:27 | Unsupported_Kd@15:19 | Unsupported_Kd@17:16 | Unsupported_Kd@18:11 | Unsupported_Kd@26:11 | Unsupported_Kd@31:11 | Unsupported_Kd@36:32 | Unsupported_Kd@37:15 | Unsupported_Kd@41:16 | Unsupported_Kd@42:11")] // Milestone 41, valid but for Binding's Weak limits
     public void ADerivedWritesTargetIsEnclosedNotRead(string source, string expected)
     {
