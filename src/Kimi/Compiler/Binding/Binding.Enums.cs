@@ -132,9 +132,9 @@ public sealed partial class Binding
             // are determined by the construction's expected Type and payloads.
             type = this.BindTypeStructure(qualifier, scope, this.TypeContext(qualifier, scope));
         }
-        else if (TypeSpelling(qualifier) == "Self")
+        else if (symbol.SelfOf is not null)
         {
-            type = this.SelfType(symbol);
+            type = symbol.Type; // SPEC 9.1: a Self names its declaration with all its bindings.
         }
         else
         {

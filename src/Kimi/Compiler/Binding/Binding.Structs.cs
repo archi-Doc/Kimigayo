@@ -367,7 +367,7 @@ public sealed partial class Binding
             unwrapped = UnwrapTypeSyntax(root.Operands[0]);
         }
 
-        if (unwrapped is GenericsKoto || TypeSpelling(unwrapped) == "Self" ||
+        if (unwrapped is GenericsKoto || symbol.SelfOf is not null ||
             symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 })
         {
             return this.EnumQualifierType(syntax, symbol, scope, null);

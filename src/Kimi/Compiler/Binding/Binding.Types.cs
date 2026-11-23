@@ -66,17 +66,8 @@ public sealed partial class Binding
     };
 
     // A Container's direct Type members named `name`, as a path (SPEC 9.6) or an opening alias (18.2.1) reaches them: never its formal
-    // parameters, which only the scope walk finds at their declaring position (9.5).
-    private static BindingSymbol? MemberTypes(BindingScope container, string name)
-    {
-        var head = container.Types.GetValueOrDefault(name);
-        while (head is not null && IsGenericParameter(head))
-        {
-            head = head.Next;
-        }
-
-        return head;
-    }
+    // parameters, which only the scope walk finds at their declaring position (9.5; BindingScope.Parameters).
+    private static BindingSymbol? MemberTypes(BindingScope container, string name) => container.Types.GetValueOrDefault(name);
 
     private BoundType? BindType(Koto syntax, BindingScope scope)
         => this.BindType(syntax, scope, this.TypeContext(syntax, scope));
@@ -360,7 +351,6 @@ public sealed partial class Binding
         }
 
         syntax.BoundSymbol = symbol;
-        var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
         if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || symbol.IsContract)
         {
             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
@@ -397,15 +387,11 @@ public sealed partial class Binding
             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, symbol.Type));
         }
 
-        if (symbol.Kind == BindingSymbolKind.TypeParameter)
+        if (symbol.Kind == BindingSymbolKind.TypeParameter || symbol.SelfOf is not null)
         {
-            // A Type parameter is its own Type, a Contract's Self among them (SPEC 9.1).
+            // A Type parameter is its own Type, a Contract's Self among them; a struct's or enum's Self is its declaration applied to its
+            // own bindings (SPEC 9.1), the Type its symbol carries.
             return symbol.Type;
-        }
-
-        if (isSelf)
-        {
-            return this.SelfType(symbol);
         }
 
         return symbol.Declaration is DeclarationContainerKoto
@@ -416,13 +402,14 @@ public sealed partial class Binding
     private BoundType? BindConstructedType(GenericsKoto generic, BindingSymbol? definition, BindingScope scope, TypeBindingContext context)
     {
         var container = definition?.Declaration as DeclarationContainerKoto;
-        if (definition is null || container is null or ContractKoto || generic.TypeArguments.Count != container.GenericParameterNodes.Count)
+        if (definition is null || container is null or ContractKoto || generic.TypeArguments.Count != definition.GenericArity)
         {
-            // A missing Name, a head that is no Type or a wrong arity forms no application (SPEC 9.5, 9.7), and each is its own record.
+            // A missing Name, a head that is no Type or a wrong arity (the symbol's own: a Self has none) forms no application (SPEC 9.5,
+            // 9.7), and each is its own record.
             this.BindUnappliedArguments(generic, scope, context.Nested);
             return definition is null ? this.FailMissing(UnselectedTypeSite(generic, default), scope, BindingFailure.MissingType)
                 : container is null or ContractKoto ? this.Fail(generic, BindingFailure.InvalidTypeFormation)
-                : this.RecordArity(generic, definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count);
+                : this.RecordArity(generic, definition, definition.GenericArity, generic.TypeArguments.Count);
         }
 
         generic.Identifier!.BoundSymbol = definition;

@@ -231,7 +231,7 @@ public partial class KimiLibraryShapeTest
 
     // A declaration's own symbol state, which each pass rewrites (design C3) and the tree's lines do not print.
     private static string State(BindingSymbol s, Printer printer)
-        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={printer.Type(s.ContractSelf)} receiver={s.ReceiverIndex}" +
+        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={Where(s.SelfSymbol)}:{printer.Type(s.SelfSymbol?.Type)} receiver={s.ReceiverIndex}" +
             $" next={Where(s.Next)} selfOf={Where(s.SelfOf)} pair={Where(s.Pair)} optOut={Where(s.ObjectPayloadOptOut)} scope={Where(s.Scope.Owner)}" +
             $" contract={s.Contract is not null} property={s.Property is not null} case={s.EnumCase?.Ordinal} schema={s.Schema is not null}" +
             $" adt={s.Adt is not null} source={s.SourceState} resolving={s.Resolving} slot={s.Slot}" +
@@ -239,13 +239,13 @@ public partial class KimiLibraryShapeTest
 
     // A scope's members and facts: a program pass that added to a library scope would show here.
     private static string Scope(BindingScope scope)
-        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] values=[{Names(scope.Values)}]" +
+        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] parameters=[{Names(scope.Parameters?.Types)}] values=[{Names(scope.Values)}] lengths=[{Names(scope.Parameters?.Values)}]" +
             $" origins=[{string.Join(',', scope.Origins?.Keys.Order(StringComparer.Ordinal) ?? Enumerable.Empty<string>())}]" +
             $" constraints={scope.Constraints is not null}" +
             $" premises={Where(scope.ImplementationPremises?.Owner)} path={scope.ConformancePath is not null}";
 
-    private static string Names(Dictionary<string, BindingSymbol> names)
-        => string.Join(',', names.OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
+    private static string Names(Dictionary<string, BindingSymbol>? names)
+        => string.Join(',', (names ?? new()).OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
 
     private static string Where(BindingSymbol? symbol) => Where(symbol?.Declaration);
 

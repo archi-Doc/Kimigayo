@@ -207,8 +207,10 @@ public partial class SyntaxIdTest
     // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
     // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UnboundSlots, a call whose slot
     // nothing binds, and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
-    // D-986's FormReads, the kept operands `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's
-    // query memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
+    // B1b-2's MemberSelections, a stored Field read and a method call, InferredConstructionTargets, a generic struct's construction
+    // without its Type arguments, and QualificationStops, an instance member named without `self`; D-986's FormReads, the kept operands
+    // `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query memos written in a Bind: the
+    // result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
     // result; the guess rule's is written only after a Bind, by the lint report and MIR:
     // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes; D-932's
     // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;
@@ -251,6 +253,9 @@ public partial class SyntaxIdTest
     [InlineData("CallableConstraints", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
     [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
+    [InlineData("MemberSelections", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
+    [InlineData("InferredConstructionTargets", "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet b = Box.init(1)\n")]
+    [InlineData("QualificationStops", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
     [InlineData("FormReads", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("Prerequisites", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("PartPrerequisites", "#Layout(\"bad\")\nstruct S\n", DiagnosticCode.InvalidLayoutAttribute_Kd)]

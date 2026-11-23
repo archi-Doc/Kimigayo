@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -8,13 +9,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
-    private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
-
-    // The side of each member access whose member was selected (PLAN G724, B4): published by PublishPath's MemberAccess step of the former
-    // that selected it (SelectMember, BaseMember, ConstructorMember, a length argument's group member), its own fact beside the lookup's
-    // selection, since a constructor access has a side and no selection.
-    private readonly Dictionary<MemberAccessKoto, MemberSide> memberSides = new(ReferenceEqualityComparer.Instance);
-
+    private readonly MemberSelectionRows memberSelections;
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
     private int unreadIdentityWork;
@@ -24,10 +19,6 @@ public sealed partial class Binding
 
     /// <summary>Gets the clauses UnreadIdentity read in the latest pass, read by the scaling tests.</summary>
     internal int UnreadIdentityWork => this.unreadIdentityWork;
-
-    // SPEC 9.1: a generic parameter belongs to its declaration's own scope and is no member of the Type.
-    private static bool IsGenericParameter(BindingSymbol symbol)
-        => symbol.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.LengthParameter;
 
     private void ValidateBaseDeclarations(BindingMode? mode = null)
     {
@@ -235,7 +226,7 @@ public sealed partial class Binding
 
         if (qualifier.Type is not null)
         {
-            var originQualifier = qualifier.Declaration is not EnumKoto && qualifier.Schema is { Origins.Count: > 0 };
+            var originQualifier = qualifier.Declaration is not EnumKoto && qualifier.Named.Schema is { Origins.Count: > 0 };
             var callQualifier = originQualifier && IsCallee(member);
             if ((qualifier.Declaration is EnumKoto ? this.EnumQualifierType(member.Left, qualifier, scope, expected)
                 : this.BindType(member.Left, scope, this.TypeContext(member.Left, scope) with { CallQualifier = callQualifier })) is not { } qualifiedType)
@@ -274,7 +265,7 @@ public sealed partial class Binding
     private SideSelection QualifierSelection(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? type)
     {
         type = type is null ? null : this.ClassForm(type, scope, out _);
-        var requirementType = qualifier is null ? type : qualifier.IsContract ? null : qualifier.Type;
+        var requirementType = qualifier is null ? type : qualifier.IsContract ? null : qualifier.Named.Type;
         var requirement = requirementType is null ? null : this.RequirementMember(member, scope, requirementType, true);
         if (type is not null && (qualifier is null || qualifier.Type is not null || qualifier.Declaration is GroupKoto))
         {
@@ -520,7 +511,7 @@ public sealed partial class Binding
             var scope = this.scopes[symbol.Declaration];
             for (var candidate = (values ? scope.Values : scope.Types).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
-                if (IsGenericParameter(candidate) || !HasLookupRole(candidate, role))
+                if (!HasLookupRole(candidate, role))
                 {
                     continue;
                 }
@@ -580,7 +571,7 @@ public sealed partial class Binding
     private readonly record struct SideSelection(BindingSymbol? Member, MemberSelection Selection, BoundType? Over = null);
 
     // A member access's side (PLAN G724, B4): its qualifier is a Type, with no receiver, or a value, the call's receiver.
-    private enum MemberSide : byte
+    internal enum MemberSide : byte
     {
         Type,
         Value,
@@ -588,7 +579,7 @@ public sealed partial class Binding
 
     // The published side of a member access whose member was selected; a reader of one without it breaks the formers' contract.
     private MemberSide MemberSideOf(MemberAccessKoto member)
-        => this.memberSides.TryGetValue(member, out var side) ? side : throw new UnreachableException("A member access without a published side.");
+        => this.memberSelections.SideOf(member) ?? throw new UnreachableException("A member access without a published side.");
 
     private BoundMemberPath MemberPath(BoundMemberPath? parent, Koto syntax, BoundType type)
     {
@@ -599,5 +590,61 @@ public sealed partial class Binding
         }
 
         return path;
+    }
+
+    /// <summary>The `memberSelections` family's one accessor (DECISIONS BU-220): a working-state family, each member access whose member
+    /// was selected, published by PublishPath's MemberAccess step of the former that selected it (SelectMember, BaseMember,
+    /// ConstructorMember, a length argument's group member) and read by the pass's later steps; a row in the access's module's
+    /// NodeColumns at its SyntaxId with two slots (PLAN G724, B4): its side, and its lookup's selection, absent for a constructor access,
+    /// which has a side and no selection. A row of an earlier pass reads none, and the library's rows are released at its freeze
+    /// (NodeColumns.Freeze). Its selection members keep the names its readers use. The column's slot is the row's index in the pass's
+    /// rows plus 1 (0 absent), since accesses are sparse in a module's ids (about one per page) and a row is 56 bytes.</summary>
+    private readonly struct MemberSelectionRows(Binding binding)
+    {
+        // The pass's rows in first-publication order (precedent: duplicateOrder). Reset: ResetContracts' Clear, its capacity kept, so a
+        // warm rebind allocates nothing. The column's slots read absent over the cleared list because every ResetPass, the one clear,
+        // follows BeginRun's advance or FreezeLibrary's release of the columns its pass wrote, so no current slot names a cleared row;
+        // the refused library's StartPass calls (Binding.Passes.cs) are excepted, after which no pass binds and no reader asks.
+        // Invariant: a slot is present iff it names a row; one site writes both (Publish).
+        private readonly List<(MemberSide? Side, MemberSelection? Selection)> rows = [];
+
+        internal MemberSelection this[MemberAccessKoto member]
+            => this.Row(member).Selection ?? throw new KeyNotFoundException($"`{member}` has no member selection in this pass.");
+
+        internal bool TryGetValue(MemberAccessKoto member, out MemberSelection selection)
+        {
+            var row = this.Row(member).Selection;
+            selection = row.GetValueOrDefault();
+            return row.HasValue;
+        }
+
+        internal MemberSelection GetValueOrDefault(MemberAccessKoto member) => this.Row(member).Selection.GetValueOrDefault();
+
+        internal MemberSide? SideOf(MemberAccessKoto member) => this.Row(member).Side;
+
+        internal void Clear() => this.rows.Clear();
+
+        // The one writer, PublishPath's MemberAccess step: one side per access in a pass (R7-N1c); a selection replaces the earlier one.
+        internal void Publish(MemberAccessKoto access, MemberSide side, MemberSelection? selection)
+        {
+            ref var slot = ref HirTables.Of(access).Families.MemberSelections.Ref(access.SyntaxId, binding);
+            if (slot == 0)
+            {
+                this.rows.Add(default);
+                slot = this.rows.Count;
+            }
+
+            ref var row = ref CollectionsMarshal.AsSpan(this.rows)[slot - 1];
+            if (row.Side is { } published && published != side)
+            {
+                throw new InvalidOperationException($"`{access}` was published as a {published} member, then as a {side} member (InternalInvariant; R7-N1c).");
+            }
+
+            row.Selection = selection ?? row.Selection;
+            row.Side = side;
+        }
+
+        private (MemberSide? Side, MemberSelection? Selection) Row(MemberAccessKoto member)
+            => member.SyntaxOwner?.Hir.Families.MemberSelections.Get(member.SyntaxId, binding) is > 0 and var slot ? this.rows[slot - 1] : default;
     }
 }
