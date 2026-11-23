@@ -188,16 +188,17 @@ public sealed partial class Binding
 
     /// <summary>Gets whether a node is a Field Place of no Type (PLAN G1184; BU-234's failed slot, for a Field; SPEC 23.1.2, 6.3.4, 11.7,
     /// 13.7.1): a use Binding resolved to a Field whose own slot failed, with the slot's cause recorded at its TypeSource, which it
-    /// accesses directly (DirectAccess: a constructor's own Field or a standard accessor), over a receiver whose Type stores that Field:
-    /// the builder's Field step indexes its receiver's struct below every layer (AdtDef.FieldOwner, the one walk by Field), and the
-    /// stored Field's slot failed (<see cref="AdtDef.FieldSlotFailed"/>, the one test of it, MIR's projection rule's too). The receiver is
-    /// a member access's, or an accessor's <c>self</c> for its <c>storage</c>; one of no Type (a failed <c>self</c>) or of a Type that
-    /// stores no such Field (a Type parameter an identity premise makes the struct, PLAN G168b) gives none. The Field Op's storage fact,
-    /// not an Op decision (OpOf decides the Op): read by <see cref="HasFacts"/> (the operation test, the Name row) and by the publisher's
-    /// keep rule. A read through a custom getter is the getter's call, a computed Property has no storage, and a name of another failed
-    /// slot (a local, a parameter, a static) has no receiver: each stays an Error. So does an update's target (a compound assignment's,
-    /// an increment's or a decrement's, IsWriteTarget): its operation reads the Field's value at the failed Type (SPEC 13.7.2), so the
-    /// update is a derived write, as before (DECISIONS G1022, Z27).</summary>
+    /// accesses directly (DirectAccess: a constructor's own Field or a standard accessor), over a receiver whose Type, as Binding resolved
+    /// the selection, stores that Field below every layer (AdtDef.FieldOwner, the one walk by Field), the stored Field's slot failed
+    /// (<see cref="AdtDef.FieldSlotFailed"/>, the one test of it, MIR's projection rule's too). The receiver is a member access's, or an
+    /// accessor's <c>self</c> for its <c>storage</c>; one of no Type (a failed <c>self</c>) gives none. A receiver Place the builder cannot
+    /// index (a Type parameter an identity premise makes the struct) is the builder's located limit, as for a typed Field. The Field Op's
+    /// storage fact, not an Op decision (OpOf decides the Op): read by <see cref="HasFacts"/> (the operation test, the Name row) and by
+    /// the publisher's keep rule. A read through a custom getter is the getter's call, a computed Property has no storage, and a name of
+    /// another failed slot (a local, a parameter, a static) has no receiver: each stays an Error. So does, for now, an update's target (a
+    /// compound assignment's, an increment's or a decrement's, IsWriteTarget), a derived write as on dev: MirBuilder.Update builds an
+    /// update only at its target's Type (a temporary limit; removed when MirBuilder.Update builds an update over a Field Place of no Type,
+    /// its old value an undecided use at the Place; PLAN G1184's open issue).</summary>
     /// <param name="node">An evaluated node.</param>
     /// <returns>Whether it is a Field Place over its Field's failed slot.</returns>
     internal bool FailedField(Koto node) => HirTables.Symbol(node) is { } symbol &&
@@ -206,15 +207,15 @@ public sealed partial class Binding
         AdtDef.FieldOwner(this.Types, receiver, field) is { } owner && AdtDef.FieldSlotFailed(owner.Layer, owner.Index) && this.Stated(field) &&
         (symbol.Kind == BindingSymbolKind.Storage || DirectAccess(node, property));
 
-    // The Type a Field Place's step projects from (FailedField): its receiver's Place's below every layer, as the publisher counts a
-    // projected receiver's layers (HirPublisher.Layers) and the builder follows them: a member access's receiver, or an accessor's `self`
-    // for its `storage`; null for another node, and for a receiver Binding resolved on an identity premise's Type, whose Place keeps the
-    // Type parameter (DECISIONS BU-72, HirTables.IdentityPremise), which stores no Field.
+    // The Type a Field Place's step projects from (FailedField): the Type Binding resolved the selection on, below every layer, as the
+    // publisher counts a projected receiver's layers (HirPublisher.Layers): a member access's receiver, or an accessor's `self` for its
+    // `storage`; null for another node. Where the receiver's MIR Place has another Type (a Type parameter an identity premise makes the
+    // struct, BU-72), the builder's Field step indexes nothing and gives its located Unsupported_Kd (MirBuilder.Field).
     private static BoundType? FieldReceiver(Koto node, BindingSymbol symbol)
     {
         var type = symbol.Kind == BindingSymbolKind.Storage
             ? symbol.Scope.Owner is PropertyAccessorKoto accessor ? Accessor(accessor).SelfSymbol?.Type : null
-            : node is MemberAccessKoto member && HirTables.IdentityPremise(member) is null ? member.Left.BoundType : null;
+            : (node as MemberAccessKoto)?.Left.BoundType;
         while (TyCtxt.Layer(type, out var below, out _) != HirPlaceKind.Value)
         {
             type = below;

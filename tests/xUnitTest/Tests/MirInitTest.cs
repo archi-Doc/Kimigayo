@@ -1685,10 +1685,10 @@ public sealed class MirInitTest
     // or a Move of it (d1, d2, q14), a write through a user index, an Array element, a held `uniq` reference, an exclusive parameter, a
     // generic instance and a base layer (d5, d7, d8, d6, d11, d13), a shared borrow through a user index (d10), a read beside a moved
     // sibling through a Tuple element (c4); and `storage` over a failed `self` (d3, d4: Binding's records alone) or a typed one (d4t). A
-    // receiver Place of a Type parameter an identity premise makes the struct (SPEC 8.2.3), nested in an array, an Array or a struct
-    // (x1, x2, x3, x5), stores no Field the builder can index: each gives the builder's located Unsupported_Kd at the Field, its typed
-    // twin's (G168b's limit), with no fault (fail-before on 7135677d7: CheckFaulted, "no published Type"); a direct one (d14, d15)
-    // stays an Error, by Binding's identity-premise term.
+    // receiver Place of a Type parameter an identity premise makes the struct (SPEC 8.2.3), direct, in a chain or nested in an array, an
+    // Array or a struct (d14, d15, x4, x1, x2, x3, x5), stores no Field the builder can index: each gives the builder's located
+    // Unsupported_Kd at the Field, its typed twin's (G168b's limit), with no fault (fail-before on 7135677d7: CheckFaulted, "no published
+    // Type", at x1, x2, x3, x5; no limit at d14, d15, x4).
     [Theory]
     [InlineData(HirFormsTest.FailedSlot, "")] // q01
     [InlineData("struct N\n    public var w: Weak<rc/N>\n    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        self.w = w@move\n        let k = self.w@ref\n        self.s = s@move\n", "")] // q04
@@ -1715,11 +1715,12 @@ public sealed class MirInitTest
     [InlineData("struct N\n    public var w: Weak<rc/N>\n        get(self: ref/Missing) -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage@ref)\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d4
     [InlineData("struct N\n    public var w: Weak<rc/N>\n        get() -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage@ref)\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d4t
     [InlineData(HirFormsTest.FailedSlot + "func f(p: (N, i32))\n    let t = p.0.s@move\n    let k = p.0.w@ref\n", "")] // c4
-    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: uniq/T, w: Weak<rc/N>)\n    T is N\n    t.w = w@move\n", "")] // d14
-    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: ref/T)\n    T is N\n    let k = t.w@ref\n", "")] // d15
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: uniq/T, w: Weak<rc/N>)\n    T is N\n    t.w = w@move\n", "Unsupported_Kd t.w 18446744073709551615")] // d14
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: ref/T)\n    T is N\n    let k = t.w@ref\n", "Unsupported_Kd t.w 18446744073709551615")] // d15
     [InlineData(HirFormsTest.FailedSlot + "func f<T>(a: uniq/[2 of T], w: Weak<rc/N>)\n    T is N\n    a[0].w = w@move\n", "Unsupported_Kd a[0].w 18446744073709551615")] // x1
     [InlineData(HirFormsTest.FailedSlot + "func f<T>(xs: uniq/Array<T>, w: Weak<rc/N>)\n    T is N\n    xs[0].w = w@move\n", "Unsupported_Kd xs[0].w 18446744073709551615")] // x2
     [InlineData(HirFormsTest.FailedSlot + "struct B<T>\n    public var inner: T\n    public init(inner: T)\n        self.inner = inner@move\nfunc f<T>(b: uniq/B<T>, w: Weak<rc/N>)\n    T is N\n    b.inner.w = w@move\n", "Unsupported_Kd b.inner.w 18446744073709551615")] // x3
+    [InlineData(HirFormsTest.FailedSlot + "func f<T, U>(t: uniq/T, w: Weak<rc/N>)\n    T is U\n    U is N\n    t.w = w@move\n", "Unsupported_Kd t.w 18446744073709551615")] // x4
     [InlineData(HirFormsTest.FailedSlot + "func f<T>(a: ref/[2 of T])\n    T is N\n    let k = a[0].w@ref\n", "Unsupported_Kd a[0].w 18446744073709551615")] // x5
     public void AFieldWhoseSlotFailedIsItsOwnPlace(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
