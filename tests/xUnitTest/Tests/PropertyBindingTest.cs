@@ -680,6 +680,8 @@ public partial class PropertyBindingTest
     private const string ArrayGetter = "struct W\n    public var fa: [2 of P] = [P.init(), P.init()]\n        get() -> [2 of P] => storage\n    public init() => ()\n";
     private const string Run = "func run(w: uniq/W) -> i32\n";
     private const string RunWithLocal = "func run(w: uniq/W, a: R) -> i32\n";
+    private const string HiddenCaseGetter = "contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A(i32)\n    B\n" +
+        "struct W\n    public var e: E<Source> = .B\n        get() -> E<Source> => storage\n    public init() => ()\n";
 
     // SPEC 23.1.2, 15.1.6 (D-823, PLAN G1076): a late rest's walk rests nothing of a match, `try` or `for` Subject Place, the use, a group
     // or a Place built on it: the construct's own binding owns a resting Subject, so each form keeps the records it gave before D-823,
@@ -712,6 +714,12 @@ public partial class PropertyBindingTest
     [InlineData(NonCopyP + OwnedR + TupleGetter + RunWithLocal + "    return match (w.t.1)\n        .Some(let n) => n\n        .None => take(a@move) + take(a@move)\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage; MovedPlace_Kd a")]
     [InlineData(NonCopyP + OwnedR + TupleGetter + RunWithLocal + "    let r = match (w.t.1)\n        .Some(let n) => R.init()\n        .None => a\n    return r.n\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage; TransferRequired_Kd a")]
     [InlineData(NonCopyP + OwnedR + PosGetter + RunWithLocal + "    return match w.pos.o\n        .Some(let n) => n\n        .None => take(a@move) + take(a@move)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; MovedPlace_Kd a")]
+    // open: G1076 (c1r, c1rloop; D-1163 R1.6): a plan the late recheck refutes over a late-rested Subject (SPEC 9.4.4: E's Constraint
+    // names a non-public contract; 11.1: the getter returns non-Copy storage). D-1163 publishes a late-refuted plan, whose positions keep
+    // their kind and test, so G1076's cause (ii) shows at the function and the positions (on dev: at the match, and at the loop); keeping
+    // such a plan an Error would need a late-only test in HasFacts and lose c1t's fixes (D-1163 R1.6), so G1076's fix moves these rows.
+    [InlineData(HiddenCaseGetter + Run + "    return match w.e\n        .A(let n) => n\n        .B => 0\n", "InaccessibleBinding_Kd enum; InaccessibleBinding_Kd T is Hidden; PrerequisiteUnavailable_Kd var e: E<Source> = .B; InvalidTypeFormation_Kd .B; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .A(let n); InvalidConstraint_Kd .A(let n); InternalInvariant_Kd let n; InternalInvariant_Kd .B; InvalidConstraint_Kd .B")]
+    [InlineData(HiddenCaseGetter + Run + "    var total = 0\n    loop\n        match w.e\n            .A(let n) => total += n\n            .B => exit\n    return total\n", "InaccessibleBinding_Kd enum; InaccessibleBinding_Kd T is Hidden; PrerequisiteUnavailable_Kd var e: E<Source> = .B; InvalidTypeFormation_Kd .B; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .A(let n); InvalidConstraint_Kd .A(let n); InternalInvariant_Kd let n; InternalInvariant_Kd .B; InvalidConstraint_Kd .B")]
     // open: G1076 (the use itself as the Subject, with an unrelated local's record in an arm)
     [InlineData(NonCopyP + OwnedR + OptionGetter + RunWithLocal + "    let r = match w.opt\n        .Some(_) => R.init()\n        .None => a\n    return r.n\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W, a: R) -> i32; InternalInvariant_Kd .Some(_); InternalInvariant_Kd .None; TransferRequired_Kd a")]
     [InlineData(NonCopyP + "struct W\n    public var h: rc/P = P.init()@rc\n        get() -> rc/P => storage\n    public init() => ()\n" + Run + "    return w.h@follow.x\n", "UnsatisfiedConstraint_Kd var h: rc/P = P.init()@rc; TransferRequired_Kd storage")]
