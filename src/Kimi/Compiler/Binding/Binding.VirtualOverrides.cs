@@ -479,7 +479,7 @@ public sealed partial class Binding
 
         void FailRefuted(BoundConstraint part)
         {
-            this.FailPremise(premises.Constraints!, part, function, null);
+            this.FailPremise(premises.Constraints!, part, function);
             if (part.Kind == ConstraintKind.And)
             {
                 FailRefuted(part.Left!);

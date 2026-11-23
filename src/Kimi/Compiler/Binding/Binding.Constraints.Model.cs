@@ -113,11 +113,12 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 // otherwise.
 // R7-C3 (B1'): what a proof that reads a failed premise rests on: the declaration whose record the premise's failure is.
 // R7-E5 c1 (design-inputs-read Rev 2 R2.2 (2), F's ruling 343): and the failed fact's origin, the clause whose own check failed it
-// (ConstraintEnvironment.CauseOf), none for a premise failed by its owner's judgment.
+// (ConstraintEnvironment.CauseOf), none for a premise FailPremise failed.
 internal sealed class PremiseFailure(Koto owner, IsKoto? origin) : ICheckCause
 {
     public Koto Use { get; } = owner;
 
+    [Transitional("R7", Reason = "The per-fact origin E5 c's later design starts from; removed in its unit if that design does not use it (F's ruling 348).")]
     public IsKoto? Origin { get; } = origin;
 
     public ICheckCause? Next => null;
@@ -132,13 +133,16 @@ internal sealed class PremiseFailure(Koto owner, IsKoto? origin) : ICheckCause
 internal sealed class ConstraintEnvironment
 {
     private PremiseFailure? premiseFailure; // R7-C3 B1': FailedPremise's cause, made once
+
+    [Transitional("R7", Reason = "The per-fact origin E5 c's later design starts from; removed in its unit if that design does not use it (F's ruling 348).")]
     private List<PremiseFailure>? originCauses; // R7-E5 c1: one cause per origin (CauseOf), made once and kept across passes
 
     // R7-E5 c1 (Rev 2 R2.2 (1), F's ruling 343; review C6): a failed direct fact's origin, the clause whose own check failed it, written
-    // only by that writer (an Error fact at its clause's binding: Add; a part of the clause: FailPremise), never by a premise's owner
-    // judgment. Keyed by the fact in this environment (Facts is a reference set, so an interned Error shared by two failed clauses is
-    // one entry: the first origin is kept, and every failed clause has its own record). Allocated at the first entry (rejected
-    // programs only); Reset clears it and keeps its capacity.
+    // only by that writer: an Error fact at its clause's binding (Add); never by FailPremise (a premise's owner judgment, or a part's
+    // failure whose clause stays Resolved, so it names no record; F's ruling 351 C1). Keyed by the fact in this environment (Facts is
+    // a reference set, so an interned Error shared by two failed clauses is one entry: the first origin is kept, and every failed clause
+    // has its own record). Allocated at the first entry (rejected programs only); Reset clears it and keeps its capacity.
+    [Transitional("R7", Reason = "The per-fact origin E5 c's later design starts from; removed in its unit if that design does not use it (F's ruling 348).")]
     private List<(BoundConstraint Fact, IsKoto Origin)>? origins;
 
     // SPEC 6.4.2 step 3, 8.11.4: the Statements recorded for direct facts, a set: the declaration stating a premise this environment
@@ -273,19 +277,12 @@ internal sealed class ConstraintEnvironment
     /// environment with the state Failed, the environment stays valid, and a proof that consults it rests on its declaration's record.</summary>
     /// <param name="fact">The failed premise.</param>
     /// <param name="owner">The declaration whose record it is.</param>
-    /// <param name="origin">The clause whose own check failed it (a part of the clause), or null for a premise failed by its owner's
-    /// judgment (origins).</param>
     /// <returns>Whether the premise newly failed (the failed set only grows, so the premise failures reach a fixpoint).</returns>
-    internal bool FailPremise(BoundConstraint fact, Koto owner, IsKoto? origin)
+    internal bool FailPremise(BoundConstraint fact, Koto owner)
     {
         if (!this.Facts.Contains(fact) || this.IsFailed(fact))
         {
             return false;
-        }
-
-        if (origin is not null)
-        {
-            this.NoteOrigin(fact, origin);
         }
 
         (this.FailedPremises ??= new()).Add(fact);

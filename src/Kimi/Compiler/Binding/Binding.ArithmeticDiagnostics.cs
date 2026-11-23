@@ -255,7 +255,7 @@ public sealed partial class Binding
     // Raw, stated here) fails with the contradiction. A clause instance or an ancestor is no premise of an environment, and an enclosing
     // scope's premise stays valid in its own scope, so no other premise fails: a check reading none of the pair's facts is judged.
     private bool FailPairPremise(PremiseRow row, BindingScope scope)
-        => row is { Raw: { } raw } && ReferenceEquals(row.Stated, scope) && this.FailPremise(scope.Constraints!, raw, scope.Owner, null);
+        => row is { Raw: { } raw } && ReferenceEquals(row.Stated, scope) && this.FailPremise(scope.Constraints!, raw, scope.Owner);
 
     // The related location of a premise row: its written fact at the scope stating it (ArithmeticFactUse), else that scope's owner (a
     // clause instance's or an ancestor's: its Contract row's scope), else the view's.

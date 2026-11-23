@@ -322,16 +322,15 @@ public sealed partial class Binding
 
         foreach (var fact in environment.Facts)
         {
-            this.FailPremise(environment, fact, owner, null);
+            this.FailPremise(environment, fact, owner);
         }
     }
 
     // R7-C3 (B1'): a premise failed alone (ConstraintEnvironment.FailPremise), counted in the change signal and in the Failed state's
-    // census when it newly failed: the environment's judgments read the remainder. True when it newly failed. `origin` is the clause
-    // whose own check failed it (a part of the clause), null where the premise's owner judged it (R7-E5 c1, Rev 2 R2.2 (1)).
-    private bool FailPremise(ConstraintEnvironment environment, BoundConstraint fact, Koto owner, IsKoto? origin)
+    // census when it newly failed: the environment's judgments read the remainder. True when it newly failed.
+    private bool FailPremise(ConstraintEnvironment environment, BoundConstraint fact, Koto owner)
     {
-        if (!environment.FailPremise(fact, owner, origin))
+        if (!environment.FailPremise(fact, owner))
         {
             return false;
         }
@@ -454,20 +453,14 @@ public sealed partial class Binding
             }
         }
 
-        this.CloseConsultation(parent);
+        this.DropConsultation(parent);
     }
 
     // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame, a site frame): nothing becomes its prerequisite.
-    private void DropConsultation((int Start, Koto? Node) parent) => this.CloseConsultation(parent);
-
-    // A frame's end: its reads leave the collector, and the enclosing frame is open again.
-    private void CloseConsultation((int Start, Koto? Node) parent)
+    // A frame's one end (EndConsultation's too): its reads leave the collector, and the enclosing frame is open again.
+    private void DropConsultation((int Start, Koto? Node) parent)
     {
-        if (this.consulted.Count != this.consultationStart)
-        {
-            this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
-        }
-
+        this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
         (this.consultationStart, this.consultationNode) = parent;
     }
 

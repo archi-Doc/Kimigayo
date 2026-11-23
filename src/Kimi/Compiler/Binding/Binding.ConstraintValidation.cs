@@ -310,7 +310,7 @@ public sealed partial class Binding
 
             var previous = scope.Owner.BindingState;
             var rests = this.failedCause is not null;
-            changed |= this.FailPremise(environment, fact, scope.Owner, null); // R7-C3: the premise's own judgment writes its state Failed
+            changed |= this.FailPremise(environment, fact, scope.Owner); // R7-C3: the premise's own judgment writes its state Failed
             // Other input facts can have independent contradictions. Record a
             // sole missing-name cause only when this is the entire environment.
             this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, facts.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
@@ -398,7 +398,7 @@ public sealed partial class Binding
             return false;
         }
 
-        return this.PremiseClause(use.Use, declaration) is { BoundConstraint: { } premise } clause && this.FailPremise(environment, premise, declaration, clause);
+        return this.PremiseClause(use.Use, declaration) is { BoundConstraint: { } premise } && this.FailPremise(environment, premise, declaration);
     }
 
     // The premise clause of `declaration` a node lies in, if any (a projection use in a premise's side).
@@ -562,11 +562,11 @@ public sealed partial class Binding
                     // Invalid type formation in a clause must not remain available as evidence.
                     for (var parent = node.Parent; parent is not null; parent = parent.Parent)
                     {
-                        if (parent is IsKoto { BoundConstraint: { } fact } premiseClause && scope.Constraints is { } environment)
+                        if (parent is IsKoto { BoundConstraint: { } fact } && scope.Constraints is { } environment)
                         {
                             // R7-C3: the clause's own judgment fails its premise; a conformance binding's clause is no premise (not in Facts:
                             // FailPremise does nothing), its failure being its path's state (design-c31b §3 (c)).
-                            this.FailPremise(environment, fact, scope.Owner, premiseClause);
+                            this.FailPremise(environment, fact, scope.Owner);
                             break;
                         }
 
