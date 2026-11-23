@@ -134,15 +134,15 @@ public sealed partial class Binding
             this.BindHeader(symbol);
             if (IsValueUse(node))
             {
-                if (this.LacksRequirementSubject(node, symbol))
-                {
-                    return this.FailUnselected(node, BindingFailure.MissingName);
-                }
-
                 var group = this.GroupOf(node, symbol);
                 if (this.GatheredGroupFails(node, group))
                 {
                     return null;
+                }
+
+                if (group.Single is { } single && this.LacksRequirementSubject(node, single))
+                {
+                    return this.FailUnselected(node, BindingFailure.MissingName); // A group of one is its selection (N1-13 B3).
                 }
 
                 if (group.Single is { Declaration: FunctionKoto { IsAnonymous: false } named } && DirectCallOnly(named))

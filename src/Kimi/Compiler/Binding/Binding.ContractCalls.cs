@@ -17,10 +17,11 @@ public sealed partial class Binding
 
     // SPEC 8.6.4 (F's ruling N1-7 (1)): a requirement is reached through its subject Type: the requirement group a Constraint gave the
     // use's member lookup, or a callee its creator pinned with its bound Contract. A Name that selected one without (an opened Contract's
-    // direct member at stage 5) names no Type to call it through, as `Empty.empty()` does not: the call binder and BindReference read this,
-    // and the Name records the miss that use records (UnresolvedBinding_Kd).
-    private bool LacksRequirementSubject(Koto use, BindingSymbol head)
-        => head.Declaration is FunctionKoto { IsRequirement: true } && use is not RequirementCalleeKoto && this.ReferenceRequirements(use) is null;
+    // direct member at stage 5) names no Type to call it through, as `Empty.empty()` does not: read on the selected candidate (the call
+    // binder's winner, BindReference's group of one; never a gathered group's first: N1-13 B3; a function reference to a group holding
+    // one is the reference reader's limit), and the Name records the miss that use records (UnresolvedBinding_Kd).
+    private bool LacksRequirementSubject(Koto use, BindingSymbol selected)
+        => selected.Declaration is FunctionKoto { IsRequirement: true } && use is not RequirementCalleeKoto && this.ReferenceRequirements(use) is null;
 
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {

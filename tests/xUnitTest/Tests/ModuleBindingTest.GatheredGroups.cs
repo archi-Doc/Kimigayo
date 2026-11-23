@@ -65,6 +65,8 @@ public partial class ModuleBindingTest
     private const string Unsupported = nameof(DiagnosticCode.Unsupported_Kd);
     private const string Duplicate = nameof(DiagnosticCode.DuplicateBinding_Kd);
     private const string Unbound = nameof(DiagnosticCode.UnboundTypeArgument_Kd);
+    private const string Unresolved = nameof(DiagnosticCode.UnresolvedBinding_Kd);
+    private const string RequirementBeside = "contract P\n    func make() -> i32\ngroup G\n    public func make(x: i32) -> i32 => x\n";
 
     // A family: its name, the aliases whose every order is a row, the declarations and the use, and the Error codes SPEC gives in
     // every order (none for a valid program).
@@ -163,6 +165,13 @@ public partial class ModuleBindingTest
         // environment: the located Unsupported_Kd at the Name, a limit, in every order; its invalid twin keeps the limit's record.
         ("g633", "Box<i32> Other<i64>", TwoEnvironments + "let n = make(1)", Unsupported),
         ("g633i", "Box<i32> Other<i64>", TwoEnvironments + "let n = make(\"s\")", Unsupported),
+
+        // SPEC 8.6.4, 9.5.1 (F's ruling N1-13 B3): an opened Contract's requirement and a group's function gathered at stage 5 are one
+        // group; only a selected requirement without a subject Type is rejected, at the Name, in every order (never a fault).
+        ("r07", "P G", RequirementBeside + "let n = make(1)", string.Empty),
+        ("r08", "P G", RequirementBeside + "let n = make()", Unresolved),
+        ("r09", "P G", RequirementBeside + "let f: (i32) -> i32 = make", Unsupported), // The reference reader's limit, as eu1's.
+        ("r09x", "P G", RequirementBeside + "let f: () -> i32 = make", Unsupported),
     ];
 
     // SPEC 9.6: a member gathered from two Constraints is one group in either clause order. Each row: its name, the Contracts and other

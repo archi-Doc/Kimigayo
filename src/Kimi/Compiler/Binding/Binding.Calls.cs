@@ -200,12 +200,6 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
-        if (this.LacksRequirementSubject(callee, group))
-        {
-            this.FailUnselected(callee, BindingFailure.MissingName);
-            return Complete(call, null);
-        }
-
         var requirementGroup = candidates.Requirements;
         var (evaluated, self, shape) = this.NamedCandidates(callee, group, candidates, scope);
 
@@ -366,6 +360,13 @@ public sealed partial class Binding
             if (selection == CallSelection.Ambiguous)
             {
                 return this.CompleteAmbiguous(evaluation);
+            }
+
+            if (this.LacksRequirementSubject(callee, evaluated[winnerIndex].Symbol!))
+            {
+                // SPEC 8.6.4 (F's rulings N1-7 (1), N1-13 B3): the selected candidate, never a gathered group's first, is read.
+                this.FailUnselected(callee, BindingFailure.MissingName);
+                return Complete(call, null);
             }
 
             if (this.SettleSelected(evaluated[winnerIndex].HeldRefusal) is { } refused)
