@@ -340,7 +340,7 @@ public class EnumBindingTest
     }
 
     // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch, and only it: the Field
-    // has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
+    // has no stored Type, which its constructor does not require (SPEC 23.1.2; DECISIONS Q13).
     [Fact]
     public void ACaseConstructionInAFieldInitializerReportsItsOwnFailure()
     {
@@ -352,7 +352,7 @@ public class EnumBindingTest
 
     // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381, G826): a payload erased in a Field initializer, bound with the Field's header before
     // the capability engine judges, is one located Unsupported_Kd at a converted Function Item with bound Type arguments, the only
-    // record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13). It was
+    // record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; DECISIONS Q13). It was
     // the construction's TypeMismatch_Kd; typed and local twins are valid. A Closure there captures nothing (SPEC 7.7.2, 6.1.3), so its
     // environment is empty and decided (it was the located limit before G826). In a group the Field is static storage: its Closure
     // storage limit sits at the `let`, with the located limit at a use, as its annotated twin has them (v45; it was one located limit at
