@@ -252,6 +252,9 @@ public sealed partial class Binding
         // (a)); none: the walk places no value.
         internal List<RawFit>? RawFits { get; init; }
 
+        // The node of its proofs' judgment (QuerySite): its use, else Nested (the context-free relations Fits reads).
+        private readonly QuerySite Site => this.use is { } at ? at : QuerySite.Nested;
+
         // SPEC 3.8: the relation; Never relates only to itself. A Function Type's own syntax binds its per-call inputs (SPEC 8.10).
         // `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the Callable comparison whose
         // per-call Origins the parts are compared under.
@@ -354,7 +357,7 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                (outer, longer, shorter) = this.owner.FitOuterOrigins(actual, expected, this.use, instance, this.RawFits, invariant);
+                (outer, longer, shorter) = this.owner.FitOuterOrigins(actual, expected, this.use, this.Site, instance, this.RawFits, invariant);
             }
 
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;

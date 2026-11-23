@@ -108,7 +108,7 @@ public sealed partial class Binding
         if (symbol.ConditionalDeclaration is not null && symbol.Kind != BindingSymbolKind.Function)
         {
             var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
-            var proof = this.ProveMemberConditions(symbol, conditionalType, scope);
+            var proof = this.ProveMemberConditions(symbol, conditionalType, scope, node);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(node, proof, this.capabilityMode);

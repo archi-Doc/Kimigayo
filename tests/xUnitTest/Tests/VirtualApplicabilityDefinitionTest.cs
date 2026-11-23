@@ -129,7 +129,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var implementation = derived.Members.OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var mapping));
-        Assert.Equal(ConstraintProof.Proven, c.Binding.VirtualApplicability(mapping.Slot));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.VirtualApplicability(mapping.Slot, Binding.QuerySite.AfterPass));
     }
 
     // The refuted slot's original stays an inapplicable definition; Derived declares no override of it (SPEC 6.4.3).

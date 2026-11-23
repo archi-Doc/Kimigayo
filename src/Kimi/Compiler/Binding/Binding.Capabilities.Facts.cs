@@ -103,7 +103,7 @@ public sealed partial class Binding
     {
         var proposition = this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned));
         var scope = this.ConstraintScope(context);
-        var proof = this.ProveConstraint(proposition, scope);
+        var proof = this.ProveConstraint(proposition, scope, context);
         rest = new(this.OwnedWork(type, scope), scope);
         return proof;
     }
