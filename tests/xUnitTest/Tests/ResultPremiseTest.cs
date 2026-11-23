@@ -124,6 +124,13 @@ public partial class ResultPremiseTest
         "    let pair = g(s)\n    return pair.1\n\nfunc mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n\n" +
         "func caller(s: ref/i32 during static) -> ref/i32 during static\n    return use(mk, s)\n\n";
 
+    // A result holding a Function Type that writes a fixed Origin, b, below a borrow layer during q: OwnedOrigins of the Function Type is
+    // {b} (SPEC 15.2.3), so the result's well-formedness is b outlives q.
+    private const string HeldFixed = "func mk(b: ref/i32, q: ref/i32) -> Option<ref/((ref/i32 during b) -> i32) during q>\n";
+
+    // HeldFixed's control: the same well-formedness without a Function Type.
+    private const string StoredFixed = "func mk(b: ref/i32, q: ref/i32) -> Option<ref/(ref/i32 during b) during q>\n";
+
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd) + "|";
 
     private const string Constraint = nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|";
@@ -564,6 +571,30 @@ public partial class ResultPremiseTest
     [InlineData("func f(u0: ref/((ref/i32) -> i32)) -> ref/((ref/i32) -> i32) during u0\n    return u0\n\n")] // f_sig_res_ok: a borrow layer holding a Function Type relates only its fixed Origins (SPEC 15.2.3, 15.6.1; none here)
     [InlineData("struct S {a}\n    public let call: ref/((ref/i32) -> i32) during a\n\n")] // f_fld_ok: as f_sig_res_ok in a Field
     public void ANestedSignaturesResultIsJudgedWhereItIsWritten(string program, params string[] records)
+    {
+        var text = program + Main;
+        Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
+    }
+
+    // SPEC 15.6.1, 15.2.3, 15.6.4 step 3 (DECISIONS BU-73, R7-O3 O3-B2): a borrow layer holding a Function Type stores its fixed Origins
+    // and never its per-call ones, in every reader of that well-formedness: a definition's premise over its result (sres_fix, sres_use:
+    // UnprovenOriginRelation_Kd "b outlives q" at the result Type before; sres_bad keeps only its own record) and over an input (in_prem,
+    // in_prem_bad: unchanged), and a call's obligation over its instantiated result (call_ok; call_bad, whose local borrow the call's
+    // well-formedness carries past the body, was accepted beside mk's spurious record before).
+    [Theory]
+    [InlineData(HeldFixed + "    return .None\n\n")] // sres_fix
+    [InlineData(HeldFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use: the result premise proves the initializer
+    [InlineData(StoredFixed + "    return .None\n\n")] // sres_fix_ctl
+    [InlineData(StoredFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use_ctl
+    [InlineData("func mk(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32)) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    return .Some(g)\n\n", Unproven + "g|requires g outlives q, which is not proven")] // sres_bad
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem: the input's premise b outlives q
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/(ref/i32 during b) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem_ctl
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32) -> i32) during q) -> ref/i32 during q\n    return b\n\n", Unproven + "b|requires b outlives q, which is not proven")] // in_prem_bad: per-call Origins relate nothing
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok: fresh regions solved small
+    [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok_ctl
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/((ref/i32 during x) -> i32) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x)|requires the borrow local@ref outlives x, which is false")] // call_bad
+    [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/(ref/i32 during x) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x)|requires the borrow local@ref outlives x, which is false")] // call_bad_ctl: the return's fit itself
+    public void AHeldFunctionTypeStoresItsFixedOriginsInEveryReader(string program, params string[] records)
     {
         var text = program + Main;
         Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));

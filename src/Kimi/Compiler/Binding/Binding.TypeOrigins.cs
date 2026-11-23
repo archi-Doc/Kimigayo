@@ -283,8 +283,8 @@ public sealed partial class Binding
 
     // SPEC 15.6.1: each relation is the well-formedness of the Type occurrence `use` (WellFormed), never a fit of a value: every Origin
     // of OwnedOrigins(inner) (SPEC 15.2.3) outlives `outer`. A held Function Type's part is its call signature with its own per-call
-    // Origins closed (DECISIONS BU-73's ClosedSignature, as Owned reads it): its fixed Origins relate, its per-call Origins never do, as
-    // they cannot escape their binder (SPEC 15.3.4). `discharge` applies to the Origins stored directly in `inner`; those of its
+    // Origins closed (DECISIONS BU-73, StoredSignature): its fixed Origins relate, its per-call Origins never do, as they cannot escape
+    // their binder (SPEC 15.3.4). `discharge` applies to the Origins stored directly in `inner`; those of its
     // components are judged. `condition` is the Semantics case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o`
     // of an original `s/T` included, is stored only in its binder's borrow cases (SPEC 15.6.5). The layers below one written layer share
     // its use's scope.
@@ -295,10 +295,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (inner.Kind == BoundTypeKind.Function && inner.Binder is { } binder)
-        {
-            inner = this.ClosedSignature(inner, binder);
-        }
+        inner = this.StoredSignature(inner);
 
         // A written Type's retention at its use, in no comparison (default).
         if (this.StoredSlot(inner, ref use, out var slot, default) is { } origin && !OriginOutlives(origin, outer))
