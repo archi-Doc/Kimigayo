@@ -59,20 +59,14 @@ public sealed partial class Binding
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
 
     // SPEC 6.3.4, 11.2, 11.7: whether an accessor is the storage at a node, no call: a constructor's own Field (its first placement writes
-    // the storage, a custom setter included) or a standard accessor. Read per accessor by PropertyCall (its guard) and DirectAccess.
+    // the storage, a custom setter included) or a standard accessor. Read per accessor by PropertyCall (its guard) and CallsAccessor.
     private static bool StorageAccess(Koto node, BoundAccessor accessor) => (IsSpecialField(node, out var special) && special.IsConstructor) || accessor.IsStandard;
 
-    // Whether a use of a Property at a node accesses its storage directly: the operation's accessor, and an update's setter, are the
-    // storage there (StorageAccess; a write calls no `get`, SPEC 13.7.1 step 2).
-    private static bool DirectAccess(Koto node, BoundProperty property)
-    {
-        var update = IsWriteTarget(node, out var write) && !write;
-        return StorageAccess(node, write ? property.Setter : property.Getter) && (!update || StorageAccess(node, property.Setter));
-    }
-
-    // SPEC 11.3.1, 13.7.1, 13.7.2: whether a write's or an update's target, of a Property with a `set`, calls an accessor (its `set`, and
-    // an update's `get`, step 2) rather than accessing its storage (DirectAccess); each call takes its receiver whole.
-    private static bool CallsAccessor(Koto node, BoundProperty property) => IsWriteTarget(node, out _) && property.Setter.IsPresent && !DirectAccess(node, property);
+    // SPEC 11.3.1, 13.7.1, 13.7.2: whether a write's or an update's target calls an accessor of its Property, each present one its
+    // operation uses that is no storage access (StorageAccess): the `set` of a write or an update, and an update's `get` (step 2; a write
+    // calls no `get`, 13.7.1 step 2); each call takes its receiver whole.
+    private static bool CallsAccessor(Koto node, BoundProperty property) => IsWriteTarget(node, out var write) &&
+        ((property.Setter.IsPresent && !StorageAccess(node, property.Setter)) || (!write && property.Getter.IsPresent && !StorageAccess(node, property.Getter)));
 
     // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
     // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`
