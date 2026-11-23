@@ -104,6 +104,63 @@ public sealed partial class Binding
         => type.Kind == BoundTypeKind.Closure ? this.ClosureArgumentVariance(type, index, binding)
             : type.Symbol?.Schema?.Origins[index].Variance ?? OriginVariance.Invariant;
 
+    // SPEC 15.3.5: the variance of `atom`'s occurrences in `type` (a meet operand included), each position's variance composed from the
+    // Type's own as RelationWalk composes it (ComponentVariance, OriginArgumentVariance); equal occurrences keep their variance, different
+    // ones are invariant, and none is Unused. One query of `visitedParts` meets each distinct part once per polarity (a state bit per
+    // polarity): Join is idempotent, so a part met again at a polarity adds nothing (DECISIONS BU-63). The table is this Binding's, whether
+    // or not the caller reads premises (`binding`). Read by a Closure Type's argument variance and a local region's row (LocalRegionSlot).
+    private OriginVariance OccurrenceVariance(BoundType type, BoundOrigin atom, Binding? binding)
+    {
+        return Occurrences(type, atom, OriginVariance.Covariant, binding, OriginVariance.Unused, this, this.visitedParts.Begin(this.storageVersion));
+
+        static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen, Binding owner, uint query)
+        {
+            if (!type.CarriesAnyOrigin)
+            {
+                return seen;
+            }
+
+            seen = Names(OwnedOrigin(type), atom) ? Join(seen, polarity) : seen;
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                seen = Names(type.OriginArguments[i], atom) ? Join(seen, ComposeVariance(polarity, owner.OriginArgumentVariance(type, i, binding))) : seen;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                var part = type.Components[i];
+                var position = ComposeVariance(polarity, ComponentVariance(type, i, binding));
+                if (part.CarriesAnyOrigin && owner.FirstVisit(part, query, (byte)(1 << (int)position)))
+                {
+                    seen = Occurrences(part, atom, position, binding, seen, owner, query);
+                }
+            }
+
+            return seen;
+        }
+
+        static bool Names(BoundOrigin? origin, BoundOrigin atom)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Names(origin.Operands[i], atom))
+                {
+                    return true;
+                }
+            }
+
+            return ReferenceEquals(origin, atom);
+        }
+
+        static OriginVariance Join(OriginVariance seen, OriginVariance variance)
+            => seen == OriginVariance.Unused || seen == variance ? variance : OriginVariance.Invariant;
+    }
+
     // SPEC 15.3.4: whether a use is a binding set named in a Constraint (not an associated specification) that its declaration holds.
     private bool ConstraintSet(Koto use)
     {

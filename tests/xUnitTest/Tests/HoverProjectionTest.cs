@@ -336,27 +336,28 @@ public sealed class HoverProjectionTest
     [Fact]
     public void TypeDisplayPreservesGroupingAndBoundsDepthAndRepeatedExpansion()
     {
-        var types = CompilationTestHelper.BindSuccess("()").Types;
+        var c = CompilationTestHelper.BindSuccess("()");
+        var types = c.Types;
         var integer = BoundType.I32;
         var tuple = types.Tuple([integer]);
-        Assert.Equal("(i32,)", Binding.HoverTypeName(tuple));
+        Assert.Equal("(i32,)", c.Binding.HoverTypeName(tuple));
         var function = types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [BoundType.Unit, integer]);
         var reference = types.Reference(SemanticsKind.Ref, function);
-        Assert.Equal("ref/(() -> i32)", Binding.HoverTypeName(reference));
+        Assert.Equal("ref/(() -> i32)", c.Binding.HoverTypeName(reference));
         var deep = integer;
         for (var i = 0; i < 128; i++)
         {
             deep = types.Tuple([deep]);
         }
 
-        Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(deep));
+        Assert.Throws<HoverLimitException>(() => c.Binding.HoverTypeName(deep));
         var repeated = integer;
         for (var i = 0; i < 24; i++)
         {
             repeated = types.Tuple([repeated, repeated]);
         }
 
-        Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(repeated));
+        Assert.Throws<HoverLimitException>(() => c.Binding.HoverTypeName(repeated));
     }
 
     private static string Extract(HoverDocumentation documentation)

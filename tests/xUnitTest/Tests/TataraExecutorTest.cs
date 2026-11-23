@@ -164,13 +164,15 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Contains("not a COFF or ELF object", Assert.Throws<IOException>(() => tatara.Inspect(Context, macho)).Message, StringComparison.Ordinal);
     }
 
-    // The Tatara plan's B7b2a: the Linux row's libc-free modules (Hello, Hello ending in an Abort and design §5 row 14's allocator
-    // program), each generated for the row, verified and emitted by Tatara at O0 and O2 with no undefined symbol, and linked by ld.lld at
-    // the row's entry into a static executable. Linux runs them under WSL before Ready, not here (N7).
+    // The Tatara plan's B7b2a: the Linux row's libc-free modules (Hello, Hello ending in an Abort, design §5 row 14's allocator program and
+    // B7b6's Stopwatch over the layer's clock), each generated for the row, verified and emitted by Tatara at O0 and O2 with no undefined
+    // symbol, and linked by ld.lld at the row's entry into a static executable. Linux runs them under WSL (B7b2a's before its Ready, the
+    // Stopwatch at B7b7), not here (N7).
     [Theory]
     [InlineData("Hello", "::Kimi.Console.writeLine(\"Hello, world!\")")]
     [InlineData("Abort", "::Kimi.Console.writeLine(\"Hello, world!\")\n$abort(\"x\")")]
     [InlineData("Heap", HeapRuntimeTest.AllocatorProgram)]
+    [InlineData("Stopwatch", TimeLibraryTest.Measured)]
     public void TheLinuxRowsModulesLinkStatically(string name, string source)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);

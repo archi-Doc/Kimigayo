@@ -2,13 +2,13 @@
 
 [Specification index](../SPEC.md)
 
-This revision defines one executable target profile, windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)). Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)); the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
+This revision defines one executable target profile, windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)). Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)), including the Kimi Kotonoha's ([§22.1](#221-required-kimi-declarations)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)); the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
 
 ## 22.1. Required Kimi declarations
 
 Every Compilation binds exactly one **Kimi Kotonoha** under the reserved direct reference name `Kimi` ([§18.4.1](18-modules-and-dependencies.md#1841-identities-and-reference-names)). `Kimi` is not a keyword: inner scopes may shadow it; `::Kimi` cannot be shadowed. The mandatory default alias opens `Kimi` ([§18.2.3](18-modules-and-dependencies.md#1823-default-aliases)).
 
-A Kimi declaration is recognized by its declaration identity, never by name or by a user conformance; a same-spelled user declaration or a replacement alias never gets its special behavior. A Kimi Kotonoha is compatible when it declares every row below with the stated shape; it may declare more. Whether a compiler accepts a Kimi Kotonoha other than its own is implementation-defined. Every Kimi declaration, including `Kimi.Windows` and `Kimi.Time`, exists on every target.
+A Kimi declaration is recognized by its declaration identity, never by name or by a user conformance; a same-spelled user declaration or a replacement alias never gets its special behavior. A Kimi Kotonoha is compatible when it declares every row below with the stated shape; it may declare more. Whether a compiler accepts a Kimi Kotonoha other than its own is implementation-defined. Every public Kimi declaration exists on every target, except the group `Kimi.Windows` and its members, which are declared only where the Condition `windows` holds ([§22.8.3](#2283-windows-counter-functions)).
 
 Besides the Kimi imports ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)), some Kimi declarations have no Kimigayo definition: the implementation supplies the definition of a function or constructor, or reports every use of a declaration as Unsupported ([§23.1.1](23-compiler-services.md#2311-categories)). Such a function or constructor omits its Body or writes only the Body's leading region ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). Its contract is its declaration's, and a supplied definition meets that contract and the sections that define its behavior. The Kimi Kotonoha's own sources may carry the implementation's Attributes where [§6.7](06-declarations-and-containers.md#67-attributes) accepts them; they identify a declaration to the implementation, such as the row or operation it is, the definition the implementation supplies for it, that its calls carry their caller's location ([§22.5.1](#2251-abort-location)), or that its uses are Unsupported. An implementation Attribute adds no rule or form: it changes no declaration's Type, contract, effects, access or validity at any use. The implementation documents its Attributes ([IMPL §21.3.4](../impl/21-layout-runtime-and-code-generation.md#2134-kimi-implementation-attributes)).
 
@@ -44,7 +44,7 @@ This table is the only list of required Kimi declarations (names relative to `Ki
 | `Async` group | `Cancelled`, `SendFailure`, `Raced` (arities 2–4), `Sender<T>`, `Receiver<T>`, `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe`, `offload`, `offloadEach` ([§22.3](#223-asynchronous-tasks)) |
 | `Console` group | `writeLine` ([§22.7](#227-console-output)) |
 | `Time` group | `Duration`, `Stopwatch` ([§22.8](#228-time)) |
-| `Windows` group | `queryPerformanceCounter`, `queryPerformanceFrequency` ([§22.8.3](#2283-windows-counter-functions)) |
+| `Windows` group | `queryPerformanceCounter`, `queryPerformanceFrequency`, declared only where the Condition `windows` holds ([§22.8.3](#2283-windows-counter-functions)) |
 | UTF-8 formatting | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull`, `Text` group ([§22.9](#229-utf-8-text-and-buffers)) |
 | `Test` group | `tempDirectory() -> string`, only in test-only bodies ([§17.6.1](17-failure-handling.md#1761-forms-and-placement); [§20.6.3](../impl/20-compilation-configuration.md#2063-case-execution)) |
 
@@ -532,7 +532,7 @@ let seconds: f64 = watch.elapsed().seconds
 
 ### 22.8.3. Windows counter functions
 
-The group `Kimi.Windows` declares two ordinary imports ([§22.6](#226-foreign-function-imports)). They exist on every target; their imports resolve only when a program is built for windows-x64.
+The group `Kimi.Windows` is declared only where the Condition `windows` holds ([§19.2.1](19-compile-time-directives.md#1921-built-in-conditions)) and declares two ordinary imports ([§22.6](#226-foreign-function-imports)). Elsewhere `Kimi.Windows` is an unknown Name ([§9](09-names-signatures-and-access.md#9-names-signatures-and-access)) and `Windows` names no Kimi declaration; portable code measures time with `Time.Stopwatch` or selects the call with `#if windows`.
 
 ```kimi
 public group Windows
@@ -544,6 +544,12 @@ public group Windows
 ```
 
 Each returns the native flag (nonzero is success) and writes a count, or counts per second, into the borrowed `i64`. They are safe, allocate nothing and do not Abort.
+
+```kimi
+#if windows
+    var count: i64 = 0
+    let ok = Windows.queryPerformanceCounter(count@uniq)   // Without #if: an unknown Name where windows does not hold.
+```
 
 ## 22.9. UTF-8 text and buffers
 
