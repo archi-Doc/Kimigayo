@@ -87,6 +87,29 @@ internal static class CheckService
         return new(CheckOutcome.Completed, accepted, presence, result) { Hover = hover, HoverFault = hoverFault };
     }
 
+    /// <summary>The check entry's load of a unit's project (SPEC 23.2.3, PLAN G1010): the unit's output when the project did not load,
+    /// Blocked by the load's own failures (one <c>ProjectLoadFailed_Kd</c> per failure) or Faulted by any other exception (one
+    /// <c>CheckFaulted_Kd</c> at the project file); every unit of the project shares it.</summary>
+    /// <param name="kimigayo">The compiler service.</param>
+    /// <param name="path">The project file.</param>
+    /// <param name="inputs">The input source.</param>
+    /// <param name="project">The loaded project, or <see langword="null"/> with an output.</param>
+    /// <returns>The failed unit's output, or <see langword="null"/> when the project loaded.</returns>
+    /// <exception cref="PendingInputException">The load needs an input with an event after its base.</exception>
+    internal static CheckOutput? Load(Kimigayo kimigayo, SourceIdentity path, CheckInputSource inputs, out Project? project)
+    {
+        try
+        {
+            return Project.TryCreate(kimigayo, null, path.Value, inputs, out project, out var failures) ? null
+                : CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, path, failures);
+        }
+        catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
+        {
+            project = null;
+            return Faulted(DiagnosticFault.Exception, ex, path.Value);
+        }
+    }
+
     // SPEC 23.4: optional projection has no authority to alter finalized diagnostics, acceptance or TestPresence.
     // Pass state separately so the production factory is a shared static delegate, without a closure per check.
     internal static HoverSnapshot? TryCreateHover<T>(T state, Func<T, HoverSnapshot> create, out string? fault)
