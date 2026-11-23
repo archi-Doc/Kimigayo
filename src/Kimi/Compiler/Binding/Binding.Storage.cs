@@ -291,7 +291,7 @@ public sealed partial class Binding
 
     private BoundType? CompletedProjection(BoundType projection, Koto declaration)
     {
-        var outcome = this.ProjectionSpecification(projection, this.scopes[declaration]);
+        var outcome = this.ProjectionSpecification(projection, this.scopes[declaration], declaration);
         if (outcome.Type is not { } specified)
         {
             return outcome.Pending ? projection : null;

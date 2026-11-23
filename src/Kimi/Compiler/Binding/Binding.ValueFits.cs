@@ -256,7 +256,7 @@ public sealed partial class Binding
         }
 
         // A value's fit is judged at its use, in no comparison (default); the part's walk formed its raw fit (no sink).
-        var (outer, longer, shorter) = this.FitOuterOrigins(actual, expected, use, default, null, false);
+        var (outer, longer, shorter) = this.FitOuterOrigins(actual, expected, use, use, default, null, false);
         switch (outer)
         {
             case OuterOriginFit.Mismatch:

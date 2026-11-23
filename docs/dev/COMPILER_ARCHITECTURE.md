@@ -285,15 +285,11 @@ is restricted to Parsing/Binding. IntrinsicId's limit is 30 since the Tatara pla
     unqualified projection over a declared Type read before the conformance declarations register, read again after they do;
   - G586's, removed at R7-I2 d (G443's unit; DECISIONS BU-156): `Binding.BindWaitedSources`' row that records the located
     `Unsupported_Kd` at a late source differing from a step-2 Target Result Type in Origins alone;
-  - G651 U1's, removed by G651 a1-a4 and U2b (DECISIONS BU-161, R7-M54's G651 U2a line): `Binding.sitelessHeightRefusal`
-    (Transitional), a refusal past H during Binding's run with no consultation frame open, `InternalInvariant_Kd` at the project,
-    and, after the run, an instance's stored-Types refusal outside the collector's frame (G651 U2a); a1 makes the site
-    `SubstituteType`'s input, and the flag goes with the last unframed step (a4) once the after-run record outside the frame has
-    gone with G651 U2b;
-  - R7-T1's, removed by G651 a1 (DECISIONS R7-M54): `Binding.answer` (Transitional), the instance collector's answer frame, the
-    interim form of G651's after-run site kind "the caller records", which also carries G651 U2a's after-run storage formation
-    outside the collector's run; a1 makes the site `SubstituteType`'s input and the frame that site kind (a1's site kind covers the
-    storage formation, else it goes with U2b);
+  - G651 U1's, removed by G651 a4 and U2b (DECISIONS BU-161, R7-M54's G651 U2a line, R7-M93): `Binding.sitelessHeightRefusal`
+    (Transitional, `G651 a4`), a refusal past H during Binding's run with no consultation frame open, `InternalInvariant_Kd` at the
+    project, and, after the run, an instance's stored-Types refusal outside the collector's frame (G651 U2a); since a1 (R7-M93) the
+    proof entries and openers name their site and `SubstituteType`'s family reads the open frame, so the flag goes with the last
+    unframed step (a4) once the after-run record outside the frame has gone with G651 U2b;
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」);
