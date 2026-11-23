@@ -102,7 +102,8 @@ public sealed partial class TyCtxtTest
     private const string BorrowsPrelude = "func inspect<T>(value: ref/T) => ()\npublic func main() -> () => ()\n";
 
     // Z6-F2's rows (AFitFromAnotherOriginMarksTheHoldersAtoms): the holders, t6's setup and tail around a row's holder and fit (h's layer
-    // states the atom `s@follow@raw` states, w's projection: SharedAddress by the address, FittedIntoHolder by the fit), d04's holder in
+    // states the atom `s@follow@raw` states, w's projection: SharedAddress by the address, FittedIntoHolder by the fit and, r's address
+    // being exclusive, FittedExclusive), d04's holder in
     // parts, and t9's Cell.
     private const string FitsPrelude = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
         "    public func put<U>(self: uniq/Self, v: U) => ()\nstruct Box<E>\n    public var value: E\n    public init(value: E) => self.value = value@move\n" +
@@ -112,7 +113,7 @@ public sealed partial class TyCtxtTest
 
     private const string FitTail = "|h.put(z@ref)|z = 5|inspect(v)";
 
-    private const string FitS = "var w: ref/i32 = x@ref Projection 0: ref/i32 S SharedAddress, FittedIntoHolder";
+    private const string FitS = "var w: ref/i32 = x@ref Projection 0: ref/i32 S SharedAddress, FittedIntoHolder, FittedExclusive";
 
     private const string FitStore = "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b)|" +
         "    origin b outlives a|    h@follow = Wrap.init(q)|";
@@ -1020,28 +1021,30 @@ public sealed partial class TyCtxtTest
     // split is a PLAN open issue (Front); its removal unmarks t6wn and p10. Labels from SPEC (`G147\z6f2i\labels.txt`, before any run;
     // t6c's and t6e's forms after their invalid first forms; ce2 and ce2t `G147\z6f\dl\labels.txt`): the marked rows but ce2 I (h's layer
     // may hold r's exclusive address of v, so put may store z's borrow in v), ce2, ce2t, t6wn, x01, d01, t9 and t9k V, p02, p10 and t08x
-    // I for other reasons.
+    // I for other reasons. Z6 Revision 8 (the owner's O-507 (B)): each such atom whose fitted value may write is also FittedExclusive (r's,
+    // k's, u's exclusive addresses, the clause's `static` value in ce2); store's and store2's own `a` (their value b is kept only by `kb:
+    // ref`) and the written-Type and raw-local twins' s (w's projection, kept only by s's shared borrow) are not.
     [Theory]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => h = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw)|if c => h = Wrap.init(r@follow@raw)" + FitTail, FitS)]
-    [InlineData("", FitHead + "var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)|if c => h = Wrap.init(r@follow@raw@raw/u8)" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder")]
+    [InlineData("", FitHead + "var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)|if c => h = Wrap.init(r@follow@raw@raw/u8)" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder, FittedExclusive")]
     [InlineData("", FitHead + "var h = Box.init(s@follow@raw@raw/u8)|if c => h.set(r@follow@raw@raw/u8)" + FitTail, FitS)]
-    [InlineData("func setp(h: uniq/Wrap<raw/u8 during o>, q: raw/u8 during o, anchor: ref/i32 during o) => h@follow = Wrap.init(q)|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => setp(h@uniq, r@follow@raw@raw/u8, x@ref)" + FitTail, FitS + "|var x = 1 Projection 0: i32 S FittedIntoHolder")]
+    [InlineData("func setp(h: uniq/Wrap<raw/u8 during o>, q: raw/u8 during o, anchor: ref/i32 during o) => h@follow = Wrap.init(q)|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => setp(h@uniq, r@follow@raw@raw/u8, x@ref)" + FitTail, FitS + "|var x = 1 Projection 0: i32 S FittedIntoHolder, FittedExclusive")]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => Kimi.Intrinsics.replace(h@uniq, with: Wrap.init(r@follow@raw@raw/u8))" + FitTail, FitS)]
-    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|var g = Wrap.init(r@follow@raw@raw/u8)|if c => Kimi.Intrinsics.swap(h@uniq, g@uniq)" + FitTail, "var r = v@uniq Inference -1:  FittedIntoHolder|" + FitS)]
+    [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|var g = Wrap.init(r@follow@raw@raw/u8)|if c => Kimi.Intrinsics.swap(h@uniq, g@uniq)" + FitTail, "var r = v@uniq Inference -1:  FittedIntoHolder, FittedExclusive|" + FitS)]
     [InlineData("func pick<T>(a: T, b: T) -> T => a@move|", FitHead + "var h = Wrap.init(pick(s@follow@raw@raw/u8, r@follow@raw@raw/u8))" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Box.init(s@follow@raw@raw/u8)|if c => h.value = r@follow@raw@raw/u8" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c|    let hr = h@uniq|    hr@follow = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
-    [InlineData(FitStore, FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => store(h@uniq, r@follow@raw@raw/u8, w@ref, y@ref)" + FitTail, "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b) Parameter 0:  FittedIntoHolder|" + FitS + "|var y = 2 Projection 0: i32 S FittedIntoHolder")]
-    [InlineData(FitClause + FitClauseCaller + "store2(kx, ks, hp@uniq, qs)|", "return", "func store2(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during b) Parameter 0:  FittedIntoHolder|var x = 1 Projection 0: i32 S SharedAddress, FittedIntoHolder")]
+    [InlineData(FitStore, FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => store(h@uniq, r@follow@raw@raw/u8, w@ref, y@ref)" + FitTail, "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b) Parameter 0:  FittedIntoHolder|" + FitS + "|var y = 2 Projection 0: i32 S FittedIntoHolder, FittedExclusive")]
+    [InlineData(FitClause + FitClauseCaller + "store2(kx, ks, hp@uniq, qs)|", "return", "func store2(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during b) Parameter 0:  FittedIntoHolder|var x = 1 Projection 0: i32 S SharedAddress, FittedIntoHolder, FittedExclusive")]
     [InlineData(FitClauseT + FitClauseCaller + "store5(kx, ks, hp@uniq, kx@follow@raw@raw/u8)|", "return", "")]
-    [InlineData("", FitHead + "var h = Wrap.init(r@follow@raw@(raw/u8 during s))" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder")]
+    [InlineData("", FitHead + "var h = Wrap.init(r@follow@raw@(raw/u8 during s))" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder, FittedExclusive")]
     [InlineData("func g(v: ()) => ()|func g(v: i32) => ()|", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => g(h = Wrap.init(r@follow@raw@raw/u8))" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|let pr = r@follow@raw@raw/u8|let hr = h@uniq|var put2 = func [hr, pr] () => hr@follow = Wrap.init(pr)|if c => put2()" + FitTail, FitS)]
-    [InlineData("", "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|var k = v@uniq|var r = w@uniq|let q: raw/u8 during k = r@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "var k = v@uniq Inference -1:  FittedIntoHolder")]
-    [InlineData(FitHolderStruct + "raw/u8 during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/u8 during s)" + FitHolderBody, FitHolderUse + "@raw/u8)" + FitTail, "var x = 1 Projection 0: i32 S FittedIntoHolder")]
-    [InlineData(FitHolderStruct + "raw/(ref/i32 during s) during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/(ref/i32 during s) during s)" + FitHolderBody, FitHolderUse + ")" + FitTail, "var r = v@uniq Inference -2:  FittedIntoHolder|var x = 1 Projection 0: i32 S FittedIntoHolder")]
-    [InlineData("", "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|var r = w@uniq|var u = v@uniq|var q = r@follow@raw@raw/u8|if c => q = u@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "var r = w@uniq Inference -1:  FittedIntoHolder")]
+    [InlineData("", "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|var k = v@uniq|var r = w@uniq|let q: raw/u8 during k = r@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "var k = v@uniq Inference -1:  FittedIntoHolder, FittedExclusive")]
+    [InlineData(FitHolderStruct + "raw/u8 during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/u8 during s)" + FitHolderBody, FitHolderUse + "@raw/u8)" + FitTail, "var x = 1 Projection 0: i32 S FittedIntoHolder, FittedExclusive")]
+    [InlineData(FitHolderStruct + "raw/(ref/i32 during s) during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/(ref/i32 during s) during s)" + FitHolderBody, FitHolderUse + ")" + FitTail, "var r = v@uniq Inference -2:  FittedIntoHolder, FittedExclusive|var x = 1 Projection 0: i32 S FittedIntoHolder, FittedExclusive")]
+    [InlineData("", "var x = 1|var y = 2|var z = 3|var w: ref/i32 = x@ref|var v: ref/i32 = y@ref|var r = w@uniq|var u = v@uniq|var q = r@follow@raw@raw/u8|if c => q = u@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "var r = w@uniq Inference -1:  FittedIntoHolder, FittedExclusive")]
     [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|let s = w@ref|var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)|h.put(z@ref)|z = 5|inspect(w)", "let s = w@ref Inference -1:  FittedIntoHolder")]
     [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|var r = w@uniq|var h = Wrap.init(r@follow@raw@raw/u8)|h.put(z@ref)|z = 5|inspect(w)", "")]
     [InlineData("", "var x = 1|var z = 3|var w: ref/i32 = x@ref|let s = w@ref|let q: raw/u8 during s = s@follow@raw@raw/u8|var h = Wrap.init(q)|h.put(z@ref)|z = 5|inspect(w)", "let s = w@ref Inference -1:  FittedIntoHolder")]
@@ -1052,11 +1055,26 @@ public sealed partial class TyCtxtTest
     [InlineData(FitCell, "var z = 3|var b = (0, 1)|var k = b.0@uniq|let s = k@ref|let a = s@follow@follow@raw@raw/u8|var h = Cell.init(null, k)|h.put(z@ref)|z = 5", "")]
     public void AFitFromAnotherOriginMarksTheHoldersAtoms(string declarations, string body, string marked)
     {
-        var c = MinimalEmissionTest.Analyze(BorrowsPrelude + FitsPrelude + declarations.Replace("|", "\n", StringComparison.Ordinal) +
-            $"func p(c: bool)\n    {body.Replace("|", "\n    ", StringComparison.Ordinal)}\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         string[] expected = marked.Length == 0 ? [] : marked.Split('|');
-        Assert.Equal(expected, BorrowRows(c).Where(static x => x.Contains(nameof(Binding.LimitMarks.FittedIntoHolder), StringComparison.Ordinal)));
+        Assert.Equal(expected, FitRows(declarations, body, Binding.LimitMarks.FittedIntoHolder));
+    }
+
+    // SPEC 5.7 Authority, 5.2.1 condition 3 under O-498 Q1 (i) (Z6 Revision 8; the owner's O-507 (B)): a value that may write (its Origin's
+    // members where it is bound do not all keep only shared Loans, or it is itself marked) fitted into a raw layer marks the atom the layer
+    // states FittedExclusive, and through a local region's finite sources the region of the holder initialized into the local: d04's x
+    // projection and h's region (r's exclusive address of v), the same on a `uniq`-kept slot (d05), through a raw local judged by its
+    // source (d04q); a value whose Origin keeps only shared Loans marks none (d04s). The mark is formed whatever the slot's Loan
+    // requirement: a `ref`-kept declared layer is capped by its declaration before any mark is read (DeclaredStep). Labels: Z6's
+    // `z6r8\labels.txt`, before any run.
+    [Theory]
+    [InlineData(FitHolderStruct + "raw/u8 during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/u8 during s)" + FitHolderBody, FitHolderUse + "@raw/u8)" + FitTail, "var h = HF.init(x@ref, r@follow@raw@raw/u8) Inference -1:  FittedExclusive|var x = 1 Projection 0: i32 S FittedIntoHolder, FittedExclusive")]
+    [InlineData(FitHolderStruct + "raw/u8 during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/u8 during s)" + FitHolderBody, "var x = 1|var y = 2|var z = 3|var v: ref/i32 = y@ref|let sv = v@ref|var h = HF.init(x@ref, sv@follow@raw@raw/u8)" + FitTail, "")]
+    [InlineData(FitHolderStruct + "raw/u8 during s|    var k: uniq/i32 during s|    public init(k: uniq/i32 during s, q: raw/u8 during s)" + FitHolderBody, "var x = 1|var y = 2|var z = 3|var v: ref/i32 = y@ref|var r = v@uniq|var h = HF.init(x@uniq, r@follow@raw@raw/u8)" + FitTail, "var h = HF.init(x@uniq, r@follow@raw@raw/u8) Inference -1:  FittedExclusive|var x = 1 Projection 0: i32 X FittedIntoHolder, FittedExclusive")]
+    [InlineData(FitHolderStruct + "raw/u8 during s|    var k: ref/i32 during s|    public init(k: ref/i32 during s, q: raw/u8 during s)" + FitHolderBody, "var x = 1|var y = 2|var z = 3|var v: ref/i32 = y@ref|var r = v@uniq|let q = r@follow@raw@raw/u8|var h = HF.init(x@ref, q)" + FitTail, "var h = HF.init(x@ref, q) Inference -1:  FittedExclusive|var x = 1 Projection 0: i32 S FittedIntoHolder, FittedExclusive")]
+    public void AValueThatMayWriteMarksTheAtomsItIsFittedInto(string declarations, string body, string marked)
+    {
+        string[] expected = marked.Length == 0 ? [] : marked.Split('|');
+        Assert.Equal(expected, FitRows(declarations, body, Binding.LimitMarks.FittedExclusive));
     }
 
     // SPEC 8.6.1, 8.2.3, 5.7 Calls (DECISIONS BU-50, PLAN G271): an instance's kept part completes an associated projection of a struct
@@ -2376,6 +2394,15 @@ public sealed partial class TyCtxtTest
     }
 
     // The program part's rows with an entry or a mark: the atom's binder (its first line) and kind, then each entry's referent and mode.
+    // The rows of a program in FitsPrelude's frame (Z6-F2's and Revision 8's) that carry `mark`.
+    private static string[] FitRows(string declarations, string body, Binding.LimitMarks mark)
+    {
+        var c = MinimalEmissionTest.Analyze(BorrowsPrelude + FitsPrelude + declarations.Replace("|", "\n", StringComparison.Ordinal) +
+            $"func p(c: bool)\n    {body.Replace("|", "\n    ", StringComparison.Ordinal)}\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        return [.. BorrowRows(c).Where(x => x.Contains(mark.ToString(), StringComparison.Ordinal))];
+    }
+
     private static string[] BorrowRows(Compilation c) => [.. c.Binding.ProgramBorrows
         .Where(static x => x.Value.Count > 0 || x.Value.Marks != default)
         .Select(static x => $"{x.Key.Binder?.ToString()?.Split('\n')[0].Trim()} {x.Key.Kind} {x.Key.Slot}: " +

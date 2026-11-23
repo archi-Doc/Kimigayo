@@ -2361,7 +2361,13 @@ public sealed partial class MirBorrowsTest
     // x are dependent, DECISIONS Q13), anchored (invalid, SPEC
     // 5.2.2's anchor: `z = 5`) and a layer over an exclusive Field's address whose referent admits no local borrow (fieldExclusive, valid).
     // `null` is never a fitted value (nullFit, valid). The fit mark is LimitMarks.FittedIntoHolder (Z6-F2), whose paths (a call's
-    // argument, a generic result, a clause) TyCtxtTest.AFitFromAnotherOriginMarksTheHoldersAtoms asserts.
+    // argument, a generic result, a clause) TyCtxtTest.AFitFromAnotherOriginMarksTheHoldersAtoms asserts. Z6 Revision 8 on the owner's
+    // O-507 (B) (a slot judged by the Type declaration that binds it; LimitMarks.FittedExclusive, which also reaches the holder's own
+    // region): a declared layer whose slot keeps only `ref` Loans gives no write authority whatever was fitted (slotRefKept, valid, as on
+    // dev), nor does a layer an abstract callee's Type does not show (slotAbstract, valid, SPEC 15.6.4); a `uniq`-kept slot's layer holding
+    // r's exclusive address keeps it (slotUniqKept, invalid: `put` may store z's borrow in v), its shared twin not (slotUniqShared, valid),
+    // and so does a pointer copied out of it into a Type argument's layer (slotUniqCopied, invalid); the same copy out of a `ref`-kept
+    // layer (slotCopied, valid: SPEC 5.2.1 condition 3's declared-layer sentence) is the whitelist's cost (O-498 Q2 (b)), a Q13 move.
     [Fact]
     public void ANamedLimitKeepsTheLocatedUnsupportedWhereTheStatedOriginDoesNotBoundTheLayer()
     {
@@ -2381,6 +2387,27 @@ public sealed partial class MirBorrowsTest
                     self.p = p
                     self.k = k
                 public func put<U>(self: uniq/Self, v: U) => ()
+            struct HF {s}
+                var p: raw/u8 during s
+                var k: ref/i32 during s
+                public init(k: ref/i32 during s, q: raw/u8 during s)
+                    self.p = q
+                    self.k = k
+                public func put<U>(self: uniq/Self, v: U) => ()
+            struct HU {s}
+                public var p: raw/u8 during s
+                var k: uniq/i32 during s
+                public init(k: uniq/i32 during s, q: raw/u8 during s)
+                    self.p = q
+                    self.k = k
+                public func put<U>(self: uniq/Self, v: U) => ()
+            struct HP {s}
+                public var p: raw/u8 during s
+                var k: ref/i32 during s
+                public init(k: ref/i32 during s, q: raw/u8 during s)
+                    self.p = q
+                    self.k = k
+            func putg<H>(h: uniq/H, v: ref/i32) => ()
             struct HB {s}
                 var k: ref/i32 during s
                 var m: uniq/i32 during s
@@ -2552,6 +2579,68 @@ public sealed partial class MirBorrowsTest
                 h.put(z@ref)
                 z = 5
                 inspect(b)
+            func slotRefKept()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HF.init(x@ref, r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotAbstract()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HF.init(x@ref, r@follow@raw@raw/u8)
+                putg(h@uniq, z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqKept()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HU.init(x@uniq, r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqShared()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                let sv = v@ref
+                var h = HU.init(x@uniq, sv@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqCopied()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HU.init(x@uniq, r@follow@raw@raw/u8)
+                var w = Wrap.init(h.p)
+                w.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotCopied()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HP.init(x@ref, r@follow@raw@raw/u8)
+                var w = Wrap.init(h.p)
+                w.put(z@ref)
+                z = 5
+                inspect(v)
             """);
         Assert.Equal(
             [
@@ -2560,7 +2649,8 @@ public sealed partial class MirBorrowsTest
                 "fitThrough: h.put(z@ref) Unsupported_Kd", "sharedFollow: h.put(z@ref) Unsupported_Kd", "sharedFollowTyped: z = 5",
                 "sharedFollowTyped: inspect(w)", "sharedImplicit: h.put(z@ref) Unsupported_Kd", "sharedProjection: h.put(z@ref) Unsupported_Kd",
                 "nestedExclusive: z = 5", "nestedExclusive: inspect(w)", "nestedExclusive: var w: ref/i32 = x@ref", "nestedExclusive: var x = 1",
-                "anchored: z = 5",
+                "anchored: z = 5", "slotUniqKept: h.put(z@ref) Unsupported_Kd", "slotUniqCopied: w.put(z@ref) Unsupported_Kd",
+                "slotCopied: w.put(z@ref) Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

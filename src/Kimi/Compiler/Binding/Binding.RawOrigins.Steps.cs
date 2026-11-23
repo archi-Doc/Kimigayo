@@ -164,17 +164,19 @@ public sealed partial class Binding
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
 
-    // The named limits' rule at a declared layer (Z6's C1a, R7.1.2), the members read there given: a fit from another Origin (the fit's
-    // source may carry more authority than the slot's keepers admit, SPEC 5.7 Fits and claims under O-498 Q1 (i)), or a claim with an
-    // exclusive member (R2.3). An address past a shared path is no limit here: it writes less than the keepers admit (C2).
+    // The named limits' rule at a declared layer (Z6's C1a, R7.1.2), the members read there given: a fit from another Origin, or a
+    // value that may write fitted through a local region (the fit's source may carry more authority than the slot's keepers admit, SPEC
+    // 5.7 Fits and claims under O-498 Q1 (i); Revision 8), or a claim with an exclusive member (R2.3). An address past a shared path is
+    // no limit here: it writes less than the keepers admit (C2).
     private static bool LimitsDeclared(LimitMarks marks, ReadOnlySpan<RawMember> members)
-        => (marks & LimitMarks.FittedIntoHolder) != 0 || ((marks & LimitMarks.Claimed) != 0 && AnyExclusive(members));
+        => (marks & (LimitMarks.FittedIntoHolder | LimitMarks.FittedExclusive)) != 0 || ((marks & LimitMarks.Claimed) != 0 && AnyExclusive(members));
 
-    // The named limits' rule at the binder arm (Z6's C1a, R7.1, R6.8), the members read there given: a fit from another Origin (O-498
-    // Q2 (b): the layer is read by its stated Origin only where nothing else is fitted into it), or a claim or an address past a shared
-    // path with an exclusive member.
+    // The named limits' rule at the binder arm (Z6's C1a, R7.1, R6.8), the members read there given: a fit from another Origin or a
+    // value that may write fitted through a local region (O-498 Q2 (b): the layer is read by its stated Origin only where nothing else
+    // is fitted into it; Revision 8), or a claim or an address past a shared path with an exclusive member.
     private static bool LimitsBinder(LimitMarks marks, ReadOnlySpan<RawMember> members)
-        => (marks & LimitMarks.FittedIntoHolder) != 0 || ((marks & (LimitMarks.Claimed | LimitMarks.SharedAddress)) != 0 && AnyExclusive(members));
+        => (marks & (LimitMarks.FittedIntoHolder | LimitMarks.FittedExclusive)) != 0 ||
+            ((marks & (LimitMarks.Claimed | LimitMarks.SharedAddress)) != 0 && AnyExclusive(members));
 
     private static bool AnyExclusive(ReadOnlySpan<RawMember> members)
     {
@@ -188,6 +190,10 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // SPEC 5.2.1 condition 3, 15.6.4 item 1 (Z6's R5.10): whether an Origin's members where it is bound keep only shared Loans: answered,
+    // a member, none exclusive. The binder reading's Shared step and MayWrite's "no write authority" read this one rule.
+    private static bool SharedOnly(bool complete, ReadOnlySpan<RawMember> members) => complete && members.Length > 0 && !AnyExclusive(members);
 
     // Whether RawStepAt judges a layer where its Origin is bound (BinderStep's arm: a Type argument's, a Closure environment's), the one
     // arm whose members are read by the Origin's binder (BinderReading), not within the walked scope (Z6's R5.1).
@@ -225,11 +231,7 @@ public sealed partial class Binding
 
         var start = this.binderReadingMembers.Count;
         var complete = this.AtomMembers(origin, this.binderReadingMembers);
-        var shared = complete && this.binderReadingMembers.Count > start;
-        for (var i = start; shared && i < this.binderReadingMembers.Count; i++)
-        {
-            shared = !this.binderReadingMembers[i].Exclusive;
-        }
+        var shared = SharedOnly(complete, CollectionsMarshal.AsSpan(this.binderReadingMembers)[start..]);
 
         // A layer the marks limit at this arm (LimitsBinder) has no members here, and steps by its kind, so retention reads it as itself
         // (its pointee) while A5's StoredMembers answers false: the call keeps the located Unsupported_Kd (R6.8 (b2), R7.1). A false
