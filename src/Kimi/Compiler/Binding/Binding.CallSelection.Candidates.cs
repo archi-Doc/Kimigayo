@@ -356,8 +356,7 @@ public sealed partial class Binding
         this.MatchResultOrigins(returnPattern, resultExpected, function, solution.Origins, solution.Inputs);
         if (returnPattern.CarriesOrigin)
         {
-            solution.OriginInference ??= this.BeginOriginInference(solution.Call, function);
-            this.CollectOriginInference(returnPattern, resultExpected, solution.OriginInference, solution.Frame.Node, result: true);
+            this.CollectOriginInference(returnPattern, resultExpected, solution.BeginInference(), solution.Frame.Node, result: true);
         }
 
         return structure;
@@ -929,7 +928,7 @@ public sealed partial class Binding
         {
             if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function) is { Relations.Length: > 0 })
             {
-                solution.OriginInference = this.BeginOriginInference(call, function);
+                solution.BeginInference();
             }
 
             for (var i = 0; solution.OriginInference is { } inference && i < function.Parameters.Count; i++)

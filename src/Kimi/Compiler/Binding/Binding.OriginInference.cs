@@ -8,7 +8,10 @@
 //   bound.
 // - Inputs: the callee's or the required signature, the actual Types, the use's premises (ProvesOriginOutlives at the use).
 // - Outputs: the solution (`origins`, `inputs`) and the solve's failure (OriginInference.Failure).
-// - Invariants: a candidate depends neither on the order of the bounds nor on that of the variables; a selection judges no bound.
+// - Invariants: a candidate depends neither on the order of the bounds nor on that of the variables; a selection judges no bound; a
+//   solve state is never shared (PLAN G1078): one per solve, or one per candidate of one call evaluation (CallEvaluation.Inferences,
+//   SlotSolution.Kept), kept across that candidate's runs; it is rented clean (RentInference) and returned clean (ReturnInference)
+//   when its solve or its evaluation ends, so no opening or mark of another solve, evaluation or pass is read.
 // - Prohibitions: no record; no state beyond the solve's own.
 
 using Kimi.Compiler.Parsing;
@@ -17,7 +20,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(Koto Use, Koto Binder), OriginInference> originInferences = new();
+    // PLAN G1078: the clean solve states not in use (RentInference, ReturnInference) and the slots that keep a call's states
+    // (CallEvaluation.Inferences, a Case construction's or a value call's one slot; ReturnInferences).
+    private readonly Stack<OriginInference> inferencePool = new();
+    private readonly ScratchBuffers<OriginInference?> inferenceScratch = new();
 
     // SPEC 15.3.6: `value` is a covariant input bound of the callee's Origin `parameter` (CollectOriginInference's covariant row), in
     // the cases `condition` names (OriginInference.Bounds).
@@ -49,21 +55,44 @@ public sealed partial class Binding
     // a lower bound) are OriginVariance's values, both Invariant, neither Unused.
     private static OriginVariance SolveRow(int polarity) => (OriginVariance)polarity;
 
-    // The solve state of `binder`'s candidacy at `use`, retained for every run of the candidate; a candidate that solves no Origin of
-    // its own reads and writes only its openings there (OriginInference.Opened), without beginning a solve.
-    private OriginInference InferenceOf(Koto use, Koto binder)
+    // A clean solve state for `binder`'s solve at `use` (OriginInference.Use, Binder), from the pool or new.
+    private OriginInference RentInference(Koto use, Koto binder)
     {
-        if (!this.originInferences.TryGetValue((use, binder), out var inference))
-        {
-            this.originInferences.Add((use, binder), inference = new(use, binder));
-        }
-
+        var inference = this.inferencePool.TryPop(out var pooled) ? pooled : new();
+        inference.Use = use;
+        inference.Binder = binder;
         return inference;
     }
 
-    private OriginInference BeginOriginInference(Koto use, Koto binder)
+    // Returns a solve state clean: Begin's reset, its openings and its failure, and no node.
+    private void ReturnInference(OriginInference inference)
     {
-        var inference = this.InferenceOf(use, binder);
+        this.BeginOriginInference(inference);
+        inference.Opened.Clear();
+        inference.Failure = default;
+        inference.Use = null!;
+        inference.Binder = null!;
+        this.inferencePool.Push(inference);
+    }
+
+    // Returns the states the first `count` slots of `kept` hold, and the slots.
+    private void ReturnInferences(OriginInference?[] kept, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            if (kept[i] is { } inference)
+            {
+                this.ReturnInference(inference);
+            }
+        }
+
+        this.inferenceScratch.Return(kept, clearArray: true);
+    }
+
+    // Begins a solve over `inference`: every member is reset but the candidate's openings (Opened, kept across its runs; cleared at its
+    // first solve) and the failure (reset at the solve's start).
+    private OriginInference BeginOriginInference(OriginInference inference)
+    {
         inference.Bounds.Clear();
         inference.Variables.Clear();
         inference.WellFormed.Clear();
@@ -681,12 +710,13 @@ public sealed partial class Binding
         return null;
     }
 
-    private sealed class OriginInference(Koto use, Koto binder)
+    private sealed class OriginInference
     {
-        // The use whose premises and pair binders the solve's proofs read (the first part of its key), its one source of the use.
-        internal Koto Use { get; } = use;
+        // The use whose premises and pair binders the solve's proofs read, its one source of the use, and the function or enum whose
+        // Origins it binds: set when the state is rented (RentInference), cleared when it is returned.
+        internal Koto Use { get; set; } = null!;
 
-        internal Koto Binder { get; } = binder;
+        internal Koto Binder { get; set; } = null!;
 
         // Each bound with its source (SPEC 15.6.1): the comparison's member whose position collected it (a parameter n + 1, the result
         // ComparisonFailure.ResultStep), else the declared clause; neither, a result premise or a call's bound. Its Condition is the pair
@@ -725,7 +755,8 @@ public sealed partial class Binding
         // J2 (SPEC 15.3.6; PLAN G936): the candidate's openings: each region its late solve opened (a Type slot's SlotRegion,
         // OpenSlotOrigins; a waited Origin's CallRegion, the solve) with the evidence candidate E it stands beside, so the variable's
         // solution is `(E and region)`. Written at the opening (Open), cleared at the candidate's first solve (OpenWaited) and kept for
-        // its later runs; the selected candidate's are the region graph's records (RecordOpenings). E is never read back from a meet.
+        // its later runs in the same evaluation (SlotSolution.Kept); the selected candidate's are the region graph's records
+        // (RecordOpenings). E is never read back from a meet.
         internal List<(BoundOrigin Region, BoundOrigin Bound)> Opened { get; } = new();
 
         // SPEC 15.3.4: the per-call binders (BoundType.Binder) of the Function Types the collection is inside, on either side

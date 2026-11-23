@@ -383,8 +383,7 @@ public sealed partial class Binding
                 binding.MatchInputOrigins(matched, actual, binder, this.Origins, this.Inputs, quantifier);
                 if (matched.CarriesOrigin && actual.CarriesOrigin)
                 {
-                    this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
-                    binding.CollectOriginInference(matched, actual, this.OriginInference, this.Frame.Node, known: quantifier);
+                    binding.CollectOriginInference(matched, actual, this.BeginInference(), this.Frame.Node, known: quantifier);
                 }
             }
 
@@ -500,8 +499,7 @@ public sealed partial class Binding
             var binding = this.Binding;
             var place = binding.PlaceOrigin(part);
             binding.MatchInputOrigin(origin, place, this.Binder, this.Origins, this.Inputs);
-            this.OriginInference ??= binding.BeginOriginInference(this.Call, this.Binder);
-            AddInputBound(this.OriginInference, origin, place);
+            AddInputBound(this.BeginInference(), origin, place);
         }
 
         // SPEC 10.8, 4.3.1, 4.6.2: a Tuple or array literal or a mixed range, part by part at their positions; at a bare slot the
