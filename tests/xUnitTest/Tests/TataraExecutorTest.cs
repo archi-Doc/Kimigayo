@@ -212,8 +212,8 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // A request that fails with return 1 is the toolchain's failure, and the next request succeeds: an invalid IR; an inline-asm
-    // constraint error, which llc reports after opening the object and which leaves no object, as llc's; then a link with an
-    // undefined symbol.
+    // constraint error, which llc reports after opening the object and which leaves no object, as llc's; then a link without
+    // kernel32's import library, whose imports are undefined symbols.
     [Fact]
     public async Task FailedRequestsLeaveTataraUsable()
     {
@@ -233,7 +233,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.False(File.Exists(Path.Combine(this.directory, "asmerror.obj")));
         var obj = Path.Combine(this.directory, "hello.obj");
         tatara.Emit(Context, ir, obj, 0);
-        var link = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld-link", obj, Kernel32, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
+        var link = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld-link", obj, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
         Assert.StartsWith("Tatara failed: link\n", link.Message, StringComparison.Ordinal);
         Assert.Contains("undefined symbol", link.Message, StringComparison.Ordinal);
         var flavor = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld", .. LinkArguments(obj, Path.Combine(this.directory, "c.exe"), CompilerLibraries)]));
