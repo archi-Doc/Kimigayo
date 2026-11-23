@@ -783,7 +783,14 @@ public sealed partial class Binding
         {
             var declaration = declarations[i];
             var validation = this.RequestCapability(this.SelfType(container.BoundSymbol!), this.Library.Copy, declaration.Scope, QuerySite.Nested, derivation: true);
-            if (declaration.Clause.BindingState == BindingState.Invalid || validation is ConstraintProof.Error or ConstraintProof.Refuted)
+            if (declaration.Clause.BindingState == BindingState.Invalid)
+            {
+                // SPEC 23.1.2 (R7-C6 a, F's C8 ruling 25): the failed opt-in keeps its own record (a limit's or a Language one), on which
+                // this Error rests, so a judgment reading the Type's Copy is that record's dependent (the proof channel's cause).
+                return this.ReadVerdict(ConstraintProof.Error, declaration.Failed, null);
+            }
+
+            if (validation is ConstraintProof.Error or ConstraintProof.Refuted)
             {
                 return ConstraintProof.Error;
             }
