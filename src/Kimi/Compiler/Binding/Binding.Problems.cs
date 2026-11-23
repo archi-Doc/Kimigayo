@@ -287,14 +287,30 @@ public sealed partial class Binding
             case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Cause) is { } later:
                 node.ReportDerivedIn(store, problem.Requirement, [this.compilation.SyntaxOf(later.Site).KeyIn(this.compilation.StoreOf(this.compilation.SyntaxOf(later.Site)), problem.Requirement)], problem.Condition);
                 break;
-            case BindingFailure.ParameterShapeMismatch when this.FactOf(index, ProblemFactKind.Reason) is not null:
+            case BindingFailure.ParameterShapeMismatch when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: the conflicting parameter, then its parties.
                 this.ReportParameterShapes(node, store, index, problem);
                 break;
             case BindingFailure.InvalidEffectBound when node is EffectBoundKoto effect && this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportEffectRejection(effect, store, index, problem);
                 break;
-            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Instance) is not null:
+            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: an associated Type declaration, with its Instance.
                 this.ReportAssociatedAmbiguity(node, store, index, problem);
+                break;
+            case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 3 }:
+                // Role 3, "candidate": a declaration a selection considered and rejected or could not order (CandidateFacts).
+                this.ReportCandidates(node, store, index, problem);
+                break;
+            case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous or BindingFailure.ReceiverShapeMismatch or BindingFailure.ParameterShapeMismatch
+                when this.FactOf(index, ProblemFactKind.Related) is { Value: 5 }:
+                // Role 5, "premise candidate": a Callable premise a value call considered (FailCallableCandidates).
+                this.ReportCallableCandidates(node, store, index, problem);
+                break;
+            case BindingFailure.UnboundTypeArgument when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: the unbound slot's Type parameter, 1: the waiting argument.
+                this.ReportUnboundTypeArgument(node, store, index, problem);
+                break;
+            case BindingFailure.ConstructorSelectionChanged or BindingFailure.UnprovenAcquisitionCorrelation when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                // Role 0: the tentative selection or group contract, 1: the constructor the check found or the corresponding declaration.
+                this.ReportConstructionCheck(node, store, index, problem);
                 break;
             case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportDisagreement(node, store, index, problem);

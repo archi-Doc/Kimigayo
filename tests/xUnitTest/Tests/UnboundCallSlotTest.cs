@@ -38,9 +38,11 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal($"Generic parameter '{slot}' is not bound", error.Label);
         Assert.Null(error.Repairs);
         var related = error.Related!;
-        Assert.Contains(related, static x => x.Role == "declaration");
         Assert.Equal(argument, related.SingleOrDefault(static x => x.Role == "argument") is { } waiting ? Text(source, waiting.Span) : null);
-        Assert.Contains(argument is null ? $"binds {slot} (SPEC 10.8)" : "never evidence for an outer slot", error.Note, StringComparison.Ordinal);
+
+        // R7-E3 E3b-1 (Q13 M3 + M4): the record relates the unbound slot's own Type parameter as the declaration and composes no Note.
+        Assert.Equal(slot, Text(source, related.Single(static x => x.Role == "declaration").Span));
+        Assert.Null(error.Note);
     }
 
     // SPEC 10.8 (DECISIONS BU-2): an expected result Never is ordinary evidence, so it fills the slot that a Never argument does not.

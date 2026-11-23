@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -232,19 +233,21 @@ public sealed partial class Binding
                     }
                 }
 
-                var start = this.rejectedRows.Count;
+                // A reference use, no call: each earlier failure returns, so the record is always written (R7-E3 E3b delta 2.4).
                 for (var i = 0; i < count; i++)
                 {
                     if (applicable == 0 || evaluated[i].State == CandidateApplicability.Applicable)
                     {
                         var candidate = evaluated[i].Symbol!;
                         var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-                        this.rejectedRows.Add(new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true, ConstraintFailure: evaluated[i].ConstraintFailure));
+                        var pair = this.FunctionItemSignature(item) is { } signature ? (use, signature, required) : ((Koto, BoundType, BoundType?)?)null;
+                        this.CandidateFacts((FunctionKoto)candidate.Declaration, evaluated[i].ConstraintFailure, CandidateFlags.CallableSignature | CandidateFlags.ReferenceSignature, pair);
                     }
                 }
 
-                this.RecordRejected(use, start);
-                return this.Fail(use, applicable == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
+                this.Record(use, applicable == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous, CollectionsMarshal.AsSpan(this.candidateFacts));
+                this.candidateFacts.Clear();
+                return null;
             }
 
             selected = evaluated[winner].Symbol!;

@@ -51,7 +51,6 @@ public sealed partial class Binding
         this.foreignFailures.Clear();
         this.sitelessHeightRefusal = false;
         this.lints.Clear();
-        this.callableSelectionParties.Clear();
         this.importDeclarations.Clear();
         this.libraryImports.Clear();
         this.environmentsJudged = -1;

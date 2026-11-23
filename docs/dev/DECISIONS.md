@@ -25968,6 +25968,50 @@ R8-M* and R9-M* by the stage of the recording unit.
     its owner (O6 (a)). The Notes are rendered from `Reason`, which the CLI/LSP rows pin. CallRelations' E3 row closes by census (no
     edit: line 157 records through `RecordNumbered` since E3a-2; O-8). Moves: content only, ArithmeticDirection_Kd's evidence `left`
     where the reverse premise names it through an identity mate.
+  - **E3b-1 (Q-703, D-1161).** A selection's record: the subject's facts, then per party a `Related` followed by its entries in the
+    adapter's rendering order, read by position, never `FactOf`; no `Count` (the adapter counts the parties). Roles:
+    NoApplicableOverload_Kd and AmbiguousBinding_Kd 3 "candidate" (its pair `Actual`/`Expected`, packed `Reason`, refuted clause 4
+    "constraint" with its `Constraint`, retained implementation 6 that keeps its declaring Type as Self, SPEC 8.6.2); all four
+    selection codes 5 "premise candidate" (its `Instance`, reading 1: the Callable signature the premise states, and its receiver
+    `Reason`; a parameter-shape conflict's subject `Reason` packs the two modes and, above them, the position); UnboundTypeArgument_Kd
+    0 the unbound slot's Type parameter, 1 the waiting argument; the constructor checks (B's ruling 8 (1)):
+    ConstructorSelectionChanged_Kd `Reason` (the check: changed selection, waiting context, unproven candidate), 0 the tentative
+    selection with its `Instance` (reading 1, the construction's constructed Type), 1 the constructor the check found when it is
+    another; UnprovenAcquisitionCorrelation_Kd `Reason` (the check, and above it the slot's ordinal), 0 the group contract, 1 the
+    corresponding declaration when it is another, and where both bindings are known one pair at the slot's Type parameter declaration,
+    `Actual` (the corresponding declaration's binding) then `Expected` (the group contract's), the candidate builder's one order for a
+    pair at one site (B's ruling 9, C-1; the adapter renders the group contract's binding first, as before) (existing kinds; rejected:
+    two `Instance` facts at the Type parameter, which need `Instance`'s second reading widened to Type parameters, withdrawn by E3c-1's
+    ruling 6; and keeping `callInferenceFailures` with a removal stage; departs from the Front's R2, agreed by C-439); both record
+    through `RecordSelection`, so the record has no Cause fact, and its adapter row (`ReportConstructionCheck`) reads the second party
+    by its role (C-2). `Reason`'s kind line gains "and above them an ordinal into its party's own parameters or Type parameters" with
+    its readers named (a candidate's receiver parameter, a correlation's slot, E3c-2's Case index, a Callable call's position: R1).
+    E2's ParameterShapeMismatch and associated-ambiguity rows key on their first `Related`'s ordinal 0. One builder (`CandidateFacts`,
+    a kept scratch, warm rebind 0 B, R4's row with InheritedConformanceTest's `use(value)`); `RecordSelection` records only at a call
+    without a failure (Calls' NoneApplicable guard moved into it; R7-E5 Transitional), the selection family's one recorder,
+    UnboundTypeArgument_Kd's included (`FailUnboundSlots` records through it, B's ruling 10 (1), h57: a second copy of the guard
+    rejected as a second copy of one rule); `RecordNoneApplicable(in CallEvaluation)` is R7-P2 commit 4's writer. The premise-row
+    locator is `Binding.ContractSolver`'s `PremiseUse` (input a premise row and its view; output the written use of its fact in the
+    stating declaration's clause, else the stating scope's owner; no proof, no search beyond those clauses), shared with E3c-1.
+    `InheritedSelfMismatchNote`'s publication search and CallableSelection's node scan go. Fact-less own sites: Calls (NotCallable x2,
+    the InvalidConstraint rest, MissingType x2 before JudgeSelected), CallableSelection's NoApplicable rest, BindValueCall's two
+    NoApplicable sites, FunctionItems' explicit reference (2); kept `Fail`, each with an R7-E5 Transitional naming its input (B's
+    ruling 8 (2); the C8 mutant showed no record of theirs at an already-failed node in the whole suite or the probes, so each input
+    stays stated, not shown: an R7-E5 candidate, as RecordSelection's read): Calls' receiver InvalidAssignment (the receiver node's own
+    failure) and the MissingType after JudgeSelected (the call's clause records), both on `BindCallCore`; BindValueCall's structural
+    misfit (the call's NoApplicableCandidate from an earlier part) and AcquireValueCallPart's per-argument misfit (the same from an
+    earlier argument). R3: the Error outcome keeps two recorders (FailConstraint at RequireConstraint, a fact-less record elsewhere),
+    staged to R7-E5. Deleted: `rejectedCandidates`, `rejectedRows`, `RejectedCandidate`, `ObjectClone`, `callableSelectionFailures`
+    with its parties, `unboundSlots` (UnboundSlotFact), `callInferenceFailures` (CallInferenceFailure, its accessor and ReportIssue
+    arm); three NodeColumns columns; ratchets on the tree merged with dev f227e33ce (1a9afdc79): node-keyed tables 12, string
+    explanations 1 -> 0. AcquisitionCorrelationTest's BothBindingsKnownShowTheSlotsPair pins the correlation's pair (C-3: the Elements
+    row reaches it, evidence [T, i32, i32]). [AF-3b's `CheckedPart`, if ported: the candidate's `Expected` at the part, the outcome one
+    `Reason` bit.] Moves (Q13): M4 the inherited-Self related (s15), M3 + M4 UnboundTypeArgument (the related declaration narrows to
+    the Type parameter; s6, s7, s7L) where both Notes go (C-4): the call's composed Note (FailUnboundSlots: "No explicit Type argument
+    or evidence binds T ... (SPEC 10.8)", with its waiting-argument variant "... never evidence for an outer slot ... (SPEC 10.5,
+    10.8)") and the reference's Notes (UnboundReferenceNote, "binds its Type parameters only from explicit Type arguments (SPEC 10.5)",
+    and its length-parameter variant, "binds its Type and length parameters only from a complete explicit argument list (SPEC 10.5)",
+    for a function with a length parameter, LengthFunctionReferenceTest's `let f = keep`), M4 an `And` premise candidate's span (s11a).
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
