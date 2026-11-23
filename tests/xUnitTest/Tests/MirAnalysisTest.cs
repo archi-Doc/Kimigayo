@@ -165,10 +165,14 @@ public sealed class MirAnalysisTest
     // N reference locals live across N branches (ArenaWorkload's parts): they fit A1's arena but not A5's Loans table.
     internal const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
 
+    // The A6 code table's analyses (DIAGNOSTICS §12's lead; Z21 design §3.1), the closed set its Analysis column may name.
+    internal static readonly string[] A6Analyses = ["A1", "A3", "A4", "A5", "U", "B"];
+
     // DIAGNOSTICS §12's A6 code table (2g-7; DECISIONS R4-M67, R5-M23, R5-M56; Z21), the consistency set and its one copy: per row the
     // requirement, the code, the analysis it counts in (the first word: A1, A3, A4, A5, U for a limit A4 and A5 share, B for a broken
     // contract) and the fact kinds its problems may carry. A row naming a requirement no MIR analysis records (outside RecordedKinds), a
-    // code or kind that does not exist or a kind past Cause (Binding's), or a (requirement, code) twice, fails the read.
+    // code or kind that does not exist or a kind past Cause (Binding's), an analysis outside that closed set (an edited cell such as
+    // "A5," would otherwise drop the census's assertion silently), or a (requirement, code) twice, fails the read.
     internal static readonly Lazy<(DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis, ProblemFactKind[] Facts)[]> A6Rows = new(static () =>
     {
         var kinds = RecordedKinds().ToDictionary(static x => x.Name);
@@ -176,6 +180,7 @@ public sealed class MirAnalysisTest
             Requirement: kinds[Names(x[0]).Single()], Code: Enum.Parse<DiagnosticCode>(Names(x[1]).Single()), Analysis: x[2].Split(' ')[0],
             Facts: Names(x[3]).Select(static y => Enum.Parse<ProblemFactKind>(y)).ToArray())).ToArray();
         Assert.All(rows, static x => Assert.All(x.Facts, y => Assert.True(y <= ProblemFactKind.Cause, $"{x.Code}: {y}")));
+        Assert.All(rows, static x => Assert.Contains(x.Analysis, A6Analyses));
         Assert.Equal(rows.Length, rows.DistinctBy(static x => (x.Requirement, x.Code)).Count());
         return rows;
     });
