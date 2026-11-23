@@ -155,7 +155,6 @@ public sealed partial class Binding
         this.associatedApplications.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
-        this.memberSides.Clear();
         this.requirementCursor = 0;
     }
 
@@ -276,8 +275,29 @@ public sealed partial class Binding
             if (parent is not { IsContract: true } || parent.Contract is not { } inherited)
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
+                // One no lookup selects is the resolver's miss, which an inaccessible qualifier explains (FailMissing, SPEC 9.4, 9.5; PLAN
+                // G1207), at the site a Type use's miss takes (UnselectedTypeSite), on which the Name rests; a selected declaration that is
+                // no Contract is no parent (SPEC 8.4.3).
                 this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
-                this.Record(syntax, BindingFailure.InvalidConstraint, []);
+                if (parent is null)
+                {
+                    var site = UnselectedTypeSite(name, parentPath);
+                    this.FailMissing(site, this.scopes[contract], BindingFailure.MissingType);
+                    if (!ReferenceEquals(name, site))
+                    {
+                        this.CompleteDependent(name, site);
+                    }
+
+                    if (!ReferenceEquals(syntax, name))
+                    {
+                        this.CompleteDependent(syntax, name); // A transparent wrapper rests on its Name.
+                    }
+                }
+                else
+                {
+                    this.Record(syntax, BindingFailure.InvalidConstraint, []);
+                }
+
                 valid = false;
                 continue;
             }

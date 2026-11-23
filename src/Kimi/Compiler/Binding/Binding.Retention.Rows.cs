@@ -112,7 +112,7 @@ public sealed partial class Binding
     // Whether a reader may read a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36, R4-M139): Prepared, and Rejected, whose
     // parts that do not substitute hold, place and destroy nothing, so what holds whatever they are stays; not a Limit (retention's
     // CallRetention.Limit, the MIR's own limit). Rejected storage rests on a Binding failure (DIAGNOSTICS rule 8: a part Binding did not
-    // bind makes it incomplete), so in a complete compilation it is a broken contract. TyCtxt.Readable publishes it to the MIR.
+    // bind makes it incomplete), so in a complete compilation it is a broken contract. TyCtxt.ReadableInstance reads it for the MIR.
     internal bool Readable(BoundType type, StorageOutcome storage)
     {
         if (storage == StorageOutcome.Rejected && this.Result.IsComplete)

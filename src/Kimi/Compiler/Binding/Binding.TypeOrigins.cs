@@ -11,6 +11,12 @@ public sealed partial class Binding
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
+        // A Self symbol carries its Type (SPEC 9.1: `S<Slot(0), ...>` or the Contract's Self parameter); no Type is headed by it.
+        if (symbol.SelfOf is not null)
+        {
+            return symbol.Type!;
+        }
+
         var schema = symbol.Schema!;
         var types = this.RentTypes(schema.GenericSlots.Count);
         var origins = this.originScratch.Rent(schema.Origins.Count);
