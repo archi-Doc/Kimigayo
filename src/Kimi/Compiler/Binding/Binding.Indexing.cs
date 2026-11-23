@@ -173,14 +173,15 @@ public sealed partial class Binding
         this.IndexConfiguredPaths(library, this.Library.Scope);
     }
 
-    // A module's configured paths (SPEC 18.2.3; F's rulings N1-4 (2), N1-9 (1)): each path's node, which lives for the Compilation in its
-    // configuration document, is walked with its module's trees, so its rows are reset by the one reset step and its records, at the
-    // component the path walk fails at, are the pass's like any node's.
+    // A module's configured default aliases (SPEC 18.2.3; F's rulings N1-4 (2), N1-9 (1), N1-13 B2 and C2): each opening alias its
+    // configuration declares, which lives for the Compilation in its configuration document with its path's node, is walked with its
+    // module's trees, the library's in the library pass, so its rows are reset by the one reset step, it is an alias of the pass (its
+    // AliasKoto row) and its records are the pass's like any node's.
     private void IndexConfiguredPaths(Kotonoha module, BindingScope scope)
     {
         foreach (var row in this.compilation.DefaultAliases(module))
         {
-            this.IndexWalk(new(row.Target, scope, IndexEntryKind.Index));
+            this.IndexWalk(new(row.Target.Parent!, scope, IndexEntryKind.Index));
         }
     }
 

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Resolves source aliases to their container scopes and environments, and rebuilds that state for each Binding pass.
+// Resolves source aliases and configured default aliases (the opening aliases a configuration declares) to their container scopes
+// and environments, and rebuilds that state for each Binding pass.
 // Inputs are source-local alias declarations; outputs are the selected containers and named/open alias lookup entries.
 // Alias targets never resolve through another alias. Ordinary lookup owns which imported candidate a use selects.
 
@@ -39,14 +40,12 @@ public sealed partial class Binding
             list.Clear();
         }
 
-        this.defaultAliasTargets.Clear();
         this.namedAliases.Clear();
         this.aliasWarnings.Clear();
     }
 
     private void PrepareAliases()
     {
-        this.PrepareDefaultAliases();
         foreach (var alias in this.aliases)
         {
             if (alias.CodeContext.SourceDocument is not { } document)
@@ -54,8 +53,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var target = this.AliasTarget(alias);
-            var import = new AliasImport(alias, target is not null ? Parser.WrittenOrigin(alias.TargetSyntax) : null);
+            var (target, import) = this.EvaluateAlias(alias);
             if (alias.Name is null)
             {
                 if (!this.aliasesByDocument.TryGetValue(document, out var list))
@@ -134,6 +132,14 @@ public sealed partial class Binding
                 this.aliasWarnings.Add(alias);
             }
         }
+    }
+
+    // An alias evaluated (AliasTarget) with the import its readers take (SPEC 18.2.1, 9.7.1): the alias, whose bound target is its
+    // environment, and the Origin its target writes once it resolved; a source alias's and a configured default alias's alike.
+    private (BindingScope? Target, AliasImport Import) EvaluateAlias(AliasKoto alias)
+    {
+        var target = this.AliasTarget(alias);
+        return (target, new(alias, target is not null ? Parser.WrittenOrigin(alias.TargetSyntax) : null));
     }
 
     // SPEC 18.2.1: a target resolves from the Compilation root by the path walk (TypeName from the module scope, stages 5-6 off while

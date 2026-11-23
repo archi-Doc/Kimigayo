@@ -10,7 +10,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(Kotonoha Module, string Path), (BindingScope? Scope, Koto? Failed)> defaultAliasTargets = new();
     private Dictionary<Koto, List<BindingSymbol>>? gatheredGroups;
 
     private BindingSymbol? AccessibleImport(BindingSymbol head, BindingScope scope)
@@ -26,69 +25,11 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 18.2.3, IMPL 20.2 (F's rulings N1-3, N1-7 (5)): every configured default alias of the pass's modules is evaluated where every
-    // source alias is (PrepareAliases), so a path that no use reads is judged too.
-    private void PrepareDefaultAliases()
-    {
-        foreach (var module in this.pass.Sources)
-        {
-            foreach (var row in this.compilation.DefaultAliases(module))
-            {
-                this.DefaultAliasTarget(row);
-            }
-        }
-    }
-
-    // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-4, N1-7 (5), N1-9 (1)): a configured default alias evaluated as a source alias is, once
-    // per pass at its first read and cached per module and path, its node indexed with its module (Index): the target selected and formed
-    // from its module's root (SelectAliasTarget, BindContainerQualifier; stages 5-6 off). A failure is recorded where the walk fails, at
-    // the failing component of the path's own node (its configuration document's), as a source alias's target's is; the module root is
-    // not failed. Failed is that node, which a use's miss rests on (ImportMiss).
-    private (BindingScope? Scope, Koto? Failed) DefaultAliasTarget(Compilation.DefaultAlias row)
-    {
-        var key = (row.Target.CodeContext.Kotonoha, row.Path);
-        if (this.defaultAliasTargets.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
-
-        var target = row.Target;
-        this.defaultAliasTargets.Add(key, (null, target));
-        var scope = this.ModuleScope(target);
-        this.aliasResolutionDepth++;
-        try
-        {
-            var (symbol, failed) = this.SelectAliasTarget(target, scope);
-            if (failed is not null)
-            {
-                return this.defaultAliasTargets[key] = (null, failed); // SPEC 23.1.2: the walk's record, where it failed.
-            }
-
-            if (symbol?.Declaration is not DeclarationContainerKoto)
-            {
-                this.Record(target, BindingFailure.InvalidTypeFormation, []);
-                return (null, target);
-            }
-
-            // The target's formation failed with its own record (BindContainerQualifier, as for a source alias).
-            if (this.BindContainerQualifier(target, symbol, scope, this.TypeContext(target, scope)) is not { } reference)
-            {
-                return (null, target);
-            }
-
-            if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
-            {
-                this.Fail(target, BindingFailure.InvalidOrigin);
-                return (null, target);
-            }
-
-            return this.defaultAliasTargets[key] = (this.scopes[symbol.Declaration], null);
-        }
-        finally
-        {
-            this.aliasResolutionDepth--;
-        }
-    }
+    // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-4, N1-7 (5), N1-13 B2): a configured default alias is the opening alias its configuration
+    // declares (Compilation.ParseConfiguredPath), an alias of its module: indexed with its module's trees (IndexConfiguredPaths) and
+    // evaluated where every alias is (PrepareAliases, AliasTarget), so its records, its rest and its import (its environment included)
+    // are a source alias's; the module root is not failed. A use's miss rests on a failed one (ImportMiss).
+    private (BindingScope? Target, AliasImport Import) DefaultAliasTarget(Compilation.DefaultAlias row) => this.EvaluateAlias((AliasKoto)row.Target.Parent!);
 
     // SPEC 9.5.1: function groups from several sources of one stage gather into one group (an ImportGroup step); any other kind beside a
     // source is ambiguous, which the caller returns.
@@ -169,9 +110,9 @@ public sealed partial class Binding
 
         foreach (var row in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
-            var (target, failedPath) = this.DefaultAliasTarget(row);
-            failed ??= failedPath;
-            this.AddTypeCandidates(ref candidates, target is null ? null : MemberTypes(target, name), scope, role, arity);
+            var (target, import) = this.DefaultAliasTarget(row);
+            failed ??= target is null ? import.Declaration : null;
+            this.AddTypeCandidates(ref candidates, target is null ? null : MemberTypes(target, name), scope, role, arity, import);
         }
 
         return candidates.First is not null ? this.SelectedPath(candidates, use, step) : this.ImportMiss(use, failed);
@@ -192,27 +133,23 @@ public sealed partial class Binding
             this.AddImport(ref stage, target, alias, name, scope, use);
         }
 
-        // The sources merged before an ambiguity keep their environment as the use's import, as the table did.
-        if (stage.Import.Environment is not null)
-        {
-            this.nameSteps[step] = this.nameSteps[step] with { Import = stage.Import };
-        }
-
-        if (stage.Imported is not null)
-        {
-            return this.ImportStageEnd(stage, name, scope, use, failed);
-        }
-
-        foreach (var row in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
+        // Stage 6, the configured default aliases, when stage 5 imported nothing (SPEC 9.5).
+        foreach (var row in stage.Imported is null ? this.compilation.DefaultAliases(use.CodeContext.Kotonoha) : [])
         {
             if (stage.Ends)
             {
                 break;
             }
 
-            var (target, failedPath) = this.DefaultAliasTarget(row);
-            failed ??= failedPath;
-            this.AddImport(ref stage, target, default, name, scope, use);
+            var (target, import) = this.DefaultAliasTarget(row);
+            failed ??= target is null ? import.Declaration : null;
+            this.AddImport(ref stage, target, import, name, scope, use);
+        }
+
+        // The sources merged before an ambiguity keep their environment as the use's import, a configured source's too (N1-13 B2).
+        if (stage.Import.Environment is not null)
+        {
+            this.nameSteps[step] = this.nameSteps[step] with { Import = stage.Import };
         }
 
         return this.ImportStageEnd(stage, name, scope, use, failed);

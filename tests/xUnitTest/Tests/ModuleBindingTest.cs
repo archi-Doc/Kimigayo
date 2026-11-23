@@ -216,6 +216,25 @@ public partial class ModuleBindingTest
         }
     }
 
+    // SPEC 18.2.3, 18.2.2, 18.2.1 (F's rulings N1-7 (5), N1-13 B2): a configured default alias is the opening alias `alias Path` its
+    // configuration declares, evaluated as that source alias is, its argument bindings included: each row's configured form and its
+    // source twin agree (e01v, e03v the 18.2.2 example accepted; e06i's i64 result rejected as an i32).
+    [Theory]
+    [InlineData("e01v", "Box<i32>", "public struct Box<T>\n    public init() => ()\n    public func id(value: T) -> T => value@move\nfunc g() -> i32 => id(1)", true)]
+    [InlineData("e03v", "Family<i32>.Helpers", "public struct Family<T>\n    public group Helpers\n        public struct Token\n            public init() => ()\ngroup Use\n    func make() -> Token => Token.init()", true)]
+    [InlineData("e06i", "Box<i64>", "public struct Box<T>\n    public init() => ()\n    public func id(value: T) -> T => value@move\nfunc g() -> i32 => id(1)", false)]
+    public void AConfiguredAliasIsItsSourceTwin(string row, string alias, string source, bool valid)
+    {
+        foreach (var configured in new[] { true, false })
+        {
+            var compilation = configured
+                ? Create(source, "public group Api", configure: (root, _) => root.Alias = [alias])
+                : Create("alias " + alias + "\n" + source, "public group Api");
+            Assert.True(valid == compilation.Bind().IsComplete, $"{row} ({(configured ? "configured" : "source")}): " + string.Join("; ", compilation.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
+            Assert.DoesNotContain(compilation.Binding.Issues, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        }
+    }
+
     // SPEC 23.1.2 (F's ruling N1-9 (2)): a failed configured path fails no declaration of its module: a base clause beside it records
     // nothing (the module root is not failed).
     [Fact]
@@ -251,6 +270,18 @@ public partial class ModuleBindingTest
         var issue = Assert.Single(compilation.Binding.Issues);
         Assert.Equal(code, issue.Code.ToString());
         Assert.Equal((start, text.Length, text), (issue.Node.Span.Start, issue.Node.Span.Length, issue.Node.ToString()));
+    }
+
+    // SPEC 18.2.3, IMPL 20.2 (F's rulings N1-7 (5), N1-13 C2): the library's own configured `Kimi` alias is an alias of the library's
+    // pass, evaluated there before its table freezes, so a path no use reads is judged in its own module too.
+    [Fact]
+    public void TheLibrarysConfiguredAliasIsEvaluatedInItsPass()
+    {
+        var compilation = Create("func g() => ()", "public group Api");
+        Assert.True(compilation.Bind().IsComplete);
+        var row = Assert.Single(compilation.DefaultAliases(compilation.Library.Kotonoha));
+        var alias = Assert.IsType<AliasKoto>(row.Target.Parent);
+        Assert.Equal((BindingState.Resolved, "Kimi"), (HirTables.State(alias), HirTables.Symbol(alias)?.Name));
     }
 
     [Fact]

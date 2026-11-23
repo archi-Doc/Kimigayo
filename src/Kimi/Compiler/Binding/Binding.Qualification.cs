@@ -284,7 +284,7 @@ public sealed partial class Binding
 
         foreach (var row in this.compilation.DefaultAliases(fact.At.CodeContext.Kotonoha))
         {
-            AddScope(this.DefaultAliasTarget(row).Scope);
+            AddScope(this.DefaultAliasTarget(row).Target);
         }
 
         var at = fact.At!;
