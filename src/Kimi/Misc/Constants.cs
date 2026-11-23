@@ -8,6 +8,7 @@ public static class Constants
     public const string KimiExtension = ".kimi";
     public const string KimiSolutionExtension = ".kimisln";
     public const string KimiProjectExtension = ".kimiproj";
+    public const string ExecutableExtension = ".exe";
     public const string RootKotoName = "Root";
     public const string GeneratedFunctionName = "<Generated>";
 

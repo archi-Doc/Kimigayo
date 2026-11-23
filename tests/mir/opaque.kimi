@@ -1,10 +1,12 @@
-// A call omitting a default its substitution cannot instantiate (zero<T> over Bx^65<i32>, past Binding's storage bound) is
-// unsupported (PD30's (e) row, the builder's B3; DECISIONS R4-M127); before R7-T1 c4 it was a tuple operator over such a leaf.
-struct Bx<T>
-    public var v: T
-func zero<T>() -> i32 => 0
-func pick<T>(a: i32, k: i32 = zero<T>()) -> i32 => a + k
-func same(a: i32) -> i32 => pick<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>(a)
+// A selection through an identity premise whose subject is the Type parameter of its receiver's Place is unsupported (PLAN G168b,
+// DECISIONS BU-72; the builder's remaining located Unsupported_Kd). Before PLAN G396 (3)'s B3 it was a call omitting a default over
+// Bx^65<i32> (now built); before R7-T1 c4 a tuple operator over such a leaf.
+struct Pair
+    public var a: i32 = 1
+    public init() => ()
+func same<T>(s: ref/T) -> i32
+    T is (Pair, i32)
+    return s.0.a
 func fail() -> i32 => missing
 func take(a: string, b: string) -> i32 => 1
 func kept(n: i32, s: string) -> i32

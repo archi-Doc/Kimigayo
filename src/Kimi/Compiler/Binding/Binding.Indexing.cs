@@ -9,17 +9,20 @@ namespace Kimi.Compiler;
 // (SemanticsIndexed false), and BindMatch indexes them during body binding (IndexMatchArms), once the Subject's Type selects Option
 // or Result (Binding.Patterns.cs).
 // - Responsibility: one iterative pre-order walk over the child slots (IndexWalk, over IndexStack's entries). It reaches each node in
-//   a slot of the trees it walks (the source roots; the library's non-intrinsic root containers and root members) once per holding
-//   slot, in one context (IndexEntryKind), and resets it once before the first write to it in the pass (ResetEntry: at its entry,
-//   or, for an attribute of a leading chain, at its chain owner's entry, since the declaration's row judges the Attributes that
-//   attach to it, SPEC 6.7). In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
-//   functions, parameters, locals, generic and length parameters, enum cases, pattern bindings and guard candidates); a test function
+//   a slot of the trees it walks (the source roots; the library's non-intrinsic root containers and root members; each module's
+//   configured paths, IndexConfiguredPaths) once per holding slot, in one context (IndexEntryKind), and resets it once before the
+//   first write to it in the pass (ResetEntry: at its entry, or, for an attribute of a leading chain, at its chain owner's entry,
+//   since the declaration's row judges the Attributes that attach to it, SPEC 6.7).
+//   In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
+//   functions, parameters, locals, generic and length parameters (in their scope's formal-parameter table, BindingScope.Parameters),
+//   each struct's, enum's and Contract's Self (DeclareSelf), enum cases, pattern bindings and guard candidates); a test function
 //   the build does not include is resolved without indexing its signature or body, which the ExcludedTest context walks for its
 //   Layout and misplaced Test attributes only; a valid one is still declared, so its declaration is judged in every build (SPEC
 //   6.7.2, 18.6), and access keeps it from every product candidate set. A node no context indexes (an effect item's selector and
 //   Name, SPEC 8.11.1; a handled attribute's operand) has only its row reset (ResetOnly). The steps keep each action after the
-//   subtree it follows: a loop binding's declaration after its entry, an arm's candidates after its Pattern's subtree, a match's arms
-//   after its Expression's.
+//   subtree it follows: a loop binding's declaration after its entry, a Self context's Self after its declaration's subtree (so its
+//   parameters' provisional slots do not count it), an arm's candidates after its Pattern's subtree, a match's arms after its
+//   Expression's.
 // - Inputs: the numbered source trees and the restored library (Library.Restore); the scopes and symbols kept across passes.
 // - Outputs: the pass's nodes, pattern nodes, aliases, scopes and symbols, and the failures recorded in this file: Duplicate (Declare,
 //   a repeated Semantics parameter), InvalidTypeFormation (a second self parameter, a property with neither storage nor getter),
@@ -37,7 +40,8 @@ public sealed partial class Binding
 
     // An entry of the walk: a context, in which a node's row runs (Index; Pattern, a match arm's Pattern and its subtree: pattern
     // nodes and their locals; ExcludedTest, an excluded test's subtree; ResetOnly, rows reset and nothing indexed), or a step a row
-    // places after a subtree (Declare, a loop binding's declaration; Candidates, an arm's guard candidates; Arms, a match's arms).
+    // places after a subtree (Declare, a loop binding's declaration; Self, a Self context's Self; Candidates, an arm's guard
+    // candidates; Arms, a match's arms).
     private enum IndexEntryKind : byte
     {
         Index,
@@ -45,6 +49,7 @@ public sealed partial class Binding
         ExcludedTest,
         ResetOnly,
         Declare,
+        Self,
         Candidates,
         Arms,
     }
@@ -137,7 +142,9 @@ public sealed partial class Binding
     {
         foreach (var module in this.pass.Sources)
         {
-            this.IndexWalk(new(module.RootKoto, this.GetScope(module.RootKoto, null), IndexEntryKind.Index));
+            var scope = this.GetScope(module.RootKoto, null);
+            this.IndexWalk(new(module.RootKoto, scope, IndexEntryKind.Index));
+            this.IndexConfiguredPaths(module, scope);
         }
 
         this.IndexModuleReferences();
@@ -166,6 +173,20 @@ public sealed partial class Binding
         {
             this.IndexWalk(new(libraryRoot.Members[i], this.Library.Scope, IndexEntryKind.Index));
         }
+
+        this.IndexConfiguredPaths(library, this.Library.Scope);
+    }
+
+    // A module's configured default aliases (SPEC 18.2.3; F's rulings N1-4 (2), N1-9 (1), N1-13 B2 and C2): each opening alias its
+    // configuration declares, which lives for the Compilation in its configuration document with its path's node, is walked with its
+    // module's trees, the library's in the library pass, so its rows are reset by the one reset step, it is an alias of the pass (its
+    // AliasKoto row) and its records are the pass's like any node's.
+    private void IndexConfiguredPaths(Kotonoha module, BindingScope scope)
+    {
+        foreach (var row in this.compilation.DefaultAliases(module))
+        {
+            this.IndexWalk(new(row.Alias, scope, IndexEntryKind.Index));
+        }
     }
 
     // A try's arms, once BindMatch selected them (TryKoto.SelectOption): the entries a match's Arms step pushes.
@@ -191,6 +212,9 @@ public sealed partial class Binding
                     case IndexEntryKind.Declare:
                         var name = (IdentifierNameKoto)entry.Node;
                         this.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, entry.Scope);
+                        break;
+                    case IndexEntryKind.Self:
+                        this.DeclareSelf(entry.Node.BoundSymbol!, entry.Scope);
                         break;
                     case IndexEntryKind.Candidates:
                         this.IndexArmCandidates((MatchKoto)entry.Node, entry.Arm, entry.Scope);
@@ -251,7 +275,7 @@ public sealed partial class Binding
         this.nodes.Add(node);
         if (context == IndexEntryKind.Pattern)
         {
-            this.pass.Part.PatternNodes.Add(node);
+            this.indexedPatterns.AddPattern(node);
             if (node is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
             {
                 if (this.symbols.TryGetValue(pattern, out var existing) && existing.Name != name.IdentifierName)
@@ -331,6 +355,11 @@ public sealed partial class Binding
                 }
 
                 scope = container.IsRoot ? this.ModuleScope(node) : this.GetScope(node, scope);
+                if (container is not GroupKoto)
+                {
+                    stack.Push(new(node, scope, IndexEntryKind.Self)); // Below the children: popped after the declaration's subtree.
+                }
+
                 break;
             case FunctionKoto function:
                 function.PrepareBaseInitializer();
@@ -365,7 +394,7 @@ public sealed partial class Binding
                 break;
             case CodeBlockKoto:
                 if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
-                    (node.Parent is MatchKoto && this.pass.Part.PatternNodes.Contains(scope.Owner)))
+                    (node.Parent is MatchKoto && this.indexedPatterns[scope.Owner].Pattern))
                 {
                     this.scopes[node] = scope;
                 }
@@ -399,7 +428,7 @@ public sealed partial class Binding
                 break;
             case GenericParameterKoto parameter:
                 var typeSymbol = this.Declare(node, parameter.Identifier, parameter.SemanticsParameter is null ? BindingSymbolKind.TypeParameter : BindingSymbolKind.SemanticsTarget, node, scope);
-                typeSymbol.Slot = scope.Types.Count - 1;
+                typeSymbol.Slot = scope.Parameters!.Types.Count - 1;
                 typeSymbol.WholeType ??= this.types.Parameter(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
                 typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : this.types.Parameter(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
                 if (parameter.SemanticsParameter is not null)
@@ -410,9 +439,9 @@ public sealed partial class Binding
                     semanticsSymbol.Pair = typeSymbol;
                     typeSymbol.Pair = semanticsSymbol;
                     this.PairOuterOrigin(typeSymbol); // SPEC 8.1.1: the binder's outer Origin, interned with its binder (PLAN G949 S1-e).
-                    if (!scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
+                    if (!scope.Parameters!.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
                     {
-                        this.Fail(node, BindingFailure.Duplicate);
+                        this.RecordNumbered(node, BindingFailure.Duplicate, []); // SPEC 9.1: one namespace per declaration.
                     }
                 }
 
@@ -575,13 +604,13 @@ public sealed partial class Binding
     }
 
     // An arm's guard candidates, after its Pattern's subtree, whose binding patterns' Declare set the form's BoundSymbol: a guarded
-    // arm's are declared in the guard's scope (its CandidateScopes entry), an unguarded arm's are dropped.
+    // arm's are declared in the guard's scope (its IndexedPatterns guard row), an unguarded arm's are dropped.
     private void IndexArmCandidates(MatchKoto match, int arm, BindingScope scope)
     {
         var guard = match.Arms[arm].Guard;
         if (guard is not null)
         {
-            this.pass.Part.CandidateScopes.Add(guard);
+            this.indexedPatterns.AddGuard(guard);
         }
 
         this.IndexCandidates(match.Arms[arm].Pattern, guard is not null, scope);

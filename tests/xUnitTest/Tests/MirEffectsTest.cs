@@ -30,6 +30,21 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private const string Shared = "struct Item\n    public var value: i32 = 7\n    public init() => ()\ngroup Shared\n    public let limit: i32 = 10\n" +
         "    public let node: rc/Item = Kimi.Intrinsics.makeRc(Item.init())\n";
 
+    // A chain that grows through a destructor's composed atom, Deep past Binding's storage bound (AChainGrowingThroughADestructorEndsAtTheBound).
+    private const string GrowingChain = "struct D<T>\n    var value: T\n    drop => ()\nstruct G<U>\n    var next: Option<rc/D<G<(U, U)>>>\n    public init()\n" +
+        "        self.next = .None\n";
+
+    // Z3's composed forms (AWorkCallUsesItsSelectedSignaturesBound): inner's f() answered by its own confined premise and f(1) composed
+    // into the caller; two signatures one premise of the caller proves at T = U = i32; two signatures a Closure `(i32) -> Never` satisfies.
+    private const string Mixed = "group H\n    public func inner<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n            effect confined\n" +
+        "        F is Callable<(i32) -> i32>\n        return f() + f(1)\n";
+
+    private const string Collapse = "group H\n    public func inner<T, U, F>(x: T, y: U, f: ref/F) -> i32\n        T is Copy\n        U is Copy\n" +
+        "        F is Callable<(ref/T) -> i32>\n        F is Callable<(ref/U) -> i32>\n        return f(x) + f(y)\n";
+
+    private const string Never = "group H\n    public func inner<F>(f: ref/F) -> i32\n        F is Callable<(i32) -> i32>\n        F is Callable<(i32) -> bool>\n" +
+        "        let a: i32 = f(1)\n        let b: bool = f(2)\n        if b => return a\n        return 0\n";
+
     // A generic's put and, in a put's body, a writer over a fixed buffer of 64 bytes.
     private const string Put = "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n";
 
@@ -466,34 +481,136 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"func h<s/T>(value: s/T) -> i32\n    s is {admitted}\n    T is Copy\n    let c = func [{capture}] () -> i32\n" +
                 "        return 1\n    return run(c@move)\n"));
 
-    // SPEC 8.11.4: a call through an abstract input takes the bounds of its one Callable signature; with several, only the call's
-    // arguments chose among them, which MIR does not keep: a located limit (DECISIONS R4-M23).
+    // SPEC 8.10, 8.11.4 (Z3): a call through an abstract input uses the bounds of the premises with the signature the call selected
+    // (CallPlan.DeclaredSignature, the Value callee's TypeToken), never a second selection: with several signatures `f()` selects
+    // `() -> i32`, whose premise is confined, `f(1)` `(i32) -> i32` and `f(true)` `(bool) -> i32`, each confined only with its own
+    // bound; an unbounded selected premise fails the requirement's bound. Fail-before: every row with two or three signatures was the
+    // obligation's located Unsupported_Kd (E5).
     [Theory]
-    [InlineData("", "")]
-    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 18446744073709551615")]
-    public void SeveralCallableSignaturesAreALimit(string second, string expected)
+    [InlineData("", "f()", "")]
+    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "f()", "")]
+    [InlineData("        F is Callable<(i32) -> i32>\n", "f()", "")]
+    [InlineData("        F is Callable<(i32) -> i32>\n", "f(1)", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n        F is Callable<(bool) -> i32>\n            effect confined\n", "f() + f(1) + f(true)", "")]
+    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n        F is Callable<(bool) -> i32>\n", "f() + f(1) + f(true)", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    public void ACallThroughSeveralSignaturesUsesTheSelectedOnesBounds(string second, string call, string expected)
     {
         var premises = "        F is Callable<() -> i32>\n            effect confined\n" + second;
         Assert.Equal(
             Expected(expected),
             Problems("contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n" +
-                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        return f()\n"));
+                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        return {call}\n"));
     }
 
-    // SPEC 23.1.1 (DECISIONS R4-M153, implementation review 1's N3): beside the limit of several signatures, the same witness destroys a
-    // Tuple nested past the destruction walk's bound: the guard's one ranking decides, the unsupported part over the part past the bound,
-    // so one record; with one signature the depth limit alone.
+    // SPEC 8.11.4, 15.6.4 (Z3): a declaration's call through its Callable input composes into its caller with the signature it selected:
+    // `inner` calls `f()` without a bound, so its summary keeps the call with `() -> i32`; the witness binds F to its own G, whose premise
+    // with that signature is confined (valid) or not (the requirement's bound fails). The Type bound to an input with several signatures
+    // satisfies each (SPEC 8.10): another premise-bound Type here, a concrete Closure in AWorkCallUsesItsSelectedSignaturesBound's
+    // clo-never row (SPEC 10.7). Fail-before: both rows were the obligation's located Unsupported_Kd.
+    [Theory]
+    [InlineData("            effect confined\n", "")]
+    [InlineData("", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    public void ASelectedSignatureComposesIntoTheCaller(string bound, string expected)
+    {
+        var premises = "        G is Callable<() -> i32>\n" + bound + "        G is Callable<(i32) -> i32>\n            effect confined\n";
+        Assert.Equal(
+            Expected(expected),
+            Problems("group H\n    public func inner<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        F is Callable<(i32) -> i32>\n" +
+                "        return f()\ncontract Work\n    func run<G>(self: ref/Self, g: ref/G) -> i32\n" + premises + "        effect confined\nstruct W\n" +
+                "    Self is Work\n    public func run<G>(self: ref/Self, g: ref/G) -> i32\n" + premises + "        return H.inner(g)\n"));
+    }
+
+    // SPEC 4.9.6, 8.11.4 (Z3): a published row's Callable input is called with its one signature (removeAll's `(ref/T) -> bool` at the
+    // call's T, TyCtxt.CallsSignature), so an F with several signatures takes the bound of its premise with that signature. Fail-before:
+    // both rows were the obligation's located Unsupported_Kd.
+    [Theory]
+    [InlineData("            effect confined\n", "")]
+    [InlineData("", "IncompatibleContractImplementation_Kd Self is Prune 18446744073709551615")]
+    public void APublishedRowsCallableInputUsesItsOneSignature(string bound, string expected)
+    {
+        var premises = "        F is Copy\n        F is Callable<(ref/i32) -> bool>\n" + bound + "        F is Callable<() -> bool>\n            effect confined\n";
+        var header = "func prune<F>(self: ref/Self, items: uniq/Array<i32>, matching: F)\n";
+        Assert.Equal(
+            Expected(expected),
+            Problems("contract Prune\n    " + header + premises + "        effect confined\nstruct P\n    Self is Prune\n    public " + header + premises +
+                "        items.removeAll(matching)\n"));
+    }
+
+    // SPEC 8.10, 8.11.4 (Z3, its reviews' rows): the selected signature's bound in every form a Work witness reaches, each fail-before
+    // (the obligation's located Unsupported_Kd on dev 47a26bf9e): a captured F called in a Closure (clo-two), a per-call Origin
+    // (borrow-two), a projection callee T.Fn (proj-two), a case-dependent premise under a pair binder (pair-two), each with its unbounded
+    // twin; a G passed on whose bound inner's own premise answers for f() while f(1) composes to G's (pass-mixed-u0: only the
+    // argument's UnsatisfiedEffectBound_Kd, G lacking inner's bound on `() -> i32`); two callee signatures composed onto one premise of the caller
+    // (pass-collapse3, with its unbounded twin); and a concrete Closure `(i32) -> Never`, compatible with both of inner's signatures (SPEC
+    // 10.7), so a body with several signatures now has a concrete instance (clo-never, an acceptance move).
+    [Theory]
+    [InlineData("", "<F>(self: ref/Self, f: ref/F)", "        F is Callable<() -> i32>\n            effect confined\n        F is Callable<(i32) -> i32>\n", "        let c = func [f] () -> i32 => f()\n        return c()\n", "")]
+    [InlineData("", "<F>(self: ref/Self, f: ref/F)", "        F is Callable<() -> i32>\n            effect confined\n        F is Callable<(i32) -> i32>\n", "        let c = func [f] () -> i32 => f(1)\n        return c()\n", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData("", "<F>(self: ref/Self, f: ref/F)", "        F is Callable<(ref/i32) -> i32>\n            effect confined\n        F is Callable<() -> i32>\n            effect confined\n", "        let x: i32 = 1\n        return f(x)\n", "")]
+    [InlineData("", "<F>(self: ref/Self, f: ref/F)", "        F is Callable<(ref/i32) -> i32>\n        F is Callable<() -> i32>\n            effect confined\n", "        let x: i32 = 1\n        return f(x)\n", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData("contract Source\n    associate Fn\n", "<T>(self: ref/Self, f: ref/T.Fn)", "        T is Source\n        T.Fn is Callable<() -> i32>\n            effect confined\n        T.Fn is Callable<(i32) -> i32>\n", "        return f()\n", "")]
+    [InlineData("contract Source\n    associate Fn\n", "<T>(self: ref/Self, f: ref/T.Fn)", "        T is Source\n        T.Fn is Callable<() -> i32>\n            effect confined\n        T.Fn is Callable<(i32) -> i32>\n", "        return f(1)\n", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData("", "<s/T, F>(self: ref/Self, x: s/T, f: ref/F)", "        s is owner or ref\n        T is Copy\n        F is Callable<(s/T) -> i32>\n            effect confined\n        F is Callable<() -> i32>\n            effect confined\n", "        return f(x)\n", "")]
+    [InlineData("", "<s/T, F>(self: ref/Self, x: s/T, f: ref/F)", "        s is owner or ref\n        T is Copy\n        F is Callable<(s/T) -> i32>\n        F is Callable<() -> i32>\n            effect confined\n", "        return f(x)\n", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData(Mixed, "<G>(self: ref/Self, g: ref/G)", "        G is Callable<() -> i32>\n        G is Callable<(i32) -> i32>\n            effect confined\n", "        return H.inner(g)\n", "UnsatisfiedEffectBound_Kd g 18446744073709551615")]
+    [InlineData(Collapse, "<G>(self: ref/Self, g: ref/G)", "        G is Callable<(ref/i32) -> i32>\n            effect confined\n", "        let one: i32 = 1\n        return H.inner(one, one, g)\n", "")]
+    [InlineData(Collapse, "<G>(self: ref/Self, g: ref/G)", "        G is Callable<(ref/i32) -> i32>\n", "        let one: i32 = 1\n        return H.inner(one, one, g)\n", "IncompatibleContractImplementation_Kd Self is Work 18446744073709551615")]
+    [InlineData(Never, "(self: ref/Self)", "", "        let c = func [] (x: i32) -> Never => $abort(\"no\")\n        return H.inner(c@ref)\n", "")]
+    public void AWorkCallUsesItsSelectedSignaturesBound(string before, string head, string premises, string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(before + "contract Work\n    func run" + head + " -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n    public func run" + head +
+                " -> i32\n" + premises + body));
+
+    // SPEC 6.4.2 step 3, 8.11.1, 8.11.4 (Z3 after Z3-B1): an override's call selects among its inherited premises, judged by the union of
+    // their Statements' bounds (Derived<G> : Base<G, G> makes F's and H's premises with one signature one proposition, in either written
+    // order): f() selects the confined `() -> i32`; the override's f(1) or h(1) an unbounded premise, which fails the inherited slot bound.
+    // Fail-before: each row was the obligation's located Unsupported_Kd on dev 47a26bf9e.
+    [Theory]
+    [InlineData("F", "        F is Callable<() -> i32>\n            effect confined\n        F is Callable<(i32) -> i32>\n", "f()", "f()", "")]
+    [InlineData("F", "        F is Callable<() -> i32>\n            effect confined\n        F is Callable<(i32) -> i32>\n", "f()", "f(1)", "UnsatisfiedEffectBound_Kd override func run(self: objref/Self, f: ref/G) -> i32 18446744073709551615")]
+    [InlineData("F, H", "        F is Callable<() -> i32>\n            effect confined\n        H is Callable<(i32) -> i32>\n            effect confined\n        H is Callable<() -> i32>\n", "0", "f() + h(1)", "")]
+    [InlineData("F, H", "        H is Callable<() -> i32>\n        H is Callable<(i32) -> i32>\n        F is Callable<() -> i32>\n            effect confined\n", "0", "f() + h(1)", "UnsatisfiedEffectBound_Kd override func run(self: objref/Self, f: ref/G, h: ref/G) -> i32 18446744073709551615")]
+    public void AnOverridesCallUsesItsSelectedInheritedPremisesBound(string parameters, string premises, string original, string call, string expected)
+    {
+        var names = parameters.Split(", ");
+        var inputs = string.Join(", ", names.Select(static x => $"{char.ToLowerInvariant(x[0])}: ref/{x}"));
+        var derived = string.Join(", ", names.Select(static x => $"{char.ToLowerInvariant(x[0])}: ref/G"));
+        Assert.Equal(
+            Expected(expected),
+            Problems($"open struct Base<{parameters}>\n    public init() => ()\n    public virtual func run(self: objref/Self, {inputs}) -> i32\n" + premises +
+                $"        effect confined\n        return {original}\nstruct Derived<G> : Base<{string.Join(", ", names.Select(static _ => "G"))}>\n" +
+                $"    override func run(self: objref/Self, {derived}) -> i32\n        return {call}\n"));
+    }
+
+    // SPEC 7.5, 8.11.1, 8.11.4 (Z3): a struct's premises on its own parameter answer a virtual slot's call by the selected signature: f()
+    // the confined `() -> i32`, f(1) the unbounded `(i32) -> i32`, which fails the slot's bound. Fail-before: the obligation's located
+    // Unsupported_Kd on dev 47a26bf9e.
+    [Theory]
+    [InlineData("f()", "")]
+    [InlineData("f(1)", "UnsatisfiedEffectBound_Kd public virtual func run(self: objref/Self, f: ref/F) -> i32 18446744073709551615")]
+    public void AStructPremisesSelectedSignatureBoundsItsSlot(string call, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems("open struct Box<F>\n    F is Callable<() -> i32>\n        effect confined\n    F is Callable<(i32) -> i32>\n    public init() => ()\n" +
+                $"    public virtual func run(self: objref/Self, f: ref/F) -> i32\n        effect confined\n        return {call}\n"));
+
+    // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M153, R4-M237; implementation review 1's N3): the witness destroys a Tuple nested past the
+    // destruction walk's bound, Deep; beside it a chain growing through a destructor (GrowingChain) ends past Binding's storage bound,
+    // Deep too: one verdict, so one depth limit record either way. Before Z25 the chain was a Limit, whose located Unsupported_Kd
+    // outranked the part past the bound (before Z3 that Limit was a call through several Callable signatures); A4 keeps no other Limit
+    // with a source form but E7's (R7-P5), and the walks' ranking stays pinned by MirTypesTest's limitDeep40.
     [Theory]
     [InlineData("", "OwnershipDepthLimit_Kd Self is Work 18446744073709551615")]
-    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 18446744073709551615")]
-    public void AnUnsupportedPartOutranksAPartPastTheBound(string second, string expected)
+    [InlineData("        _ = G<i32>.init()\n", "OwnershipDepthLimit_Kd Self is Work 18446744073709551615")]
+    public void APartPastEitherBoundIsOneDepthLimit(string chain, string expected)
     {
-        var premises = "        F is Callable<() -> i32>\n            effect confined\n" + second;
+        var premises = "        F is Callable<() -> i32>\n            effect confined\n";
         var deep = new string('(', 40) + "0" + string.Concat(Enumerable.Range(0, 40).Select(static i => $", {i})"));
         Assert.Equal(
             Expected(expected),
-            Problems("contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n" +
-                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        _ = {deep}\n        return f()\n"));
+            Problems(GrowingChain + "contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n" +
+                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        _ = {deep}\n{chain}        return f()\n"));
     }
 
     // SPEC 23.1.1 (DECISIONS R4-M153's revision 3): a destruction walk enters a Type at the shallowest depth it meets it, so a destroyed
@@ -988,15 +1105,15 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     }
 
     // SPEC 15.3.5, 8.15 (DECISIONS R4-M58): a chain that grows through a destructor's composed atom, D's T as G<(U, U)>, terminates:
-    // Binding's storage instantiation bounds the growing instance (TyCtxt.Apply gives none), so the first composition is a limit, the
-    // located Unsupported_Kd where it owes confined.
+    // Binding's storage instantiation bounds the growing instance (TyCtxt.ReadableInstance gives none), so the first composition past it
+    // is A4's Deep, the depth limit where it owes confined (R4-M153, R7-M54; Z25, before: the located Unsupported_Kd).
     [Fact]
-    public void AChainGrowingThroughADestructorIsALimit()
+    public void AChainGrowingThroughADestructorEndsAtTheBound()
     {
-        const string Chain = "struct D<T>\n    var value: T\n    drop => ()\nstruct G<U>\n    var next: Option<rc/D<G<(U, U)>>>\n    public init()\n" +
-            "        self.next = .None\n";
-        Assert.Empty(Problems(Chain + "func release(g: G<i32>) => ()\n"));
-        Assert.Equal(["Unsupported_Kd Self is Sink 18446744073709551615"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
+        Assert.Empty(Problems(GrowingChain + "func release(g: G<i32>) => ()\n"));
+        Assert.Equal(
+            ["OwnershipDepthLimit_Kd Self is Sink 18446744073709551615"],
+            Problems(Sink + Loud + GrowingChain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
     // The Z2 DECISIONS draft (PLAN G396 (3), E1): A4's broken contract has one form per place, in a complete compilation. A call Local
@@ -1034,6 +1151,37 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             cases.Select(caller, 0);
             effects.Local(held, caller, 0);
             return [.. held.Problems.All.ToArray().Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        }
+    }
+
+    // Z2's E6 (DECISIONS R7-M57; SPEC 8.10, 7.3.3): Binding proves only Closures, function items and Function Types Callable and acquires a
+    // value call's callee to one reference over one (AcquireValueCallee), so a call through any other Type is a broken contract the solve
+    // meets with no site: it throws in a complete compilation (the check ends as CheckFaulted_Kd), and in an incomplete one (an unrelated
+    // function Binding rejects) it is Derived, with no record. No program reaches it, so the test forges `rr()`'s operand back to `rr`,
+    // ref/ref/<closure>, the callee before the acquisition (before E6: the obligation's located Unsupported_Kd in both).
+    [Fact]
+    public void ACallThroughNoCallableIsABrokenContract()
+    {
+        var thrown = Assert.Throws<InvalidOperationException>(() => Forged(string.Empty));
+        Assert.Contains(
+            "every Callable A4 calls through is a Closure, a function item, a Function value or abstract (InternalInvariant)", thrown.Message, StringComparison.Ordinal);
+        Assert.Empty(Forged("group H2\n    public func other() -> i32 => missingName\n"));
+
+        // A4's problems over the program whose S.put calls `rr()` through rr's own local.
+        static string[] Forged(string rest)
+        {
+            var c = MirBuildTest.Compile(Sink + Loud + Witness + "        let g = func () -> i32 => 2\n        let r = g@ref\n        let rr = r@ref\n" +
+                "        _ = rr()\n        return .Ok(())\n" + rest + "public func main() => ()\n");
+            var program = c.BuildMir();
+            var put = program.VersionBodies.ToArray().Single(static x => x.Key.Decl?.Name == "put");
+            var block = Enumerable.Range(0, put.Blocks.Length).Single(b => put.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
+            var rr = Enumerable.Range(0, put.Locals.Length).Single(x => put.Locals[x].Name == "rr");
+            put.Terminate(block, put.Blocks[block].Terminator with { Operand = MirOperand.Copy(new(rr)) });
+            var cases = new MirCases(c.Types);
+            var flow = new MirDataflow(new MirReach(), cases);
+            var report = new MirReport();
+            Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, report, All);
+            return Problems(c, report);
         }
     }
 

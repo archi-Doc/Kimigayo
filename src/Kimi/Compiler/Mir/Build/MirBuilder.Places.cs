@@ -291,7 +291,7 @@ internal sealed partial class MirBuilder
     private MirPlace Referent(Koto node)
     {
         var plan = ExpansionPlan.Of(compilation.Binding, node)!.Value;
-        return HirTables.IndexCaseDecider(node) is { } decider ? this.Selected(node, plan, decider) : this.Referent(node, plan.Second!);
+        return HirTables.CaseDecider(compilation.Binding, node) is { } decider ? this.Selected(node, plan, decider) : this.Referent(node, plan.Second!);
     }
 
     // SPEC 4.7.1: the referent of the reference a subscript's call returns, the call into its own result temp.

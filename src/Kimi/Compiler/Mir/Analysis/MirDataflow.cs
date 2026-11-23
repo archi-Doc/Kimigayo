@@ -2,20 +2,20 @@
 
 // Owns the bit-set dataflow of one MIR body, forward and backward (plan 5.6.3; DECISIONS R4-M20, R4-M15a, R4-M34, R4-M65, R4-M158).
 // Input: a validated body (Begin) and a transfer, a struct IMirFlow that interprets blocks on the scratch state and joins states. Output: the
-// blocks in reverse postorder, each block's phase, the converged state at each flow head, and Replay and ReplayBackward, which give each
-// chain its state once.
+// blocks in reverse postorder, each block's phase, the converged state at each flow head, Replay and ReplayBackward, which give each
+// chain its state once, and the edges the last forward solve carried a state along (Predecessors, Carries).
 // Blocks form chains: a block whose only edge is a runtime edge into a block that has no other predecessor and is not the entry continues
 // into it, so a chain shares one stored state, held only at its head. Begin decides each chain's phase: P1 where the runtime edges from the
-// entry reach it, else P2 (SPEC 14.10.3). One edge rule serves both directions (Flows): under the selected view a CaseSwitch's edge to the
-// side the view selects only (MirUses.Successor), so the other side's heads stay unreached; a state flows along any edge into a P2 head and
-// along a P1 chain's runtime edges into a P1 head, never otherwise into a P1 head. Forward: P1 follows runtime edges from the entry; P2
-// the edges into P2 heads, P1's states frozen. Backward is its transpose: a chain joins the states of the successors its state flows into,
-// from the boundary state (R4-M158). The transfer joins (A1: union). A solve's worklist holds every head at first and takes the pending head
-// first in its direction's order, reverse postorder forward and postorder backward, so growth along a loop's back edge settles the loop
-// before the code after it is applied again (R4-M65). States are word-major (the lanes of 64 paths per word group), and only a problem's
-// first words are stored; the scratch holds the rest. One arena stores both problems' words; its byte size is the one Resource limit of the
-// analyses (OwnershipStorageLimit_Kd), which StorageLimit records for every arena with its arguments as facts (G213, DECISIONS R4-M132).
-// Storage is pooled and reset by counts.
+// entry reach it, else P2 (SPEC 14.10.3). One edge rule (Flows) serves both directions and Carries, which A5's Store witness reads: under
+// the selected view a CaseSwitch's edge to the side the view selects only (MirUses.Successor), so the other side's heads stay unreached; a
+// state flows along any edge into a P2 head and along a P1 chain's runtime edges into a P1 head, never otherwise into a P1 head. Forward:
+// P1 follows runtime edges from the entry; P2 the edges into P2 heads, P1's states frozen. Backward is its transpose: a chain joins the
+// states of the successors its state flows into, from the boundary state (R4-M158). The transfer joins (A1: union). A solve's worklist
+// holds every head at first and takes the pending head first in its direction's order, reverse postorder forward and postorder backward, so
+// growth along a loop's back edge settles the loop before the code after it is applied again (R4-M65). States are word-major (the lanes of
+// 64 paths per word group), and only a problem's first words are stored; the scratch holds the rest. One arena stores both problems' words;
+// its byte size is the one Resource limit of the analyses (OwnershipStorageLimit_Kd), which StorageLimit records for every arena with its
+// arguments as facts (G213, DECISIONS R4-M132). Storage is pooled and reset by counts.
 // Must not interpret statements, read syntax or HIR, merge a P2 state into a P1 head, or walk all edges in one pass.
 
 #pragma warning disable SA1402 // The transfer's interface and the arenas of the limit belong to the dataflow.
@@ -208,6 +208,36 @@ internal sealed class MirDataflow(MirReach reach, MirCases? cases)
     /// <param name="block">A block of the body.</param>
     /// <returns>The head.</returns>
     internal int Head(int block) => this.head[block];
+
+    /// <summary>Gets the blocks with an edge into a block, one per edge (a CheckTarget's included).</summary>
+    /// <param name="block">A block of the body.</param>
+    /// <returns>The edges' source blocks.</returns>
+    internal ReadOnlySpan<int> Predecessors(int block) => this.predecessors.AsSpan(this.starts[block], this.starts[block + 1] - this.starts[block]);
+
+    /// <summary>Gets whether the last forward solve carries a block's state into another: the next block of its chain, or along an edge
+    /// the one edge rule admits (Flows), from a reached chain.</summary>
+    /// <param name="from">The edge's source block.</param>
+    /// <param name="block">Its target.</param>
+    /// <returns>Whether the state flows.</returns>
+    internal bool Carries(int from, int block)
+    {
+        var h = this.head[from];
+        if (!this.reached[h] || this.next[from] == block)
+        {
+            return this.reached[h];
+        }
+
+        var terminator = this.body.Blocks[from].Terminator;
+        for (var i = -1; i < MirUses.Successors(terminator); i++)
+        {
+            if (MirUses.Successor(this.body, terminator, i, cases) == block && this.Flows(h, terminator, i) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>Orders a validated body's blocks, forms its chains and their heads and decides their phases, once per body.</summary>
     /// <param name="body">The body.</param>

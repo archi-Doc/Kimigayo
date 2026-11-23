@@ -31,7 +31,9 @@ public sealed partial class Binding
     {
         // SPEC 8.11.4: the evidence is a premise on the Type with the signature, an equal or stronger receiver and the bound: the
         // Type's available Callable rows whose Source is a written premise (a Contract-wide clause carries no bound list), each
-        // with the bounds its clause declares in the scope stating it (ContractSolver's FirstRows).
+        // with the union of the bounds of the clauses of its fact's Statements in its environment (ContractSolver's FirstRows;
+        // ConstraintEnvironment.States: the in-place one and each recorded, as an override's inherited premise's, SPEC 6.4.2 step 3).
+        // The evidence names the clause's declaration and written premise.
         var confined = false;
         var required = this.CallableContractType(signature, scope);
         var start = this.premiseRows.Count;
@@ -47,8 +49,8 @@ public sealed partial class Binding
             var clauses = this.selectableEffectClauses;
             for (var i = 0; i < clauses.Count; i++)
             {
-                var clause = clauses[i];
-                if (!ReferenceEquals(clause.Parent, stated.Owner) || !ReferenceEquals(clause.BoundConstraint, raw))
+                if (clauses[i] is not { Parent: { } owner, BoundConstraint: { } written } clause ||
+                    !stated.Constraints!.States(raw, stated.Owner, owner, written))
                 {
                     continue;
                 }
@@ -62,7 +64,7 @@ public sealed partial class Binding
                     }
 
                     confined = true;
-                    evidence?.Add(new(effect, stated.Owner, raw, clause));
+                    evidence?.Add(new(effect, owner, written, clause));
                 }
             }
         }

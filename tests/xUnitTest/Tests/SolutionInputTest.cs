@@ -17,13 +17,17 @@ public sealed class SolutionInputTest : IDisposable
 
     public void Dispose() => Directory.Delete(this.directory, true);
 
-    [Fact]
-    public void ResolvesExactPathThenProjectThenSource()
+    // IMPL 20.3.1: any input not ending in .kimi, .kimiproj, .kimisln or .exe, with or without another extension (PLAN G1274), resolves
+    // to the path A, else A.kimiproj, else A.kimi.
+    [Theory]
+    [InlineData("A")]
+    [InlineData("A.other")]
+    public void ResolvesExactPathThenProjectThenSource(string name)
     {
-        var stem = Path.Combine(this.directory, "A");
-        var source = this.Write("A.kimi", "::Kimi.Console.writeLine(\"single\")");
+        var stem = Path.Combine(this.directory, name);
+        var source = this.Write(name + ".kimi", "::Kimi.Console.writeLine(\"single\")");
         Assert.Equal(source, Solution.ResolveInputPath(stem));
-        var project = this.Write("A.kimiproj", "invalid project contents");
+        var project = this.Write(name + ".kimiproj", "invalid project contents");
         Assert.Equal(project, Solution.ResolveInputPath(stem));
         Assert.Equal(source, Solution.ResolveInputPath(source));
         Assert.Equal(project, Solution.ResolveInputPath(Path.GetRelativePath(Directory.GetCurrentDirectory(), stem)));
@@ -32,31 +36,39 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Throws<CommandInputException>(() => this.Load(stem));
     }
 
-    [Fact]
-    public void ExistingUnsupportedFileDoesNotFallBack()
+    [Theory]
+    [InlineData("A")]
+    [InlineData("A.other")]
+    public void ExistingUnsupportedFileDoesNotFallBack(string name)
     {
-        this.Write("A.kimiproj", "{}");
-        this.Write("A.kimi", "()");
-        var path = this.Write("A", "()");
+        this.Write(name + ".kimiproj", "{}");
+        this.Write(name + ".kimi", "()");
+        var path = this.Write(name, "()");
         Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(path));
     }
 
+    // IMPL 20.3.1: an input ending in one of the four extensions selects only that path, and its error names only that path.
     [Theory]
     [InlineData("A.kimi")]
     [InlineData("A.kimiproj")]
     [InlineData("A.kimisln")]
-    [InlineData("A.other")]
+    [InlineData("A.EXE")]
     public void ExplicitExtensionIsNeverAppendedAgain(string name)
     {
         this.Write(name + ".kimiproj", "{}");
         this.Write(name + ".kimi", "()");
-        Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(Path.Combine(this.directory, name)));
+        var path = Path.Combine(this.directory, name);
+        var exception = Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(path));
+        Assert.Contains(path, exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(path + Constants.KimiProjectExtension, exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void MissingNameReportsAllCandidates()
+    [Theory]
+    [InlineData("absent")]
+    [InlineData("absent.ext")]
+    public void MissingNameReportsAllCandidates(string name)
     {
-        var path = Path.Combine(this.directory, "absent");
+        var path = Path.Combine(this.directory, name);
         var exception = Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(path));
         Assert.Contains(path, exception.Message);
         Assert.Contains(path + ".kimiproj", exception.Message);

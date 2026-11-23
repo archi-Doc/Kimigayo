@@ -33,8 +33,7 @@ public sealed class Kernel32ImportsTest
         Assert.Equal(ToolchainIdentity.Kernel32DefinitionSha256, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(definition))));
         var exports = definition.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal);
         Assert.True(exports.SetEquals(TargetProfile.Windows.Supply("kernel32")!.Symbols));
-        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
-        foreach (Match match in Regex.Matches(runtime, @"declare dllimport .*?@(\w+)\("))
+        foreach (Match match in Regex.Matches(RuntimeTemplates(), @"declare dllimport .*?@(\w+)\("))
         {
             Assert.Contains(match.Groups[1].Value, exports);
         }
@@ -47,7 +46,8 @@ public sealed class Kernel32ImportsTest
     }
 
     // PLAN G137: every runtime template splices each shared ABI definition at exactly one marker and keeps no unexpanded marker;
-    // a broken template fails closed. Every `{{` opens a marker (G358), so `{{{` fails.
+    // a broken template fails closed. Every `{{` opens a marker (G358), so `{{{` fails. A row's constant marker is unexpanded in a
+    // template expanded without the row's constants (the Tatara plan's B7b2a, N2).
     [Theory]
     [InlineData("; no marker\n")]
     [InlineData("{{__kimi_exit}}\n{{__kimi_exit}}\n")]
@@ -57,43 +57,68 @@ public sealed class Kernel32ImportsTest
     [InlineData("{{__kimi_exit}}")]
     [InlineData("{{{__kimi_exit}}\n")]
     [InlineData("{{__kimi_exit}}\n  call void @__kimi_abort(i32 {{{reason_size}})\n")]
+    [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}} ] {{unmapped_bound}}\n")]
     public void BrokenRuntimeTemplateFails(string template)
-        => Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
+        => Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit], []));
 
     // A definition's marker line ends in `\n` or `\r\n`; `\r\n` becomes `\n` and a lone `\r` stays; adjacent markers each expand; an
-    // ABI constant's marker takes the constant (G366), the string release kinds and the profile's unmapped bound among them (G371).
+    // ABI constant's marker takes the constant (G366), the string release kinds among them (G371).
     [Theory]
     [InlineData("{{__kimi_exit}}\r\n  unreachable\n}\n", "  unreachable\n}\n")]
     [InlineData("{{__kimi_exit}}\n  ret\r void\r\r\n}\r", "  ret\r void\r\n}\r")]
-    [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1912\n")]
+    [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_alloc}}\n", "1812\n")]
     [InlineData("{{__kimi_exit}}\n  ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)\n", "  ret ptr inttoptr (i64 4096 to ptr)\n")]
-    [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
     public void RuntimeTemplateSplicesEachDefinitionOnce(string template, string body)
-        => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
+        => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit], []));
+
+    // A row's constant markers take the row's constants, which only the row's runtime expansion is given (the Tatara plan's B7b2a, N2):
+    // the Windows row's unmapped bound (G371) and its layer's OS-error prefix with its length; a target-free template naming one fails
+    // (BrokenRuntimeTemplateFails).
+    [Theory]
+    [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
+    [InlineData("{{__kimi_exit}}\n[{{os_prefix_length}} x i8] c\"{{os_prefix}}\"\n", "[8 x i8] c\" (win32=\"\n")]
+    public void ARowsRuntimeTemplateTakesTheRowsConstants(string template, string body) => Assert.Equal(
+        RuntimeAbi.Exit.GetDefinition(exported: false) + body,
+        LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit], RuntimeAbi.RowConstants(TargetProfile.Windows)));
+
+    // IMPL 21.4.7 (the Tatara plan's decision 24, B7r4): the memory part defines exactly TargetProfile.MemorySymbols, in order, each
+    // external under #1, and declares only an LLVM intrinsic; the footer's #1 is #0 plus "no-builtins".
+    [Fact]
+    public void TheMemoryPartDefinesTheMemorySymbols()
+    {
+        var text = LlvmModuleText.MemoryRuntime;
+        Assert.Equal(TargetProfile.MemorySymbols, Regex.Matches(text, @"(?m)^define (?:ptr|i32) @(\w+)\([^)]*\) #1 \{$").Select(static x => x.Groups[1].Value));
+        Assert.Equal(TargetProfile.MemorySymbols.Length, Regex.Matches(text, @"(?m)^define ").Count);
+        Assert.All(Regex.Matches(text, @"(?m)^declare [^@]*@([\w.]+)\("), static x => Assert.StartsWith("llvm.", x.Groups[1].Value, StringComparison.Ordinal));
+        var footer = LlvmModuleText.Frame(TargetProfile.Windows).Footer;
+        var profile = Regex.Match(footer, @"(?m)^attributes #0 = \{ (.*) \}$").Groups[1].Value;
+        Assert.Contains("\"target-cpu\"", profile, StringComparison.Ordinal);
+        Assert.Contains($"\nattributes #1 = {{ {profile} \"no-builtins\" }}\n", footer, StringComparison.Ordinal);
+    }
 
     // PLAN G371: what is read without a marker. HeapBuffer.intoString (Formatting.kimi) gives its string the release kind 0 or 1 as a
-    // literal, so Static is 0 and Heap 1; the zero-sized buffer lies below the unmapped bound, so __kimi_free never releases it.
+    // literal, so Static is 0 and Heap 1; the zero-sized buffer lies below every row's unmapped bound, so __kimi_free never releases it.
     [Fact]
     public void TheRuntimeTemplatesUnmarkedFactsHold()
     {
         Assert.Equal((0, 1), (RuntimeAbi.StaticReleaseKind, RuntimeAbi.HeapReleaseKind));
-        Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, TargetProfile.Windows.UnmappedBound - 1);
+        Assert.All(TargetProfile.Rows, static row => Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, row.UnmappedBound - 1));
     }
 
-    // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, the Windows runtime's,
-    // the Array runtime's or the test runtime's (the definitions, the reason indices, the reason table and its count, the ABI
-    // constants), by its text throughout the whole text wrote.
+    // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, a row's runtime (its
+    // platform layer, the common part and the allocator, with the layer's definitions and the row's constants; the Windows and Linux
+    // rows') or the test runtime's (the definitions, the reason indices, the reason table and its count, the ABI constants), by its text
+    // throughout the whole text wrote.
     [Theory]
-    [InlineData("WindowsRuntime")]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("x86_64-unknown-linux-musl")]
     [InlineData("TestRuntime")]
     public void RuntimeTemplateExpandsAsEachMarkersReplacement(string runtime)
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var (template, definitions) = runtime switch
-        {
-            "WindowsRuntime" => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in")), RuntimeAbi.RuntimeDefinitions),
-            _ => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll")), Array.Empty<FunctionAbi>()),
-        };
+        var (template, definitions, constants) = TargetProfile.Find(runtime) is { } row
+            ? (LlvmModuleText.RuntimeTemplate(RuntimeAbi.Layer(row)), RuntimeAbi.Layer(row).Definitions, RuntimeAbi.RowConstants(row))
+            : (File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll")), [], []);
         var expected = template;
         foreach (Match marker in Regex.Matches(template, @"\{\{(\w+)\}\}"))
         {
@@ -105,24 +130,24 @@ public sealed class Kernel32ImportsTest
             }
 
             var text = new StringBuilder();
-            Assert.True(AbortReasons.Expand(name, text) || RuntimeAbi.Expand(name, text));
+            Assert.True(AbortReasons.Expand(name, text) || RuntimeAbi.Expand(name, constants, text));
             expected = expected.Replace(marker.Value, text.ToString(), StringComparison.Ordinal);
         }
 
-        Assert.Equal(expected, LlvmModuleText.ExpandRuntime(template, definitions));
+        Assert.Equal(expected, LlvmModuleText.ExpandRuntime(template, definitions, constants));
     }
 
-    // PLAN G366: a runtime is a template, so a definition marker line it lacks or repeats fails it.
+    // PLAN G366: a runtime is a template, so a definition marker line the Windows row's runtime lacks or repeats fails it.
     [Theory]
     [InlineData("{{__kimi_destroy_string}}\n", "")]
     [InlineData("{{__kimi_destroy_string}}\n", "{{__kimi_destroy_string}}\n{{__kimi_destroy_string}}\n")]
     public void ABrokenMarkerLineOfTheRuntimeFails(string marker, string replacement)
     {
-        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var template = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
+        var layer = RuntimeAbi.Layer(TargetProfile.Windows);
+        var template = LlvmModuleText.RuntimeTemplate(layer);
         Assert.Contains(marker, template, StringComparison.Ordinal);
         Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(
-            template.Replace(marker, replacement, StringComparison.Ordinal), RuntimeAbi.RuntimeDefinitions));
+            template.Replace(marker, replacement, StringComparison.Ordinal), layer.Definitions, RuntimeAbi.RowConstants(TargetProfile.Windows)));
     }
 
     // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,
@@ -134,8 +159,8 @@ public sealed class Kernel32ImportsTest
     public Task AFreshProcessBuildsTheRuntimeTextsOnce()
         => FreshProcess.RunExplicit(typeof(Kernel32ImportsTest), nameof(Kernel32ImportsTest.TheRuntimeTextsOfAFreshProcess));
 
-    // AFreshProcessBuildsTheRuntimeTextsOnce's child: the texts' class initializations, after those of the records and rows they
-    // read, against the length of every text they keep.
+    // AFreshProcessBuildsTheRuntimeTextsOnce's child: the texts' class initializations and the Windows row's frame, after the
+    // initializations of the records and rows they read, against the length of every text they keep.
     [Trait("Purpose", "Allocation")]
     [Fact(Explicit = true)]
     public void TheRuntimeTextsOfAFreshProcess()
@@ -144,25 +169,25 @@ public sealed class Kernel32ImportsTest
         RuntimeHelpers.RunClassConstructor(typeof(AbortReasons).TypeHandle);
         var allocated = AllocationMeasurement.MeasureOnce(static () =>
         {
-            LlvmModuleText.WriteRuntime(TextWriter.Null, null);
-            LlvmModuleText.WriteRuntime(TextWriter.Null, TestRuntime.Text);
+            var frame = LlvmModuleText.Frame(TargetProfile.Windows);
+            LlvmModuleText.WriteRuntime(TextWriter.Null, frame, null);
+            LlvmModuleText.WriteRuntime(TextWriter.Null, frame, TestRuntime.Text);
         });
         var texts = new StringWriter();
-        LlvmModuleText.WriteRuntime(texts, null);
-        LlvmModuleText.WriteRuntime(texts, TestRuntime.Text);
+        var windows = LlvmModuleText.Frame(TargetProfile.Windows);
+        LlvmModuleText.WriteRuntime(texts, windows, null);
+        LlvmModuleText.WriteRuntime(texts, windows, TestRuntime.Text);
         texts.Write(LlvmModuleText.TryAllocate + LlvmModuleText.TransferBytes);
         var chars = texts.GetStringBuilder().Length;
         Assert.True(allocated <= 11L * chars, $"runtime texts allocation {allocated} for {chars} chars");
     }
 
+    // Every runtime template's kernel32 declaration (C-468's N3) is a row of the table, with its signature, and each row is declared once.
     [Fact]
     public void RuntimeDeclarationTableMatchesTheEmittedDeclarations()
     {
-        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var runtime = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in")) +
-            File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll"));
         var declared = new List<string>();
-        foreach (Match match in Regex.Matches(runtime, @"(?m)^declare dllimport (\S+) @(\w+)\(([^)]*)\)(.*)$"))
+        foreach (Match match in Regex.Matches(RuntimeTemplates(), @"(?m)^declare dllimport (\S+) @(\w+)\(([^)]*)\)(.*)$"))
         {
             var symbol = match.Groups[2].Value;
             declared.Add(symbol);
@@ -180,7 +205,7 @@ public sealed class Kernel32ImportsTest
             Assert.Equal(codes, entry.Signature);
         }
 
-        Assert.Equal(declared, TargetProfile.Windows.RuntimeDeclarations.Select(x => x.Symbol));
+        Assert.Equal(TargetProfile.Windows.RuntimeDeclarations.Select(static x => x.Symbol).Order(StringComparer.Ordinal), declared.Order(StringComparer.Ordinal));
 
         static string Code(string type) => type switch
         {
@@ -245,5 +270,20 @@ public sealed class Kernel32ImportsTest
         Assert.Equal(
             $"The link manifest's 'libraries' entry '{name}' is not this compiler's. Re-emit the manifest.",
             Assert.Throws<InvalidDataException>(() => LinkManifest.CheckCompilerSupply(invalid.RootElement, supply)).Message);
+    }
+
+    // Every runtime template's text (C-468's N3): the Backend's embedded templates in name order, then the test runtime's.
+    private static string RuntimeTemplates()
+    {
+        var assembly = typeof(LlvmModuleText).Assembly;
+        var text = new StringBuilder();
+        foreach (var name in assembly.GetManifestResourceNames().Where(static x => x.StartsWith("Kimi.Compiler.Backend.", StringComparison.Ordinal) &&
+            x.EndsWith(".ll.in", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+        {
+            using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+            text.Append(reader.ReadToEnd()).Append('\n');
+        }
+
+        return text.Append(TestRuntime.Text).ToString();
     }
 }

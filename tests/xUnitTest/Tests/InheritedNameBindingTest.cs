@@ -186,6 +186,22 @@ public class InheritedNameBindingTest
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
 
+    // SPEC 6.1, 6.2.2, 9.6, 23.3 (R7-E2 E2-4b's O-d (b), ruling 2): a nested Container or a Value-role member repeating an accessible
+    // inherited name is recorded at itself relating the inherited declaration (d1: dev related nothing; d4: dev recorded the struct alone,
+    // M1), beside the struct's own record; a member also in a Signature pair keeps both records, each at its own key (d4c: the inherited
+    // name's record is at the scope's later `g`, a grouping choice). Each record is its code, line and related labels; the twins are valid.
+    [Theory]
+    [InlineData("open struct B\n    public struct N\n    public init() => ()\nstruct D: B\n    struct N\n    public init(): base() => ()\n", "DuplicateBinding_Kd 4|DuplicateBinding_Kd 5, first declaration")] // d1
+    [InlineData("open struct B\n    public struct N\n    public init() => ()\nstruct D: B\n    struct M\n    public init(): base() => ()\n", "")] // d1t
+    [InlineData("open struct B\n    public func g(self: ref/Self) -> i32 => 0\n    public init() => ()\nstruct D: B\n    func g(self: ref/Self) -> i32 => 1\n    public init(): base() => ()\n", "DuplicateBinding_Kd 4|DuplicateBinding_Kd 5, first declaration")] // d4
+    [InlineData("open struct B\n    public func g(self: ref/Self) -> i32 => 0\n    public init() => ()\nstruct D: B\n    func h(self: ref/Self) -> i32 => 1\n    public init(): base() => ()\n", "")] // d4t
+    [InlineData("open struct B\n    public func g(self: ref/Self) -> i32 => 0\n    public init() => ()\nstruct D: B\n    func g(self: ref/Self) -> i32 => 1\n    func g(self: ref/Self) -> i32 => 2\n    public init(): base() => ()\n", "DuplicateBinding_Kd 4|DuplicateBinding_Kd 6, first declaration|DuplicateBinding_Kd 6, first declaration")] // d4c
+    public void AnInheritedNamesRepetitionRelatesTheInheritedDeclaration(string source, string records)
+    {
+        var program = source + "public func main() => ()\n";
+        Assert.Equal(records, string.Join('|', DiagnosticCorpus.Check(program).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? program.AsSpan(0, span.Start).Count('\n') + 1 : 0)}" + string.Concat(x.Related?.Select(static r => ", " + r.Label) ?? []))));
+    }
+
     private static StructKoto Type(Compilation c)
         => Assert.IsType<StructKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S"));
 }

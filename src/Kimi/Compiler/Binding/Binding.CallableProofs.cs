@@ -79,7 +79,7 @@ public sealed partial class Binding
     // whole-contract comparison fails, explained at the argument whose Type binds F, from its own trial's U fact (design-r2 Amendments 4
     // and 5): nothing is proven or compared again. SPEC 15.3.7: with matching members, a Function Item's failing condition (a clause or a
     // result premise) is the member. Null when the trial left no such fact (a normal state); a foreign fact is a broken contract.
-    private CallableConstraintFact? CallableOriginFailure(InvocationKoto call, FunctionKoto function, int[] mapping)
+    private CallableConstraintFact? CallableOriginFailure(InvocationKoto call, FunctionKoto function, ReadOnlySpan<int> mapping)
     {
         var fact = this.trialUnknown;
         this.trialUnknown = null;
@@ -96,7 +96,7 @@ public sealed partial class Binding
         var at = ArgumentBinding(call, function, mapping, slot) ?? call;
         return new(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, call));
 
-        static Koto? ArgumentBinding(InvocationKoto call, FunctionKoto function, int[] mapping, BindingSymbol slot)
+        static Koto? ArgumentBinding(InvocationKoto call, FunctionKoto function, ReadOnlySpan<int> mapping, BindingSymbol slot)
         {
             for (var a = 0; a < call.ArgumentNodes.Count; a++)
             {

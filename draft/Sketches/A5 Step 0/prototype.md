@@ -1804,7 +1804,7 @@ The full output and the `-v`, `-r13`, `-r15`, `-r16`, `-r17`, `-r18` and `-cases
 
 **Input.** PLAN G171 and R4's fact check of 2026-10-21: on dev, `State.add(counter@uniq)` with `add(c: uniq/Counter, x: i32 =
 State.poke(counter@uniq))` in group State gives no MIR record, and its explicit twin `CallReservationConflict_Kd`. DECISIONS R4-M68–R4-M73 (R4-M69's
-Inlined drop and its premise, R4-M73's hold); `draft/Proposals/2026-10-20 M69 Default Loan Correspondence Plan.md` §§1, 4, 5, 7: option 3, with its §4
+Inlined drop and its premise, R4-M73's hold); `draft/Obsolete/2026-10-20 M69 Default Loan Correspondence Plan.md` §§1, 4, 5, 7: option 3, with its §4
 nested table and §7 matrix as the checklist (its "adopted" status and R4-M84 are rolled-back records, DECISIONS R4-M86); SPEC 7.2.3, 15.6.4 and 15.6.7;
 DIAGNOSTICS' Defaults paragraph.
 

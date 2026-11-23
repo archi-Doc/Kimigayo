@@ -46,7 +46,7 @@ public sealed partial class Binding
             }
 
             result.First ??= candidate;
-            var count = candidate.Declaration is DeclarationContainerKoto container ? container.GenericParameterNodes.Count : 0;
+            var count = candidate.GenericArity;
             // An omitted construction target prefers own arity zero within this stage;
             // otherwise one distinct generic reference must remain. Evidence never reopens lookup.
             if (arity < 0 && count == 0 && !result.NonGeneric)
