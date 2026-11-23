@@ -14474,9 +14474,6 @@ resumed by R4-M86 (2026-10-20).
     `BaseMember` and `ConstructorMember`; read (`MemberSideOf`) by `CallReceiver`, `BindEnumConstruction` (a Case named on the Type
     side) and `BindRequirementItem`. A read of a member access without a published side breaks the formers' contract (an internal
     error; `MemberSideOf` throws). The table is cleared each pass and sized library-only (`KimiLibrarySize.Stated.MemberSides`).
-    - Amended by R7-N5 B1b-2: the side is the Side slot of the Work pass family `MemberSelections`' row, beside the access's lookup
-      selection (still its own fact: a constructor access has a side and no selection), stale at the next run and released at the
-      freeze; the library-only sizing went with G949 Stage 2 U6 (ddb64d46e).
   - Moves: valid construction through a projection qualifier newly accepted (b1, n01, k24, r01-r06g, r14v); invalid programs newly
     rejected `AmbiguousBinding_Kd` (r14, r14b, x06, x07, y01, y02, y03, y07, y14, y16, z03-z07) or G621's `Unsupported_Kd` (x01,
     x02, y08); a Type function, a Case or a requirement member through a projection qualifier `Unsupported_Kd` (b2, n02, r01b, r11,
@@ -16126,29 +16123,6 @@ resumed by R4-M86 (2026-10-20).
     `resolvingTypes` kept, and a counter beside the column for DirectBase's `Count != 0` shortcut. Readings: SPEC 6.2.2 and 9.5 (a
     base clause in progress), 9.5.1 (alias-stage groups), 10.1 and 23.1.2 (a synthesized call's verdict at its consumer; no record
     moves), 14.8 (patterns and guards); the B2a-2, B5a and E lines above. Ratchet ("Node-keyed table members in Binding"): 24 -> 19.
-  - **R7-N5 B1b-2** (the Back's batch, Q-701, D-1156; design `b1b2-design.md`, B's rulings 1-4; the Front's review
-    `review-n5-b1b2.md`, C1, C2, N1-N4): `memberSelections` and `memberSides` (a member access's lookup selection and published
-    side: one key, one writer, one reset) become one Work pass family `MemberSelections` with a `(MemberSide? Side, MemberSelection?
-    Selection)` row (rule 3; a constructor access has a side and no selection; the nullable slots carry presence, since a selection
-    can be all-default); its one writer `Publish` carries PublishPath's side check and runs after the left's qualifier, so ids keep
-    dev's order. `inferredConstructionTargets` becomes the Work family `InferredConstructionTargets`, and `qualificationStops` (the
-    resolver's provisional stop, FailUnselected's input) the Work family `QualificationStops` with a `(Value, Type)` row, a slot
-    without its Container absent; its writer refuses a frozen library use, as WriteSymbol refuses that use's Selected publication.
-    All three are released at the freeze: BeginRun advances the counter once per run, so the freeze compilation's library and
-    program passes share a value, and dev's program pass cleared the library pass's rows (B2a-2's line). QualificationRequired's
-    record, `qualificationFailures` and the TypePath Note stay until R7-E5 (E2-4b's ruling 3, C-405 12:17). Rejected: two member
-    families, a Pass (Freeze) column for any of the three, named presence bools, and `qualificationStops` left to R7-E5. Readings:
-    SPEC 9.5, 9.5.1, 9.6 (qualification), 9.6 and 10.2 (member access sides), 9.7, 9.7.1, 10.8.1 (construction targets), 23.1.2 (no
-    record moves). Ratchet ("Node-keyed table members in Binding"): 19 -> 15. With B's ruling 4 (O2; `b1b2-bytes\proposal.md` §5):
-    MemberSelections' slot is its row's index plus 1 into the accessor's per-pass row list (BU-220's "a keyed collection whose
-    values index a per-pass list keeps that list in its own part"; the list cleared in ResetContracts with its capacity kept, as
-    duplicateOrder and synthesizedOrder): member accesses sit about one per 8-id page and the row is 56 B, so a page per access cost
-    +18% cold Bind on Milestone26 (O1, which fails AGENTS' allocation rule); the list form is within +0.4% of dev's dictionaries on
-    Milestone26/31/10, +1.5% on Milestone23, -9.2% on a member-dense program. Rejected: O1 (the row column), O3 (a 40-byte row with
-    two store-only fields in MemberSelection), dev's two dictionaries (ratchet 17, not 15). The form's invariant: every ResetPass
-    comes with a stamp advance or the release of the columns its pass wrote (a refused library's StartPass pair excepted: nothing
-    binds after it). The Front's C-403 N1: synthesizedOrder's listing is written by `SynthesizedCallRows.Add(call, consumer)`, the
-    one site for the row and its listing.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
