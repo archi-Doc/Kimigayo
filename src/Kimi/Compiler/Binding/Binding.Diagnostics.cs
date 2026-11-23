@@ -30,9 +30,6 @@ public sealed partial class Binding
     // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
     private Dictionary<Koto, PerCallSlotFact>? perCallSlots;
 
-    // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
-    private Dictionary<Koto, Koto>? writeTargets;
-
     // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
@@ -477,15 +474,21 @@ public sealed partial class Binding
         return this.Fail(node, failure, unresolved);
     }
 
-    /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>
+    /// <summary>Records a write whose target's path denies it (SPEC 3.4, 15.1.5) with the target (`Related` role 0, "target"), beside any
+    /// other failure of the write (SPEC 23.1.2: the check reads the target's path, never the value or the route); an unsupported path is
+    /// located only.</summary>
     /// <param name="node">The write.</param>
     /// <param name="target">The written target.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailWrite(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, this.AccessFailure(target, out _), target);
+        => this.RecordWrite(node, this.AccessFailure(target, out _), target);
 
     private BoundType? FailObjectAuthority(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, BindingFailure.SharedPathAccess, target);
+        => this.RecordWrite(node, BindingFailure.SharedPathAccess, target);
+
+    // The one recorder of a denied write (AccessFailure's code, or the object authority's): the target related, or a located limit.
+    private BoundType? RecordWrite(Koto node, BindingFailure failure, Koto target)
+        => this.RecordNumbered(node, failure, failure == BindingFailure.Unsupported ? [] : [new(ProblemFactKind.Related, this.FactSite(target), 0)]);
 
     // A bare Place that needs its acquisition spelled (TransferRequired or ExclusiveBorrowRequired), with the Place it names.
     private BoundType? FailAcquisition(Koto node, BindingFailure failure, Koto place, bool @object = false, bool unresolved = false)
@@ -521,7 +524,7 @@ public sealed partial class Binding
 
     // Reports a write failure at its target; an assignment names the target. An
     // Exclusive call of a closure (SPEC 7.7.3) borrows the callee exclusively, so the callee is the written target.
-    private void ReportWrite(Koto node, DiagnosticCollection? store, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportWrite(Koto node, DiagnosticCollection? store, Koto target, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition)
     {
         var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
         var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
@@ -540,7 +543,7 @@ public sealed partial class Binding
             var handle = KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } followed ? followed.Left.BoundType : target.BoundType;
             var authority = handle?.HandleMode is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : null;
             var note = code != DiagnosticCode.SharedPathAccess_Kd ? null : objectCallee ? authority is null ? callNote : $"{callNote}. {authority}" : authority ?? this.SharedIndexNote(target);
-            node.ReportIn(store, requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
+            node.ReportIn(store, requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null, condition: condition);
             return;
         }
 
@@ -550,7 +553,7 @@ public sealed partial class Binding
             root = KotoHelper.UnwrapParentheses(root is MemberAccessKoto member ? member.Left : ((IndexKoto)root).Left);
         }
 
-        node.ReportIn(store, requirement, code, note: callNote, at: target, evidence: [target.ToString()]);
+        node.ReportIn(store, requirement, code, note: callNote, at: target, evidence: [target.ToString()], condition: condition);
     }
 
     // SPEC 4.7.1, 8.3.3: a user index publishes its element exclusively only through indexUniq. When the receiver's Type
@@ -611,7 +614,6 @@ public sealed partial class Binding
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
-        this.writeTargets?.Clear();
         this.takeLayers?.Clear();
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
