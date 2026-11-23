@@ -1035,7 +1035,11 @@ public sealed partial class RetentionTest
     // none (SPEC 15.6.4's abstract-storage sentence, 8.2.3; the owner's O-360 (a), PLAN G935: store 1's conjunction `p > s & r > s &
     // a > s` was the instantiated reading of E's binding, relabelled). x's raw layer is a Type argument's, judged where `r` is bound (SPEC
     // 5.7 Authority, 5.2.1 condition 3; DECISIONS BU-113): g states `r` by `zr: uniq` (and by `zr: ref` with `zu: uniq`), so f may write
-    // past it; by `zr: ref` alone, a pointer stating `r` has no write authority, and f writes nothing past it (`reached {}`).
+    // past it; by `zr: ref` alone, a pointer stating `r` has no write authority, and f writes nothing past it (`reached {}`). Store 0's own
+    // Content is a borrow formed through x's path stored at a position stating `r`, so its fit lists `a > r` beside `p > r`: `a`, Box2's
+    // slot behind the raw layer, is a layer of that path no well-formedness relates to `r` (Revision 10; SPEC 15.6.1: a store is an Origin
+    // relation of the callee's body, so a call that cannot prove `a > r` cannot make it). The pair was missing while the walk stopped at
+    // x's raw layer as a supplied layer without members (the Limit before Z6's M3a), relabelled with M3a's binder reading.
     [Theory]
     [InlineData("zr: uniq/i32 during r", "reached {0 Content} if {0 Value: p > a & 0 Value: r > a}")]
     [InlineData("zr: ref/i32 during r", "reached {}")]
@@ -1045,7 +1049,7 @@ public sealed partial class RetentionTest
         var c = Bind("struct Box2 {a}\n    public var inner: uniq/i32 during a\n    public init(inner: uniq/i32 during a) => self.inner = inner\n" +
             "func f<T, E>(x: T, w: uniq/E) => ()\n" +
             $"func g({statements}, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
-        Assert.Equal([$"store 0: own {{0 Content}} if {{0 Value: p > r}}, {reached}, store 1: own {{1 Content}}, reached {{}}"], Calls(c, "f"));
+        Assert.Equal([$"store 0: own {{0 Content}} if {{0 Value: p > r & 0 Value: a > r}}, {reached}, store 1: own {{1 Content}}, reached {{}}"], Calls(c, "f"));
     }
 
     // SPEC 5.2.1 condition 3, 5.7 Authority (DECISIONS BU-113): a call's contract reads a raw layer by its position. A View method's own
