@@ -18,10 +18,16 @@ public sealed partial class Binding
         this.BindNodeCore(name, scope, null);
         if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
-            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
+            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call; an unresolved
+            // name is the located limit at the reference, resting on the name's own record.
             this.BindUnknownChildren(reference, scope);
-            var resolved = name.BindingState == BindingState.Resolved;
-            return this.Fail(reference, resolved ? BindingFailure.NoApplicableCandidate : BindingFailure.Unsupported, !resolved);
+            if (name.BindingState == BindingState.Resolved)
+            {
+                return this.Record(reference, BindingFailure.NoApplicableCandidate, []);
+            }
+
+            this.RecordLocated(reference, reference.Span, unresolved: true);
+            return null;
         }
 
         for (var i = 0; i < reference.TypeArguments.Count; i++)
@@ -102,7 +108,7 @@ public sealed partial class Binding
         if (Receiver(node) is { } receiver && ((symbol.Declaration is FunctionKoto { BaseInitializer: { } initializer } && IsWithin(node, initializer)) ||
             (!receiver.Whole && (node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))))
         {
-            return this.Fail(node, BindingFailure.InvalidAssignment);
+            return this.Record(node, BindingFailure.InvalidAssignment, []);
         }
 
         if (symbol.ConditionalDeclaration is not null && symbol.Kind != BindingSymbolKind.Function)
@@ -148,7 +154,7 @@ public sealed partial class Binding
                 if (group.Single is { Declaration: FunctionKoto { IsAnonymous: false } named } && DirectCallOnly(named))
                 {
                     // SPEC 7.6, 22.6: such a function supports direct calls only. An overload group is checked after selection.
-                    return this.Fail(node, BindingFailure.DirectCallFunctionValue);
+                    return this.Record(node, BindingFailure.DirectCallFunctionValue, []);
                 }
             }
 
@@ -190,7 +196,7 @@ public sealed partial class Binding
                     (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
                 {
                     // SPEC 6.3.4, 11.7: construction forbids inherited Field and computed access and custom accessor calls on self.
-                    return this.Fail(node, BindingFailure.InvalidAssignment);
+                    return this.Record(node, BindingFailure.InvalidAssignment, []);
                 }
 
                 return Complete(node, this.MemberRead(node, symbol, scope));

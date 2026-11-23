@@ -221,8 +221,8 @@ public sealed partial class Binding
                         {
                             if (ReceiverShape(b) is { } other && other != shape)
                             {
-                                this.Fail(fa, BindingFailure.ReceiverShapeMismatch);
-                                this.Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
+                                this.Record(fa, BindingFailure.ReceiverShapeMismatch, []); // A repeat is the equal key (BindingReport.Add).
+                                this.Record(b.Declaration, BindingFailure.ReceiverShapeMismatch, []);
                             }
                         }
                     }
@@ -286,10 +286,10 @@ public sealed partial class Binding
                     }
                     else if (expected != current)
                     {
-                        this.Fail(contract, BindingFailure.ReceiverShapeMismatch);
+                        this.Record(contract, BindingFailure.ReceiverShapeMismatch, []); // A repeat is the equal key (BindingReport.Add).
                         if (ReferenceEquals(members[i].Symbol.Declaration.Parent, contract))
                         {
-                            this.Fail(members[i].Symbol.Declaration, BindingFailure.ReceiverShapeMismatch);
+                            this.Record(members[i].Symbol.Declaration, BindingFailure.ReceiverShapeMismatch, []);
                         }
                     }
                 }

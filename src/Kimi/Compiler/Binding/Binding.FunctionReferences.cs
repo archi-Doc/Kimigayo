@@ -265,7 +265,7 @@ public sealed partial class Binding
         var target = (FunctionKoto)selected.Declaration;
         if (DirectCallOnly(target))
         {
-            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
+            return this.Record(use, BindingFailure.DirectCallFunctionValue, []);
         }
 
         if (target.GenericArguments.Count != 0)

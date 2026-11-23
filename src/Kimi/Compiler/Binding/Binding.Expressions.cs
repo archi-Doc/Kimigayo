@@ -434,7 +434,7 @@ public sealed partial class Binding
                 return Complete(enumeration, BoundType.Unit);
             case ParenthesizedTypeKoto:
                 // Grouped Types are bound by Type/qualifier entry points, never as runtime values.
-                return this.Fail(node, BindingFailure.InvalidTypeFormation);
+                return this.Record(node, BindingFailure.InvalidTypeFormation, []);
             case SyntaxFormKoto { Akind: KotoKind.ConstructorReference } constructorReference:
                 return this.BindBaseConstructor(constructorReference, scope);
             case TypeKoto:

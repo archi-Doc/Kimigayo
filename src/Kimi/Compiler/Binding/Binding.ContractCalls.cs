@@ -107,7 +107,7 @@ public sealed partial class Binding
             }
             else if (expected != current)
             {
-                this.Fail(member, BindingFailure.ReceiverShapeMismatch);
+                this.Record(member, BindingFailure.ReceiverShapeMismatch, []);
                 group.Active = false;
                 return null;
             }
@@ -128,8 +128,17 @@ public sealed partial class Binding
                 return group.Properties[0];
             }
 
-            // SPEC 11.9: a Property requirement is instance-only, so a Type names none; several identities are not implemented.
-            this.Fail(member, typeAccess ? BindingFailure.MissingName : BindingFailure.Unsupported, true);
+            // SPEC 11.9: a Property requirement is instance-only, so a Type names none; several identities are not implemented (the
+            // located limit). The check's own decision, each in its family's form; the caller's FailMissing keeps this first failure.
+            if (typeAccess)
+            {
+                this.Record(member, BindingFailure.MissingName, [], unresolved: true);
+            }
+            else
+            {
+                this.RecordLocated(member, member.Span, unresolved: true);
+            }
+
             return null;
         }
 

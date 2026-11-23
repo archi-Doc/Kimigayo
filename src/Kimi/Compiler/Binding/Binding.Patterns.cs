@@ -364,7 +364,7 @@ public sealed partial class Binding
         if (structural && type.Semantics != SemanticsKind.Owner)
         {
             plan.Invalid = true;
-            this.Fail(syntax, BindingFailure.InvalidPattern);
+            this.Record(syntax, BindingFailure.InvalidPattern, []);
             return index;
         }
 
@@ -381,7 +381,7 @@ public sealed partial class Binding
                 symbol.BindsReference = reach.Access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
                 if (reach is { Access: PatternAccessMode.Exclusive, OwnedPart: true } && IsGetterResult(plan.Syntax.Expression))
                 {
-                    this.Fail(binding, BindingFailure.InvalidAssignment);
+                    this.Record(binding, BindingFailure.InvalidAssignment, []);
                 }
 
                 binding.Operands[0].BoundSymbol = symbol;
@@ -429,7 +429,7 @@ public sealed partial class Binding
                     if (payload is null)
                     {
                         plan.Invalid = true;
-                        this.Fail(children[i], BindingFailure.InvalidPattern);
+                        this.Record(children[i], BindingFailure.InvalidPattern, []);
                     }
                     else
                     {
