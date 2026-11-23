@@ -126,6 +126,9 @@ internal sealed class OriginPremiseClosure
         this.topCount = 0;
     }
 
+    /// <summary>Gets the current graph's size: its nodes, edges, meet incidences, meet operands and top-like nodes (PLAN G1082).</summary>
+    internal (int Nodes, int Edges, int Links, int Operands, int Tops) Mark => (this.nodeCount, this.edgeCount, this.meetLinkCount, this.operandNodeCount, this.topCount);
+
     /// <summary>Gets an expression's node, interning it with its meet operands; <paramref name="added"/> tells a new node.</summary>
     /// <param name="origin">The expression.</param>
     /// <param name="added">Whether the node is new.</param>
