@@ -534,6 +534,7 @@ public class IntrinsicCapabilityTest
     // SPEC 15.1.6 (F's C8 ruling 9 D2): a part of an owned Subject or iteration item is transferred with its responsibility, so no Copy
     // is asked and nothing rests on the limit (valid); a Place Subject or a borrowed iteration is borrowed (the twins, valid).
     [InlineData("C6", "t-patmove-V", GrowingCopy + Endless + "func f(o: Option<G<W<i32>>>) -> ()\n    match o@move\n        .Some(let v) => ()\n        _ => ()\n    return\n", "")]
+    [InlineData("C6", "t-trymove-V", GrowingCopy + Endless + "func f(o: Option<G<W<i32>>>) -> Option<i32>\n    let v = try o@move\n    return .None\n", "")]
     [InlineData("C6", "t-formove-V", GrowingCopy + Endless + "func f(arr: Array<G<W<i32>>>) -> ()\n    for v in arr@move\n        let n = 1\n    return\n", "")]
     [InlineData("C6", "t-patref-V", GrowingCopy + Endless + "func f(o: Option<G<W<i32>>>) -> ()\n    match o\n        .Some(let v) => ()\n        _ => ()\n    return\n", "")]
     [InlineData("C6", "t-forref-V", GrowingCopy + Endless + "func f(arr: Array<G<W<i32>>>) -> ()\n    for v in arr\n        let n = 1\n    return\n", "")]

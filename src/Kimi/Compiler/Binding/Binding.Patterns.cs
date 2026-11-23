@@ -153,6 +153,10 @@ public sealed partial class Binding
                 return this.Fail(match, BindingFailure.TypeMismatch);
             }
 
+            // SPEC 17.3: the operand is acquired as an owned value (a Copy Place copied, a non-Copy Place moved, a temporary
+            // transferred), so the try's Subject is by value and its success payload a part of it (OwnedPart; R7-C6 a, the Middle's
+            // C-520 C1: D2's rule for a transferred Subject).
+            plan.Mode = SubjectMode.ByValue;
             propagation.SelectOption(subject.Symbol == this.Library.Option);
             if (!propagation.SemanticsIndexed)
             {
