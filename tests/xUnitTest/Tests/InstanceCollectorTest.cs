@@ -1146,7 +1146,9 @@ public sealed partial class InstanceCollectorTest
     // R7-C3 b's SelectConformance), so both clause orders record one TypeHeightLimit_Kd at the call (names90, namesSwap90; F's C3b ruling
     // (A), C-481) and at Box^80, within the height, both accept (names80, namesSwap80); w == w over W<Box^90<T>>, Equatable when T is
     // Eqv<Box^8<T>>, forms that conditional conformance's premise past the height (8,198) with its operands within (8,192): one
-    // TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80) (c4's fail-before of names90, namesSwap90, premise90 and
+    // TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80); the same comparison in a second declaration h2 (PLAN G651 U2b
+    // R8 Rev 2's Witness twin: the resolution the builder's Witnessed and the collector read) is that declaration's own record, one per
+    // forming site and declaration (premiseTwo90; DECISIONS R5-M171, SPEC 23.1.2) (c4's fail-before of names90, namesSwap90, premise90 and
     // premise80: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's formation, names' record is
     // the frame's site-less InternalInvariant_Kd). Through a requirement Item (namesItem: `let f = U.get`) the record at `f` is the Item's own Type
     // formation's (In, through TyCtxt.Answered, before Callee's Witness), on dev too: a control, no fail-before of Callee's reading. A
@@ -1161,6 +1163,7 @@ public sealed partial class InstanceCollectorTest
     [InlineData("namesSwap90", "TypeHeightLimit_Kd U.get()")]
     [InlineData("premise90", "TypeHeightLimit_Kd w == w")]
     [InlineData("premise80", "")]
+    [InlineData("premiseTwo90", "TypeHeightLimit_Kd w == w|TypeHeightLimit_Kd w == w")]
     [InlineData("prop90", "GenerationResourceLimit_Kd x.n")]
     [InlineData("prop91", "TypeHeightLimit_Kd x")]
     public void AWitnessResolutionIsTheCallsFormation(string shape, string records)
@@ -3004,6 +3007,8 @@ public sealed partial class InstanceCollectorTest
             "namesSwap" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<i32>", "C<Box<Box<T>>>", Get)),
             "namesItem" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<Box<Box<T>>>", "C<i32>", "    let f = U.get\n    return f()\n")),
             "premise" => Chain(last, $" => if h<{Nest("Box", n, "T")}>() => 0 else => 1\n", Premise()),
+            "premiseTwo" => Chain(last, $"\n    _ = h2<{Nest("Box", n, "T")}>()\n    return if h<{Nest("Box", n, "T")}>() => 0 else => 1\n",
+                Premise() + Premise()[Premise().IndexOf("func h<", StringComparison.Ordinal)..].Replace("func h<", "func h2<", StringComparison.Ordinal)),
             "prop" => Chain(last, $"\n    return g<Ph<{Nest("Box", n, "T")}>>(Ph<{Nest("Box", n, "T")}>.init()) - 1\n", HasN),
             "nest" => Chain(last, $"\n    func inner() -> i32\n        let y: Option<raw/{Nest("Box", n, "T")}> = .None\n        return 0\n    return inner()\n"),
             "cap" => Chain(last, $"\n    let h = H<{Nest("Box", n, "T")}>.init()\n    return h.run()\n", H),
