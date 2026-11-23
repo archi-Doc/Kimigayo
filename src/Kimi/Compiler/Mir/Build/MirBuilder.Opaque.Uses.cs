@@ -4,27 +4,32 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// The uses an Opaque site names (plan 5.4, SPEC 23.1.2; DECISIONS R5-M63, Z17).
+// The uses an Opaque site names (plan 5.4, SPEC 23.1.2; DECISIONS R5-M63, Z17, Z27).
 // - Responsibility: collecting, for the Opaque value MirBuilder.Opaque.cs forms in place of a node, the uses its site names, each a Place,
-//   undecided (MirDescriptors.IsUndecided): an Error node's kept operands, evaluated first in syntax order as the call builder evaluates
-//   its operands and never acquired (KeptOperands, SiteUses; DECISIONS Z17c), their Places counted as the site's kept uses
-//   (MirOpaque.Kept), then the locals, parameters, environment bindings and statics the rest of the node's syntax names or a Closure in
-//   it captures (SyntaxUses), at their roots. A located part is taken as its consumer takes it (Part, DECISIONS Z17): read at its own
-//   node by a FakeRead of its Place where its consumer reads it (Reads), no use where it is a Temporary's built value, else an undecided
-//   use at its Place, as a part the builder's own failed step goes below is.
+//   undecided (MirDescriptors.IsUndecided), in their published order: an Error node's kept operands, evaluated first in syntax order as
+//   the call builder evaluates its operands and never acquired (KeptOperands, KeptParts; DECISIONS Z17c), their Places counted as the
+//   site's kept uses (MirOpaque.Kept); for a derived write, its target Error's kept operands (TargetUses), the read or input ones kept,
+//   the others its enclosing uses (MirOpaque.Enclosing: the target designates a Place strictly within each, so A1 checks its
+//   construction, not its value; SPEC 13.7.1, 15.1.2); then the locals, parameters, environment bindings and statics the rest of the
+//   node's syntax names or a Closure in it captures (SyntaxUses), at their roots. A located part is taken as its consumer takes it
+//   (Part, DECISIONS Z17): read at its own node by a FakeRead of its Place where its consumer reads it (Reads), no use where it is a
+//   Temporary's built value, else an undecided use at its Place, as a part the builder's own failed step goes below is. A derived write's
+//   right side is taken at its own node before its target's parts are evaluated (SPEC 13.7.1), so it is none of its site's uses.
 // - Inputs: the node; the published Op and Adjust, a kept operand's form's take and input (HirTables.KeptAdjust, KeptInput), each
 //   node's Res and symbol; the Places the builder has bound or located.
-// - Outputs: uses and their kept count, the use list Site reads, or the use of a part built already (SiteUses(MirPlace?)); Defaults
-//   names a default's earlier slots and Unlent an Opaque temp, neither kept; the kept operands' MIR with a read part's Copy (Secure) and a
-//   located read part's FakeRead, right before the site.
-// - Invariants: each Place once; the kept count is cleared with the list (ClearUses); a kept operand is evaluated once, before the site,
-//   and its syntax's roots are not named again, also where several consumers take an Error node an expansion located (R4-M109).
+// - Outputs: uses and their kept and enclosing counts, the use list Site reads, or the use of a part built already
+//   (SiteUses(MirPlace?)); Defaults names a default's earlier slots and Unlent an Opaque temp, neither kept; the kept operands' MIR with a
+//   read part's Copy (Secure) and a located read part's FakeRead, right before the site.
+// - Invariants: each Place once, a Place both enclosing and read named as read (the stronger check); the kept and enclosing counts are
+//   cleared with the list (ClearUses); a kept operand is evaluated once, before the site, and its syntax's roots are not named again,
+//   also where several consumers take an Error node an expansion located (R4-M109).
 // - Prohibitions: no record, no acquisition of a kept operand, no site formed here (the gate's, MirBuilder.Opaque.cs).
 internal sealed partial class MirBuilder
 {
     private readonly List<MirPlace> uses = []; // The uses of the Opaque site being formed (Site).
     private readonly List<(Koto Node, MirPlace Place)> kept = []; // The kept operands collected, then their Places, innermost Error node last.
     private int keptUses; // The count of the leading uses that are the site's kept parts' Places (MirOpaque.Kept).
+    private int enclosingUses; // The count of the uses after those that are the site's enclosing parts' Places (MirOpaque.Enclosing).
     private SyntaxUses? collector;
     private KeptOperands? keptOperands;
 
@@ -35,10 +40,10 @@ internal sealed partial class MirBuilder
     // The uses of the Opaque site formed for a node (Opaque). SPEC 23.1.2 (DECISIONS R5-M63): an Error node's kept operands are evaluated
     // first, in syntax order, each as its Place (a value in a temp) and never acquired, and the site names their Places instead of their
     // syntax's roots, so a moved operand is not used again there; so does a part built already where it is located (Located: an
-    // expansion's operand, a derived write's right side, DerivedWrite, or a failed jump's operand, Transfer). An Error node located already
-    // had its kept operands evaluated there, once, so a consumer's own derived value of it takes only the located part (DECISIONS R4-M109),
-    // the Error's derived value, a Temporary, which is no use (Part, Z17). The site names each kept operand's Place first, its kept uses,
-    // which it activates as a Call does its inputs (DECISIONS Z17c, MirBorrows.Activations).
+    // expansion's operand or a failed jump's operand, Transfer). An Error node located already had its kept operands evaluated there,
+    // once, so a consumer's own derived value of it takes only the located part (DECISIONS R4-M109), the Error's derived value, a
+    // Temporary, which is no use (Part, Z17). The site names each kept operand's Place first, its kept uses, which it activates as a Call
+    // does its inputs (DECISIONS Z17c, MirBorrows.Activations).
     private void SiteUses(Koto node)
     {
         var start = this.KeptParts(node, node);
@@ -51,6 +56,39 @@ internal sealed partial class MirBuilder
         this.keptUses = this.uses.Count;
         this.kept.RemoveRange(start, this.kept.Count - start);
         (this.collector ??= new(this)).Collect(node);
+    }
+
+    // DECISIONS Z27 (SPEC 13.7.1 step 2, 13.7.2 step 2, 15.1.2, 23.1.2): the uses of a derived write's site (DerivedWrite), its target
+    // Error's kept operands evaluated at the write as an Error node's are (KeptParts). The target is located in place: it takes the values
+    // it reads and the receivers of the getters or subscripts that locate it (KeptAdjust's Reads, KeptInput), its kept uses, and of every
+    // other operand only a Place strictly within it, an enclosing use (a value operand whose take failed has KeptAdjust's default too, so
+    // it is enclosing); then the names of the target's unkept children (SyntaxUses), read.
+    private void TargetUses(Koto node, Koto target)
+    {
+        var start = this.KeptParts(node, target);
+        this.ClearUses();
+        for (var i = start; i < this.kept.Count; i++)
+        {
+            if (Takes(this.kept[i].Node))
+            {
+                this.SiteUse(this.kept[i].Place);
+            }
+        }
+
+        this.keptUses = this.uses.Count;
+        for (var i = start; i < this.kept.Count; i++)
+        {
+            if (!Takes(this.kept[i].Node))
+            {
+                this.SiteUse(this.kept[i].Place);
+            }
+        }
+
+        this.enclosingUses = this.uses.Count - this.keptUses;
+        this.kept.RemoveRange(start, this.kept.Count - start);
+        (this.collector ??= new(this)).Collect(target);
+
+        static bool Takes(Koto part) => HirTables.KeptAdjust(part).Reads || HirTables.KeptInput(part);
     }
 
     // The kept operands of an Error node not located already, evaluated before the site at a node, their Places in the kept list from the
@@ -131,19 +169,28 @@ internal sealed partial class MirBuilder
     private bool Secures(Koto part, MirPlace place) => HirTables.KeptAdjust(part).Reads && !this.IsTemp(place) &&
         this.body.TypeOf(place) is { } type && compilation.Types.Copies(this.body.Key.Decl).Copy(type);
 
-    // The use list of a new site and its kept count, cleared together (MirOpaque.Kept), so no count carries into a later site.
+    // The use list of a new site and its kept and enclosing counts, cleared together (MirOpaque.Kept, Enclosing), so no count carries into
+    // a later site.
     private void ClearUses()
     {
         this.uses.Clear();
-        this.keptUses = 0;
+        (this.keptUses, this.enclosingUses) = (0, 0);
     }
 
-    // A use of the Opaque site being formed: each Place once.
+    // A use of the Opaque site being formed: each Place once; an enclosing one named again as read leaves the enclosing uses for the read
+    // rest (the stronger check).
     private void SiteUse(MirPlace place)
     {
-        if (!this.uses.Contains(place))
+        var at = this.uses.IndexOf(place);
+        if (at < 0)
         {
             this.uses.Add(place);
+        }
+        else if (at >= this.keptUses && at < this.keptUses + this.enclosingUses)
+        {
+            this.uses.RemoveAt(at);
+            this.uses.Add(place);
+            this.enclosingUses--;
         }
     }
 

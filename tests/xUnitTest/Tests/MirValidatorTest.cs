@@ -229,13 +229,15 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Empty(Validate(Typed(null)));
     }
 
-    // DECISIONS Z17c: an Opaque site's kept uses are among its uses, so a kept count past them is an Opaque finding; a count equal to
-    // them is valid (the site of ValidBodyHasNoFinding's typed body keeps its one use).
-    [Fact]
-    public void AnOpaqueSiteKeepsNoMoreThanItsUses()
+    // DECISIONS Z17c, Z27: an Opaque site's kept and enclosing uses are among its uses, so counts past them are an Opaque finding; a count
+    // equal to them is valid (the site of ValidBodyHasNoFinding's typed body keeps its one use).
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    public void AnOpaqueSiteKeepsNoMoreThanItsUses(int kept, int enclosing)
     {
         var body = Build(null);
-        body.AddOpaque(default, [], 1, 0);
+        body.AddOpaque(default, [], kept, enclosing);
         Assert.Equal([MirViolation.Opaque], Validate(body).Select(static x => x.Rule));
     }
 

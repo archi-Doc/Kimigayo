@@ -19,7 +19,8 @@ public sealed partial class MirBuildTest
     // a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a Place in the temp). A
     // getter-only Property's update lends nothing: its read is a call over W<S2>, which reports W<S2>'s constraint at the read as
     // `w.touch()` does at its call (PLAN G214; before, the getter took its own derived value of the receiver, DECISIONS R4-M109), so the
-    // update is that failed read's derived value, and nothing of it lends (no row). The
+    // update is that failed read's derived value, and nothing of it lends; since DECISIONS Z27 the update's site names its target's kept
+    // receiver, w's derived value in its Opaque temp, as an enclosing use (derived; fail-before: w's root, no derived value). The
     // valid twin (an i32 key) lends the local each time and holds no Opaque value or construction record (R5's guard that a complete
     // compilation never reaches Unlent); a literal's Borrow, valid in both, lends its materialized temporary (implementation review 1's
     // B1). Each row: f's lending rvalues and derived values in order, a lent root by name, `opaque` for a temp an Opaque is assigned to,
@@ -38,7 +39,7 @@ public sealed partial class MirBuildTest
     [InlineData("let n = w.xs.capacity", "derived", "Shared w")]
     [InlineData("let k = w.sq is Square", "derived", "Shared w")]
     [InlineData("w.v += 1", "derived", "TwoPhaseUniq w")]
-    [InlineData("w.q += 1", "", "TwoPhaseUniq w | Shared w")]
+    [InlineData("w.q += 1", "derived", "TwoPhaseUniq w | Shared w")]
     [InlineData("w.inner.mutate()", "derived", "TwoPhaseUniq w")]
     [InlineData("let r = w.inner.pick()", "derived", "Shared w")]
     [InlineData("let r: ref/i32 = match w.inner\n        let x => x.pick()", "derived", "Shared w")]
