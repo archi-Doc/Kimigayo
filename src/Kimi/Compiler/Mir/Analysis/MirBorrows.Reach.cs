@@ -636,7 +636,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var (past, raw) = (this.punPastKeys[facts.PastStart], this.punPastRaw[facts.PastStart]);
+        var (past, raw) = (this.punPastKeys[facts.PastStart], this.punPastLayers[facts.PastStart] != PastLayer.Borrow);
         var (key, reading, on) = (this.Key(past, facts.Fold), cases.Type(referent), !this.OffGrid(set));
         foreach (var element in this.sets.Elements(set))
         {
@@ -911,7 +911,7 @@ internal sealed partial class MirBorrows
     private void ReadPart(int part, MirWrites guard, bool readOn, int at, int layer, OutputRetention output)
     {
         var facts = this.punKeys[at];
-        var (type, raw, past, fold) = (this.punViewTypes[facts.FirstStart + layer], this.punPastRaw[facts.PastStart + layer],
+        var (type, raw, past, fold) = (this.punViewTypes[facts.FirstStart + layer], this.punPastLayers[facts.PastStart + layer] != PastLayer.Borrow,
             this.punPastKeys[facts.PastStart + layer], facts.Fold);
         var key = part == 0 ? -1 : this.Key(past, fold);
         if (part == 0 || !this.nodeParts.Add((part, key)))
@@ -978,7 +978,7 @@ internal sealed partial class MirBorrows
         {
             var pointee = this.punViewTypes[facts.FirstStart + j];
             var past = this.punPastKeys[facts.PastStart + j];
-            if (this.punPastRaw[facts.PastStart + j] && (this.KeptEntry(past, output) is not null || this.Holds(pointee, out _)))
+            if (this.punPastLayers[facts.PastStart + j] != PastLayer.Borrow && (this.KeptEntry(past, output) is not null || this.Holds(pointee, out _)))
             {
                 this.Written(Escaped, -1, ViaPast, this.EntryName(past, output));
             }
