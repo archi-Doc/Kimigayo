@@ -91,7 +91,7 @@ public sealed partial class Binding
             return component;
         }
 
-        this.nameSteps.Add(new(NameStepKind.Unsupported, component.Use, null, null, default, default, default, null));
+        this.nameSteps.Add(new(NameStepKind.Unsupported, component.Use, null, null, default, default, default, null, null));
         return new(PathEnd.Unresolved, null, component.Use);
     }
 

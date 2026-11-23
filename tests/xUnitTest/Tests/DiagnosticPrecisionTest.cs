@@ -469,8 +469,8 @@ public class DiagnosticPrecisionTest
     [InlineData("i12v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func makeRcCyclic(build: (i32) -> i32) -> i32 => build(1)\nlet n = makeRcCyclic(func [] (x: i32) -> i32 => x)\nConsole.writeLine(\"ok\")\n")]
     // Invalid by another rule, where no `#Unsupported` declaration is selected: the records are that rule's.
     [InlineData("g10x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = Kimi.downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 2:9")]
-    [InlineData("g13x", "alias W => Weak\nfunc f(w: ref/W<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:12", "UnresolvedBinding_Kd 2:15")]
-    [InlineData("g14x", "alias D => Kimi.Intrinsics.downgrade\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:12")]
+    [InlineData("g13x", "alias W => Weak\nfunc f(w: ref/W<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:12 x4", "UnresolvedBinding_Kd 2:15 x1")]
+    [InlineData("g14x", "alias D => Kimi.Intrinsics.downgrade\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:12 x25")]
     // Moved by R8-G1-3b-2 to `ParameterShapeMismatch_Kd` at the use: the library's declared `downgrade<s/T>(value: ref/(s/T))` and
     // Mine's `downgrade(value: i32)` gathered at the alias stage fail SPEC 9.5.1's check (7.4.3: an original s/T overlaps every key;
     // 7.4.4 step 3), so every use is an error and no candidate is selected. R8's mixed groups are i09x-i12v and the hook's u rows.
@@ -516,7 +516,7 @@ public class DiagnosticPrecisionTest
     [InlineData("r12x", "func f(w: ref/Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:15")]
     [InlineData("g08x", "struct Weak\n    public let x: i32\nfunc f(w: ref/Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 3:15")]
     [InlineData("g09x", "func f(w: ref/::Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:17")]
-    [InlineData("g15x", "alias W => Kimi.Weak\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:12")]
+    [InlineData("g15x", "alias W => Kimi.Weak\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:12 x9")]
     [InlineData("h01x", "alias Kimi.Intrinsics\nlet r = makeRc(1)\nlet w = downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 3:9")]
     [InlineData("h02x", "alias Kimi.Intrinsics\nlet f = downgrade\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
     [InlineData("h03x", "alias Kimi.Weak<rc/i32>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:7")]
@@ -539,8 +539,11 @@ public class DiagnosticPrecisionTest
     [InlineData("h12x", "func ident<T>(x: T) -> T => x\nlet n = Kimi.Intrinsics.makeRcCyclic(ident)\n", "TransferRequired_Kd 1:29", "Unsupported_Kd 2:9", "UnboundTypeArgument_Kd 2:38")]
     public void UnsupportedDeclarationUsesAreLocated(string row, string source, params string[] expected)
     {
+        // A row naming a record's span (` xN`, F's ruling N1-13 C1) is compared with it.
         var output = DiagnosticCorpus.Check(source);
-        Assert.Equal(expected.Order(StringComparer.Ordinal), ErrorsAt(source, output).Order(StringComparer.Ordinal));
+        var errors = output.Diagnostics.Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)
+            .Select(x => At(source, x.Span!.Value.Start, x.Code) is var at && expected.Contains($"{at} x{x.Span!.Value.Length}") ? $"{at} x{x.Span!.Value.Length}" : at);
+        Assert.Equal(expected.Order(StringComparer.Ordinal), errors.Order(StringComparer.Ordinal));
         Assert.True(output.Accepted == (expected.Length == 0), row);
     }
 

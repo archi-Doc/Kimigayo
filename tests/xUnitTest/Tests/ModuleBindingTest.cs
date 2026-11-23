@@ -180,11 +180,11 @@ public partial class ModuleBindingTest
         AssertConfiguredAt(issue.Node, "Box", 0, "Box");
     }
 
-    // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-2, N1-7 (2), (5), N1-9 (1); design d rows): a configured default alias resolves as a
-    // source alias's target does, by the path walk from its module's root: an inherited member is found (d05v), a path through the
-    // library's name too (C4); a generic Container is never fully bound (d01u, d06i, d07i; d02i's walk fails there, at its first
-    // component, before `T`) and a path naming nothing is reported without a use (d08i): one record where the walk fails, in the
-    // configured path's own node, which a use resting on it adds nothing to.
+    // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-2, N1-7 (2), (5), N1-9 (1), N1-13 B1; design d rows): a configured default alias
+    // resolves as a source alias's target does, by the path walk from its module's root: an inherited member is found (d05v), a path
+    // through the library's name too (C4); a generic Container is never fully bound (d01u, d06i, d07i; d02i's walk fails there, at its
+    // first component, before `T`) and a path naming nothing is reported without a use (d08i), a missing qualifier at that qualifier
+    // (m06i, m08i): one record where the walk fails, in the configured path's own node, which a use resting on it adds nothing to.
     [Theory]
     [InlineData("d01u", "Box", "func g() -> i32 => make()", "InvalidTypeFormation_Kd", "Box")]
     [InlineData("d02i", "Box.T", "func g() => ()", "InvalidTypeFormation_Kd", "Box")]
@@ -193,6 +193,8 @@ public partial class ModuleBindingTest
     [InlineData("d07i", "A.B", "func g() => ()", "InvalidTypeFormation_Kd", "A")]
     [InlineData("d08i", "Nope", "func g() => ()", "UnresolvedBinding_Kd", "Nope")]
     [InlineData("c4v", "Kimi.Console", "func g() => writeLine(\"ok\")", null, null)]
+    [InlineData("m06i", "Nope.Inner", "func g() -> i32 => make()", "UnresolvedBinding_Kd", "Nope")]
+    [InlineData("m08i", "Kimi.Nope.Inner", "func g() => ()", "UnresolvedBinding_Kd", "Kimi.Nope")]
     public void ADefaultAliasResolvesByThePathWalk(string row, string alias, string use, string? code, string? text)
     {
         // Each row's own declarations, as its probe's.
@@ -230,18 +232,25 @@ public partial class ModuleBindingTest
     // its first failing component: `Box.T` at `Box`, a generic Container used without its arguments (a09i); `Box<i32>.T` at `T`, a formal
     // parameter, which is no member a later component finds (18.2.1: formal parameters are not opened), recorded at the path, as every
     // Type use's missing last component is (FailingStep). A group reached through a failed qualifier rests on the qualifier's record
-    // (a06s). The alias rests on that record, and a use resting on the alias records nothing (F's ruling N1-2 C2).
+    // (a06s). A missing qualifier is the failing component (m01i, m02i, m07i; a03i: no alias resolves a target, 18.2.1): the record and
+    // the node the alias rests on are the one walk's (F's ruling N1-13 B1). The alias rests on that record, and a use resting on the
+    // alias records nothing (F's ruling N1-2 C2: m04i).
     [Theory]
     [InlineData("a09i", "alias Box.T\npublic struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\nfunc g() => ()", "InvalidTypeFormation_Kd", 6, "Box")]
     [InlineData("a09t", "alias Box<i32>.T\npublic struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\nfunc g() => ()", "UnresolvedBinding_Kd", 6, "Box<i32>.T")]
     [InlineData("a06s", "alias A.B\npublic struct A<T>\n    public group B\n        public func helper() -> i32 => 1\npublic struct A<T, U>\n    public group B\n        public func helper() -> i32 => 1\nfunc g() -> i32 => helper()", "InvalidTypeFormation_Kd", 6, "A")]
+    [InlineData("m01i", "alias Missing.Inner\nfunc g() => ()", "UnresolvedBinding_Kd", 6, "Missing")]
+    [InlineData("m02i", "alias O => Missing.Inner\nfunc g() => ()", "UnresolvedBinding_Kd", 11, "Missing")]
+    [InlineData("m04i", "alias Missing.Inner\npublic struct Box\n    public func make() -> i32 => 1\nfunc g() -> i32 => make()", "UnresolvedBinding_Kd", 6, "Missing")]
+    [InlineData("m07i", "alias Kimi.Nope.Inner\nfunc g() => ()", "UnresolvedBinding_Kd", 6, "Kimi.Nope")]
+    [InlineData("a03i", "alias K => Kimi\nalias Output => K.Console", "UnresolvedBinding_Kd", 32, "K")]
     public void AnAliasTargetsWalkFailsAtItsFirstFailingComponent(string row, string source, string code, int start, string text)
     {
         var compilation = Create(source, "public group Api");
         Assert.False(compilation.Bind().IsComplete, row);
         var issue = Assert.Single(compilation.Binding.Issues);
         Assert.Equal(code, issue.Code.ToString());
-        Assert.Equal((start, text), (issue.Node.Span.Start, issue.Node.ToString()));
+        Assert.Equal((start, text.Length, text), (issue.Node.Span.Start, issue.Node.Span.Length, issue.Node.ToString()));
     }
 
     [Fact]
@@ -817,7 +826,7 @@ public partial class ModuleBindingTest
     private static void AssertConfiguredAt(Koto node, string alias, int start, string text)
     {
         Assert.EndsWith($"#Alias[{alias}]", node.CodeContext.SourceDocument!.Path, StringComparison.Ordinal);
-        Assert.Equal((start, text), (node.Span.Start, node.ToString()));
+        Assert.Equal((start, text.Length, text), (node.Span.Start, node.Span.Length, node.ToString()));
     }
 
     private static string ProjectionConsumer(bool runtime, string argument)
