@@ -27,8 +27,9 @@ public sealed partial class Binding
     // a call's id is the history of the passes that first wrote it, and a call joins `nodes` again when its consumer is bound again.
     // Precedent: duplicateOrder (DuplicateDeclarations' working order).
     // - Owner: Check.
-    // - Reset: ResetSyntheticCalls' Clear, its capacity kept, so a warm rebind allocates nothing; the rows read absent by the pass stamp,
-    //   so both are empty at a pass's start.
+    // - Reset: ResetSyntheticCalls' Clear, its capacity kept, so a warm rebind allocates nothing. The rows read absent over the cleared
+    //   list because every ResetPass, the one clear, follows BeginRun's advance or FreezeLibrary's release of the columns its pass wrote;
+    //   the refused library's StartPass calls (Binding.Passes.cs) are excepted, after which no pass binds and no reader asks.
     // - Invariant: a call is listed iff its row is present; one site writes both (SynthesizedCallRows.Add).
     // - Removal: it goes with the column if SettleSynthesizedCalls stops walking the calls; otherwise it is the pass's working order.
     private readonly List<InvocationKoto> synthesizedOrder = [];

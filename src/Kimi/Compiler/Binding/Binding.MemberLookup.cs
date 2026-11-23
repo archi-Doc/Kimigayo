@@ -606,7 +606,9 @@ public sealed partial class Binding
     private readonly struct MemberSelectionRows(Binding binding)
     {
         // The pass's rows in first-publication order (precedent: duplicateOrder). Reset: ResetContracts' Clear, its capacity kept, so a
-        // warm rebind allocates nothing; the column's slots read absent by the pass stamp, so both are empty at a pass's start.
+        // warm rebind allocates nothing. The column's slots read absent over the cleared list because every ResetPass, the one clear,
+        // follows BeginRun's advance or FreezeLibrary's release of the columns its pass wrote, so no current slot names a cleared row;
+        // the refused library's StartPass calls (Binding.Passes.cs) are excepted, after which no pass binds and no reader asks.
         // Invariant: a slot is present iff it names a row; one site writes both (Publish).
         private readonly List<(MemberSide? Side, MemberSelection? Selection)> rows = [];
 
