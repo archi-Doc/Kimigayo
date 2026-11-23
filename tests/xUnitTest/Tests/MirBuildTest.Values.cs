@@ -64,8 +64,11 @@ public sealed partial class MirBuildTest
     // (fail-before: _1.1 undecided, kept 0); a kept invocation argument's written exclusive borrow is two-phase, while a tuple's element
     // and a Case payload stay Uniq (B6; fail-before: all Uniq); nested Errors keep their own parts (missing2's site none, the inner
     // Error's x and missing2's temp, the outer's the inner's temp); a failed default's site after an Error site keeps none (C2: its earlier
-    // slot only, a pending slot its call's entry activates). Each site's kept count and uses, in order, then the reads, then the exclusive
-    // borrows.
+    // slot only, a pending slot its call's entry activates). DECISIONS Z27 (SPEC 13.7.1 steps 1-2): a derived write's site names its
+    // target's in-place kept operand as an enclosing use (p, _1; fail-before: its root undecided, no count), and a right side neither read
+    // nor a Temporary (a Place whose bare Move rests on an Error Copy proof, published Failed without an Error node) is a site of its own
+    // at its node, before the target's parts, so the write's site names no use of it (fail-before: the write's one site named b, _1).
+    // Each site's kept count (and enclosing count) and uses, in order, then the reads, then the exclusive borrows.
     [Theory]
     [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing = p.n\n", "0: / FakeRead(_1.1) / ")]
     [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing(p.n)\n", "1: _3 /  / ")]
@@ -77,6 +80,8 @@ public sealed partial class MirBuildTest
     [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let e: Option<uniq/i32> = .Some(y@uniq, g(y))\n", "2: _3 _4 /  / &uniq")]
     [InlineData("func f()\n    var x = 1\n    missing(x + missing2)\n", "0: | 2: _4 _5 | 1: _3 /  / ")]
     [InlineData("func h(x: i32, y: i32 = missing) -> i32 => y\nfunc f()\n    let q = 2\n    let a = missing(q)\n    let b = h(1)\n", "1: _4 | 1: _3 | 0: _6 /  / ")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    p.nofield = 1\n", "0 enclosing 1: _1 /  / ")]
+    [InlineData("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc k() -> isize => 0\nfunc f(b: Bad)\n    missing[k()] = b\n", "0: _1 | 0: | 1 enclosing 1: _5 _4 /  / ")] // z27r2's u2
     public void AnOpaqueSiteNamesOnlyWhatItDoesNotDecide(string source, string expected)
     {
         var program = Compile("struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n" +
@@ -85,7 +90,8 @@ public sealed partial class MirBuildTest
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
-        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?(?: kept (\d+))?:(.*)$").Select(static x => $"{(x.Groups[1].Success ? x.Groups[1].Value : "0")}: {x.Groups[2].Value.Trim()}".Trim());
+        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?(?: kept (\d+))?( enclosing \d+)?:(.*)$")
+            .Select(static x => $"{(x.Groups[1].Success ? x.Groups[1].Value : "0")}{x.Groups[2].Value}: {x.Groups[3].Value.Trim()}".Trim());
         var reads = Regex.Matches(dump, @"FakeRead\([^)]*\)").Select(static x => x.Value);
         var borrows = Regex.Matches(dump, @"&uniq(?: two-phase)?").Select(static x => x.Value);
         Assert.Equal(expected, $"{string.Join(" | ", sites)} / {string.Join(" ", reads)} / {string.Join(" ", borrows)}");

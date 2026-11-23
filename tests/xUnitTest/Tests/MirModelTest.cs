@@ -144,7 +144,7 @@ public sealed class MirModelTest
         Assert.Equal(-1, root.Root);
         Assert.False(body.HasOpaque);
         var local = Local(body, BoundType.I32);
-        Assert.Equal(0, body.AddOpaque(new(0, 7), [local, root], 1));
+        Assert.Equal(0, body.AddOpaque(new(0, 7), [local, root], 1, 0));
         Assert.True(body.HasOpaque);
         Assert.Equal(new[] { local, root }, body.OpaqueUses.Slice(body.OpaqueSites[0].Start, body.OpaqueSites[0].Count).ToArray());
         Assert.Equal(1, body.OpaqueSites[0].Kept);
@@ -267,7 +267,7 @@ public sealed class MirModelTest
                 body.Terminate(block, MirTerminator.Goto(block + 1, At));
             }
 
-            body.AddOpaque(default, uses, 0);
+            body.AddOpaque(default, uses, 0, 0);
             body.Static(new(types.Function, BoundType.I32, false, false));
             body.AddScope(0, MirScopeKind.Unsafe, default);
             program.End();

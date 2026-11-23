@@ -182,7 +182,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0), At));
         Assign(exclusive, MirRvalue.Ref(MirRefKind.Uniq, shared, body.TypeOf(exclusive)!));
         Assign(pointer, MirRvalue.Cast(MirCastKind.IntToPointer, Operands(MirOperand.Copy(index)), body.TypeOf(pointer)!));
-        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [new(array.Root)], 1)));
+        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [new(array.Root)], 1, 0)));
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, payload!)));
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(value), token), value, types.Pair, shorthand: true, input: false));
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
@@ -229,13 +229,15 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Empty(Validate(Typed(null)));
     }
 
-    // DECISIONS Z17c: an Opaque site's kept uses are among its uses, so a kept count past them is an Opaque finding; a count equal to
-    // them is valid (the site of ValidBodyHasNoFinding's typed body keeps its one use).
-    [Fact]
-    public void AnOpaqueSiteKeepsNoMoreThanItsUses()
+    // DECISIONS Z17c, Z27: an Opaque site's kept and enclosing uses are among its uses, so counts past them are an Opaque finding; a count
+    // equal to them is valid (the site of ValidBodyHasNoFinding's typed body keeps its one use).
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    public void AnOpaqueSiteKeepsNoMoreThanItsUses(int kept, int enclosing)
     {
         var body = Build(null);
-        body.AddOpaque(default, [], 1);
+        body.AddOpaque(default, [], kept, enclosing);
         Assert.Equal([MirViolation.Opaque], Validate(body).Select(static x => x.Rule));
     }
 
@@ -2236,7 +2238,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(a, MirRvalue.Use(Operands(broken == "assign" ? MirOperand.Copy(flag) : MirOperand.Copy(body.Project(c.Types, pair, MirProjectionKind.Field, 0)))), "assign");
         var lost = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
-        Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [], 0)));
+        Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [], 0, 0)));
         Assign(a, MirRvalue.Use(Operands(MirOperand.Move(lost))), "opaque");
         MirOperand Token(BoundType type) => MirOperand.Const(body.Const(new(MirConstKind.TypeToken, type)));
         var (acquired, payload) = (broken == "token" ? flag : a, body.Project(c.Types, handle, MirProjectionKind.Deref, 0));
@@ -2328,7 +2330,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
-        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root), x], 0))); // Z17: an undecided use at a Place.
+        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root), x], 0, 0))); // Z17: an undecided use at a Place.
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
         Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));
