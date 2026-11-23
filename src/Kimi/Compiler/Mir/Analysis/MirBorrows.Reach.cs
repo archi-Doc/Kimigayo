@@ -18,9 +18,10 @@ namespace Kimi.Compiler.Mir;
 // Type's guard; a call input's key is the called function's parameter key (InputKey), so a layer its own Type parameters' bindings hide
 // adds no reach; a holder that may afterwards hold the call's own pointer at a raw layer without an Origin, at a reading key and at one
 // that keeps the declared step alike, reaches storage the body does not own, with that layer's record (OwnPointer; SPEC 15.6.4's
-// composition), and a key with a part that is no layer the walked Type expression writes keeps the declared step (PunKey.Declared; SPEC
-// 5.7 Calls). At the first step the reading path's Type is the input's pointee or
-// referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does not designate (MirBorrows.PunTypes' Designates) is read punned
+// composition), and a key with a part that is no layer the walked Type expression writes keeps the declared step for the holder beside the
+// reading of its other layers (PunKey.Declared; SPEC 5.7 Calls). At the first step the reading path's Type is the pointee or referent of
+// each layer of the input's key, one an argument holds by value included (SPEC 15.6 Holders, 5.7 Calls, 15.6.4): a holder whose Place it
+// does not designate (MirBorrows.PunTypes' Designates) is read punned
 // (SPEC 5.2), its state read as well at the guard of that Type's raw pointer raw Places, each a layer read at its own key (Reading; never
 // the whole Type's guard: a part that is no raw Place is not read), and storage the body does not own is reached, with those layers'
 // record, where that guard steps over an `owner` Scalar's byte or a byte that a punned write may not change, a reference's or a handle's
@@ -456,15 +457,15 @@ internal sealed partial class MirBorrows
     {
         var set = this.argValues[position];
         var input = cases.TypeOf(this.Input(call, position));
-        BoundType? referent = input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
         this.Write(set, ViaRoot, root); // The first step again, by the walk (Referents put its holders in the targets).
         foreach (var covered in this.covering)
         {
             this.Write(this.argValues[covered], ViaRoot, MirWrites.Through);
         }
 
-        var punned = this.Punned(set, input, referent, call, position, output);
-        this.Keyed(set, input, referent, call, position, output);
+        var facts = this.punKeys[this.Key(this.InputKey(call, position, input), this.Fold(output))];
+        var punned = this.Punned(set, facts);
+        this.Keyed(set, facts, output);
         var (limited, deeps) = (false, false);
         for (int i = 0, n = 0; i < this.targets.Count; i++)
         {
@@ -499,35 +500,38 @@ internal sealed partial class MirBorrows
     }
 
     // W's first step read at the reading path's Type (SPEC 15.6 Holders: a holder is read at the Type of the path that reads it; 5.7 Calls,
-    // 15.6.4: the input's pointee or referent): each Place an entry of the argument names (PunEntry) that the Type does not designate at
-    // the value's Position (Designates, OffGrid) is read punned (SPEC 5.2) through the Type's raw pointer raw Places (Reading; through a
-    // borrow layer only a punnable referent puns): over a raw pointer's byte (PlaceBytes: a safe reference and a handle hold none, the
-    // owner's O-223 (B')) the punned pointer has the provenance written there, so the holder's state is read at those layers' guard beside
-    // its own (Writes: dev's declared reading stays); where that guard steps over an `owner` Scalar's byte or a byte that a punned
-    // write may not change, the pointer reaches storage the body does not own (Unowned): E, past the holder, with those layers'
-    // record. The rows are read at the key past the input's own layer at the input's key (InputKey, as Keyed reads on), where it has
-    // one; an input whose own layer is hidden in the called function's Type parameter's binding adds no reach of its own (SPEC 15.6.4),
-    // and one whose key has no single layer (a shared borrow, a key at Binding's Limit) is read at its referent's root key. The guard,
-    // where a holder is punned.
-    private MirWrites Punned(int set, BoundType input, BoundType? referent, in MirTerminator call, int position, OutputRetention output)
+    // 15.6.4: the pointee or referent of each layer of the input's key, a layer an argument holds by value as a Tuple element, an Option
+    // payload or a Type argument included, read at the input's key, InputKey; PLAN G841 (1)): at each raw layer without an Origin, each
+    // raw layer stating one and each exclusive borrow layer whose referent is punnable, each Place an entry of the argument names
+    // (PunEntry) that the layer's Type does not designate at the value's Position (Designates, OffGrid) is read punned (SPEC 5.2) through
+    // that Type's raw pointer raw Places (Reading): over a raw pointer's byte (PlaceBytes: a safe reference and a handle hold none, the owner's O-223 (B')) the punned pointer has the provenance
+    // written there, so the holder's state is read at those layers' guard beside its own (Writes: dev's declared reading stays); where that
+    // guard steps over an `owner` Scalar's byte or a byte that a punned write may not change, the pointer reaches storage the body does not
+    // own (Unowned): E, past the holder, with those layers' record. A layer hidden in the called function's Type parameter's binding adds
+    // no reach of its own (SPEC 15.6.4) and has no past entry; a shared borrow is no layer a call writes through; a layer a declaration
+    // states (PastLayer.Any: a Field's, a Case payload's or an environment's) keeps the declared step, as in Keyed. The guard, where a
+    // holder is punned: the layers' greatest (an undecided one over a decided one).
+    private MirWrites Punned(int set, in PunKey facts)
     {
-        var raw = input is { IsPointer: true };
-        var borrow = input is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq };
-        var reading = referent is null || !(raw || borrow) ? null : cases.Type(referent);
-        if (reading is null)
+        var (on, guard) = (!this.OffGrid(set), MirWrites.None);
+        for (var j = 0; j < facts.PastCount; j++)
         {
-            return MirWrites.None;
+            var (at, reading) = (this.punPastLayers[facts.PastStart + j], this.punViewTypes[facts.FirstStart + j]);
+            var rows = at is PastLayer.Its or PastLayer.Stated || (at == PastLayer.Borrow && types.Punnable(reading))
+                ? this.Reading(this.punPastKeys[facts.PastStart + j], facts.Fold) : default;
+            if (rows.Guard != MirWrites.None && this.PunnedAt(set, reading, on, rows))
+            {
+                guard = (MirWrites)Math.Max((byte)guard, (byte)rows.Guard);
+            }
         }
 
-        var facts = this.punKeys[this.Key(this.InputKey(call, position, input), this.Fold(output))];
-        var rows = facts.Hidden || (borrow && !types.Punnable(reading)) ? default
-            : this.Reading(facts.PastCount == 1 ? this.punPastKeys[facts.PastStart] : PlaceKey.Root(reading), facts.Fold);
-        if (rows.Guard == MirWrites.None)
-        {
-            return MirWrites.None;
-        }
+        return guard;
+    }
 
-        var (on, guard, punned) = (!this.OffGrid(set), rows.Guard, false);
+    // Punned at one layer: whether a holder is read punned there (its Place may hold a raw pointer's byte).
+    private bool PunnedAt(int set, BoundType reading, bool on, (MirWrites Guard, BoundType? Record) rows)
+    {
+        var punned = false;
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
@@ -544,7 +548,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return punned ? guard : MirWrites.None;
+        return punned;
     }
 
     // Storage the body does not own under a punned reading (SPEC 15.6 Holders, example punnedRef; 5.5; 15.6.4's composition): a raw
@@ -619,41 +623,40 @@ internal sealed partial class MirBorrows
         => this.Guard(this.targetRoots[target]) == MirWrites.Deep || this.PunGuard(this.targets[target], punned) == MirWrites.Deep ||
             (this.writingVia[this.targets[target]] & ViaDeep) != 0;
 
-    // The reading key past the first step (SPEC 15.6 Holders, 5.7 Calls, 15.6.4): a holder the argument's entry names at a Place the input's
-    // pointee or referent designates (Designates) is read on at that Type's key, the one key past the input's own layer at the input's
-    // key (InputKey: a parameter key marks what the callee's Type parameters hide), never by the declared step (Writes); one it reads
-    // punned through a raw layer (PunRows), at each raw pointer row's own key (PunNodes). An input whose key has no single layer, or
-    // keeps the declared step (PunKey.Declared: a layer stating an Origin is Cover's), keeps it.
-    private void Keyed(int set, BoundType input, BoundType? referent, in MirTerminator call, int position, OutputRetention output)
+    // The reading keys past the first step (SPEC 15.6 Holders, 5.7 Calls, 15.6.4; PLAN G841 (1), (2)): at each layer of the input's key
+    // (InputKey: a parameter key marks what the callee's Type parameters hide) that the walked Type expression writes, a raw layer without
+    // an Origin (PastLayer.Its) or an exclusive borrow, whatever else the key holds, a holder the argument's entry names at a Place the
+    // layer's pointee or referent designates (Designates) is read on at that Type's key, the key past the layer, never by the declared
+    // step (Writes; Node); one it reads punned through a raw layer (PunRows), at each raw pointer row's own key (PunNodes). A layer a
+    // declaration states or one stating an Origin (Cover's) keeps the declared step.
+    private void Keyed(int set, in PunKey facts, OutputRetention output)
     {
-        if (referent is null || input is not { Kind: BoundTypeKind.Semantics })
+        var on = !this.OffGrid(set);
+        for (var j = 0; j < facts.PastCount; j++)
         {
-            return;
-        }
-
-        var facts = this.punKeys[this.Key(this.InputKey(call, position, input), this.Fold(output))];
-        if (facts.Declared || facts.PastCount != 1)
-        {
-            return;
-        }
-
-        var (past, raw) = (this.punPastKeys[facts.PastStart], this.punPastLayers[facts.PastStart] != PastLayer.Borrow);
-        var (key, reading, on) = (this.Key(past, facts.Fold), cases.Type(referent), !this.OffGrid(set));
-        foreach (var element in this.sets.Elements(set))
-        {
-            if (this.PunEntry(element) is not (var entry and >= 0))
+            var (at, past, reading) = (this.punPastLayers[facts.PastStart + j], this.punPastKeys[facts.PastStart + j], this.punViewTypes[facts.FirstStart + j]);
+            if (at is not (PastLayer.Its or PastLayer.Borrow))
             {
                 continue;
             }
 
-            var place = cases.TypeOf(this.loans[entry].Place);
-            if (this.Designates(place, reading, on))
+            var key = this.Key(past, facts.Fold);
+            foreach (var element in this.sets.Elements(set))
             {
-                this.Node(this.loans[entry].Named, GuardRoot(this.loans[entry]), reading, key, output);
-            }
-            else if (raw && this.PunRows(place, past))
-            {
-                this.PunNodes(this.loans[entry].Named, GuardRoot(this.loans[entry]), facts.Fold, output);
+                if (this.PunEntry(element) is not (var entry and >= 0))
+                {
+                    continue;
+                }
+
+                var place = cases.TypeOf(this.loans[entry].Place);
+                if (this.Designates(place, reading, on))
+                {
+                    this.Node(this.loans[entry].Named, GuardRoot(this.loans[entry]), reading, key, output);
+                }
+                else if (at == PastLayer.Its && this.PunRows(place, past))
+                {
+                    this.PunNodes(this.loans[entry].Named, GuardRoot(this.loans[entry]), facts.Fold, output);
+                }
             }
         }
     }
@@ -727,11 +730,7 @@ internal sealed partial class MirBorrows
         if (facts.Declared)
         {
             this.ReadHolder(state[node.Slot], this.Guard(node.Root)); // Its Limit and Deep are the target's (Writes).
-            if (guard == MirWrites.Through && this.walkComposes)
-            {
-                this.OwnPointer(node.Key, output);
-            }
-
+            this.ReadLayers(state, node, guard, readOn, output);
             return MirWrites.None;
         }
 
@@ -753,18 +752,34 @@ internal sealed partial class MirBorrows
             return guard;
         }
 
-        for (var j = 0; j < facts.FirstCount; j++)
+        this.ReadLayers(state, node, guard, readOn, output);
+        return guard;
+    }
+
+    // A node's read-on at the guard of its key's Type (ReadAt): each state part at each layer of the key the walked Type expression writes,
+    // a raw layer without an Origin or an exclusive borrow (ReadPart; at a key that keeps the declared step too, beside that step: the two
+    // meet a part idempotently, Written and nodeParts), and the call's own pointer at its raw layers without an Origin (OwnPointer).
+    private void ReadLayers(ulong[] state, (int Slot, int Root, BoundType Type, int Key) node, MirWrites guard, bool readOn, OutputRetention output)
+    {
+        if (guard is not (MirWrites.Through or MirWrites.Named))
         {
-            this.ReadPart(Placed(state[node.Slot]), guard, readOn, node.Key, j, output);
-            this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
+            return;
+        }
+
+        var facts = this.punKeys[node.Key];
+        for (var j = 0; j < facts.PastCount; j++)
+        {
+            if (this.punPastLayers[facts.PastStart + j] is PastLayer.Its or PastLayer.Borrow)
+            {
+                this.ReadPart(Placed(state[node.Slot]), guard, readOn, node.Key, j, output);
+                this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
+            }
         }
 
         if (guard == MirWrites.Through && this.walkComposes)
         {
             this.OwnPointer(node.Key, output);
         }
-
-        return guard;
     }
 
     // (b2): whether the declared step from a holder steps by the record: its root Type's guard does not step, but the walk output's entry
