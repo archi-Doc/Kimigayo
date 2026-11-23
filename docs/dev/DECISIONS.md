@@ -29389,6 +29389,31 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Step`: SPEC 4.1 copied per reader); a `BoundType` predicate shared with `Binding.Holdings`' `Empty` (same meaning, different
     contracts, a cross-area member for two property patterns; a candidate if a third reader appears); keeping the Temporary as
     lasting (O-486 4 (c): rejects valid programs against SPEC 4.1).
+- **R8-M60 R8-X1: R8's exit gate (plan §10.2) item by item at 6e8ffd3b4, and the owner's review of R8's exceptions** (Back, 2026-11-23;
+  R8-X1 U4, records only; the owner's O-513 (c), verbatim 「O-513 c」, and O-514 (a), verbatim 「O-514 a」; results
+  `artifacts/benchmarks/r8-exit/`)
+  - Item 1: the Session (45,948 tests, 0 failed; natives 6,349 of 6,349 at O0 and O2, reused from the same commit's base; 0 snapshot
+    differences; semantic check PASS; 40 milestones; 7 CLI harnesses); the native outcome changes since R8's start are
+    `native-deviations.md`'s decided rows, among them 72316f5b3 (a failed `resolve` reports `KIMI_E_INDEX_BOUNDS`, SPEC 4.6.3, 22.5.2) and
+    3a0a09b51 (`KIMI_E_CLOCK`, SPEC 22.8.2), recorded here as one line; over 8a90275af..6e8ffd3b4 two more decided rows (G1135's re-spelt
+    `Access` row; R7-C3 C3b's `namesSwap90` replaced by `names80` and `namesSwap80`, R7-M82) and no unexplained change.
+  - Item 2: O2 against R8's start (3faea4edc, 13 kernels) every kernel faster or within, ArrayViews, ErasedCalls and VirtualDispatch by
+    code placement (R5-M135), Iterators by its corpus median inside R8 start's A=A with its aligned control faster, so R5-M147 is not
+    triggered (two matched pairs above A=A recorded); against the 49cb2b5d chain (12 kernels; ArrayViews not in the chain, 49cb2b5df
+    rejects it) eleven faster or within, Iterators by in-loop placement (the owner's O-513 (c)): with B's fix of the RP8 tool's code start
+    (both sides' runtime templates), T-338's 16 pairs matched at `main` put 5 above A=A (+0.8-2.2%), the round loop's instructions are
+    identical on both sides (203 IR, 159 x86 instructions), only the round counter's register (`rdx` against `r8`) and the loop's offset
+    in `main` differ, each side's own address spread (2.2-3.9%) exceeds A=A, and the 16-address mean is 1.003 (SE 0.003); R5-M147 stays as
+    written; O0 recorded; allocation tests and audits pass, warm 0 B.
+  - Item 3: every named deletion at 0; `IntrinsicId` R8's 27, 29 with OSF2's `VolatileRead` and `VolatileWrite` (O-489, T-M23).
+  - Item 4: Bind cold 0.005-0.064 and warm 0.001-0.061 of bfc2e1836's (12 rounds, CPU 2), cold bytes 0.2-2.0 MB against 8.3-9.0 MB, warm
+    0 B; Generate 0.92 (Hello) to 3.8-4.4 (Interpolation); the pipeline, analyze and collection runs unpinned with tiering on; the library's
+    freeze once per process allocates +0.63 MB and retains +49 KB (R8-M55's U6 line), its time not recorded; L1 adopted and landed
+    (R8-M51, R8-M53-M55).
+  - Item 5: texts landed (SP2, SP3, SP4, R1a; SP1 absorbed); the owner's answers O-486 1 (a), 2 (b), 3 (a), 4 (a), 5 (a) and O-490 (a);
+    E27 (PLAN G1268) a known limit; the owner's review of the Review rows: O-514 (a) (「O-514 a」, 2026-11-23): every Review row stays as
+    recorded, listed with X1's numbers.
+  - Area record `artifacts/benchmarks/r8-exit-areas.md`.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
