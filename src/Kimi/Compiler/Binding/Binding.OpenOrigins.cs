@@ -310,6 +310,17 @@ public sealed partial class Binding
     // evidence by UnsolvedKey, parameters up and inputs down, all below UnsolvedKey / 2, so IsCallRegion holds for every one.
     private BoundOrigin CallRegion(Koto call, int index) => this.OpenOrigin(call, UnsolvedKey + index);
 
+    // SPEC 15.3.6, 15.4.4, 15.6.4 (R1-a; Binding.LocalRegions' RegionBounded reads it): whether a call's region has every bound its
+    // candidate reads, so that the candidate has an answer before the body is bound: its call is bound, the call's published result names it
+    // only at covariant positions (OccurrenceVariance) and it has no recorded bound. Such a region is no destination: a later use relates
+    // it as the longer end, a lower bound, which no covariant candidate reads (15.3.6); a later slot solve keeps it only beside another
+    // open region (FillOpenOrigins), within the expression or after a `let` declaration fixed it (15.4.4). With no bound it has no answer
+    // (DECISIONS BU-127): Owned over it is Unknown, never Refuted (8.3.1), so step 5 leaves the candidate applicable (10.1). A region a later
+    // write or call can bound (an invariant or contravariant position), or one with a recorded bound, waits for the body (PLAN G1030).
+    private bool CallRegionComplete(BoundOrigin region)
+        => IsCallRegion(region) && region.Binder is { BoundType: { } result } && this.Region(region) is not { Parents.Count: not 0 } &&
+            this.OccurrenceVariance(result, region, this) == OriginVariance.Covariant;
+
     // SPEC 8.1.2, 10.8: the open region of a solve's node (a call, a function reference's use) for the outer Origin that an annotated
     // occurrence of pair slot `slot`'s original leaves to other evidence; keyed apart from argument evidence and from CallRegion.
     private BoundOrigin AnnotatedOuterRegion(Koto source, int slot) => this.OpenOrigin(source, (UnsolvedKey / 4) - slot);
