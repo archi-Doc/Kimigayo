@@ -268,7 +268,7 @@ public sealed partial class Binding
         this.nodes.Add(node);
         if (context == IndexEntryKind.Pattern)
         {
-            this.pass.Part.PatternNodes.Add(node);
+            this.indexedPatterns.AddPattern(node);
             if (node is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
             {
                 if (this.symbols.TryGetValue(pattern, out var existing) && existing.Name != name.IdentifierName)
@@ -382,7 +382,7 @@ public sealed partial class Binding
                 break;
             case CodeBlockKoto:
                 if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
-                    (node.Parent is MatchKoto && this.pass.Part.PatternNodes.Contains(scope.Owner)))
+                    (node.Parent is MatchKoto && this.indexedPatterns[scope.Owner].Pattern))
                 {
                     this.scopes[node] = scope;
                 }
@@ -429,7 +429,7 @@ public sealed partial class Binding
                     this.PairOuterOrigin(typeSymbol); // SPEC 8.1.1: the binder's outer Origin, interned with its binder (PLAN G949 S1-e).
                     if (!scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
                     {
-                        this.Fail(node, BindingFailure.Duplicate);
+                        this.RecordNumbered(node, BindingFailure.Duplicate, []); // SPEC 9.1: one namespace per declaration.
                     }
                 }
 
@@ -592,13 +592,13 @@ public sealed partial class Binding
     }
 
     // An arm's guard candidates, after its Pattern's subtree, whose binding patterns' Declare set the form's BoundSymbol: a guarded
-    // arm's are declared in the guard's scope (its CandidateScopes entry), an unguarded arm's are dropped.
+    // arm's are declared in the guard's scope (its IndexedPatterns guard row), an unguarded arm's are dropped.
     private void IndexArmCandidates(MatchKoto match, int arm, BindingScope scope)
     {
         var guard = match.Arms[arm].Guard;
         if (guard is not null)
         {
-            this.pass.Part.CandidateScopes.Add(guard);
+            this.indexedPatterns.AddGuard(guard);
         }
 
         this.IndexCandidates(match.Arms[arm].Pattern, guard is not null, scope);

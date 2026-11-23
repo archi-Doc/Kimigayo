@@ -24,7 +24,7 @@ namespace Kimi.Compiler;
 // - Published per use (R7-N1e2-1R): a Type-name use's lookup is published on the use (HirTables.Lookups: its end; its selection in the
 //   Symbols column; an Unresolved end's failing step, a qualifier of the use, in the FailingSteps family: F's ruling N1-13 B1), once;
 //   NamePath, the only entry outside this file, reads the published lookup on every later call, so every reader of a failed walk
-//   (FailingStep's record, the node an alias rests on) reads the step the walk failed at. The row is the use's position's (UseRow),
+//   (UnselectedTypeSite's record, the node an alias rests on) reads the step the walk failed at. The row is the use's position's (UseRow),
 //   which no caller passes and no column stores.
 // - A member access a former selects (SelectMember, BaseMember, ConstructorMember, a length argument's group member, the qualified Case
 //   pattern) is published by PublishPath too, as a MemberAccess step: its member, lookup, side and Type-path qualifier; a second
@@ -330,7 +330,7 @@ public sealed partial class Binding
             switch (step.Kind)
             {
                 case NameStepKind.Head:
-                    this.gatheredGroups?.GetValueOrDefault(step.Use)?.Clear();
+                    GatheredGroupRows.GetValueOrDefault(step.Use)?.Clear();
                     this.qualificationStops?.Remove((step.Use, !InValueNamespace(step.Role)));
                     if (step.Import.Environment is not null)
                     {
@@ -377,7 +377,7 @@ public sealed partial class Binding
                     step.Use.BindingState = BindingState.Resolved;
                     break;
                 case NameStepKind.AmbiguousRole:
-                    this.Fail(step.Use, BindingFailure.Ambiguous, unresolved: true);
+                    this.Record(step.Use, BindingFailure.Ambiguous, [], unresolved: true);
                     break;
                 case NameStepKind.Unsupported:
                     this.Fail(step.Use, BindingFailure.Unsupported, unresolved: true); // As the base's miss path fails the Name.
@@ -433,7 +433,7 @@ public sealed partial class Binding
             case PathEnd.Selected:
                 return targetFailed ? null : path.Symbol;
             case PathEnd.Ambiguous:
-                this.Fail(path.Use, BindingFailure.Ambiguous, unresolved: true);
+                this.Record(path.Use, BindingFailure.Ambiguous, [], unresolved: true);
                 return null;
             case PathEnd.QualificationStop:
                 this.RecordQualificationStop(path.Use, path.Stop);
@@ -464,13 +464,13 @@ public sealed partial class Binding
     }
 
     // SPEC 9.4: a member access whose lookup selected nothing but met an inaccessible member: that member is its failure's evidence,
-    // published by the HiddenMember step, and the access records InaccessibleBinding_Kd.
+    // published by the HiddenMember step, and the access records InaccessibleBinding_Kd relating it (RecordAccess: a use is its own location).
     private void PublishHiddenMember(MemberAccessKoto member, BindingSymbol hidden)
     {
         var mark = this.nameSteps.Count;
         this.nameSteps.Add(new(NameStepKind.HiddenMember, member, hidden, null, default, default, default, null, null));
         this.PublishPath(new(PathEnd.Unresolved, null, member), mark);
-        this.Fail(member, BindingFailure.Access);
+        this.RecordAccess(member, hidden, null);
     }
 
     // An unqualified value Name completed (SPEC 9.5 in the Value namespace): judged (Supported) as Lookup reads it and ReadAgain reads it again.

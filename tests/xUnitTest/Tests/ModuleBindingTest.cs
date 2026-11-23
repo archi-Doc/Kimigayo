@@ -250,7 +250,7 @@ public partial class ModuleBindingTest
     // SPEC 18.2.1, 9.6, 9.7, 23.1.2 (F's ruling N1-9 (3)): an alias target resolves whole with its Type arguments and the walk fails at
     // its first failing component: `Box.T` at `Box`, a generic Container used without its arguments (a09i); `Box<i32>.T` at `T`, a formal
     // parameter, which is no member a later component finds (18.2.1: formal parameters are not opened), recorded at the path, as every
-    // Type use's missing last component is (FailingStep). A group reached through a failed qualifier rests on the qualifier's record
+    // Type use's missing last component is (UnselectedTypeSite). A group reached through a failed qualifier rests on the qualifier's record
     // (a06s). A missing qualifier is the failing component (m01i, m02i, m07i; a03i: no alias resolves a target, 18.2.1): the record and
     // the node the alias rests on are the one walk's (F's ruling N1-13 B1). The alias rests on that record, and a use resting on the
     // alias records nothing (F's ruling N1-2 C2: m04i).

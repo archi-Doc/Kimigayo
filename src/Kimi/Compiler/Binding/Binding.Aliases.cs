@@ -203,11 +203,11 @@ public sealed partial class Binding
     // SPEC 18.2.1, 23.1.2 (F's ruling N1-7 (2)): a target's selection by the path walk from its module's root, a source alias's and a
     // configured default alias's alike (stages 5-6 off while aliasResolutionDepth is set): the selected symbol; else the node whose
     // record the walk's failure is, the target bound as every Type use is (BindNamedType's miss records where the walk failed,
-    // FailingStep); else, for a target forming a built-in Type, neither (no Container: the caller's record).
+    // UnselectedTypeSite); else, for a target forming a built-in Type, neither (no Container: the caller's record).
     private (BindingSymbol? Symbol, Koto? Failed) SelectAliasTarget(Koto target, BindingScope scope)
     {
         var path = this.NamePath(target, scope);
-        return path.Symbol is not null || this.BindType(target, scope, this.TypeContext(target, scope)) is not null ? (path.Symbol, null) : (null, FailingStep(path, target));
+        return path.Symbol is not null || this.BindType(target, scope, this.TypeContext(target, scope)) is not null ? (path.Symbol, null) : (null, UnselectedTypeSite(target, path));
     }
 
     // Read only provenance that ordinary lookup actually selected in this target; no alias lookup or Type reconstruction occurs.

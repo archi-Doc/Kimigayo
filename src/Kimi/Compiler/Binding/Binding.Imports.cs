@@ -10,7 +10,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, List<BindingSymbol>>? gatheredGroups;
 
     private BindingSymbol? AccessibleImport(BindingSymbol head, BindingScope scope)
     {
@@ -58,13 +57,7 @@ public sealed partial class Binding
     // An ImportGroup step's publication: the use's gathered group, which its readers reach through GroupOf (Binding.FunctionGroups.cs).
     private void AddImportCandidates(Koto use, BindingSymbol imported, BindingSymbol candidate)
     {
-        this.gatheredGroups ??= new();
-        if (!this.gatheredGroups.TryGetValue(use, out var candidates))
-        {
-            candidates = new();
-            this.gatheredGroups.Add(use, candidates);
-        }
-
+        var candidates = GatheredGroupRows.Of(use);
         Add(imported, candidates);
         Add(candidate, candidates);
 
@@ -221,5 +214,16 @@ public sealed partial class Binding
     private readonly record struct ValueImports(BindingSymbol? Imported, AliasImport Import, BindingScope? Source, bool Selectable, bool Ambiguous, bool Limited)
     {
         internal bool Ends => this.Ambiguous;
+    }
+
+    /// <summary>The `gatheredGroups` family's one accessor (DECISIONS BU-220): a kept family, a use's function group gathered at the alias
+    /// stage (its ImportGroup steps' publication), a list in the use's module's NodeColumns at its SyntaxId, made at the use's first
+    /// gathering, emptied in place at each publication of its head (PublishPath) and refilled, so a warm Bind reuses it.</summary>
+    private readonly struct GatheredGroupRows
+    {
+        // The use's list, made at its first gathering.
+        internal static List<BindingSymbol> Of(Koto use) => HirTables.Of(use).Families.GatheredGroups.Ref(use.SyntaxId) ??= new();
+
+        internal static List<BindingSymbol>? GetValueOrDefault(Koto use) => use.SyntaxOwner is { } table ? table.Hir.Families.GatheredGroups.Get(use.SyntaxId) : null;
     }
 }

@@ -26,16 +26,16 @@ public sealed partial class MirBuildTest
     // of a local whose rejected declaration has no Type (one with a Type is its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage).
     // Building goes on after each. A Field Binding failed whose own Type is valid (a struct with a misplaced `length` slot) has its
     // initializer published (PLAN G1071's gate 1, F's C2 ruling 261 (3)), so each constructor builds it, with no Opaque, record or finding
-    // (it was an Opaque in each constructor while only a Resolved definition's parts were published). The unbuilt form is the tuple
-    // default the call's substitution cannot instantiate (Unbuilt); its Opaque names the roots of the slots before the default.
+    // (it was an Opaque in each constructor while only a Resolved definition's parts were published). The unbuilt form is the selection
+    // through an identity premise (Unbuilt); its Opaque names the receiver's root.
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = CompilationTestHelper.Parse(
             "struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            Unbuilt.Declarations + $"func f(a: i32, x: i32) -> i32\n    let c = {Unbuilt.Callee}(x)\n    return a\n" +
-            $"func g() -> i32 => missing\nfunc h(a: i32, c: bool, u: i32) -> i32\n    defer\n" +
-            $"        let d = {Unbuilt.Callee}(u)\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
+            Unbuilt.Declarations + $"func f<T>(a: i32, x: ref/T) -> i32\n    {Unbuilt.Premise}\n    let c = x.0.a\n    return a\n" +
+            $"func g() -> i32 => missing\nfunc h<T>(a: i32, c: bool, u: ref/T) -> i32\n    {Unbuilt.Premise}\n    defer\n" +
+            "        let d = u.0.a\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
         Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
         c.Bind();
         _ = c.Binding.CheckStartup(OutputKind.Application);
@@ -44,11 +44,11 @@ public sealed partial class MirBuildTest
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g" or "h" or "k").ToDictionary(static x => x.Key.Decl!.Name);
         var unbuilt = bodies["f"];
         Assert.True(unbuilt.HasOpaque);
-        Assert.Equal(new[] { 4 }, unbuilt.OpaqueUses.ToArray().Select(static x => x.Root)); // take's argument slot before the default.
+        Assert.Equal(new[] { 2 }, unbuilt.OpaqueUses.ToArray().Select(static x => x.Root)); // The receiver's root, f's parameter x.
         Assert.Contains(unbuilt.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
         var records = program.Records(MirRecordClass.Construction).Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
-        Assert.Equal([$"{Unbuilt.Callee}(u)", $"{Unbuilt.Callee}(x)"], records);
-        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == $"{Unbuilt.Callee}(u)"));
+        Assert.Equal(["u.0", "x.0"], records);
+        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "u.0"));
 
         Assert.Equal(0, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));

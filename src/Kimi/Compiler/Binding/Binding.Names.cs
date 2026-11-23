@@ -203,14 +203,13 @@ public sealed partial class Binding
                 return this.FailWrite(node, node);
             }
 
-            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
+            // SPEC 9.4, 11.3.2: an absent or inaccessible accessor at a use: the use located, the Property related (an accessor's access
+            // word is part of its Property's declaration).
+            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType) ||
+                (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType))))
             {
-                return this.Fail(node, BindingFailure.Access);
-            }
-
-            if (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType)))
-            {
-                return this.Fail(node, BindingFailure.Access);
+                this.RecordAccess(node, symbol, null);
+                return null;
             }
 
             if (!operation.IsStandard || (update && !property.Setter.IsStandard))

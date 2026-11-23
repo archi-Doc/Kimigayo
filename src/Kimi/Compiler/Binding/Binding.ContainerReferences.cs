@@ -312,7 +312,7 @@ public sealed partial class Binding
 
                 if (IsCore(qualifier) && symbol.Kind == BindingSymbolKind.Type && this.AlsoAssociated(environment, symbol.Name, member, scope))
                 {
-                    return this.Fail(member, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
+                    return this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // SPEC 9.7.3: it resolves both ways (a flag).
                 }
 
                 environment = this.QualifierEnvironment(environment, symbol, container, parent, scope, syntax);
