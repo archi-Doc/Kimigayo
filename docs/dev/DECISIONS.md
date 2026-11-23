@@ -3713,6 +3713,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: builder guards deriving at the construct (they derive forms Binding accepted, losing a copy's caller Loans, R4-M10); a
     Rejected copy derived without a record (B2); rolling back a written copy (B3: a try-then-fallback chain); a per-call decision in
     Binding or the publisher (B4: the template's Types are MIR's).
+  - Superseded in part by R7-M85 (2026-11-23, Z26): the Rule's "no copy and the call's `Unsupported_Kd`" for storage verdicts and the
+    Consequence: a copy over storage Binding rejected or past its bound is built, as the written call is; the Opaque path stays only
+    where a formation fails and no formation owns the refusal (R7-M85's one arm).
 - **R4-M129 A temp's Drop registers where its value is created: temporaries are destroyed in reverse creation order** (2026-10-25; unit
   G248) SPEC 3.6, 16.2.1, 7.2.3, 14.6.2, 15.6.6.
   - Cause: `MirBuilder.Live` registered a temp's StorageDead and Drop where its storage began, and a build site allocates a temp before
@@ -4327,6 +4330,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     by R4-M118": the Derived class is rejected above); each stays and names this entry.
   - Superseded in part by R4-M237 (2026-11-23, Z25): "Each keeps its own meaning of a Limit (... A4's Limit class ...)" for A4: A4's
     atom and `Below` read `ReadableInstance`'s null as Deep; A4's `Limit` class keeps E5, E6 and E7.
+  - Superseded in part by R7-M85 (2026-11-23, Z26): "published as `TyCtxt.Readable`" (deleted; `ReadableInstance` reads
+    `Binding.Readable`) and the builder clauses: `Instantiates` and its composed substitution read the formation (`Apply`'s Type,
+    `Compose`'s Subst), and `Compose` gives no verdict or deciding part.
 - **R4-M140 A5's holding memo: the holder rule once per case Type and program version (G258 D1)** (2026-10-26; the owner's 「D1・D2 を採用
   (推奨)」 of 2026-10-26, which accepts D1's cold allocation; the G258 report's §4 D1, option (a)).
   - Representation: `MirBorrows.holding`, a `Dictionary<BoundType, (bool Holds, MirWrites Writes)>` by reference beside the walk's
@@ -9616,6 +9622,8 @@ resumed by R4-M86 (2026-10-20).
     c4.
   - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): the Dispatch clause ("`Resolve` refuses a Limit only";
     "the limit wins" beside a failed part): `TyCtxt.Dispatch.Resolve`'s storage gate and `RequirementTargetKind.Limit` are deleted.
+  - Superseded in part by R7-M85 (2026-11-23, Z26): the Composition clause: `TyCtxt.Compose` gives `(Subst, Cause)` only, no
+    verdict, and the builder's `Instantiates` reads its Subst.
 
 - **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; PLAN G160, unit bu42) R4-M116 (PQ-7): A5 reads neither
   `RawMembers` nor `RawStep(raw)`, only the step of the raw layer an instance stores, so BU-24's signature reader, added on the owner's
@@ -15919,6 +15927,11 @@ resumed by R4-M86 (2026-10-20).
       own, read through the running pass's part; one declaration each (the node-keyed table ratchet). `BindNodeCore`'s pattern guard
       reads the running part's `PatternNodes`, so a library pattern node bound outside the library pass would not trip it; no such
       bind exists, and S1-1's freeze (a library node written outside the library pass is `InternalInvariant_Kd`) closes it.
+      - Amended by R7-N5 B1b-1: the current run's pattern nodes and guard scopes are the kept family `IndexedPatterns` (a node's
+        `(Pattern, Guard)` row in its module's NodeColumns), no longer `PassPart` collections; only the previous-run lists
+        (`PreviousPatternNodes`, `PreviousCandidateScopes`) stay in the part. `BindNodeCore`'s pattern guard reads the node's own row,
+        so a library pattern node bound in a program pass would trip it (stricter; no such bind exists, and the freeze refuses its
+        write).
     - The contract solver's Closure(view) index and its free entries (`PassPart.EnumerateIndex`, `PassPart.EnumerateIndexPool`; a
       per-pass memo the driver hands over as the solver's fields): each pass's own; an entry lasts its pass and returns to the free
       entries of the pass that formed it when that pass runs again (`ClearClosure`), so no pass returns an entry to another pass's
@@ -16090,6 +16103,23 @@ resumed by R4-M86 (2026-10-20).
     16 explanation stores now (work E3 and E4 delete). Readings: SPEC 23.1.2 (the same records and `DerivedFrom` keys), 6.1 and
     9.1 (duplicate declarations), DIAGNOSTICS 4.3; the B2a-2, B4 and B6b lines above, D-986's FormReads form, G949 S1. Ratchet
     ("Node-keyed table members in Binding"): this batch removes four; the limit is set to the merged tree's count when it lands.
+  - **R7-N5 B1b-1** (the Back's batch, Q-686, D-1134; design `b1b1-design.md`, B's rulings 1-6; the Front's review
+    `review-n5-b1b1.md`, C1-C5, N1-N5): BindType's cycle guard `resolvingTypes` and the synthesized calls' consumers
+    `synthesizedCalls` become the Work pass families `ResolvingTypes` and `SynthesizedCalls`, released at the freeze (every row lives
+    inside its pass, and no reader after the freeze reads a library row; ResetSyntheticCalls' Clear goes; the census's S class of
+    `resolvingTypes` corrected to Work). SettleSynthesizedCalls, a walk that records, walks `synthesizedOrder`, the pass's calls in
+    the order their row was first written, in R7-N5 E's `duplicateOrder` form (one site, AddSynthesizedCall; reset at
+    ResetSyntheticCalls with its capacity kept; listed iff its row is present; it goes with the column if the walk stops walking the
+    calls), so each call is settled once and a consumer with several failed calls rests on the last walked, as dev's Dictionary
+    enumerated them. `gatheredGroups` becomes the kept family `GatheredGroups` (a use's list made at its first gathering and reused
+    in place; a removed use's row leaves at renumbering). `PassPart.PatternNodes` and `PassPart.CandidateScopes` become one kept
+    family `IndexedPatterns` with a `(Pattern, Guard)` row (rule 3: a fixed pair of set slots is an inline row in any column class),
+    copied into the part's previous-run lists and emptied over the running pass's modules at ResetMatches. Rejected: the column's d8
+    order for the Settle walk (a synthesized call's id is the history of the passes that first wrote it), walking `nodes` (a call
+    joins `nodes` again when its consumer is bound again in the pass), two `bool` families or a row carrying the previous run,
+    `resolvingTypes` kept, and a counter beside the column for DirectBase's `Count != 0` shortcut. Readings: SPEC 6.2.2 and 9.5 (a
+    base clause in progress), 9.5.1 (alias-stage groups), 10.1 and 23.1.2 (a synthesized call's verdict at its consumer; no record
+    moves), 14.8 (patterns and guards); the B2a-2, B5a and E lines above. Ratchet ("Node-keyed table members in Binding"): 24 -> 19.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
@@ -18920,6 +18950,8 @@ structure is recorded here by the unit that first implements it.
     supersedes it with BU-38's Dispatch clause.
   - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): the Limit row is deleted with
     `RequirementTargetKind.Limit` and `CapabilityGap.StorageNesting`.
+  - Superseded in part by R7-M85 (2026-11-23, Z26): "amended by BU-38: `Compose` gives its parts' verdict, ..." (`Compose` gives no
+    verdict).
 - **R5-M63 A failed node keeps the children Binding resolved** (2026-10-19; Q21, PLAN G121, Q8-7 under R5-M23 (DEC Q6 form 1), ask
   A-14; supersedes, for the children below, R4-M61's "which the builder replaces whole" and its "so its children are not published
   as evaluated and a closure inside it is not built"; extended by R5-M84; amended by R4-M88; its residual line superseded for `do`
@@ -24725,6 +24757,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     record now, since an uninstantiated generic body's open instance past H would be accepted (IMPL A.4: never acceptance); a
     reader-side rule in Layout, since the cause is the producer's published fact (one owner); making `OpenFormation` own after the
     run for all three owners, since `Answered`'s and `Witness`'s callers outside the frame record nothing yet (U2b).
+  - Superseded in part by R7-M85 (Z26, 2026-11-23): the Readers bullet's "a part whose storage is a Limit keeps the composition with
+    the Limit verdict, which the builder's default copy refuses (`Readable`)" and the collector bullet's "`Compose` keeps the only
+    one, for its MIR reader": `Compose` and `Answered(inner, outer)` give (Subst, Cause) only, and the builder's copy reads the
+    formation.
 - **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
   D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
   CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
@@ -25121,6 +25157,35 @@ R8-M* and R9-M* by the stage of the recording unit.
       record of the same key with other facts: `InternalInvariant_Kd`, round 1's B1); a direct base's reference as role 1 (a
       `contract.Bases` read in the Access check trips R7-N2a's row, and a published base part is a new shape column; O-r2-1); relating
       every uncovered declaration of one part (several role-0 facts and a second walk; C3).
+  - **E2-4b (Q-674; the delta `back\notes\r7-e2\e2-4b-delta.md` with B's rulings 1-9; the Front's agreement on C-405, ruling 6).** The
+    resolver's Access at uses records through `RecordAccess` (a use is its own location, the declaration whose accessibility does not
+    cover it related): ResolvePath's hidden member, SelectMember's computed Access (both sides), Names' absent or inaccessible
+    accessor, ReportUnavailableQualifier's inaccessible qualifier member (the first candidate the walk met). The member-access arm of
+    `ReportIssue` goes: after these sites no slot-only Access issue is a MemberAccess (the owner `Fail`s left are at declarations,
+    clauses and the conformance clause `Self is G.C`, probes p2g, p2cg). The resolver's misses, cycles and ambiguities are fact-less
+    (`Record(node, X, [])`: its lookups keep an ambiguity's flag, not its candidates; UnresolvedBinding_Kd and CyclicBinding_Kd carry
+    no argument). `FailUnselected`'s miss and QualificationRequired keep `Fail` and the stop's one store until R7-E5 (a lookup's
+    fallback after a failure it recorded; the repairs read the stop's scope, role and arity), and so do Aliases' segment miss and
+    Imports' default-alias miss (SelectQualifier records the ambiguity at the same node first) and ArrayInference's
+    independent-literal miss (an empty literal at a place decided later may hold its located Unsupported_Kd). A Contract parent that
+    no lookup selects takes the resolver's miss rule (FailMissing): an inaccessible qualified parent records InaccessibleBinding_Kd,
+    any other unselected parent (a missing one, or a Core declaration its ContractReference role filters) UnresolvedBinding_Kd; a
+    selected non-Contract stays InvalidConstraint_Kd. That miss sits where a Type use's does: one rule in the Types component,
+    `UnselectedTypeSite` (a generic at its Name, an unresolved walk at its failing qualifier step, else the use), read by
+    BindNamedType, BindConstructedType and BuildContract's parent (the Front's C-405 C1, B's ruling 9; not BindType itself, whose
+    EnclosingContractSelf reading would select an associated Type of the parent's Name inside a Contract). `RecordDuplicateGroups`
+    numbers its records (`RecordNumbered`), superseding R2.1 B1 (a), whose reason ("for one site") no longer holds: six sites share
+    the cause. So ValidateInheritedNames' nested Container and Value-role member record at themselves relating the inherited
+    declaration (the struct keeps its `Fail` until R7-E5), and Modules' reserved and reference names, Indexing's Semantics name and
+    Structs' written `self` record fact-less, numbered. R7-E5's inputs (B's ruling 8): d4c's inherited-name record sits at the
+    scope's head (the later `g`), not at the first; MemberLookup's remaining computed `Fail`s for a TypePath failure (Ambiguous,
+    MissingName, Unsupported).
+    - **Rejected.** A fact-less `Record` in FailUnselected (it publishes a dependent miss beside a recorded failure, m2); the
+      resolver's Member publishing "recorded" (N1's API); a guard reading the slot in FailUnselected (a consumer deciding
+      afterwards); the candidates form at MemberLookup's left of both readings (a representation change for one site: B3's rule
+      keeps it fact-less); QualificationRequired's facts in the record beside the stop's store (two stores for one stop); keeping the
+      member-access arm (a reader stating a false relation); a refused Type selection in the resolver for G1207 (a new N1
+      representation).
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
@@ -25855,6 +25920,53 @@ R8-M* and R9-M* by the stage of the recording unit.
     and `(i32) -> bool`), so a body with several signatures can have an instance; A4 reads a concrete callee's body, never the
     signature (Z3-E5's repeated review C4). Measurement open (R1.5 N1): `CallsSignature` runs one `TryCallable` per published-row
     call; if the window's RP8 shows a cost, the published row carries the signature as a column (never a side cache).
+- **R7-M85 A default's copy reads the instance's formation (Z26)** (Middle, 2026-11-23; PLAN G396 (3)'s B3, stream Z26, Q-698,
+  D-1148; Major with a design review: C-485, the Middle's review ACCEPT WITH CONDITIONS, the Front's and the Back's reads with B1
+  closed by G651 U2a, Q-689) SPEC 7.2.3, 23.1.1; IMPL 21.3.2, A.4.
+  - **Rule.** The MIR builder's `Instantiates` decides a copy by the formation the written call has (the collector's, R7-M54):
+    `TyCtxt.Apply`'s Type for each folded Type and `TyCtxt.Compose`'s Subst for each callee substitution, whatever the instance's
+    storage verdict (Rejected or past Binding's storage bound); a copy over an instance past the bound is built, as the written call
+    is (R7-M54 m2: "A finite Type past Binding's storage bound is an instance"). `TyCtxt.Compose` and `Answered(inner, outer)` give
+    (Subst, Cause) only: a composition walks no storage (G242's verdict join is gone); `TyCtxt.Readable` goes (`ReadableInstance`
+    reads `Binding.Readable`, the one reading of a verdict for retention, `CapabilityParts`, `ClosureInstances`, A4, A5's call rows
+    and MirCases, R4-M139 unchanged for them; the Front's C-491 N1).
+  - **The one arm left (§3.4 (e), the Middle's ruling).** `Instantiates` is false only where a formation fails and no formation owns
+    the refusal: after Binding's run outside the collector's frame, or in a body demanded during a collector or A4 round (built inside
+    the frame, where `Apply`'s refusal is answered to the frame and recorded at its close; the implementation review's N2). Its causes:
+    a Type past IMPL A.4's height that Binding records itself (G651's site-less `InternalInvariant_Kd`), or BU-36's non-completing
+    contract substitution (no reproducer; the collector reads it as a broken contract, R5-M151, which this arm does not: the Middle's
+    review N1). There the builder keeps the located `Unsupported_Kd` at the omitting call; removal condition **G651 U2c** (the Back's;
+    D-1137: U2b gives the copy its formation after the run, U2-1 and U2-2, owning its refusal, `TypeHeightLimit_Kd` at the omitting
+    call; U2c removes the arm with the Incomplete row, U2-3, with the builder hunk the Middle reads; the Middle's ruling on the
+    implementation review's N1); G396 (3) is an R7 exit condition, so it lands before R7's exit. Not a postponed stage (a no-stage producer
+    gains one), so no owner approval.
+  - **Records (Q13).** Newly accepted valid programs: a call omitting a default over Bx^65 (`take<Bx^65>(a)`), its conforming-Self and
+    declaring-Type compositions (`T.zero()`, `Bx<T>.size()`), a literal default, mixed substitutions in one body, a closed copy in a
+    closure. Still rejected with their written twins' codes: Layout's `GenerationResourceLimit_Kd` (b3-lim, lim64, main-opt,
+    wit-opt), its record moving from the pending slot at the call to the copy's operation in the default's declaration (DIAGNOSTICS'
+    copy rule; the Back's N1). Newly a Language record on an invalid program: `IncompatibleContractImplementation_Kd` at `Self is
+    Sink` where the default's effect breaks a confined bound (b3-wit-loud, r-clo-loud, f-self-loud; exposure closed). A copy past the
+    height whose instance's stored Type passes it (f-stored, copy250): `TypeHeightLimit_Kd` at its least uses (on U2a's head). A
+    generic copy past the height (outer192; h-clo192 in a closure): B3's `Unsupported_Kd` in the generic body -> the collector's
+    `TypeHeightLimit_Kd` at the copy's operation, as the written twin's at its expression (the Back's N3; the implementation review's
+    N7). Lost: B3's `Unsupported_Kd` (a limit record, not
+    independent). The class left different from the written call (C1): a template reading a preceding parameter past the bound gets
+    A5's `OwnershipDepthLimit_Kd` at the copy's operation and the call (r-ref): PLAN G1304.
+  - **Supersedes in part** R4-M139's "published as `TyCtxt.Readable`" and its builder clause, R4-M127's builder clause ("no copy and
+    the call's `Unsupported_Kd`") for storage verdicts, R7-M54's Compose sentences ("a part whose storage is a Limit keeps the
+    composition with the Limit verdict, which the builder's default copy refuses (`Readable`)"; c3e "`Compose` keeps the only one, for
+    its MIR reader"), BU-38's Composition clause and R5-M67's "amended by BU-38: `Compose` gives its parts' verdict" (the
+    implementation review's N5).
+  - **Rejected.** A Resource code for the refusal (none fits; a new one is a vocabulary entry; still unequal to the written call); the
+    builder reading Limit as a bound (it walks nothing); keeping `Compose`'s verdict for a later unit (an output without a reader);
+    `InternalInvariant_Kd` at the call for the height arm (Q13 (2), the Middle's ruling).
+  - **Rows.** `MirBuildTest.Defaults`: `ACopyOverAnInstancePastBindingsBoundIsBuilt`,
+    `AnOmittedDefaultPastTheBoundHasItsWrittenCallsRecords`, `ACopyReadingAPrecedingParameterPastTheBoundMeetsA5sLimit`,
+    `ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft`; `MirEffectsTest.ACopyPastTheBoundInAConfinedWitnessIsItsDefaultsEffect`;
+    `InstanceCollectorTest`'s copy250; `TyCtxtTest`'s `ComposeFormsWhateverItsPartsStorage`, `ADeepSelfHasNoLimitTarget`,
+    `ARejectedVerdictIsReadableOnlyBesideABindingFailure`; `InstanceCollectorTest.Rounds.ARecordMadeDuringAMissedRoundStays`, its
+    witness moved to the body budget's `ExpansionLimit_Kd` in the erased function item's own body (a default template's record is
+    made before any round, and a generic body it calls is built outside A4's missed round; the implementation review's B1).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -30295,6 +30407,16 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Temporary:** the unused `GetProcessHeap`/`HeapAlloc`/`HeapFree` declarations and their `RuntimeDeclarations` rows (removal:
     B7r3, T-M28, in W3, so they never reach dev and the ledger carries no line). B7r1's three temporary routines are removed.
   - **Class:** a behaviour change, measured in W3 (RP8 and the memory gate).
+  - **RP8 and the memory gate (window W-324's slots T-W324c and T-W324d; the owner's O-508 (a), verbatim 「a」 under
+    「最適化は、将来の課題にしましょう。」, T's dialog, 2026-11-23 09:4x).** T-W324c (A 49c99bd1a, B f3cb2e0b7, the whole W3;
+    `artifacts\benchmarks\rp8w-W-324-f3cb2e0b7-o2-20261123-092019` and `-Allocs-o2-20261123-093607`): the 13 corpus kernels inside
+    their A=A after R5-M135 and R5-M147, several faster (aligned ArrayLiteral 0.218, SharedHandles 0.307, Interpolation 0.640, Array
+    0.778, Strings 0.843); the allocation kernel `artifacts\tatara\b7r2\kernel\Allocs.kimi` (5×10^6 strings of 1-300 bytes through a
+    ring of 64, then 5,000 byte Arrays of 300 KiB, each built and dropped) aligned 1.975 (A=A 0.992-1.016), 11 of 11 R5-M147 pairs
+    above their A=A, so decision 23's rule read STOP. Decision 28's memory gate PASS
+    (`artifacts\benchmarks\memgate-w324-20261123-090942`): peak working set B/A 0.925-1.007 on every corpus kernel, peak commit up to
+    +1.0 MiB a program (the first region). T-W324d (B7r1 f5114b7c0 alone against its base 4ab9ccf34): `Allocs.kimi` inside (plain
+    1.067), so the gap is the allocator's. The owner landed W3 with the gap; its speed is PLAN G1311.
   - Rejected: Revision 0's 16-byte classes (above); location parameters or a null-heap check (the reason is gone); the allocator in
     Kimigayo (above); a second copy of the adapter's heap fakes (N11: the fakes move in the commit that first calls `VirtualAlloc`).
 - **T-M28 kernel32's set loses the process heap's three** (Tatara, 2026-11-22; the plan's unit B7r3, decision 23, Q-697, D-1146;
