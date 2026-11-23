@@ -105,22 +105,20 @@ public sealed class Kernel32ImportsTest
         Assert.All(TargetProfile.Rows, static row => Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, row.UnmappedBound - 1));
     }
 
-    // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, the Windows row's runtime
-    // (its platform layer, the common part and the allocator, with the layer's definitions and the row's constants) or the test
-    // runtime's (the definitions, the reason indices, the reason table and its count, the ABI constants), by its text throughout the
-    // whole text wrote.
+    // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, a row's runtime (its
+    // platform layer, the common part and the allocator, with the layer's definitions and the row's constants; the Windows and Linux
+    // rows') or the test runtime's (the definitions, the reason indices, the reason table and its count, the ABI constants), by its text
+    // throughout the whole text wrote.
     [Theory]
-    [InlineData("Runtime")]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("x86_64-unknown-linux-musl")]
     [InlineData("TestRuntime")]
     public void RuntimeTemplateExpandsAsEachMarkersReplacement(string runtime)
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var layer = RuntimeAbi.Layer(TargetProfile.Windows);
-        var (template, definitions, constants) = runtime switch
-        {
-            "Runtime" => (LlvmModuleText.RuntimeTemplate(layer), layer.Definitions, RuntimeAbi.RowConstants(TargetProfile.Windows)),
-            _ => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll")), [], []),
-        };
+        var (template, definitions, constants) = TargetProfile.Find(runtime) is { } row
+            ? (LlvmModuleText.RuntimeTemplate(RuntimeAbi.Layer(row)), RuntimeAbi.Layer(row).Definitions, RuntimeAbi.RowConstants(row))
+            : (File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll")), [], []);
         var expected = template;
         foreach (Match marker in Regex.Matches(template, @"\{\{(\w+)\}\}"))
         {

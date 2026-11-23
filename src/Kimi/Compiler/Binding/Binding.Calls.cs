@@ -371,6 +371,13 @@ public sealed partial class Binding
                 return this.CompleteAmbiguous(evaluation);
             }
 
+            if (this.LacksRequirementSubject(callee, evaluated[winnerIndex].Symbol!))
+            {
+                // SPEC 8.6.4 (F's rulings N1-7 (1), N1-13 B3): the selected candidate, never a gathered group's first, is read.
+                this.FailUnselected(callee, BindingFailure.MissingName);
+                return Complete(call, null);
+            }
+
             if (this.SettleSelected(evaluated[winnerIndex].HeldRefusal) is { } refused)
             {
                 // SPEC 10.1, 8.3.3: an Unknown judgment of the selected candidate is its obligation; resting on a refused analysis, it is

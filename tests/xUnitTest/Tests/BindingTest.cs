@@ -1034,20 +1034,23 @@ public class BindingTest
     // R7-E2 E2-1 (P1 (a); SPEC 23.1.2, rule W): each problem of a failed node is direct or derived by its own requirement (CollectProblem).
     // A Type's member whose qualifier is missing (`Missing.Inner`) is derived from that unresolved input; a further missing Name there
     // rests on the same recorded input, so it is a derived issue under its own requirement, suppressed while its cause publishes, and a
-    // further problem that no recorded input explains stays direct. No check records either today, so the row records them through the
-    // recorder after a Final Bind.
+    // further problem that no recorded input explains stays direct. No check records any of them today (since R7-N1 e3, F's ruling N1-13
+    // B1, a re-read of the member's published lookup records at the failing `Missing` too, so the member no longer gets the derived
+    // MissingType the row first read), so the row records them through the recorder after a Final Bind.
     [Fact]
     public void ADerivedNodesFurtherProblemFollowsItsOwnRequirement()
     {
         var c = CompilationTestHelper.Parse("func f(x: Missing.Inner) -> i32 => 1\n");
         Assert.False(c.Bind().IsComplete);
-        var node = Assert.Single(c.Binding.DerivedIssues, static x => x.Failure == BindingFailure.MissingType).Node;
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         var unresolved = CompilationTestHelper.BindingErrors(c).Count(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd));
         var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
             .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.MissingType, [], 0, false);
         record(node, BindingFailure.MissingName, [], 0, false);
         record(node, BindingFailure.InvalidInlineLayout, [], 0, false);
         c.Binding.CheckBound();
+        Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.MissingType && x.Problem >= 0);
         Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.MissingName && x.Problem >= 0);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.InvalidInlineLayout && x.Problem >= 0);
         Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure != BindingFailure.InvalidInlineLayout);
