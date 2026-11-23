@@ -106,8 +106,8 @@ public class HeapClosureErasureTest
     {
         const string Source = "let text = \"owned\"\nlet concrete = func [text@move] () => text == \"owned\"\nlet erased: () -> bool = concrete@move";
         var c = MinimalEmissionTest.Analyze(Source);
-        var ir = CompilationTestHelper.WriteIr(c).Replace("call ptr @HeapAlloc(", "call ptr @fail_closure_alloc(", StringComparison.Ordinal) +
-            "\ndefine internal ptr @fail_closure_alloc(ptr %heap, i32 %flags, i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
+        var ir = CompilationTestHelper.WriteIr(c).Replace("call ptr @__kimi_heap_allocate(", "call ptr @fail_closure_alloc(", StringComparison.Ordinal) +
+            "\ndefine internal ptr @fail_closure_alloc(i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
         ScalarEmissionTest.WriteFixture("HeapClosureAllocationFailure", ir, string.Empty, 1, "Hello.kimi:3:26: abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 

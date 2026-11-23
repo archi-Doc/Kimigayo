@@ -96,6 +96,7 @@ public sealed partial class KimiLibrary
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
         this.Abort = this.CreateAbort();
+        this.DefaultAliases = Array.ConvertAll(Compilation.RequiredAliases, path => new Compilation.DefaultAlias(path, Compilation.ParseConfiguredPath(this.Kotonoha, "compiler://configuration", path)!));
         this.Restore();
     }
 
@@ -310,6 +311,11 @@ public sealed partial class KimiLibrary
     // A compiler-only call identity, never entered into Kimi or source name lookup.
     internal BindingSymbol Abort { get; }
 
+    // The required default aliases' rows (Compilation.RequiredAliases, the required "Kimi", SPEC 18.2.3), one per path, made with the
+    // library, so each is evaluated inside the library's pass before its table freezes (F's ruling N1-7 (5)) and no later Compilation
+    // parses or writes in the shared library. Every module reads them for its required paths (Compilation.DefaultAliases; O-511 (a)).
+    internal Compilation.DefaultAlias[] DefaultAliases { get; }
+
     internal ReadOnlySpan<BindingSymbol> RegisteredSymbols => CollectionsMarshal.AsSpan(this.registeredSymbols);
 
     public BindingSymbol? GetSymbol(KimiDeclarationId id)
@@ -400,12 +406,18 @@ public sealed partial class KimiLibrary
         }
     }
 
-    // IMPL 21.3.4: how a call of a library declaration is served, its `#Intrinsic` read from the syntax by the Attribute's Kind:
-    // `#Intrinsic("Name")` the IntrinsicId member of that Name, `#Intrinsic("Fail", "Code")` Fail with its SPEC 22.5.2 code; Body without
-    // one. Another argument list or a Name that is no IntrinsicId member is a defect of the compiler build, whose embedded library
+    // IMPL 21.3.4: how a call of a library declaration is served: a lang item whose catalog entry is a Form row by the MIR form the
+    // builder writes (DispositionKind.Form; its declaration is bodyless), else its `#Intrinsic` read from the syntax by the Attribute's
+    // Kind: `#Intrinsic("Name")` the IntrinsicId member of that Name, `#Intrinsic("Fail", "Code")` Fail with its SPEC 22.5.2 code; Body
+    // without one. Another argument list or a Name that is no IntrinsicId member is a defect of the compiler build, whose embedded library
     // KimiLibraryShapeTest checks.
-    private static IntrinsicDisposition DefinitionOf(Koto declaration)
+    private static IntrinsicDisposition DefinitionOf(Koto declaration, KimiDeclarationId? item)
     {
+        if (item is { } lang && KimiLibraryCatalog.Index(lang) is >= 0 and var index && KimiLibraryCatalog.Entries[index].Form)
+        {
+            return new(DispositionKind.Form);
+        }
+
         if (declaration.FindAttribute(AttributeKind.Intrinsic) is not { } attribute)
         {
             return default;
@@ -466,7 +478,7 @@ public sealed partial class KimiLibrary
     // SPEC 22.1: the catalog's symbols in catalog order, each bound to the declaration its `#Lang` marks, then a symbol of each unnamed
     // declaration (FindImplementations) in source order, in the scope of the container that declares it: the root's, else one scope per
     // container whose parent is its declaring container's (indexing later gives a member's symbol its container's ordinary member scope).
-    // A symbol carries its declaration's `#CallerLocation` and `#Intrinsic` (DefinitionOf).
+    // A symbol carries its declaration's `#CallerLocation` and its disposition (DefinitionOf).
     private void RegisterCatalog(Koto?[] declarations, List<Koto> unnamed)
     {
         var entries = KimiLibraryCatalog.Entries;
@@ -517,7 +529,7 @@ public sealed partial class KimiLibrary
                 Intrinsic = intrinsic,
                 LibraryDeclaration = id,
                 CallerLocation = declaration.FindAttribute(AttributeKind.CallerLocation) is not null,
-                Definition = DefinitionOf(declaration),
+                Definition = DefinitionOf(declaration, id),
             };
             declaration.BoundSymbol = symbol;
             declaration.BindingState = BindingState.Resolved;

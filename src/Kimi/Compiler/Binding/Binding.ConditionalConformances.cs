@@ -365,33 +365,12 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var identity = this.ConformanceOf(symbol, contract);
-        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.ConformancesOf(symbol) is { } bindings)
-        {
-            foreach (var candidate in bindings)
-            {
-                if (candidate.Contract.Type is { } formal && this.NamesReference(formal, type, contractReference, scope, site))
-                {
-                    identity = candidate;
-                    break;
-                }
-            }
-        }
-
-        if (identity is null && !IsBoundContractReference(contract))
-        {
-            // SPEC 8.6.1: a Contract named without Type arguments (a requirement's owner) is satisfied by the one conformance
-            // to a bound reference of its declaration; several such conformances stay undecided here.
-            identity = this.ConformanceByDeclaration(symbol, contract, out var ambiguous);
-            if (ambiguous)
-            {
-                return ConstraintProof.Unknown;
-            }
-        }
-
+        // SPEC 8.6.1, 8.9: the one conformance the Contract selects (a Contract named without Type arguments, a requirement's owner, by
+        // its declaration); an ambiguous selection (several by declaration, or two colliding direct conformances) stays undecided here.
+        var identity = this.SelectConformance(type, contract, scope, site, out var candidates);
         if (identity is null)
         {
-            return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope, site) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return candidates == 0 && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope, site) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)

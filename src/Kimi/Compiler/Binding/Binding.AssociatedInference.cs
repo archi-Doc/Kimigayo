@@ -162,7 +162,7 @@ public sealed partial class Binding
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                if (this.InferenceHole(path, identity))
+                if (this.InferenceHole(path, identity, path.Use))
                 {
                     InferenceBatches.Batch(path.Type).Active = true;
                     break;
@@ -295,7 +295,7 @@ public sealed partial class Binding
             {
                 foreach (var identity in path.Contract.Contract!.AssociatedStorage)
                 {
-                    hasHole |= this.InferenceHole(path, identity);
+                    hasHole |= this.InferenceHole(path, identity, path.Use);
                 }
             }
 
@@ -366,7 +366,7 @@ public sealed partial class Binding
 
                 foreach (var identity in path.Contract.Contract!.AssociatedStorage)
                 {
-                    if (!this.InferenceHole(path, identity) || !batch.Evidence.TryGetValue(identity.Symbol, out var evidence))
+                    if (!this.InferenceHole(path, identity, path.Use) || !batch.Evidence.TryGetValue(identity.Symbol, out var evidence))
                     {
                         continue;
                     }
@@ -405,16 +405,16 @@ public sealed partial class Binding
         }
     }
 
-    private bool InferenceHole(BoundConformancePath path, BoundRequirement identity)
+    private bool InferenceHole(BoundConformancePath path, BoundRequirement identity, QuerySite site)
         => path.InheritedFrom is null && this.AssociatedParameters(identity.Symbol.Declaration).Length == 0 &&
         this.AssociatedBindingOf(path.RootPath, identity) is { Candidates.Count: 0 } &&
-        this.SpecificationPart(path, identity) is null;
+        this.SpecificationPart(path, identity, site) is null;
 
     // SPEC 15.3.3, 15.4.4, 23.1.2: the explicit specification of an associated identity in the conformance's declaration or its
     // conditional block that fixes its Type, or that did not bind. An identity so specified is never an inference hole, a missing
     // binding rests on the clause, or on its specified Type when that fails instead (SettleSpecificationLinks), and a binding on an
     // inline cycle is reported there (SPEC 6.2, DECISIONS BU-128).
-    private IsKoto? SpecificationPart(BoundConformancePath path, BoundRequirement identity)
+    private IsKoto? SpecificationPart(BoundConformancePath path, BoundRequirement identity, QuerySite site)
     {
         var root = path.RootPath;
         if (root.Declaration.Parent is SyntaxFormKoto syntax && TryConditionalBlock(syntax, out var block))
@@ -443,8 +443,8 @@ public sealed partial class Binding
         // Copy` specifies i32), or one that did not bind and so cannot be told apart; a capability-only clause (`is Copy`) fixes nothing
         // and leaves the identity to inference.
         IsKoto? Failed(Koto item)
-            => item is IsKoto { IsAssociatedConstraint: true } clause && this.SpecifiesContract(clause, root.RootContract) &&
-                ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol) &&
+            => item is IsKoto { IsAssociatedConstraint: true } clause && this.SpecifiesContract(clause, root.Type, root.RootContract, site) &&
+                ReferenceEquals((clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol)?.Named, identity.Symbol) &&
                 (clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved ||
                     clause.BoundConstraint is null or { Kind: ConstraintKind.Error or ConstraintKind.Unresolved } ||
                     AssociatedIdentityType(clause.BoundConstraint) is not null)
@@ -612,7 +612,7 @@ public sealed partial class Binding
     private BoundRequirement? InferenceHoleOf(BoundConformancePath path, BoundType type)
         => type.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(type.Components[0].Symbol, path.Type) &&
             this.AssociatedInPath(path.RootPath, type.Components[0], type.Symbol!, type.Components.Count == 2 ? type.Components[1] : null, path.Scope, path.Use) is { } identity &&
-            this.InferenceHole(path, identity) ? identity : null;
+            this.InferenceHole(path, identity, path.Use) ? identity : null;
 
     private bool InferenceTypeInScope(BoundType type, BindingSymbol owner, AssociatedInference batch, out Koto? invalid)
     {

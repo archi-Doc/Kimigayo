@@ -315,7 +315,7 @@ public sealed partial class Binding
                 // SPEC 8.13.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
                 if (!RestsOn(function, failed))
                 {
-                    this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
+                    this.Record(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch, []);
                 }
 
                 continue;
@@ -347,8 +347,7 @@ public sealed partial class Binding
 
             if (constraints != ConstraintProof.Proven)
             {
-                _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true)
-                    : this.Fail(function, constraints == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnsatisfiedConstraint);
+                _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true) : this.RecordConstraint(function, constraints, []);
                 continue;
             }
 

@@ -182,7 +182,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0), At));
         Assign(exclusive, MirRvalue.Ref(MirRefKind.Uniq, shared, body.TypeOf(exclusive)!));
         Assign(pointer, MirRvalue.Cast(MirCastKind.IntToPointer, Operands(MirOperand.Copy(index)), body.TypeOf(pointer)!));
-        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [new(array.Root)], 1)));
+        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [new(array.Root)], 1, 0)));
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, payload!)));
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(value), token), value, types.Pair, shorthand: true, input: false));
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
@@ -229,13 +229,15 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Empty(Validate(Typed(null)));
     }
 
-    // DECISIONS Z17c: an Opaque site's kept uses are among its uses, so a kept count past them is an Opaque finding; a count equal to
-    // them is valid (the site of ValidBodyHasNoFinding's typed body keeps its one use).
-    [Fact]
-    public void AnOpaqueSiteKeepsNoMoreThanItsUses()
+    // DECISIONS Z17c, Z27: an Opaque site's kept and enclosing uses are among its uses, so counts past them are an Opaque finding; a count
+    // equal to them is valid (the site of ValidBodyHasNoFinding's typed body keeps its one use).
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    public void AnOpaqueSiteKeepsNoMoreThanItsUses(int kept, int enclosing)
     {
         var body = Build(null);
-        body.AddOpaque(default, [], 1);
+        body.AddOpaque(default, [], kept, enclosing);
         Assert.Equal([MirViolation.Opaque], Validate(body).Select(static x => x.Rule));
     }
 
@@ -364,9 +366,41 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("r", 3, "Arity")]
     public void AKeyedStorageTakesAStartAndAnOpenKey(string form, int count, string? rule)
     {
-        var (body, types) = KeyedStorage(form, count);
+        var (body, types, _) = KeyedStorage("v", form, count);
         MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
         Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // SPEC 5.3 (PLAN G597's L2; O-92 (a)'s list and a raw pointer, whose elements start at its value: Storage.viewStart's form): a
+    // Storage over a raw pointer Place (raw/i32) is admitted unkeyed and keyed, its element the pointee; over a Place that is neither a
+    // sequence nor a raw pointer (an i32) it is an Operation finding either way (fail-before: the raw pointer Place was one too).
+    [Theory]
+    [InlineData("p", 0, null)]
+    [InlineData("p", 2, null)]
+    [InlineData("n", 0, "Operation")]
+    [InlineData("n", 2, "Operation")]
+    public void AStorageOverARawPointerIsAdmitted(string sequence, int count, string? rule)
+    {
+        var (body, types, _) = KeyedStorage(sequence, "r", count);
+        MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // PLAN G597's L2 (the owner's O-490 (a)): the builder writes a Form function's call as its MIR form, so a Call of Storage.viewStart
+    // is an Operation finding at the Call, and only that (no signature is read): A4 and the instance collector, which trust validated
+    // MIR, never see one (fail-before: the Call went to the signature checks). Its operands are KeyedStorage's raw/i32 _4 and start
+    // _3, after its Storage.
+    [Fact]
+    public void AFormFunctionIsNeverACall()
+    {
+        var (body, types, c) = KeyedStorage("p", "r", 0);
+        var view = c.Library.GetSymbol(KimiDeclarationId.ViewStart)!;
+        Assert.Equal(DispositionKind.Form, view.Definition.Kind);
+        var (into, next) = (MirModelTest.Local(body, body.TypeOf(new(2))!), body.AddBlock());
+        var passed = AddOperands(body, [MirOperand.Copy(new(4)), MirOperand.Copy(new(3))]);
+        body.Terminate(0, MirTerminator.Call(new(MirCalleeKind.Fn, view), passed, 2, into, next, Broken));
+        body.Terminate(next, MirTerminator.Return(At));
+        Assert.Equal([(MirViolation.Operation, Broken.Syntax)], Validate(body, types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // SPEC 4.9.5, 4.9.6, 22.5.1 (DECISIONS R5-M129): an Array aggregate of elements publishes its buffer's allocation and its Abort through
@@ -2020,6 +2054,62 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
+    // PLAN G1184 (SPEC 23.1.2, rule W; the Z28 design's C1 and D1): a Field step over a stored Field whose slot failed is admitted, of no
+    // Type (MirBody.Selects), and only written: an Assign's destination, also of a write's value in transit, an Assigned
+    // temp of no Type its Use places (the builder's Replace). Its FakeRead, Copy, Ref, Drop, Move into _0 and a propagating read of it (the
+    // step of an Unknown temp) are Local findings, on a first step (`n.w`) as on a deeper one (`(*r).w`); an Assigned temp of no Type moved
+    // into a typed destination is one too; a step below it is not admitted, a Projection finding only.
+    [Theory]
+    [InlineData("write", "")]
+    [InlineData("placing", "")]
+    [InlineData("placing typed", "Local")]
+    [InlineData("read", "Local")]
+    [InlineData("copy", "Local")]
+    [InlineData("borrow", "Local")]
+    [InlineData("drop", "Local")]
+    [InlineData("deliver", "Local")]
+    [InlineData("propagate", "Local")]
+    [InlineData("deeper", "Local")]
+    [InlineData("below", "Projection")]
+    public void AFieldStepOfNoTypeIsOnlyWritten(string form, string expected)
+    {
+        var c = MirBuildTest.Compile("struct N\n    public var w: Weak<rc/N> = 5\n    public var v: i32 = 0\n    public init() => ()\n");
+        var n = c.Semantics.SelfType(c.Kotonoha.RootKoto.NestedContainers.Single(static x => x.Name == "N").SymbolOf()!);
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, At));
+        var (owner, k, reference) = (MirModelTest.Local(body, n), MirModelTest.Local(body, BoundType.I32), MirModelTest.Local(body, c.Types.Reference(SemanticsKind.Ref, n)));
+        var (held, unknown) = (new MirPlace(body.AddLocal(new(null, MirLocalKind.Temp, At, Role: MirLocalRole.Assigned))), MirModelTest.Local(body, n, MirLocalKind.Temp));
+        var (block, next) = (body.AddBlock(), body.AddBlock());
+        var w = body.Project(c.Types, owner, MirProjectionKind.Field, 0);
+        Assert.Null(body.TypeOf(w));
+        MirRvalue Use(MirOperand operand) => MirRvalue.Use(AddOperands(body, [operand]));
+        body.Push(block, MirStatement.Assign(held, Use(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 5)))), At));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(n, body.AddOpaque(default, [], 0, 0)), At));
+        MirStatement? broken = form switch
+        {
+            "write" => MirStatement.Assign(w, Use(MirOperand.Copy(k)), Broken),
+            "placing" => MirStatement.Assign(w, Use(MirOperand.Move(held)), Broken),
+            "placing typed" => MirStatement.Assign(k, Use(MirOperand.Move(held)), Broken),
+            "read" => MirStatement.Of(MirStatementKind.FakeRead, w, Broken),
+            "copy" => MirStatement.Assign(k, Use(MirOperand.Copy(w)), Broken),
+            "borrow" => MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.Shared, w, body.TypeOf(reference)), Broken),
+            "deliver" => MirStatement.Assign(new(0), Use(MirOperand.Move(w)), Broken),
+            "propagate" => MirStatement.Assign(k, Use(MirOperand.Copy(body.Project(c.Types, unknown, MirProjectionKind.Field, 0))), Broken),
+            "deeper" => MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, body.Project(c.Types, reference, MirProjectionKind.Deref, 0), MirProjectionKind.Field, 0), Broken),
+            "below" => MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, w, MirProjectionKind.Field, 0), Broken),
+            _ => null,
+        };
+        if (broken is { } statement)
+        {
+            body.Push(block, statement);
+        }
+
+        body.Terminate(block, form == "drop" ? MirTerminator.Drop(w, next, Broken) : MirTerminator.Goto(next, At));
+        body.Terminate(next, MirTerminator.Return(At));
+        Assert.Equal(expected.Split(' ', StringSplitOptions.RemoveEmptyEntries), Validate(body, c.Types).Select(static x => x.Rule.ToString()));
+    }
+
     // PLAN G1073 (SPEC 23.1.2; BU-240): an EndBorrow ends the Loans a reference local holds. An Index over a receiver Binding rested (a use of
     // a failed getter, D-823) lends the receiver's Opaque temp of no Type through a stand-in of no Type, which holds none and agrees with a
     // reference: no finding (fail-before: EndBorrowLocal, InternalInvariant_Kd at the Index); the stand-in typed as no reference is one.
@@ -2204,7 +2294,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(a, MirRvalue.Use(Operands(broken == "assign" ? MirOperand.Copy(flag) : MirOperand.Copy(body.Project(c.Types, pair, MirProjectionKind.Field, 0)))), "assign");
         var lost = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
-        Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [], 0)));
+        Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [], 0, 0)));
         Assign(a, MirRvalue.Use(Operands(MirOperand.Move(lost))), "opaque");
         MirOperand Token(BoundType type) => MirOperand.Const(body.Const(new(MirConstKind.TypeToken, type)));
         var (acquired, payload) = (broken == "token" ? flag : a, body.Project(c.Types, handle, MirProjectionKind.Deref, 0));
@@ -2296,7 +2386,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
-        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root), x], 0))); // Z17: an undecided use at a Place.
+        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root), x], 0, 0))); // Z17: an undecided use at a Place.
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
         Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));
@@ -2427,14 +2517,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         return body;
     }
 
-    // A body of one keyed Storage at Broken, `_2 = storage(_1, copy _3, const type K)` over an Array<i32> (PLAN G597): its key the named
-    // parameter's Type of a generic k; "flag" a bool start under the key R and "value" an Integer constant for the token; of its three
-    // operands (the token twice) the count given.
-    internal static (MirBody Body, TyCtxt Types) KeyedStorage(string form, int count)
+    // A body of one keyed Storage at Broken, `_2 = storage(_1, copy _3, const type K)` over an Array<i32> (PLAN G597), or over the named
+    // parameter's local after them (_4: "p" a raw/i32, "n" an i32): its key the named parameter's Type of a generic k; "flag" a bool start
+    // under the key R and "value" an Integer constant for the token; of its three operands (the token twice) the count given.
+    internal static (MirBody Body, TyCtxt Types, Compilation Compilation) KeyedStorage(string sequence, string form, int count)
     {
         var c = MirBuildTest.Compile(
             "func k<R, S, E>(v: Array<i32>, r: R, from: Range<S, End>, both: Range<S, E>, full: Range<Start, End>, to: Range<Start, E>, " +
-            "at: Range<i32, E>, back: Range<FromEnd<i32>, End>, resolved: ResolvedRange) -> ()\n" +
+            "at: Range<i32, E>, back: Range<FromEnd<i32>, End>, resolved: ResolvedRange, p: raw/i32, n: i32) -> ()\n" +
             "    R is PositionRange\n    S is Position\n    E is Position\n    return ()\n");
         Assert.True(c.Binding.Result.IsComplete);
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "k");
@@ -2446,11 +2536,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var start = MirOperand.Copy(MirModelTest.Local(body, form == "flag" ? BoundType.Boolean : BoundType.ISize));
         MirConst key = form == "value" ? new(MirConstKind.Integer, BoundType.ISize, 0) : new(MirConstKind.TypeToken, Of(form == "flag" ? "r" : form));
         var token = MirOperand.Const(body.Const(key));
+        var place = sequence == "v" ? array : MirModelTest.Local(body, Of(sequence));
         var block = body.AddBlock();
-        var keyed = MirRvalue.Storage(array, body.TypeOf(pointer)!, AddOperands(body, [start, token, token])) with { Count = count };
+        var keyed = MirRvalue.Storage(place, body.TypeOf(pointer)!, AddOperands(body, [start, token, token])) with { Count = count };
         body.Push(block, MirStatement.Assign(pointer, keyed, Broken));
         body.Terminate(block, MirTerminator.Return(At));
-        return (body, c.Types);
+        return (body, c.Types, c);
     }
 
     // The compilation of a PrimitiveInteger T and a PrimitiveInteger projection U.(HasItem).Item, and eight Types: its parameters' T,

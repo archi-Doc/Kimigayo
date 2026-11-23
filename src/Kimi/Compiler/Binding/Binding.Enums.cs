@@ -132,9 +132,9 @@ public sealed partial class Binding
             // are determined by the construction's expected Type and payloads.
             type = this.BindTypeStructure(qualifier, scope, this.TypeContext(qualifier, scope));
         }
-        else if (TypeSpelling(qualifier) == "Self")
+        else if (symbol.SelfOf is not null)
         {
-            type = this.SelfType(symbol);
+            type = symbol.Type; // SPEC 9.1: a Self names its declaration with all its bindings.
         }
         else
         {
@@ -163,7 +163,7 @@ public sealed partial class Binding
         // SPEC 10.2, 10.8.1: the expected enum of a contextual Case at `ref/U` is U's.
         if (this.CaseAt(reference, scope, this.ExpectedTypeOf(expected), out var missing) is not { } member)
         {
-            this.Fail(reference, missing, missing == BindingFailure.MissingType);
+            this.Record(reference, missing, [], unresolved: missing == BindingFailure.MissingType);
             return null;
         }
 
@@ -295,7 +295,7 @@ public sealed partial class Binding
                         this.MarkWaitingHeaders(call);
                     }
 
-                    return this.Fail(use, BindingFailure.MissingType, true);
+                    return this.Record(use, BindingFailure.MissingType, [], unresolved: true);
                 }
             }
 
@@ -340,7 +340,7 @@ public sealed partial class Binding
                 // fact its walk gives (RecordMismatch).
                 if (!this.FitsStructurallyAt(result, expected, use))
                 {
-                    return !this.FitsTypeAt(result, expected, use, out var contract) && contract.IsCondition
+                    return !this.FitsTypeAt(result, expected, use, out var contract, null) && contract.IsCondition
                         ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
@@ -381,8 +381,7 @@ public sealed partial class Binding
             var proof = this.CheckConstraints(declaration.ConstraintNodes, new CallSubstitution(declaration, frame.Types[..slots]), scope, use);
             if (proof != ConstraintProof.Proven)
             {
-                return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true)
-                    : this.Fail(use, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnsatisfiedConstraint);
+                return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true) : this.RecordConstraint(use, proof, []);
             }
 
             if (!this.enumConstructions.TryGetValue(use, out var plan))
@@ -723,7 +722,7 @@ public sealed partial class Binding
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
-                this.Fail(use, formation == ConstraintProof.Error ? BindingFailure.InvalidConstraint : formation == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, formation == ConstraintProof.Unknown);
+                this.Fail(use, ConstraintFailureOf(formation), formation == ConstraintProof.Unknown);
                 continue;
             }
 

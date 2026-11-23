@@ -12,7 +12,7 @@ namespace Kimi.Compiler.Mir;
 // it gave (a call's given argument).
 internal sealed partial class MirBuilder
 {
-    // The Places the expansions being built located, and the right side a derived write built (DerivedWrite), innermost last.
+    // The Places the expansions being built located, innermost last.
     private readonly List<(Koto Node, MirPlace Place)> located = [];
 
     // The Type a call takes a node as: its receiver's or argument's adapted Type, else its parameter's.

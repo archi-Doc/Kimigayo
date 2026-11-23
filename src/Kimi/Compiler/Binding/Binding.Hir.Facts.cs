@@ -72,7 +72,7 @@ public sealed partial class Binding
                 var selected = op == HirOp.Index || (Planned(this.SelectedIndexCall(index, exclusive: false), out var shared) && shared is not null);
                 return keyed && selected && Planned(this.IndexerCall(index, exclusive: true), out _); // indexUniq, bound only beside index.
             case HirOp.Call: // A call the builder builds as it is (no expansion supplies its inputs) covers its parameters.
-                return CallPlan.Of(this, node) is { } call && Complete(call) && (call.TupleOperator
+                return CallPlan.Of(this, node) is { } call && Complete(call) && ByCase(call) && (call.TupleOperator
                     ? call is { ConformingType: not null, ArgumentOperations.Length: 2 } : ExpansionPlan.Of(this, node) is not null || call.Covers());
             case HirOp.Assign or HirOp.CompoundAssign:
                 var target = KotoHelper.UnwrapParentheses(node is BinaryKoto update ? update.Left : ((UnaryKoto)node).Operand);
@@ -130,6 +130,13 @@ public sealed partial class Binding
             var direct = call.Kind == CalleeKind.Virtual && call.VirtualIsDirect;
             return Sourced(call.ArgumentOperations) && (!direct || (call.VirtualImplementation is { } body && HirTables.Symbol(body) is not null));
         }
+
+        // SPEC 7.7.3 (PLAN G13): a by-case value call (CallPlan.CaseDecider) acquires its callee exclusively, its Closure being Shared
+        // case-free, and its two acquisitions take one callee (both Sources null for an owned callee) at one Origin, the result's receiver
+        // image (Binding.ReceiverImage); a call without a decider has no Shared acquisition.
+        static bool ByCase(CallPlan call) => call.CaseDecider is not { } decider ? call.SharedReceiver == default
+            : call is { Kind: CalleeKind.Value, ReceiverKind: SemanticsKind.Uniq } && BoundClosure.Of(decider) is { CaseFreeReceiver: SemanticsKind.Ref, Receiver: SemanticsKind.Uniq } &&
+                ReferenceEquals(call.SharedReceiver.Source, call.ReceiverOperation.Source) && ReferenceEquals(call.SharedReceiver.AdaptedType?.Origin, call.ReceiverOperation.AdaptedType?.Origin);
 
         static bool Sourced(ReadOnlySpan<BoundArgumentOperation> operations)
         {

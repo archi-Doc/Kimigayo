@@ -271,10 +271,10 @@ Each unit is designed, and the owner asked (with example code), before it starts
 |---|---|---|
 | B5 | The record is the truth: IMPL §20.3.2's wording, a lock file per output for exclusion, failure tests. Closes PLAN G1045. | The IMPL wording |
 | B6 | Single file: Tatara linked statically into the NativeAOT Kimi, link material embedded; the old options (`--ToolchainRoot` and the others) and the reserved names' special case removed. Lands as B6a (the link libraries supplied by the compiler) and B6b1-B6b6 (Tatara in the process; the static `kimi.exe` stacked on verify's self-check; the command-line options; `LlvmBin` in projects and manifests; the root's `windows_x64` removed). | IMPL §20.3.2 and §20.4, what is embedded |
-| B7 | Linux target: `WindowsProfile` becomes a row of the target table (structure only), then the Linux row and the ELF checks. Lands as B7a1 (the reserved supplies stated once), B7a2 (`TargetProfile`'s first row) and B7b (the Linux row: musl's build and embedding, the libc-free platform layer, Tatara's ELF side, the native build's per-target steps, the commands). B7 lands B7a1 and B7a2, then B7b1 (W1), B7r4 (W2), B7r1-B7r3 (W3, all or none), B7b2, B7b6 and B7b5 (W4), B7r5 and B7b4 (W5), B7b7 (W6), B7b8 (W7) and B7b9 (W8) (design `units\B7\design-b7b.md` Revision 2.1, C-445 ACCEPT; the group B7r is the runtime for every target: B7r4 `mem*` in IR, B7r1 the platform layer, B7r2 the minimal allocator over the platform's pages, B7r3 kernel32's set, B7r5 the backend archive with `__chkstk` alone). | musl version, minimum kernel, FFI, SPEC §22 |
+| B7 | Linux target: `WindowsProfile` becomes a row of the target table (structure only), then the Linux row and the ELF checks. Lands as B7a1 (the reserved supplies stated once), B7a2 (`TargetProfile`'s first row) and B7b (the Linux row: musl's build and embedding, the libc-free platform layer, Tatara's ELF side, the native build's per-target steps, the commands). B7 lands B7a1 and B7a2, then B7b1 (W1), B7r4 (W2), B7r1-B7r3 (W3, all or none), B7b2a1, B7b2a2, B7b6, B7b2b and B7b5 (W4), B7r5 and B7b4 (W5), B7b7 (W6), B7b8 (W7) and B7b9 (W8) (design `units\B7\design-b7b.md` Revision 2.5, C-445 ACCEPT; the owner's O-504: each call writes its own import's extension; the group B7r is the runtime for every target: B7r4 `mem*` in IR, B7r1 the platform layer, B7r2 the minimal allocator over the platform's pages, B7r3 kernel32's set, B7r5 the backend archive with `__chkstk` alone). | musl version, minimum kernel, FFI, SPEC §22 |
 | B8 | Linux host: Kimi on Linux builds both targets. A future plan, not implemented now (the owner, 2026-11-21, board O-479, 「「B8：Linux ホスト上の Kimi」は、今後の計画とします。まだ実装しなくて結構です。」); its preparation (`artifacts\handoff\tatara\units\B8\owner-question.md`, `design-b8-outline.md`) is kept, and its questions Q1-Q6 stay open until the owner takes B8 up. | The libc requirement of Kimi for Linux |
 | B9 | Freestanding target `x86_64-unknown-none` (decision 22): the target row, the platform contract the program implements, the kernel code-generation settings, an entry symbol and a linker script. Decisions 29-34 (O-488) fix the platform contract's shape; B9's design follows `units\B9\design-b9-outline.md` (B9a-B9h) after B7b's Linux units. | The platform contract's shape (an owner question with example code before its design) |
-| B10 | Language-side OS features (decisions 35-43): fixed intrinsics in a Kimi group `X86` under one family id `Instruction` (Backend table `InstructionRows`), `Raw.readVolatile`/`writeVolatile`, interrupt entries through the Contracts `X86.InterruptHandler`/`ErrorCodeHandler` and an entry intrinsic, sections deferred (an Appendix D line). Units OSF2 (volatile, any window), OSF1a (the instruction family with `Board`'s members, before B9h), OSF1b (the remaining instructions), OSF3a (interrupt entries), OSF3b (an interrupt run under QEMU, evidence, after B9h); design `units\OSF\design.md`. | The features' forms (the design's owner questions) |
+| B10 | Language-side OS features (decisions 35-43): fixed intrinsics in a Kimi group `X86` under one family id `Instruction` (Backend table `InstructionRows`), `Raw.readVolatile`/`writeVolatile`, interrupt entries through the Contracts `X86.InterruptHandler`/`ErrorCodeHandler` and an entry intrinsic, sections deferred (an Appendix D line). Units OSF2 (volatile, any window), OSF1a (the instruction family with `Board`'s members, before B9h), OSF1b (the remaining instructions), OSF3a (interrupt declarations), OSF3b (interrupt entries) and OSF3c (an interrupt run under QEMU, evidence, after B9h and OSF3b); design `units\OSF\design.md` Revision 2.1. | The features' forms (the design's owner questions) |
 
 ## 8. Later candidates
 
@@ -282,8 +282,21 @@ Measured first; each one adopted is a unit of its own.
 
 1. **Direct O2 generation:** generate from the optimized module without re-parsing. Where an object changes this is a behavior change,
    so the differences over every fixture are counted first.
+   Closed 2026-11-23 by its measurement M1 (LC1 design Revision 0, T-335): the second parse and verification of an O2 text cost
+   0.58% of Milestone30's O2 build, 0.02% of Large's and 1.55% serial of the native check (about 0.26% of its wall time at
+   `-Parallel 6`); every reading is below the 1% gate in wall time, so LC1 stops (T's ruling). No unit.
 2. **Reuse of library check results** within an interactive session, for libraries of equal content (within IMPL §A.2).
+   Examined 2026-11-23 (LC2 design Revision 0): the Kimi library's parse, Binding, HIR and library layer are already reused once per
+   process and target (DECISIONS R8-M53, R8-M55); what a `kimi tatara` line still repeats is MIR work over the library (the owner's
+   O-381 (b)), estimated at or below 2% of a Milestone30 session line at O2 (C-381's figures), below the 3% gate, so O-381 (b)
+   stands; reuse of a project's library dependencies waits for a workload with one (none in the repository but
+   `docs/examples/SourceDependencies`). No unit now; the design's options and owners are the starting point if a gate passes later.
 3. **Link time by part:** read, resolve, write, close; then choose a measure.
+   Measured 2026-11-23 (LC3's M-L, T-335): the whole link is 54% of Hello O0's warm build. Open: S1 (a staged compiler supply
+   verified by its catalog hash, without the temporary copy; removable 2.72% of Hello O0 warm) proceeds to a design; W2
+   (`/threads:1`) waits for a measured `kimi.exe` row (it reaches 1% only of the estimated row, the LC3 design's rule 3); read
+   reaches the 1% gate (1.52% of Hello O0 warm) but has no candidate (the LC3 design's §5), so nothing is designed; resolve and
+   the hash/record/move parts stop.
 4. **Schema 5:** each external declaration names its supplier, with PLAN T1's schema 5.
 
 ## 9. Working rules

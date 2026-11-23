@@ -11,15 +11,16 @@ namespace Kimi.Compiler.Mir;
 // address is no whole-value reference, and a call's write past a holder takes the Reached entry of the Place's Type), and it is never
 // a conflict candidate (MirBorrows.Candidates). A raw Ref issues its entry (loanAt); `ownAt` gives a layer Place's own-step entry.
 // A `during self` layer is decided from the MIR Place path, by the stored step Binding publishes (TyCtxt.StoredStep: Own), never by an
-// Origin. A Place a location uses has one own-step row (ownAt): through no borrow or raw Deref by its own steps; past one, after the
-// walk, by its exact lent position (MirBorrows.Lent) where it has one, else by its own steps (Place, R-C; Z5-R1), the row a read carries
+// Origin. A Place a location uses that is a layer or a Tuple or fixed array enclosing one inline (SPEC 5.7: read element by element)
+// has one own-step row (ownAt): through no borrow or raw Deref by its own steps (R-A; Z5-R2); past one, after the walk, by its exact
+// lent position (MirBorrows.Lent) where it has one, else by its own steps (Place, R-C; Z5-R1), the row a read, Copy or Move carries
 // with its parents whole (MirBorrows.Values' Layered). A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing
 // one inline issues its ordinary Loan and no mark: it sets the view's `tabling` bit, the base's mark condition (Owns). PQ-10, narrowed
-// (registered for X-2, PD28): a read whose row is Unplaced in a view with `tabling` set is a located Unsupported_Kd at the read, and a
-// Copy or Move of an enclosing Place through no dereference marks its location (R-A; removal stage: Z5-R2), each making the view a
-// producer. An own-step entry makes its root borrowed, so the root's accesses are listed for its departures (MirBorrows.OwnSteps), and the
-// view a producer where an access may depart it (OwnSteps' MayDepart, D5, R4-M141). The pre-pass runs once per view, after the Loans and
-// before the holders. It walks the view's uses only where Loans saw a raw Ref or a projection row may be or enclose a layer (Layering's
+// (registered for X-2, PD28): a read whose row is Unplaced in a view with `tabling` set is a located Unsupported_Kd at the read, making
+// the view a producer. An own-step entry makes its root borrowed, so the root's accesses are listed for its departures
+// (MirBorrows.OwnSteps), and the view a producer where an access may depart it (OwnSteps' MayDepart, D5, R4-M141); it exposes its
+// owner's storage in the root (OwnerExposed), a plain address the whole root (ExposedHolder). The pre-pass runs once per view, after the
+// Loans and before the holders. It walks the view's uses only where Loans saw a raw Ref or a projection row may be or enclose a layer (Layering's
 // Type tests: each Type once per pre-pass); elsewhere no use forms an address, a row or a mark (G246). Its Type walks visit a Type, or a
 // (Type, written Type) pair, once per walk (DECISIONS R4-M157), and each visit is a step of Work.
 // Must not issue a Loan, carry a value (MirBorrows.Values) or record a problem (MirBorrows.Locations records PQ-10's).
@@ -32,10 +33,9 @@ internal sealed partial class MirBorrows
     private readonly HashSet<(BoundType Type, BoundType? Written)> visited = new(); // A Type walk's visited parts, cleared per walk.
     private readonly List<(int Root, int Projection, int Location, int Position)> placing = []; // ownAt's rows past a borrow or raw Deref, decided by Place.
     private int[] positions = []; // An owner's inline positions, from the part on.
-    private bool[] layerBorrowed = []; // By location: PQ-10's located Unsupported_Kd (a Copy or Move of an enclosing Place: Z5-R2's R-A).
     private bool tabling; // R-B: whether a non-raw borrow of the view lends a layer's Place or a Tuple or fixed-array Place enclosing one (PQ-10's borrow mark on the base).
     private int addressCount;
-    private int ownCount; // The layer Places of the view.
+    private int ownCount; // The Places with an own-step row.
 
     // Whether a Tuple or fixed array holds a raw pointer inline, at any of its positions: each Type once per pre-pass (Layering), whose
     // visited Types all hold none, since the pre-pass stops at the first that does.
@@ -63,8 +63,6 @@ internal sealed partial class MirBorrows
         this.addressOf.Clear();
         this.ownAt.Clear();
         this.placing.Clear();
-        MirDataflow.Grow(ref this.layerBorrowed, locations);
-        Array.Clear(this.layerBorrowed, 0, locations);
         this.tabling = false;
         this.Work += this.body.Projections.Length;
         if (!this.rawRefs && !this.Layering())
@@ -103,9 +101,9 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // A Place a location uses: a raw Ref's address; the layer of each prefix; PQ-10's non-raw Borrow of a layer, and a non-raw Borrow or a
-    // read of an enclosing Place.
-    private void Use(int location, MirPlace place, MirAccess access, MirRefKind kind, bool read)
+    // A Place a location uses: a raw Ref's address; the own-step row of each prefix; R-B's tabling for a non-raw Borrow of a layer's or
+    // enclosing Place.
+    private void Use(int location, MirPlace place, MirAccess access, MirRefKind kind)
     {
         var borrows = (access & MirAccess.Borrows) != 0;
         if (borrows && kind == MirRefKind.Raw)
@@ -119,12 +117,7 @@ internal sealed partial class MirBorrows
             this.Layer(place with { Projection = id }, location);
         }
 
-        borrows &= kind != MirRefKind.Raw;
-        var type = cases.KnownTypeOf(place);
-        var owns = (borrows || read) && this.Owns(place, type);
-        this.tabling |= borrows && owns; // R-B: the base's mark condition, and no mark (R-C reads through the borrow).
-        this.layerBorrowed[location] |= read && owns && !type!.IsPointer; // R-A (Z5-R2): a Copy or Move of an enclosing Place, PQ-10's until then.
-        this.producing |= this.layerBorrowed[location]; // A located Unsupported_Kd is the replay's to record (D5).
+        this.tabling |= borrows && kind != MirRefKind.Raw && this.Owns(place, cases.KnownTypeOf(place)); // R-B: the base's mark condition, and no mark.
     }
 
     // R-C (SPEC 5.7 Reading a Field through a dereference, 15.6 Addresses, 15.6 Holders): after the walk, where Exposed is final
@@ -136,8 +129,8 @@ internal sealed partial class MirBorrows
     // none, Unplaced. So no row is less than the base's: Unplaced only where neither run names an owner. A read carries its row's entry with
     // its parents whole (Values' Layered); an Unplaced one carries its layer and is the location's limit where tabling is set, which makes
     // the view a producer (PQ-10 narrowed: the base marked a borrow of the view, so no program the base accepts is put at the limit). Every
-    // position is made before any entry: an owner's entry exposes its root, and no position is followed through an owner (Lender refuses a
-    // struct's and a Case's stores).
+    // position is made before any entry, and no own-step entry, here or in the walk, refuses a lender: it exposes its owner's storage only
+    // (OwnerExposed), and no position is followed through an owner (Lender refuses a struct's and a Case's stores).
     private void Place()
     {
         for (var i = 0; i < this.placing.Count; i++)
@@ -197,7 +190,7 @@ internal sealed partial class MirBorrows
     private int RootOf(int key) => key < this.body.Locals.Length ? key : ~(key - this.body.Locals.Length);
 
     // Whether a Place's own steps name an owner whose part at them is a layer stepping Own or encloses one (PQ-10's mark condition on the
-    // base: R-B's tabling, R-A's mark).
+    // base: R-B's tabling).
     private bool Owns(MirPlace place, BoundType? type)
         => type is { } known && (known.IsPointer || known.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray) &&
             this.Owned(place, known) >= 0;
@@ -253,10 +246,10 @@ internal sealed partial class MirBorrows
             ? this.placeSteps.Element(place, count, ref this.walk) : count;
     }
 
-    // A Place's own-step row (B §5.2 item 2; R-C), one per Place a location uses, decided once per view: the own-step entry of the owner
-    // whose part the Place is a `during self` layer of (a raw pointer) or, past a borrow or raw Deref, encloses one inline (a Tuple or fixed
-    // array; through none, R-A's until Z5-R2); -1 for none. Through no borrow or raw Deref a Place's own steps are its exact position, decided
-    // here; past one the row is listed (Unplaced until then) and decided after the walk (Place).
+    // A Place's own-step row (B §5.2 item 2; R-A, R-C), one per Place a location uses, decided once per view: the own-step entry of the
+    // owner whose part the Place is a `during self` layer of (a raw pointer) or encloses one inline (a Tuple or fixed array); -1 for none.
+    // Through no borrow or raw Deref a Place's own steps are its exact position, decided here; past one the row is listed (Unplaced until
+    // then) and decided after the walk (Place).
     private int Layer(MirPlace layer, int location)
     {
         if (cases.KnownTypeOf(layer) is not { } type || !(type.IsPointer || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray))
@@ -270,7 +263,7 @@ internal sealed partial class MirBorrows
         }
 
         var count = this.placeSteps.Walk(layer, reborrow: false, ref this.walk);
-        entry = this.LastDeref(count) >= 0 ? Unplaced : type.IsPointer && this.Owned(layer.Root, this.walk.AsSpan(0, count), type) is var at and >= 0
+        entry = this.LastDeref(count) >= 0 ? Unplaced : this.Owned(layer.Root, this.walk.AsSpan(0, count), type) is var at and >= 0
             ? this.OwnStep(layer with { Projection = this.walk[at].Prefix }, location) : -1;
         if (entry == Unplaced)
         {
@@ -316,7 +309,7 @@ internal sealed partial class MirBorrows
         entry = this.Record(this.loanCount + this.addressCount++, address, count);
         if (direct && place.Root >= 0)
         {
-            this.named[place.Root] |= NamedHolder | ExposedHolder;
+            this.named[place.Root] |= (byte)(NamedHolder | (key >= 0 ? OwnerExposed : ExposedHolder)); // What the entry exposes (Exposed).
         }
 
         if (key >= 0)
@@ -403,22 +396,17 @@ internal sealed partial class MirBorrows
     private struct Addressing(MirBorrows owner) : IMirUses
     {
         private int location;
-        private MirOperand operand;
-        private bool inOperand; // Whether the Places reported are the current operand's (its index locals precede its Place).
 
-        public void Operand(in MirOperand operand) => (this.operand, this.inOperand) = (operand, operand.Kind != MirOperandKind.Const);
+        public readonly void Operand(in MirOperand operand)
+        {
+        }
 
         public readonly void Effect(MirEffect effects, int site)
         {
         }
 
-        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
-        {
-            var read = this.inOperand && this.operand.Place == place;
-            this.inOperand &= !read;
-            owner.Use(this.location, MirDescriptors.Judged(place, access), access, kind, read);
-        }
+        public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind) => owner.Use(this.location, MirDescriptors.Judged(place, access), access, kind);
 
-        internal void At(int location) => (this.location, this.inOperand) = (location, false);
+        internal void At(int location) => this.location = location;
     }
 }

@@ -55,7 +55,7 @@ public sealed partial class Binding
     private PremiseFailure? FailedClauseRead(IsKoto clause, BoundConstraint fact)
         => this.premiseFailures != 0 && clause.Parent is { } declaration && this.scopes.TryGetValue(declaration, out var scope) &&
             scope.Constraints is { } environment && environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _)
-            ? environment.FailedPremise : null;
+            ? environment.CauseOf(fact) : null;
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.

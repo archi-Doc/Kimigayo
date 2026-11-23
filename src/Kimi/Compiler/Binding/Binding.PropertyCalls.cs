@@ -46,18 +46,27 @@ public sealed partial class Binding
     internal InvocationKoto? PropertyCall(Koto node, PropertyAccessorKind kind)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        if (node.BindingState != BindingState.Resolved || node.BoundSymbol?.Property is not { } property ||
-            (IsSpecialField(node, out var special) && special.IsConstructor))
+        if (node.BindingState != BindingState.Resolved || node.BoundSymbol?.Property is not { } property)
         {
             return null;
         }
 
-        return !(kind == PropertyAccessorKind.Get ? property.Getter : property.Setter).IsStandard &&
+        return !StorageAccess(node, kind == PropertyAccessorKind.Get ? property.Getter : property.Setter) &&
             this.propertyCalls.GetValueOrDefault((node, kind)) is { BindingState: BindingState.Resolved } call ? call : null;
     }
 
     internal MemberAccessKoto? StorageProjection(Koto node)
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
+
+    // SPEC 6.3.4, 11.2, 11.7: whether an accessor is the storage at a node, no call: a constructor's own Field (its first placement writes
+    // the storage, a custom setter included) or a standard accessor. Read per accessor by PropertyCall (its guard) and CallsAccessor.
+    private static bool StorageAccess(Koto node, BoundAccessor accessor) => (IsSpecialField(node, out var special) && special.IsConstructor) || accessor.IsStandard;
+
+    // SPEC 11.3.1, 13.7.1, 13.7.2: whether a write's or an update's target calls an accessor of its Property, each present one its
+    // operation uses that is no storage access (StorageAccess): the `set` of a write or an update, and an update's `get` (step 2; a write
+    // calls no `get`, 13.7.1 step 2); each call takes its receiver whole.
+    private static bool CallsAccessor(Koto node, BoundProperty property) => IsWriteTarget(node, out var write) &&
+        ((property.Setter.IsPresent && !StorageAccess(node, property.Setter)) || (!write && property.Getter.IsPresent && !StorageAccess(node, property.Getter)));
 
     // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
     // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`
@@ -231,9 +240,10 @@ public sealed partial class Binding
             var mistyped = this.AccessorTypeMismatch(accessor);
             var inputType = accessor.Input is { } declaredInput ? Signature(mistyped ? accessor.Property.Type! : declaredInput) : null;
             // Origin-bearing inputs retain their own execution milestone. An owning or object-form written receiver
-            // is the declaration error of SPEC 11.3, not a limit of this path.
-            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (receiverType.SafeReferent is not { } referent || !AdtDef.IsStruct(referent) ||
-                (referent.Kind == BoundTypeKind.Constructed && declaringType is null));
+            // is the declaration error of SPEC 11.3, not a limit of this path. A receiver's Type comes from the declaring Type the
+            // member selection published (LookupMember), as a method call's does (CallDeclaringType): any struct, the compiler-managed
+            // Array, Dictionary and Slice included; a requirement member selected without one stays Unsupported.
+            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (receiverType.SafeReferent is null || declaringType is null);
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
                 Signature(mistyped && accessor.Kind == PropertyAccessorKind.Get ? accessor.Property.Type! : declaredResult) is not { } result ||
                 (accessor.Input is not null && inputType is null) || inputType is { CarriesAnyOrigin: true } ||

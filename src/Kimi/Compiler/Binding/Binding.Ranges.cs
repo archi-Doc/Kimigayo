@@ -107,10 +107,10 @@ public sealed partial class Binding
 
     // Synthesized calls and Places are reused across passes, each reset in place by its module's pass (In). Each pass rebinds the
     // ones its syntax still needs, so one left by an earlier pass, such as after an edit changed its node's role, is never Resolved
-    // for a lookup.
+    // for a lookup. Each pass records its own synthesized calls (BindSynthesizedCall), a pass family the pass counter empties.
     private void ResetSyntheticCalls()
     {
-        this.synthesizedCalls?.Clear(); // Each pass records its own (BindSynthesizedCall).
+        this.synthesizedOrder.Clear(); // Each pass lists its own (AddSynthesizedCall), its capacity kept.
         foreach (var calls in this.propertyCalls.Values.In(this.pass))
         {
             foreach (var call in calls!)

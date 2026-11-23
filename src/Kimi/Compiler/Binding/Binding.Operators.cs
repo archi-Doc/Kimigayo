@@ -380,14 +380,7 @@ public sealed partial class Binding
                 ? this.Fail(binary, BindingFailure.Unsupported, true) : Complete(binary, result);
         }
 
-        var rejected = binary.ArithmeticStorage ??= new();
-        rejected.Active = false;
-        rejected.Candidates.Clear();
-        rejected.Sources.Clear();
-        return this.FailExplained(
-            ref this.arithmeticSelectionFailures,
-            binary,
-            BindingFailure.ArithmeticSelection,
-            new(rejected, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit));
+        (binary.ArithmeticStorage ??= new()).Active = false;
+        return this.RecordArithmeticSelection(binary, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit, null);
     }
 }

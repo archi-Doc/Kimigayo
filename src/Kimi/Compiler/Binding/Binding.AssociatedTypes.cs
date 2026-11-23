@@ -22,14 +22,15 @@ public sealed partial class Binding
     // own Type parameters replaces it; ContractType substitutes it by the conforming Type.
     internal BoundType ContractSelfType(BindingSymbol contract)
     {
-        if (contract.ContractSelf is { } existing)
+        if (contract.SelfSymbol is { } existing)
         {
-            return existing;
+            return existing.Type!;
         }
 
         var symbol = new BindingSymbol("Self", BindingSymbolKind.TypeParameter, contract.Declaration, this.scopes.GetValueOrDefault(contract.Declaration) ?? contract.Scope) { SelfOf = contract, Slot = -1 };
         symbol.WholeType = symbol.Type = this.types.Parameter("Self", BoundTypeKind.Parameter, symbol);
-        return contract.ContractSelf = symbol.Type;
+        contract.SelfSymbol = symbol;
+        return symbol.Type;
     }
 
     // SPEC 8.3.2, 8.5.2: a projection's Contract evidence, its written Contract, else the associated Type's declaring reference, else its
@@ -38,9 +39,11 @@ public sealed partial class Binding
     private static BindingSymbol ProjectionEvidence(BindingSymbol associated, BindingSymbol? reference, BindingSymbol? qualifier)
         => qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
 
-    // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
-    // conformance of that reference or of a refinement of it, not to a sibling reference of the same declaration.
-    private bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
+    // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the one
+    // conformance that reference names at `type`'s Self in the clause's scope (SPEC 8.5.1, 8.5.5: a qualifier is a direct conformance,
+    // normalized), so to a path whose Contract or one of its ancestors is a candidate of that selection (IsSelectionCandidate: every
+    // member, never one representative), not to a sibling reference of the same declaration.
+    private bool SpecifiesContract(IsKoto clause, BindingSymbol type, BindingSymbol contract, QuerySite site)
     {
         var head = AssociatedHead(clause);
         head = head is OriginApplicationKoto applied ? UnwrapTransparentType(applied.Type) : head;
@@ -49,7 +52,23 @@ public sealed partial class Binding
             return true;
         }
 
-        return ReferenceEquals(contract, reference) || contract.Contract?.Ancestors.Contains(reference) == true;
+        var self = this.SelfType(type);
+        var scope = this.ConstraintScope(clause);
+        if (this.IsSelectionCandidate(contract, self, reference, reference.Type, scope, site))
+        {
+            return true;
+        }
+
+        var ancestors = contract.Contract?.Ancestors ?? [];
+        for (var i = 0; i < ancestors.Count; i++)
+        {
+            if (this.IsSelectionCandidate(ancestors[i], self, reference, reference.Type, scope, site))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The Type that `Self` denotes inside a declaration: a Contract's Self parameter, or the declared Type applied to its own
@@ -436,7 +455,8 @@ public sealed partial class Binding
         if (owner.Declaration is ContractKoto)
         {
             clause.BoundConstraint ??= this.InternConstraint(new(ConstraintKind.Error));
-            this.AddConstraintFact(scope.Constraints ??= new(), clause.BoundConstraint); // An Error fact fails alone (R7-C3 gate 2).
+            var fact = clause.BoundConstraint;
+            this.AddConstraintFact(scope.Constraints ??= new(), fact, origin: fact.Kind == ConstraintKind.Error ? clause : null); // An Error fact fails alone (R7-C3 gate 2), its origin the clause (R7-E5 c1).
 
             if (requirement is null)
             {
@@ -453,7 +473,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var projection = this.BindAssociatedName(clause, scope, owner, out var pending);
+        var projection = this.BindAssociatedName(clause, scope, owner, out var pending, out var merged);
         if (pending)
         {
             // The requirement binds against no subject and keeps its own records, as under a pending subject (BindConstraint).
@@ -468,8 +488,10 @@ public sealed partial class Binding
 
         var parameters = this.AssociatedParameters(associated.Declaration);
         var requirement = this.BindRequirement(clause.Right, projection, false, this.NodeScope(clause, scope));
-        if (parameters.Length != 0 && this.HasUnsupportedAssociatedIdentity(requirement))
+        if (merged || (parameters.Length != 0 && this.HasUnsupportedAssociatedIdentity(requirement)))
         {
+            // R7-C3 b (PLAN C3b-2): a qualifier naming one conformance through several members binds no one member; the specification
+            // of the whole set is not implemented yet: the located limit, at the specification, whatever the members' order.
             this.Fail(clause, BindingFailure.Unsupported, true);
             return null;
         }
@@ -483,10 +505,12 @@ public sealed partial class Binding
     // on the reference WrittenReference reads), a direct conformance or an ancestor of the owner, judged on the selector
     // itself (SelectorQualifies); the Name is found among that Contract's associated Types, an unqualified Name among all available ones;
     // the Origin parameters repeat the count. Null after the clause's failure, or with pending set and the clause unfailed when its
-    // selector formed no reference for a missing name (PendingReference).
-    private BoundType? BindAssociatedName(IsKoto clause, BindingScope scope, BindingSymbol owner, out bool pending)
+    // selector formed no reference for a missing name (PendingReference). Merged when its bound reference selects a conformance of
+    // several members (SelectConformance's candidates, SPEC 8.6.1, 8.9.2), which the projection names by its representative.
+    private BoundType? BindAssociatedName(IsKoto clause, BindingScope scope, BindingSymbol owner, out bool pending, out bool merged)
     {
         pending = false;
+        merged = false;
         var self = this.DeclarationSelf(owner);
         var head = AssociatedHead(clause);
         var applied = head as OriginApplicationKoto;
@@ -504,7 +528,7 @@ public sealed partial class Binding
                 return pending ? null : this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
 
-            if (!this.SelectorQualifies(owner, self, bound))
+            if (!this.SelectorQualifies(owner, self, bound, scope, clause))
             {
                 return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
@@ -515,14 +539,17 @@ public sealed partial class Binding
 
         BindingSymbol? reference = null;
         var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause, out reference) : null;
-        var ambiguous = false;
+        var candidates = 0;
+        BoundConformance? selected = null;
         if (associated is null || (owner.Declaration is not ContractKoto &&
-            this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is null))
+            (selected = this.SelectConformance(self, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, scope, clause, out candidates)) is null))
         {
             // SPEC 23.1.2: FindAssociated may have recorded the Name's ambiguity at this clause first (SPEC 8.5.2) and found nothing, which
             // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1).
-            return this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
+            return this.Fail(clause, candidates != 0 ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
         }
+
+        merged = candidates > 1;
 
         var parameters = this.AssociatedParameters(associated.Declaration);
         if (parameters.Length != (applied?.ArgumentNodes.Count ?? 0))
@@ -530,7 +557,11 @@ public sealed partial class Binding
             return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
         }
 
-        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: parameters);
+        // SPEC 8.5.1, 8.5.5, 8.6.1: a bound reference names the conformance it selects, so the projection carries that conformance's
+        // reference (`Iter<S.(HasItem).Item>` for a written `Iter<i32>` under `S.(HasItem).Item is i32`), the requirement its paths have.
+        var named = reference ?? qualifier;
+        var contract = named is not null && IsBoundContractReference(named) && selected is not null ? selected.Contract : named;
+        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, contract)], originArguments: parameters);
         clause.BoundSymbol = associated;
         clause.Left.BoundSymbol = associated;
         name!.BoundSymbol = associated;
@@ -555,10 +586,10 @@ public sealed partial class Binding
     // SPEC 8.5.1 Qualification, 8.4.3: the Contract a selector names is a direct conformance or an ancestor of the owner. A Contract's
     // conformances are itself and its ancestors, and it is not its own ancestor, so it qualifies a proper ancestor; a struct's or an enum's
     // are the conformances it declares and their ancestors (8.6.2).
-    private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract)
+    private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract, BindingScope scope, QuerySite site)
         => owner.Declaration is ContractKoto
             ? !ReferenceEquals(contract, owner) && IsRefinement(owner, contract)
-            : this.ConformanceByDeclaration(self.Symbol!, contract, out _) is not null;
+            : this.SelectConformance(self, contract, scope, site, out _) is not null;
 
     private void PrepareAssociatedBindings()
     {
@@ -601,7 +632,7 @@ public sealed partial class Binding
             var container = (DeclarationContainerKoto)path.Type.Declaration;
             for (var j = 0; j < container.Members.Count; j++)
             {
-                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.RootContract))
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.Type, path.RootContract, path.Use))
                 {
                     Collect(constraint, path);
                 }

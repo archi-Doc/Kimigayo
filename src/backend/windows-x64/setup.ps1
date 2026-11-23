@@ -2,9 +2,8 @@
 # installation.json (Tatara design A4 §2.3), after the backend's candidates (build.ps1) reproduce the adopted libraries the compiler
 # carries; no library is installed (Tatara B6b6), and an existing root's windows_x64 stays. The tools and tatara.dll are validated and
 # built before the root changes. A file whose destination already has the same SHA-256 is not written, so an unchanged rerun writes
-# nothing a running process holds; tatara.dll and the record are replaced by a move. No archive DLL is installed (no tool imports one;
-# PLAN G1175): the record's supportingDlls is empty, kept in schema 1 for older bases' verify on a shared root, and an existing root's
-# DLLs stay. The last step checks the root (check-toolchain.ps1).
+# nothing a running process holds; tatara.dll and the record are replaced by a move. No archive DLL is installed or recorded (no tool
+# imports one; PLAN G1175, G1231), and an existing root's DLLs stay. The last step checks the root (check-toolchain.ps1).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $LlvmRoot,
@@ -77,7 +76,7 @@ Remove-Item -LiteralPath $build -Recurse -Force
 # The record last; an equal record is not written (a concurrent verify's read handle would fail the move).
 $record = Join-Path $ToolchainRoot 'installation.json'
 $temporary = "$record.$([guid]::NewGuid().ToString('N')).tmp"
-[ordered]@{ schemaVersion = 1; profile = $profile.profile; tools = $identities; supportingDlls = [ordered]@{}; tatara = [ordered]@{ sha256 = $tataraSha256 } } |
+[ordered]@{ schemaVersion = 1; profile = $profile.profile; tools = $identities; tatara = [ordered]@{ sha256 = $tataraSha256 } } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $temporary -Encoding utf8
 if (Test-KimiSameFile $temporary $record) { Remove-Item -LiteralPath $temporary }
 else {

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -18,9 +19,6 @@ public sealed partial class Binding
     // classes (SPEC 10.4 step 1) and read by step 5 as the arguments' (ErasedArgumentsEnvironment); a candidate evaluation removes what
     // it appended when it ends.
     private readonly List<BoundArgumentOperation> positionOperations = new();
-
-    // The pending judgment of a call that a single Pending candidate blocks (FailPendingJudgment), for its record (DECISIONS BU-86).
-    private Dictionary<Koto, PendingJudgment>? pendingJudgments;
 
     private enum CandidateApplicability : byte
     {
@@ -126,18 +124,18 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2.2, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
-    private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
+    private static bool ErasureIncomparable(in CallEvaluation evaluation)
     {
-        for (var a = 0; a < arguments; a++)
+        for (var a = 0; a < evaluation.Call.ArgumentNodes.Count; a++)
         {
             var erased = false;
             var direct = false;
-            for (var i = 0; i < candidates.Length; i++)
+            for (var i = 0; i < evaluation.Count; i++)
             {
-                if (candidates[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+                if (evaluation.Evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                 {
-                    erased |= operations[(i * stride) + a].Adaptation == ArgumentAdaptation.Erasure;
-                    direct |= operations[(i * stride) + a].Adaptation != ArgumentAdaptation.Erasure;
+                    erased |= evaluation.OperationsOf(i)[a].Adaptation == ArgumentAdaptation.Erasure;
+                    direct |= evaluation.OperationsOf(i)[a].Adaptation != ArgumentAdaptation.Erasure;
                 }
             }
 
@@ -155,19 +153,6 @@ public sealed partial class Binding
     // a candidate that failed before its Constraints were judged, or when the clause did not bind (its binding failure is its own record).
     private static ReferenceConstraintFailure? ClauseFailure(ClauseFact? fact, BindingSymbol? declaration)
         => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration) : null;
-
-    // DECISIONS BU-86: the record of a selection that an EnvironmentResult judgment blocks: the argument whose result over its closure's
-    // environment gives the slot no evidence (SPEC 8.10, 7.7.4), named without its acquisition spelling.
-    private static void ReportPendingJudgment(Koto node, PendingJudgment judgment, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var part = judgment.Part!; // An EnvironmentResult judgment always names its argument.
-        var argument = KotoHelper.UnwrapParentheses(part) is ConversionKoto { Left: { } place } ? place : part;
-        node.Report(
-            requirement,
-            code,
-            note: $"The result of {argument} over its environment is no evidence for {judgment.Slot?.Name}",
-            related: [("argument", part, null)]);
-    }
 
     // SPEC 10.2.2, 10.4 step 1: two adaptation classes at one argument or position; false when they are incomparable (an erasure and
     // any other row), which no other argument or tie-breaker rescues.
@@ -301,17 +286,59 @@ public sealed partial class Binding
         return aGeneric != bGeneric ? !aGeneric : a.DefaultsUsed < b.DefaultsUsed;
     }
 
+    // A failed selection: its omitted header Types wait, and its record is the selection's (RecordSelection) with the parties built.
     private BoundType? FailWaitingSelection(InvocationKoto call, BindingFailure failure)
     {
         this.MarkWaitingHeaders(call);
-        return this.Fail(call, failure, true);
+        return this.RecordSelection(call, failure);
     }
 
-    // SPEC 8.10, 7.7.4 (DECISIONS BU-86): a selection that a single Pending candidate's judgment blocks, explained by that judgment.
+    // The selection's one recorder (SPEC 10.1, 10.4, 23.1.2): the facts its caller built since the last record, recorded at a call
+    // without a failure; a call that already failed keeps its first failure and drops them (the slot's drop). The scratch is cleared
+    // either way, its capacity kept. Its callers' B1 statement (R7-E3 E3b delta 2.4): every check before each verdict that fails the call
+    // returns, so the one input that can hold an earlier failure is the call's own, which Calls' NoneApplicable arm read before.
+    [Transitional("R7", Reason = "Records only at a call without a failure, so the call keeps its first failure (d2: f<Missing>(1) records no fact-less NoApplicableOverload_Kd; h57: an unbound slot at a call already NoApplicableOverload_Kd records none), until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
+    private BoundType? RecordSelection(Koto use, BindingFailure failure)
+    {
+        if (this.RecordedFailure(use) == BindingFailure.None)
+        {
+            this.Record(use, failure, CollectionsMarshal.AsSpan(this.candidateFacts), unresolved: true);
+        }
+        else
+        {
+            this.Fail(use, failure, true);
+        }
+
+        this.candidateFacts.Clear();
+        return null;
+    }
+
+    // SPEC 8.10, 7.7.4 (DECISIONS BU-86, amended by R7-E3 E3b-2): a selection that a single Pending candidate's EnvironmentResult judgment
+    // blocks, the selection's deferral (RecordSelection): the argument whose result over its closure's environment is no evidence (role 6,
+    // "argument") and the slot's Type parameter it leaves unbound (role 7, "declaration"), both shown as related locations.
     private BoundType? FailPendingJudgment(InvocationKoto call, PendingJudgment judgment)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailExplained(ref this.pendingJudgments, call, BindingFailure.UnprovenConstraint, judgment, true);
+        this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(judgment.Part!), 6)); // An EnvironmentResult judgment names its argument and slot.
+        this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(judgment.Slot!.Declaration), 7));
+        return this.RecordSelection(call, BindingFailure.UnprovenConstraint);
+    }
+
+    // The pending judgment's record from its facts (FailPendingJudgment), read by role: the argument (role 6) and the slot's Type parameter
+    // (role 7) related, any other shape a broken contract; its Note went by code (R7-E3 E3b-2, M3).
+    private void ReportPendingJudgment(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        if (this.report.Facts(index) is not [.., { Kind: ProblemFactKind.Related, Value: 6 } argument, { Kind: ProblemFactKind.Related, Value: 7 } slot])
+        {
+            throw new UnreachableException();
+        }
+
+        node.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            related: [("argument", this.compilation.SyntaxOf(argument.Site), null), ("declaration", this.compilation.SyntaxOf(slot.Site), null)],
+            condition: problem.Condition);
     }
 
     // SPEC 8.3, 15.6.1: a selection that a single pending Callable proof blocks, explained by that Constraint record.
@@ -349,10 +376,16 @@ public sealed partial class Binding
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
     // HeldRefusal: the refusal its trial read and held (TakeTrialRefusal), settled only if it is selected (SettleSelected).
-    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation the rest.
+    // Acquisition: the absent spelling of a bare Place that alone kept an otherwise Applicable trial from applying (SPEC 15.1.5), read by
+    // a NoneApplicable selection through LastAcquisition.
+    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation (EvaluateCallCandidate)
+    // ArgumentMap and the facts after the trial, the trial (TryCandidate) its verdict and facts. A continuation's trial (CheckDefaulted,
+    // the waiting re-trial, the fixed re-check) writes a local row; CheckDefaulted takes back only State and Unsolved.
     private record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false, bool PremiseReadsMark = false)
     {
         internal Refusal? HeldRefusal { get; set; }
+
+        internal AcquisitionFailure? Acquisition { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.

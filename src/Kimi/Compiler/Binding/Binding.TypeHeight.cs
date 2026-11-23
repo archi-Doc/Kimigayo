@@ -23,16 +23,19 @@ namespace Kimi.Compiler;
 //   contract: InternalInvariant_Kd at the project, never a silent null, but inside the instance collector's answer frame (R7-T1;
 //   PLAN G651's after-run site kind "the caller records"), which only the collector's run opens and closes (TyCtxt.OpenAnswer,
 //   CloseAnswer: every substitution after Binding's run that the collector, Layout or a witness causes is inside it): there the
-//   refusal is answered to the innermost formation owning the Type, one of three (OpenFormation): a substitution at a requesting site
-//   (TyCtxt.Answered, giving TyCtxt.Formation.HeightLimit, recorded at that site), an instance's stored Types (Instance, published
-//   as the instance's HeightLimit, which Binding's storage walk reads as a limit and Layout as its HeightLimit, recorded at the use)
-//   or a requirement call's witness resolution (TyCtxt.Witness, its target's Cause HeightLimit, recorded at the requesting site);
-//   one no formation owns is the frame's, recorded at its close as the same site-less broken contract; Binding writes nothing else.
-//   Outside the frame (Binding's run, code generation) nothing is answered. SubstituteType's family (SubstituteType, ContractType,
-//   StoredType, KeptType, StorageInstance, the identity judge, proof normalization, the relations' context-free fits) takes no site:
-//   its refusal reads the frame its caller holds open; the proof entries and openers name their judgment's site (QuerySite, PLAN G651
-//   a1), where R7-C6 a's second commit opens the frame when none is open. A family formation in a pass step no frame covers keeps the
-//   site-less interim until PLAN G651 a2-a4 frame the step.
+//   refusal is answered to the innermost formation owning the Type, one of three (OpenFormation; the instance's OpenStorageFormation):
+//   a substitution at a requesting site (TyCtxt.Answered, giving TyCtxt.Formation.HeightLimit, recorded at that site), an instance's
+//   stored Types (Instance, published as the instance's HeightLimit, which Binding's storage walk reads as a limit and Layout as its
+//   HeightLimit, recorded at the use) or a requirement call's witness resolution (TyCtxt.Witness, its target's Cause HeightLimit,
+//   recorded at the requesting site); one no formation owns is the frame's, recorded at its close as the same site-less broken
+//   contract; Binding writes nothing else. After Binding's run the instance's formation owns its refusals in every frame (PLAN G651
+//   U2a, OpenStorageFormation), so no reader meets a part refused without its HeightLimit, unless a consultation frame open after the
+//   run fails its node first (G881b N6; U2c); outside the collector's frame it still records the site-less record at its close, since
+//   no reader there gives a site yet (G651 U2b). Otherwise nothing is answered outside the frame (Binding's run, code generation).
+//   SubstituteType's family (SubstituteType, ContractType, StoredType, KeptType, StorageInstance, the identity judge, proof
+//   normalization, the relations' context-free fits) takes no site: its refusal reads the frame its caller holds open; the proof
+//   entries and openers name their judgment's site (QuerySite, PLAN G651 a1), where R7-C6 a's second commit opens the frame when none
+//   is open. A family formation in a pass step no frame covers keeps the site-less interim until PLAN G651 a2-a4 frame the step.
 // - Prohibitions: no check before a walk from its inputs' heights (it over-approximates); no other suppression than SPEC 23.1.2's rests.
 public sealed partial class Binding
 {
@@ -40,11 +43,12 @@ public sealed partial class Binding
     internal const int TypeHeightLimit = 8192;
 
     // A refusal without a site in this pass (a broken contract, reported by ReportDiagnostics; the library's freeze counts it as a record).
-    [Transitional("G651 a4", Reason = "A refusal during the run has no site only in a pass step not yet framed: the proof entries and openers name their site (a1) and SubstituteType's family reads the open frame, so a4, which frames the last such step, removes it; U2 gives the after-run queries their outcome.")]
+    [Transitional("G651 a4", Reason = "A refusal has no site only in a pass step not yet framed during the run, or in an instance's formation after the run outside the collector's frame (PLAN G651 U2a): the proof entries and openers name their site (a1) and SubstituteType's family reads the open frame, so a4, which frames the last such step, removes the run's path; U2b removes the after-run path by giving each reader of such an instance a site of its own.")]
     private bool sitelessHeightRefusal;
 
     // The answer frame (OpenAnswer) and the innermost formation in it (OpenFormation): whether a frame is open and whether a refusal was
-    // answered to the formation, else to the frame. The after-run form of the one frame a refusal reads (R7-M54; F's C8 ruling 13).
+    // answered to the formation, else to the frame. The after-run form of the one frame a refusal reads (R7-M54; F's C8 ruling 13): the
+    // instance collector's run and, after the run, an instance's storage formation outside it (G651 U2a, OpenStorageFormation).
     private (bool Open, bool Answered) answer;
 
     /// <summary>Opens the answer frame of the instance collector's run (TyCtxt.OpenAnswer, its only opener; R7-T1): a refusal of a Type
@@ -57,8 +61,8 @@ public sealed partial class Binding
         return parent;
     }
 
-    /// <summary>Begins a formation that owns its refusals inside the open frame (TyCtxt.Answered, Instance, TyCtxt.Witness); outside
-    /// one it owns nothing, so a refusal is recorded as before.</summary>
+    /// <summary>Begins a formation that owns its refusals inside the open frame (TyCtxt.Answered, TyCtxt.Witness); outside one it owns
+    /// nothing, so a refusal is recorded as before.</summary>
     /// <returns>The frame or formation it begins in, which <see cref="CloseAnswer"/> restores.</returns>
     internal (bool Open, bool Answered) OpenFormation()
     {
@@ -67,7 +71,23 @@ public sealed partial class Binding
         return parent;
     }
 
-    /// <summary>Ends a formation or closes the frame <see cref="OpenAnswer"/> or <see cref="OpenFormation"/> began.</summary>
+    /// <summary>Begins an instance's stored-Types formation (Instance; PLAN G651 U2a): inside the open frame as <see cref="OpenFormation"/>,
+    /// and after Binding's run (producing over) in every frame, since it publishes what is answered to it as the instance's HeightLimit,
+    /// which every reader of the instance reads (Binding's storage walk a limit, Layout its HeightLimit). Closing to no frame it still
+    /// records the site-less record (<see cref="CloseAnswer"/>): outside the collector's frame no reader of the instance gives a site yet.
+    /// Its premise (U2b reads it too): no formation nests inside it after the run, since instance substitution never queries storage
+    /// (PrepareTypeStorage's guard) and Close substitutes by TyCtxt.Apply alone; a nested Instance, TyCtxt.Answered or TyCtxt.Witness
+    /// would close to its Open parent and make no site-less record.</summary>
+    /// <returns>The frame or formation it begins in, which <see cref="CloseAnswer"/> restores.</returns>
+    internal (bool Open, bool Answered) OpenStorageFormation()
+    {
+        var parent = this.answer;
+        this.answer = (parent.Open || !this.producing, false);
+        return parent;
+    }
+
+    /// <summary>Ends a formation or closes the frame <see cref="OpenAnswer"/>, <see cref="OpenFormation"/> or
+    /// <see cref="OpenStorageFormation"/> began.</summary>
     /// <param name="parent">The frame or formation it began in.</param>
     /// <returns>Whether a refusal inside it was answered to it.</returns>
     internal bool CloseAnswer((bool Open, bool Answered) parent)
@@ -76,7 +96,7 @@ public sealed partial class Binding
         this.answer = parent;
         if (answered && !parent.Open)
         {
-            this.RecordSitelessHeightRefusal(); // The frame's own: no formation owned it (a frame closes to no frame).
+            this.RecordSitelessHeightRefusal(); // Closing to no frame: the frame's own, or an instance's after the run outside it (U2a).
         }
 
         return answered;

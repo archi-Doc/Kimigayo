@@ -225,7 +225,7 @@ internal sealed partial class MirBuilder
         for (long rank = 0, count = MirTypes.LevelCount(compilation.Types, type); rank < count; rank++)
         {
             var (step, arg) = MirTypes.LevelPart(compilation.Types, type, rank);
-            if (MirTypes.MayNeedDrop(compilation.Types, MirBody.PartType(compilation.Types, type, step, (int)arg), this.walked))
+            if (MirBody.SelectsPart(compilation.Types, type, step, (int)arg, out var part) && MirTypes.MayNeedDrop(compilation.Types, part, this.walked))
             {
                 this.DropAt(this.body.Project(compilation.Types, new(local), step, (int)arg), source);
             }

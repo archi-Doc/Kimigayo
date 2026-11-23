@@ -40,7 +40,7 @@ This table is the only list of required Kimi declarations (names relative to `Ki
 | Standard iterators | `ArrayIterator<T>`, `ArrayUniqIterator<T>`, `ArrayOwningIterator<T>`, `FixedArrayOwningIterator<T, A>`, `SliceIterator<T>`, `DictionaryIterator<K, V>`, `DictionaryUniqIterator<K, V>`, `DictionaryOwningIterator<K, V>`, `RangeIterator<T>`, `ClosedRangeIterator<T>` ([§22.2.2](#2222-standard-adapters-and-iterators)) |
 | `Iteration` group | `OwningIterator<I>`, `BorrowingIterator<I>`, `owning`, `borrowing` ([§22.2.2](#2222-standard-adapters-and-iterators)) |
 | `Intrinsics` group | non-generic; `makeObj`, `makeRc`, `makeArc`, `makeRcCyclic`, `makeArcCyclic`, `clone`, `downgrade`, `upgrade` ([§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle), [§13.6.3](13-operators-and-assignment.md#1363-weak-references)); `replace`, `exchange`, `swap` ([§15.7](15-ownership-and-lifetime-analysis.md#157-whole-value-updates)) |
-| `Raw` group | `allocate`, `release`, `initialize`, `slice` ([§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) |
+| `Raw` group | `allocate`, `release`, `initialize`, `slice`, `readVolatile`, `writeVolatile` ([§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) |
 | `Async` group | `Cancelled`, `SendFailure`, `Raced` (arities 2–4), `Sender<T>`, `Receiver<T>`, `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe`, `offload`, `offloadEach` ([§22.3](#223-asynchronous-tasks)) |
 | `Console` group | `writeLine` ([§22.7](#227-console-output)) |
 | `Time` group | `Duration`, `Stopwatch` ([§22.8](#228-time)) |
@@ -443,7 +443,6 @@ Every Abort cause of [§17.4.1](17-failure-handling.md#1741-causes) and of the K
 | `KIMI_E_ALLOC_SIZE: Allocation size exceeds limit` | A requested size overflows or exceeds the maximum object size |
 | `KIMI_E_ALLOC: Failed to allocate memory` | The allocator returns no memory |
 | `KIMI_E_FREE: Failed to free memory` | A detected release failure |
-| `KIMI_E_PROCESS_HEAP: Failed to obtain process heap` | The runtime heap is unavailable |
 | `KIMI_E_STDOUT: Failed to write to stdout` | Standard output fails |
 | `KIMI_E_STRING_RELEASE: Invalid string release kind` | A detected invalid string representation during destruction (detection not guaranteed) |
 | `KIMI_E_CLOCK: Elapsed-time counter failed` | The elapsed-time counter fails, reports a nonpositive frequency or goes backward |

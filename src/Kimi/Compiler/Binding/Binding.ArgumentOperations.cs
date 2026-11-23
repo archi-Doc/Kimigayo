@@ -133,9 +133,10 @@ public sealed partial class Binding
         => this.DeclarationFailed(implementation.Declaration) || (accessor?.Declaration is { } declaration && this.DeclarationFailed(declaration)) ? ConstraintProof.Error
             : (accessor?.Receiver?.Semantics ?? ReceiverShape(implementation)) is SemanticsKind.Ref or SemanticsKind.ObjRef ? ConstraintProof.Proven : ConstraintProof.Unknown;
 
-    // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
-    // so a call without applicable candidates names the required spelling (SPEC 15.1.5), the Place that needs it and,
-    // for an exclusive borrow, whether the Place is an object handle (@objuniq) (SPEC 23.1.3).
+    // Set while an input is adapted (AdaptInput's out-channel): the reason an otherwise fitting bare Place was not applicable, which a
+    // candidate trial takes into its row (EvaluatedCandidate.Acquisition), so a call without applicable candidates names the required
+    // spelling (SPEC 15.1.5), the Place that needs it and, for an exclusive borrow, whether the Place is an object handle (@objuniq)
+    // (SPEC 23.1.3).
     private AcquisitionFailure? acquisitionFailure;
 
     private bool RequireAcquisition(Koto source, BoundType actual, BoundType expected, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
@@ -319,8 +320,8 @@ public sealed partial class Binding
             }
 
             // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source, out _) && this.ReadTypeReferent(actual, scope, source) is { } read &&
-                this.FitsTypeAt(read, pattern, source, out _))
+            if (!this.FitsTypeAt(actual, pattern, source, out _, null) && this.ReadTypeReferent(actual, scope, source) is { } read &&
+                this.FitsTypeAt(read, pattern, source, out _, null))
             {
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
@@ -347,7 +348,7 @@ public sealed partial class Binding
         // A comparison's Copy read is a temporary value, even though its syntax retains ref/T.
         // Borrow that snapshot; borrowing the original storage would change left-to-right semantics.
         if (!projected && pattern.Semantics == SemanticsKind.Ref && this.ReadsReferent(source) &&
-            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _))
+            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _, null))
         {
             adapted = this.PreparedBorrowType(source, pattern);
             quality = ArgumentAdaptation.CrossSemanticsBorrow;

@@ -469,6 +469,7 @@ public sealed partial class Binding
             // proof that reads it rests on the override's record and none of it is evidence.
             var proof = this.ProveConstraint(bound, premises, function);
             this.AddConstraintFact(premises.Constraints!, bound);
+            premises.Constraints!.AddStatement(bound, source.Owner, fact); // the slot's premise as written (SPEC 6.4.2 step 3, 8.11.4)
             if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
                 this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));

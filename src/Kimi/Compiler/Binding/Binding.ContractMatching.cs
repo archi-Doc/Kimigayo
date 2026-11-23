@@ -88,8 +88,11 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _))
+                if (environment.IsFailed(fact))
                 {
+                    // A state read (R7-E5 c1, Rev 2 R2.2 (2), R2.3 (S)): the consult's limit set here without the consult, as the
+                    // environment's origin-less cause, so no state read rests on a failed fact's origin.
+                    this.ScopeReads.Limit ??= environment.FailedPremise;
                     failed ??= environment.FailedPremise;
                 }
             }
@@ -205,7 +208,7 @@ public sealed partial class Binding
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
                 {
                     var identity = shape.AssociatedTypes[i];
-                    if (this.SpecificationPart(conformance, identity) is { } part)
+                    if (this.SpecificationPart(conformance, identity, site) is { } part)
                     {
                         // SPEC 23.1.2: an identity whose explicit specification did not bind is never inferred; its absence rests on
                         // that specification, while every other missing identity still reports.
@@ -220,7 +223,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.InferenceHole(conformance, identity))
+                    if (this.InferenceHole(conformance, identity, site))
                     {
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
@@ -322,7 +325,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
-                    this.SpecifiesContract(clause, conformance.Contract))
+                    this.SpecifiesContract(clause, conformance.Type, conformance.Contract, site))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -568,7 +571,12 @@ public sealed partial class Binding
                 return (ConstraintProof.Unknown, null);
             }
 
-            this.AddConstraintFact(environment, this.ContractConstraint(constraint, premises, self));
+            var instance = this.ContractConstraint(constraint, premises, self);
+            this.AddConstraintFact(environment, instance);
+            if (!ReferenceEquals(instance, constraint))
+            {
+                environment.AddStatement(instance, requirement, constraint); // at Self (SPEC 8.11.4); an unchanged one is in place
+            }
         }
 
         this.ExpandScopeContractPremises(premises);
