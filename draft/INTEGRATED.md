@@ -1799,6 +1799,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   (`artifacts/benchmarks/lc3-ml-20261123-1427`; the whole link is 54% of Hello O0's warm build): S1 proceeds to a design, W2
   (`/threads:1`) waits for a measured `kimi.exe` row, and read, resolve and the hash/record/move parts stop. No other decision
   changes. No SPEC or IMPL text. Nothing frozen.
+- Revision 18 (2026-11-23, T's correction on D-1171): §8's candidate 3 states read accurately: it reaches the 1% gate (1.52% of
+  Hello O0 warm) but has no candidate (the LC3 design's §5), so nothing is designed; resolve and the hash/record/move parts stop
+  (revision 17 said read stops). No other change. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 
