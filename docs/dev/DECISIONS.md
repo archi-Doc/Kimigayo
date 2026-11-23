@@ -30535,6 +30535,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Staging:** the native build stages every library through `StageInput(Stream)`, a reserved name from its resource and any other
     from its input; every row of the build record's `libraries[]` carries its staged path and hash (the reserved rows' `sha256` is no
     longer null), and the record's `kernel32` member is gone.
+    - Amended by T-M35 (LC3 S1, 2026-11-24): a reserved name's staged copy is first looked up by its catalog hash and reused when
+      its bytes still have it; `StageInput` stages its resource only when that copy is missing or changed.
   - **A program cannot supply them:** a project's own `kimi_backend` entry (dev's legacy override) is an error, as a `kernel32` entry
     was: `NativeConfiguration.CheckReserved`, one note for both names, both record kinds and any target ("<name> is supplied by the
     compiler. Remove the <name> entry from NativeLibraries."); `EmissionArtifacts.CheckLibraryInputs` (was `ResolveBackend`) only
@@ -31516,3 +31518,16 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     lookup; a clause keyed on a triple or a supply's name; a `Supports*` gate; a fallback to Windows' row for a target without one; a
     row-level `ReservedSymbols` kept beside the table's (C# cannot keep a static and an instance member of one name, and two lists
     would drift).
+- **T-M35 A compiler's supply is reused by its catalog hash** (Tatara, 2026-11-24; LC3 S1, Q-723, D-1204; Major; LC3 design §5-§6
+  and T-335 (`artifacts\benchmarks\lc3-ml-20261123-1427`): staging 3.99 % and its copy, hash and delete 2.72 % of Hello O0's later
+  session line; the Middle's review C-508). Amends T-M8. `StageSupply` looks up `<stem>.native/<CompilerSupply.Sha256>.lib` and
+  reuses it when its bytes still have that hash (the whole file hashed on every reuse), so a later build copies, hashes and deletes
+  no temporary and writes nothing there. Otherwise the resource is staged through `StageInput` as before, and the record names the
+  copy's hash. A program's supply is unchanged. `IsStaged` states the reuse rule once for both. The build still compares nothing
+  with the catalog (T-M8's C-434 C1): a defective Kimi (its resource not the catalog's bytes) hits when a copy with the catalog's
+  hash is already staged in that folder (an earlier correct build's) and links the catalog's bytes; otherwise it misses and links
+  its resource under its own hash, so its output depends on the folder's state; the catalog row test and `toolchain verify` detect
+  it, as T-M8 states. Measured on the head (T-339): staging 1.052 -> 0.223 ms warm (Hello O0; O2 1.075 -> 0.224), BuildChain
+  paired p50 B/A 0.977-1.014, peak commit within ±4.3 MiB. Rejected: identity (size, time) instead of the hash; a session's memory
+  of what it staged; one rule hashing a program's input before its copy (unmeasured, two reads); a per-user cache outside the
+  output; supplies from memory (a `tatara.h` ABI).
