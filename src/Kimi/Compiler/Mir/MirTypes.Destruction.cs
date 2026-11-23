@@ -73,7 +73,8 @@ internal static partial class MirTypes
     /// effect summaries share. It reports each part that runs or releases something: an abstract Type (its instance decides), an owning
     /// handle, a Function value (its environment), a string, an Array or a Dictionary, a struct that declares a drop (whose destructor body
     /// alone destroys its parts, R4-M6b), and as Deep a part past depth 32 (Bound, the holding walks' too); it walks on into the components
-    /// of a Tuple, fixed array, Closure, Array or Dictionary, a struct's Fields and base and an enum's Case payloads; a Field or Case Binding
+    /// of a Tuple, fixed array, Closure, Array or Dictionary, a struct's Fields and base and an enum's Case payloads (<see cref="Parts"/>: a
+    /// fixed array of constant length 0 has none, SPEC 4.1, so it destroys nothing whatever its element is); a Field or Case Binding
     /// did not substitute (null; <see cref="AdtDef.CaseTypes"/>) destroys nothing, a dependent of Binding's rejection. References, raw
     /// pointers, Slices, scalars and an InlineStorage, whose owner destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), release
     /// nothing. Within the bound the visitor decides whether it enters a Type (<see cref="IMirDestruction.First"/>): once per query, or
@@ -133,10 +134,11 @@ internal static partial class MirTypes
     internal static BoundType? SealedPayload(BoundType handle, TyCtxt types, BindingSymbol? definition)
         => types.Sealed(definition, handle.Components[0]) ? handle.Components[0] : null;
 
-    /// <summary>Walks the parts a value of a Type destroys after its own release (SPEC 16.3.2): a Tuple's, fixed array's, Closure's, Array's
-    /// or Dictionary's components, a struct's Fields and base and an enum's Case payloads, each by <see cref="Destruction"/> one level
-    /// deeper. <see cref="Destruction"/> walks them past every part but a struct that declares a drop, whose destructor body destroys them
-    /// (R4-M6b); a visitor that composes the drops a destruction runs walks them there itself.</summary>
+    /// <summary>Walks the parts a value of a Type destroys after its own release (SPEC 16.3.2): a Tuple's, fixed array's (none at a constant
+    /// length 0, SPEC 4.1; its element at a symbolic length), Closure's, Array's or Dictionary's components, a struct's Fields and base
+    /// and an enum's Case payloads, each by <see cref="Destruction"/> one level deeper. <see cref="Destruction"/> walks them past every
+    /// part but a struct that declares a drop, whose destructor body destroys them (R4-M6b); a visitor that composes the drops a
+    /// destruction runs walks them there itself.</summary>
     /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
     /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
@@ -146,8 +148,10 @@ internal static partial class MirTypes
     internal static bool Parts<TVisitor>(TyCtxt types, BoundType type, ref TVisitor visitor, int depth)
         where TVisitor : struct, IMirDestruction
     {
-        // A collection's elements or a Tuple's, fixed array's or Closure's inline components, else an enum's Case payloads.
-        var parts = Collection(type) || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
+        // A collection's elements or a Tuple's, fixed array's or Closure's inline components, else an enum's Case payloads; a fixed array of
+        // constant length 0 has none (SPEC 4.1: it destroys nothing), one of a symbolic length its element (its length may be other than 0).
+        var parts = type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null, Length: 0 } ? []
+            : Collection(type) || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
             ? (IReadOnlyList<BoundType?>)type.Components : AdtDef.CaseTypes(types, type) ?? [];
         for (var i = 0; i < parts.Count; i++)
         {
@@ -247,7 +251,7 @@ internal static partial class MirTypes
     /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
     /// <param name="rank">The rank, below <see cref="LevelCount"/>.</param>
-    /// <returns>The step and its argument (MirBody.PartType gives the part's Type).</returns>
+    /// <returns>The step and its argument (MirBody.SelectsPart gives the part's Type).</returns>
     internal static (MirProjectionKind Step, long Arg) LevelPart(TyCtxt types, BoundType type, long rank) => type switch
     {
         { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count - 1 - rank),

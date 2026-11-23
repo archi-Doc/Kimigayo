@@ -6,7 +6,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Case branches (SPEC 8.14, 8.15.2, 4.7.1 step 3, 4.7.4; R7 plan Z23, the owner's O-446 (a)): a user index whose selection is by case
-// (HirTables.IndexCaseDecider) selects indexUniq in the views where its decider acquires exclusively and index in the others. A frame's
+// (HirTables.CaseDecider) selects indexUniq in the views where its decider acquires exclusively and index in the others. A frame's
 // owner is a standing take by case (Take): the first Mode-2 index of its Place whose decision splits the views of the side being built
 // locates the index's receiver and key, ends the block in a CaseSwitch on the decider and builds the exclusive side; the take's end
 // builds its Place again on the shared side, which reads the located receiver and key, into the same local, and both sides join. A

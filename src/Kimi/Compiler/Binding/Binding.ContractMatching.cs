@@ -88,8 +88,11 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _))
+                if (environment.IsFailed(fact))
                 {
+                    // A state read (R7-E5 c1, Rev 2 R2.2 (2), R2.3 (S)): the consult's limit set here without the consult, as the
+                    // environment's origin-less cause, so no state read rests on a failed fact's origin.
+                    this.ScopeReads.Limit ??= environment.FailedPremise;
                     failed ??= environment.FailedPremise;
                 }
             }
@@ -322,7 +325,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
-                    this.SpecifiesContract(clause, conformance.Contract))
+                    this.SpecifiesContract(clause, conformance.Type, conformance.Contract))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -568,7 +571,12 @@ public sealed partial class Binding
                 return (ConstraintProof.Unknown, null);
             }
 
-            this.AddConstraintFact(environment, this.ContractConstraint(constraint, premises, self));
+            var instance = this.ContractConstraint(constraint, premises, self);
+            this.AddConstraintFact(environment, instance);
+            if (!ReferenceEquals(instance, constraint))
+            {
+                environment.AddStatement(instance, requirement, constraint); // at Self (SPEC 8.11.4); an unchanged one is in place
+            }
         }
 
         this.ExpandScopeContractPremises(premises);
@@ -695,8 +703,20 @@ public sealed partial class Binding
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication)
         {
-            // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow, so s/U is matched only once s is inferred and
-            // the application is formed (FormedApplication); an unformed application binds nothing.
+            // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow, so s/U is matched only formed (FormedApplication forms every
+            // application whose s is known, at every depth, and an input still holding an open one is not matched yet). A formed
+            // application, of a caller's or another fixed pair, meets the actual's layer of that pair (LayerTarget, as Infer), whose
+            // outer slot and target it matches; it binds nothing otherwise.
+            if (LayerTarget(pattern, actual) is { } target)
+            {
+                if (pattern.Origin is { } slot && actual.Origin is { } supplied)
+                {
+                    this.MatchInputOrigin(slot, supplied, binder, origins, inputs, known);
+                }
+
+                this.MatchInputOrigins(pattern.Components[0], target, binder, origins, inputs, known);
+            }
+
             return;
         }
 

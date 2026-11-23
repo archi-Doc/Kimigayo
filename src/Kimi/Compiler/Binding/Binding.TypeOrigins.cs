@@ -11,6 +11,12 @@ public sealed partial class Binding
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
+        // A Self symbol carries its Type (SPEC 9.1: `S<Slot(0), ...>` or the Contract's Self parameter); no Type is headed by it.
+        if (symbol.SelfOf is not null)
+        {
+            return symbol.Type!;
+        }
+
         var schema = symbol.Schema!;
         var types = this.RentTypes(schema.GenericSlots.Count);
         var origins = this.originScratch.Rent(schema.Origins.Count);
@@ -89,7 +95,7 @@ public sealed partial class Binding
     };
 
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
-        => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)
+        => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)!
             : this.types.Rebuild(type, (BoundType[])type.Components, origin, arguments);
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)

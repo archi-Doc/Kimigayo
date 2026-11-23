@@ -57,20 +57,21 @@ public sealed partial class MirEffectsTest
     }
 
     // R4-M91 (R4-M38's Open, R4-M74 OQ6): a site's classes stay apart, so A5 can tell an unknown effect (a call through a common Function
-    // value or its destruction) from a limit (a call through an input with several Callable signatures) and from a dependent of an error
-    // (a callee with an Opaque site), whose own keys stay. A plain write and read are their Field's two bits; a static that is not
-    // mutable has no number.
+    // value or its destruction) from a part past a bound (a chain growing through a destructor, GrowingChain: Deep, R4-M237; the limit
+    // until Z25) and from a dependent of an error (a callee with an Opaque site), whose own keys stay; a call through an input with several
+    // Callable signatures has its selected one's bound (Z3: the limit until then). A plain write and read are their Field's two bits; a
+    // static that is not mutable has no number.
     [Fact]
     public void KeysKeepTheClassesApart()
     {
         var c = MirBuildTest.Compile(
-            "group G\n    public var x: i32 = 0\n    public var y: i32 = 0\n    public let z: i32 = 0\nfunc writeX() => G.x = 1\n" +
-            "func readY() -> i32 => G.y\nfunc readZ() -> i32 => G.z\nfunc opaque()\n    _ = missing\n    G.y = 2\n" +
+            GrowingChain + "group S\n    public var x: i32 = 0\n    public var y: i32 = 0\n    public let z: i32 = 0\nfunc writeX() => S.x = 1\n" +
+            "func readY() -> i32 => S.y\nfunc readZ() -> i32 => S.z\nfunc opaque()\n    _ = missing\n    S.y = 2\n" +
             "func classes<F>(action: () -> (), f: ref/F)\n    F is Callable<() -> ()>\n        effect confined\n    F is Callable<(i32) -> ()>\n" +
-            "        effect confined\n    action()\n    f()\n    opaque()\n    writeX()\n    _ = readY()\n    _ = readZ()\n");
+            "        effect confined\n    action()\n    f()\n    _ = G<i32>.init()\n    opaque()\n    writeX()\n    _ = readY()\n    _ = readZ()\n");
         var (effects, flow, program) = Analyzed(c);
         Assert.Equal(
-            ["value: unknown", "value: limit", "opaque:y! derived", "writeX:x!", "readY:y", "readZ:", "drop: unknown"],
+            ["value: unknown", "value:", "init:", "drop: deep", "opaque:y! derived", "writeX:x!", "readY:y", "readZ:", "drop: unknown"],
             Sites(effects, flow, program, "classes"));
         var statics = Statics(program);
         Assert.Equal(-1, effects.Field(statics["z"]));
@@ -340,7 +341,8 @@ public sealed partial class MirEffectsTest
 
                 var site = terminator.Kind == MirTerminatorKind.Drop ? "drop" : terminator.Callee.Symbol?.Name ?? "value";
                 sites.Add($"{site}:{string.Join(",", keys)}{((classes & MirEffects.Unknown) != 0 ? " unknown" : string.Empty)}" +
-                    $"{((classes & MirEffects.Limit) != 0 ? " limit" : string.Empty)}{((classes & MirEffects.Derived) != 0 ? " derived" : string.Empty)}");
+                    $"{((classes & MirEffects.Limit) != 0 ? " limit" : string.Empty)}{((classes & MirEffects.Deep) != 0 ? " deep" : string.Empty)}" +
+                    $"{((classes & MirEffects.Derived) != 0 ? " derived" : string.Empty)}");
             }
         }
 

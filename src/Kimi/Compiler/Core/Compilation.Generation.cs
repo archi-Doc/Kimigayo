@@ -28,7 +28,8 @@
 // Invariants: every generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test; tests
 // and src/Benchmark's measurements, which read its records) passes this gate, and none runs the old generator: MIR code generation is the
 // one code generator since G4 (DECISIONS R5-M160), and R6-gen's G7 deleted the old one (DECISIONS R5-M162). One ModuleCodegen per
-// compilation keeps MIR code generation's storage.
+// compilation keeps MIR code generation's storage, made for the target's row (TargetProfile.Find); a target without a row reaching
+// generation is a broken contract, InternalInvariant_Kd at the project.
 // Must not: decide acceptance again, return failure text or fall back to the old generator.
 
 using System.Runtime.InteropServices;
@@ -94,9 +95,17 @@ public partial class Compilation
             return false;
         }
 
+        // The target row, whose frame the generator writes (its constructor input: one generator, one triple); a target without a row
+        // never reaches generation.
+        if (TargetProfile.Find(this.TargetTriple.Value) is not { } row)
+        {
+            this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+            return false;
+        }
+
         var roots = CollectionsMarshal.AsSpan(this.outputRoots);
         collector.Set.Mark(roots);
-        var generator = this.moduleCodegen ??= new(this.Layout, this.Locations, this.Types, this.Binding.LibraryImports, this.Tests);
+        var generator = this.moduleCodegen ??= new(this.Layout, this.Locations, this.Types, this.Binding.LibraryImports, this.Tests, row);
         if (generator.Write(program, collector, this.Binding.Startup, roots, writer))
         {
             this.generated = new(this.Binding.Startup.OutputKind, generator.Libraries, generator.Externals); // The lists by reference.

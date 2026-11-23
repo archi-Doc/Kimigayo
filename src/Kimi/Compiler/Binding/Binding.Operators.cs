@@ -203,7 +203,7 @@ public sealed partial class Binding
 
         if (assignment && left is not null && kind == KotoKind.Equals)
         {
-            this.JudgeHolderPlace(binary.Left, HolderAccess.Write, binary.Right, binary);
+            this.JudgeHolderPlace(binary.Left, binary.Right, binary);
         }
 
         if (decision.Failure == BindingFailure.None && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
@@ -290,7 +290,7 @@ public sealed partial class Binding
 
         if (!write)
         {
-            this.JudgeHolderPlace(target, HolderAccess.Update, null, operation);
+            this.JudgeHolderPlace(target, null, operation);
         }
 
         return true;
@@ -380,14 +380,7 @@ public sealed partial class Binding
                 ? this.Fail(binary, BindingFailure.Unsupported, true) : Complete(binary, result);
         }
 
-        var rejected = binary.ArithmeticStorage ??= new();
-        rejected.Active = false;
-        rejected.Candidates.Clear();
-        rejected.Sources.Clear();
-        return this.FailExplained(
-            ref this.arithmeticSelectionFailures,
-            binary,
-            BindingFailure.ArithmeticSelection,
-            new(rejected, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit));
+        (binary.ArithmeticStorage ??= new()).Active = false;
+        return this.RecordArithmeticSelection(binary, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit, null);
     }
 }

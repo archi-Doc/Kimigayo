@@ -6,15 +6,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The solution of the call's `candidate`-th candidate from its evaluation: the call's slot arrays, scope, Self, explicit Type
-    // arguments and the candidate's root rows. Its Origin views cover the candidate's slots (RequireOriginWidths).
+    // The solution of the call's `candidate`-th candidate from its evaluation: its frame, mapping, Origin strides and root rows, and the
+    // call's scope, Self, explicit Type arguments and the candidate's requirement reference. Its Origin views cover the candidate's
+    // slots (RequireOriginWidths).
     private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
     {
         RequireOriginWidths(function, evaluation.OriginSlots, evaluation.InputSlots);
         return new()
         {
-            Rows = evaluation.Rows.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
-            ChildSlice = evaluation.ChildSlices.AsSpan(candidate * 2, 2),
+            Rows = evaluation.RowsOf(candidate),
+            ChildSlice = evaluation.ChildSliceOf(candidate),
             Binding = this,
             Call = evaluation.Call,
             Binder = function,
@@ -25,8 +26,10 @@ public sealed partial class Binding
             Self = evaluation.Self,
             DeclaringType = declaringType,
             Frame = evaluation.Frames[candidate],
-            Origins = evaluation.Origins,
-            Inputs = evaluation.Inputs,
+            Mapping = evaluation.MappingOf(candidate),
+            Origins = evaluation.OriginsOf(candidate),
+            Inputs = evaluation.InputsOf(candidate),
+            RequirementContract = evaluation.RequirementContractOf(candidate),
         };
     }
 
@@ -72,8 +75,10 @@ public sealed partial class Binding
         internal BoundType? Self;
         internal BoundType? DeclaringType;
         internal SlotFrame Frame;
+        internal ReadOnlySpan<int> Mapping; // A candidate's call argument i maps to its parameter Mapping[i] (MapCallArguments); empty outside a named call's candidate.
         internal Span<BoundOrigin> Origins;
         internal Span<BoundOrigin> Inputs;
+        internal BindingSymbol? RequirementContract; // A named call's candidate's (CallEvaluation.RequirementContractOf); its trial runs under it.
         internal bool FixedConstruction;
 
         // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
@@ -100,6 +105,11 @@ public sealed partial class Binding
         // late walk (LeaveUnbound; SolveLate, SolveConstruction) and read by it alone (InferComposite): only such a slot takes its
         // literals whole there; a slot those steps bound gives the parts at its positions their expected Type (10.8).
         internal SlotSet Left;
+
+        // DECISIONS BU-240 (temporary, removed with (R)): the trial's arguments whose own pattern forms no Type, each unknown in the trial, a
+        // wildcard in every later check (UnformedPart adds them; SolveLate and the pass loop skip them). The trial's scratch, rented and
+        // returned by TryCandidateCore.
+        internal SlotSet Unknown;
 
         // The solution's Type and length slots, read-only: the frame's writes are InferCtxt's (DECISIONS R7-I2).
         internal readonly ReadOnlySpan<BoundType?> Types => this.Frame.Types;
@@ -162,16 +172,16 @@ public sealed partial class Binding
         // SPEC 10.5.1 (D4): whether the result holds a Type or Semantics slot that neither evidence nor a waiting callable fixes with
         // no outer expectation (OpenWaitingSlots), as a construction's does (HoldsOpenSlot); a constructor's result holds all its slots.
         // Origin slots are not counted.
-        internal readonly bool ResultHoldsUnsolved(int[] mapping)
+        internal readonly bool ResultHoldsUnsolved()
         {
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, this.Mapping, ref unsolved);
                 var open = new OpenWaitingSlots(ref unsolved, this);
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
-                    this.Binding.TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, this.SlotOwner, open);
+                    this.Binding.TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[this.Mapping[i]].Type.BoundType!, this.SlotOwner, open);
                 }
 
                 return !unsolved.IsEmpty &&
@@ -185,7 +195,7 @@ public sealed partial class Binding
 
         // SPEC 15.3.6, 10.8: a Callable proof that fails only because a slot holds the open region of an argument's own per-call Origin,
         // and holds once that per-call Origin stands in for it, is no inapplicability: the argument is reported after selection.
-        internal readonly bool PerCallCallables(int[] mapping, Span<BoundArgumentOperation> marks)
+        internal readonly bool PerCallCallables(Span<BoundArgumentOperation> marks)
         {
             var count = CallOwnSlots(this.Function).Count;
             var restored = this.Binding.typeScratch.Rent(count);
@@ -194,7 +204,7 @@ public sealed partial class Binding
                 // SPEC 10.7, 10.8: first instantiate each argument's per-call input at a required input over a fixed Origin; when every
                 // Constraint then holds, that instantiation solves the slots and nothing is reported.
                 this.Types[..count].CopyTo(restored);
-                if (this.StandIns(mapping, restored.AsSpan(0, count), marks, true) && this.Prove(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
+                if (this.StandIns(restored.AsSpan(0, count), marks, true) && this.Prove(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
                 {
                     this.Frame.CopyTypes(restored.AsSpan(0, count));
                     this.CompleteOperationTypes(marks);
@@ -202,7 +212,7 @@ public sealed partial class Binding
                 }
 
                 this.Types[..count].CopyTo(restored);
-                var marked = this.StandIns(mapping, restored.AsSpan(0, count), marks, false);
+                var marked = this.StandIns(restored.AsSpan(0, count), marks, false);
                 if (!marked || this.Prove(restored.AsSpan(0, count), false) != ConstraintProof.Proven)
                 {
                     for (var i = 0; i < this.Call.ArgumentNodes.Count && marked; i++)
@@ -414,7 +424,7 @@ public sealed partial class Binding
             binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
             var closedOwner = this.DeclaringType is { } declaringType
                 ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
-            var reference = binding.activeRequirementContract; // The Contract reference CallSelection tries the candidate under (SPEC 8.6.4).
+            var reference = this.RequirementContract; // The Contract reference the candidate is tried under (SPEC 8.6.4).
             var bindings = new CandidateBindings(
                 function, function.BoundSymbol!, this.Substitution(arguments), this.Self, this.DeclaringType, closedOwner, reference, unbound, constructor);
             var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
@@ -496,14 +506,14 @@ public sealed partial class Binding
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.
         // Replaces the open regions of each argument whose Callable signature holds one, marking that argument unless `fixedOnly`.
-        private readonly bool StandIns(int[] mapping, Span<BoundType?> slots, Span<BoundArgumentOperation> targets, bool fixedOnly)
+        private readonly bool StandIns(Span<BoundType?> slots, Span<BoundArgumentOperation> targets, bool fixedOnly)
         {
             var binding = this.Binding;
             var replaced = false;
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
                 var source = this.Call.ArgumentNodes[i];
-                if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
+                if (this.Function.Parameters[this.Mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
                     source.BoundType is null ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     binding.CallMemberPattern(requiredSignature, this.Binder, this.DeclaringType) is not { } memberSignature ||

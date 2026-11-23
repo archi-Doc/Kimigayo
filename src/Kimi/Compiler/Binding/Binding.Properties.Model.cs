@@ -34,6 +34,11 @@ public sealed class BoundProperty
     // SPEC 11.6, 23.1.2 (DECISIONS BU-73): the Closure literal of its inferred Type whose located Unsupported_Kd refused it, published
     // with the Type by BindPropertyHeader each pass and consulted by every use; null otherwise.
     internal FunctionKoto? Refusal { get; set; }
+
+    // SPEC 11.6, 10.5.4 (G812 ruling 174): the literals of its inferred initializer its header typed with no body (Binding.TypedByHeader),
+    // each with its fixed expectation; cleared by BindPropertyHeader each pass, bound and cleared by the variable binding with its parts
+    // (Binding.BindLeftBodies). The list is kept across passes, cleared, not dropped: one per Property with such a literal.
+    internal List<(FunctionKoto Literal, BoundType? Expected)>? LeftBodies { get; set; }
 }
 
 /// <summary>A reusable operation signature, including implicit inputs without synthetic syntax.</summary>

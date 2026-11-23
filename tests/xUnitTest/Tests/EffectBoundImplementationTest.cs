@@ -138,7 +138,14 @@ public partial class EffectBoundImplementationTest
         foreach (var symbol in library.RegisteredSymbols.ToArray().Append(library.Abort))
         {
             var kind = TyCtxt.Bodyless(symbol);
-            Assert.True(symbol.Definition.Kind == DispositionKind.Body ? kind is not (BodylessKind.Intrinsic or BodylessKind.Shim) : kind == BodylessKind.Intrinsic, symbol.Name);
+            Assert.True(
+                symbol.Definition.Kind switch
+                {
+                    DispositionKind.Body => kind is not (BodylessKind.Intrinsic or BodylessKind.Shim or BodylessKind.Form),
+                    DispositionKind.Form => kind == BodylessKind.Form, // Storage.viewStart (L2): the builder writes its MIR form.
+                    _ => kind == BodylessKind.Intrinsic,
+                },
+                symbol.Name);
             if (kind == BodylessKind.Intrinsic && (MirDescriptors.Of(symbol.Definition.Id).Effects & MirEffect.Environment) != 0)
             {
                 environment.Add(symbol.Definition.Id);

@@ -16,7 +16,8 @@ namespace Kimi.Compiler.Mir;
 // - The producers and the fact each reads:
 //   - a variable, a failed acquisition or Pattern binding, a construct's value (Blocks, Values, Match): HirOp.Error at the node, or
 //     HirAcquire.Failed at the acquired node (DECISIONS Z16), Opaque;
-//   - a write whose target designates an Error (DerivedWrite): HirOp.Error at the Place the target designates (Z16), Opaque;
+//   - a write whose target designates an Error (DerivedWrite): HirOp.Error at the Place the target designates (Z16), Derived over its
+//     target's parts (TargetUses), and its right side's undecided take, a site at its node (DECISIONS Z27), Derived;
 //   - a static use and a Field initializer's step (Places, Constructors): the declaration fact, not published Body (Z16), Opaque;
 //   - a jump whose published target row is null (Transfer): lint row 9 or 10 at the jump (BU-101), Opaque, its operand located (none
 //     for a constant);
@@ -98,28 +99,35 @@ internal sealed partial class MirBuilder
     // the temp's node whose site names only the temp, undecided at its root.
     private MirRvalue DerivedValue(MirPlace temp, BoundType? type)
     {
-        this.uses.Clear();
+        this.ClearUses();
         this.SiteUse(new(temp.Root));
         return MirRvalue.Opaque(type, this.AddSite(this.body.Locals[temp.Root].Source.Syntax));
     }
 
-    // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2: an assignment or update whose target designates a Place Binding rejected (through its
-    // groups, SPEC 3.4: Designated) is derived from that error, after its right side is evaluated, as Operand evaluates it (its value
-    // where its published Acquire is Temporary, else its Place located), so its own failures are checked; the site takes the result as a
-    // part located already (SiteUses: read at its own node where its Adjust acquires it, DECISIONS Z17) and names the target's roots. The
-    // write's own taking, securing the value at the destination Type (its acquisition and adaptation), rests on the failure (rule W) and
-    // is not built: the failed target gives no Type, and Binding decides no taking for a consumer with failure causes but a bare one
-    // (DECISIONS R4-M145 C2, BU-27), so a Closure's receiver counts none of a capture's.
+    // SPEC 13.7.1 steps 1-2, 13.7.2 steps 1-2, 23.1.2 (DECISIONS Z27): an assignment or update whose target designates a Place Binding
+    // rejected (through its groups, SPEC 3.4: Designated) is derived from that error, its parts evaluated in order. Step 1: its right side
+    // is evaluated as Operand evaluates it (its value where its published Acquire is Temporary, else its Place) and taken at its own node
+    // (Part, DECISIONS Z17): a FakeRead where its consumer reads it, nothing for a Temporary's value, else a site of its own at its node
+    // naming its Place (a Place whose bare Move rests on an Error Copy proof is published Failed without an Error node), so every take of
+    // step 1 precedes step 2. Step 2: its target's kept operands are evaluated, the in-place ones enclosing (TargetUses), and the write's
+    // site names them. The write's own taking, securing the value at the destination Type (its acquisition and adaptation), rests on the
+    // failure (rule W) and is not built: the failed target gives no Type, and Binding decides no taking for a consumer with failure causes
+    // but a bare one (DECISIONS R4-M145 C2, BU-27), so a Closure's receiver counts none of a capture's.
     private void DerivedWrite(Koto node, MirPlace destination)
     {
-        var mark = this.located.Count;
         if (node is BinaryKoto { Right: { } right })
         {
-            this.located.Add((right, HirTables.AdjustOf(right).Acquire == HirAcquire.Temporary ? this.Value(right) : this.Place(right)));
+            var place = HirTables.AdjustOf(right).Acquire == HirAcquire.Temporary ? this.Value(right) : this.Place(right);
+            this.ClearUses();
+            this.Part(right, place);
+            if (this.uses.Count > 0)
+            {
+                this.Derived(right, this.OpaqueTemp(this.body.TypeOf(place), right), Completes(right));
+            }
         }
 
-        this.Opaque(node, destination);
-        CollectionsMarshal.SetCount(this.located, mark);
+        this.TargetUses(node, Designated(Child(node)));
+        this.Derived(node, destination, Completes(node));
     }
 
     // An Opaque value at a node's site naming the uses collected, of its destination's Type (none for a destination of no Type, PLAN
@@ -135,5 +143,5 @@ internal sealed partial class MirBuilder
     }
 
     // The site of an Opaque value at its syntax, naming the uses collected.
-    private int AddSite(SourceRef source) => this.body.AddOpaque(source, CollectionsMarshal.AsSpan(this.uses));
+    private int AddSite(SourceRef source) => this.body.AddOpaque(source, CollectionsMarshal.AsSpan(this.uses), this.keptUses, this.enclosingUses);
 }

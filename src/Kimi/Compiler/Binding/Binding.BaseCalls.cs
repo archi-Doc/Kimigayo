@@ -106,14 +106,13 @@ public sealed partial class Binding
 
         if (selection.Ambiguous)
         {
-            this.Fail(member, BindingFailure.Ambiguous, true);
+            this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // MemberSelection keeps a flag, not the candidates.
             return null;
         }
 
         if (selected is null && selection.Hidden is { } hidden)
         {
-            member.BoundSymbol = hidden;
-            this.Fail(member, BindingFailure.Access);
+            this.PublishHiddenMember(member, hidden);
             return null;
         }
 

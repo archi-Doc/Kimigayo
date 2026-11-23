@@ -13,6 +13,7 @@ public sealed partial class Binding
     // is still selected; a removed match's plan leaves with its row at renumbering, and a live match the pass did not index drops its
     // plan (PruneMatchPlans).
     private readonly MatchPlanRows matchPlans;
+    private readonly IndexedPatternRows indexedPatterns;
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
     private UnsupportedMarker? unsupportedMarker;
@@ -26,6 +27,9 @@ public sealed partial class Binding
     /// <returns>Whether the current Binding pass indexed this match.</returns>
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
 
+    // A pattern's syntax node no check typed has the Unit Type (PatternMarker's rule; also the Case Name a member step settles).
+    private static void CompletePatternSyntax(Koto node) => Complete(node, BoundType.Unit);
+
     private void ResetMatches()
     {
         // The pass counter already left the last pass's matches stale, so every kept plan is reset: the last pass's, the same objects, and
@@ -35,18 +39,21 @@ public sealed partial class Binding
             plan!.Reset(null);
         }
 
-        foreach (var guard in this.pass.Part.CandidateScopes)
+        // The pattern nodes and guards the pass's previous run indexed, which its prune steps compare with this run's.
+        for (var rows = this.indexedPatterns.Values.In(this.pass); rows.MoveNext();)
         {
-            this.pass.Part.PreviousCandidateScopes.Add(guard);
+            if (rows.Current.Guard)
+            {
+                this.pass.Part.PreviousCandidateScopes.Add(rows.Node);
+            }
+
+            if (rows.Current.Pattern)
+            {
+                this.pass.Part.PreviousPatternNodes.Add(rows.Node);
+            }
         }
 
-        this.pass.Part.CandidateScopes.Clear();
-        foreach (var node in this.pass.Part.PatternNodes)
-        {
-            this.pass.Part.PreviousPatternNodes.Add(node);
-        }
-
-        this.pass.Part.PatternNodes.Clear();
+        this.indexedPatterns.Empty();
         this.patternWarnings.Clear();
     }
 
@@ -54,7 +61,7 @@ public sealed partial class Binding
     {
         foreach (var guard in this.pass.Part.PreviousCandidateScopes)
         {
-            if (!this.pass.Part.CandidateScopes.Contains(guard))
+            if (!this.indexedPatterns[guard].Guard)
             {
                 this.scopes.Remove(guard);
             }
@@ -67,7 +74,7 @@ public sealed partial class Binding
     {
         foreach (var node in this.pass.Part.PreviousPatternNodes)
         {
-            if (!this.pass.Part.PatternNodes.Contains(node) && !this.pass.Part.CandidateScopes.Contains(node))
+            if (this.indexedPatterns[node] is (false, false))
             {
                 this.scopes.Remove(node);
                 this.symbols.Remove(node);
@@ -149,7 +156,7 @@ public sealed partial class Binding
             propagation.SelectOption(subject.Symbol == this.Library.Option);
             if (!propagation.SemanticsIndexed)
             {
-                this.indexer.IndexMatchArms(propagation, scope);
+                this.IndexMatchArms(propagation, scope);
                 propagation.SemanticsIndexed = true;
             }
 
@@ -480,7 +487,7 @@ public sealed partial class Binding
 
         var qualifier = member.Left;
         var definition = this.TypeName(qualifier, scope); // A qualifier's row (SPEC 9.6), as its path walk publishes it.
-        if (definition is null || !ReferenceEquals(definition, expected.Symbol))
+        if (definition is null || !ReferenceEquals(definition.Named, expected.Symbol))
         {
             return null;
         }
@@ -499,15 +506,17 @@ public sealed partial class Binding
             }
         }
 
-        var symbol = this.LookupMember(expected, name, scope, LookupRole.EnumCase).Member;
-        if (symbol is null)
+        var selection = this.LookupMember(expected, name, scope, LookupRole.EnumCase);
+        if (selection.Member is not { } symbol)
         {
             return null;
         }
 
-        // Written here until R7-N1 c3 makes it the member step's (PublishPath's MemberAccess step would mark the Name Resolved before the
-        // pattern's completion gives it its Type, a HIR change).
-        member.BoundSymbol = member.Right.BoundSymbol = symbol;
+        // SPEC 9.6, 14.8.1: the Case is the member access's selection, published by PublishPath's MemberAccess step (the Type side, the
+        // enum qualifier). The step settles the Name, so PatternMarker, which types every pattern node no check typed, would not reach
+        // it: the pattern types its Case Name first, by the marker's own rule.
+        CompletePatternSyntax(member.Right);
+        this.PublishMemberAccess(member, symbol, definition, LookupRole.Qualifier, selection);
         return symbol.EnumCase;
     }
 
@@ -554,7 +563,7 @@ public sealed partial class Binding
 
         plan.Invalid |= proof != ConstraintProof.Unknown;
         plan.Pending |= proof == ConstraintProof.Unknown;
-        this.Fail(syntax, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+        this.Fail(syntax, ConstraintFailureOf(proof), proof == ConstraintProof.Unknown);
         return false;
     }
 
@@ -738,7 +747,7 @@ public sealed partial class Binding
             {
                 if (outer is null)
                 {
-                    Complete(node, BoundType.Unit);
+                    CompletePatternSyntax(node);
                 }
                 else
                 {
@@ -807,5 +816,30 @@ public sealed partial class Binding
 
         internal bool TryGetValue(MatchKoto match, [NotNullWhen(true)] out BoundMatch? plan)
             => (plan = match.SyntaxOwner is { } table ? table.Hir.Families.MatchPlans.Get(match.SyntaxId) : null) is not null;
+    }
+
+    /// <summary>The pattern nodes' and guard scopes' one accessor (DECISIONS BU-220): a kept family, whether the latest run of a node's pass
+    /// indexed it as a pattern node (IndexMatchArms' pattern depth) or a guard scope, a `(Pattern, Guard)` row in the node's module's
+    /// NodeColumns at its SyntaxId (the two sets the pass's part held, one row by the key's two slots). The pass's reset copies its
+    /// modules' rows into the part's previous-run lists, which its prune steps compare with the new run's, and empties them
+    /// (ResetMatches); so a pass prunes against its own previous run and never removes a scope another pass indexed.</summary>
+    private readonly struct IndexedPatternRows(Binding binding)
+    {
+        internal FamilyRows<(bool Pattern, bool Guard)> Values => new(binding, static (table, _) => table.Hir.Families.IndexedPatterns.Enumerate());
+
+        internal (bool Pattern, bool Guard) this[Koto node] => node.SyntaxOwner is { } table ? table.Hir.Families.IndexedPatterns.Get(node.SyntaxId) : default;
+
+        internal void AddPattern(Koto node) => HirTables.Of(node).Families.IndexedPatterns.Ref(node.SyntaxId).Pattern = true;
+
+        internal void AddGuard(Koto guard) => HirTables.Of(guard).Families.IndexedPatterns.Ref(guard.SyntaxId).Guard = true;
+
+        // Over the running pass's modules.
+        internal void Empty()
+        {
+            for (var i = 0; i < binding.pass.Count; i++)
+            {
+                binding.pass[i].Syntax.Hir.Families.IndexedPatterns.Empty();
+            }
+        }
     }
 }

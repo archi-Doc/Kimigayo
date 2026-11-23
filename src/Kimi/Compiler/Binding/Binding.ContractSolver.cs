@@ -22,9 +22,9 @@
 //   strongest of its derivations wins. A constraint of another kind with a reader (RowKind; R7-C2c2 c2-3b: Callable) gives a leaf
 //   row under (1) and (2): its proposition (Clause) and no Contract, so the closure (3), (4), head depths and active prefixes read
 //   Contract rows alone. A leaf row is one per proposition and stating scope, never merged and never Alias: SPEC 8.10's weakest
-//   receiver and 8.11.4's bound list are each premise's, and merging by signature is the Callable selection's rule. Every row
-//   carries its Source: the written fact its derivation starts from, as its environment holds it (Raw; none for a clause instance
-//   or an ancestor), and the scope stating it (Stated; a clause instance's and an ancestor's are their Contract row's, a
+//   receiver is each premise's, 8.11.4's bound list each fact's Statements', and merging by signature is the Callable selection's
+//   rule. Every row carries its Source: the written fact its derivation starts from, as its environment holds it (Raw; none for a
+//   clause instance or an ancestor), and the scope stating it (Stated; a clause instance's and an ancestor's are their Contract row's, a
 //   Contract's own Self row has none). Refinement reads the available rows (SPEC 8.3.1: only evidence proves); a candidate reader
 //   reads every row (a lookup is not a proof: the use is judged), one per Contract: rows whose Contract references are one Type in
 //   the request's classes are published as one non-Alias row, the closed spelling first, then Binding.TypeIdentity's Order, never
@@ -50,9 +50,11 @@
 //   environment, a fact on the subject as written before a class mate's or a reading's, then Binding.TypeIdentity's Order of the
 //   facts' subjects (ViewIndex.Add keeps each row kind's bucket so); the subject's rows before its key's. Two facts of one
 //   environment on one subject give two rows or are one fact. A Contract row's Source decides no verdict: its one reader is the
-//   editor's evidence (AvailableEffectBounds). A leaf row's Source is its own premise's, never a choice (the row is one per
-//   stating premise): AvailableCallableEffects reads it for the premise's bound list (SPEC 8.11.4) and SelectValueCall for a
-//   failed selection's related locations.
+//   editor's evidence (AvailableEffectBounds). A leaf row's Source is its own fact's, never a choice (the row is one per
+//   proposition and stating scope): its bound list (SPEC 8.11.4) is the union over the fact's Statements in that environment
+//   (ConstraintEnvironment.States: the in-place one and each a writer recorded, several where one fact instantiates several
+//   written premises), which AvailableCallableEffects reads; SelectValueCall reads the Source for a failed selection's related
+//   locations.
 // - Identity (R7-C2c2 c2-1; SPEC 8.2.3): a premise's supply reaches every parameter and projection of its identity class; a
 //   constructed member's conformance is ResolveConformance's. That is the implementation's limit, not SPEC's rule: where it is
 //   Unknown, a premise is not yet read as evidence for that member (SPEC 8.2.3), so valid programs such as d09c stay rejected, as on
@@ -143,9 +145,9 @@
 //   final in the capability phase; each change to a member is reviewed against this list: the view's reads (HasTypeIdentity,
 //   EnclosingContractSelf, a chain environment's sets), FactStates, NegateConstraint, InternConstraint, interning and Type rewriting
 //   (TyCtxt.Rebuild, Intern, HeldContext, HeldType, InterpolationBound, WithContext, RentTypes, StoredType and SubstituteType where
-//   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
-//   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
-//   and the PrepareTypeStorage memo (per storageVersion); R7-C2c2 c2-4's MemberOf (ContractTypeCore meets its Completion, the
+//   they return a Type), the static gates (KimiLibraryCatalog.IsArithmeticContract, WitnessGroup), SubstituteStoredOrigins (declared
+//   Origins), SelectConformance for a query by declaration (final after the InheritedConformances query, Binding.cs's
+//   RegisterInheritedConformances), and the PrepareTypeStorage memo (per storageVersion); R7-C2c2 c2-4's MemberOf (ContractTypeCore meets its Completion, the
 //   table's), UnconditionalBinding (declarations only; an unfinished or refused instance is its `pending`, met as Provisional),
 //   AssociatedInPath and OperandContexts (pure reads).
 // - PremiseRefines' answer, and the judges' MemberOf reads (ProveConformance, RequestCapability, JudgeConstraintAtom; a read may rest
@@ -530,7 +532,7 @@ public sealed partial class Binding
                 if (states || refutes || (subject is not null && ((reading.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(reading.Subject, subject)) || DecidesPairLayer(reading, subject))))
                 {
                     (positive, negative) = (positive | states | !refutes, negative | refutes | !states);
-                    failure ??= environment.FailedPremise;
+                    failure ??= environment.CauseOf(fact);
                 }
             }
         }
@@ -965,7 +967,7 @@ public sealed partial class Binding
 
         if (environment.IsFailed(fact))
         {
-            this.ScopeReads.Limit ??= environment.FailedPremise;
+            this.ScopeReads.Limit ??= environment.CauseOf(fact);
             return false;
         }
 

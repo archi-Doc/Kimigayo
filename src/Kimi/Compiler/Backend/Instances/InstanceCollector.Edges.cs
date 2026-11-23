@@ -180,8 +180,8 @@ internal sealed partial class InstanceCollector
                 : this.Intrinsic(program, item, subject, row, this.In(item, subject, callee.Subst!.Types[0]!));
         }
 
-        var (subst, cause, _, _) = callee.Subst is { } inner && this.Set.Items[item].Representative is { } representative
-            ? this.types.Answered(inner, representative) : (callee.Subst, TyCtxt.Formation.Formed, Binding.StorageOutcome.Prepared, null);
+        var (subst, cause) = callee.Subst is { } inner && this.Set.Items[item].Representative is { } representative
+            ? this.types.Answered(inner, representative) : (callee.Subst, TyCtxt.Formation.Formed);
         if (!this.Formed(cause, item, body.Subject(call.Source), subject))
         {
             return -1;
@@ -190,6 +190,11 @@ internal sealed partial class InstanceCollector
         if (callee.Kind == MirCalleeKind.Requirement)
         {
             var target = this.types.Witness(callee.Symbol!, callee.Contract, subst!);
+            if (!this.Formed(target.Cause, item, body.Subject(call.Source), subject))
+            {
+                return -1;
+            }
+
             return callee.Arg == 0 ? this.Called(program, item, subject, callee.Symbol!, target) : this.Compared(item, subject, callee, target);
         }
 

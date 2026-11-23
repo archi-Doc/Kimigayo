@@ -186,7 +186,7 @@ public sealed class HoverImprovementsTest
     {
         var source = "struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\n" + body;
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.CollectHover = true;
         c.Kotonoha.AddSource(new("main.kimi", source));
         Assert.False(c.Bind().IsComplete);
@@ -259,7 +259,7 @@ public sealed class HoverImprovementsTest
     public void SplitDeclarationsAndCommentlessSourcesKeepEveryKnownFileWithoutDuplicates()
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         compilation.CollectDocumentation = true;
         compilation.Kotonoha.AddSource(new("z/second.kimi", "/// Second part.\nstruct Split\n"));
@@ -333,7 +333,7 @@ public sealed class HoverImprovementsTest
     public void AMovedDeclarationKeepsItsDocumentsName()
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         compilation.Project.Directory = Path.GetFullPath("moved-root");
         var library = Path.GetFullPath("moved-library");
@@ -357,7 +357,7 @@ public sealed class HoverImprovementsTest
     public void AHoverSnapshotLeavesOutADocumentNoClientCanName()
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         var named = Path.Combine(Directory.GetCurrentDirectory(), "Named.kimi");
         compilation.Kotonoha.AddSource(new(Path.Combine(Directory.GetCurrentDirectory(), "a\0b.kimi"), "struct Value\n"));
@@ -442,7 +442,7 @@ public sealed class HoverImprovementsTest
     private static HoverDocument Project(string source, bool accepted = true)
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         compilation.CollectDocumentation = true;
         compilation.Kotonoha.AddSource(new("main.kimi", source));

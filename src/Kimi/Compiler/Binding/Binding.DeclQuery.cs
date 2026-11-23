@@ -8,22 +8,32 @@ namespace Kimi.Compiler;
 // DeclQuery (R7-D1; DECISIONS BU-105): the state of a declaration query, a fact Binding computes at most once per pass for one
 // declaration and kind, which every step that needs it demands.
 // - Inputs: the declaration's own BindingSymbol (its identity, kept across passes) and a DeclQueryKind; the pass stamp storageVersion.
-// - Outputs: the state, NotStarted, Running or Done, valid in the pass that set it, two bits per kind in BindingSymbol's ushort, room for
-//   eight kinds and D2's Error state; a ninth kind fails BindingSymbol.QueryRoom at compile time. The output stays where the kind's owner
-//   publishes it (Signature, owned by BindHeader: the symbol's and its parameters' Types).
+// - Outputs: the state, NotStarted, Running, Done or Error, valid in the pass that set it, two bits per kind in BindingSymbol's ushort,
+//   room for eight kinds; a ninth kind fails BindingSymbol.QueryRoom at compile time. The output stays where the kind's owner publishes
+//   it (Signature, owned by BindHeader: the symbol's and its parameters' Types). Error is a failed query's answer: its kind's rule
+//   recorded the failure at the declaration (SPEC 23.1.2), and each reader of the failed answer its row names rests on that record
+//   (QueryRecord), never on what the computation consulted (R7-D2 d2; G812 ruling 167).
 // - Invariants: a state set in an earlier pass reads NotStarted (no per-symbol reset), up to the stamp's uint copy: a state not written
 //   in any of the 2^32 - 1 passes before a read aliases one 2^32 passes old (about 4.3 * 10^9 Binds of one Binding). NotStarted
 //   becomes Running only through BeginQuery, which answers the prior state (the caller computes only on NotStarted); Running becomes
-//   Done (CompleteQuery) or NotStarted (AbandonQuery: the output waits on a fact not yet published). Done is final in the pass. A
-//   demand of a Running query is a re-entry, answered by its kind's rule, never by computing again. A state stamped Frozen (PLAN G949
+//   Done (CompleteQuery), Error (FailQuery: the kind's rule recorded at the declaration) or NotStarted (AbandonQuery: the output waits
+//   on a fact not yet published). Done and Error are final in the pass: CompleteQuery keeps an Error, so the computation a re-entry
+//   interrupted completes without clearing it. A demand of a Running query is a re-entry, answered by its kind's rule, never by
+//   computing again; only a kind whose row names an Error writer writes Error. A state stamped Frozen (PLAN G949
 //   S1-1's freeze of the library pass's declarations; DECISIONS BU-105 as BU-219 amends it) reads as set in every pass and is never
 //   written: BeginQuery answers it and writes nothing, AbandonQuery writes nothing, and CompleteQuery on it is a broken contract
 //   (InternalInvariant: a library fact completed in a program pass). The same holds for every declaration of the frozen library table,
 //   stamped or not (B6: SetQueryState refuses by the declaration's table). Each kind's answer for a Frozen state that is not Done is its
 //   row's "Frozen" clause.
-// - Kinds (one row each): Signature. Re-entry: an inferred stored Property's is CyclicBinding_Kd at the declaration; another header's
-//   reads no evidence and records nothing. Not ready: a header waiting on an associated Type is abandoned. Frozen: Done (the freeze
-//   verifies every library header Done). No Error state before its writer (R7-D2 d2). SignatureVerdict
+// - Kinds (one row each): Signature. Re-entry: a Property's whose Type is not yet formed is CyclicBinding_Kd at the declaration and
+//   Error (BindHeader's ReenterHeader, SPEC 11.6, 9); another header's reads no evidence and records nothing. The header frame binds
+//   only what typing the declaration needs (a literal whose Type the header fixes without its body publishes no body, TypedByHeader,
+//   through HeaderRunningOrFailed), so a re-entry is a SPEC 11.6 cycle for every literal it covers. Error's readers: a use of a Property left without a Type rests on the
+//   declaration's record (BindReference); the declaration's own variable binding records nothing more, even where the interrupted
+//   computation formed the Type, and still binds its parts (BindVariableCore); DeclaredValueType (SPEC 9.6), the conformance proof
+//   (VerifyPropertyRequirement) and a use of a Property whose Type was formed read the Type only, not yet the record (PLAN G1181's
+//   remainder). Not ready: a header
+//   waiting on an associated Type is abandoned. Frozen: Done (the freeze verifies every library header Done). SignatureVerdict
 //   (Binding.ConstraintValidation.Formation): output, the state itself: Done means Proven in this pass. Re-entry: Unknown, no evidence
 //   (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances (contractHeadersReady), is abandoned
 //   and computed again at each read until R7-C2 (PLAN G375). A requirement's call is outside the query, and no reader runs inside
@@ -38,10 +48,9 @@ namespace Kimi.Compiler;
 //   abandoned; on a base cycle every member stays NotStarted for the pass, and the records are the base walk's and formation's, none
 //   here. Not ready: a reading of its clause by DirectBase that moved the not-ready count (BaseLayers' answer: in progress or not
 //   ready), or its base not Done. Frozen: Done (the freeze verifies every library struct's Done).
-// - Interims (removal stages): a Signature re-entry's CyclicBinding_Kd is recorded by the demanders that record it today
-//   (BindReference, BindVariableCore) until R7-D2 d2 moves it into the kind's rule with the Error state; BindHeader's guard reads the
-//   variable binding's Resolving and BindVariableCore's guard reads Signature's Running state until R7-D2 d4 makes the variable binding
-//   a kind. These two are the only reads of a state outside this file. SignatureVerdict's not-ready path and its exclusion of a
+// - Interims (removal stages): BindHeader's guard reads the variable binding's Resolving and BindVariableCore's guard reads
+//   Signature's Running state (its CyclicBinding_Kd, a variable binding re-entered, is the variable binding's) until R7-D2 d4 makes the
+//   variable binding a kind. This is the only read of a state outside this file. SignatureVerdict's not-ready path and its exclusion of a
 //   requirement's call go at R7-C2, where a failed answer is final (PLAN G375).
 // - Prohibitions: no output, record or message here; no per-symbol reset; no second pass stamp; no mode or bool parameter; no
 //   allocation in a query (the freeze's one domain set per compilation aside); no write of a state outside this file
@@ -77,6 +86,9 @@ internal enum DeclState : byte
 
     /// <summary>Computed in this pass.</summary>
     Done,
+
+    /// <summary>Failed in this pass: the kind's rule recorded at the declaration, which the row's readers rest on (Binding.QueryRecord).</summary>
+    Error,
 }
 
 public sealed partial class Binding
@@ -103,11 +115,33 @@ public sealed partial class Binding
         return state;
     }
 
+    // Running to Done; an Error stays (final in the pass).
     private void CompleteQuery(BindingSymbol symbol, DeclQueryKind kind)
     {
-        Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running, "Only a running query completes.");
-        symbol.SetQueryState(kind, this.storageVersion, DeclState.Done);
+        var state = this.QueryState(symbol, kind);
+        Debug.Assert(state is DeclState.Running or DeclState.Error, "Only a running or failed query completes.");
+        if (state == DeclState.Running)
+        {
+            symbol.SetQueryState(kind, this.storageVersion, DeclState.Done);
+        }
     }
+
+    // Running to Error: the kind's rule has recorded the failure at the declaration (a re-entry its row names).
+    private void FailQuery(BindingSymbol symbol, DeclQueryKind kind)
+    {
+        Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running, "Only a running query fails.");
+        symbol.SetQueryState(kind, this.storageVersion, DeclState.Error);
+    }
+
+    // SPEC 23.1.2: the record a demand of a failed query rests on, the declaration's own (its kind's rule recorded it), or null. The
+    // readers its row names consult it, so each binding of a use in the pass reaches the same reported record.
+    private Koto? QueryRecord(BindingSymbol symbol, DeclQueryKind kind) => this.QueryState(symbol, kind) == DeclState.Error ? symbol.Declaration : null;
+
+    // SPEC 11.6 (G812 rulings 174, 176): whether the declaration's Signature query is Running or Error: its header is being computed, or
+    // a re-entry failed it (the computation the re-entry interrupted continues, and the variable binding that follows binds again only
+    // what is unresolved). An inferred Property's initializer is then bound only as far as typing it needs (TypedByHeader); the variable
+    // binding binds what was left with its parts.
+    private bool HeaderRunningOrFailed(BindingSymbol symbol) => this.QueryState(symbol, DeclQueryKind.Signature) is DeclState.Running or DeclState.Error;
 
     // The library's symbols whose query states the freeze keeps (FreezeLibrary, in the library pass): every library symbol the layer
     // reaches (G949 ruling 200; s11-design 2.2 s1), each with its states as the library pass left them (a symbol no query takes keeps
@@ -121,7 +155,7 @@ public sealed partial class Binding
         foreach (var symbol in this.symbols.Values.In(this.pass))
         {
             symbols.Add(symbol);
-            AddSymbol(symbols, symbol.ContractSelf?.Symbol);
+            AddSymbol(symbols, symbol.SelfSymbol);
             AddAccessor(symbols, symbol.Property?.Getter);
             AddAccessor(symbols, symbol.Property?.Setter);
         }
@@ -129,6 +163,8 @@ public sealed partial class Binding
         foreach (var scope in this.scopes.Values.In(this.pass))
         {
             AddDeclared(symbols, scope.Types);
+            AddDeclared(symbols, scope.Parameters?.Types);
+            AddDeclared(symbols, scope.Parameters?.Values);
             AddDeclared(symbols, scope.Values);
         }
 
@@ -158,8 +194,13 @@ public sealed partial class Binding
         }
 
         // A scope's declarations by name, each with the symbols it shadows (Next).
-        static void AddDeclared(HashSet<BindingSymbol> symbols, Dictionary<string, BindingSymbol> declared)
+        static void AddDeclared(HashSet<BindingSymbol> symbols, Dictionary<string, BindingSymbol>? declared)
         {
+            if (declared is null)
+            {
+                return;
+            }
+
             foreach (var first in declared.Values)
             {
                 var symbol = first;

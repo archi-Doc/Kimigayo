@@ -181,6 +181,26 @@ public sealed partial class MirBorrowsTest
         AssertTheDepthLimitIsAResourceError();
     }
 
+    // R7-T1 c4 (the Middle's RP17 P3; SPEC 23.1.2, IMPL 21.3.2, DECISIONS R4-M51, R4-M153, R7-M54): a tuple operator over a leaf past
+    // Binding's bound (Wrap^80<i32>) in a closed body builds its Requirement call, so a body holding a Loan meets A5's own limit at each
+    // call whose store check rests on the part: the init() call's and the operator's (compared), two independent failures, neither reading
+    // the other's verdict, so both are recorded (fail-before: the builder's Unsupported_Kd at the operator alone, whose unbuilt call left f
+    // no Loan, so A5 checked nothing); with no comparison, the init() call's alone in a body holding another local's Loan (the Middle's
+    // c-init-loan; the same before c4).
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AClosedTupleOperatorPastTheBoundMeetsA5sLimitAtEachCall(bool compared)
+    {
+        var wrap = string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80);
+        var c = CompileDepthForm("struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+            $"func see(r: ref/i32) => ()\nfunc f() -> bool\n    let w = ({wrap}.init(), 1)\n" +
+            (compared ? "    return w == w\n" : "    var b: i32 = 1\n    let r = b@ref\n    see(r)\n    return true\n"));
+        Assert.Equal(
+            Rows($"{wrap}.init() {DepthLimit}" + (compared ? $"|w == w {DepthLimit}" : string.Empty)),
+            DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
+    }
+
     // Problem r2 §3, a row a design may decide (scored apart): a5-w's limit record at the call whose rule W reads the guard past the bound
     // (IMPL 21.3.2: the affected call).
     [Theory]

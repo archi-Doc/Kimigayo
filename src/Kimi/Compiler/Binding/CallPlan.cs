@@ -115,6 +115,17 @@ public sealed class CallPlan
     /// <summary>Gets a value call's receiver acquisition.</summary>
     public SemanticsKind ReceiverKind { get; internal set; } = SemanticsKind.Ref;
 
+    /// <summary>Gets the decider of a value call whose Closure receiver is by case (SPEC 7.7.3, 8.15.2; PLAN G13): the callee's Closure
+    /// Type whose <c>Receiver</c> gave the call's Exclusive mode while its <c>CaseFreeReceiver</c> is Shared, so that each admitted case
+    /// acquires the callee as that Type's case receiver gives it. Null for any other call: the one presence of
+    /// <see cref="SharedReceiver"/>. Consumers read it through <see cref="HirTables.CaseDecider"/>.</summary>
+    public BoundType? CaseDecider { get; private set; }
+
+    /// <summary>Gets a by-case value call's Shared receiver acquisition, beside the Exclusive <see cref="ReceiverOperation"/> in
+    /// <see cref="ReceiverKind"/>: the callee as a Shared call acquires it (default for an owned callee, whose take borrows it shared);
+    /// default where <see cref="CaseDecider"/> is null.</summary>
+    public BoundArgumentOperation SharedReceiver { get; private set; }
+
     // The position in ArgumentOperations of the argument that stands for an operand its expansion already evaluated (ExpansionPlan's
     // Evaluated): a key resolution's length of the receiver the selection evaluated, an update setter's computed value; -1 for any other
     // call. Binding fixes it where it creates the call, with the argument list.
@@ -124,6 +135,14 @@ public sealed class CallPlan
     internal bool TupleOperator { get; set; }
 
     internal ConversionKoto? AdaptationSource { get; set; }
+
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; G812 ruling 159): the selected candidate's premise was Unknown at a split's mark
+    // (its trial's Unknown proof read the split, premiseReadsSplit, at a Type argument holding a mark, Binding.HoldsMark: the call is
+    // below a split call's open position), written with the
+    // selection (Binding.Calls): the call's obligation rests at its verdict (Binding.Check), whose record is the split call's located
+    // Unsupported_Kd, and is never judged again at the published, unmarked Type. An unformed binding's premise is judged there
+    // (SPEC 8.3.4: pt8p's UnprovenConstraint_Kd).
+    internal bool PremiseReadsMark { get; set; }
 
     // The Contract reference whose requirement the call selected: a bound reference (Indexable<Name>) when the Contract
     // takes Type arguments, else the Contract itself. Every instance dispatches through the conformance to that reference
@@ -295,7 +314,9 @@ public sealed class CallPlan
         this.DeclaringType = null;
         this.BasePath = null;
         this.ReceiverOperation = default;
+        this.SetCaseReceiver(null, default);
         this.TupleOperator = false;
+        this.PremiseReadsMark = false;
         this.RequirementContract = null;
         this.VirtualSlotType = null;
         this.VirtualBaseLookupType = null;
@@ -320,10 +341,12 @@ public sealed class CallPlan
         this.receiver = receiver;
         this.ConformingType = conformingType;
         this.TupleOperator = false;
+        this.PremiseReadsMark = false;
         this.RequirementContract = null;
         this.DeclaringType = declaringType;
         this.BasePath = basePath;
         this.ReceiverOperation = receiverOperation;
+        this.SetCaseReceiver(null, default);
         this.SetOperations(operations);
         if (this.defaultArguments.Length != defaults.Length)
         {
@@ -386,7 +409,16 @@ public sealed class CallPlan
         this.DeclaredSignature = declaredSignature;
         this.ReturnType = signature.Components[1];
         this.ReceiverKind = receiverKind;
+        this.SetCaseReceiver(null, default);
         this.SetOperations(arguments);
+    }
+
+    // A value call's by-case receiver (CaseDecider, SharedReceiver), written together by BindValueCall after SetValue, which resets them as
+    // Set and Clear do: the storage is reused on a rebind, so a call rebound as a case-free or a named one keeps neither.
+    internal void SetCaseReceiver(BoundType? decider, in BoundArgumentOperation shared)
+    {
+        this.CaseDecider = decider;
+        this.SharedReceiver = shared;
     }
 
     private void SetOperations(ReadOnlySpan<BoundArgumentOperation> operations)

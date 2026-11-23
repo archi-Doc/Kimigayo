@@ -111,7 +111,7 @@ public sealed class SemanticSnapshotTest
     internal static (Compilation Compilation, Kotonoha Module) Bind(string name)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source(name)));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
@@ -410,13 +410,19 @@ public sealed class SemanticSnapshotTest
                         hir.Append(':').Append(expansion.First?.Target.Name).Append('/').Append(expansion.Second?.Target.Name);
                     }
 
-                    // A selection by case: its index call and its decider (HirTables.IndexCaseDecider).
+                    // A selection by case: its index call and its decider (HirTables.CaseDecider).
                     if (expansion.Shared is { } shared)
                     {
-                        hir.Append('|').Append(shared.Target.Name).Append('?').Append(this.Type(HirTables.IndexCaseDecider(node)));
+                        hir.Append('|').Append(shared.Target.Name).Append('?').Append(this.Type(HirTables.CaseDecider(this.binding!, node)));
                     }
 
                     hir.Append(expansion.Evaluated >= 0 ? "#" + expansion.Evaluated : string.Empty).Append(expansion.Direct ? "*" : string.Empty);
+                }
+
+                // A value call by case: its decider (HirTables.CaseDecider; PLAN G13).
+                if (node is InvocationKoto && HirTables.CaseDecider(this.binding!, node) is { } caseDecider)
+                {
+                    hir.Append(" ?").Append(this.Type(caseDecider));
                 }
 
                 hir.Append('\n');

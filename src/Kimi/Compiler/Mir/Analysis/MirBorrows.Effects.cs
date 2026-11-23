@@ -190,7 +190,7 @@ internal sealed partial class MirBorrows
         }
         else if (this.Unproved(field, row, classes) is { } kind)
         {
-            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, this.Subject(at), None, at, -1, this.Effect(kind, this.Key(~destroyed)));
+            this.Found(DiagnosticCode.ComparisonLoanConflict_Kd, None, None, at, -1, this.Effect(kind, this.Key(~destroyed)));
         }
         else
         {

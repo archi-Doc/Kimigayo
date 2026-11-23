@@ -121,7 +121,7 @@ internal sealed unsafe partial class Tatara
     internal ObjectFacts Inspect(TataraContext context, string obj)
         => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result));
 
-    // Links with the linker's arguments, as NativeBuild builds them.
+    // Links with LLD's arguments, as NativeBuild builds them: arguments[0] names the flavor, lld-link or ld.lld (tatara.h).
     internal void Link(TataraContext context, IReadOnlyList<string> arguments)
         => this.Call("link", context, [.. arguments], (texts, result) => NativeLink(texts, (nuint)arguments.Count, result));
 
@@ -267,7 +267,7 @@ internal sealed unsafe partial class Tatara
 }
 
 /// <summary>What Tatara's calls take, and nothing else: the host's report (a call's message on success, as a Warning) and cancellation
-/// (checked before and inside the lock), and the target values of TataraTarget, in its order (WindowsProfile's).</summary>
+/// (checked before and inside the lock), and the target values of TataraTarget, in its order (TargetProfile.Windows's).</summary>
 internal sealed record TataraContext(
     Action<DiagnosticSeverity, string> Report,
     CancellationToken CancellationToken,
@@ -280,6 +280,7 @@ internal sealed record TataraContext(
 /// <summary>A symbol of an object: its name and llvm-nm's letter for its kind (U, T, D, B, R, ...).</summary>
 internal readonly record struct ObjectSymbol(string Name, char Kind);
 
-/// <summary>What <see cref="Tatara.Inspect"/> reads from an object; NativeBuild judges them and writes the record's form.
-/// <c>HasUnwind</c>: the object has unwind entries; <c>HasDefaultLibrary</c>: it names a default library.</summary>
+/// <summary>What <see cref="Tatara.Inspect"/> reads from an object; NativeBuild judges them, but <c>HasUnwind</c>, and writes the record's
+/// form. <c>HasUnwind</c>: the object has unwind entries, which no build judges (an object of frameless leaves has none, IMPL 21.4); its
+/// removal is staged with tatara.h's flag kind 0. <c>HasDefaultLibrary</c>: it names a default library.</summary>
 internal readonly record struct ObjectFacts(IReadOnlyList<ObjectSymbol> Undefined, IReadOnlyList<ObjectSymbol> DefinedExternal, bool HasUnwind, bool HasDefaultLibrary);

@@ -326,11 +326,11 @@ public class LibraryImportTargetBindingTest
         {
             var c = Compilation.CreateForTest();
             c.IsTestBuild = testBuild;
-            c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+            c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal)
             {
                 ["codec"] = new() { Kind = "import" },
             };
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", marker + Declaration + Use));
             for (var pass = 0; pass < 2; pass++)
             {
@@ -374,7 +374,6 @@ public class LibraryImportTargetBindingTest
 
     [Theory]
     [InlineData("kernel32", "GetLastError", "()", "i32", null, false)]
-    [InlineData("kernel32", "GetProcessHeap", "()", "raw/u8", null, false)]
     [InlineData("kernel32", "GetStdHandle", "(which: i32)", "raw/u8", null, false)]
     [InlineData("kernel32", "WriteFile", "(handle: raw/u8, data: raw/u8, length: u32, written: raw/u32, overlapped: raw/u8)", "i32", null, false)]
     [InlineData("kernel32", "GetLastError", "()", "i64", null, true)]
@@ -383,9 +382,12 @@ public class LibraryImportTargetBindingTest
     [InlineData("kernel32", "GetEnvironmentVariableA", "(name: raw/u8, buffer: raw/u8, size: u32)", "i32", null, false)]
     [InlineData("kernel32", "SetHandleInformation", "(handle: raw/u8, mask: u32, flags: u32)", "u32", null, false)]
     [InlineData("kernel32", "SetHandleInformation", "(handle: raw/u8, mask: u32, flags: u32)", "i64", null, true)]
-    [InlineData("kernel32", "VirtualAlloc", "()", "raw/u8", null, false)]
+    [InlineData("kernel32", "VirtualAlloc", "()", "raw/u8", null, true)]
+    [InlineData("kernel32", "VirtualAlloc", "(address: raw/u8, size: u64, kind: u32, protect: u32)", "raw/u8", null, false)]
+    [InlineData("kernel32", "VirtualFree", "(address: raw/u8, size: u64, kind: u32)", "i32", null, false)]
     [InlineData("kimi_backend", "GetLastError", "()", "i32", null, true)]
     [InlineData("codec", "GetLastError", "()", "i32", "codec", true)]
+    [InlineData("codec", "HeapAlloc", "(heap: raw/u8, flags: u32, bytes: u64)", "raw/u8", "codec", false)] // B7r3: no longer a runtime declaration.
     [InlineData("codec", "symbol", "()", "i32", "codec", false)]
     public void RuntimeDeclarationsAreSharedOnlyByAgreeingImports(string library, string symbol, string parameters, string result, string? requirement, bool conflict)
     {
@@ -406,12 +408,12 @@ public class LibraryImportTargetBindingTest
     public void OneExternalSymbolRequiresOneSupplyKind(string first, string second, bool conflict)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal)
         {
             ["codec"] = new() { Kind = first },
             ["codec2"] = new() { Kind = second },
         };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var source = "group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()\n" +
             "group B\n    #LibraryImport(\"codec2\", \"shared\")\n    public unsafe func call(value: i32) -> ()";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
@@ -422,13 +424,13 @@ public class LibraryImportTargetBindingTest
     }
 
     [Theory]
-    [InlineData("kernel32", "VirtualAlloc", "static")]
+    [InlineData("kernel32", "VirtualProtect", "static")]
     [InlineData("kimi_backend", "kimi_helper", "import")]
     public void ReservedSupplyKindsParticipateInSymbolAgreement(string library, string symbol, string requirement)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = requirement } };
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = requirement } };
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var source = "group A\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func reserve(size: u64) -> raw/u8\n" +
             "group B\n    #LibraryImport(\"codec\", \"" + symbol + "\")\n    public unsafe func reserve(size: u64) -> raw/u8";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
@@ -448,24 +450,30 @@ public class LibraryImportTargetBindingTest
             "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
             configure: (root, library) =>
             {
-                root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-                library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
+                root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
             });
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
     }
 
+    // The process heap's three left kernel32's set with the runtime's declarations (the Tatara plan's decision 23, B7r3): an import with the
+    // signature the runtime declared them with is unavailable, as is an import of any other kernel32 function the set lacks; row 27's
+    // valid twin, VirtualProtect with HeapAlloc's signature, stays accepted.
     [Theory]
-    [InlineData("kernel32", "VirtualAlloc", false)]
-    [InlineData("kernel32", "GetLastError", false)]
-    [InlineData("kernel32", "CreateFileA", true)]
-    [InlineData("kernel32", "VirtualQuery", true)]
-    [InlineData("kimi_backend", "kimi_helper", true)]
-    public void AReservedSupplyProvidesOnlyItsCatalog(string library, string symbol, bool unavailable)
+    [InlineData("kernel32", "VirtualProtect", "() -> i32", false)]
+    [InlineData("kernel32", "VirtualProtect", "(heap: raw/u8, flags: u32, bytes: u64) -> raw/u8", false)]
+    [InlineData("kernel32", "GetLastError", "() -> i32", false)]
+    [InlineData("kernel32", "CreateFileA", "() -> i32", true)]
+    [InlineData("kernel32", "VirtualQuery", "() -> i32", true)]
+    [InlineData("kernel32", "GetProcessHeap", "() -> raw/u8", true)]
+    [InlineData("kernel32", "HeapAlloc", "(heap: raw/u8, flags: u32, bytes: u64) -> raw/u8", true)]
+    [InlineData("kimi_backend", "kimi_helper", "() -> i32", true)]
+    public void AReservedSupplyProvidesOnlyItsCatalog(string library, string symbol, string signature, bool unavailable)
     {
         // The backend catalog itself is made of reserved external names, so no kimi_backend import remains.
-        var c = AnalyzeImport("group Native\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func imported() -> i32", null);
+        var c = AnalyzeImport("group Native\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func imported" + signature, null);
         Assert.Equal(unavailable, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnavailableReservedImport_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.Equal(!unavailable, c.Binding.Result.IsComplete);
@@ -479,14 +487,14 @@ public class LibraryImportTargetBindingTest
             "group Native\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()",
             configure: (root, library) =>
             {
-                root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-                library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
             });
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd);
     }
 
-    // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (DECISIONS BU-92),
+    // IMPL 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (DECISIONS BU-92),
     // so its import of a library other than a reserved supply is the located Unsupported_Kd at the #LibraryImport, after the import's own checks:
     // a missing requirement stays the Language error alone. Either way the import is no LibraryImports entry publication would link.
     [Theory]
@@ -501,12 +509,12 @@ public class LibraryImportTargetBindingTest
             {
                 if (rootRequirement)
                 {
-                    root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                    root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
                 }
 
                 if (libraryRequirement)
                 {
-                    library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+                    library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
                 }
             });
         Assert.False(c.Bind().IsComplete);
@@ -521,9 +529,9 @@ public class LibraryImportTargetBindingTest
     [Fact]
     public void ADependencyModuleImportsKernel32()
     {
-        var c = ModuleBindingTest.Create("func main() => ()", "group Native\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func imported() -> i32");
+        var c = ModuleBindingTest.Create("func main() => ()", "group Native\n    #LibraryImport(\"kernel32\", \"VirtualProtect\")\n    public unsafe func imported() -> i32");
         Assert.True(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.LibraryImports, x => x.Symbol == "VirtualAlloc" && x.Decl.Declaration.CodeContext.Kotonoha != c.Kotonoha);
+        Assert.Contains(c.Binding.LibraryImports, x => x.Symbol == "VirtualProtect" && x.Decl.Declaration.CodeContext.Kotonoha != c.Kotonoha);
     }
 
     // IMPL 20.4: the compiler links its reserved supplies for every module, so a dependency module's kimi_backend import has the
@@ -561,15 +569,15 @@ public class LibraryImportTargetBindingTest
         {
             if (combinedSupply)
             {
-                c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
+                c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
             }
             else
             {
-                c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "import" } };
+                c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "import" } };
             }
         }
 
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         return c;

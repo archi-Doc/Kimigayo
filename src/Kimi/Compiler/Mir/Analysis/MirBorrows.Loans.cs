@@ -10,22 +10,24 @@ namespace Kimi.Compiler.Mir;
 // static (R3) or a write rooted at a default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots,
 // the mutable statics its Loans are on, each static's A4 Field number, whether the view drops a mutable static and, by block, the
 // statics its Direct Loans borrow (MirBorrows.Passes' entries); whether the view has a raw Ref, whose address MirBorrows.Addresses
-// forms; and by local, whether a direct Loan or address names it (a flow holder), whether it is an exposed holder (Exposed) and the
-// stores that give its reference the Places it refers to (Referring: wherever it is read, Referred).
+// forms; and by local, whether a direct Loan or address names it (a flow holder), whether it is an exposed holder (Exposed) and its
+// stores, the one record of them (Refer), which gives its reference the Places it refers to (Referring: wherever it is read, Referred),
+// the borrow it holds (MirBorrows.Lent's Lender) and the Place a Ref lent into it (LentInto).
 internal sealed partial class MirBorrows
 {
     private const byte NamedHolder = 1; // named: a direct Loan or address names the local, so it is a flow holder (MirBorrows.Holders).
     private const byte ExposedHolder = 2; // named: an exposed holder (Exposed).
     private const byte ExclusiveReference = 4; // named: a referring store gives the local an exclusive reference (Referred).
-    private const int Unfollowed = -2; // referFirst: a store into a Place rooted at the local is no referring one (Referring).
+    private const byte OtherStore = 8; // named: a store into the local's whole Place is no referring one (Referring; MirBorrows.Lent's Lender).
+    private const byte PartStore = 16; // named: a store into a part of the local, so its stores are not followed (Referring, Lender).
+    private const byte OwnerExposed = 32; // named: an own-step entry exposes its owner's storage in the local (Exposed), which Lender never passes.
 
     private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
-    private byte[] named = []; // By local: NamedHolder, ExposedHolder and ExclusiveReference.
+    private byte[] named = []; // By local: NamedHolder, ExposedHolder, ExclusiveReference, OtherStore, PartStore and OwnerExposed.
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
-    private MirPlace[] lent = []; // By local: the Place a Ref lent into it, or the local itself.
-    private int[] referFirst = []; // By local: its last referring store in referStores, -1 for none, or Unfollowed (Referred).
-    private int[] referStores = []; // The referring stores, two entries each: the statement, and its local's store before it.
-    private int referCount; // The referring stores.
+    private int[] referFirst = []; // By local: its last whole store in referStores, -1 for none (Referred).
+    private int[] referStores = []; // The whole stores, two entries each: the location, and its local's store before it.
+    private int referCount; // The whole stores.
     private Loan[] loans = [];
     private MirStep[] loanSteps = []; // The Loans' Places, each a run.
     private int[] loanAt = []; // By location (Location): the Loan its Ref or Reborrowing PairAcquire issues, or -1.
@@ -45,7 +47,11 @@ internal sealed partial class MirBorrows
     // Whether a local is an exposed holder (PLAN G598; SPEC 5.2, 5.5): a non-shared direct Loan or address of the body names it, or an
     // Opaque site touched it, so a pointer the body formed may write its bytes at any later point, also where A5 reads no store (a
     // callee's scalar store, a pun); no other pointer reaches a local. A shared Loan gives no write authority (SPEC 5.2.1 condition 3).
-    private bool Exposed(int local) => (this.named[local] & ExposedHolder) != 0;
+    // An own-step entry exposes its owner's storage only (OwnerExposed): a `during self` pointer addresses storage the value holding the
+    // layer owns, an own step of that value (SPEC 5.7's Origin table), a defined access stays within it (5.7 Fits and claims), and an
+    // owning handle's pointer its payload; MirBorrows.Lent's Lender never passes such storage, so it reads ExposedHolder alone, the plain
+    // address's bit (15.6 Addresses: `P@raw` through no dereference addresses the holder at the root).
+    private bool Exposed(int local) => (this.named[local] & (ExposedHolder | OwnerExposed)) != 0;
 
     // Whether a local's reference refers only to Places its stores name, and the last of those stores (the one before each in
     // referStores): every store of the body into a Place rooted at the local is a referring one, a non-raw Ref of a Place, a Reborrow
@@ -55,7 +61,27 @@ internal sealed partial class MirBorrows
     private bool Referring(int local, out int store)
     {
         store = this.referFirst[local];
-        return store != Unfollowed && !this.Exposed(local);
+        return !this.Exposed(local) && (this.named[local] & (OtherStore | PartStore)) == 0;
+    }
+
+    // The Place the last non-raw Ref into a local's whole Place lent into it, or the local itself: a Call's input temp's target and its
+    // destroying reservations' Type read it flow-insensitively (G136, R5-M72: the builder writes such a temp once, MirValidator's Lent).
+    // It reads the store record, as Lender does: Lender gives the one borrow of a local's one store, followed through Copies, for a
+    // position; this the Place of the last Ref, whatever the other stores, for a temp written once.
+    private MirPlace LentInto(int local)
+    {
+        for (var store = this.referFirst[local]; store >= 0; store = this.referStores[(2 * store) + 1])
+        {
+            var location = this.referStores[2 * store];
+            if (location < this.body.Statements.Length && this.body.Statements[location].Rvalue is var assigned &&
+                (assigned.Kind == MirRvalueKind.Adapt ? cases.Adapt(assigned, out _) : assigned) is { Kind: MirRvalueKind.Ref } rvalue &&
+                (MirRefKind)rvalue.Op != MirRefKind.Raw)
+            {
+                return rvalue.Place;
+            }
+        }
+
+        return new(local);
     }
 
     // Whether a local's reference refers, wherever the local is read, only to Places its stores name (Referring), and the last store:
@@ -74,12 +100,12 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.loanAt, locations);
         MirDataflow.Grow(ref this.borrowed, keys);
         MirDataflow.Grow(ref this.named, locals);
-        MirDataflow.Grow(ref this.lent, locals);
         MirDataflow.Grow(ref this.referFirst, locals);
         Array.Fill(this.loanAt, -1, 0, locations);
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
         Array.Fill(this.referFirst, -1, 0, locals);
+        this.Unlend();
         foreach (var use in this.body.OpaqueUses)
         {
             if (use.Root >= 0)
@@ -100,7 +126,6 @@ internal sealed partial class MirBorrows
         this.effectRoots.Clear();
         for (var i = 0; i < locals; i++)
         {
-            this.lent[i] = new(i);
             this.producing |= this.MarkerOf(i) == Marker.Guard;
         }
 
@@ -121,36 +146,31 @@ internal sealed partial class MirBorrows
                 this.producing |= MirSteps.Prepared(this.body, statement.Place.Root);
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 this.rawRefs |= rvalue is { Kind: MirRvalueKind.Ref or MirRvalueKind.Storage, Op: (byte)MirRefKind.Raw };
-                var (refers, exclusive) = (statement.Place.Projection == 0, false);
+                byte store; // What the store gives its local (Refer): a referring one's exclusive bit, or OtherStore.
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
                 {
                     this.loanAt[data.Start + i] = this.Issue(rvalue.Place, reborrow: false, (MirRefKind)rvalue.Op, statement.Place.Root, data.Start + i);
-                    if (statement.Place is { Projection: 0, Root: >= 0 } into)
-                    {
-                        this.lent[into.Root] = rvalue.Place;
-                    }
-
-                    exclusive = (MirRefKind)rvalue.Op != MirRefKind.Shared;
+                    store = (MirRefKind)rvalue.Op != MirRefKind.Shared ? ExclusiveReference : (byte)0;
                 }
                 else if (this.Reborrowing(statement) is var kind and not MirRefKind.Raw)
                 {
                     var place = this.body.Operands[rvalue.Start].Place;
                     this.loanAt[data.Start + i] = this.Issue(place, reborrow: true, kind, statement.Place.Root, data.Start + i);
-                    (refers, exclusive) = (refers && place is { Root: >= 0, Projection: 0 }, true);
+                    store = place is { Root: >= 0, Projection: 0 } ? ExclusiveReference : OtherStore;
                 }
                 else
                 {
-                    refers &= rvalue.Kind == MirRvalueKind.Use &&
-                        this.body.Operands[rvalue.Start] is { Kind: MirOperandKind.Copy or MirOperandKind.Move, Place: { Root: >= 0, Projection: 0 } };
+                    store = rvalue.Kind == MirRvalueKind.Use &&
+                        this.body.Operands[rvalue.Start] is { Kind: MirOperandKind.Copy or MirOperandKind.Move, Place: { Root: >= 0, Projection: 0 } } ? (byte)0 : OtherStore;
                 }
 
-                this.Refer(statement.Place.Root, refers ? data.Start + i : -1, exclusive);
+                this.Refer(statement.Place, data.Start + i, store);
             }
 
             var terminator = data.Terminator;
             if (terminator.Kind == MirTerminatorKind.Call)
             {
-                this.Refer(terminator.Place.Root, -1, false);
+                this.Refer(terminator.Place, this.Location(block, data.Count), OtherStore);
             }
 
             this.dropsStatic |= this.DroppedStatic(terminator) >= 0;
@@ -165,23 +185,24 @@ internal sealed partial class MirBorrows
         this.Work += locations;
     }
 
-    // One more store into a Place rooted at a local (Referring): a referring one, by its statement, exclusive where it gives an exclusive
-    // reference, or another (-1), after which the local's reference is not followed; a static has none to count.
-    private void Refer(int root, int referring, bool exclusive)
+    // One more store into a Place rooted at a local, by its location (Referring, MirBorrows.Lent's Lender, LentInto): into the local's whole
+    // Place, listed with what it gives the local (ExclusiveReference for a referring one that gives an exclusive reference, OtherStore for no
+    // referring one); into a part, PartStore, after which the local's stores are not followed; a static has none to count.
+    private void Refer(MirPlace place, int location, byte store)
     {
-        if (root < 0 || this.referFirst[root] == Unfollowed)
+        if (place.Root < 0)
         {
             return;
         }
 
-        if (referring < 0)
+        if (place.Projection != 0)
         {
-            this.referFirst[root] = Unfollowed;
+            this.named[place.Root] |= PartStore;
         }
         else
         {
-            this.referCount = Linked(ref this.referStores, this.referFirst, (root, referring), this.referCount);
-            this.named[root] |= exclusive ? ExclusiveReference : (byte)0;
+            this.referCount = Linked(ref this.referStores, this.referFirst, (place.Root, location), this.referCount);
+            this.named[place.Root] |= store;
         }
     }
 

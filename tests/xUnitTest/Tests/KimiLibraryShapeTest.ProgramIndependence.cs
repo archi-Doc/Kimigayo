@@ -24,7 +24,7 @@ public partial class KimiLibraryShapeTest
     private const string Milestone31 = "tests/milestones/Milestone31.kimi";
 
     // The empty program's check, the reference of every row; not the Library compilation the other tests read, which is bound only.
-    private static readonly Lazy<Compilation> EmptyProgram = new(() => Check(Compilation.CreateForTest(), string.Empty, WindowsProfile.Target));
+    private static readonly Lazy<Compilation> EmptyProgram = new(() => Check(Compilation.CreateForTest(), string.Empty, TargetProfile.Windows.Target));
 
     private static readonly Lazy<(string Fact, string[] Lines)[]> EmptyProgramFacts = new(() => Facts(EmptyProgram.Value));
 
@@ -44,7 +44,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("docs/examples/Utf8Formatting/Utf8Formatting.kimi")]
     public void TheLibraryIsIndependentOfTheProgram(string program)
     {
-        var c = Check(Compilation.CreateForTest(), program, WindowsProfile.Target);
+        var c = Check(Compilation.CreateForTest(), program, TargetProfile.Windows.Target);
         SameAsTheEmptyPrograms(c);
     }
 
@@ -58,7 +58,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("documentation and hover")]
     public void TheLibraryIsIndependentOfTheInputs(string input)
     {
-        var (c, target) = (Compilation.CreateForTest(), WindowsProfile.Target);
+        var (c, target) = (Compilation.CreateForTest(), TargetProfile.Windows.Target);
         switch (input)
         {
             case "test build":
@@ -90,13 +90,13 @@ public partial class KimiLibraryShapeTest
         var c = Checked(ModuleBindingTest.Create(source, "public group Api\n    public func value() => ()", configure: static (root, _) =>
         {
             root.Alias = ["Lib.Api"];
-            root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+            root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         }));
-        Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha));
-        Assert.NotNull(c.Configuration(c.Kotonoha)!.NativeRequirements[WindowsProfile.Target]["codec"]);
+        Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha).Select(static x => x.Path));
+        Assert.NotNull(c.Configuration(c.Kotonoha)!.NativeRequirements[TargetProfile.Windows.Target]["codec"]);
         Assert.NotNull(c.References(c.Kotonoha));
         var library = c.Library.Kotonoha;
-        Assert.Equal(["Kimi"], c.DefaultAliases(library));
+        Assert.Equal(["Kimi"], c.DefaultAliases(library).Select(static x => x.Path));
         Assert.Null(c.Configuration(library));
         Assert.Null(c.References(library));
         SameAsTheEmptyPrograms(c);
@@ -113,7 +113,7 @@ public partial class KimiLibraryShapeTest
     [InlineData(Milestone31)]
     public void ACompilationsLibraryBodiesAreTheLibraryChecks(string program)
     {
-        var c = Check(Compilation.CreateForTest(), program, WindowsProfile.Target);
+        var c = Check(Compilation.CreateForTest(), program, TargetProfile.Windows.Target);
         var (own, library) = (c.BuildMir(), MirBuildTest.LibraryRange(c));
         var built = own.Bodies.ToArray().Where(static x => x.Source.IsLibrary).ToArray();
         Assert.Equal(program.Length == 0, built.Length == 0);
@@ -231,7 +231,7 @@ public partial class KimiLibraryShapeTest
 
     // A declaration's own symbol state, which each pass rewrites (design C3) and the tree's lines do not print.
     private static string State(BindingSymbol s, Printer printer)
-        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={printer.Type(s.ContractSelf)} receiver={s.ReceiverIndex}" +
+        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={Where(s.SelfSymbol)}:{printer.Type(s.SelfSymbol?.Type)} receiver={s.ReceiverIndex}" +
             $" next={Where(s.Next)} selfOf={Where(s.SelfOf)} pair={Where(s.Pair)} optOut={Where(s.ObjectPayloadOptOut)} scope={Where(s.Scope.Owner)}" +
             $" contract={s.Contract is not null} property={s.Property is not null} case={s.EnumCase?.Ordinal} schema={s.Schema is not null}" +
             $" adt={s.Adt is not null} source={s.SourceState} resolving={s.Resolving} slot={s.Slot}" +
@@ -239,13 +239,13 @@ public partial class KimiLibraryShapeTest
 
     // A scope's members and facts: a program pass that added to a library scope would show here.
     private static string Scope(BindingScope scope)
-        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] values=[{Names(scope.Values)}]" +
+        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] parameters=[{Names(scope.Parameters?.Types)}] values=[{Names(scope.Values)}] lengths=[{Names(scope.Parameters?.Values)}]" +
             $" origins=[{string.Join(',', scope.Origins?.Keys.Order(StringComparer.Ordinal) ?? Enumerable.Empty<string>())}]" +
             $" constraints={scope.Constraints is not null}" +
             $" premises={Where(scope.ImplementationPremises?.Owner)} path={scope.ConformancePath is not null}";
 
-    private static string Names(Dictionary<string, BindingSymbol> names)
-        => string.Join(',', names.OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
+    private static string Names(Dictionary<string, BindingSymbol>? names)
+        => string.Join(',', (names ?? new()).OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
 
     private static string Where(BindingSymbol? symbol) => Where(symbol?.Declaration);
 

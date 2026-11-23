@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -7,8 +8,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly CallInferenceFailureRows callInferenceFailures;
-
     // Test/measurement switch for the full reference path. It never changes language behavior.
     internal bool UseConstructorReferenceCheck { get; set; }
 
@@ -58,6 +57,7 @@ public sealed partial class Binding
         return true;
     }
 
+    // A constructor check's closed reason, the low byte of its record's Reason (RecordCorrelation, ValidateFixedConstruction's Reject).
     internal enum ConstructionCheck : byte
     {
         ChangedSelection,
@@ -65,8 +65,6 @@ public sealed partial class Binding
         UnprovenCandidate,
         AcquisitionCorrelation,
     }
-
-    internal readonly record struct CallInferenceFailure(FunctionKoto Selected, FunctionKoto? Other, BoundType? Construction, ConstructionCheck Check, int Slot = -1, BoundType? LeftBinding = null, BoundType? RightBinding = null);
 
     private static bool ContainsUnspellableType(BoundType type)
     {
@@ -87,15 +85,24 @@ public sealed partial class Binding
     }
 
     // The reference check restores the original declaration group, including inference-rejected
-    // candidates. Syntax mappings are unchanged; only binding-dependent applicability is rerun.
-    private bool ValidateFixedConstruction(InvocationKoto call, BindingScope scope, BoundType? expected, BoundType construction, ReadOnlySpan<EvaluatedCandidate> original, int selected, int[] allMaps, int[] mapping, SlotFrame[] frames, BoundOrigin[] origins, BoundOrigin[] inputs, BoundOrigin[] allOrigins, BoundOrigin[] allInputs, int originStride, int inputStride, BoundArgumentOperation[] operations, int stride, bool[] completedWaiting, BoundType?[] waitingContexts)
+    // candidates. Syntax mappings are unchanged (each candidate's MappingOf, read); only binding-dependent applicability is rerun. The
+    // re-check never solves through the evaluation's Solution: its rows, child slice, operations, Origins and input Origins are its own
+    // scratch, and only the selected candidate's Origins (at its re-trial) and operations (on success) are copied into its columns.
+    private bool ValidateFixedConstruction(in CallEvaluation evaluation, BoundType construction, int selected, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
+        var call = evaluation.Call;
+        var scope = evaluation.Scope;
+        var frames = evaluation.Frames;
+        var stride = evaluation.OperationStride;
+        var original = evaluation.Evaluated.AsSpan(0, evaluation.Count);
         var count = original.Length;
         var argumentCount = call.ArgumentNodes.Count;
         var checkedCandidates = this.candidateScratch.Rent(count);
         var checkedOperations = this.argumentOperationScratch.Rent(count * stride);
         var rows = this.rowScratch.Rent(argumentCount);
         var childSlice = this.indexScratch.Rent(2);
+        var origins = this.originScratch.Rent(evaluation.OriginSlots);
+        var inputs = this.originScratch.Rent(evaluation.InputSlots);
         var childBase = this.childRows.Count;
         var positionBase = this.positionOperations.Count;
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
@@ -127,13 +134,8 @@ public sealed partial class Binding
                     }
 
                     checkedCandidates[i] = previous;
-                    operations.AsSpan(i * stride, stride).CopyTo(candidateOperations);
+                    evaluation.OperationsOf(i).CopyTo(candidateOperations);
                     continue;
-                }
-
-                if (count > 1)
-                {
-                    allMaps.AsSpan(i * argumentCount, argumentCount).CopyTo(mapping);
                 }
 
                 if (this.MeasureCallInference)
@@ -141,42 +143,42 @@ public sealed partial class Binding
                     this.inferenceFixedChecks++;
                 }
 
-                RequireOriginWidths(function, originStride, inputStride);
-                var state = this.TryCandidate(
-                    new SlotSolution
-                    {
-                        Binding = this,
-                        Call = call,
-                        Binder = function,
-                        Scope = scope,
-                        DeclaringType = construction,
-                        Frame = frames[i], // R7-I2 c: a re-trial of candidate i writes its own frame.
-                        Origins = origins,
-                        Inputs = inputs,
-                        FixedConstruction = true,
-                        Rows = rows.AsSpan(0, argumentCount), // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
-                        ChildSlice = ResetSlice(childSlice), // R3: the re-check's own composition, at its first solve.
-                    },
-                    mapping,
-                    previous.ArgumentMap,
-                    expected,
-                    candidateOperations,
-                    out var defaults,
-                    out var unbound,
-                    out var receiver,
-                    out _,
-                    out var failure,
-                    out var premiseUnknown);
+                RequireOriginWidths(function, evaluation.OriginSlots, evaluation.InputSlots);
+                var mapping = evaluation.MappingOf(i);
+                var solution = new SlotSolution
+                {
+                    Binding = this,
+                    Call = call,
+                    Binder = function,
+                    Scope = scope,
+                    DeclaringType = construction,
+                    Frame = frames[i], // R7-I2 c: a re-trial of candidate i writes its own frame.
+                    Mapping = mapping,
+                    Origins = origins.AsSpan(0, evaluation.OriginSlots),
+                    Inputs = inputs.AsSpan(0, evaluation.InputSlots),
+                    FixedConstruction = true,
+                    Rows = rows.AsSpan(0, argumentCount), // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
+                    ChildSlice = ResetSlice(childSlice), // R3: the re-check's own composition, at its first solve.
+                };
+                Debug.Assert(
+                    !solution.Rows.Overlaps(evaluation.Rows) && !solution.ChildSlice.Overlaps(evaluation.ChildSlices) &&
+                    !solution.Origins.Overlaps(evaluation.Origins) && !solution.Inputs.Overlaps(evaluation.Inputs),
+                    "The fixed re-check solves into its own scratch.");
+                // The re-check's own row, seeded from the first evaluation's argument map (no requirement group: the view is null).
+                ref var row = ref checkedCandidates[i];
+                row = new(previous.Symbol, CandidateApplicability.Inapplicable, construction, 0, ArgumentMap: previous.ArgumentMap);
+                this.TryCandidate(solution, evaluation.Expected, candidateOperations, ref row);
+
                 // SPEC 10.1, 10.2.1 (PLAN G680): the selected constructor, its waiting arguments completed, keeps its selection past a
                 // refuted clause, which is the call's obligation (AsSelected), never a changed selection.
-                state = i == selected ? AsSelected(state, failure, CandidateApplicability.Applicable) : state;
-                checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap, PremiseUnknown: premiseUnknown);
-                if ((state == CandidateApplicability.Pending && !premiseUnknown) || state == CandidateApplicability.Error || unbound)
+                row.State = i == selected ? AsSelected(row.State, row.ConstraintFailure, CandidateApplicability.Applicable) : row.State;
+                var state = row.State;
+                if ((state == CandidateApplicability.Pending && !row.PremiseUnknown) || state == CandidateApplicability.Error || row.Unsolved)
                 {
                     return Reject(function, ConstructionCheck.UnprovenCandidate);
                 }
 
-                unproven ??= premiseUnknown ? function : null;
+                unproven ??= row.PremiseUnknown ? function : null;
 
                 if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                 {
@@ -190,7 +192,7 @@ public sealed partial class Binding
                         var pattern = function.Parameters[mapping[a]].Type.BoundType!;
                         // SPEC 10.5, 10.8: the context its completion used, S for a waiting callable and else the parameter Type.
                         var contextPattern = this.WasWaitingCallable(call.ArgumentNodes[a]) ? this.ExpectedCallSignature(function, pattern) : pattern;
-                        var context = contextPattern is null ? null : this.CallType(contextPattern, function, frames[i].Types, scope, null, origins, inputs, construction, frames[i].Lengths);
+                        var context = contextPattern is null ? null : this.CallType(contextPattern, function, frames[i].Types, scope, null, solution.Origins, solution.Inputs, construction, frames[i].Lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&
                             (context is null || usedContext is null || !this.IsSubtype(context, usedContext) || !this.IsSubtype(usedContext, context)))
@@ -205,10 +207,10 @@ public sealed partial class Binding
                     return Reject(function, ConstructionCheck.WaitingContext);
                 }
 
-                if (count > 1 && i == selected)
+                if (i == selected)
                 {
-                    origins.AsSpan(0, originStride).CopyTo(allOrigins.AsSpan(i * originStride));
-                    inputs.AsSpan(0, inputStride).CopyTo(allInputs.AsSpan(i * inputStride));
+                    solution.Origins.CopyTo(evaluation.OriginsOf(i));
+                    solution.Inputs.CopyTo(evaluation.InputsOf(i));
                 }
             }
 
@@ -233,19 +235,14 @@ public sealed partial class Binding
                 return Reject(other < 0 ? null : (FunctionKoto)original[other].Symbol!.Declaration, ConstructionCheck.ChangedSelection);
             }
 
-            checkedOperations.AsSpan(selected * stride, stride).CopyTo(operations.AsSpan(selected * stride, stride));
+            checkedOperations.AsSpan(selected * stride, stride).CopyTo(evaluation.OperationsOf(selected));
             _ = this.FixCallSlots(call, selectedFunction, construction, [], [], frames[selected], fixedConstruction: true);
-            if (count > 1)
-            {
-                allMaps.AsSpan(selected * argumentCount, argumentCount).CopyTo(mapping);
-                allOrigins.AsSpan(selected * originStride, originStride).CopyTo(origins);
-                allInputs.AsSpan(selected * inputStride, inputStride).CopyTo(inputs);
-            }
-
             return true;
         }
         finally
         {
+            this.originScratch.Return(inputs, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
@@ -254,42 +251,71 @@ public sealed partial class Binding
             this.candidateScratch.Return(checkedCandidates, clearArray: true);
         }
 
+        // SPEC 10.8: the check (Reason), the tentative selection (role 0) with the construction it was selected for (its Instance, a
+        // construction's constructed Type), and the constructor the check found instead (role 1), when it is another.
         bool Reject(FunctionKoto? other, ConstructionCheck check)
         {
-            this.FailExplained(CallInferenceFailureRows.Family, call, BindingFailure.ConstructorSelectionChanged, new CallInferenceFailure(selectedFunction, other, construction, check), true);
+            var site = this.FactSite(selectedFunction);
+            this.candidateFacts.Add(new(ProblemFactKind.Reason, SourceRef.Of(call), (long)check));
+            this.candidateFacts.Add(new(ProblemFactKind.Related, site, 0));
+            this.candidateFacts.Add(new(ProblemFactKind.Instance, site, this.report.Keep(construction)));
+            if (other is not null && !ReferenceEquals(other, selectedFunction))
+            {
+                this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(other), 1));
+            }
+
+            this.RecordSelection(call, BindingFailure.ConstructorSelectionChanged);
             return false;
         }
     }
 
-    private void ReportCallInferenceFailure(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code, CallInferenceFailure fact)
+    // SPEC 7.4: a group contract's correlation at a slot that the call's inputs and fixed bindings do not establish (CheckCallShapeContracts):
+    // the check with the slot's ordinal above it (Reason), the group contract (role 0), the corresponding declaration (role 1), when it is
+    // another, and, where both are known, the slot's two bindings at its Type parameter, Actual then Expected as the candidate builder's
+    // pair: the corresponding declaration's found (Actual), the group contract's required (Expected).
+    private void RecordCorrelation(InvocationKoto call, FunctionKoto group, FunctionKoto corresponding, int slot, BoundType? left, BoundType? right)
     {
-        var correlation = fact.Check == ConstructionCheck.AcquisitionCorrelation;
-        (string Role, Koto At, string? Label)[] related = fact.Other is { } other && !ReferenceEquals(fact.Selected, other)
-            ? [("declaration", fact.Selected, correlation ? "Group contract" : "Tentative selection"), ("declaration", other, correlation ? "Corresponding declaration" : "Fixed-binding check")]
-            : [("declaration", fact.Selected, "Tentative selection")];
-        var note = fact.Check switch
+        this.candidateFacts.Add(new(ProblemFactKind.Reason, SourceRef.Of(call), (long)ConstructionCheck.AcquisitionCorrelation | ((long)slot << 8)));
+        this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(group), 0));
+        if (!ReferenceEquals(corresponding, group))
+        {
+            this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(corresponding), 1));
+        }
+
+        if (left is not null && right is not null)
+        {
+            var parameter = this.FactSite(CallOwnSlots(group)[slot]);
+            this.candidateFacts.Add(new(ProblemFactKind.Actual, parameter, this.report.Keep(right)));
+            this.candidateFacts.Add(new(ProblemFactKind.Expected, parameter, this.report.Keep(left)));
+        }
+
+        this.RecordSelection(call, BindingFailure.UnprovenAcquisitionCorrelation);
+    }
+
+    // SPEC 7.4, 10.8, 23.3: a constructor check's record from its facts (Reject, RecordCorrelation): the check and a correlation's slot, the
+    // two declarations labelled by the check (the second read by its role), the Note by the check, and as evidence the construction or the
+    // slot with its two bindings in the group contract's order. The record has no Cause fact (RecordSelection's record), so its tail is the
+    // pair, read by position.
+    private void ReportConstructionCheck(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var check = (ConstructionCheck)(byte)facts[0].Value;
+        var selected = (FunctionKoto)this.compilation.SyntaxOf(facts[1].Site);
+        var correlation = check == ConstructionCheck.AcquisitionCorrelation;
+        (string Role, Koto At, string? Label)[] related = facts[(correlation ? 2 : 3)..] is [{ Kind: ProblemFactKind.Related, Value: 1 } other, ..]
+            ? [("declaration", selected, correlation ? "Group contract" : "Tentative selection"), ("declaration", this.compilation.SyntaxOf(other.Site), correlation ? "Corresponding declaration" : "Fixed-binding check")]
+            : [("declaration", selected, "Tentative selection")];
+        var note = check switch
         {
             ConstructionCheck.WaitingContext => "The fixed-binding check needs a different or additional waiting-argument context; the argument is never analyzed again to select another constructor (SPEC 10.8)",
             ConstructionCheck.UnprovenCandidate => "The original constructor group cannot be fully judged with the inferred construction Type fixed (SPEC 10.8)",
             ConstructionCheck.AcquisitionCorrelation => "The group contract is checked before applicability filtering; independent inputs and fixed bindings do not establish the required shared acquisition (SPEC 7.4)",
             _ => "The original constructor group, including inference-rejected candidates, no longer has the same unique Best Candidate when the construction Type is fixed (SPEC 10.8)",
         };
-        object[] evidence = correlation
-            ? fact.LeftBinding is { } left && fact.RightBinding is { } right
-                ? [CallOwnSlots(fact.Selected)[fact.Slot].Identifier, DiagnosticTypeName(left), DiagnosticTypeName(right)]
-                : [CallOwnSlots(fact.Selected)[fact.Slot].Identifier]
-            : [DiagnosticTypeName(fact.Construction!)];
-        node.ReportIn(store, requirement, code, evidence: evidence, related: related, note: note);
-    }
-
-    /// <summary>The `callInferenceFailures` family's one accessor (DECISIONS BU-220): a pass family, the selection a fixed construction's
-    /// or shape contract's later check rejected, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a
-    /// present row always has its Selected function). Its members keep the names its readers use.</summary>
-    private readonly struct CallInferenceFailureRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<CallInferenceFailure, PassCounter> Family(ref NodeColumns columns) => ref columns.CallInferenceFailures;
-
-        internal bool TryGetValue(Koto call, out CallInferenceFailure failure) => (failure = binding.RecordedFact(call, Family)).Selected is not null;
+        object[] evidence = !correlation ? [DiagnosticTypeName(this.report.Value(facts[2]))]
+            : facts[^1] is { Kind: ProblemFactKind.Expected } left
+                ? [CallOwnSlots(selected)[(int)(facts[0].Value >> 8)].Identifier, DiagnosticTypeName(this.report.Value(left)), DiagnosticTypeName(this.report.Value(facts[^2]))]
+                : [CallOwnSlots(selected)[(int)(facts[0].Value >> 8)].Identifier];
+        node.ReportIn(store, problem.Requirement, problem.Code, evidence: evidence, related: related, note: note, condition: problem.Condition);
     }
 }

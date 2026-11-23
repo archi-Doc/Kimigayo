@@ -12,9 +12,11 @@ delete, which empties the shared root), and never runs setup through the junctio
 ## Operations
 
 `tatara_optimize` (`opt -passes=verify`, then `opt -S -passes=default<O2> -mtriple`), `tatara_emit` (`opt -passes=verify`, then
-`llc -filetype=obj` with the target's CPU, features, relocation and code model) and `tatara_link` (`lld-link`, through
-`lld::lldMain`) read and write the files the tools would, with equal bytes. `tatara_inspect` returns an object's undefined and
-defined external symbols with `llvm-nm`'s letters, and whether `.pdata` holds an entry and a `.drectve` names `DEFAULTLIB`.
+`llc -filetype=obj` with the target's CPU, features, relocation and code model) and `tatara_link` (`lld-link` or `ld.lld`, named
+by its first argument as an LLD executable's name, through `lld::lldMain`) read and write the files the tools would, with equal
+bytes. `tatara_inspect` returns a COFF or ELF object's undefined and defined external symbols with `llvm-nm`'s letters, and two
+facts: for COFF whether `.pdata` holds an entry and a `.drectve` names `DEFAULTLIB`, for ELF whether `.eh_frame` is non-empty and
+a `.deplibs` (`SHT_LLVM_DEPENDENT_LIBRARIES`) section exists.
 Each call returns 0 (success), 1 (failed; Tatara can run again) or 2 (failed; Tatara cannot run again in this process) and a
 result whose message carries the tools' text, released with `tatara_release`.
 
@@ -57,7 +59,7 @@ functions `tatara.h` declares.
 
 Tatara links as LLVM's own tools link. The LLVM libraries are globbed, and the Windows libraries and options are read from
 `LLVMSupport`'s `INTERFACE_LINK_LIBRARIES` in the archive's `lib/cmake/llvm/LLVMExports.cmake`; the reader accepts only the
-shapes it knows and fails on any other token. `lldCOFF.lib` and `lldCommon.lib` are added for `tatara_link`. One departure:
+shapes it knows and fails on any other token. `lldCOFF.lib`, `lldELF.lib` and `lldCommon.lib` are added for `tatara_link`. One departure:
 `diaguids.lib` comes from the discovered Visual Studio, because `LLVMDebugInfoPDB`'s interface names a path on LLVM's build
 machine.
 

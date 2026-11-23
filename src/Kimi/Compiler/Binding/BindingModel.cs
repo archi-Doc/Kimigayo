@@ -72,6 +72,12 @@ public enum BoundTypeKind : byte
     Array,
     Dictionary,
     FunctionItem,
+
+    // DECISIONS BU-240 (temporary, removed with BU-240's representation (R); the owner's O-428 (a), G812 ruling 143): the canonical case's Type
+    // (its one component) at a position a split binding decides, formed only by a split call's completion (Binding.OpenForm); every
+    // check that reads it rests, as rule W's failed part does. Never a node's published Type (the split call's completion unmarks what
+    // it publishes, CompleteOnSplit; the HIR publisher lists one that holds it as Broken, InternalInvariant_Kd).
+    Open,
 }
 
 /// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.7.2).</summary>
@@ -362,11 +368,22 @@ public sealed class BindingSymbol
     // requirement checked at the conformance, never a reference input condition (SPEC 6.1.4, 8.7.1).
     internal bool IsGenericInput => this.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter && this.SelfOf is null;
 
-    // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
+    // SPEC 6.1.5, 8.4, 9.1: the declaration whose Self this symbol is: a Contract's dedicated Self Type parameter (the conforming-Type
+    // binder), a struct's or enum's Self (Kind Type, the declaration with all its bindings); null for any other symbol.
     internal BindingSymbol? SelfOf { get; set; }
 
-    // SPEC 8.4: the dedicated Self Type parameter of a Contract, created at its first use.
-    internal BoundType? ContractSelf { get; set; }
+    // SPEC 6.1.5, 9.5: the Self this declaration's scope declares beside its formal parameters (BindingScope.Parameters), made once and
+    // kept: a Contract's Self Type parameter (Binding.ContractSelfType), a struct's or enum's Self symbol (Binding.DeclareSelf).
+    internal BindingSymbol? SelfSymbol { get; set; }
+
+    // SPEC 6.1.5, 9.1: the declaration this selection names: a struct's or enum's Self names its declaration (SelfOf); every other symbol,
+    // a Contract's Self (a binder, BU-150) among them, names itself. Read where a selection's declaration facts (its raw Type, Schema or
+    // identity) are asked, never its Type as written (a Self symbol's Type is the declaration applied to its own parameters).
+    internal BindingSymbol Named => this.SelfOf is { Declaration: not ContractKoto } declaration ? declaration : this;
+
+    // SPEC 9.1, 9.7: the symbol's own generic arity, which a written argument list must match: a Type declaration's generic parameter
+    // count (length slots included); none for a Self, which takes no Type arguments, and for every other symbol.
+    internal int GenericArity => this.SelfOf is null && this.Declaration is DeclarationContainerKoto container ? container.GenericParameterNodes.Count : 0;
 
     internal BindingSymbol? Pair { get; set; }
 
@@ -429,7 +446,7 @@ public sealed class BindingSymbol
     {
         if (this.Declaration.SyntaxOwner is { Frozen: true })
         {
-            if (state == DeclState.Done)
+            if (state is DeclState.Done or DeclState.Error)
             {
                 throw new InvalidOperationException($"A program pass completed the {kind} query of the frozen library declaration `{this.Name}` (InternalInvariant; PLAN G949 S1-1).");
             }
@@ -461,7 +478,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     // The width in bits of isize and usize for every Compilation, with or without a target: the profile's (SPEC 22, O-79 (a); IMPL
     // 21.1.3; DECISIONS BU-130), from IrTarget's row for its triple, read once by Row; every reader of their width asks the Type (Width).
     // A target's own width is only the pointerWidth Condition's (SPEC 19.2). Declared before the static Types, whose rows read it.
-    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).PointerWidth;
+    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(TargetProfile.Windows.Target)).PointerWidth;
 
     private readonly NumericCategory numeric;
     private readonly byte width;
@@ -481,6 +498,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
     private readonly bool containsNested;
+    private readonly bool containsOpen;
     private readonly bool hasAbstractPart;
     private readonly int height;
 
@@ -519,6 +537,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         var stores = found || original;
         var abstractPart = this.IsAbstract;
         var nested = kind == BoundTypeKind.Closure || (kind == BoundTypeKind.FunctionItem && symbol is { Scope.Owner: not DeclarationContainerKoto });
+        var open = kind == BoundTypeKind.Open;
         var height = instanceContext is null ? 0 : instanceContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
@@ -529,6 +548,7 @@ public sealed class BoundType : IEquatable<BoundType?>
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
             nested |= components[i].containsNested;
+            open |= components[i].containsOpen;
             abstractPart |= components[i].hasAbstractPart;
             height = Math.Max(height, components[i].height + 1);
         }
@@ -561,6 +581,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
         this.containsNested = nested;
+        this.containsOpen = open;
         this.hasAbstractPart = abstractPart;
         this.height = height;
     }
@@ -720,6 +741,9 @@ public sealed class BoundType : IEquatable<BoundType?>
     // TyCtxt.EnclosingDeclaration gives an enclosing declaration: a root function's Item passes it and the closing step leaves it as it is.
     internal bool ContainsNested => this.containsNested;
 
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
+    internal bool ContainsOpen => this.containsOpen;
+
     /// <summary>Gets a value indicating whether this Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a
     /// wrapping integer Core (SPEC 3.1.1); no layer is followed. The one definition every phase reads: Binding, the MIR builder's
     /// recorded values, MirValidator's testRecordValue row, A5's pun Types and the Backend's static-storage row.</summary>
@@ -857,6 +881,7 @@ internal sealed class BindingScope(Koto owner)
     private BindingScope? parent;
     private ConstraintEnvironment? constraints;
     private BoundConformancePath? conformancePath;
+    private BindingScope? evaluatedPremises;
 
     // A scope formed for `declaration`'s own premises (Declaration).
     internal BindingScope(Koto owner, Koto declaration)
@@ -901,8 +926,15 @@ internal sealed class BindingScope(Koto owner)
 
     internal FunctionKoto? Function { get; set; }
 
+    // The scope's Type-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
 
+    // SPEC 9.1, 9.5, 9.6, 4.4.1: the formal parameters the scope's declaration declares, by namespace as its members are, found by the
+    // stage walk at their declaring position and never a member a path or an opening alias reaches; null until the scope declares one
+    // (AddParameters), so a scope that declares none allocates no table.
+    internal ScopeParameters? Parameters { get; private set; }
+
+    // The scope's Value-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Values { get; } = new(StringComparer.Ordinal);
 
     internal Dictionary<string, BoundOrigin>? Origins { get; set; }
@@ -922,19 +954,29 @@ internal sealed class BindingScope(Koto owner)
     // its Parent the function's scope; never the body's premises, which the slot's settle point decides.
     internal BindingScope? HeaderPremises { get; set; }
 
+    // A member access's left reading's layer (R7-N1 c-b, Binding.EvaluateProjection; SPEC 8.3.2): its Parent this use scope, it holds
+    // what the Contracts of the left's proved projections supply (AddContractPremises), which the former adds to this scope only once
+    // the reading is decided; kept with this scope and reset with it each pass, so a warm pass forms none.
+    internal BindingScope EvaluatedPremises => this.evaluatedPremises ??= new(this.Owner) { Parent = this, Function = this.Function };
+
     internal BoundConformancePath? ConformancePath
     {
         get => this.conformancePath;
         set => this.Link(ref this.conformancePath, value);
     }
 
+    internal ScopeParameters AddParameters() => this.Parameters ??= new();
+
     internal void Reset()
     {
         this.Types.Clear();
+        this.Parameters?.Types.Clear();
+        this.Parameters?.Values?.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
         this.OriginSets?.Clear();
         this.Constraints?.Reset();
+        this.evaluatedPremises?.Reset();
     }
 
     private void Link<T>(ref T? field, T? value)
@@ -946,6 +988,17 @@ internal sealed class BindingScope(Koto owner)
             this.LinkVersion++;
         }
     }
+}
+
+// A scope's formal parameters by namespace (BindingScope.Parameters): Type parameters, pair targets and their binders in Types, a
+// function's length slots (SPEC 4.4.1) in Values, null until the scope declares one (AddValues), as Parameters itself is.
+internal sealed class ScopeParameters
+{
+    internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
+
+    internal Dictionary<string, BindingSymbol>? Values { get; private set; }
+
+    internal Dictionary<string, BindingSymbol> AddValues() => this.Values ??= new(StringComparer.Ordinal);
 }
 
 /// <summary>How a check judged a repair condition from its own facts (SPEC 23.1.3); a refuted condition withholds the candidate.</summary>

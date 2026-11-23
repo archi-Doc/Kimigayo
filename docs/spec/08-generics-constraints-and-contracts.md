@@ -295,7 +295,7 @@ contract Factory
 
 ### 8.4.3. Refinement
 
-`contract C: A, B` refines each parent, given as a bound Contract reference ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)), as in `contract UniqIndexable<Key>: Indexable<Key>`, and inherits its requirements, associated Types and Constraints. Parent order gives no priority, and cycles are errors. Inside a Contract, a clause `Self is C` for a user Contract `C` is an error; `C` is listed as a parent instead (compiler-intrinsic Contracts: [§8.7.1](#871-compiler-intrinsic-contracts)). Conformance to a child entails every ancestor, with `Self` the final conforming Type. A child may add but never remove or weaken. Paths to one ancestor declaration with equal bindings give one requirement ([§8.9.2](#892-merging-paths-and-cycles)); independent same-named declarations stay distinct, and one implementation may satisfy several.
+`contract C: A, B` refines each parent, given as a bound Contract reference ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)) found by the Contract Reference role ([§9.2](09-names-signatures-and-access.md#92-namespaces-and-lookup-roles)), as in `contract UniqIndexable<Key>: Indexable<Key>`, and inherits its requirements, associated Types and Constraints. Parent order gives no priority, and cycles are errors. Inside a Contract, a clause `Self is C` for a user Contract `C` is an error; `C` is listed as a parent instead (compiler-intrinsic Contracts: [§8.7.1](#871-compiler-intrinsic-contracts)). Conformance to a child entails every ancestor, with `Self` the final conforming Type. A child may add but never remove or weaken. Paths to one ancestor declaration with equal bindings give one requirement ([§8.9.2](#892-merging-paths-and-cycles)); independent same-named declarations stay distinct, and one implementation may satisfy several.
 
 A refinement is an error when its requirements can neither coexist as separate implementations ([§8.6.3](#863-implementation-matching), [§9.1](09-names-signatures-and-access.md#91-signatures)) nor be satisfied by one implementation. Labels alone never distinguish overloads, and different result Types alone prove no conflict, since result compatibility ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)) applies. Unknown proves no conflict.
 
@@ -357,7 +357,7 @@ struct Pack<T>
 
 ### 8.5.2. Projections
 
-`T.(C).Element` is the associated Type of `T`'s conformance to the bound Contract reference `C`; `T.(C).LentItem(a)` applies Origin arguments. `T.Element` is valid outside a Contract only when the associated Type is unique under the available Constraints; inside a Contract a short name means its own or inherited one. `C` is found by Contract-name lookup, and `T.C.Element` is an ordinary path. Conformance evidence is required and never found by name search. The base may be a Core, a parameter, `Self` or another projection. A projection is a Type that keeps its Semantics. A function's leading Constraints apply to the projections of its signature ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). Distinct successful interpretations are ambiguous.
+`T.(C).Element` is the associated Type of `T`'s conformance to the bound Contract reference `C`; `T.(C).LentItem(a)` applies Origin arguments. `T.Element` is valid outside a Contract only when the associated Type is unique under the available Constraints; inside a Contract a short name means its own or inherited one. `C` is found by the Contract Reference role ([§9.2](09-names-signatures-and-access.md#92-namespaces-and-lookup-roles)), and `T.C.Element` is an ordinary path. Conformance evidence is required and never found by name search. The base may be a Core, a parameter, `Self` or another projection. A projection is a Type that keeps its Semantics. A function's leading Constraints apply to the projections of its signature ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). Distinct successful interpretations are ambiguous.
 
 ```kimi
 func readOne<T>(source: ref/T) -> T.(Source).Element
@@ -813,7 +813,7 @@ An **effect bound** is a guarantee about what a call may access, which every con
 Bounds are declared in four positions (grammar: `EffectClause`, `EffectSpecification`, [§F.6](appendices/F-syntax-summary.md#f6-declarations); keywords: [§F.3](appendices/F-syntax-summary.md#f3-keywords)):
 
 - an `effect` clause in a function requirement's Constraint region bounds that requirement;
-- a Contract item `effect A.r bound` bounds the requirement `r` inherited from the ancestor `A`, which must identify exactly one function requirement;
+- a Contract item `effect A.r bound` bounds the requirement `r` inherited from the ancestor `A`, which must identify exactly one function requirement (in the parenthesized selector `effect (A).r bound`, `A` is found by the Contract Reference role, [§9.2](09-names-signatures-and-access.md#92-namespaces-and-lookup-roles));
 - an `effect` clause under a Callable Constraint bounds calls through it ([§8.11.4](#8114-callable-effect-bounds));
 - an `effect` clause in the leading region ([§7.5](07-functions-and-callable-values.md#75-function-constraints)) of an original virtual function bounds the slot; overrides inherit it.
 

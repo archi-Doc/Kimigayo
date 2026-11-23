@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Target;
 using Xunit;
 
@@ -51,7 +52,7 @@ public class CoreModelTest
 
     // SPEC 22 (O-79 (a)): the IR target and the pointerWidth Condition are the target's; isize and usize keep the profile's width.
     [Theory]
-    [InlineData(WindowsProfile.Target, 64)]
+    [InlineData("x86_64-pc-windows-msvc", 64)]
     [InlineData("i686-pc-windows-msvc", 32)]
     [InlineData("avr-unknown-unknown", 16)]
     public void PointerSizedIntegersKeepTheProfileWidth(string target, long width)
@@ -81,33 +82,67 @@ public class CoreModelTest
         Assert.False(compilation.Variables.TryGetValue("pointerWidth", out _));
     }
 
-    // The profile's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's supplies by name),
-    // pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library), kernel32 providing every runtime
-    // declaration (IMPL 21.4.7), and IMPL 21.2's reserved external names.
+    // The target table (IMPL 21.4, 21.5): two rows, windows-x64, whose triple is the literal the [InlineData] rows name, and linux-x64 (the
+    // Tatara plan's B7b2a). Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
+    // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library). The Windows row: kernel32
+    // providing every runtime declaration (IMPL 21.4.7), and IMPL 21.2's reserved external names; the Linux row: none until B7b2b.
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
-        var supplies = WindowsProfile.Supplies;
-        Assert.Equal(["kernel32", "kimi_backend"], supplies.Select(static x => x.Name));
-        Assert.Equal(["import", "static"], supplies.Select(static x => x.Kind));
-        for (var i = 1; i < supplies.Length; i++)
+        Assert.Equal([TargetProfile.Windows, TargetProfile.Linux], TargetProfile.Rows);
+        Assert.Equal("x86_64-pc-windows-msvc", TargetProfile.Windows.Target);
+        Assert.Equal("x86_64-unknown-linux-musl", TargetProfile.Linux.Target);
+        foreach (var row in TargetProfile.Rows)
         {
-            Assert.True(string.CompareOrdinal(supplies[i - 1].Name, supplies[i].Name) < 0);
-        }
-
-        for (var i = 0; i < supplies.Length; i++)
-        {
-            Assert.Same(supplies[i], WindowsProfile.Supply(supplies[i].Name));
-            for (var j = i + 1; j < supplies.Length; j++)
+            var supplies = row.Supplies;
+            for (var i = 1; i < supplies.Length; i++)
             {
-                Assert.Empty(supplies[i].Symbols.Intersect(supplies[j].Symbols, StringComparer.Ordinal));
+                Assert.True(string.CompareOrdinal(supplies[i - 1].Name, supplies[i].Name) < 0);
             }
+
+            for (var i = 0; i < supplies.Length; i++)
+            {
+                Assert.Same(supplies[i], row.Supply(supplies[i].Name));
+                for (var j = i + 1; j < supplies.Length; j++)
+                {
+                    Assert.Empty(supplies[i].Symbols.Intersect(supplies[j].Symbols, StringComparer.Ordinal));
+                }
+            }
+
+            Assert.Null(row.Supply("codec"));
+            Assert.Null(row.Supply(null));
         }
 
-        Assert.Null(WindowsProfile.Supply("codec"));
-        Assert.Null(WindowsProfile.Supply(null));
-        var kernel32 = WindowsProfile.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
-        Assert.Subset(kernel32, WindowsProfile.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
-        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], WindowsProfile.ReservedSymbols);
+        var windows = TargetProfile.Windows;
+        Assert.Equal(["kernel32", "kimi_backend"], windows.Supplies.Select(static x => x.Name));
+        Assert.Equal(["import", "static"], windows.Supplies.Select(static x => x.Kind));
+        var kernel32 = windows.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
+        Assert.Subset(kernel32, windows.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
+        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], windows.ReservedSymbols);
+        Assert.Empty(TargetProfile.Linux.Supplies);
+    }
+
+    // Each row's data layout is the one the pinned clang writes for its triple (`clang --target=<triple> -S -emit-llvm` of an empty C
+    // file, the Tatara plan's B7b2a probe; design §5 row 42), and each row's module emitted by Tatara for its triple checks that the pair
+    // agrees (TataraExecutorTest).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
+    [InlineData("x86_64-unknown-linux-musl", "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
+    public void TheProfileLayoutIsItsTriplesLayout(string triple, string layout)
+        => Assert.Equal(layout, Assert.Single(TargetProfile.Rows, row => row.Target == triple).DataLayout);
+
+    // The Tatara plan's B7b2a (N2): each row's Layer names exactly one of the Backend's RuntimeLayer records, which Core cannot name, so a
+    // row's frame always has its layer.
+    [Fact]
+    public void EveryRowNamesOneRuntimeLayer()
+        => Assert.All(TargetProfile.Rows, static row => Assert.Single(RuntimeAbi.Layers, x => x.Template == row.Layer));
+
+    // The Tatara plan's B7b2a: Find gives each row for its triple, and none for a triple without a row.
+    [Fact]
+    public void FindGivesTheRowOfATriple()
+    {
+        Assert.All(TargetProfile.Rows, static row => Assert.Same(row, TargetProfile.Find(row.Target)));
+        Assert.Null(TargetProfile.Find(string.Empty));
+        Assert.Null(TargetProfile.Find("x86_64-unknown-linux-gnu"));
     }
 }

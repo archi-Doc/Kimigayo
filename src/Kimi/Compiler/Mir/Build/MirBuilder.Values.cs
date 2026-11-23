@@ -8,13 +8,12 @@ namespace Kimi.Compiler.Mir;
 // MirBuilder.Acquisitions.cs), each by the node's Op, Adjust and PlaceShape.
 internal sealed partial class MirBuilder
 {
-    // SPEC 12.2: whether a node's operand builds code where it is evaluated, before which a Place operand evaluated earlier in its
-    // operation is secured, so that it is read where it is evaluated (Secure): all but a literal's constant and a Place read as it is
-    // (Copied, Moved or through its referent) whose path from a local is stored Fields, Derefs and constant positions (Operand, Acquire,
-    // Place).
-    private static bool Builds(Koto node)
+    // SPEC 12.2: whether a node's operand builds code where it is evaluated as a take reads it (its column's Adjust, or a kept operand's
+    // form's), before which a Place operand evaluated earlier in its operation is secured, so that it is read where it is evaluated
+    // (Secure): all but a literal's constant and a Place read as it is (Copied, Moved or through its referent) whose path from a local is
+    // stored Fields, Derefs and constant positions (Operand, Acquire, Place).
+    private static bool Builds(Koto node, HirAdjust adjust)
     {
-        var adjust = HirTables.AdjustOf(node);
         if (InPlace(adjust))
         {
             return HirTables.Op(node) != HirOp.Literal;
@@ -37,6 +36,14 @@ internal sealed partial class MirBuilder
 
     // Whether a consumer takes a node's value as the node builds it (its Adjust): a Temporary or a group's operand, not adapted (Assign).
     private static bool InPlace(HirAdjust adjust) => adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None };
+
+    // SPEC 15.6.7: whether an invocation's input (input), taken as an Adjust takes it, starts a reservation: only one the invocation takes
+    // as an exclusive reference (its expected Type, or without one, a value call's callee, the reference it is or its acquisition forms),
+    // so only its path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is. An
+    // input exclusive only by case (a pair layer) reserves where it is acquired (Operand's MirCases.Reserves); a kept operand is never
+    // acquired (DECISIONS R5-M63), so a kept pair-layer input forms no reservation: its site holds its Place undecided.
+    private static bool Reserved(bool input, Koto node, HirAdjust adjust, BoundType? expected) => input && (MirTypes.IsExclusive(expected) ||
+        (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(KnownType(node)))));
 
     // The value a node's own form produces, into the destination; as a call's input that reserves (input), a written exclusive borrow,
     // also inside parentheses, is two-phase (SPEC 15.6.7), and a selection's or a do's bodies give their values as Result places them.
@@ -174,16 +181,13 @@ internal sealed partial class MirBuilder
 
     // A node's value as an Adjust takes it (plan: Adjust to operand; the column's, or an update getter's plan row, DECISIONS R4-M109): a
     // literal as its constant, another value through a temp, a Place, or a value held in a temp, as Acquire takes it for the expected Type,
-    // a call's input as the call's (input), a value the acquisition forms in the place given (into) where it has that Type. SPEC 15.6.7:
-    // only an input the call takes as an exclusive reference (its expected Type, or without one, a value call's callee, the reference it is
-    // or its acquisition forms) starts a reservation, so only its path is a preparation path (Place); on another input's path a written
-    // exclusive borrow is live, as SPEC 7.3.3's is. An input the call takes as a pair layer, exclusive only by case, reserves where it is
-    // acquired (reserves, MirCases.Reserves) and has no preparation path (A3 E13 (4)).
+    // a call's input as the call's (input, Reserved), a value the acquisition forms in the place given (into) where it has that Type. An
+    // input the call takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves, MirCases.Reserves) and has no
+    // preparation path (A3 E13 (4)).
     private MirOperand Operand(Koto node, HirAdjust adjust, BoundType? expected, bool input = false, MirPlace? into = null)
     {
         var reserves = input && MirCases.Reserves(this.body, expected ?? KnownType(node));
-        input &= MirTypes.IsExclusive(expected) ||
-            (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(KnownType(node))));
+        input = Reserved(input, node, adjust, expected);
         reserves |= input;
         if (InPlace(adjust))
         {
@@ -238,7 +242,8 @@ internal sealed partial class MirBuilder
         var last = -1; // SPEC 12.2: the last operand that builds code (Builds); one before it is secured where it is evaluated.
         for (var i = 0; i < written + payloads.Length; i++)
         {
-            if (Builds(i < written ? elements![i] : payloads[i - written].Source!))
+            var operand = i < written ? elements![i] : payloads[i - written].Source!;
+            if (Builds(operand, HirTables.AdjustOf(operand)))
             {
                 last = i;
             }
@@ -332,10 +337,11 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite); a derived right
-        // side's Type may be unknown (KnownType).
+        // Of the Type it is placed at, the target's published Type (none for a Field Place of no Type, a stored Field whose slot failed,
+        // PLAN G1184), or the Never value of a right side of Type Never, which is not placed (Overwrite); a derived right side's Type may be
+        // unknown (KnownType).
         var source = ReferenceEquals(KnownType(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left;
-        var value = this.Hold(TypeOf(source), source, MirLocalRole.Assigned);
+        var value = this.Hold(KnownType(source), source, MirLocalRole.Assigned);
         var rest = this.AssignApart(value, assignment.Right);
         this.Made(value);
         var target = this.Place(assignment.Left);

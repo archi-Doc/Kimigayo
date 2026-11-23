@@ -287,8 +287,14 @@ public sealed partial class Binding
     // supply no evidence; a failure at another source position does not discard a binding here.
     // A slot not fixed in both candidates needs the same evidence (SameArgumentEvidence, the expected
     // result's included) before its collected Types or modes count: equal Types along other paths are none (SPEC 7.4.4).
-    private bool CheckCallShapeContracts(InvocationKoto call, ReadOnlySpan<BoundType?> explicitTypes, ReadOnlySpan<BoundLength?> explicitLengths, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
+    // It reads the call's evaluated candidates, each candidate's mapping (MappingOf) and the explicit Type arguments.
+    private bool CheckCallShapeContracts(in CallEvaluation evaluation, int slotStride)
     {
+        var (call, scope, expected) = (evaluation.Call, evaluation.Scope, evaluation.Expected);
+        var explicitCount = evaluation.Generic?.TypeArguments.Count ?? 0;
+        ReadOnlySpan<BoundType?> explicitTypes = evaluation.ExplicitTypes.AsSpan(0, explicitCount);
+        ReadOnlySpan<BoundLength?> explicitLengths = evaluation.ExplicitLengths.AsSpan(0, explicitCount);
+        ReadOnlySpan<EvaluatedCandidate> candidates = evaluation.Evaluated.AsSpan(0, evaluation.Count);
         var needed = false;
         for (var i = 0; i < candidates.Length; i++)
         {
@@ -308,7 +314,7 @@ public sealed partial class Binding
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
         // Per candidate and slot: bits 1, 2 and 4 the collected modes, 8 differing witnesses, 16 the expected result's fill reached it.
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
-        var bindings = this.infer.Rent(slotStride, scope);
+        var bindings = this.infer.Rent(slotStride, call, scope);
         var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
         var savedAcquisition = this.acquisitionFailure;
         try
@@ -336,9 +342,10 @@ public sealed partial class Binding
                     }
                 }
 
+                var mapping = evaluation.MappingOf(c);
                 for (var a = 0; a < call.ArgumentNodes.Count; a++)
                 {
-                    var mapped = allMaps[(c * call.ArgumentNodes.Count) + a];
+                    var mapped = mapping[a];
                     if (mapped >= 0 && function.Parameters[mapped].Type.BoundType is { } pattern && this.CallMemberPattern(pattern, function, declaring) is { } memberPattern)
                     {
                         CollectArgument(memberPattern, call.ArgumentNodes[a], candidateSlots);
@@ -354,7 +361,9 @@ public sealed partial class Binding
                 bindings.Types[..count].CopyTo(types.AsSpan(c * slotStride));
 
                 // Collects the open slots' evidence (CollectTypes skips a fixed slot, whose mode FixCallSlots gives); the argument is
-                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings, as in its trial.
+                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings (FixedPattern).
+                // Its trial's AdaptationPattern also forms the structured applications whose binder a source fixed; here no source has
+                // fixed one and CollectTypes enters no application (CollectionEnters), so a formed application is no evidence either way.
                 void CollectArgument(BoundType pattern, Koto source, in FixedSlots candidateSlots)
                 {
                     source = KotoHelper.UnwrapParentheses(source);
@@ -491,8 +500,8 @@ public sealed partial class Binding
                                 call,
                                 contract.Pair,
                                 slot,
-                                allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
-                                allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
+                                evaluation.MappingOf(left),
+                                evaluation.MappingOf(c),
                                 ((modes[a] | modes[b]) & 16) != 0 ? expected : null)) is { } occurs &&
                             ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
                             (types[a] is { } ta && types[b] is { } tb && this.SameShapeBinding(ta, tb)) ||
@@ -501,7 +510,7 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        this.FailExplained(CallInferenceFailureRows.Family, call, BindingFailure.UnprovenAcquisitionCorrelation, new CallInferenceFailure(contract.Pair.Left, function, null, ConstructionCheck.AcquisitionCorrelation, slot, types[a], types[b]), true);
+                        this.RecordCorrelation(call, contract.Pair.Left, function, slot, types[a], types[b]);
                         return false;
                     }
                 }

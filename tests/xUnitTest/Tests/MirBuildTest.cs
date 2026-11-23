@@ -61,13 +61,15 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         "    public func put(a: i32, self: ref/Self) => ()\nstruct Gauge\n    public var level: i32 = 0\n        set(value: i32) -> ()\n" +
         "            storage = value\n    public init() => ()\nfunc f(x: i32, box: ref/Box)\n    var y: i32 = 0\n    var gauge = Gauge.init()\n";
 
-    // An unbuilt form of a valid program: a tuple operator over two values of Tuple, whose leaf's storage nests past Binding's bound, has
-    // no comparison (a Limit of TyCtxt.Comparison, DECISIONS R5-M75), so the MIR records one located Unsupported_Kd at the operator.
-    // Declarations declares the leaf's Type. Since PLAN G167 the other unbuilt form is the second limit past that bound, a default template
-    // the call's substitution cannot instantiate (MirBuilder.Defaults.cs, R4-M127); both are PD30's (e) row until R7.
-    internal static (string Declarations, string Tuple) Unbuilt { get; } = (
-        "struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n",
-        "(" + string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80) + ", i32)");
+    // An unbuilt form of a valid program: in a function generic in T under Premise, a selection on a receiver of Type T (`s.0` of
+    // `s: ref/T`), which Binding resolves through the identity premise (DECISIONS BU-72; PLAN G168b; AnIdentityPremisesSelectionIsOneUnsupported's
+    // row), so the MIR records one located Unsupported_Kd at the selection, an Opaque value naming the receiver's root. Declarations
+    // declares Pair. The builder's remaining located Unsupported_Kd; its tests need another unbuilt form when G168b's stage removes it
+    // (G355's ExpansionLimit_Kd, the builder's permanent construction record). Before PLAN G396 (3)'s B3 (the default's copy reads the
+    // instance's formation) it was a call omitting a default over Bx^65<i32>, which is now built; before R7-T1 c4 the tuple operator over
+    // a leaf past the bound, which now builds its comparison (ATupleOperatorBuildsItsComparisonWhateverItsStorage).
+    internal static (string Declarations, string Premise) Unbuilt { get; } = (
+        "struct Pair\n    public var a: i32 = 1\n    public init() => ()\n", "T is (Pair, i32)");
 
     // PLAN G949 S1-r1b (review-s1r1 Re-check 3, RB1; F's rulings 153, 156 and 158): the library's bodies built after a Provisional Bind
     // are the ones built after a Final Bind: the MIR builder reads the library's published HIR whatever the Bind's mode, and the HIR is
@@ -90,7 +92,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         string LibraryMir(BindingMode mode)
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             if (hello)
             {
                 c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
@@ -113,7 +115,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         foreach (var program in new[] { "docs/examples/Hello/Hello.kimi", "tests/milestones/Milestone26.kimi" })
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText(program.Split('/'))));
             Assert.Equal(Binding.Frozen, HirTables.LibraryVersion(c));
             Assert.True(c.Bind().IsComplete, program);
@@ -741,7 +743,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = test;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
         c.Bind();

@@ -1,9 +1,12 @@
-// A tuple operator whose leaf nests past an implementation limit is unsupported until R7 (PD30's (e) row; DECISIONS R5-M75).
-struct Wrap<V>
-    Self is Equatable
+// A selection through an identity premise whose subject is the Type parameter of its receiver's Place is unsupported (PLAN G168b,
+// DECISIONS BU-72; the builder's remaining located Unsupported_Kd). Before PLAN G396 (3)'s B3 it was a call omitting a default over
+// Bx^65<i32> (now built); before R7-T1 c4 a tuple operator over such a leaf.
+struct Pair
+    public var a: i32 = 1
     public init() => ()
-    public func equals(self: ref/Self, other: ref/Self) -> bool => true
-func same(a: ref/(Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>, i32), b: ref/(Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<Wrap<i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>, i32)) -> bool => a == b
+func same<T>(s: ref/T) -> i32
+    T is (Pair, i32)
+    return s.0.a
 func fail() -> i32 => missing
 func take(a: string, b: string) -> i32 => 1
 func kept(n: i32, s: string) -> i32

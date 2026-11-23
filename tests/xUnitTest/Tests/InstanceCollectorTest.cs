@@ -278,7 +278,7 @@ public sealed partial class InstanceCollectorTest
             const string NoType = HasItem + "struct A\n    Self is HasItem\n    associate HasItem.Item is A.Item\n";
             const string BaseA = HasItem + "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
             const string Inherited = "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd " +
-                "InvalidConstraint_Kd InvalidConstraint_Kd";
+                "InvalidConstraint_Kd";
             const string Holder = "contract Holder<K>\n    associate Item\nstruct HB<S>\n    S is Holder<i32>\n    var x: S.Item\n";
             const string Bindings = "    associate Holder<T>.Item is i32\n    associate Holder<U>.Item is u8\n";
             const string HAdd = "struct HAdd<S>\n    S is Addable<S>\n    public var x: S.Output\n";
@@ -303,29 +303,29 @@ public sealed partial class InstanceCollectorTest
                 { "replace", Bad + "func g(slot: uniq/Option<Bad>) => Kimi.Intrinsics.replace(slot, with: .None)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "replaceGeneric", Bad + "func put<T>(slot: uniq/Option<T>) => Kimi.Intrinsics.replace(slot, with: .None)\nfunc g(slot: uniq/Option<Bad>) => put(slot)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "row", Bad + "struct Sx\n    public var x: Array<Bad>\nfunc g(s: uniq/Sx) => s.x.reserve(1)\n", "UnresolvedBinding_Kd", string.Empty },
-                { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
-                { "closedPrimitive", HasItem + "func g(h: HA<i32>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
-                { "closedTuple", HasItem + "func g(h: HA<(i32, u8)>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
-                { "closedArray", HasItem + "func g(h: HA<[2 of i32]>) => ()\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty },
+                { "noType", NoType + "func g(b: HA<A>) => ()\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty },
+                { "closedPrimitive", HasItem + "func g(h: HA<i32>) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedTuple", HasItem + "func g(h: HA<(i32, u8)>) => ()\n", "UnprovenConstraint_Kd", string.Empty },
+                { "closedArray", HasItem + "func g(h: HA<[2 of i32]>) => ()\n", "UnprovenConstraint_Kd", string.Empty },
                 {
                     "closedProjection", HasItem + "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\nfunc g(h: HA<Src.Item>) => ()\n",
-                    "UnprovenConstraint_Kd UnprovenConstraint_Kd", string.Empty
+                    "UnprovenConstraint_Kd", string.Empty
                 },
-                { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty },
+                { "closedOutput", HAdd + "func g(h: HAdd<bool>) => ()\n", "UnsatisfiedConstraint_Kd", string.Empty },
                 { "closedOutputValid", HAdd + "func g(h: HAdd<i32>) -> i32 => h.x\n", string.Empty, string.Empty },
                 {
                     "closedRefuted", SrcC.Replace("Item is T", "Item is i32", StringComparison.Ordinal) + "func g(h: HA<SrcC<string>>) => ()\n",
-                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                    "UnsatisfiedConstraint_Kd", string.Empty
                 },
                 {
                     "closedPayload", HasItem + "enum EW<S>\n    S is HasItem\n    A(S.Item)\n    B\nfunc g(e: EW<i32>) => ()\n",
-                    "UnsatisfiedConstraint_Kd UnsatisfiedConstraint_Kd", string.Empty
+                    "UnsatisfiedConstraint_Kd", string.Empty
                 },
                 { "inherited", BaseA + "struct DerA : BaseA\n    var m: i32\nfunc g(b: HA<DerA>) => ()\n", Inherited, string.Empty },
                 {
                     "inheritedTwice", BaseA + "open struct DerA : BaseA\n    var m: i32\nstruct DerB : DerA\n    var n: i32\nfunc g(b: HA<DerB>) => ()\n",
                     "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd " +
-                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "inheritedGeneric", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n" +
@@ -334,28 +334,28 @@ public sealed partial class InstanceCollectorTest
                 {
                     "sourcesDisagree", Holder + "contract Sub<A, B> : Holder<A>, Holder<B>\nopen struct BaseP<T, U>\n    Self is Sub<T, U>\n" + Bindings +
                     "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
-                    "IncompatibleContractImplementation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "IncompatibleContractImplementation_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "pathsDisagree", Holder + "open struct BaseP<T, U>\n    Self is Holder<T>\n    Self is Holder<U>\n" + Bindings +
                     "struct DerP : BaseP<i32, i32>\n    var m: i32\nfunc g(h: HB<DerP>) => ()\n",
-                    "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "DuplicateBinding_Kd DuplicateBinding_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "refinedDisagree", HasItem + "contract HasMore: HasItem\n    associate Elem\n    associate HasItem.Item is Elem\nstruct Src\n" +
                     "    Self is HasMore\n    associate HasMore.Elem is i32\nstruct WB<S>\n    S is HasItem\n    Self is HasItem\n    associate HasItem.Item is u8\n" +
                     "    Self is HasMore when S is HasMore\n        associate HasMore.Elem is i32\nfunc g(h: HA<WB<Src>>) => ()\n",
-                    "InvalidConstraint_Kd InvalidAssociatedType_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidConstraint_Kd InvalidAssociatedType_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "noConformance", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
                     "struct DerX : BaseG\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
-                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "noConformanceArity", HasItem + "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    var t: T\n" +
                     "struct DerX : BaseG<i32, u8>\n    var m: i32\nfunc g(b: HA<DerX>) => ()\n",
-                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidConstraint_Kd", string.Empty
                 },
                 {
                     "virtualClause", VirtualBase + Slot + "\n        T is Missing\n        return value@follow\n" + Create,
@@ -369,9 +369,9 @@ public sealed partial class InstanceCollectorTest
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "limitAfterLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(a: ref/Bad<T>, b: ref/{Nest("B", 65, "T")}) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(x, y)\n", "UnresolvedBinding_Kd", string.Empty },
                 { "limitBeforeLocal", Box + $"struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc two<T>(b: ref/{Nest("B", 65, "T")}, a: ref/Bad<T>) => ()\nfunc g(x: ref/Bad<i32>, y: ref/{b65}) => two(y, x)\n", "UnresolvedBinding_Kd", string.Empty },
-                { "staticLimit", Box + Zero + $"    public var b: {Nest("B", 64, "i32")}\n    public func zero() -> i32 => 1\nfunc g() -> i32 => call<Bad>()\n", "UnresolvedBinding_Kd", "Unsupported_Kd T.zero()" },
+                { "staticLimit", Box + Zero + $"    public var b: {Nest("B", 64, "i32")}\n    public func zero() -> i32 => 1\nfunc g() -> i32 => call<Bad>()\n", "UnresolvedBinding_Kd", string.Empty },
                 { "outerLimit", Box + $"func inner<T>() => ()\nfunc outer<T>() => inner<T>()\nfunc g() => outer<{b65}>()\n", string.Empty, string.Empty },
-                { "toStringLimit", "struct B<T>\n" + Format + $"    public var v: T\nfunc g(b: ref/{b65}) -> string => Text.toString(b)\n", string.Empty, "Unsupported_Kd Text.toString(b)" },
+                { "toStringLimit", "struct B<T>\n" + Format + $"    public var v: T\nfunc g(b: ref/{b65}) -> string => Text.toString(b)\n", string.Empty, string.Empty },
                 { "rowLimit", Box + $"func g(a: uniq/Array<{b65}>) => a.reserve(1)\n", string.Empty, "GenerationResourceLimit_Kd a.reserve(1)" },
                 {
                     "localProjection", IterB + "func g() -> ()\n    let t: IB.(Iter<u8>).Tag = true\n    return\n",
@@ -969,13 +969,15 @@ public sealed partial class InstanceCollectorTest
         Assert.All(records, static x => Assert.StartsWith("let ", x.Text, StringComparison.Ordinal));
     }
 
-    // R7-T1 (N1; PLAN G651): only the collector's run answers a height refusal after Binding's run, to the formation owning it. On chain20,
-    // f19's call composed with f19's instance (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding
-    // nothing. In the collector's answer frame, TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns
-    // no refusal, gives Incomplete and the frame records Binding's site-less broken contract at its close; outside the frame Answered owns
-    // nothing either (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
+    // R7-T1 (N1; PLAN G651): only the collector's run answers a requesting site's height refusal after Binding's run (TyCtxt.Answered),
+    // to the formation owning it (an instance's stored Types are answered in every frame after the run, PLAN G651 U2a:
+    // AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame). On chain20, f19's call composed with f19's instance
+    // (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing. In the collector's answer frame,
+    // TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the
+    // frame records Binding's site-less broken contract at its close; outside the frame Answered owns nothing either
+    // (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
     [Fact]
-    public void OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal()
+    public void OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal()
     {
         var c = MirBuildTest.Compile(DeepSource("chain20"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
@@ -996,6 +998,45 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([nameof(DiagnosticCode.InternalInvariant_Kd)], TestDiagnostics.Of(c).Select(static x => x.Code));
         var outside = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
         Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (outside.Subst, outside.Cause));
+    }
+
+    // PLAN G651 U2a (IMPL A.4, 21.3.2; R7-T1): an instance whose stored Type passes IMPL A.4's height, first formed after Binding's run
+    // outside the collector's answer frame (main's MIR reads D<W^8000<i32>>, main's p40 lifted 40 times, its Field W^250<T> forming
+    // 8,250), publishes the refusal as its HeightLimit in every frame, so Layout records TypeHeightLimit_Kd at each least use (count's
+    // parameter, noneD's result, the call forming the instance), never Rejected's located InternalInvariant_Kd; its Field behind raw
+    // (raw192: raw/W^192<T>, 8,193) the same; at exactly H (raw191: 8,192) the instance forms and the program is accepted. G651's
+    // site-less InternalInvariant_Kd at the project stays beside it until U2b gives the after-run readers a site. The default's copy
+    // (copy250, f-stored), built since PLAN G396 (3)'s B3, records the same at its least uses, the copy's `.None` at its operation in the
+    // template (before B3 it was B3's Unsupported_Kd at the omitting call). In a Closure literal's body (clo250) the same records (beside
+    // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1).
+    // Fail-before: dev gives InternalInvariant_Kd at each use.
+    [Theory]
+    [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("raw191", "")]
+    [InlineData("copy250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>>.None InternalInvariant_Kd@-")]
+    [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
+    {
+        var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
+        var name = shape[..shape.IndexOfAny("0123456789".ToCharArray())];
+        var statement = name switch
+        {
+            "copy" => "taked(p40)",
+            "stored" => "taked(p40, count(noneD(p40)))", // The copy's written twin.
+            "clo" => "let c = func () -> i32 => count(noneD(p40))\n    _ = c()",
+            _ => "_ = count(noneD(p40))",
+        };
+        var c = MinimalEmissionTest.Check(Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement));
+        var seen = TestDiagnostics.Of(c).Where(x => name != "clo" || x.Code != nameof(DiagnosticCode.OwnershipDepthLimit_Kd)); // A4's own, clo250's alone.
+        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
+
+        // W^8000<i32> by 40 lifts of 200 levels, each within the height and within its frame.
+        static string Lifted(string stored, string statement)
+            => $"struct W<T>\n    public var v: T\nstruct D<T>\n    public var v: {stored}\nfunc lift<T>(p: raw/T) -> raw/{Nest("W", 200, "T")} => null\n" +
+                "func count<U>(u: U) -> i32 => 0\nfunc noneD<T>(p: raw/T) -> Option<D<T>> => .None\n" +
+                "func taked<T>(p: raw/T, k: i32 = count(Option<D<T>>.None)) => ()\npublic func main() -> ()\n    let p0: raw/i32 = null\n" +
+                string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    {statement}\n    return\n";
     }
 
     // R7-T1 (IMPL 21.3.1, SPEC 6.1; the owner's RQ12): a finite Type past Binding's storage bound that no called signature carries is an
@@ -1071,11 +1112,34 @@ public sealed partial class InstanceCollectorTest
     [InlineData("cap92", "TypeHeightLimit_Kd let h = H|OwnershipDepthLimit_Kd H|OwnershipDepthLimit_Kd h.run()")]
     [InlineData("cap91", "OwnershipDepthLimit_Kd H|TypeHeightLimit_Kd h|OwnershipDepthLimit_Kd h.run()")]
     public void ATwinMeetingA5sOwnLimitKeepsItsRecord(string shape, string records)
-    {
-        var c = MinimalEmissionTest.Check(DeepSource(shape));
-        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
-        Assert.Equal(records, string.Join('|', errors.Select(static x => x.Code + " " + (x.Text!.IndexOf('<') is var at and >= 0 ? x.Text[..at] : x.Text))));
-    }
+        => Assert.Equal(records, ErrorsUpToTheType(shape));
+
+    // R7-T1 c4 (IMPL A.4, 21.3.2; SPEC 8.6.1, 8.8.2, 8.9.1; c4\labels.tsv, c4-fix\labels.tsv; the Front's design review C1a, C2 and its
+    // implementation review C1, C2; B's review C1): a requirement call's witness resolution is the call's formation. After f19's chain (T = Box^8100<i32>), U.get()
+    // through `U is C<i32>` at S<Box^90<T>>, whose S declares `Self is C<Box<Box<T>>>` beside `Self is C<i32>`, forms that other
+    // conformance's formal past the height (8,193): the selection judges every member (SPEC 8.6.1, 8.9.1's selection has no clause order;
+    // R7-C3 b's SelectConformance), so both clause orders record one TypeHeightLimit_Kd at the call (names90, namesSwap90; F's C3b ruling
+    // (A), C-481) and at Box^80, within the height, both accept (names80, namesSwap80); w == w over W<Box^90<T>>, Equatable when T is
+    // Eqv<Box^8<T>>, forms that conditional conformance's premise past the height (8,198) with its operands within (8,192): one
+    // TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80) (c4's fail-before of names90, namesSwap90, premise90 and
+    // premise80: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's formation, names' record is
+    // the frame's site-less InternalInvariant_Kd). Through a requirement Item (namesItem: `let f = U.get`) the record at `f` is the Item's own Type
+    // formation's (In, through TyCtxt.Answered, before Callee's Witness), on dev too: a control, no fail-before of Callee's reading. A
+    // standard property witness over Ph<Box^90<T>> agrees with no refusal and meets R5-M170's type-driven key limit at the call (prop90;
+    // fail-before: the gate's Unsupported_Kd); one level deeper the receiver refuses at the receiver `x` before any witness (prop91, as
+    // before).
+    [Theory]
+    [InlineData("names80", "")]
+    [InlineData("names90", "TypeHeightLimit_Kd U.get()")]
+    [InlineData("namesItem90", "TypeHeightLimit_Kd f")]
+    [InlineData("namesSwap80", "")]
+    [InlineData("namesSwap90", "TypeHeightLimit_Kd U.get()")]
+    [InlineData("premise90", "TypeHeightLimit_Kd w == w")]
+    [InlineData("premise80", "")]
+    [InlineData("prop90", "GenerationResourceLimit_Kd x.n")]
+    [InlineData("prop91", "TypeHeightLimit_Kd x")]
+    public void AWitnessResolutionIsTheCallsFormation(string shape, string records)
+        => Assert.Equal(records, ErrorsUpToTheType(shape));
 
     // SPEC 8.6.1, 8.2.3, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose stored part is an associated projection is collected and
     // laid out with the Type its subject's conformance binds (W<Src>'s `e: S.Element` as i32), and a body reads the part as that Type, the
@@ -1100,8 +1164,9 @@ public sealed partial class InstanceCollectorTest
 
     // SPEC 23.1.2, 23.1.1 (DECISIONS BU-38): a part Binding rejected is a dependent, never a limit. A program whose instance, composed
     // substitution or bodyless callee's parameter rests on storage Binding rejected keeps exactly its Binding record and gains no generation
-    // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), while a Type nested past the
-    // bound keeps the gap at its site, beside a failed part in either order too: the limit wins. A Field whose projection finally names no
+    // record (before: the storage-nesting gap at the requesting call, C8d's LegacyRow item InternalInvariant_Kd), and so does a requirement
+    // call over a Self nested past the bound, beside a failed part (staticLimit) or alone (toStringLimit), since Dispatch reads no storage
+    // (R7-T1 c4; before: the gap at the call, "the limit wins"). A Field whose projection finally names no
     // Type is such a part, whatever its subject and reason (DECISIONS BU-50): its specification rejected by SPEC 8.3.3 (noType), also
     // through an inherited conformance one or two levels down or under a generic base (inherited*), two inherited sources or two
     // conformance paths disagreeing (sourcesDisagree, pathsDisagree; refinedDisagree, a direct and a refinement path binding u8 and i32
@@ -1839,20 +1904,23 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // PLAN G157 (4), PD30: a requirement call whose Self nests past Binding's storage bound in the instance (Box^65<i32>, storage depth 65;
-    // no local of the body stores it) is the storage-nesting gap at the call, while the twin one level below is its witness's instance.
+    // PLAN G157 (4), G128; DECISIONS R7-M54 (R7-T1 c4; RQ12): a requirement call whose Self nests past Binding's storage bound in the
+    // instance (Box^65<i32>, storage depth 65, and Box^80<i32>; no local of the body stores it) is its witness's instance, as the twin one
+    // level below is: what a call runs does not depend on its Self's storage (fail-before: past the bound, Dispatch's Limit target, the
+    // storage-nesting gap Unsupported_Kd at the call).
     [Theory]
-    [InlineData(64, true)]
-    [InlineData(65, false)]
-    public void ADeepSelfIsAGapAtTheRequirementCall(int depth, bool admitted)
+    [InlineData(64)]
+    [InlineData(65)]
+    [InlineData(80)]
+    public void ADeepSelfRunsItsWitnessAtTheRequirementCall(int depth)
     {
         var type = string.Concat(Enumerable.Repeat("Box<", depth)) + "i32" + new string('>', depth);
         var c = MirBuildTest.Compile(TagSource + $"require f<{type}>() == 1 else => $abort(\"tag\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Equal(admitted, set.Items.ToArray().Any(x => Label(program, x).StartsWith("Fn tag [", StringComparison.Ordinal)));
-        Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "T.tag()")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.Contains(set.Items.ToArray(), x => Label(program, x).StartsWith("Fn tag [", StringComparison.Ordinal));
+        Assert.Empty(program.Records(MirRecordClass.Collection));
     }
 
     // R5-M61: a requirement call of a closed Self has a witness; none is a broken contract, InternalInvariant_Kd at the call. Binding never
@@ -1957,19 +2025,44 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.5 "DropGlue", SPEC 16.3.2: a fixed array's glue destroys its elements through its element Type's glue, and a fixed array of
-    // elements that need no drop has none; a derived struct's glue ends with its base's, which is the base's declared destructor alone, as
-    // a base without one ends with its Fields.
+    // elements that need no drop has none, nor has one without an element (SPEC 4.1: it destroys nothing; R8-X1 U3), so no glue of Tok,
+    // which only it holds, is requested (Tok's drop stays a checked body, as every nongeneric body is); a derived struct's glue ends with
+    // its base's, which is the base's declared destructor alone, as a base without one ends with its Fields.
     [Fact]
     public void AFixedArraysAndADerivedStructsGluesEndWithTheirParts()
     {
         var (program, set) = Collect("open struct Res\n    public var id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
             "struct Derived: Res\n    public var name: string = \"d\"\n    public var count: i32 = 0\n    public init() : base(1) => ()\n" +
-            "func use() -> ()\n    let f: [2 of string] = [\"x\", \"y\"]\n    let g: [2 of i32] = [1, 2]\n    let d = Derived.init()\n    return\n");
+            "struct Tok\n    public var n: i32 = 0\n    drop => ()\n" +
+            "func use() -> ()\n    let f: [2 of string] = [\"x\", \"y\"]\n    let g: [2 of i32] = [1, 2]\n    let none: [0 of Tok] = []\n" +
+            "    let d = Derived.init()\n    return\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
         Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue [2 of string]"));
-        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue [2 of i32]");
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) is "DropGlue [2 of i32]" or "DropGlue [0 of Tok]" or "DropGlue Tok");
         Assert.Equal(["DropGlue string", "DropGlue Res"], Targets(program, set, "DropGlue Derived"));
         Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
+    }
+
+    // SPEC 4.1, 8.15.3 (R8-X1 U3): a generic body's Drop of `[N of T]` targets, per instance, its closed Type's glue: none at N = 0, whose
+    // array destroys nothing (hold<0, Tok>), the one-pass Run's glue at N = 1, which reaches Tok's glue and its drop (hold<1, Tok>). A
+    // non-regular Type behind an array without an element (G<T>'s `[0 of rc/G<(T, T)>]`) has no glue item to grow, so no instance is
+    // required past the generation limit (growlocal: no GenerationResourceLimit_Kd).
+    [Fact]
+    public void AnInstancesArrayWithoutAnElementRequestsNoGlue()
+    {
+        var (program, set) = Collect("struct Tok\n    public var n: i32 = 0\n    public init() => ()\n    drop => ()\n" +
+            "struct G<T>\n    public var kids: [0 of rc/G<(T, T)>]\n    public init() => self.kids = []\n" +
+            "func hold<length N, T>(a: [N of T]) => ()\nfunc use() -> ()\n    let empty: [0 of Tok] = []\n    let one: [1 of Tok] = [Tok.init()]\n" +
+            "    hold(empty@move)\n    hold(one@move)\n    let k: [0 of rc/G<(i32, i32)>] = []\n    return\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var holds = Enumerable.Range(0, set.Items.Length).Where(x => Label(program, set.Items[x]).StartsWith("Fn hold", StringComparison.Ordinal));
+        Assert.Equal(
+            [string.Empty, "DropGlue [1 of Tok]"],
+            holds.Select(x => string.Join(", ", set.Targets(x).ToArray().Select(t => Label(program, set.Items[t.Item])))).Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(
+            set.Items.ToArray(), x => Label(program, x) is var label && (label == "DropGlue [0 of Tok]" || label.StartsWith("DropGlue G<", StringComparison.Ordinal)));
+        Assert.Equal(["DropGlue Tok"], Targets(program, set, "DropGlue [1 of Tok]"));
+        Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Tok"));
     }
 
     // PLAN G641 kind 4 (R3-U2a, R3-U2b), SPEC 16.3.2, 8.15.3: an Open Drop's site targets what its group destroys, in DropGlue.Destroyed's
@@ -2444,7 +2537,7 @@ public sealed partial class InstanceCollectorTest
         var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).Order().ToArray();
         Assert.Equal(expected, c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())).Order());
         var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin);
-        Assert.Equal(refused.Length == 0, shims.Any(static x => ArithmeticContracts.IsArithmetic(TyCtxt.Contract(x.Key.Symbol!).LibraryDeclaration)));
+        Assert.Equal(refused.Length == 0, shims.Any(static x => KimiLibraryCatalog.IsArithmeticContract(TyCtxt.Contract(x.Key.Symbol!).LibraryDeclaration)));
     }
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
@@ -2624,8 +2717,8 @@ public sealed partial class InstanceCollectorTest
     // K 4.9 with a second, non-root module: a record caused in its inlined default moves to the root module's omitting call, and one caused
     // in its body to the root-module call that first admitted the chain. take's default, grow<u8>(1, 3), instantiates under the call, so
     // the builder copies it (DECISIONS R4-M127) with no record of its own, and its resource limit arises inside the copy, at its call in
-    // main's Inlined scope at the library's location; a default its call does not instantiate is no copy, but the builder's Unsupported_Kd at
-    // the call (MirBuildTest.ACopyTheCallDoesNotInstantiateIsAnOpaqueValue, this test's former probe<Array<…65…>> default).
+    // main's Inlined scope at the library's location; a default over an instance past Binding's storage bound is such a copy too
+    // (MirBuildTest.ACopyOverAnInstancePastBindingsBoundIsBuilt, this test's former probe<Array<…65…>> default).
     [Fact]
     public void TheLocationRuleLeavesNonRootModules()
     {
@@ -2718,7 +2811,7 @@ public sealed partial class InstanceCollectorTest
         string[] expected = name != "milestone/Milestone42" ? [] : [.. statics.Select(static x => "Unsupported_Kd " + x)];
 
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Main.kimi", File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", name["milestone/".Length..] + ".kimi"))));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
@@ -2839,12 +2932,22 @@ public sealed partial class InstanceCollectorTest
     // "Early" ends the chain at f18 (T = Box^7650<i32>) instead; a chain of n distinct
     // functions each adding 450 layers (chain), the 19th, at T = Box^8100<i32>, with a body local adding n more (local) or making an
     // Array<Box^n<T>> with a capacity, the library's Array.initCapacity (capacity); growth by 2n layers a generation, grow -> mid -> grow
-    // (grow).
+    // (grow); R7-T1 c4's: a requirement call U.tag() at Wrap^n<i32> (req), a Tuple of Wrap<T> compared at T = Wrap^n<i32> (cmpGen) and
+    // nested in a Tuple (cmpNest), and after f19's chain U.tag() at Ph<Box^n<T>> (dispatch), U.get() at S<Box^n<T>> by its call (names,
+    // namesSwap: the clause orders) or its Item (namesItem), w == w at W<Box^n<T>> under a conditional conformance's premise (premise), and
+    // a property witness's x.n at Ph<Box^n<T>> (prop).
     internal static string DeepSource(string shape)
     {
         const string Box = "struct Box<T>\n    public let value: T\n";
         const string End = "Console.writeLine(\"ok\")\n";
         const string G = "func g<U>() -> i32 => 0\n"; // A generic function reading none of its parameter's storage.
+        const string Wrap = "contract Tag\n    func tag() -> i32\nstruct Wrap<V>\n    Self is Equatable\n    Self is Tag\n    public init() => ()\n" +
+            "    public func equals(self: ref/Self, other: ref/Self) -> bool => false\n    public func tag() -> i32 => 1\n"; // Stores nothing.
+        const string Ph = "contract Tag\n    func tag() -> i32\nstruct Ph<T>\n    Self is Tag\n    public var n: i32 = 1\n    public init() => ()\n" +
+            "    public func tag() -> i32 => 1\nfunc g<U>() -> i32\n    U is Tag\n    return U.tag()\n"; // Stores an i32 only.
+        const string HasN = "contract HasN\n    property n: i32 has get\nstruct Ph<T>\n    Self is HasN\n    public var n: i32 = 1\n    public init() => ()\n" +
+            "func g<U>(x: U) -> i32\n    U is HasN\n    return x.n\n"; // A standard property witness, its receiver by value.
+        const string Get = "    return U.get()\n";
         const string H = "struct H<T>\n    public var n: i32 = 1\n    public init() => ()\n    public func run(self: ref/Self) -> i32\n" +
             "        let g = func [] () -> i32 => 0\n        return g()\n"; // A generic struct's method holding a Closure.
         var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
@@ -2868,6 +2971,15 @@ public sealed partial class InstanceCollectorTest
                 $"require f<{Nest("Box", n, "i32")}>() == 0 else => $abort(\"f\")\n" + End,
             "clores" => Chain(last, $"\n    let g = func [] () -> Option<raw/{Nest("Box", n, "T")}> => .None\n    return 0\n"),
             "clo" => Chain(last, $"\n    let g = func [] (y: Option<raw/{Nest("Box", n, "T")}>) -> i32 => 0\n    return g(.None)\n"),
+            "req" => Wrap + $"func g<U>() -> i32\n    U is Tag\n    return U.tag()\nrequire g<{Nest("Wrap", n, "i32")}>() == 1 else => $abort(\"tag\")\n" + End,
+            "cmpGen" => Compared(n, "(Wrap<T>.init(), 1)"),
+            "cmpNest" => Compared(n, "((Wrap<T>.init(), 1), 2)"),
+            "dispatch" => Chain(last, $"\n    return g<Ph<{Nest("Box", n, "T")}>>() - 1\n", Ph),
+            "names" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<Box<Box<T>>>", "C<i32>", Get)),
+            "namesSwap" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<i32>", "C<Box<Box<T>>>", Get)),
+            "namesItem" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<Box<Box<T>>>", "C<i32>", "    let f = U.get\n    return f()\n")),
+            "premise" => Chain(last, $" => if h<{Nest("Box", n, "T")}>() => 0 else => 1\n", Premise()),
+            "prop" => Chain(last, $"\n    return g<Ph<{Nest("Box", n, "T")}>>(Ph<{Nest("Box", n, "T")}>.init()) - 1\n", HasN),
             "nest" => Chain(last, $"\n    func inner() -> i32\n        let y: Option<raw/{Nest("Box", n, "T")}> = .None\n        return 0\n    return inner()\n"),
             "cap" => Chain(last, $"\n    let h = H<{Nest("Box", n, "T")}>.init()\n    return h.run()\n", H),
             "wfield" => Chain(last, "\n    let x: Option<W<T>> = .None\n    return 0\n", W(n)),
@@ -2882,6 +2994,23 @@ public sealed partial class InstanceCollectorTest
 
         static string Local(string type) => $"func f<T>() -> ()\n    let x: {type} = .None\n    return\n";
 
+        // A tuple of Wrap<T> (storing nothing, its equals false) compared in a generic body, at T = Wrap^n<i32>: `not (w == w)` holds only
+        // where the comparison runs Wrap's witness.
+        static string Compared(int n, string tuple)
+            => Wrap + $"func f<T>() -> bool\n    let w = {tuple}\n    return not (w == w)\nrequire f<{Nest("Wrap", n, "i32")}>() else => $abort(\"eq\")\n" + End;
+
+        // S with two conformances to C, in either order, and g calling U.get() through `U is C<i32>`, by its call or its Item.
+        static string Names(string first, string second, string call)
+            => $"contract C<X>\n    func get() -> i32\nstruct S<T>\n    Self is {first}\n    Self is {second}\n    public var n: i32 = 1\n" +
+                $"    public init() => ()\n    public func get() -> i32 => 1\nfunc g<U>() -> i32\n    U is C<i32>\n{call}";
+
+        // Box's conformance to Eqv<Box^8<Self>>, in Box's body (Chain's declarations follow Box), and W<T>, Equatable when T is
+        // Eqv<Box^8<T>> (its equals false), compared in h<T> under that premise: `not (w == w)` holds where W's equals runs.
+        static string Premise()
+            => $"    Self is Eqv<{Nest("Box", 8, "Self")}>\ncontract Eqv<X>\nstruct W<T>\n    Self is Equatable when T is Eqv<{Nest("Box", 8, "T")}>\n" +
+                "        public func equals(self: ref/Self, other: ref/Self) -> bool => false\n    public init() => ()\n" +
+                $"func h<T>() -> bool\n    T is Eqv<{Nest("Box", 8, "T")}>\n    let w = W<T>.init()\n    return not (w == w)\n";
+
         // A generic struct's Field and a generic enum's Case payload over Box^n of the parameter, behind raw (R7-T1: an instance's stored
         // Types).
         static string W(int n) => $"struct W<T>\n    public let p: Option<raw/{Nest("Box", n, "T")}>\n";
@@ -2894,6 +3023,14 @@ public sealed partial class InstanceCollectorTest
         static string Chain(int functions, string last, string declarations = "")
             => Box + declarations + string.Concat(Enumerable.Range(1, functions - 1).Select(static i => $"func f{i}<T>() -> i32 => f{i + 1}<{Nest("Box", 450, "T")}>()\n")) +
                 $"func f{functions}<T>() -> i32" + last + "require f1<i32>() == 0 else => $abort(\"chain\")\n" + End;
+    }
+
+    // A program's Error records (MinimalEmissionTest.Check), each as its code and its text up to the first '<'.
+    private static string ErrorsUpToTheType(string shape)
+    {
+        var c = MinimalEmissionTest.Check(DeepSource(shape));
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        return string.Join('|', errors.Select(static x => x.Code + " " + (x.Text!.IndexOf('<') is var at and >= 0 ? x.Text[..at] : x.Text)));
     }
 
     // K 4.3: a representative is closed and makes every local Type of its body closed.
@@ -2992,7 +3129,7 @@ public sealed partial class InstanceCollectorTest
         {
             KimiDeclarationId.Equatable => "BuiltinEquals",
             KimiDeclarationId.Comparable => "BuiltinCompare",
-            var contract when ArithmeticContracts.IsArithmetic(contract) => "BuiltinArithmetic",
+            var contract when KimiLibraryCatalog.IsArithmeticContract(contract) => "BuiltinArithmetic",
             var contract => throw new InvalidOperationException($"{function.Name} of {contract} is no shim."),
         };
     }

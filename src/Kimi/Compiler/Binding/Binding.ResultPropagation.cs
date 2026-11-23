@@ -574,7 +574,7 @@ public sealed partial class Binding
             var held = waited && this.HoldsWaitedResult(source);
             var awaits = !waited && type is not null && this.AwaitsPosition(source);
             var fit = default(ComparisonFailure);
-            if (waited ? !held && !this.Deferred(source) : type is null || (!awaits && this.FitsTypeAt(context.Sources[i]!, type, node, out fit)))
+            if (waited ? !held && !this.Deferred(source) : type is null || (!awaits && this.FitsTypeAt(context.Sources[i]!, type, node, out fit, this.rawFits)))
             {
                 continue;
             }
@@ -611,7 +611,7 @@ public sealed partial class Binding
             else if (type is not null)
             {
                 late = this.BindWaiting(source, type);
-                fits = late is not null && this.FitsTypeAt(late, type, node, out _);
+                fits = late is not null && this.FitsTypeAt(late, type, node, out _, this.rawFits);
             }
             else if (!rests || held || this.SuppliesDefault(source))
             {
@@ -695,7 +695,7 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 3: an expression that awaits its position takes `target` when its late Type fits it at `use`.
     private bool TryPropagate(Koto node, BoundType target, Koto use)
     {
-        if (this.LateTypeOf(node, target) is not { } late || !this.FitsTypeAt(late, target, use, out _))
+        if (this.LateTypeOf(node, target) is not { } late || !this.FitsTypeAt(late, target, use, out _, null))
         {
             return false;
         }
@@ -789,7 +789,7 @@ public sealed partial class Binding
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
             _ when kind is PartKind.Function or PartKind.Case => // One waiting for its call, fitted as an argument by its header
-                this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
+                this.FitArgumentPart(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
             _ when kind is PartKind.Call or PartKind.Reference => target, // Completed by its call at this position's Type (SPEC 10.1).
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
@@ -917,7 +917,7 @@ public sealed partial class Binding
         return target;
     }
 
-    private bool LateFits(Koto part, BoundType target) => this.LateType(part, target) is { } late && this.FitsTypeAt(late, target, part, out _);
+    private bool LateFits(Koto part, BoundType target) => this.LateType(part, target) is { } late && this.FitsTypeAt(late, target, part, out _, null);
 
     // SPEC 14.9.2: nested results propagate the same way; each value source of an awaiting result target takes the target Type.
     private BoundType? LateResultType(Koto node, BoundType target)
@@ -926,7 +926,7 @@ public sealed partial class Binding
         for (var i = 0; i < context.Sources.Count; i++)
         {
             if (!ReferenceEquals(context.Sources[i], BoundType.Never) &&
-                (this.LateType(context.SourceNodes[i]!, target) is not { } source || !this.FitsTypeAt(source, target, node, out _)))
+                (this.LateType(context.SourceNodes[i]!, target) is not { } source || !this.FitsTypeAt(source, target, node, out _, null)))
             {
                 return null;
             }

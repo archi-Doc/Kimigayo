@@ -197,7 +197,7 @@ public sealed partial class Binding
     // A failed node's problem, the slot's (index -1 for a slot without one) or a further one: derived when its own requirement rests on the
     // node's recorded inputs (IsDerived, rule W), else direct (SPEC 23.1.2).
     private void CollectProblem(Koto node, BindingFailure failure, DiagnosticCode code, int problem)
-        => (this.IsDerived(node, failure) ? this.derivedIssues : this.issues).Add(new(node, code) { Failure = failure, Problem = problem });
+        => (this.IsDerived(node, failure, code) ? this.derivedIssues : this.issues).Add(new(node, code) { Failure = failure, Problem = problem });
 
     // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
     // its own, direct or derived by its own requirement (CollectProblem). An Origin record beyond the first is published with the node's first
@@ -275,7 +275,7 @@ public sealed partial class Binding
             case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
                 ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
                 break;
-            case BindingFailure.InvalidConstraint when this.report.Facts(index) is [] or [{ Kind: ProblemFactKind.Cause }]: // RecordConstraint's record
+            case BindingFailure.InvalidConstraint when this.report.Facts(index) is [] or [{ Kind: ProblemFactKind.Cause }]: // An Error outcome's record (RecordConstraint)
                 this.ReportConstraint(node, store, problem.Requirement, problem.Code, problem.Condition, this.report.Facts(index) is [var named] ? this.compilation.SyntaxOf(named.Site) : null);
                 break;
             case BindingFailure.InvalidTypeFormation when this.FactOf(index, ProblemFactKind.Count) is not null:
@@ -287,14 +287,30 @@ public sealed partial class Binding
             case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Cause) is { } later:
                 node.ReportDerivedIn(store, problem.Requirement, [this.compilation.SyntaxOf(later.Site).KeyIn(this.compilation.StoreOf(this.compilation.SyntaxOf(later.Site)), problem.Requirement)], problem.Condition);
                 break;
-            case BindingFailure.ParameterShapeMismatch when this.FactOf(index, ProblemFactKind.Reason) is not null:
+            case BindingFailure.ParameterShapeMismatch when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: the conflicting parameter, then its parties.
                 this.ReportParameterShapes(node, store, index, problem);
                 break;
             case BindingFailure.InvalidEffectBound when node is EffectBoundKoto effect && this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportEffectRejection(effect, store, index, problem);
                 break;
-            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Instance) is not null:
+            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: an associated Type declaration, with its Instance.
                 this.ReportAssociatedAmbiguity(node, store, index, problem);
+                break;
+            case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 3 }:
+                // Role 3, "candidate": a declaration a selection considered and rejected or could not order (CandidateFacts).
+                this.ReportCandidates(node, store, index, problem);
+                break;
+            case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous or BindingFailure.ReceiverShapeMismatch or BindingFailure.ParameterShapeMismatch
+                when this.FactOf(index, ProblemFactKind.Related) is { Value: 5 }:
+                // Role 5, "premise candidate": a Callable premise a value call considered (FailCallableCandidates).
+                this.ReportCallableCandidates(node, store, index, problem);
+                break;
+            case BindingFailure.UnboundTypeArgument when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: the unbound slot's Type parameter, 1: the waiting argument.
+                this.ReportUnboundTypeArgument(node, store, index, problem);
+                break;
+            case BindingFailure.ConstructorSelectionChanged or BindingFailure.UnprovenAcquisitionCorrelation when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                // Role 0: the tentative selection or group contract, 1: the constructor the check found or the corresponding declaration.
+                this.ReportConstructionCheck(node, store, index, problem);
                 break;
             case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportDisagreement(node, store, index, problem);
@@ -310,8 +326,16 @@ public sealed partial class Binding
                 // which the range does not satisfy or is not proven to; ordinal 2 keeps the clause record's roles 0 and 1 apart.
                 this.ReportRangeIteration(node, store, index, problem);
                 break;
+            case BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { Value: 6 }:
+                // Role 6, "argument": the argument a pending judgment found no slot evidence in, then role 7, "declaration": the slot's
+                // Type parameter (FailPendingJudgment).
+                this.ReportPendingJudgment(node, store, index, problem);
+                break;
             case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is not null && this.FactOf(index, ProblemFactKind.Constraint) is not null:
                 this.ReportClauseConstraint(node, store, index, problem); // No clause record carries an Instance, and no absence a Constraint.
+                break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.report.Facts(index) is [{ Kind: ProblemFactKind.Constraint }]:
+                this.ReportProposition(node, store, index, problem); // A caller's proposition alone (RequireConstraint's, the erasure's).
                 break;
             case BindingFailure.MissingName or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportConstructorAbsence(node, store, index, problem);
@@ -322,6 +346,15 @@ public sealed partial class Binding
                 break;
             case BindingFailure.NotObjectPayload when this.FactOf(index, ProblemFactKind.Related) is { } renouncing: // Role 0: the declaration that opts out, its own or an inherited base's.
                 ReportObjectPayload(node, store, problem, this.compilation.SyntaxOf(renouncing.Site));
+                break;
+            case BindingFailure.ArithmeticSelection when this.FactOf(index, ProblemFactKind.Constraint) is not null: // Role 0: a candidate conformance, each with its Instance.
+                this.ReportArithmeticSelection(node, store, index, problem);
+                break;
+            case BindingFailure.ArithmeticDirection when this.FactOf(index, ProblemFactKind.Related) is not null: // Role 0: the ordinary premise, 1: the reverse one, each with its Instance.
+                this.ReportArithmeticDirection(node, store, index, problem);
+                break;
+            case BindingFailure.ArithmeticConformance when this.FactOf(index, ProblemFactKind.Reason) is not null: // Role 0: the arithmetic Contract, with its Instance for a counterpart.
+                this.ReportArithmeticConformance(node, store, index, problem);
                 break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);

@@ -235,7 +235,7 @@ public class CompilationSpecificationTest
     // SPEC 23.1.2: the language version and each compile-time setting are independent records; an unsupported target leaves out the
     // settings, which are checked against the fixed Condition names, whatever the target.
     [Theory]
-    [InlineData(WindowsProfile.Target, new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd" })]
+    [InlineData("x86_64-pc-windows-msvc", new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd" })]
     [InlineData(
         "unknown-none-elf",
         new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd", "UnsupportedTarget_Kd" })]

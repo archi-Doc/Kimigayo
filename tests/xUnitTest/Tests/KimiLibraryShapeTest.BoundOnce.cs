@@ -59,7 +59,7 @@ public partial class KimiLibraryShapeTest
         static Compilation Hello()
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
             return c;
         }
@@ -86,7 +86,7 @@ public partial class KimiLibraryShapeTest
         static Compilation Hello(BindingMode mode)
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
             Assert.Equal(mode, c.Binding.Bind(mode).Mode);
             return c;
@@ -108,7 +108,7 @@ public partial class KimiLibraryShapeTest
     public void TheLibrarysImportsAreListedAfterEachBind()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
         for (var bind = 0; bind < 2; bind++)
         {
@@ -129,7 +129,7 @@ public partial class KimiLibraryShapeTest
     public void ALibrarySlotsKeepersAreCurrentAfterEachBind()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         var layer = c.Library.Layer.Part;
@@ -200,15 +200,15 @@ public partial class KimiLibraryShapeTest
     }
 
     // PLAN G949 S1-r1b (commit 9's premise; review-s1r1b Part 3, F's ruling 179): the documents' unnamed aliases are a per-pass map
-    // (PassPart.AliasesByDocument), and the library declares no unnamed alias, so the library pass's PrepareAliases prunes no entry a
-    // program document needs and the layer's map stays empty. A tripwire, true today: the unit that gives the library its first unnamed
-    // alias checks that each pass keeps and prunes its own documents' entries only.
+    // (PassPart.AliasesByDocument). The library's sources declare no unnamed alias; its one is its configured `Kimi` alias (F's ruling
+    // N1-13 C2), an alias of the library pass in its configuration document, so the layer's map holds that document's entry alone and a
+    // program pass, whose map is its own part's, neither reads nor prunes it (each pass keeps and prunes its own documents' entries).
     [Fact]
-    public void TheLibraryDeclaresNoUnnamedAlias()
+    public void TheLibrarysOnlyUnnamedAliasIsItsConfiguredOne()
     {
         var c = Bound(string.Empty);
         Assert.Empty(KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<AliasKoto>().Where(static x => x.Name is null).Select(static x => Line(x)));
-        Assert.Empty(c.Library.Layer.Part.AliasesByDocument);
+        Assert.Equal("compiler://configuration#Alias[Kimi]", Assert.Single(c.Library.Layer.Part.AliasesByDocument).Key.Path);
     }
 
     // The empty program's synthesized library nodes after its first Analyze, by id (c17's reference).

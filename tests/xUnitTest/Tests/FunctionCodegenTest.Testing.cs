@@ -232,7 +232,7 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(text);
         var ensure = ir.Function(Assert.Single(Regex.Matches(text, @"define internal void @(__kimi_static\d+_ensure)\(")).Groups[1].Value);
         Assert.Equal(
-            ["load i8, ptr @, align 1", "icmp ne i8 %, 0", "br i1 %, label %, label %", "call void @(i32 17, ptr %, i64 %, i64 -2)", "unreachable",
+            ["load i8, ptr @, align 1", "icmp ne i8 %, 0", "br i1 %, label %, label %", "call void @(i32 16, ptr %, i64 %, i64 -2)", "unreachable",
                 "store i8 1, ptr @, align 1", "load i32, ptr @", "store i32 3, ptr @", "call i32 @()", "store i32 %, ptr @, align 4",
                 "store i32 %, ptr @", "store i8 2, ptr @, align 1", "ret void"],
             ensure.Instructions.Select(static x => x.Shape));
@@ -258,7 +258,7 @@ public sealed partial class FunctionCodegenTest
         var c = Compilation.CreateForTest();
         c.Project.Directory = Path.GetFullPath("catalog-relative");
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("tests/Named.kimi", "#Test\nfunc tvNamed() => $expect(1 == 2)\n", isTestOnly: true));
         Assert.True(Checked(c), MinimalEmissionTest.Describe(c));
         c.Tests.Discover(c);
@@ -274,7 +274,7 @@ public sealed partial class FunctionCodegenTest
         var c = Compilation.CreateForTest();
         c.Project.Directory = Path.GetFullPath("catalog-moved-root");
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var library = Path.GetFullPath("catalog-moved-library");
         var other = new Kotonoha(c, "Other", Path.Combine(library, "Other.kimiproj"));
         other.AddSource(new SourceDocument(Path.Combine(library, "src", "Moved.kimi"), "#Test\nfunc tvMoved() => $expect(1 == 2)\n", isTestOnly: true));
@@ -345,7 +345,7 @@ public sealed partial class FunctionCodegenTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         foreach (var (file, source) in sources)
         {
             c.Kotonoha.AddSource(new SourceDocument(file, source, isTestOnly: true));

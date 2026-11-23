@@ -36,7 +36,7 @@ internal struct HirTables
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
     internal List<DefaultDecl>? Defaults; // The parameter defaults the latest publish evaluated, in walk order: the MIR's default templates.
-    internal List<Koto>? Broken; // The failure facts the latest publish found without their causes (Binding.FailureFact, RestingCauses): a broken contract.
+    internal List<Koto>? Broken; // The nodes the latest publish found breaking a HIR contract: failure facts without their causes (Binding.FailureFact, RestingCauses), or a Type holding a split's mark.
     internal NodeColumns Families; // Binding's private node families, read and written only by their accessors (DECISIONS BU-220).
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>
@@ -120,17 +120,31 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
-    /// <summary>Gets the decider of a published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23):
-    /// its plan row's Mode 2, which the HIR publisher writes where the element's use needs exclusive capability only in the admitted cases
-    /// where a standing take Reborrows and <c>indexUniq</c> is bound, with the Type of the Place whose take is by case (the element's, or a
-    /// Field's or Tuple element's below it) in the row's Plan. In each admitted case the selection is <c>indexUniq</c> where that Type's
-    /// case Type is an exclusive reference or object view (the case in which the take Reborrows) and <c>index</c> otherwise; the index's
-    /// ExpansionPlan names both calls, and both calls' inputs are published, a receiver's two takes in its two rows (DECISIONS R4-M145).
-    /// Null for a selection that is one call in every case (Mode 0 <c>index</c>, Mode 1 <c>indexUniq</c>) and for any other node; no
-    /// reader reads Mode 2 or the decider otherwise.</summary>
-    /// <param name="index">The index expression.</param>
+    /// <summary>Gets the decider of a node whose acquisition is by case, through which consumers read either stored decider (the HIR
+    /// publisher, which writes the index's row and walks an invocation's calls, and HasFacts read the stored members); null for any other
+    /// node.
+    /// <list type="bullet">
+    /// <item>A published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23): its plan row's Mode 2,
+    /// which the HIR publisher writes where the element's use needs exclusive capability only in the admitted cases where a standing take
+    /// Reborrows and <c>indexUniq</c> is bound, with the Type of the Place whose take is by case (the element's, or a Field's or Tuple
+    /// element's below it) in the row's Plan. In each admitted case the selection is <c>indexUniq</c> where that Type's case Type is an
+    /// exclusive reference or object view (the case in which the take Reborrows) and <c>index</c> otherwise; the index's ExpansionPlan
+    /// names both calls, and both calls' inputs are published, a receiver's two takes in its two rows (DECISIONS R4-M145). A selection that
+    /// is one call in every case (Mode 0 <c>index</c>, Mode 1 <c>indexUniq</c>) has none; no reader reads Mode 2 otherwise.</item>
+    /// <item>A value call whose Closure receiver is by case (SPEC 7.7.3, 8.15.2; PLAN G13): its CallPlan's
+    /// <see cref="CallPlan.CaseDecider"/>, the callee's Closure Type. In each admitted case the call acquires the callee exclusively
+    /// (<see cref="CallPlan.ReceiverOperation"/>, the column's take) where that Type's case receiver is Exclusive and shared
+    /// (<see cref="CallPlan.SharedReceiver"/>, the plan row's take) otherwise. No invocation Mode is written.</item>
+    /// </list></summary>
+    /// <param name="binding">The reader's Binding, whose current pass's calls are read (<see cref="CallPlan.Of"/>).</param>
+    /// <param name="node">An index expression or an invocation.</param>
     /// <returns>The decider, or null.</returns>
-    internal static BoundType? IndexCaseDecider(Koto index) => index is IndexKoto && PlanOf(index) is { Mode: 2, Plan: BoundType decider } ? decider : null;
+    internal static BoundType? CaseDecider(Binding binding, Koto node) => node switch
+    {
+        IndexKoto => PlanOf(node) is { Mode: 2, Plan: BoundType decider } ? decider : null,
+        InvocationKoto => CallPlan.Of(binding, node)?.CaseDecider,
+        _ => null,
+    };
 
     /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
     /// operand is a Transfer whose Take OffersTake allowed through its raw branch (Binding.IsRawPlace; Binding.DestroysInPlace),
@@ -341,7 +355,9 @@ internal struct NodeColumns
     internal PagedColumn<Binding.TypeRoleCause> FormationCauses; // Kept: a pair occurrence's Language formation causes, emptied at each Final check (Binding.ConstraintValidation.cs).
     internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
+    internal StampedColumn<Koto?, Binding.PassCounter> FailingSteps; // Pass: the step a use's published Unresolved lookup failed at, where it is not the use (Binding.ResolvePath.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
+    internal StampedColumn<(Binding.QualificationFact Value, Binding.QualificationFact Type), Binding.PassCounter> QualificationStops; // Work: a use's provisional qualification stop in each namespace, read by the resolver's miss, the running pass's working state, released at the freeze (Binding.Qualification.cs).
     internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
@@ -351,16 +367,13 @@ internal struct NodeColumns
     internal StampedColumn<BoundArgumentOperation, Binding.PassCounter> ReceiverOperations; // Work: the receiver or storage operation selected for a call or member access, released at the freeze (Binding.ArgumentOperations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
     internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
-    internal StampedColumn<Binding.CallInferenceFailure, Binding.PassCounter> CallInferenceFailures; // Pass: the selection a construction's or shape contract's later check rejected (Binding.ConstructorValidation.cs).
-    internal StampedColumn<(bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other), Binding.PassCounter> CallableSelectionFailures; // Pass: a failed Callable value call's candidates and shape position (Binding.CallableSelection.cs).
     internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
-    internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
-    internal StampedColumn<Binding.ArithmeticConformanceFailure, Binding.PassCounter> ArithmeticConformanceFailures; // Pass: the eligibility condition a declared arithmetic conformance fails (Binding.ArithmeticContracts.cs).
     internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
-    internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
+    internal StampedColumn<int, Binding.PassCounter> MemberSelections; // Work: a member access's published side and lookup selection, as its row's index in the pass's rows plus 1, the running pass's working state, released at the freeze (Binding.MemberLookup.cs).
+    internal StampedColumn<bool, Binding.PassCounter> InferredConstructionTargets; // Work: whether a construction qualifier leaves its own slots open for its construction to complete, the running pass's working state, released at the freeze (Binding.ContainerReferences.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> ResultCompletions; // Work: Binding's result, conversion and fallthrough checks' (Binding.ResultStructure) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
@@ -375,6 +388,10 @@ internal struct NodeColumns
     internal StampedColumn<Koto?, Binding.PassCounter> PartPrerequisites; // Work: the part a declaration-level check read outside a frame, the running pass's dependence store, released at the freeze (Binding.Diagnostics.Prerequisites.cs).
     internal StampedColumn<uint, Binding.PassCounter> PrerequisiteVisits; // Work: the publication walks' visited set (RestsOnRecoveryOrLimit, AddPrerequisiteKeys), a row carrying the walk's number, a row of another walk absent, released at the freeze (Binding.Diagnostics.Prerequisites.cs).
     internal StampedColumn<(Koto? Parent, Koto? Next), Binding.PassCounter> DuplicateDeclarations; // Pass: a declaration's duplicate group row, its parent toward the group's first and the first's earliest later declaration, written by the pairwise checks and read by RecordDuplicateGroups (Binding.DuplicateDiagnostics.cs).
+    internal StampedColumn<bool, Binding.PassCounter> ResolvingTypes; // Work: BindType's cycle guard, whether a Type syntax's BindType is on the stack, the running pass's working state, released at the freeze (Binding.Types.cs).
+    internal StampedColumn<Koto?, Binding.PassCounter> SynthesizedCalls; // Work: a call Binding synthesized in the pass, its consumer, the running pass's working state, released at the freeze (Binding.Check.cs).
+    internal PagedColumn<List<BindingSymbol>?> GatheredGroups; // Kept: a use's function group gathered at the alias stage, emptied in place at each publication of its head (Binding.Imports.cs).
+    internal PagedColumn<(bool Pattern, bool Guard)> IndexedPatterns; // Kept: whether the latest run of a node's pass indexed it as a pattern node or a guard scope, copied to the pass's previous-run lists and emptied at its reset (Binding.Patterns.cs).
 
     internal void Resize(int length)
     {
@@ -420,7 +437,9 @@ internal struct NodeColumns
         this.FormationCauses.Grow(length);
         this.AliasTargets.Grow(length);
         this.ImportedContainers.Grow(length);
+        this.FailingSteps.Grow(length);
         this.QualificationFailures.Grow(length);
+        this.QualificationStops.Grow(length);
         this.PerCallOrigins.Grow(length);
         this.PairFollows.Grow(length);
         this.ImplicitPairFollows.Grow(length);
@@ -430,16 +449,13 @@ internal struct NodeColumns
         this.ReceiverOperations.Grow(length);
         this.InferredArrayLengths.Grow(length);
         this.ArrayInferenceShapes.Grow(length);
-        this.CallInferenceFailures.Grow(length);
-        this.CallableSelectionFailures.Grow(length);
         this.BaseCallFailures.Grow(length);
-        this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
-        this.ArithmeticConformanceFailures.Grow(length);
         this.CallableConstraints.Grow(length);
-        this.UnboundSlots.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
+        this.MemberSelections.Grow(length);
+        this.InferredConstructionTargets.Grow(length);
         this.ResultCompletions.Grow(length);
         this.GuessedCompletions.Grow(length);
         this.PublishedCompletions.Grow(length);
@@ -454,6 +470,10 @@ internal struct NodeColumns
         this.PartPrerequisites.Grow(length);
         this.PrerequisiteVisits.Grow(length);
         this.DuplicateDeclarations.Grow(length);
+        this.ResolvingTypes.Grow(length);
+        this.SynthesizedCalls.Grow(length);
+        this.GatheredGroups.Grow(length);
+        this.IndexedPatterns.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -476,7 +496,9 @@ internal struct NodeColumns
         this.ShapeContractHeads.Freeze(binding);
         this.AliasTargets.Freeze(binding);
         this.ImportedContainers.Freeze(binding);
+        this.FailingSteps.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
+        this.QualificationStops.Release();
         this.PerCallOrigins.Freeze(binding);
         this.PairFollows.Freeze(binding);
         this.ImplicitPairFollows.Freeze(binding);
@@ -486,16 +508,13 @@ internal struct NodeColumns
         this.ReceiverOperations.Release();
         this.InferredArrayLengths.Freeze(binding);
         this.ArrayInferenceShapes.Freeze(binding);
-        this.CallInferenceFailures.Freeze(binding);
-        this.CallableSelectionFailures.Freeze(binding);
         this.BaseCallFailures.Freeze(binding);
-        this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
-        this.ArithmeticConformanceFailures.Freeze(binding);
         this.CallableConstraints.Freeze(binding);
-        this.UnboundSlots.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
+        this.MemberSelections.Release();
+        this.InferredConstructionTargets.Release();
         this.ResultCompletions.Release();
         this.GuessedCompletions.Release();
         this.PublishedCompletions.Release();
@@ -508,6 +527,8 @@ internal struct NodeColumns
         this.PartPrerequisites.Release();
         this.PrerequisiteVisits.Release();
         this.DuplicateDeclarations.Freeze(binding);
+        this.ResolvingTypes.Release();
+        this.SynthesizedCalls.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -558,7 +579,9 @@ internal struct NodeColumns
             FormationCauses = this.FormationCauses.Renumbered(length),
             AliasTargets = this.AliasTargets.Renumbered(length),
             ImportedContainers = this.ImportedContainers.Renumbered(length),
+            FailingSteps = this.FailingSteps.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
+            QualificationStops = this.QualificationStops.Renumbered(length),
             PerCallOrigins = this.PerCallOrigins.Renumbered(length),
             PairFollows = this.PairFollows.Renumbered(length),
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
@@ -568,16 +591,13 @@ internal struct NodeColumns
             ReceiverOperations = this.ReceiverOperations.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
             ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
-            CallInferenceFailures = this.CallInferenceFailures.Renumbered(length),
-            CallableSelectionFailures = this.CallableSelectionFailures.Renumbered(length),
             BaseCallFailures = this.BaseCallFailures.Renumbered(length),
-            ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
-            ArithmeticConformanceFailures = this.ArithmeticConformanceFailures.Renumbered(length),
             CallableConstraints = this.CallableConstraints.Renumbered(length),
-            UnboundSlots = this.UnboundSlots.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),
+            MemberSelections = this.MemberSelections.Renumbered(length),
+            InferredConstructionTargets = this.InferredConstructionTargets.Renumbered(length),
             ResultCompletions = this.ResultCompletions.Renumbered(length),
             GuessedCompletions = this.GuessedCompletions.Renumbered(length),
             PublishedCompletions = this.PublishedCompletions.Renumbered(length),
@@ -592,6 +612,10 @@ internal struct NodeColumns
             PartPrerequisites = this.PartPrerequisites.Renumbered(length),
             PrerequisiteVisits = this.PrerequisiteVisits.Renumbered(length),
             DuplicateDeclarations = this.DuplicateDeclarations.Renumbered(length),
+            ResolvingTypes = this.ResolvingTypes.Renumbered(length),
+            SynthesizedCalls = this.SynthesizedCalls.Renumbered(length),
+            GatheredGroups = this.GatheredGroups.Renumbered(length),
+            IndexedPatterns = this.IndexedPatterns.Renumbered(length),
         };
         return columns;
     }
@@ -630,6 +654,8 @@ internal struct NodeColumns
         this.FormationCauses.Retire();
         this.SpecializationStorage.Retire();
         this.KnownBases.Retire();
+        this.GatheredGroups.Retire();
+        this.IndexedPatterns.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -665,6 +691,8 @@ internal struct NodeColumns
         this.FormationCauses.MoveTo(ref target.FormationCauses, from, to);
         this.SpecializationStorage.MoveTo(ref target.SpecializationStorage, from, to);
         this.KnownBases.MoveTo(ref target.KnownBases, from, to);
+        this.GatheredGroups.MoveTo(ref target.GatheredGroups, from, to);
+        this.IndexedPatterns.MoveTo(ref target.IndexedPatterns, from, to);
     }
 }
 
@@ -684,10 +712,16 @@ internal struct PlanRow
 
     /// <summary>The node's Adjust that the Adjust column cannot hold (DECISIONS R4-M145): the earlier of two calls of one consumer that take
     /// it by different Adjusts, whose later one the column keeps, a compound update's getter beside its setter (SPEC 13.7.2, 11.3; DECISIONS
-    /// R4-M109), written at each call input of each pass; or a Place in Discard Context's bare acquisition (SPEC 14.2.2), written at each such
-    /// Place of each pass, where the column's unset value is the container discarding its item. Default otherwise: a publish clears every
-    /// row's first, so it is always that publish's, a read of a take's claim (Binding.Claimed) included. A node three or more
-    /// calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
+    /// R4-M109), written at each call input of each pass; a by-case value call's Shared acquisition of its callee beside the Exclusive one
+    /// the column keeps (<see cref="CallPlan.SharedReceiver"/>; SPEC 7.7.3, PLAN G13), the same call's two takes of one input; or a Place in
+    /// Discard Context's bare acquisition (SPEC 14.2.2), written at each such
+    /// Place of each pass, where the column's unset value is the container discarding its item. At a call input it is never an operand
+    /// take before the node's first call: each record of the uses resets its preceding input at a call (<c>Binding.EarlierAdjust</c>). The
+    /// reset is unobservable today (the implementation review's mutant M5): each operand that a node's first call also takes as its first
+    /// input (an index's key, an object creation's operand, a <c>for</c>'s Subject) is taken by the same Adjust both times. It keeps the row
+    /// a call's take, as <c>Binding.Claimed</c>, <c>UseOf</c> and the MIR builder's <c>Taken</c> read it, without resting on that.
+    /// Default otherwise: a publish clears every row's first, so it is always that publish's, a read of a take's claim (Binding.Claimed)
+    /// included. A node three or more calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
     internal HirAdjust Adjust;
 
     /// <summary>The Type of the value a container or an explicit discard discards (SPEC 14.2.2, 14.2.4; DECISIONS BU-98), at the Place

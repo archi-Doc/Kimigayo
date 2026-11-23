@@ -120,6 +120,12 @@ public sealed partial class Binding
 
         void Show(BoundType current, bool underBorrow)
         {
+            if (current is { Kind: BoundTypeKind.Open, Components: [var formed] })
+            {
+                Show(formed, underBorrow); // DECISIONS BU-240: a position a split binding decides shows the canonical case's Type.
+                return;
+            }
+
             using var guard = budget?.Enter();
             budget?.Charge(current.Name.Length);
             if (current is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Pair: { } semantics } })

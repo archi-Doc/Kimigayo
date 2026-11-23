@@ -83,7 +83,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
                 _ => $"func first(x: {c}, y: {d}) -> {c}\n    return x\nfunc f(x: {c}, y: {d}) -> {c}\n    return first({(valid ? "x, y" : "y, x")})\n",
             };
             var compilation = Compilation.CreateForTest();
-            Assert.True(compilation.Prepare(WindowsProfile.Target));
+            Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
             compilation.Kotonoha.AddSource(new SourceDocument("nested.kimi", source + "public func main() => ()\n"));
             var metrics = new OriginProofMetrics();
             compilation.Binding.OriginProofMetrics = metrics;
@@ -312,7 +312,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         source.Append("    public let f: (C{x}, ").AppendJoin(", ", Enumerable.Range(1, binders).Select(static i => $"ref/(s{i}/T{i} during b) during x.s"));
         source.Append(", ref/(ref/i32 during x.s) during a)\n        origin x.s == zz\npublic func main() => ()\n");
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("chains.kimi", source.ToString()));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;
@@ -449,7 +449,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
     private static OriginProofMetrics CarriedMetrics(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("carried.kimi", source));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;
@@ -479,7 +479,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         }
 
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("regions.kimi", source.Append("public func main() => ()\n").ToString()));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;
@@ -501,7 +501,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
 
         source.Append(CultureInfo.InvariantCulture, $"    see(a{locals - 1}@ref)\n    let r = pick(a{locals - 1}@ref)\n    return\n");
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("shared.kimi", source.Append("public func main() -> ()\n    let x = 1\n    f(x@ref)\n    return\n").ToString()));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;
@@ -513,7 +513,7 @@ public class OriginProofScalingTest(ITestOutputHelper output)
     private static OriginProofMetrics Measure(string family, int size, string? code)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("origin-proof.kimi", OriginProofWorkloads.Create(family, size)));
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;

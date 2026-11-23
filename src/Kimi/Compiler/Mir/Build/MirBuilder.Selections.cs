@@ -30,7 +30,7 @@ internal sealed partial class MirBuilder
             return this.Unidentified(sequence, index);
         }
 
-        sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
+        sequence = Builds(index.Right, HirTables.AdjustOf(index.Right)) ? this.Handle(sequence, index.Left) : sequence;
         var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
         var key = ExpansionPlan.Of(compilation.Binding, index)?.First;
         MirPlace position;
@@ -156,7 +156,8 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
+        var later = range is null ? Builds(index.Right, HirTables.AdjustOf(index.Right))
+            : (range.Start is { } from && Builds(from, HirTables.AdjustOf(from))) || (range.End is { } to && Builds(to, HirTables.AdjustOf(to)));
         sequence = later ? this.Handle(sequence, index.Left) : sequence;
         var backing = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index);
         var length = this.Length(sequence, index);
@@ -224,9 +225,10 @@ internal sealed partial class MirBuilder
     // at its receiver's Storage (an Opaque value where nothing lends the receiver: Unlent) by where it starts (a key's by its Type,
     // MirTypes.StartsAtStorage; a written range's by its start): at the storage, the view; at a position, the view in a temp its caller
     // holds in its own region (`through`; else the view's Place), displaced by the start, a proven Add at the view's location; open, the
-    // Storage keyed by the start and the key's Type, which each instance decides (LayoutNeeds). The selection builder and a default
-    // copy's fold, whose folded key decides again (Refirst), build by it. Only a Storage is keyed: an Opaque view (it exists only
-    // after a failed Binding) at an open start is the Opaque value alone, and at a position it keeps the Add.
+    // Storage keyed by the start and the key's Type, which each instance decides (LayoutNeeds). The selection builder, a default copy's
+    // fold, whose folded key decides again (Refirst), and Storage.viewStart's call (Form, through Refirst) build by it. Only a Storage
+    // is keyed: an Opaque view (it exists only after a failed Binding) at an open start is the Opaque value alone, and at a position it
+    // keeps the Add.
     private void First(int block, in MirStatement view, in MirOperand start, bool? starts, BoundType? key, MirPlace through)
     {
         if (starts is null && view.Rvalue.Kind == MirRvalueKind.Storage)

@@ -86,7 +86,7 @@ public class MilestoneSourcesTest
     private static Compilation Bind(string source, string path)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         Assert.False(c.Diagnostics.HasErrors);
         c.Bind();

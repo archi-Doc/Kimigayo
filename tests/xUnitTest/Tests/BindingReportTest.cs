@@ -13,7 +13,7 @@ namespace XunitTest;
 // adapter reads. MinimalEmissionTest.Analyze asserts that no fact site of an analyzed program was id-less.
 public sealed class BindingReportTest
 {
-    private const string Import = "group Native\n    #LibraryImport(\"kernel32\", \"VirtualFree\")\n    public unsafe func imported(a: bool) -> i32\n";
+    private const string Import = "group Native\n    #LibraryImport(\"kernel32\", \"VirtualProtect\")\n    public unsafe func imported(a: bool) -> i32\n";
 
     // review-r2's `wrapped` shape (Finding 3): need's T is Copy for Wrap<S<C>> rests on C is Callable<() -> ref/i32>, whose closure
     // result borrows its hidden environment receiver. Invalid: SPEC 8.10 and 15.6.1 make that Origin part Unknown, never Refuted, and
@@ -331,7 +331,7 @@ public sealed class BindingReportTest
     }
 
     private static string ManyParts(int count)
-        => "group Native\n    #LibraryImport(\"kernel32\", \"VirtualFree\")\n    public unsafe func imported(" +
+        => "group Native\n    #LibraryImport(\"kernel32\", \"VirtualProtect\")\n    public unsafe func imported(" +
             string.Join(", ", Enumerable.Range(0, count).Select(static i => $"p{i}: string")) + ") -> i32\n";
 
     private static BindingProblem Problem(SourceRef subject, DiagnosticRequirement requirement, ushort condition = 0)
@@ -341,7 +341,7 @@ public sealed class BindingReportTest
     private static Compilation Prepared(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         if (source.Length != 0)
         {
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));

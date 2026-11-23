@@ -6,6 +6,7 @@ using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -17,7 +18,7 @@ public sealed partial class MirBuildTest
     private const string DefaultsOver = "func f<T>(x: ref/T, k: Option<T> = .None) => ()\nfunc f3<T>(x: ref/T, k: (i32, Option<T>) = (0, .None)) => ()\n" +
         "func h<T>() -> i32 => 0\nfunc f2<T>(x: ref/T, k: i32 = h<T>()) => ()\nstruct Bx<T>\n    public var v: T\n";
 
-    // Callers of DefaultsOver (ACopyOverRejectedStorageIsBuilt, ACopyTheCallDoesNotInstantiateIsAnOpaqueValue, MirBorrowsTest's
+    // Callers of DefaultsOver (ACopyOverRejectedStorageIsBuilt, ACopyOverAnInstancePastBindingsBoundIsBuilt, MirBorrowsTest's
     // AnUninstantiableDefaultHidesNoRecord), each
     // holding a Loan across its omitting call that `v = 2` meets, over storage Binding rejected (Bad's Field) and its valid twin (Good).
     internal static string RejectedCopies => DefaultsOver + "struct Bad\n    public var m: Missing\nstruct Good\n    public var m: i32\n" +
@@ -210,40 +211,145 @@ public sealed partial class MirBuildTest
         Assert.Equal(MirBodyKind.DefaultTemplate, Assert.Single(program.Bodies.ToArray(), static x => x.HasConstructionRecord).Key.Kind);
     }
 
-    // SPEC 23.1.1 (DECISIONS R4-M127): a copy is decided before it is written. A default whose template the call's substitution does not
-    // instantiate (a Type the copy folds or a callee substitution it composes: its storage a Limit) is no copy but an Opaque value at the
-    // call reading the earlier slots, with the call's Unsupported_Kd: in a complete program past the storage depth, also a closed Type
-    // there under a library group member's call (InstanceCollectorTest's former default; the collector then admits nothing of it). The
-    // twin copies. Before, the copy kept the template's own Type (a validator finding) or callee (h<T> in the caller), and over the closed
-    // Type the Opaque value overwrote a copy the collector still admitted. A literal default (f4's null) reports alike: a valid Literal is
-    // no rejection (PLAN G122); before, the builder read every Literal as rejected, and the call took a silent Opaque value.
+    // DECISIONS R5-M183's GR-1a line: a builder record marks the ordinary function body it lies in alone (MirBody.HasConstructionRecord).
+    // f's Unbuilt selection records one located Unsupported_Kd at the selection with its Opaque value, and f is marked; g, calling f, is
+    // not. Before PLAN G396 (3)'s B3 the row was a call omitting a default past Binding's storage bound, now built; before R7-T1 c4 the
+    // deleted ATupleOperatorWithoutItsComparisonIsUnsupported held it on the tuple operator without its comparison (fail-before: none).
     [Fact]
-    public void ACopyTheCallDoesNotInstantiateIsAnOpaqueValue()
+    public void AConstructionRecordMarksItsOwnBodyAlone()
+    {
+        var c = Compile(Unbuilt.Declarations + $"func f<T>(x: ref/T) -> i32\n    {Unbuilt.Premise}\n    return x.0.a\n" +
+            "func g(y: ref/(Pair, i32)) -> i32 => f(y)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var record = Assert.Single(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, "x.0"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
+        Assert.True(program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" }).HasOpaque);
+        Assert.Equal(["f"], program.Bodies.ToArray().Where(static x => x.HasConstructionRecord && x.Source.Module == 0).Select(static x => x.Key.Decl?.Name));
+    }
+
+    // SPEC 7.2.3, 23.1.1 (DECISIONS R4-M127, R7-M54 m2; PLAN G396 (3)): a copy is decided before it is written, by the instance's
+    // formation, as the written call forms it: over an instance past Binding's storage bound it is built. lim and lim64 (f's T at Bx^65
+    // and Bx^63, past the storage depth under the Option), a literal default (f4's null at Bx^65) and a closed Type there under a library
+    // group member's call (take's probe<Array^65<i32>>) are Inlined copies with no construction record, as n30 is, lim's copy holding
+    // `.None` of Option<Bx^65<i32>> (fail-before: an Opaque value at the call reading the earlier slots, with the call's Unsupported_Kd,
+    // B3). The collector admits the library copy with no record.
+    [Fact]
+    public void ACopyOverAnInstancePastBindingsBoundIsBuilt()
     {
         var complete = Compile(LimitCopies);
         Assert.True(complete.Binding.Result.IsComplete);
-        Assert.Equal(
-            [
-                "lim: f; f(b) reads PendingSlot", "lim64: f; f(b) reads PendingSlot", "n30: Inlined f", "record f(b) Unsupported_Kd",
-                "record f(b) Unsupported_Kd",
-            ],
-            Callers(complete, "lim", "lim64", "n30"));
+        Assert.Equal(["lim: Inlined f", "lim64: Inlined f", "n30: Inlined f"], Callers(complete, "lim", "lim64", "n30"));
+        var lim = complete.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "lim" });
+        Assert.Contains(lim.Locals.ToArray(), static x => x.Type is { } type && TyCtxt.Name(type) == $"Option<{Nested("Bx", 65)}>");
         var literal = Compile(DefaultsOver + "func f4<T>(x: ref/T, k: raw/T = null) => ()\n" + Caller("lnull", Nested("Bx", 65), "f4"));
-        Assert.Equal(["lnull: f4; f4(b) reads PendingSlot", "record f4(b) Unsupported_Kd"], Callers(literal, "lnull"));
+        Assert.Equal(["lnull: Inlined f4"], Callers(literal, "lnull"));
         var api = "public group Api\n    public func probe<T>(value: T) -> i32 => 0\n" +
             $"    public func take(x: i32, extra: i32 = probe<{Nested("Array", 65)}>([])) -> i32 => x + extra\n";
         var library = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    return\n", api);
         Assert.True(library.Bind().IsComplete);
         Assert.True(library.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(["main: take; Lib.Api.take(1) reads PendingSlot", "record Lib.Api.take(1) Unsupported_Kd"], Callers(library, "main"));
+        Assert.Equal(["main: Inlined probe take"], Callers(library, "main"));
         var program = new MirBuilder(library).Build(SyntaxTable.LibraryModule + 1); // Uncollected: the compilation's own collection roots both modules.
         new MirAnalysis(library.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Assert.Equal(program.Version, new InstanceCollector(library.Types, library.Layout).Run(program, 1).Version);
         Assert.Empty(program.Records(MirRecordClass.Collection));
     }
 
-    // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M139): a copy over storage Binding rejected is built in the call's instance, as every reader of an
-    // instance reads one (TyCtxt.ReadableInstance) and as a non-generic template over that storage is: dep, dep3 and dep2 copy like their twins
+    // SPEC 7.2.3 (DECISIONS R7-M54 m2; PLAN G396 (3)): a program omitting a default over an instance past Binding's storage bound has its
+    // written twin's records, by code (Layout's GenerationResourceLimit_Kd stays at its operation inside the copy, DIAGNOSTICS' copy
+    // rule): take<Bx^65> (accepted), one default at Bx^65, i32 and Bx^65 in one body and through a generic caller at Bx^65 and i32 (the
+    // copy's instances and compositions per copy), a closed copy in a closure literal, g's Option<Bx^65> (Layout's limit), a conforming
+    // Self (T.zero() at Bx^65) and a declaring Type (Bx<T>.size() at Bx^64) composed (fail-before: B3's Unsupported_Kd at each omitting
+    // call; the twins are the reviewers' r-two, r-clo and the Front's f-self, f-decl).
+    [Theory]
+    [InlineData("take<B65>(a)", "take<B65>(a, zero<B65>())")]
+    [InlineData(
+        "take<B65>(a) + take<i32>(a) + take<B65>(a) + outer<B65>(a) + outer<i32>(a)",
+        "take<B65>(a, zero<B65>()) + take<i32>(a, zero<i32>()) + take<B65>(a, zero<B65>()) + outer<B65>(a) + outer<i32>(a)")]
+    [InlineData("call(func (x: i32) -> i32 => take<B65>(x), a)", "call(func (x: i32) -> i32 => take<B65>(x, zero<B65>()), a)")]
+    [InlineData("g<B65>(a)", "g<B65>(a, .None)")]
+    [InlineData("takeSelf<B65>(a)", "takeSelf<B65>(a, B65.zero())")]
+    [InlineData("takeDecl<B64>(a)", "takeDecl<B64>(a, Bx<B64>.size())")]
+    public void AnOmittedDefaultPastTheBoundHasItsWrittenCallsRecords(string omitted, string written)
+    {
+        Assert.Equal(Errors(written), Errors(omitted));
+        Assert.DoesNotContain(nameof(DiagnosticCode.Unsupported_Kd), Errors(omitted));
+
+        static string[] Errors(string expression)
+        {
+            var source = "contract Zero\n    func zero() -> i32\nstruct Bx<T>\n    public var v: T\n    Self is Zero\n    public func zero() -> i32 => 0\n" +
+                "    public func size() -> i32 => 0\nfunc zero<T>() -> i32 => 0\nfunc take<T>(a: i32, k: i32 = zero<T>()) -> i32 => a + k\n" +
+                "func g<T>(a: i32, k: Option<T> = .None) -> i32 => a\nfunc outer<T>(a: i32) -> i32 => take<Option<T>>(a)\n" +
+                "func takeSelf<T>(a: i32, k: i32 = T.zero()) -> i32\n    T is Zero\n    return a + k\n" +
+                "func takeDecl<T>(a: i32, k: i32 = Bx<T>.size()) -> i32 => a + k\nfunc call(f: (i32) -> i32, a: i32) -> i32 => f(a)\n" +
+                $"func same(a: i32) -> i32 => {expression.Replace("B65", Nested("Bx", 65), StringComparison.Ordinal).Replace("B64", Nested("Bx", 64), StringComparison.Ordinal)}\n" +
+                "public func main() -> ()\n    _ = same(1)\n    return\n";
+            return [.. TestDiagnostics.Of(MinimalEmissionTest.Check(source)).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code).Order(StringComparer.Ordinal)];
+        }
+    }
+
+    // SPEC 7.2.3 (PLAN G396 (3); the Middle's review C1, an open issue): a default whose template reads a preceding parameter over an
+    // instance past Binding's storage bound is built, but its copy reads the parameter through the prologue's shared borrow of the pending
+    // slot, so A5 meets retention's limit (CallRetention.Limit, read as Deep, R4-M153) with a Loan held: OwnershipDepthLimit_Kd at the
+    // copy's operation (fr's peek(x)) and at the omitting call, where the written twin fr(b, peek(b)) holds no Loan and is accepted
+    // (fail-before: B3's Unsupported_Kd at the call). The difference is the open issue's (A5 over a copy's prologue Loan).
+    [Fact]
+    public void ACopyReadingAPrecedingParameterPastTheBoundMeetsA5sLimit()
+    {
+        var head = $"struct Bx<T>\n    public var v: T\nfunc peek<T>(r: ref/T) -> i32 => 0\nfunc fr<T>(x: ref/T, k: i32 = peek(x)) -> i32 => k\n" +
+            $"public func main() => ()\nfunc same(b: ref/{Nested("Bx", 65)}) -> i32 => ";
+        Assert.Equal(
+            ["OwnershipDepthLimit_Kd@peek(x)", "OwnershipDepthLimit_Kd@fr(b)"],
+            TestDiagnostics.Of(MinimalEmissionTest.Check(head + "fr(b)\n")).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code}@{x.Text}"));
+        Assert.DoesNotContain(TestDiagnostics.Of(MinimalEmissionTest.Check(head + "fr(b, peek(b))\n")), static x => x.Severity == DiagnosticSeverity.Error);
+    }
+
+    // IMPL A.4, 21.3.2 (PLAN G396 (3), G651): the copy forms its temp Option<W^k<W^8000<i32>>> after Binding's run. Within IMPL A.4's
+    // height (copy191) it is built with its written twin's record codes (Layout's limit); past it (copy192) the formation fails outside
+    // the collector's frame, so the copy keeps the located Unsupported_Kd at the omitting call beside G651's site-less record, where the
+    // written twin gets TypeHeightLimit_Kd at none(p40) in Binding's frame: the one arm left, until G651 U2c (the Back's; U2b gives the
+    // copy a formation owning its refusal). In a generic caller (outer192) the copy is built open and the collector's formation at the
+    // instance passing the height records TypeHeightLimit_Kd at the copy's operation, as at the written twin's expression (the Back's
+    // review N3). The built rows compare distinct codes: the copy and its twin form their Types at different sites, so their least-use
+    // records (DECISIONS R5-M171, one per instance and declaration) differ in count (copy191: two GenerationResourceLimit_Kd, its
+    // twin three), not in class. Fail-before: B3's Unsupported_Kd at the omitting call for copy191 and outer192; copy192, the arm,
+    // holds on both.
+    [Theory]
+    [InlineData("copy191", "takeh(p40)", "takeh(p40, count(none(p40)))", null)]
+    [InlineData("copy192", "takeh(p40)", "takeh(p40, count(none(p40)))", "Unsupported_Kd@takeh(p40) InternalInvariant_Kd@-")]
+    [InlineData("outer192", "outer(p40)", "outerw(p40)", null)]
+    public void ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft(string shape, string omitted, string written, string? records)
+    {
+        var k = int.Parse(shape.AsSpan(shape.Length - 3), System.Globalization.CultureInfo.InvariantCulture);
+        var errors = Errors(Lifted(k, omitted));
+        if (records is not null)
+        {
+            Assert.Equal(records.Split(' '), errors);
+            return;
+        }
+
+        Assert.Equal(Codes(Errors(Lifted(k, written))), Codes(errors));
+        Assert.DoesNotContain(nameof(DiagnosticCode.Unsupported_Kd), Codes(errors));
+
+        static string[] Codes(string[] errors) => [.. errors.Select(static x => x[..x.IndexOf('@', StringComparison.Ordinal)]).Distinct().Order(StringComparer.Ordinal)];
+
+        static string[] Errors(string source)
+            => [.. TestDiagnostics.Of(MinimalEmissionTest.Check(source)).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code}@{x.Text ?? "-"}")];
+
+        // p40: raw/W^8000<i32> by 40 lifts of 200 levels, each within the height.
+        static string Lifted(int k, string statement)
+            => $"struct W<T>\n    public var v: T\nfunc lift<T>(p: raw/T) -> raw/{W(200)} => null\nfunc count<U>(u: U) -> i32 => 0\n" +
+                $"func none<T>(p: raw/T) -> Option<{W(k)}> => .None\nfunc takeh<T>(p: raw/T, k: i32 = count(Option<{W(k)}>.None)) => ()\n" +
+                (statement.StartsWith("outer", StringComparison.Ordinal) ? "func outer<U>(p: raw/U) => takeh(p)\nfunc outerw<U>(p: raw/U) => takeh(p, count(none(p)))\n" : string.Empty) +
+                "public func main() -> ()\n    let p0: raw/i32 = null\n" +
+                string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    {statement}\n    return\n";
+
+        static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
+    // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M139; PLAN G396 (3)): a copy over storage Binding rejected is built in the call's instance, as the
+    // written call forms it (TyCtxt.Apply) and as a non-generic template over that storage is: dep, dep3 and dep2 copy like their twins
     // with no builder record (BU-38's x3, `d(b)`, is dep's form); dep's copy holds `.None` of Option<Bad>, and dep2's calls `h<Bad>`.
     // Before, the Rejected instance read as a limit: an Opaque value and the call's Unsupported_Kd. Such a copy in a confined witness is
     // MirEffectsTest's ACopyInAConfinedWitnessOverRejectedStorageIsItsRepairs.

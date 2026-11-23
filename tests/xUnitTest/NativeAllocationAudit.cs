@@ -16,12 +16,24 @@ internal static class NativeAllocationAudit
     // Storage.transferBytes), through which Array and Dictionary growth copy high-water storage once, at its anchor.
     private const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
 
-    // Besides LLVM intrinsics, an audited module declares only the runtime's imports and the backend helpers (IMPL 21.4.7);
-    // any other declaration in any linkage, such as a second allocator, would escape the counters.
+    // Besides LLVM intrinsics, an audited module declares only the runtime's imports and the backend helpers (IMPL 21.4.7; the memory
+    // functions among them are the module's own definitions since the Tatara plan's decision 24, so no line declares them); any other
+    // declaration in any linkage, such as a second allocator, would escape the counters.
     private static readonly string[] Declarations =
     [
-        "GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess",
+        "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess", "VirtualAlloc", "VirtualFree",
         "memcmp", "memcpy", "memmove", "memset", "__chkstk",
+    ];
+
+    // The kernel32 functions each platform layer routine may call (the Tatara plan's B7r1 and B7r2; C-468's N2): only the exit ends the
+    // process and only the pages routines map and release pages, so a second allocator or exit is caught by its call site. A runtime
+    // declaration no row names, the test runtime's two, may be called nowhere in an audited module.
+    private static readonly (string Routine, string[] Symbols)[] LayerCalls =
+    [
+        (RuntimeAbi.Exit.Name, ["ExitProcess"]),
+        (RuntimeAbi.Write.Name, ["GetStdHandle", "WriteFile", "GetLastError"]),
+        (RuntimeAbi.Pages.Name, ["VirtualAlloc"]),
+        (RuntimeAbi.ReleasePages.Name, ["VirtualFree", "GetLastError"]),
     ];
 
     // Each count lies in its bound at process exit; transferred, when given, bounds the bytes the transfer routine copies.
@@ -52,8 +64,8 @@ internal static class NativeAllocationAudit
             }
         }
 
-        AssertExitsThroughHook(ir);
-        ir = Interpose(Interpose(Interpose(ir, "HeapAlloc", "audit_alloc"), "HeapFree", "audit_free"), "__kimi_exit", "__kimi_audit_exit");
+        AssertOsCallsInLayer(ir);
+        ir = Interpose(Interpose(Interpose(ir, RuntimeAbi.HeapAllocate.Name, "audit_alloc"), RuntimeAbi.HeapRelease.Name, "audit_free"), "__kimi_exit", "__kimi_audit_exit");
         if (transferred is not null)
         {
             // A bound without the routine would count nothing, and a program whose bodies transfer bytes counts them only through calls
@@ -98,7 +110,7 @@ internal static class NativeAllocationAudit
             @audit_frees = private global i64 0
             @audit_bytes = private global i64 0
             @audit_transferred = private global i64 0
-            define internal ptr @audit_alloc(ptr %heap, i32 %flags, i64 %size) {
+            define internal ptr @audit_alloc(i64 %size) {
             entry:
               %previous = load i64, ptr @audit_allocations
               %count = add i64 %previous, 1
@@ -111,30 +123,60 @@ internal static class NativeAllocationAudit
             rejected:
               ret ptr null
             allocate:
-              %data = call ptr @HeapAlloc(ptr %heap, i32 %flags, i64 %size)
+              %data = call ptr @{{RuntimeAbi.HeapAllocate.Name}}(i64 %size)
               ret ptr %data
             }
-            define internal i32 @audit_free(ptr %heap, i32 %flags, ptr %data) {
+            define internal i64 @audit_free(ptr %data) {
             entry:
               %previous = load i64, ptr @audit_frees
               %count = add i64 %previous, 1
               store i64 %count, ptr @audit_frees
-              %ok = call i32 @HeapFree(ptr %heap, i32 %flags, ptr %data)
-              ret i32 %ok
+              %error = call i64 @{{RuntimeAbi.HeapRelease.Name}}(ptr %data)
+              ret i64 %error
             }
 
             """;
         ScalarEmissionTest.WriteFixture(name, ir, stdout, exit, stderr);
     }
 
-    // The process exits only through __kimi_exit (IMPL 21.4.2), where an audit hooks: ExitProcess may appear only on its
-    // one declaration and inside that definition.
-    internal static void AssertExitsThroughHook(string ir)
+    // IMPL 21.4.2, 21.4.7 (the Tatara plan's B7r1, B7r2; design-b7b §3.3; C-478 B1): the platform layer owns every OS call of an audited
+    // module. Every mention of a runtime kernel32 function (TargetProfile.Windows.RuntimeDeclarations) but its one declaration lies inside
+    // the layer routine (RuntimeAbi.PlatformRoutines) that LayerCalls lets call it, whatever else defines it: the process exits only in
+    // __kimi_exit, where the audit hooks, and pages are mapped and released only in the pages routines, below the allocator the audit
+    // counts. A program's own kernel32 import, which shares the runtime's declaration (SPEC 21.2), is no exception: its calls would take
+    // memory around the counters, so a program calling one is not an allocation audit's subject.
+    internal static void AssertOsCallsInLayer(string ir)
     {
-        var exit = Assert.Single(Regex.Matches(ir, @"(?ms)^define [^\n]*@__kimi_exit\(.*?^\}"));
-        var rest = ir.Remove(exit.Index, exit.Length);
-        var declaration = Assert.Single(Regex.Matches(rest, @"(?m)^declare [^\n]*@ExitProcess\([^\n]*$"));
-        Assert.DoesNotContain("ExitProcess", rest.Remove(declaration.Index, declaration.Length), StringComparison.Ordinal);
+        Assert.Equal(RuntimeAbi.PlatformRoutines.Select(static x => x.Name), LayerCalls.Select(static x => x.Routine));
+        var offenders = new List<string>();
+        var definitions = new Regex(@"(?ms)^define [^\n]*?@([^(\s]+)\(.*?^\}");
+        foreach (Match definition in definitions.Matches(ir))
+        {
+            var name = definition.Groups[1].Value;
+            var row = Array.FindIndex(LayerCalls, x => x.Routine == name);
+            string[] calls = row < 0 ? [] : LayerCalls[row].Symbols;
+            foreach (var (symbol, _) in TargetProfile.Windows.RuntimeDeclarations)
+            {
+                if (Array.IndexOf(calls, symbol) < 0 && Mentions(definition.Value, symbol))
+                {
+                    offenders.Add(name + " mentions " + symbol);
+                }
+            }
+        }
+
+        var outside = definitions.Replace(ir, string.Empty);
+        foreach (var (symbol, _) in TargetProfile.Windows.RuntimeDeclarations)
+        {
+            var lines = outside.Split('\n').Where(x => Mentions(x, symbol)).ToArray();
+            if (lines.Length > 1 || (lines.Length == 1 && !lines[0].StartsWith("declare ", StringComparison.Ordinal)))
+            {
+                offenders.Add("the module text mentions " + symbol + " outside its declaration");
+            }
+        }
+
+        Assert.Empty(offenders);
+
+        static bool Mentions(string text, string symbol) => Regex.IsMatch(text, "@" + Regex.Escape(symbol) + @"(?![\w.$])");
     }
 
     // Replaces the one occurrence of anchor; any other count fails.

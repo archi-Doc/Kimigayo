@@ -23,16 +23,16 @@ internal group Storage
             self.count = count
             self.loan = Loan<ref/E during source>.init()
 
-    /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
+    /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements: `storage` addresses
+    /// the first of them and `count` counts them.
     internal struct UniqRemainder<E> {source}
-        internal let storage: raw/E during source
-        internal var position: isize = 0
+        internal var storage: raw/E during source
         internal var count: isize
         internal let loan: Loan<uniq/E during source>
 
-        /// Starts at the first of `count` elements. The caller's obligations, which the signature cannot state:
-        /// `storage` addresses them in what `source` covers, with read and write authority, and the function that
-        /// returns this remainder states `source` as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
+        /// Transfers an exclusive borrow to `count` elements. The caller's obligations, which the signature cannot
+        /// state: `storage` addresses them in what `source` covers, with read and write authority, and the function
+        /// that returns this remainder states `source` as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
         internal init(storage: raw/E during source, count: isize)
             self.storage = storage
             self.count = count
@@ -61,8 +61,7 @@ internal group Storage
     internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) during a) -> UniqRemainder<E> during a
         return UniqRemainder<E>.init(value.storage, value.length)
 
-    /// Selects a range from an exclusive capability without copying elements or weakening its Loan. The one
-    /// displacement of a view's start in the library: the selected start's offset is its stride (SPEC 5.3, 8.15.3).
+    /// Selects a range from an exclusive capability without copying elements or weakening its Loan.
     #CallerLocation
     internal func sliceUniq<E, R>(state: UniqRemainder<E> during source, range: R) -> UniqSlice<E> during source
         R is PositionRange
@@ -70,9 +69,11 @@ internal group Storage
             .Some(let resolved) => resolved
             .None => Storage.indexBounds()
         unsafe
-            // `0 <= selected.start <= state.count`, and the storage holds `position + count` elements.
-            let offset = (state.position@Wrapping<isize> + selected.start@Wrapping<isize>)@isize
-            let start = state.storage + offset
+            // `0 <= selected.start <= state.count`, and `storage` addresses `count` elements, so `viewStart` is
+            // defined (SPEC 5.3): a zero start keeps any pointer, null included; a nonzero one has live elements
+            // and ends at most one past them. `selected` resolves `range`, whose `Start` boundary resolves to 0
+            // (SPEC 4.6.1).
+            let start = Storage.viewStart<raw/E during source, R>(state.storage, selected.start)
             return UniqSlice<E>.init(UniqRemainder<E>.init(start, selected.length))
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
@@ -209,11 +210,11 @@ internal group Storage
     /// Splits the first untaken element off as a child Loan and advances the exclusive remainder.
     internal func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>
         require state.count > 0 else => return .None
-        let position = state.position
-        // `count > 0` bounds both steps: the remainder's storage holds `position + count` elements.
-        state.position = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
+        let first = state.storage
+        // `count > 0` bounds both steps: `storage` addresses `count` elements.
+        unsafe => state.storage = first + 1
         state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
-        unsafe => return .Some(state.storage[position]@uniq)
+        unsafe => return .Some((*first)@uniq)
 
     /// Lends the key and value of the first untaken entry for shared access and advances along the insertion order.
     internal func splitFirst<K, V>(state: uniq/DictionaryRefRemainder<K, V>) -> Option<(ref/K during state.source, ref/V during state.source)>
@@ -298,19 +299,19 @@ internal group Storage
         require firstPosition != secondPosition else => return .None
         let low = if firstPosition < secondPosition => firstPosition else => secondPosition
         let high = if firstPosition < secondPosition => secondPosition else => firstPosition
-        let start = state.position
+        let start = state.storage
         unsafe
             // Discard each skipped prefix's authority, then remove the selected element before splitting it.
             // Distinct positions let the raw Places designate distinct Places, also when E is zero-sized (SPEC 5.2).
-            // `0 <= low < high < count`, and the storage holds `start + count` elements, so no step below overflows.
+            // `0 <= low < high < count`, and `start` addresses `count` elements, so no step below overflows.
             let afterLow = (low@Wrapping<isize> + 1@Wrapping<isize>)@isize
             let afterHigh = (high@Wrapping<isize> + 1@Wrapping<isize>)@isize
-            state.position = (start@Wrapping<isize> + afterLow@Wrapping<isize>)@isize
+            state.storage = start + afterLow
             state.count = (count@Wrapping<isize> - afterLow@Wrapping<isize>)@isize
-            let lower = state.storage[(start@Wrapping<isize> + low@Wrapping<isize>)@isize]@uniq
-            state.position = (start@Wrapping<isize> + afterHigh@Wrapping<isize>)@isize
+            let lower = start[low]@uniq
+            state.storage = start + afterHigh
             state.count = (count@Wrapping<isize> - afterHigh@Wrapping<isize>)@isize
-            let upper = state.storage[(start@Wrapping<isize> + high@Wrapping<isize>)@isize]@uniq
+            let upper = start[high]@uniq
             if firstPosition < secondPosition => return .Some((lower@move, upper@move))
             return .Some((upper@move, lower@move))
 
@@ -447,37 +448,43 @@ internal group Storage
     #CallerLocation
     internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)
         unsafe
-            let capacity = (*handle).capacity
             let largest: isize = 9223372036854775807
             // SPEC 4.5, 4.9.5: zero-sized elements need no bytes, so every count fits without allocation.
             if stride == 0
                 (*handle).data = Raw.allocate<u8>(0)
                 (*handle).capacity = largest
                 return
-            let maximum = largest / stride
-            if minimum > maximum
-                Storage.allocationSizeExceeded()
-            // SPEC 4.9.8: amortized doubling, clamped; optional rounding never rejects a representable minimum.
-            var target = maximum
-            // `capacity <= maximum / 2` bounds the product.
-            if capacity <= maximum / 2
-                target = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
-            if target < 4
-                target = 4
-            if target < minimum
-                target = minimum
-            if target > maximum
-                target = maximum
-            // `target <= maximum` bounds the product.
+            let target = growthTarget((*handle).capacity, stride, minimum)
+            // `target <= largest / stride` bounds the product.
             let memory = Raw.allocate<u8>((target@Wrapping<isize> * stride@Wrapping<isize>)@isize)
             let buffer = (*handle).data
             let length = (*handle).length
             if length != 0
-                // `length <= capacity < minimum <= maximum` bounds the product.
+                // `length <= capacity < target` bounds the product.
                 Storage.transferBytes(memory, buffer, (length@Wrapping<isize> * stride@Wrapping<isize>)@isize)
             Raw.release(buffer)
             (*handle).data = memory
             (*handle).capacity = target
+
+    /// Returns the capacity that a growth from `capacity` to at least `minimum` elements of `stride` bytes allocates, the
+    /// one growth target of Array and Dictionary storage (SPEC 4.9.8): twice `capacity`, at least 4 and at least
+    /// `minimum`, at most the largest count whose byte size an `isize` holds. Doubling makes repeated growth amortized
+    /// O(1) per element; the rounding never rejects a representable `minimum`. `stride` is positive.
+    ///
+    /// - abort: `minimum` elements of `stride` bytes exceed the maximum object size, at the standard operation's caller
+    ///   location.
+    #CallerLocation
+    internal func growthTarget(capacity: isize, stride: isize, minimum: isize) -> isize
+        let largest: isize = 9223372036854775807
+        let maximum = largest / stride
+        if minimum > maximum => Storage.allocationSizeExceeded()
+        var target = maximum
+        // `capacity <= maximum / 2` bounds the product.
+        if capacity <= maximum / 2 => target = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
+        if target < 4 => target = 4
+        if target < minimum => target = minimum
+        if target > maximum => target = maximum
+        return target
 
     /// Reduces the capacity toward the length (SPEC 4.9.5), one routine for every element Type, as `growArray` is. A
     /// failed allocation leaves the handle unchanged; zero-sized elements keep their buffer and only the recorded
@@ -588,3 +595,16 @@ internal group Storage
     /// Returns the stride of `T` (IMPL 21.1.3), the byte distance between adjacent elements.
     #Intrinsic("Stride")
     internal func stride<T>() -> isize
+
+    /// Returns the address of the element at `start` among those from `storage`, `storage + start` (SPEC 5.3).
+    ///
+    /// `P` is a raw pointer Type `raw/E`, whose Origin the result keeps. The compiler writes the address in each
+    /// instance of `R`, without the element's stride where `R`'s start boundary is `Start`, the static zero (SPEC
+    /// 4.6.1, 8.15.3).
+    ///
+    /// - safety: `start >= 0`, and `storage + start` is defined (SPEC 5.3): a nonzero displacement needs live
+    ///   storage, and `storage` and the result lie within its provenance or one past its end. Where `R`'s start
+    ///   boundary is `Start`, `start` is 0.
+    #Lang("ViewStart")
+    internal unsafe func viewStart<P, R>(storage: P, start: isize) -> P
+        R is PositionRange

@@ -41,7 +41,7 @@ public sealed partial class Binding
             foreach (var fact in environment.Facts)
             {
                 if (fact.Kind == ConstraintKind.Contract && fact.Contract is { Type.Components: [var counterpart] } contract &&
-                    ArithmeticContractSyntax.Identity(contract) is { } id && ArithmeticContracts.IsLeft(id) && AssociatedIdentityMatches(type, counterpart) &&
+                    ArithmeticContractSyntax.Identity(contract) is { } id && KimiLibraryCatalog.IsLeftContract(id) && AssociatedIdentityMatches(type, counterpart) &&
                     this.AvailableConstraintFact(environment, fact, out _))
                 {
                     return true;
@@ -95,10 +95,7 @@ public sealed partial class Binding
         {
             if (leftCore is not null && rightCore is not null && UserArithmeticProvider(rightCore) && !ReferenceEquals(ComparisonReferent(leftCore), BoundType.String) && !leftCore.IsPointer)
             {
-                var rejected = binary.ArithmeticStorage ??= new();
-                rejected.Candidates.Clear();
-                rejected.Sources.Clear();
-                this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, rightCore, leftCore, ArithmeticContract(operation, true), ArithmeticSelectionCause.NonNumericLeft));
+                this.RecordArithmeticSelection(binary, rightCore, leftCore, ArithmeticContract(operation, true), ArithmeticSelectionCause.NonNumericLeft, null);
                 return true;
             }
 
@@ -205,7 +202,7 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, self) && fact.Contract is { } contract && this.AvailableConstraintFact(environment, fact, out _))
                 {
-                    Add(this.AppliedAssociatedContract(fact, self), this.ArithmeticFactUse(fact, current));
+                    Add(this.AppliedAssociatedContract(fact, self), this.PremiseUse(fact, current));
                 }
             }
         }
@@ -253,7 +250,7 @@ public sealed partial class Binding
 
         if (pending || count != 1)
         {
-            this.FailExplained(ref this.arithmeticSelectionFailures, use, BindingFailure.ArithmeticSelection, new(plan, self, counterpart, id, pending ? ArithmeticSelectionCause.Unproven : count == 0 ? ArithmeticSelectionCause.NoFit : ArithmeticSelectionCause.Ambiguous));
+            this.RecordArithmeticSelection(use, self, counterpart, id, pending ? ArithmeticSelectionCause.Unproven : count == 0 ? ArithmeticSelectionCause.NoFit : ArithmeticSelectionCause.Ambiguous, plan);
             return null;
         }
 

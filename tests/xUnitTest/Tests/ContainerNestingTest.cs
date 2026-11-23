@@ -112,6 +112,58 @@ public class ContainerNestingTest
         Assert.Equal(name, issue.Node.ToString());
     }
 
+    // SPEC 18.2.1, 8.4 (PLAN G656): an opening alias opens any fully bound Declaration Container, a Contract too, whose reference is
+    // formed as every bound Contract reference is: with its own arguments, under a bound parent, from the library, twice. A Contract
+    // without all its arguments, a wrong or missing argument, an unmet input condition, a member path, a named alias and an
+    // unqualified use of an opened requirement (no receiver, SPEC 9.5) stay invalid.
+    [Theory]
+    [InlineData("alias C<i32>", true)]
+    [InlineData("alias C<i32>\nalias C<i32>", true)]
+    [InlineData("alias C<i32>\nalias C<i64>", true)]
+    [InlineData("alias D<Marked>", true)]
+    [InlineData("alias Kimi.Addable<i32>", true)]
+    [InlineData("alias Outer<i32>.Sink", true)]
+    [InlineData("alias Outer<i32>.Pair<i64>", true)]
+    [InlineData("alias P", true)]
+    [InlineData("alias Marker\nalias P", true)]
+    [InlineData("alias C", false)]
+    [InlineData("alias C<i32, i64>", false)]
+    [InlineData("alias C<Missing>", false)]
+    [InlineData("alias D<Plain>", false)]
+    [InlineData("alias Outer.Sink", false)]
+    [InlineData("alias C<i32>.m", false)]
+    [InlineData("alias K => C<i32>", false)]
+    [InlineData("alias C<i32>\nfunc g() -> i32 => m(1)", false)]
+    [InlineData("alias C<i32>\nfunc g() -> i32 => make()", false)]
+    [InlineData("alias P\nfunc g() -> i32 => make()", false)]
+    public void AnOpeningAliasOpensAFullyBoundContract(string aliases, bool valid)
+    {
+        var c = CompilationTestHelper.Parse(aliases + "\ncontract Marker\nstruct Plain\nstruct Marked\n    Self is Marker\n" +
+            "contract C<T>\n    func m(self: ref/Self, x: T) -> i32\n    func make() -> T\ncontract P\n    func make() -> i32\n" +
+            "contract D<T>\n    T is Marker\nstruct Outer<T>\n" +
+            "    public contract Sink\n        func write(self: ref/Self, value: T)\n    public contract Pair<U>\n        func write(self: ref/Self, a: T, b: U)");
+        Assert.True(valid == (c.Bind().IsComplete && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha)), Describe(c));
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.InternalInvariant_Kd);
+    }
+
+    // SPEC 8.6.4 (F's ruling N1-7 (1); G656's remainder): an opened Contract's Type-function requirement that an unqualified Name selects
+    // has no subject Type to be called through, so the Name records the miss `Empty.empty()` records, at a call and at a value use alike;
+    // a receiver requirement keeps 9.5's qualification record (r06j).
+    [Theory]
+    [InlineData("alias P\nfunc g() -> i32 => make()", "UnresolvedBinding_Kd", "make")]
+    [InlineData("alias C<i32>\nfunc g() -> i32 => make()", "UnresolvedBinding_Kd", "make")]
+    [InlineData("alias P\nfunc g()\n    let f = make", "UnresolvedBinding_Kd", "make")]
+    [InlineData("alias Q\nfunc g() -> i32 => m(1)", "QualificationRequired_Kd", "m")]
+    public void AnOpenedRequirementHasNoSubjectType(string source, string code, string name)
+    {
+        var c = CompilationTestHelper.Parse(source + "\ncontract C<T>\n    func make() -> T\ncontract P\n    func make() -> i32\n" +
+            "contract Q\n    func m(self: ref/Self, x: i32) -> i32");
+        Assert.False(c.Bind().IsComplete);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(code, issue.Code.ToString());
+        Assert.Equal(name, issue.Node.ToString());
+    }
+
     // SPEC 23.1.2, 9.1, 9.4.1, 9.7.1 (PLAN G250 (4)): the qualifier of an inaccessible member is bound in its container role, so its own
     // failures, independent of the access, are reported beside the member's: an arity mismatch, omitted outer arguments and an
     // inaccessible argument.
@@ -172,6 +224,45 @@ public class ContainerNestingTest
     {
         var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.6, 7.3.4, 6.5.2 (R7-N1 c-b): a member access's left is read by its sole successful path, each reading evaluated before
+    // either publishes. A Type function reached as the Type reading and through a value of the Type counts once (k20v, rb06v, rb35v);
+    // a receiver function reached with a receiver and without one is two paths (O-431 (a): k20i, rb07a, rb07b, rb34g, rb73i). Q1's
+    // exact remainder: a left both of whose readings succeed at the left is one located Unsupported_Kd (k16v, k16i, rb21v, rb69i,
+    // rb80i), against lefts one reading leaves (rb18v, rb19v, rb48v, rb50v, rb53v). The value walk reads each step's Type: a computed
+    // property, a generic field, an inferred field (rb77v-rb79v). An uncalled function member at a step forms no value (7.3.4: t01v,
+    // t01i); an uncalled receiver function is the Type path's member (t05v).
+    [Theory]
+    [InlineData("struct T\n    public init() => ()\n    public func m() -> i32 => 1\nfunc f(T: T) -> i32 => T.m()\n", "")]
+    [InlineData("struct T\n    public init() => ()\n    public func m() -> i32 => 1\nfunc f(T: ref/T) -> i32 => T.m()\n", "")]
+    [InlineData("struct T\n    public init() => ()\n    public func m() -> i32 => 1\nfunc f() -> i32\n    let T = T.init()\n    return T.m()\n", "")]
+    [InlineData("struct T\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(T: T) -> i32 => T.f()\n", "AmbiguousBinding_Kd T.f")]
+    [InlineData("struct T\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(T: ref/T) -> i32 => T.f()\n", "AmbiguousBinding_Kd T.f")]
+    [InlineData("struct T\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(T: ref/T) -> i32 => T.f(T)\n", "AmbiguousBinding_Kd T.f")]
+    [InlineData("struct B<T>\n    public init() => ()\n    public func m() -> i32 => 1\nfunc f(B: B<i32>) -> i32 => B.m()\n", "InvalidTypeFormation_Kd B")]
+    [InlineData("struct B<U>\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(B: ref/B<i32>) -> i32 => B.f()\n", "AmbiguousBinding_Kd B.f|InvalidTypeFormation_Kd B")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct T\n    public group G\n        public let value: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct T\n    public group G\n        public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct T\n    public struct G\n        public func n() -> i32 => 1\nfunc f(T: V) -> i32 => T.G.n()\n", "Unsupported_Kd T.G")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V<U>\n    public let G: U\n    public init(g: U) => self.G = g@move\nstruct X\n    public group G\n        public let n: i32 = 1\nfunc f(X: ref/V<W>) -> i32 => X.G.n\n", "Unsupported_Kd X.G")]
+    [InlineData("struct X\n    public let n: i32\n    public init() => self.n = 1\nstruct W\n    public let H: X\n    public init() => self.H = X.init()\nstruct V<U>\n    public let G: U\n    public init(g: U) => self.G = g@move\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: ref/V<W>) -> i32 => T.G.H.n\n", "Unsupported_Kd T.G.H")]
+    [InlineData("contract C\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C\n    associate C.Item is P\nstruct H\n    public init() => ()\nfunc g(S: ref/H) -> i32 => S.(C).Item.make()\n", "")]
+    [InlineData("struct V\n    public init() => ()\nstruct T\n    public group G\n        public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "")]
+    [InlineData("struct V\n    public init() => ()\n    public func G(self) -> i32 => 1\nstruct T\n    public group G\n        public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.H.n\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct B<U>\n    public struct G\n        public func n() -> i32 => 1\nfunc f(B: V) -> i32 => B<i32>.G.n()\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public init() => ()\n    public computed G: W\n        get(self: ref/Self) -> W => W.init()\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: ref/V) -> i32 => T.G.H.n\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V<U>\n    public let G: U\n    public init(g: U) => self.G = g@move\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: ref/V<W>) -> i32 => T.G.H.n\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public let G = W.init()\n    public init() => ()\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: ref/V) -> i32 => T.G.H.n\n", "")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public init() => ()\n    public func G() -> W => W.init()\nstruct T\n    public group G\n        public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public init() => ()\n    public func G() -> W => W.init()\nstruct T\n    public group G\n        public let k: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "UnresolvedBinding_Kd T.G.n")]
+    [InlineData("struct T\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(T: T) -> i32\n    let h = T.f\n    return h(T)\n", "")]
+    public void AMemberAccessLeftIsReadByItsSoleSuccessfulPath(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
         Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
@@ -240,23 +331,24 @@ public class ContainerNestingTest
         Assert.Same(member.Parent!.TypeOf(), member.Left.TypeOf());
     }
 
-    // SPEC 9.6 (PLAN G488): a qualifier naming both a Type and a parameter or local needs both namespaces' complete paths before either
-    // publishes (R7 N1). The value path read the Type path's binding, so where neither path or both found the member, the form is one
-    // located Unsupported_Kd at the qualifier (the owner's decision O-32 (a)), never a Language error from one path: the valid Type-only
-    // (`group T`, `T.one()`) and value-only (`T: T`) forms among them. A group qualifier is never taken as a value (that ended the check
-    // in Layout). The valid form without the Type binds.
+    // SPEC 9.6 (PLAN G488, R7-N1 c-b): a Name qualifier naming both a Type and a parameter or local has both namespaces' complete paths
+    // evaluated before either publishes, and the sole successful one is selected: the Type path alone (`group T`, `T.n`; `T.one()`), the
+    // value path alone (`T: T`, `T.n`: an instance Field through the Type fails its static use; a private group fails on access), both
+    // (AmbiguousBinding_Kd at the access) or a record of the form's own (moving `T.G` out of a parameter, TransferRequired_Kd). A
+    // member-access qualifier of both readings (`T.G` with a public group `G` and V's Field `G`) stays the located Unsupported_Kd at it:
+    // its value is its own access's selection, which publishes as it selects (BU-117's remainder). The valid form without the Type binds.
     [Theory]
     [InlineData("struct T\n    public group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
     [InlineData("struct T\n    public group G\n        public let n: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
-    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T")]
-    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f() -> i32\n    let T = V.init()\n    return T.G.n\n", "Unsupported_Kd T")]
-    [InlineData("struct T\n    public let k: i32 = 1\n", "func f(T: V) -> W => T.G\n", "Unsupported_Kd T")]
-    [InlineData("group T\n    public let G: i32 = 1\n", "func f(T: V) -> W => T.G\n", "Unsupported_Kd T")]
-    [InlineData("group T\n    public let n: i32 = 1\n", "func f(T: V) -> i32 => T.n\n", "Unsupported_Kd T")]
-    [InlineData("struct T\n    public func one() -> i32 => 1\n", "func f(T: V) -> i32 => T.one()\n", "Unsupported_Kd T")]
-    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n", "func f(T: T) -> i32 => T.n\n", "Unsupported_Kd T")]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "")]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f() -> i32\n    let T = V.init()\n    return T.G.n\n", "")]
+    [InlineData("struct T\n    public let k: i32 = 1\n", "func f(T: V) -> W => T.G\n", "TransferRequired_Kd T.G")]
+    [InlineData("group T\n    public let G: i32 = 1\n", "func f(T: V) -> W => T.G\n", "AmbiguousBinding_Kd T.G")]
+    [InlineData("group T\n    public let n: i32 = 1\n", "func f(T: V) -> i32 => T.n\n", "")]
+    [InlineData("struct T\n    public func one() -> i32 => 1\n", "func f(T: V) -> i32 => T.one()\n", "")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n", "func f(T: T) -> i32 => T.n\n", "")]
     [InlineData("", "func f(T: V) -> i32 => T.G.n\n", "")]
-    public void AQualifierOfBothNamespacesIsUnsupported(string type, string use, string records)
+    public void AQualifierOfBothNamespacesSelectsItsSolePath(string type, string use, string records)
     {
         var c = CompilationTestHelper.Parse(type + "struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\n" + use);
         Assert.Equal(records.Length == 0, c.Bind().IsComplete);
@@ -264,19 +356,18 @@ public class ContainerNestingTest
         c.Analyze();
     }
 
-    // SPEC 9.6, 18.2.1 (R7-N1b): a Type `N` opened from `Box<i32>` and a value `N` opened from `Other<i64>` qualify one member. The value
-    // path compares only its own sources' environments, never the Type path's import of the node, so the qualifier is the located
-    // Unsupported_Kd of its class (BU-117, the owner's decision O-32 (a)), never AmbiguousBinding_Kd: where the Type path finds the
-    // member (valid) and where neither path does (invalid).
+    // SPEC 9.6, 18.2.1 (R7-N1b, c-b): a Type `N` opened from `Box<i32>` and a value `N` opened from `Other<i64>` qualify one member.
+    // Each path is evaluated before either publishes, so the Type path's import of the node is its own: where only the Type path finds
+    // the member it is selected (valid), and where neither does the access's member is missing (invalid).
     [Theory]
-    [InlineData("N.m()")]
-    [InlineData("N.k()")]
-    public void AQualifierOpenedFromTwoInstantiationsIsUnsupported(string use)
+    [InlineData("N.m()", "")]
+    [InlineData("N.k()", "UnresolvedBinding_Kd N.k")]
+    public void AQualifierOpenedFromTwoInstantiationsSelectsItsSolePath(string use, string records)
     {
         var c = CompilationTestHelper.Parse("alias Box<i32>\nalias Other<i64>\nstruct Box<T>\n    public struct N\n        public func m() -> i32 => 1\n" +
             "struct Other<T>\n    public func N() -> i32 => 2\nfunc g() -> i32 => " + use + "\n");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal("Unsupported_Kd N", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
     }
 
     // SPEC 9.6, 6.1 (PLAN G481 (3)): a group qualifier that failed selects no member, as a failed struct qualifier does; the scope lookup
@@ -447,7 +538,7 @@ public class ContainerNestingTest
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(c.Kotonoha));
         Assert.NotNull(restored);
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         restored.OnDeserialized(compilation);
         Assert.Empty(TestDiagnostics.Of(restored));
         Assert.Single(Assert.Single(restored.RootKoto.NestedContainers).NestedContainers);

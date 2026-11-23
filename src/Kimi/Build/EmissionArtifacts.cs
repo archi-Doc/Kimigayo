@@ -21,11 +21,9 @@ public static class EmissionArtifacts
     /// (Compilation.Generated, with the output kind and the external declarations the manifest states; R9-B1).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
-    /// <param name="irPath">The published IR path on success.</param>
     /// <returns>Whether the complete matched pair was published.</returns>
-    internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath)
+    internal static bool Publish(Compilation compilation, ArtifactPaths? paths)
     {
-        irPath = null;
         if (ToolchainIdentity.BackendVersion.Length == 0 || ToolchainIdentity.BackendSha256.Length != 64)
         {
             return FailBeforeGeneration(compilation, DiagnosticCode.InternalInvariant_Kd, null);
@@ -77,6 +75,13 @@ public static class EmissionArtifacts
                     json.WriteStartObject();
                     LinkManifest.WriteFixed(json);
                     json.WriteString("optimization", settings.Optimization);
+                    if (compilation.Project.Input is { } input)
+                    {
+                        // The pair names its input, which its build's record names (IMPL 20.3.1), relative to the output directory as
+                        // the manifest's other paths are.
+                        json.WriteString("input", Path.GetRelativePath(outputDirectory, input));
+                    }
+
                     WriteOutput(json, Path.GetFileName(destination), hash, module);
                     WriteLibraries(json, foreign, directory, outputDirectory);
                     json.WriteEndObject();
@@ -84,7 +89,6 @@ public static class EmissionArtifacts
 
                 Replace(tempIr, destination);
                 Replace(tempManifest, manifest);
-                irPath = destination;
                 return true;
             }
             catch (Exception ex) when (IsPublicationFailure(ex))
@@ -157,7 +161,7 @@ public static class EmissionArtifacts
     // names a reserved library: NativeConfiguration).
     private static void CheckLibraryInputs(ProjectFile settings)
     {
-        if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
+        if (settings.NativeLibraries.TryGetValue(TargetProfile.Windows.Target, out var libraries))
         {
             foreach (var (_, library) in libraries)
             {
@@ -182,18 +186,18 @@ public static class EmissionArtifacts
         for (var i = 0; i < required.Count; i++)
         {
             var (name, kind) = required[i];
-            if (WindowsProfile.Supply(name) is not null)
+            if (TargetProfile.Windows.Supply(name) is not null)
             {
                 continue;
             }
 
-            var supply = settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries) ? libraries.GetValueOrDefault(name) : null;
+            var supply = settings.NativeLibraries.TryGetValue(TargetProfile.Windows.Target, out var libraries) ? libraries.GetValueOrDefault(name) : null;
             if (supply is null)
             {
-                throw new InvalidDataException($"Native requirement '{name}' has no NativeLibraries supply for {WindowsProfile.Target}.");
+                throw new InvalidDataException($"Native requirement '{name}' has no NativeLibraries supply for {TargetProfile.Windows.Target}.");
             }
 
-            var (_, sha256) = NativeConfiguration.Expand(settings, WindowsProfile.Target, name, supply);
+            var (_, sha256) = NativeConfiguration.Expand(settings, TargetProfile.Windows.Target, name, supply);
             (result ??= new()).Add((name, kind, supply.Input, sha256));
         }
 
@@ -218,8 +222,8 @@ public static class EmissionArtifacts
         json.WriteString("irFile", irFile);
         json.WriteString("irSha256", irHash);
         json.WriteString("outputKind", library ? "Library" : "Application");
-        json.WriteString("entry", library ? null : WindowsProfile.EntrySymbol);
-        json.WriteString("subsystem", library ? null : WindowsProfile.Subsystem);
+        json.WriteString("entry", library ? null : TargetProfile.Windows.EntrySymbol);
+        json.WriteString("subsystem", library ? null : TargetProfile.Windows.Subsystem);
         json.WriteStartArray("externalDeclarations");
         for (var i = 0; i < module.Externals.Count; i++)
         {

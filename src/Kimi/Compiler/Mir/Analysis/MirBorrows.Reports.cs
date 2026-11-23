@@ -14,12 +14,13 @@ namespace Kimi.Compiler.Mir;
 // conflict only the drop tier gives at its drop-live holder's declaration (Report, Ended), as beside an own-step Warning only the drop
 // tier gives (DroppedDeparture); one per failure, recorded where its check fails (one check's facts met at its one verdict are joined
 // first, MirOutcome.Join), so independent checks at one subject keep their own records (SPEC 23.1.2);
-// InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136). Every rejection but a limit record is
+// InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136) and where E holds what a check found
+// but no store of the body put it there (Found). Every rejection but a limit record is
 // recorded through
-// Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
-// reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step Warning (OwnStepDeparture_Kd,
-// MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under its own requirement, never
-// through the hold (R4-M116 PQ-8), with no Loan fact (G673).
+// Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Found(code, found, via, at,
+// reservation, effect), keyed by what the check found, A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step
+// Warning (OwnStepDeparture_Kd, MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under
+// its own requirement, never through the hold (R4-M116 PQ-8), with no Loan fact (G673).
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -39,14 +40,22 @@ internal sealed partial class MirBorrows
 
         var tags = found.Tags;
         var live = taking <= Activating ? (tags.Flags & Based) != 0 && Activation(tags.Via) != taking : (tags.Flags & (Based | Stored)) != 0;
-        this.Report(code, this.Site(found.Loan), live ? tags.Via : Taken, at, reservation, effect);
+        this.Found(code, this.loanBase + found.Loan, live ? tags.Via : Taken, at, reservation, effect);
     }
 
-    // A Loan problem at a location (A3 6.4): its subject and facts as MirBorrows.Witnesses builds them, recorded under the four Loan codes'
-    // requirement.
-    private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation, ProblemFact? effect)
+    // A Loan problem at a location (A3 6.4) of what the check found (a Loan's or a guard marker's element, None for a destruction's own
+    // hold): its subject and facts as MirBorrows.Witnesses builds them, recorded under the four Loan codes' requirement; where E holds it
+    // and no store of the body put it there (no facts), a broken contract, InternalInvariant_Kd at the location.
+    private void Found(DiagnosticCode code, int found, int via, MirLocation at, int reservation, ProblemFact? effect)
     {
-        var (subject, count) = this.Facts(anchor, via, at, reservation, effect);
+        var (subject, count) = this.Facts(found, via, at, reservation, effect);
+        if (count == 0)
+        {
+            this.causes.Clear();
+            this.Internal(at);
+            return;
+        }
+
         this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.CauseFacts(count));
     }
 

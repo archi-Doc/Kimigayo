@@ -45,16 +45,29 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
             DiagnosticCorpus.RecordProfile("group G\n    func f() => ()\n    func f() => ()\n    let f: i32 = 1\npublic func main() => ()\n", "Application"));
 
     // SPEC 9.1, 9.3, 7.3, 23.1.2 (R7-E2 E2-4's B1; the Front's r1, r1b, r1t): a constructor whose written `self` redeclares the contextual
-    // receiver and whose Signature `(i32)` another constructor repeats is invalid, never a compiler defect. The receiver's Duplicate keeps
-    // the slot's failure (Structs' IndexSpecialReceiver), so the Signature group's record, made after Index under the same key with its
-    // own facts, is the constructor's one record and no InternalInvariant_Kd appears (a fact-less record of its own there was one: the
-    // E2-4 prototype's round 1). Distinct Signatures without a written `self` are valid.
+    // receiver and whose Signature `(i32)` another constructor repeats is invalid, never a compiler defect. Since R7-E2 E2-4b's O-d (b) (B's
+    // ruling 2, superseding E2-4's R2.1 B1 (a)) the receiver's problem and the Signature group's each take their own key (RecordNumbered),
+    // so every independent failure is reported (M1: r1 one more record, r1b two) and no InternalInvariant_Kd appears. Distinct Signatures
+    // without a written `self` are valid.
     [Theory]
-    [InlineData("init(self: i32) => ()\n    init(x: i32) => ()", "1*DuplicateBinding_Kd 1*InvalidTypeFormation_Kd")] // r1
-    [InlineData("init(self: i32) => ()\n    init(self: i32) => ()", "1*DuplicateBinding_Kd 2*InvalidTypeFormation_Kd")] // r1b
+    [InlineData("init(self: i32) => ()\n    init(x: i32) => ()", "2*DuplicateBinding_Kd 1*InvalidTypeFormation_Kd")] // r1
+    [InlineData("init(self: i32) => ()\n    init(self: i32) => ()", "3*DuplicateBinding_Kd 2*InvalidTypeFormation_Kd")] // r1b
     [InlineData("init(x: i32) => ()\n    init(y: i64) => ()", "clean")] // r1t
     public void AWrittenSelfInADuplicateConstructorKeepsTheGroupsRecord(string constructors, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile("struct S\n    " + constructors + "\npublic func main() => ()\n", "Application"));
+
+    // SPEC 6.1.2, 9.1, 18.4.1, 23.1.2 (R7-E2 E2-4b's gate, ruling 2): a declaration whose further Duplicate problem is recorded before the
+    // group step keeps it beside the group's, each at its own key, never a compiler defect: a Semantics name repeating a Type parameter
+    // beside a repeated target (d3c: M1, the Semantics name's record was lost), two Contracts named as an inherited Type member (d1c2) and
+    // two root Contracts named `Kimi` (d2c2). The Contract pair's later has no record of its own on dev and here alike (an open issue,
+    // not the group step's). Each record is its code and its related locations' labels, in result order.
+    [Theory]
+    [InlineData("func f<T, T/U, U>() -> () => ()\n", "DuplicateBinding_Kd|DuplicateBinding_Kd, first declaration")] // d3c
+    [InlineData("func f<T, U>() -> () => ()\n", "")] // d3t
+    [InlineData("open struct B\n    public struct N\n    public init() => ()\nstruct D: B\n    contract N\n    contract N\n    public init(): base() => ()\n", "DuplicateBinding_Kd|DuplicateBinding_Kd, first declaration")] // d1c2
+    [InlineData("contract Kimi\ncontract Kimi\n", "DuplicateBinding_Kd")] // d2c2
+    public void AFurtherDuplicateProblemKeepsItsOwnKey(string source, string records)
+        => Assert.Equal(records, string.Join('|', DiagnosticCorpus.Check(source + "public func main() => ()\n").Diagnostics.Select(static x => x.Code + string.Concat(x.Related?.Select(static r => ", " + r.Label) ?? []))));
 
     // SPEC 6.1, 9.1, 23.1.2 (R7-E2 E2-3b, the Front's d4): the repeated Name is judged from the two declarations alone, so the later's
     // initializer's syntax error, which its own binding consulted, does not derive it (IsDerived's JudgedByDeclaredNames row): both are
@@ -86,7 +99,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
     public void TheFirstDeclarationFollowsConsumedSourceOrder()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("z-first.kimi", "group G\n    public func x() => ()"));
         c.Kotonoha.AddSource(new SourceDocument("a-second.kimi", "group G\n    public func x() => ()"));
         Assert.False(c.Bind().IsComplete);
@@ -151,7 +164,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
     public void RootRuntimeDeclarationsRemainSourceLocal()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         foreach (var path in new[] { "first.kimi", "second.kimi" })
         {
             c.Kotonoha.AddSource(new SourceDocument(path, "let x = 1\nfunc f() => ()"));

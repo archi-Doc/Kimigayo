@@ -112,6 +112,69 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
+    // SPEC 15.4.4: whether a written Type argument omits an Origin, an inference variable that the binding from S solves.
+    private static bool OmitsOrigins(BoundType written)
+    {
+        if (!written.CarriesOrigin)
+        {
+            return false;
+        }
+
+        if (written.Origin?.Kind == OriginKind.Inference)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < written.OriginArguments.Count; i++)
+        {
+            if (written.OriginArguments[i].Kind == OriginKind.Inference)
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < written.Components.Count; i++)
+        {
+            if (OmitsOrigins(written.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 10.7: the member of a declared Type that a contract walk's failure names by its path through nested Callable signatures
+    // (ComparisonFailure.Path: one step per member, the outermost highest; a parameter n + 1 or the result), or null where the
+    // failure is the Type's own or its path leaves the Function Types.
+    private static BoundType? FailedMember(BoundType declared, in ComparisonFailure failure)
+    {
+        var member = declared;
+        for (var depth = failure.Depth - 1; depth >= 0; depth--)
+        {
+            var step = (byte)(failure.Path >> (8 * depth));
+            if (member is not { Kind: BoundTypeKind.Function, Components: [var inputs, var result] })
+            {
+                return null;
+            }
+
+            if (step != ComparisonFailure.ResultStep && (step == 0 || step > inputs.Components.Count))
+            {
+                return null;
+            }
+
+            member = step == ComparisonFailure.ResultStep ? result : inputs.Components[step - 1];
+        }
+
+        return failure.Depth == 0 ? null : member;
+    }
+
+    // DECISIONS BU-240 (temporary, PLAN G886): whether a Closure or Function Item value at a common Function Type carries the located limit
+    // its erasure reported for an unformed split (ErasesToFunction).
+    private static bool RestsOnErasure(Koto node, BoundType actual, BoundType expected)
+        => node.BindingFailure == BindingFailure.Unsupported && actual.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem &&
+            expected.Kind == BoundTypeKind.Function;
+
     // SPEC 10.7, 15.3.7: the whole-contract comparison ContractFits judges, without an implementation signature (it solves the
     // implementation's Origins itself): every proof, its solve's too, assumes the required signature's own well-formedness (the owner's
     // (a)), and `rows` is the sink of the reader that builds it (CallableInstance.Rows; null: a region conjunct is not proven).
@@ -135,9 +198,23 @@ public sealed partial class Binding
     // judged here.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
-        var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
+        var unformedMark = this.unformedWrites;
         var rows = this.comparisonRows.Count;
         var fits = this.ErasureFits(actual, expected, node, this.comparisonRows, out var failure);
+        if (this.UnformedSince(unformedMark))
+        {
+            // DECISIONS BU-240 (temporary, PLAN G886): the Item's signature rests on a Type no binding represents (ItemSignatureFits), so the
+            // conversion is one located Unsupported_Kd, which forms no comparison row; its environment is still judged
+            // (FailErasedOwned), that record the node's one.
+            this.DropComparisonRows(rows);
+            if (!this.FailErasedOwned(node, actual, expected))
+            {
+                this.Fail(node, BindingFailure.Unsupported, true);
+            }
+
+            return false;
+        }
+
         if (fits)
         {
             this.FormComparisonRows(rows);
@@ -147,6 +224,18 @@ public sealed partial class Binding
             this.DropComparisonRows(rows); // A Function Item's contract (ContractFits) fails after the rows its earlier conditions left.
         }
 
+        return this.DecideErasure(node, actual, expected, fits, failure);
+    }
+
+    // SPEC 7.7.4: an erasure's decision from the verdict of its receiver and signature part (`fits`, with the `failure` of a
+    // signature that does not fit), and its published outcome. The verdict is ErasesToFunction's own (ErasureFits), or a Function
+    // reference's, whose candidate search decided that its bound Item's signature meets the required Type in no case of its split
+    // (BindFunctionReference; DECISIONS BU-240, temporary, PLAN G886), so that decision is not searched a second time.
+    private bool DecideErasure(Koto node, BoundType actual, BoundType expected, bool fits, in ComparisonFailure failure)
+    {
+        var unformedMark = this.unformedWrites;
+        var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
+        this.unformedWrites = unformedMark; // An Item that no case of its split fits fails by itself (ItemSignatureFits).
         OwnedFact owned = default;
         var independence = ConstraintProof.Proven;
         var shape = signature is null || !TyCtxt.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
@@ -225,14 +314,14 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract whose condition fails fails the
     // value with that conversion's own record, by its walk's facts (RecordMismatch), never a mismatch of the literal holding it (held
-    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition or Owned part (ErasesToFunction) is the
-    // value's failure. The value's Type at the position: null when it failed; the expected Type when it converted, written to the node's
-    // own Type (unlike an erasure, which keeps the node's Type and publishes ErasedFunctionType for HIR's Erasure; subtyping inserts no
-    // operation, SPEC 3.8, so no adaptation records it), so every consumer's fit (a declaration, a join, a store, a return) is identity
-    // and the conversion's comparison has one judge; otherwise its own.
+    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition or Owned part, or the located limit of an
+    // unformed split (ErasesToFunction; DECISIONS BU-240), is the value's failure. The value's Type at the position: null when it failed;
+    // the expected Type when it converted, written to the node's own Type (unlike an erasure, which keeps the node's Type and publishes
+    // ErasedFunctionType for HIR's Erasure; subtyping inserts no operation, SPEC 3.8, so no adaptation records it), so every consumer's
+    // fit (a declaration, a join, a store, a return) is identity and the conversion's comparison has one judge; otherwise its own.
     private BoundType? ConvertFunctionValue(Koto node, BoundType actual, BoundType expected)
     {
-        if (node.BindingFailure == BindingFailure.OriginContract ||
+        if (node.BindingFailure == BindingFailure.OriginContract || RestsOnErasure(node, actual, expected) ||
             (node.BindingState == BindingState.Invalid && this.ErasureOf(actual, expected) is { Part: ErasurePart.Owned }))
         {
             return null;
@@ -268,10 +357,30 @@ public sealed partial class Binding
     {
         failure = default;
         return expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is not null &&
-            this.DefinitionContractFits(actual, expected, use, rows, out failure)) ||
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.ItemSignatureFits(actual, expected, use, rows, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && SharedReceiver(actual) && this.ClosureSignature(actual) is { } closureSignature &&
             this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use)));
+    }
+
+    // SPEC 7.7.4, 10.7: whether a Function Item's signature fits the required contract. DECISIONS BU-240 with rule W (BU-79; C-359 C1, C2;
+    // temporary, PLAN G886): an Item whose signature formed a Type no binding represents has its binder fixed before any evidence, so
+    // the same check is judged in each combination of split cases (RestsOnSplitCases). One that no combination fits fails by itself;
+    // one that some combination fits rests on the split: it fits here, and its writes stay, so its reader rests on it too (a
+    // candidate trial's verdict, TryCandidate; the conversion's decision, ErasesToFunction). `rows` takes the contract's region
+    // conjuncts in every combination (CallableInstance.Rows), which its reader forms or drops.
+    private bool ItemSignatureFits(BoundType item, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
+    {
+        failure = default;
+        var mark = this.unformedWrites;
+        this.CarrySplitPart(this.splitPartStamp); // In a split search: what the enclosing part read before (the required Type) is handed on.
+        if (this.FunctionItemSignature(item) is not null)
+        {
+            this.EnterSplitPart(); // The contract's inputs and result are parts of their own, each forming its own Type again.
+            return this.DefinitionContractFits(item, expected, use, rows, out failure);
+        }
+
+        return this.UnformedSince(mark) && this.RestsOnSplitCases(
+            mark, (item, expected, use, rows), static (binding, check) => !binding.ItemSignatureFits(check.item, check.expected, check.use, check.rows, out _));
     }
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
@@ -296,12 +405,17 @@ public sealed partial class Binding
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
         var closure = item is { Kind: BoundTypeKind.Closure } ? this.ClosureSignature(item) : null;
+
+        // DECISIONS BU-240 (G812 ruling 103 D1): in a split search each input and the result is a part of the check; a part's structural
+        // misfit is blamed on the bindings its own Type reads, with those the required signature read before (CarrySplitPart), and
+        // any other failure (an Origin, a premise, a clause) on the whole run: the solve joins every part.
+        this.CarrySplitPart(this.splitPartStamp);
         var inference = this.BeginOriginInference(use, function);
         inference.Comparison = comparison;
         this.contractFailure = default;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (Input(i) is not { } parameter)
+            if (Read(Declared(i)) is not { } parameter)
             {
                 return false;
             }
@@ -313,7 +427,7 @@ public sealed partial class Binding
             this.CollectOriginInference(parameter, parameters.Components[i], inference);
         }
 
-        if (Output() is { } produced)
+        if (Read(Declared(function.Parameters.Count)) is { } produced)
         {
             inference.Source = (ComparisonFailure.ResultStep, null, false);
             this.CollectOriginInference(produced, required.Components[1], inference, result: true);
@@ -329,7 +443,8 @@ public sealed partial class Binding
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (Input(i) is not { } written || Substitute(written) is not { } parameter)
+            this.EnterSplitPart();
+            if (Read(Declared(i)) is not { } written || Substitute(written) is not { } parameter)
             {
                 return false;
             }
@@ -338,8 +453,11 @@ public sealed partial class Binding
             if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
             {
                 this.contractFailure = walk.Failure.Within((byte)(i + 1));
+                BlameMisfit(Declared(i), walk.Failure);
                 return false;
             }
+
+            this.EnterJointSplitPart();
 
             this.failedResultPremise = null;
             if (!this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
@@ -371,7 +489,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (Output() is not { } boundResult || Substitute(boundResult) is not { } result)
+        this.EnterSplitPart();
+        if (Read(Declared(function.Parameters.Count)) is not { } boundResult || Substitute(boundResult) is not { } result)
         {
             return false;
         }
@@ -380,8 +499,11 @@ public sealed partial class Binding
         if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
         {
             this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
+            BlameMisfit(Declared(function.Parameters.Count), resultWalk.Failure);
             return false;
         }
+
+        this.EnterJointSplitPart();
 
         this.failedResultPremise = null;
         if (!this.ProvesResultPremises(function, result, use, comparison))
@@ -392,14 +514,35 @@ public sealed partial class Binding
 
         return true;
 
-        // The implementation's input `i` and result as the compared value reads them: a Closure's from its signature, any other's from
-        // the definition's written Types through its item, container or frame (Bound).
-        BoundType? Input(int i)
-            => closure is not null ? this.ContractType(closure.Components[0].Components[i], this.ConstraintScope(use))
-                : function.Parameters[i].Type.BoundType is { } written ? Bound(written) : null;
+        // DECISIONS BU-240 (G812 rulings 103 D1, 105; temporary, removed with (R)): in a split search, what a failed part of the contract is
+        // blamed on. Any failure but a structural one joins every part (an Origin, a premise, a clause: the solve). A structural
+        // misfit belongs to the layer that misfits: where the walk's failure names a member inside the part's nested Callable
+        // signatures (FailedMember), that member is the failing part, formed again on its own (Read), so the run blames the bindings
+        // its layer reads and not those of its siblings; otherwise the whole part, as formed.
+        void BlameMisfit(BoundType? declared, in ComparisonFailure failure)
+        {
+            if (failure.Kind != ComparisonFailureKind.Shape)
+            {
+                this.EnterJointSplitPart();
+            }
+            else if (this.splitOpen && declared is not null && FailedMember(declared, failure) is { } member)
+            {
+                this.EnterSplitPart();
+                _ = Read(member) is { } layer ? Substitute(layer) : null;
+            }
+        }
 
-        BoundType? Output()
-            => closure is not null ? this.ContractType(closure.Components[1], this.ConstraintScope(use)) : symbol.Type is { } written ? Bound(written) : null;
+        // The implementation's input `i`, or its result at i = the parameter count, as the definition declares it: a Closure's from its
+        // signature, any other's written Type.
+        BoundType? Declared(int i)
+            => i < function.Parameters.Count
+                ? (closure is not null ? closure.Components[0].Components[i] : function.Parameters[i].Type.BoundType)
+                : closure is not null ? closure.Components[1] : symbol.Type;
+
+        // A declared part (or a member of one) as the compared value reads it: a Closure's in the use's scope, any other's through the
+        // definition's item, container or frame (Bound).
+        BoundType? Read(BoundType? declared)
+            => declared is null ? null : closure is not null ? this.ContractType(declared, this.ConstraintScope(use)) : Bound(declared);
 
         BoundType? Bound(BoundType type)
         {

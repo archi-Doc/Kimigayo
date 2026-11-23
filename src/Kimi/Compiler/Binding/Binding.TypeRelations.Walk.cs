@@ -11,10 +11,12 @@ namespace Kimi.Compiler;
 // - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
 //   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads, and in
 //   whose view the root's two sides are formed (ClassForm, R7-C2c2 c2-4b's J3; none: the relation as written), which Origin bindings
-//   count (OriginPart), and the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its root comparisons
-//   take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven).
+//   count (OriginPart), the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its root comparisons
+//   take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven), and a placing fit's raw-fit sink
+//   (RawFits), to which FitOuterOrigins appends each raw fit of the parts outside every Callable comparison.
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
-//   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
+//   reader that records the failure takes from the walk that decided, with the components down to the failure that ended it
+//   and whether it is that part's own shape (ComponentPath); a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
 //   (FitPart, in walk order), which CheckTypeUse decomposes instead of walking each part again (it walks again only an invariant part
 //   that this walk meets reversed, under a contravariant one). A walk with a row sink appends to it each region conjunct its
@@ -100,6 +102,69 @@ public sealed partial class Binding
             this with { Path = this.Path | ((ulong)step << (8 * this.Depth)), Depth = (byte)(this.Depth + 1) };
     }
 
+    // SPEC 3.8: the components from a walk's root down to its failure, outside Function Types: one byte per component (n + 1), the
+    // outermost lowest: a Tuple's element, a constructed Type's argument, an array's element, a layer's target. None (0) where the
+    // failure is the root's own; a Function Type's comparison publishes none below it (its members are ComparisonFailure.Path's).
+    // The path holds the eight outermost steps (a deeper one is shifted out), and a component beyond the 254th publishes none
+    // below it. Shape: the failure is the own shape of the part the steps reach (SameShape: its kind, Semantics, symbol, lengths or
+    // arity), not a failure inside it; a path that loses a step loses it (G812 ruling 116).
+    internal readonly record struct ComponentPath(ulong Path, bool Shape)
+    {
+        // A failure at the root's own shape.
+        internal static readonly ComponentPath AtShape = new(0, true);
+
+        // The path as the enclosing part sees it: within its component `index`.
+        internal ComponentPath Within(int index)
+            => index >= 0xFF ? default : new((this.Path << 8) | (uint)(index + 1), this.Shape && (this.Path >> 56) == 0);
+
+        // The path as the part `outer` names sees it: within each of `outer`'s steps, its innermost first.
+        internal ComponentPath Within(ComponentPath outer)
+        {
+            var steps = 0;
+            for (var rest = outer.Path; rest != 0; rest >>= 8)
+            {
+                steps++;
+            }
+
+            var path = this;
+            for (var k = steps - 1; k >= 0; k--)
+            {
+                path = path.Within((int)((outer.Path >> (8 * k)) & 0xFF) - 1);
+            }
+
+            return path;
+        }
+
+        // The part of `type`, a Type whose formation gave the compared shape, that the path names (false: none): its component at
+        // each step, as far as formation keeps the components in their positions (a Tuple, a constructed Type, an array, a written
+        // layer; not a pair application, whose case decides whether it is a layer). A failure at the shape of a part that formation
+        // keeps is that shape's, which no binding changes (G812 ruling 116): the part forms no Type (`member` null).
+        internal bool Names(BoundType type, out BoundType? member)
+        {
+            member = type;
+            var path = this.Path;
+            for (; path != 0 && KeepsComponents(member); path >>= 8)
+            {
+                var step = (int)(byte)path;
+                if (step == 0 || step > member.Components.Count)
+                {
+                    member = null;
+                    return false;
+                }
+
+                member = member.Components[step - 1];
+            }
+
+            var shape = path == 0 && this.Shape && KeepsComponents(member);
+            var named = shape || !ReferenceEquals(member, type);
+            member = shape || !named ? null : member;
+            return named;
+        }
+
+        private static bool KeepsComponents(BoundType type)
+            => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Semantics;
+    }
+
     // SPEC 15.6.1, 23.1.2: one part of CheckTypeUse's walk outside every Callable comparison, as a walk rooted at it would answer it: the
     // pair as walked, whether the relation holds there, whether a position in it held by resting (fitRested), its first failure, whether
     // its own shape held (Shaped: the walk did not end at the pair itself), its facts' range in comparisonFacts and the index after its
@@ -141,6 +206,7 @@ public sealed partial class Binding
         private ComparisonFailure failure;
         private bool ended;
         private int endedAt;
+        private ComponentPath components;
         private bool formed; // whether the root's pair was formed (J3: only the root forms; its parts are parts of formed Types)
         private (BoundType Actual, BoundType Expected) root; // the pair formed at the intake, which the walk walked
 
@@ -172,11 +238,19 @@ public sealed partial class Binding
         // The first failure of the walk's last false answer.
         internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
 
+        // The components down to the failure that ended the walk's last false answer (ComponentPath): a failure the walk went on
+        // past (a recording root's, outside every Callable comparison) adds no step.
+        internal readonly ComponentPath FailedComponents => this.components;
+
         // The pair the walk walked (Intake), whose parts its recorded parts and facts are: every reader of them reads this pair.
         internal readonly (BoundType Actual, BoundType Expected) Root => this.root;
 
         // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
         internal List<BindingObligation>? Rows { get; init; }
+
+        // The query's raw-fit sink, set by a placing fit's walk (FitsTypeAt's for a placing caller, CheckTypeUse's; G147 ruling 75 Q-A
+        // (a)); none: the walk places no value.
+        internal List<RawFit>? RawFits { get; init; }
 
         // SPEC 3.8: the relation; Never relates only to itself. A Function Type's own syntax binds its per-call inputs (SPEC 8.10).
         // `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the Callable comparison whose
@@ -264,21 +338,23 @@ public sealed partial class Binding
 
         private bool Relate(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance)
         {
-            if (this.Discharged(actual, expected))
+            if (this.Discharged(actual, expected) || actual.Kind == BoundTypeKind.Open || expected.Kind == BoundTypeKind.Open)
             {
-                return true;
+                return true; // DECISIONS BU-240 (rule W): a position a split binding decides holds without a record, judged case by case.
             }
 
             if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))
             {
-                return this.End(instance);
+                _ = this.End(instance);
+                this.components = ComponentPath.AtShape; // The failure is this part's own shape.
+                return false;
             }
 
             var structural = this.part is OriginPart.Structural or OriginPart.Everywhere;
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = this.owner.FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
+                (outer, longer, shorter) = this.owner.FitOuterOrigins(actual, expected, this.use, instance, this.RawFits, invariant);
             }
 
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;
@@ -340,6 +416,7 @@ public sealed partial class Binding
 
                 comparison.Rows?.RemoveRange(rows, comparison.Rows.Count - rows);
                 _ = !this.ended && this.Keep(this.failure, instance);
+                this.components = default;
                 return false;
             }
 
@@ -356,6 +433,7 @@ public sealed partial class Binding
                         holds = false;
                         if (!this.Goes(instance))
                         {
+                            this.components = this.components.Within(i);
                             return false;
                         }
                     }
@@ -368,6 +446,7 @@ public sealed partial class Binding
                     holds = false;
                     if (!this.Goes(instance))
                     {
+                        this.components = this.components.Within(i);
                         return false;
                     }
                 }
@@ -403,6 +482,7 @@ public sealed partial class Binding
         private bool Fail(in ComparisonFailure failure)
         {
             this.failure = failure;
+            this.components = default;
             return false;
         }
 
@@ -415,6 +495,7 @@ public sealed partial class Binding
         private bool Keep(in ComparisonFailure failure, in CallableInstance instance)
         {
             this.failure = failure;
+            this.components = default;
             if (!this.Goes(instance))
             {
                 return false;

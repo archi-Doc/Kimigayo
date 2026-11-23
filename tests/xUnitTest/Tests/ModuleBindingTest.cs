@@ -141,7 +141,6 @@ public partial class ModuleBindingTest
 
     [Theory]
     [InlineData("Lib.Api", true)]
-    [InlineData("Lib.Api.", false)]
     [InlineData("Api", false)]
     [InlineData("Lib.Missing", false)]
     public void DefaultAliasesResolveDirectContainerPaths(string alias, bool expected)
@@ -150,15 +149,179 @@ public partial class ModuleBindingTest
         Assert.Equal(expected, compilation.Bind().IsComplete);
     }
 
+    // SPEC 18.2.3, F.5, IMPL 20.2 (F's ruling N1-9 (4)): a configured path that does not read whole by the Type production is reported by
+    // its parse, as a source alias's target is: the parser's record in the configuration document, and no row for Binding, which neither
+    // evaluates it nor records anything resting on it; the use, which no opened target serves, is its own miss (SPEC 23.1.2).
+    [Theory]
+    [InlineData("Lib.Api.", "MissingSyntax_Kd", 8)]
+    [InlineData("Lib Api", "ExpectedSyntax_Kd", 4)]
+    public void AConfiguredPathThatDoesNotParseWholeIsItsParsesRecord(string alias, string code, int at)
+    {
+        var compilation = Create("public func main() => value()", "public group Api\n    public func value() => ()", configure: (root, _) => root.Alias = [alias]);
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.DoesNotContain(compilation.DefaultAliases(compilation.Kotonoha), x => x.Path == alias);
+        var syntax = Assert.Single(TestDiagnostics.Of(compilation), x => x.Path?.EndsWith($"#Alias[{alias}]", StringComparison.Ordinal) == true);
+        Assert.Equal((code, at), (syntax.Code, syntax.Span.Start));
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
+        Assert.Equal("value", issue.Node.ToString());
+    }
+
     [Fact]
     public void ADefaultAliasOpensNoFormalParameter()
     {
-        // SPEC 18.2.1, 18.2.3 (PLAN G574): a default alias opens its target's direct members, never its formal parameters.
+        // SPEC 18.2.1, 18.2.3 (PLAN G574): a default alias opens its target's direct members, never its formal parameters. A generic
+        // target is never fully bound (F's rulings N1-2 C1, N1-9 (1)): one record at the configured path's `Box`, and the use of `T`,
+        // resting on it, records nothing (N1-2 C2; it was one UnresolvedBinding_Kd at `T`).
         var compilation = Create("public struct Box<T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "public group Api", configure: (root, _) => root.Alias = ["Box"]);
         Assert.False(compilation.Bind().IsComplete);
         var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(DiagnosticCode.InvalidTypeFormation_Kd, issue.Code);
+        AssertConfiguredAt(issue.Node, "Box", 0, "Box");
+    }
+
+    // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-2, N1-7 (2), (5), N1-9 (1), N1-13 B1; design d rows): a configured default alias
+    // resolves as a source alias's target does, by the path walk from its module's root: an inherited member is found (d05v), a path
+    // through the library's name too (C4); a generic Container is never fully bound (d01u, d06i, d07i; d02i's walk fails there, at its
+    // first component, before `T`) and a path naming nothing is reported without a use (d08i), a missing qualifier at that qualifier
+    // (m06i, m08i): one record where the walk fails, in the configured path's own node, which a use resting on it adds nothing to.
+    [Theory]
+    [InlineData("d01u", "Box", "func g() -> i32 => make()", "InvalidTypeFormation_Kd", "Box")]
+    [InlineData("d02i", "Box.T", "func g() => ()", "InvalidTypeFormation_Kd", "Box")]
+    [InlineData("d05v", "Derived.Node", "func g() -> i32 => make()", null, null)]
+    [InlineData("d06i", "A.B", "func g() -> i32 => helper()", "InvalidTypeFormation_Kd", "A")]
+    [InlineData("d07i", "A.B", "func g() => ()", "InvalidTypeFormation_Kd", "A")]
+    [InlineData("d08i", "Nope", "func g() => ()", "UnresolvedBinding_Kd", "Nope")]
+    [InlineData("c4v", "Kimi.Console", "func g() => writeLine(\"ok\")", null, null)]
+    [InlineData("m06i", "Nope.Inner", "func g() -> i32 => make()", "UnresolvedBinding_Kd", "Nope")]
+    [InlineData("m08i", "Kimi.Nope.Inner", "func g() => ()", "UnresolvedBinding_Kd", "Kimi.Nope")]
+    public void ADefaultAliasResolvesByThePathWalk(string row, string alias, string use, string? code, string? text)
+    {
+        // Each row's own declarations, as its probe's.
+        var declarations = alias switch
+        {
+            "Derived.Node" => "public open struct Base\n    public init() => ()\n    public struct Node\n        public init() => ()\n        public func make() -> i32 => 1\n" +
+                "public struct Derived : Base\n    public init() : base() => ()\n",
+            "A.B" => "public struct A<T>\n    public group B\n        public func helper() -> i32 => 1\n" +
+                "public struct A<T, U>\n    public group B\n        public func helper() -> i32 => 1\n",
+            _ => "public struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\n",
+        };
+        var compilation = Create(declarations + use, "public group Api", configure: (root, _) => root.Alias = [alias]);
+        Assert.True((code is null) == compilation.Bind().IsComplete, row + ": " + string.Join("; ", compilation.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
+        if (code is not null)
+        {
+            var issue = Assert.Single(compilation.Binding.Issues);
+            Assert.Equal(code, issue.Code.ToString());
+            AssertConfiguredAt(issue.Node, alias, 0, text!);
+        }
+    }
+
+    // SPEC 18.2.3, 18.2.2, 18.2.1 (F's rulings N1-7 (5), N1-13 B2): a configured default alias is the opening alias `alias Path` its
+    // configuration declares, evaluated as that source alias is, its argument bindings included: each row's configured form and its
+    // source twin agree (e01v, e03v the 18.2.2 example accepted; e06i's i64 result rejected as an i32).
+    [Theory]
+    [InlineData("e01v", "Box<i32>", "public struct Box<T>\n    public init() => ()\n    public func id(value: T) -> T => value@move\nfunc g() -> i32 => id(1)", true)]
+    [InlineData("e03v", "Family<i32>.Helpers", "public struct Family<T>\n    public group Helpers\n        public struct Token\n            public init() => ()\ngroup Use\n    func make() -> Token => Token.init()", true)]
+    [InlineData("e06i", "Box<i64>", "public struct Box<T>\n    public init() => ()\n    public func id(value: T) -> T => value@move\nfunc g() -> i32 => id(1)", false)]
+    public void AConfiguredAliasIsItsSourceTwin(string row, string alias, string source, bool valid)
+    {
+        foreach (var configured in new[] { true, false })
+        {
+            var compilation = configured
+                ? Create(source, "public group Api", configure: (root, _) => root.Alias = [alias])
+                : Create("alias " + alias + "\n" + source, "public group Api");
+            Assert.True(valid == compilation.Bind().IsComplete, $"{row} ({(configured ? "configured" : "source")}): " + string.Join("; ", compilation.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
+            Assert.DoesNotContain(compilation.Binding.Issues, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        }
+    }
+
+    // SPEC 23.1.2 (F's ruling N1-9 (2)): a failed configured path fails no declaration of its module: a base clause beside it records
+    // nothing (the module root is not failed).
+    [Fact]
+    public void AFailedConfiguredPathFailsNoBaseClause()
+    {
+        var compilation = Create("public open struct Base\n    public init() => ()\npublic struct Derived : Base\n    public init() : base() => ()\nfunc g() => ()", "public group Api", configure: (root, _) => root.Alias = ["Nope"]);
+        Assert.False(compilation.Bind().IsComplete);
+        var issue = Assert.Single(compilation.Binding.Issues);
         Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
-        Assert.Equal("T", issue.Node.ToString());
+        AssertConfiguredAt(issue.Node, "Nope", 0, "Nope");
+    }
+
+    // SPEC 18.2.1, 9.6, 9.7, 23.1.2 (F's ruling N1-9 (3)): an alias target resolves whole with its Type arguments and the walk fails at
+    // its first failing component: `Box.T` at `Box`, a generic Container used without its arguments (a09i); `Box<i32>.T` at `T`, a formal
+    // parameter, which is no member a later component finds (18.2.1: formal parameters are not opened), recorded at the path, as every
+    // Type use's missing last component is (UnselectedTypeSite). A group reached through a failed qualifier rests on the qualifier's record
+    // (a06s). A missing qualifier is the failing component (m01i, m02i, m07i; a03i: no alias resolves a target, 18.2.1): the record and
+    // the node the alias rests on are the one walk's (F's ruling N1-13 B1). The alias rests on that record, and a use resting on the
+    // alias records nothing (F's ruling N1-2 C2: m04i).
+    [Theory]
+    [InlineData("a09i", "alias Box.T\npublic struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\nfunc g() => ()", "InvalidTypeFormation_Kd", 6, "Box")]
+    [InlineData("a09t", "alias Box<i32>.T\npublic struct Box<T>\n    public init() => ()\n    public func make() -> i32 => 1\nfunc g() => ()", "UnresolvedBinding_Kd", 6, "Box<i32>.T")]
+    [InlineData("a06s", "alias A.B\npublic struct A<T>\n    public group B\n        public func helper() -> i32 => 1\npublic struct A<T, U>\n    public group B\n        public func helper() -> i32 => 1\nfunc g() -> i32 => helper()", "InvalidTypeFormation_Kd", 6, "A")]
+    [InlineData("m01i", "alias Missing.Inner\nfunc g() => ()", "UnresolvedBinding_Kd", 6, "Missing")]
+    [InlineData("m02i", "alias O => Missing.Inner\nfunc g() => ()", "UnresolvedBinding_Kd", 11, "Missing")]
+    [InlineData("m04i", "alias Missing.Inner\npublic struct Box\n    public func make() -> i32 => 1\nfunc g() -> i32 => make()", "UnresolvedBinding_Kd", 6, "Missing")]
+    [InlineData("m07i", "alias Kimi.Nope.Inner\nfunc g() => ()", "UnresolvedBinding_Kd", 6, "Kimi.Nope")]
+    [InlineData("a03i", "alias K => Kimi\nalias Output => K.Console", "UnresolvedBinding_Kd", 32, "K")]
+    public void AnAliasTargetsWalkFailsAtItsFirstFailingComponent(string row, string source, string code, int start, string text)
+    {
+        var compilation = Create(source, "public group Api");
+        Assert.False(compilation.Bind().IsComplete, row);
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(code, issue.Code.ToString());
+        Assert.Equal((start, text.Length, text), (issue.Node.Span.Start, issue.Node.Span.Length, issue.Node.ToString()));
+    }
+
+    // SPEC 18.2.3, IMPL 20.2 (F's rulings N1-7 (5), N1-13 C2): the library's own configured `Kimi` alias is an alias of the library's
+    // pass, evaluated there before its table freezes, so a path no use reads is judged in its own module too.
+    [Fact]
+    public void TheLibrarysConfiguredAliasIsEvaluatedInItsPass()
+    {
+        var compilation = Create("func g() => ()", "public group Api");
+        Assert.True(compilation.Bind().IsComplete);
+        var row = Assert.Single(compilation.DefaultAliases(compilation.Library.Kotonoha));
+        Assert.Equal((BindingState.Resolved, "Kimi"), (HirTables.State(row.Alias), HirTables.Symbol(row.Alias)?.Name));
+    }
+
+    // SPEC 18.2.3 (the owner's O-511 (a), PLAN G1320): a module's required alias is the library's row, made and evaluated in the
+    // library's pass before its table freezes, whether the module adds no path or adds its own, so no module parses or evaluates `Kimi`
+    // again and its lookups read the library's frozen target.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AModulesRequiredAliasIsTheLibrarysRow(bool configured)
+    {
+        var compilation = Create("public func main() => Console.writeLine(\"root\")", "public group Api\n    public func value() => Console.writeLine(\"library\")", configure: configured ? Configure : null);
+        Assert.True(compilation.Bind().IsComplete);
+        var library = Assert.Single(compilation.DefaultAliases(compilation.Library.Kotonoha));
+        foreach (var module in compilation.SourceModules)
+        {
+            Assert.Same(library.Alias, Assert.Single(compilation.DefaultAliases(module), static x => x.Path == "Kimi").Alias);
+        }
+
+        static void Configure(ProjectFile root, ProjectFile library)
+        {
+            root.Alias = ["Lib.Api"];
+            library.Alias = ["Kimi.Console"];
+        }
+    }
+
+    // SPEC 18.4.1, 18.2.3, 23.1.2 (F's ruling N1-20 C1; DECISIONS Q13): a root declaration named `Kimi` is one record, at it (r04i, r04j;
+    // m06i in a dependency). The module's required alias is the library's row, so it opens the reserved Kimi Kotonoha whatever the module
+    // declares, and the use through it records nothing; a module's own parse of `Kimi`, walked from its root, opened the user's
+    // declaration and added an UnresolvedBinding_Kd at the use.
+    [Theory]
+    [InlineData("r04i", "group Kimi\n    func f() => ()\nfunc g() => Console.writeLine(\"Hello\")", "public group Api", 0)]
+    [InlineData("r04j", "struct Kimi\nfunc g() => Console.writeLine(\"Hello\")", "public group Api", 0)]
+    [InlineData("m06i", "func g() => Lib.Api.value()", "public group Kimi\n    public func f() => ()\npublic group Api\n    public func value() => Console.writeLine(\"lib\")", 1)]
+    public void ARootDeclarationNamedKimiIsTheOnlyRecord(string row, string root, string library, int module)
+    {
+        var compilation = Create(root, library);
+        Assert.False(compilation.Bind().IsComplete, row);
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(DiagnosticCode.DuplicateBinding_Kd, issue.Code);
+        Assert.Same(compilation.SourceModules[module], issue.Node.CodeContext.Kotonoha);
+        Assert.Equal("Kimi", Assert.IsAssignableFrom<DeclarationContainerKoto>(issue.Node).Name);
     }
 
     [Fact]
@@ -253,6 +416,20 @@ public partial class ModuleBindingTest
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
+    }
+
+    // F's ruling N1-4 (2): a configured path's node lives for the Compilation and its rows are reset each pass, so an edit beside it (a
+    // document added, the module renumbered) leaves its lookup current: each later pass resolves through it again, and judges it again.
+    [Fact]
+    public void AConfiguredPathStaysCurrentAcrossAnEdit()
+    {
+        var compilation = Create("public func main() => value()", "public group Api\n    public func value() => ()", configure: (root, _) => root.Alias = ["Lib.Api"]);
+        Assert.True(compilation.Bind().IsComplete);
+        compilation.Kotonoha.AddSource(new SourceDocument("more.kimi", "func more() => value()"));
+        Assert.True(compilation.Bind().IsComplete);
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "func bad() => missing()"));
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, Assert.Single(compilation.Binding.Issues).Code);
     }
 
     [Theory]
@@ -678,7 +855,7 @@ public partial class ModuleBindingTest
         var node = new DependencyNode("root", new(Path.Combine(root, "App.kimiproj"), project.ProjectFile, [], []), -1, string.Empty);
         var dependency = new DependencyNode("library@1", new(file, new() { OutputKind = OutputKind.Library }, [], []), 0, "Lib");
         node.Edges.Add("Lib", dependency.Key);
-        Assert.True(compilation.Prepare(WindowsProfile.Target, new([node, dependency])));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target, new([node, dependency])));
         return compilation;
     }
 
@@ -705,7 +882,7 @@ public partial class ModuleBindingTest
             nodes = [root, library, child];
         }
 
-        Assert.True(compilation.Prepare(WindowsProfile.Target, new(nodes)));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target, new(nodes)));
         compilation.SourceModules[0].AddSource(new SourceDocument("root.kimi", rootSource));
         compilation.SourceModules[1].AddSource(new SourceDocument("library.kimi", librarySource));
         if (childSource is not null)
@@ -714,6 +891,13 @@ public partial class ModuleBindingTest
         }
 
         return compilation;
+    }
+
+    // A record's node in a configured path's own document (F's ruling N1-9 (1)): named by its configuration and entry, its text the path.
+    private static void AssertConfiguredAt(Koto node, string alias, int start, string text)
+    {
+        Assert.EndsWith($"#Alias[{alias}]", node.CodeContext.SourceDocument!.Path, StringComparison.Ordinal);
+        Assert.Equal((start, text.Length, text), (node.Span.Start, node.Span.Length, node.ToString()));
     }
 
     private static string ProjectionConsumer(bool runtime, string argument)

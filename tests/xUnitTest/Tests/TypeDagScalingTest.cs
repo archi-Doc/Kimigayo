@@ -176,9 +176,10 @@ public partial class TypeDagScalingTest
         var c = CompilationTestHelper.ParseSuccess(source);
         var complete = c.Bind().IsComplete;
         string[] issues = [.. c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)];
-        // The records 45c9fab40 gives (the field, each Z<S<D>> and S<D> occurrence the storage formation proves, and B<S<D>> where read).
-        string[] own = ["UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd let next: Array<Z<S<D>>>"];
-        string[] expected = !clause ? [] : read ? ["UnprovenConstraint_Kd B<S<D>>", "UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd S<D>", .. own] : own;
+        // The records 45c9fab40 gives (the field, each Z<S<D>> and S<D> occurrence the storage formation proves, and B<S<D>> where read),
+        // one per written occurrence (R7-V1c).
+        string[] own = ["UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd let next: Array<Z<S<D>>>"];
+        string[] expected = !clause ? [] : read ? ["UnprovenConstraint_Kd B<S<D>>", "UnprovenConstraint_Kd S<D>", .. own] : own;
         Assert.Equal(!clause, complete);
         Assert.Equal(expected, issues);
     }
@@ -222,6 +223,119 @@ public partial class TypeDagScalingTest
             var c = CompilationTestHelper.ParseSuccess($"{head}\n    public func top(self) -> i32 => 1\n{chain}func f(v: ref/C{layers - 1}) -> i32\n{misses}    return v.top()\n");
             c.Bind();
             return c.Binding.MemberWalkWork;
+        }
+    }
+
+    // SPEC 9.6 (R7-N1 c-b, Q20 B1): a member access's left reading evaluates the left's Type walk once per access (a failed walk beside
+    // the value reading is published, so inner accesses read it) and its value walk only where the Type reading may succeed, so binding
+    // a qualified chain is linear in its length: N nested groups to a function (`G1...GN.f()`), and N groups, a static value and N Field
+    // steps (`G1...GN.v.a...a.n`; a per-level re-walk of either was quadratic in N on a prototype).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AMemberAccessLeftIsReadOncePerAccess(bool mixed)
+    {
+        var work = new[] { 30, 60, 120 }.Select(Work).ToArray();
+        var text = string.Join(' ', work);
+        Assert.True(work[2].Name - work[1].Name <= (2 * (work[1].Name - work[0].Name)) + 400, text);
+        Assert.True(work[2].Member - work[1].Member <= (2 * (work[1].Member - work[0].Member)) + 400, text);
+
+        (int Name, int Member) Work(int n)
+        {
+            var source = new System.Text.StringBuilder();
+            if (mixed)
+            {
+                for (var i = 1; i <= n; i++)
+                {
+                    source.Append($"struct S{i}\n").Append(i == n ? "    public let n: i32\n    public init() => self.n = 1\n" : $"    public let a: S{i + 1}\n    public init() => self.a = S{i + 1}.init()\n");
+                }
+            }
+
+            for (var i = 1; i <= n; i++)
+            {
+                source.Append(' ', 4 * (i - 1)).Append(i == 1 ? "group G1" : $"public group G{i}").Append('\n');
+            }
+
+            source.Append(' ', 4 * n).Append(mixed ? "public let v: S1 = S1.init()\n" : "public func f() -> i32 => 1\n");
+            var path = string.Join('.', Enumerable.Range(1, n).Select(static i => $"G{i}")) + (mixed ? ".v" + string.Concat(Enumerable.Repeat(".a", n - 1)) + ".n" : ".f()");
+            source.Append("func g() -> i32\n");
+            for (var k = 0; k < 10; k++)
+            {
+                source.Append($"    let x{k} = {path}\n");
+            }
+
+            source.Append("    return 0\n");
+            var c = CompilationTestHelper.Parse(source.ToString());
+            c.Bind();
+            return (c.Binding.NameWalkWork, c.Binding.MemberWalkWork);
+        }
+    }
+
+    // SPEC 8.3.2, 8.5.2 (R7-N1 c-b, F's N1c ruling 28: K3; Q20 B1): a member access's left through a projection chain
+    // `T.(C1).X.(C2).X...(CN).X`, each level's Contract supplying the next level's requirement and the last one's clause the normal form M,
+    // is evaluated under its use scope's one kept layer (BindingScope.EvaluatedPremises), so the identity classes binding 10 uses of M's
+    // Case builds are linear in N (a layer per evaluation level was quadratic: 4,260/16,100/35,540 at N = 10/20/30 for 20 uses).
+    [Fact]
+    public void AProjectionChainInALeftIsEvaluatedUnderOneLayer()
+    {
+        // Fails fast (ruling 29, C1): the 30 -> 60 step is checked before N = 120 is built.
+        var (w30, w60) = (Work(30), Work(60));
+        Assert.True(w60 <= (2 * w30) + 400, $"{w30} {w60}");
+        var w120 = Work(120);
+        Assert.True(w120 - w60 <= (2 * (w60 - w30)) + 400, $"{w30} {w60} {w120}");
+
+        static int Work(int n)
+        {
+            var source = new System.Text.StringBuilder("enum M\n    A\n    public func f(self) -> i32 => 1\n");
+            for (var i = 1; i <= n; i++)
+            {
+                source.Append($"contract C{i}\n").Append(i == n ? $"    associate X\n    Self.(C{i}).X is M\n" : $"    associate X is C{i + 1}\n");
+            }
+
+            var path = "T" + string.Concat(Enumerable.Range(1, n).Select(static i => $".(C{i}).X"));
+            source.Append("func g<T>() -> i32\n    T is C1\n");
+            for (var k = 0; k < 10; k++)
+            {
+                source.Append($"    let x{k} = {path}.A.f()\n");
+            }
+
+            source.Append("    return 0\n");
+            var c = CompilationTestHelper.Parse(source.ToString());
+            Assert.True(c.Bind().IsComplete);
+            return c.Binding.IdentityClassWork;
+        }
+    }
+
+    // SPEC 8.3.2, 8.5.3 (R7-N1 c-b, F's N1c rulings 43, 44): UnreadIdentity reads the subject's declaring Contract's clauses and the bound's
+    // supply (ContractSupply: the bound and each Contract it inherits), so a use through the root of a Contract chain D0 <- D1 <- ... <- DN
+    // (C bounds Item by DN, its parent D(N-1) declares the identity, the supply reading ancestors root first) reads work linear in N; each of 10 uses records the located Unsupported_Kd.
+    [Fact]
+    public void AnUnreadIdentityIsDecidedInWorkLinearInTheContractChain()
+    {
+        var (w30, w60) = (Work(30), Work(60));
+        Assert.True(w30 < w60 && w60 <= (2 * w30) + 200, $"{w30} {w60}"); // The supply walk reads the bound's ancestors (ruling 44's N2).
+        var w120 = Work(120);
+        Assert.True(w120 - w60 <= (2 * (w60 - w30)) + 200, $"{w30} {w60} {w120}");
+
+        static int Work(int n)
+        {
+            var source = new System.Text.StringBuilder("enum M\n    A\n    public func f(self) -> i32 => 1\ncontract D0\n    associate X\n");
+            for (var i = 1; i <= n; i++)
+            {
+                source.Append($"contract D{i}: D{i - 1}\n").Append(i == n - 1 ? "    Self.(D0).X is M\n" : string.Empty);
+            }
+
+            source.Append($"contract C\n    associate Item is D{n}\nfunc g<T>() -> i32\n    T is C\n");
+            for (var k = 0; k < 10; k++)
+            {
+                source.Append($"    let x{k} = T.(C).Item.(D0).X.A\n");
+            }
+
+            source.Append("    return 0\n");
+            var c = CompilationTestHelper.Parse(source.ToString());
+            c.Bind();
+            Assert.Equal(10, c.Binding.Issues.Count(static x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd));
+            return c.Binding.UnreadIdentityWork;
         }
     }
 
@@ -716,18 +830,13 @@ public partial class TypeDagScalingTest
         // deep inheritance chain allocates linearly in its depth: three depths, each double the one before, within factor 3, as
         // InferenceSlotScalingTest's rows define it.
         [Fact]
-        public void AColdBindOfAnInheritanceChainIsLinear()
-        {
-            int[] depths = [64, 128, 256];
-            var compilations = new Compilation[depths.Length];
-            var bytes = AllocationMeasurement.MeasureSeries(depths.Length, i =>
-            {
-                var c = compilations[i] = CompilationTestHelper.Parse(HeirChain(depths[i]));
-                return () => c.Bind();
-            });
-            Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
-            Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
-        }
+        public void AColdBindOfAnInheritanceChainIsLinear() => ColdBindIsLinear(HeirChain);
+
+        // Z6 Revision 8 (C-462's C1): a cold Bind of HolderChain, whose publication's fixed point takes one round per holder
+        // (TheFitMarkCrossesAChainOfHoldersOneRoundPerHolder), allocates linearly in its length: no round allocates (MayWrite's member
+        // scratch is reused).
+        [Fact]
+        public void AColdBindOfAHolderChainIsLinear() => ColdBindIsLinear(HolderChain);
 
         // SPEC 8.6.2, 8.8.2 (PLAN G665): a warm rebind of a conditional inheritance chain, every heir's scope and every level's
         // conditions included, allocates nothing.
@@ -737,6 +846,20 @@ public partial class TypeDagScalingTest
             var c = CompilationTestHelper.ParseSuccess(ConditionalHeirChain(64));
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+        }
+
+        // A cold Bind of a chain at three lengths, each double the one before: each completes, and its allocation grows within factor 3.
+        private static void ColdBindIsLinear(Func<int, string> chain)
+        {
+            int[] lengths = [64, 128, 256];
+            var compilations = new Compilation[lengths.Length];
+            var bytes = AllocationMeasurement.MeasureSeries(lengths.Length, i =>
+            {
+                var c = compilations[i] = CompilationTestHelper.Parse(chain(lengths[i]));
+                return () => c.Bind();
+            });
+            Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
+            Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
         }
     }
 }

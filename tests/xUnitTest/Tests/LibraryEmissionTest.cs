@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Kimi.Build;
 using Kimi.Compiler;
 using Xunit;
@@ -26,8 +27,9 @@ public class LibraryEmissionTest
         }
     }
 
-    // A Library's module from the generation entry exports no definition and has no OS entry (DECISIONS R5-M12's class S assertion on the
-    // old generator's module, rewritten at G3), for each source the harness emits.
+    // A Library's module from the generation entry exports no definition but the runtime's memory functions, which every module defines
+    // (IMPL 21.4.7; the Tatara plan's decision 24, B7r4), and has no OS entry (DECISIONS R5-M12's class S assertion on the old generator's
+    // module, rewritten at G3), for each source the harness emits.
     [Theory]
     [MemberData(nameof(HarnessSources))]
     public void EmitsInspectionWithoutAnOsEntry(string name, string source)
@@ -37,7 +39,7 @@ public class LibraryEmissionTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Matches(@"(?m)^define internal ", ir);
-        Assert.DoesNotMatch(@"(?m)^define (?!internal )", ir);
+        Assert.Equal(TargetProfile.MemorySymbols, Regex.Matches(ir, @"(?m)^define (?!internal )[^@]*@([\w.]+)\(").Select(static x => x.Groups[1].Value));
         Assert.DoesNotContain("@__kimi_start", ir);
         Assert.DoesNotContain("@__kimi_entry_body", ir);
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
@@ -69,14 +71,15 @@ public class LibraryEmissionTest
         c.Project.Directory = directory;
         try
         {
-            Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
-            using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+            Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
+            var paths = ArtifactPaths.Create(c.Project);
+            using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
             var root = manifest.RootElement;
             Assert.Equal(testBuild ? "Application" : "Library", root.GetProperty("outputKind").GetString());
-            Assert.Equal(testBuild ? WindowsProfile.EntrySymbol : null, root.GetProperty("entry").GetString());
-            Assert.Equal(testBuild ? WindowsProfile.Subsystem : null, root.GetProperty("subsystem").GetString());
-            Assert.Equal(ArtifactFiles.Hash(path!), root.GetProperty("irSha256").GetString());
-            Assert.False(File.Exists(Path.ChangeExtension(path!, ".link.build.json")));
+            Assert.Equal(testBuild ? TargetProfile.Windows.EntrySymbol : null, root.GetProperty("entry").GetString());
+            Assert.Equal(testBuild ? TargetProfile.Windows.Subsystem : null, root.GetProperty("subsystem").GetString());
+            Assert.Equal(ArtifactFiles.Hash(paths.Ir), root.GetProperty("irSha256").GetString());
+            Assert.False(File.Exists(paths.Record));
             if (testBuild)
             {
                 NativeToolchain.ValidateManifest(root);
@@ -100,7 +103,7 @@ public class LibraryEmissionTest
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.OutputKind = OutputKind.Library;
         c.IsTestBuild = testBuild;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Library.kimi", source));
         c.Bind();
         if (testBuild)
