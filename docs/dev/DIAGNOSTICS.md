@@ -307,11 +307,15 @@ The MIR analyses' depth bound (DECISIONS R4-M153; the owner's 「G272: (1)」) r
 
 MIR expansion (R3; published at check, DECISIONS R5-M156, R4-M176) reports `ExpansionLimit_Kd` (Resource, location-only like the MIR's `Unsupported_Kd`, in the control-flow partition; `DefaultExpansionLimit_Kd` until PLAN G427 U2) where the builder's one body budget refuses a copy (`MirBuilder.Refuses`, IMPL §21.3.2): no copy begins past 65,536 MIR statements in its function body, and a copy of known size never ends past it, so a body stays within the limit plus the copies begun before it. The record is at the node of this body whose expansion is refused, once per node. At an omitting call, the default template's copy would take the body past the limit: that default takes an Opaque value, and the template holding the call fails, so the calls omitting its default take an Opaque value without a record (`MirBuildTest.DefaultExpansionStopsAtTheLimit`). At a `defer` statement, its body's copy would begin past the limit: the copy builds nothing, which loses only the checks that rest on it (`DeferredEmissionTest.AnExpansionPastTheBodyLimitReportsExpansionLimit`).
 
-**A6's code table** (DECISIONS R4-M67, R5-M23, R5-M56). Every MIR analysis problem names the requirement its recording rule judged,
+**A6's code table** (DECISIONS R4-M67, R5-M23, R5-M56, R4-M240). Every MIR analysis problem names the requirement its recording rule judged,
 never one derived from its code. These are all its (requirement, code) pairs, the consistency set, with the analysis each pair counts
 in (`U`: a limit A4 and A5 share; `B`: a broken contract) and the facts its problems may carry (none: a code alone, at its subject).
 A1's and A3's locations are DECISIONS R7-M76's; A5's are the Loan problems table's below; the Origin stratum's are §4.4's.
 Construction and collection records are not analysis problems (the expansion limit and the instance collector above).
+`MirAnalysisTest.EachRequirementHasItsA6Rows`, `MirCensusTest` and `MirPublicationTest`'s fact tests read this table and the two fact
+tables below (their headers and backticked names; the Analysis column is one of A1, A3, A4, A5, `U` and `B`, and the read fails on any
+other cell); an edit of them lands in a window, whose Session runs them, and one that changes their meaning lands in its unit's window
+(DECISIONS R4-M240).
 
 | Requirement | Code | Analysis | Facts |
 | --- | --- | --- | --- |
