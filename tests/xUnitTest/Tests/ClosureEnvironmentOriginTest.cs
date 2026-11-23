@@ -1005,7 +1005,9 @@ public class ClosureEnvironmentOriginTest
     // e-pay-r, v-call-r). Beside an invariant admitted case (`owner or uniq`, `owner or raw`) no one Type carries it: the located
     // `Unsupported_Kd` (R3; the owner's O-515 (a), a named support reduction on the valid o1u-loc, u-arg, rw-loc, rw-arg, o1u-dis, mix-loc,
     // sb2-loc) at each selected input, a Case payload once, never a receiver (rcv-o1v, rcv-o1: SPEC 7.3) or a value read (vr-u, vr-val),
-    // beside an independent record (o1u-rt, u-arg2, mix-rt). Each row: every record.
+    // beside an independent record (o1u-rt, u-arg2, mix-rt). Such a layer is captured (BU-184 as G254b narrowed it): its body's uses are
+    // named (o1-cl-st, n-o1: two chains; o1-cl-loc) or the limit, at a body's use (o1u-cl-loc, rw-cl-loc) or a nested entry (n-o1u,
+    // n-o1u-i). Each row: every record.
     [Theory]
     [InlineData("st-PU", "func keep<r/U>(x: r/U during b, y: uniq/(r/U during b)) -> ()\n    r is uniq\n    y@follow = x\nfunc f<s/T>(value: s/T during a, q: uniq/(s/T during a)) -> i32\n    s is uniq\n    var g = func [value, q@move] () -> i32\n        q@follow = value\n        return 0\n    return g()\npublic func main()\n    Console.writeLine(\"p\")\n", "UnprovenOriginRelation_Kd value")]
     [InlineData("kp-PRU", "func keep<r/U>(x: r/U during b, y: uniq/(r/U during b)) -> ()\n    r is ref or uniq\n    y@follow = x\nfunc f<s/T>(value: s/T during a, q: uniq/(s/T during a)) -> i32\n    s is ref or uniq\n    var g = func [value, q@move] () -> i32\n        keep(value, q)\n        return 0\n    return g()\npublic func main()\n    Console.writeLine(\"p\")\n", "UnprovenOriginRelation_Kd value")]
@@ -1076,6 +1078,13 @@ public class ClosureEnvironmentOriginTest
     [InlineData("rcv-o1", NodeMe + "func f<s/T>(m: s/T, h: uniq/(s/(uniq/Node during b) during a) during c, q: uniq/(uniq/i32 during b)) -> ()\n    s is owner or uniq\n    q@follow = h@follow.me()\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow.me()")]
     [InlineData("vr-u", "func use(x: i32) -> () => ()\nfunc f<s/T>(m: s/T, h: uniq/(s/(uniq/i32 during b) during a) during c) -> ()\n    s is owner or uniq\n    use(h@follow)\n" + PrintMain, "")]
     [InlineData("vr-val", "func f<s/T>(m: s/T, h: uniq/(s/(uniq/i32 during b) during a) during c) -> ()\n    s is owner or uniq\n    let g = func (x: i32) -> () => ()\n    g(h@follow)\n" + PrintMain, "")]
+    [InlineData("o1-cl-st", "func f<s/T, U>(m: s/T, value: " + NestedR + ", q: uniq/(" + NestedR + ")) -> i32\n    s is owner or ref\n    var g = func [value, q@move] () -> i32\n        q@follow = value\n        return 0\n    return g()\n" + PrintMain, "UnprovenOriginRelation_Kd value")]
+    [InlineData("n-o1", "func f<s/T, t/V, U>(m: s/T, n: t/V, x: s/(t/U during b) during a) -> i32\n    s is owner or ref\n    t is uniq\n    var g = func [x] () -> i32\n        let k = func [x] () -> s/(t/U during b) during a => x\n        return 0\n    return g()\n" + PrintMain, "UnprovenOriginRelation_Kd x; UnprovenOriginRelation_Kd x")]
+    [InlineData("o1-cl-loc", "func f<s/T, U>(m: s/T, value: " + NestedR + ") -> i32\n    s is owner or ref\n    var g = func [value] () -> ()\n        let local = value\n        _ = local\n    g()\n    return 0\n" + PrintMain, "")]
+    [InlineData("o1u-cl-loc", "func f<s/T, U>(m: s/T, value: " + NestedR + ") -> i32\n    s is owner or uniq\n    var g = func [value] () -> ()\n        let local = value\n        _ = local\n    g()\n    return 0\n" + PrintMain, "Unsupported_Kd value")]
+    [InlineData("rw-cl-loc", "func f<s/T, U>(m: s/T, value: " + NestedR + ") -> i32\n    s is owner or raw\n    var g = func [value] () -> ()\n        let local = value\n        _ = local\n    g()\n    return 0\n" + PrintMain, "Unsupported_Kd value")]
+    [InlineData("n-o1u", "func f<s/T, U>(m: s/T, x: " + NestedR + ") -> i32\n    s is owner or uniq\n    var g = func [x] () -> i32\n        var k = func [x] () -> i32 => 0\n        return k()\n    return g()\n" + PrintMain, "Unsupported_Kd () -> i32")]
+    [InlineData("n-o1u-i", "func f<s/T, U>(m: s/T, x: " + NestedR + ") -> i32\n    s is owner or uniq\n    var g = func [x] () -> i32\n        let k = func [x] () -> " + NestedR + " => x\n        return 0\n    return g()\n" + PrintMain, "Unsupported_Kd () -> " + NestedR)]
     public void APairLayerAcquiredByCaseIsReborrowedWithinTheLayersThatReachIt(string name, string source, string records)
     {
         _ = name;

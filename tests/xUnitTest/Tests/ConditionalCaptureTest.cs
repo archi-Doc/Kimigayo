@@ -16,8 +16,11 @@ public sealed class ConditionalCaptureTest
     private const string Main = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
     private const string Tag = "contract Iter<T>\n    associate Tag\n";
     private const string Pair = "func f<s/T>(x: s/i32 during a, p: s/(i32, i32), q: uniq/(s/i32 during a), m: s/T) -> i32\n";
-    private const string Family = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f<s/T>(m: s/T, o: obj/Node) -> i32\n" +
-        "    s is objref or objuniq\n    var p = o@move\n    let y = p@s\n";
+    private const string NodeHead = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f<s/T>(m: s/T, o: obj/Node) -> i32\n";
+    private const string ObjectView = NodeHead + "    s is objref or objuniq\n    var p = o@move\n    let y = p@s\n"; // `s/Node` (G759).
+    private const string UniqFamily = NodeHead + "    s is uniq or objuniq\n    var p = o@move\n    let y = p@s\n"; // A family.
+    private const string NodeMe = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+        "    public func me(self: uniq/Self) -> uniq/i32 during self => self.n@uniq\n";
 
     // SPEC 7.7.2, 8.14, 3.5.2 (DECISIONS BU-184): an entry of a pair target or a projection acquires as its initialization would in each
     // case: Copy where Copy is proven, otherwise the entry's TransferRequired_Kd; `@move` transfers it, and a later Move is MovedPlace_Kd.
@@ -43,26 +46,39 @@ public sealed class ConditionalCaptureTest
     public void APairLayerThatNeverReborrowsIsCaptured(string function, string codes)
         => Assert.Equal(codes, Codes(function));
 
-    // Interim (DECISIONS BU-184): (1) until PLAN G254's unit, a pair layer other than the original `s/T` (an application `s/i32`, `s/U`,
-    // or an adaptation family `p@s`) whose bare acquisition Reborrows in some admitted case is not captured: a located Unsupported_Kd at a
-    // written entry whatever its form, since a body's bare use of it would Reborrow there and escape the call receiver (G254's missing
-    // containment), as r23 and r24 would; an omitted list's use of one reports InvalidCaptureBinding_Kd. (2) Until PLAN G170's identity
-    // query, a pair target or a projection is not captured where an identity premise is available in scope (t14: `T is r/i32 during a`),
-    // an unrelated one included (y14, y15: `V is i32`), so G170's removal turns both kinds of row.
+    // SPEC 7.7.2, 8.14, 15.8.2 (DECISIONS BU-184 amended by G254b, BU-27): a pair layer other than the original `s/T` whose bare
+    // acquisition Reborrows in some admitted case is captured as its initialization would be, its body's uses named by the bare Reborrow
+    // rule: valid uses are accepted, a Reborrow stored or returned past the call receiver is `UnprovenOriginRelation_Kd` as its concrete
+    // twin's (r23, r24; rcv-pair, a receiver's), an omitted list's or bare entry's case without a plan is `TransferRequired_Kd` (SPEC 7.7.2:
+    // an omitted list Copies; c3-str-bare), and `[x@move]` moves (c3-str). The object view `p@s` (an application since G759) is captured.
     [Theory]
-    [InlineData(Pair + "    s is owner or uniq\n    var g = func [x] () -> i32 => x + 0\n    return g()\n", "Unsupported_Kd")]
-    [InlineData(Pair + "    s is owner or uniq\n    let g = func [x@move] () -> i32 => x + 0\n    return g()\n", "Unsupported_Kd")]
-    [InlineData(Pair + "    s is owner or uniq\n    let g = func [x@ref] () -> i32 => 0\n    return g()\n", "Unsupported_Kd")]
-    [InlineData(Pair + "    s is owner or uniq\n    var g = func [var x] () -> i32\n        x@follow += 1\n        return 0\n    return g()\n", "Unsupported_Kd")]
-    [InlineData(Pair + "    s is ref or uniq\n    var g = func [x] () -> s/i32 during a => x\n    return 0\n", "Unsupported_Kd")]
-    [InlineData(Pair + "    s is ref or uniq\n    var g = func [x, q@move] () -> i32\n        q@follow = x\n        return 0\n    return g()\n", "Unsupported_Kd")]
-    [InlineData(Pair + "    s is owner or uniq\n    let g = func () -> i32 => x + 0\n    return g()\n", "InvalidCaptureBinding_Kd")]
-    [InlineData(Family + "    let g = func [y] () -> i32 => 1\n    return g()\n", "Unsupported_Kd")]
-    [InlineData(Family + "    let g = func [y@move] () -> i32 => 1\n    return g()\n", "Unsupported_Kd")]
+    [InlineData(Pair + "    s is owner or uniq\n    var g = func [x] () -> i32 => x + 0\n    return g()\n", "")]
+    [InlineData(Pair + "    s is owner or uniq\n    let g = func [x@move] () -> i32 => x + 0\n    return g()\n", "")]
+    [InlineData(Pair + "    s is owner or uniq\n    let g = func [x@ref] () -> i32 => 0\n    return g()\n", "")]
+    [InlineData(Pair + "    s is owner or uniq\n    var g = func [var x] () -> i32\n        x@follow += 1\n        return 0\n    return g()\n", "")]
+    [InlineData(Pair + "    s is ref or uniq\n    var g = func [x] () -> s/i32 during a => x\n    return 0\n", "UnprovenOriginRelation_Kd")]
+    [InlineData(Pair + "    s is ref or uniq\n    var g = func [x, q@move] () -> i32\n        q@follow = x\n        return 0\n    return g()\n", "UnprovenOriginRelation_Kd")]
+    [InlineData(Pair + "    s is owner or uniq\n    let g = func () -> i32 => x + 0\n    return g()\n", "TransferRequired_Kd")]
+    [InlineData(ObjectView + "    let g = func [y] () -> i32 => 1\n    return g()\n", "")]
+    [InlineData(ObjectView + "    let g = func [y@move] () -> i32 => 1\n    return g()\n", "")]
+    [InlineData("func f<s/T>(x: s/string during a, m: s/T) -> i32\n    s is owner or uniq\n    let g = func [x@move] () -> i32 => 0\n    return g()\n", "")]
+    [InlineData("func f<s/T>(x: s/string during a, m: s/T) -> i32\n    s is owner or uniq\n    let g = func [x] () -> i32 => 0\n    return g()\n", "TransferRequired_Kd")]
+    [InlineData(NodeMe + "func f<s/T>(m: s/T, y: s/Node during a, q: uniq/(uniq/i32 during a)) -> i32\n    s is uniq\n    var g = func [y, q@move] () -> i32\n        q@follow = y.me()\n        return 0\n    return g()\n", "UnprovenOriginRelation_Kd")]
+    [InlineData(NodeMe + "func f<s/T>(m: s/T, y: s/Node during a) -> i32\n    s is uniq\n    var g = func [y] () -> i32\n        let k = y.me()\n        k@follow = 1\n        return 0\n    return g()\n", "")]
+    public void ACapturedPairLayerIsAcquiredAsItsInitializationWouldBe(string function, string codes)
+        => Assert.Equal(codes, Codes(function));
+
+    // Interim (DECISIONS BU-184 amended by G254b): (1) until the bare Reborrow rule names an adaptation family (PLAN, G254b's family row),
+    // a family `p@s` whose bare acquisition Reborrows in some admitted case is not captured: a located Unsupported_Kd at a written entry,
+    // since a body's bare use of it would Reborrow uncontained in the call receiver. (2) Until PLAN G170's identity query, a pair target or a
+    // projection is not captured where an identity premise is available in scope (t14: `T is r/i32 during a`), an unrelated one included
+    // (y14, y15: `V is i32`), so G170's removal turns both kinds of row.
+    [Theory]
+    [InlineData(UniqFamily + "    let g = func [y] () -> i32 => 1\n    return g()\n", "Unsupported_Kd")]
     [InlineData("func f<s/T, r/U>(m: s/T, n: r/U, t: T, w: ref/i32 during a) -> i32\n    s is owner or ref\n    r is owner or ref\n    T is r/i32 during a\n    let g = func [t] () -> i32 => t + 0\n    return g()\n", "Unsupported_Kd")]
     [InlineData("func f<s/T, V>(m: s/T, t: T, v: V) -> i32\n    s is owner or ref\n    T is Copy\n    V is i32\n    let g = func [t] () => ()\n    g()\n    return 0\n", "Unsupported_Kd")]
     [InlineData(Tag + "func f<T, V>(t: T.Tag, v: V) -> i32\n    T is Iter<i32>\n    T.Tag is Copy\n    V is i32\n    let g = func [t] () => ()\n    g()\n    return 0\n", "Unsupported_Kd")]
-    public void AReborrowingOrPremiseMadePairLayerIsUnsupportedUntilG254OrG170(string function, string codes)
+    public void AReborrowingFamilyOrPremiseMadePairLayerIsUnsupportedUntilTheFamilyRowOrG170(string function, string codes)
         => Assert.Equal(codes, Codes(function));
 
     [Fact]

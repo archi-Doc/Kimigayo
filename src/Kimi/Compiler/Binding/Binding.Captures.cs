@@ -144,13 +144,15 @@ public sealed partial class Binding
 
         // Interim rows, as before G721: a located Unsupported_Kd at a written entry, and for an omitted list a function-level Unsupported
         // that surfaces no record, so the use reports InvalidCaptureBinding_Kd (a pre-existing Language error on a valid program).
-        // (1) Removal condition PLAN G254's unit: a pair layer (SPEC 13.5.5) other than the original `s/T` whose bare acquisition the
-        // one plan (SPEC 8.14) makes a Reborrow in some admitted case, the owner case's own included (BareReborrows): a body's bare use
-        // of it would Reborrow there, and no rule contains that Reborrow in the call receiver (G254). The original (a Parameter) was
-        // captured before G721 and stays: its forms are G254's own.
+        // (1) Removal condition: the bare Reborrow rule names an adaptation family (PLAN, G254b's family row). A pair layer (SPEC 13.5.5)
+        // other than the original `s/T` whose complete plan (SPEC 8.14, BareAcquisition) Reborrows in some admitted case where that rule
+        // names no layer (ReborrowedType null: a family, OuterOrigin having no family row): a body's bare use of it would Reborrow there,
+        // uncontained in the call receiver. Every other such layer is captured, its uses named by the rule or its located limit; an
+        // incomplete plan's use has no plan (SPEC 8.14). The original (a Parameter) was captured before G721 and stays.
         // (2) Removal condition PLAN G170's identity query: an abstract Type dev did not capture (a pair target, a projection) where an
         // identity premise is available in scope (HasTypeIdentity, SPEC 8.2.3), which may make it a pair layer that no plan reads.
-        if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareReborrows(type, function)) ||
+        if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareAcquisition(type, function, out var reborrow) == SemanticsMask.None &&
+                reborrow != SemanticsMask.None && this.ReborrowedType(type, function, BoundOrigin.Static, [], out _) is null) ||
             (type is { IsAbstract: true, IsPairLayer: false, Kind: not BoundTypeKind.Parameter } && HasTypeIdentity(this.ConstraintScope(function))))
         {
             if (entry is { } written)
