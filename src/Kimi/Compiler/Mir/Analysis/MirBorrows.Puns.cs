@@ -257,13 +257,17 @@ internal sealed partial class MirBorrows
         return start;
     }
 
-    // The index of the non-shared direct Loan or address an element names a Place by (not an own-step entry, never E), else -1.
-    private int PunEntry(int element)
+    // The index of the direct Loan or address an element names a Place by, of any mode (not an own-step entry, never E), else -1.
+    private int ReadEntry(int element)
     {
         var index = element - this.loanBase;
         return index >= 0 && index < this.loanCount + this.addressCount &&
-            this.loans[index] is { Direct: true, Named: >= 0 and not Escaped, OwnStep: false, Mode: not MirRefKind.Shared } ? index : -1;
+            this.loans[index] is { Direct: true, Named: >= 0 and not Escaped, OwnStep: false } ? index : -1;
     }
+
+    // That entry where it is not shared (a write's: SPEC 15.6 a write may reach every Place its pointer's value carries a non-shared
+    // direct Loan or address of; 15.6.4 item 1), else -1.
+    private int PunEntry(int element) => this.ReadEntry(element) is >= 0 and var index && this.loans[index].Mode != MirRefKind.Shared ? index : -1;
 
     private bool AnyEntry(int set)
     {
