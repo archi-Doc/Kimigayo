@@ -400,8 +400,9 @@ internal sealed class MirBody
     /// <param name="source">The syntax it replaces.</param>
     /// <param name="uses">The uses of that syntax: Places of locals or statics, each undecided.</param>
     /// <param name="kept">The count of the leading uses that are its kept parts' (<see cref="MirOpaque.Kept"/>).</param>
+    /// <param name="enclosing">The count of the uses after those that are its enclosing parts' (<see cref="MirOpaque.Enclosing"/>).</param>
     /// <returns>The site.</returns>
-    internal int AddOpaque(SourceRef source, ReadOnlySpan<MirPlace> uses, int kept)
+    internal int AddOpaque(SourceRef source, ReadOnlySpan<MirPlace> uses, int kept, int enclosing)
     {
         var start = this.opaqueUseCount;
         foreach (var use in uses)
@@ -409,8 +410,14 @@ internal sealed class MirBody
             Add(ref this.opaqueUses, ref this.opaqueUseCount, use);
         }
 
-        return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, uses.Length, kept));
+        return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, uses.Length, kept, enclosing));
     }
+
+    /// <summary>Gets the Opaque site a statement assigns, the one lookup its readers share (A1's enclosing uses, A5's activations).</summary>
+    /// <param name="statement">The statement.</param>
+    /// <returns>The site of an Assign of an Opaque rvalue; else a site of no uses.</returns>
+    internal MirOpaque SiteOf(in MirStatement statement)
+        => statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } ? this.opaques[statement.Rvalue.Arg] : default;
 
     internal void AddMustNotComplete(in MirMustNotComplete row) => Add(ref this.ends, ref this.endCount, row);
 

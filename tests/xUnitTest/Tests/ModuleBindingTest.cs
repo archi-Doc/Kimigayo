@@ -283,6 +283,47 @@ public partial class ModuleBindingTest
         Assert.Equal((BindingState.Resolved, "Kimi"), (HirTables.State(row.Alias), HirTables.Symbol(row.Alias)?.Name));
     }
 
+    // SPEC 18.2.3 (the owner's O-511 (a), PLAN G1320): a module's required alias is the library's row, made and evaluated in the
+    // library's pass before its table freezes, whether the module adds no path or adds its own, so no module parses or evaluates `Kimi`
+    // again and its lookups read the library's frozen target.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AModulesRequiredAliasIsTheLibrarysRow(bool configured)
+    {
+        var compilation = Create("public func main() => Console.writeLine(\"root\")", "public group Api\n    public func value() => Console.writeLine(\"library\")", configure: configured ? Configure : null);
+        Assert.True(compilation.Bind().IsComplete);
+        var library = Assert.Single(compilation.DefaultAliases(compilation.Library.Kotonoha));
+        foreach (var module in compilation.SourceModules)
+        {
+            Assert.Same(library.Alias, Assert.Single(compilation.DefaultAliases(module), static x => x.Path == "Kimi").Alias);
+        }
+
+        static void Configure(ProjectFile root, ProjectFile library)
+        {
+            root.Alias = ["Lib.Api"];
+            library.Alias = ["Kimi.Console"];
+        }
+    }
+
+    // SPEC 18.4.1, 18.2.3, 23.1.2 (F's ruling N1-20 C1; DECISIONS Q13): a root declaration named `Kimi` is one record, at it (r04i, r04j;
+    // m06i in a dependency). The module's required alias is the library's row, so it opens the reserved Kimi Kotonoha whatever the module
+    // declares, and the use through it records nothing; a module's own parse of `Kimi`, walked from its root, opened the user's
+    // declaration and added an UnresolvedBinding_Kd at the use.
+    [Theory]
+    [InlineData("r04i", "group Kimi\n    func f() => ()\nfunc g() => Console.writeLine(\"Hello\")", "public group Api", 0)]
+    [InlineData("r04j", "struct Kimi\nfunc g() => Console.writeLine(\"Hello\")", "public group Api", 0)]
+    [InlineData("m06i", "func g() => Lib.Api.value()", "public group Kimi\n    public func f() => ()\npublic group Api\n    public func value() => Console.writeLine(\"lib\")", 1)]
+    public void ARootDeclarationNamedKimiIsTheOnlyRecord(string row, string root, string library, int module)
+    {
+        var compilation = Create(root, library);
+        Assert.False(compilation.Bind().IsComplete, row);
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(DiagnosticCode.DuplicateBinding_Kd, issue.Code);
+        Assert.Same(compilation.SourceModules[module], issue.Node.CodeContext.Kotonoha);
+        Assert.Equal("Kimi", Assert.IsAssignableFrom<DeclarationContainerKoto>(issue.Node).Name);
+    }
+
     [Fact]
     public void LibraryDefaultsDoNotLeakToTheCaller()
     {
