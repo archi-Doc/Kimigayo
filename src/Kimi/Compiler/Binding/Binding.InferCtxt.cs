@@ -23,8 +23,9 @@ namespace Kimi.Compiler;
 //   judgments', which are written only with no snapshot open (asserted); no snapshot is open and the log is empty between two solves;
 //   a frame is returned only with no snapshot open (asserted); Rollback undoes in reverse order; the frames and the log are pooled and
 //   reused (warm 0 B). PLAN G924 AF-3b v3-A (Binding.OpenSlots' contract): an atom is never bound, so a SetType or SetLength into the
-//   frame of an in-flight owner (PushOwner to PopOwner) is InternalInvariant_Kd, and so is one writing a Type or length that holds an
-//   atom while no owner is in flight (atoms never outlive their owners).
+//   frame of an in-flight owner (PushOwner to PopOwner), or one writing a Type or length that holds an atom while no owner is in flight
+//   (atoms never outlive their owners), is a broken contract: CheckOpenWrite throws, which ends the check as CheckFaulted_Kd, as the
+//   frames' other asserted invariants do (no recorded InternalInvariant_Kd).
 // - Prohibitions: no rule is decided here (fit, meet, applicability, formation, an Origin relation); no syntax is read. The Origin and
 //   input-Origin slots, the All* saves of a comparison and the slot arrays of solves that infer nothing (explicit arguments of a Function
 //   Item, a specialization, a contract match) are not frames.
