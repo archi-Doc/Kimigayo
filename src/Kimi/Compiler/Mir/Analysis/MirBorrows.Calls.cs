@@ -174,11 +174,19 @@ internal sealed partial class MirBorrows
         var (limited, deepHolder) = stored ? default : this.Writes(state, call, position, written, root);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
+        this.Deliver(state, call, written, referent, this.argValues[position], checks);
+    }
+
+    // The one delivery of a store's walk (Keep's): into each target W reached, what the output's store puts there (Received), arriving at
+    // the receiving Type through the value `through` (Arrive), Φ_N besides into a holder, Φ_U besides into E where the walk rests; into a
+    // target's write slot the values the output sources (Sourcing).
+    private void Deliver(ulong[] state, in MirTerminator call, OutputRetention written, BoundType? receiving, int through, bool checks)
+    {
         var sourced = this.writeCount > 0 ? this.Sourcing(written) : 0;
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
-            var value = this.Arrive(target, referent, false, this.argValues[position], this.Received(state, call, written, target, checks));
+            var value = this.Arrive(target, receiving, false, through, this.Received(state, call, written, target, checks));
             value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
             value = target == Escaped && this.walkResting ? this.sets.Union(value, this.undecidedSet) : value; // MirBorrows.Puns' Φ_U.
             this.AddSlot(target, value, 0, JoinedThrough, issue: false);
