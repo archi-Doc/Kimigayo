@@ -1005,15 +1005,16 @@ public sealed partial class InstanceCollectorTest
     // 8,250), publishes the refusal as its HeightLimit in every frame, so Layout records TypeHeightLimit_Kd at each least use (count's
     // parameter, noneD's result, the call forming the instance), never Rejected's located InternalInvariant_Kd; its Field behind raw
     // (raw192: raw/W^192<T>, 8,193) the same; at exactly H (raw191: 8,192) the instance forms and the program is accepted. G651's
-    // site-less InternalInvariant_Kd at the project stays beside it until U2b gives the after-run readers a site, and the default's copy
-    // (copy250, f-stored) is B3's Unsupported_Kd at the omitting call until Z26 builds it. In a Closure literal's body (clo250) the same
-    // records (beside A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct
-    // (C-485 B1). Fail-before: dev gives InternalInvariant_Kd at each use.
+    // site-less InternalInvariant_Kd at the project stays beside it until U2b gives the after-run readers a site. The default's copy
+    // (copy250, f-stored), built since PLAN G396 (3)'s B3, records the same at its least uses, the copy's `.None` at its operation in the
+    // template (before B3 it was B3's Unsupported_Kd at the omitting call). In a Closure literal's body (clo250) the same records (beside
+    // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1).
+    // Fail-before: dev gives InternalInvariant_Kd at each use.
     [Theory]
     [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
     [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
     [InlineData("raw191", "")]
-    [InlineData("copy250", "Unsupported_Kd@taked(p40) InternalInvariant_Kd@-")]
+    [InlineData("copy250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>>.None InternalInvariant_Kd@-")]
     [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
     public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
     {
@@ -2716,8 +2717,8 @@ public sealed partial class InstanceCollectorTest
     // K 4.9 with a second, non-root module: a record caused in its inlined default moves to the root module's omitting call, and one caused
     // in its body to the root-module call that first admitted the chain. take's default, grow<u8>(1, 3), instantiates under the call, so
     // the builder copies it (DECISIONS R4-M127) with no record of its own, and its resource limit arises inside the copy, at its call in
-    // main's Inlined scope at the library's location; a default its call does not instantiate is no copy, but the builder's Unsupported_Kd at
-    // the call (MirBuildTest.ACopyTheCallDoesNotInstantiateIsAnOpaqueValue, this test's former probe<Array<…65…>> default).
+    // main's Inlined scope at the library's location; a default over an instance past Binding's storage bound is such a copy too
+    // (MirBuildTest.ACopyOverAnInstancePastBindingsBoundIsBuilt, this test's former probe<Array<…65…>> default).
     [Fact]
     public void TheLocationRuleLeavesNonRootModules()
     {

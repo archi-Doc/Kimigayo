@@ -140,6 +140,11 @@ public sealed partial class Binding
                     return null;
                 }
 
+                if (group.Single is { } single && this.LacksRequirementSubject(node, single))
+                {
+                    return this.FailUnselected(node, BindingFailure.MissingName); // A group of one is its selection (N1-13 B3).
+                }
+
                 if (group.Single is { Declaration: FunctionKoto { IsAnonymous: false } named } && DirectCallOnly(named))
                 {
                     // SPEC 7.6, 22.6: such a function supports direct calls only. An overload group is checked after selection.
@@ -198,14 +203,13 @@ public sealed partial class Binding
                 return this.FailWrite(node, node);
             }
 
-            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
+            // SPEC 9.4, 11.3.2: an absent or inaccessible accessor at a use: the use located, the Property related (an accessor's access
+            // word is part of its Property's declaration).
+            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType) ||
+                (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType))))
             {
-                return this.Fail(node, BindingFailure.Access);
-            }
-
-            if (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType)))
-            {
-                return this.Fail(node, BindingFailure.Access);
+                this.RecordAccess(node, symbol, null);
+                return null;
             }
 
             if (!operation.IsStandard || (update && !property.Setter.IsStandard))

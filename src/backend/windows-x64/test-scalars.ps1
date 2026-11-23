@@ -1,6 +1,16 @@
+# The native fixture check: each selected fixture built at O0 and O2 by the configuration's compiler, then run against its sidecars.
+# Builds: a fixture's IR becomes two IR/manifest pairs, Name.ll beside Name.link.json as emit writes them (the O2 pair in the output
+# directory, the O0 pair in its O0 folder). Their manifest is the one kimi emit writes for a one-line program (one emit per run: this
+# compiler's fixed fields and supplies' entries) with the pair's IR, hash and optimization, and every kernel32 import in its dllimport
+# form as the external declarations. Every pair is written, and an earlier run's record removed, before the first round. Up to
+# -Parallel lanes, each fixture's lines in one lane, send their build --Manifest lines, one at a time, to a kimi tatara session of
+# their own: one process doing the lines' LLVM and LLD work through Tatara, as kimi build does (NativeBuild: optimize, emit, inspect,
+# link). A line whose pair has no record after its session was not attempted (Tatara's refusal ends a session after its line) and goes
+# to the next round of lanes. Runs: test-scalar-fixture.ps1, -Parallel at a time, reads each pair's record and runs its executable.
+# Writes results.json, native-results.json and each session's log to -LogDirectory.
 [CmdletBinding()]
 param(
-    [string] $ToolchainRoot = '', [string] $LlvmBin = '',
+    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [string] $FixturePattern = '*.ll',
     [string] $FixtureDirectory = '',
     [string] $OutputDirectory = '',
@@ -13,35 +23,21 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
-$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
-if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+$compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $fixtures = if ($FixtureDirectory) { (Resolve-Path -LiteralPath $FixtureDirectory).Path } else { Join-Path $repo 'temp/scalar-fixtures' }
 $selectedFixtures = @(Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern -File | Where-Object Extension -EQ '.ll' | Sort-Object Name)
 if ($selectedFixtures.Count -eq 0) { throw "No scalar fixtures match '$FixturePattern' in '$fixtures'." }
 $out = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory, (Get-Location).ProviderPath) } else { Join-Path $repo 'temp/scalar-native' }
-New-Item -ItemType Directory -Force $out | Out-Null
-$tools = @{}
-foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-dlltool', 'llvm-readobj', 'llvm-nm')) { $tools[$name] = Join-Path $LlvmBin "$name.exe" }
-$profile = Read-KimiWindowsProfile
-$kernel = Get-KimiKernel32
-$archive = Get-KimiBackendArchive
+New-Item -ItemType Directory -Force $out, (Join-Path $out 'O0') | Out-Null
 Write-Output 'Toolchain verification: not-performed'
-$allowedSymbols = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-foreach ($symbol in $profile.providedSymbols) { $null = $allowedSymbols.Add($symbol) }
-foreach ($line in ((Get-KimiKernel32Definition) -split "`n" | Select-Object -Skip 2)) {
-    $symbol = $line.Trim()
-    if ($symbol) { $null = $allowedSymbols.Add($symbol); $null = $allowedSymbols.Add("__imp_$symbol") }
-}
 $logs = if ($LogDirectory) { [IO.Path]::GetFullPath($LogDirectory) } else { Join-Path $out 'logs' }
 New-Item -ItemType Directory -Force $logs | Out-Null
-$context = @{
-    tools = $tools; fixtures = $fixtures; output = $out; kernel = $kernel; archive = $archive
-    allowedSymbols = [string[]]@($allowedSymbols); logs = $logs; executionDeadlineMilliseconds = $ExecutionDeadlineMilliseconds
-}
-# A native outcome depends only on the fixture's files (fixture key) and on the tools, archive, imports, allowed symbols,
-# runner code and deadline (environment key); missing files hash as empty.
+$utf8 = [Text.UTF8Encoding]::new($false)
+# A native outcome depends only on the fixture's files (fixture key) and on the compiler's Tatara, the supplies, the native build's code
+# (src/Kimi/Build, the tatara and build commands and the target profile), the runner code and the deadline (environment key); missing
+# files hash as empty.
 function Get-NativeKey([string[]] $Parts) {
     [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Parts -join "`n")))
 }
@@ -50,12 +46,14 @@ function Get-NativeFileHash([string] $Path) {
     $stream = [IO.File]::OpenRead($Path)
     try { [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
 }
-$environment = @(foreach ($name in @('opt', 'llc', 'llvm-nm', 'lld-link')) { $tools[$name] }) + @($archive, $kernel) +
-    @(foreach ($name in @('test-scalars.ps1', 'test-scalar-fixture.ps1', 'test-scalar-process.ps1', 'expected-output.ps1', 'toolchain.ps1', 'kernel32.ps1', 'profile.json')) {
+$environment = @((Join-Path (Split-Path -Parent $compiler) 'tatara.dll'), (Get-KimiBackendArchive), (Get-KimiKernel32)) +
+    @(Get-ChildItem -LiteralPath (Join-Path $repo 'src/Kimi/Build') -Filter '*.cs' -File -Recurse | ForEach-Object FullName | Sort-Object) +
+    @(foreach ($name in @('TataraCommand.cs', 'BuildCommand.cs')) { Join-Path $repo "src/Kimi/Unit/Command/$name" }) +
+    @(Get-ChildItem -LiteralPath (Join-Path $repo 'src/Kimi/Compiler/Core') -Filter '*Profile.cs' -File | Sort-Object Name | ForEach-Object FullName) +
+    @(foreach ($name in @('test-scalars.ps1', 'test-scalar-fixture.ps1', 'test-scalar-process.ps1', 'expected-output.ps1', 'toolchain.ps1', 'kernel32.ps1', 'kernel32.def', 'profile.json')) {
         Join-Path $PSScriptRoot $name
     })
-$environmentKey = Get-NativeKey (@($environment | ForEach-Object { Get-NativeFileHash $_ }) +
-    @(([string[]]@($allowedSymbols) | Sort-Object -CaseSensitive) -join ',') + "$ExecutionDeadlineMilliseconds")
+$environmentKey = Get-NativeKey (@($environment | ForEach-Object { Get-NativeFileHash $_ }) + "$ExecutionDeadlineMilliseconds")
 $now = [DateTimeOffset]::UtcNow
 $stored = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
 if ($ReuseResults) {
@@ -68,20 +66,109 @@ if ($ReuseResults) {
     }
 }
 $keys = @{}
+$irHashes = @{}
 $reused = [Collections.Generic.List[object]]::new()
 $pending = [Collections.Generic.List[IO.FileInfo]]::new()
 foreach ($fixture in $selectedFixtures) {
     $stem = Join-Path $fixtures $fixture.BaseName
-    $keys[$fixture.Name] = Get-NativeKey @(foreach ($extension in @('ll', 'stdout', 'stderr', 'exit', 'observation')) { Get-NativeFileHash "$stem.$extension" })
+    $irHashes[$fixture.Name] = Get-NativeFileHash $fixture.FullName
+    $keys[$fixture.Name] = Get-NativeKey (@($irHashes[$fixture.Name]) + @(foreach ($extension in @('stdout', 'stderr', 'exit', 'observation')) { Get-NativeFileHash "$stem.$extension" }))
     $entry = $null
     if ($stored.TryGetValue($fixture.Name, [ref] $entry) -and $entry.key -ceq $keys[$fixture.Name]) {
         $reused.Add([pscustomobject][ordered]@{
             fixture = $fixture.Name; status = 'passed'; seconds = 0; log = $entry.log; levels = @('O0', 'O2'); executions = @()
-            tools = @(); violations = @(); problems = @(); reused = $true; verifiedAt = $entry.verifiedAt
+            builds = @(); problems = @(); reused = $true; verifiedAt = $entry.verifiedAt
         })
     }
     else { $pending.Add($fixture) }
 }
+$builds = @{}
+if ($pending.Count -gt 0) {
+    # The manifest: what kimi emit writes for a one-line program, with the pair's fields left for each fixture.
+    $template = Join-Path $out 'manifest-template'
+    if (Test-Path -LiteralPath $template) { Remove-Item -LiteralPath $template -Recurse -Force }
+    New-Item -ItemType Directory $template | Out-Null
+    [IO.File]::WriteAllText((Join-Path $template 'Template.kimi'), "Console.writeLine(`"template`")`n", $utf8)
+    $emitted = & dotnet $compiler emit (Join-Path $template 'Template.kimi') 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "The compiler did not emit the manifest template ($LASTEXITCODE): $emitted" }
+    $manifest = Get-ChildItem -LiteralPath $template -Filter '*.link.json' -File -Recurse | Select-Object -First 1
+    $head = Get-Content -LiteralPath $manifest.FullName -Raw | ConvertFrom-Json -DateKind String
+    $head.irFile = '@IR@'; $head.irSha256 = '@SHA256@'; $head.optimization = '@LEVEL@'
+    $head.PSObject.Properties.Remove('input') # The template's source, no pair's input.
+    $head.externalDeclarations = @((Get-KimiKernel32Definition).Split("`n") | Select-Object -Skip 2 | ForEach-Object { $_.Trim() } | Where-Object { $_ } |
+        ForEach-Object { [ordered]@{ symbol = $_; dllimport = $true } })
+    $head = $head | ConvertTo-Json -Depth 10
+    # Each pending fixture's two pairs, written before the first round (a record is this run's build): its O2 pair in the output
+    # directory, its O0 pair in O0/, the IR copied, the manifest written and an earlier run's record removed, in up to -Parallel
+    # chunks of fixtures. A write failure fails the step.
+    $queue = [Collections.Generic.List[object]]::new() # Per fixture, its builds with no record.
+    foreach ($fixture in $pending) {
+        $builds[$fixture.Name] = @(foreach ($level in @('O0', 'O2')) {
+            $pair = if ($level -ceq 'O2') { Join-Path $out $fixture.BaseName } else { Join-Path $out "O0/$($fixture.BaseName)" }
+            [pscustomobject]@{ level = $level; manifest = "$pair.link.json"; record = "$pair.link.build.json"; log = $null }
+        })
+        $queue.Add($builds[$fixture.Name])
+    }
+    @(for ($k = 0; $k -lt [Math]::Min($Parallel, $pending.Count); $k++) { , @(for ($i = $k; $i -lt $pending.Count; $i += $Parallel) { $i }) }) | ForEach-Object -Parallel {
+        $ErrorActionPreference = 'Stop'
+        $utf8 = [Text.UTF8Encoding]::new($false)
+        $pending = $using:pending; $queue = $using:queue; $irHashes = $using:irHashes; $head = $using:head
+        foreach ($i in $_) {
+            $fixture = $pending[$i]
+            $name = [Text.Json.JsonEncodedText]::Encode("$($fixture.BaseName).ll").ToString()
+            foreach ($build in $queue[$i]) {
+                [IO.File]::Copy($fixture.FullName, ($build.manifest -replace '\.link\.json$', '.ll'), $true)
+                [IO.File]::Delete($build.record)
+                [IO.File]::WriteAllText($build.manifest, $head.Replace('@IR@', $name).Replace('@SHA256@', $irHashes[$fixture.Name]).Replace('@LEVEL@', $build.level), $utf8)
+            }
+        }
+    } -ThrottleLimit $Parallel
+    # Rounds of up to -Parallel lanes, the fixtures dealt round robin (a fixture's lines to one lane): a lane sends its lines to its
+    # session. A round that attempts no line ends the builds.
+    for ($session = 0; $queue.Count -gt 0; $session += $lanes.Count) {
+        $count = [Math]::Min($Parallel, $queue.Count)
+        $lanes = @(for ($k = 0; $k -lt $count; $k++) {
+            $start = [Diagnostics.ProcessStartInfo]::new('dotnet')
+            foreach ($argument in @($compiler, 'tatara')) { $start.ArgumentList.Add($argument) }
+            $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+            $start.StandardInputEncoding = $utf8
+            $process = [Diagnostics.Process]::Start($start)
+            $log = [IO.File]::Create((Join-Path $logs "session-$($session + $k).log"))
+            [pscustomobject]@{
+                process = $process; log = $log; output = $process.StandardOutput.BaseStream.CopyToAsync($log)
+                errors = $process.StandardError.ReadToEndAsync()
+                builds = @(for ($i = $k; $i -lt $queue.Count; $i += $count) { foreach ($build in $queue[$i]) { $build.log = $log.Name; $build } })
+            }
+        })
+        $lanes | ForEach-Object -Parallel {
+            $ErrorActionPreference = 'Stop'
+            $lane = $_
+            $utf8 = [Text.UTF8Encoding]::new($false)
+            $stdin = $lane.process.StandardInput
+            try {
+                # A command line's path, with no backslash to escape.
+                try { foreach ($build in $lane.builds) { $stdin.WriteLine("build --Manifest `"$($build.manifest.Replace('\', '/'))`""); $stdin.Flush() } }
+                finally { $stdin.Close() }
+            }
+            catch [IO.IOException] { } # The session ended early (Tatara's refusal): its remaining lines have no record, for the next round.
+            $lane.process.WaitForExit()
+            $lane.output.Wait()
+            $end = $utf8.GetBytes("$($lane.errors.Result)(test-scalars.ps1) kimi tatara exited with $($lane.process.ExitCode)`n")
+            $lane.log.Write($end, 0, $end.Length)
+            $lane.log.Dispose()
+        } -ThrottleLimit $Parallel
+        $left = [Collections.Generic.List[object]]::new()
+        $attempted = $false
+        foreach ($lines in $queue) {
+            $rest = @(foreach ($build in $lines) { if (-not [IO.File]::Exists($build.record)) { $build } })
+            $attempted = $attempted -or $rest.Count -lt $lines.Count
+            if ($rest.Count -gt 0) { $left.Add($rest) }
+        }
+        if (-not $attempted) { break }
+        $queue = $left
+    }
+}
+$context = @{ fixtures = $fixtures; logs = $logs; builds = $builds; executionDeadlineMilliseconds = $ExecutionDeadlineMilliseconds }
 $worker = Join-Path $PSScriptRoot 'test-scalar-fixture.ps1'
 if ($Parallel -eq 1) {
     $results = @($pending | ForEach-Object { & $worker -Fixture $_ -Context $context })

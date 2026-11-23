@@ -1,10 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 // Binding.ContractSolver's request boundary (the entry file states the contract; split from it without a change, R7-C2c2 c2-3b):
 // the requests for Enumerate's rows (PremiseRefines, SPEC 8.3.2's refinement row; FirstRows, the first walk's rows, which the
-// Callable and effect-bound readers read; PremiseRows, the candidate readers' rows over them; PremiseCallable, SPEC 8.10's row),
+// Callable and effect-bound readers read; PremiseRows, the candidate readers' rows over them; PremiseCallable, SPEC 8.10's row;
+// PremiseUse, the premise-row locator a record reads),
 // their shared frame (RowsRequest, PrepareRows, LeaveRows), the view's index, Closure(view) (IndexOf, IndexWritten,
 // IndexNormalized, ViewIndex; a closure validator's read, BeginClosureRead to EndClosureRead; DropOwnedEntries, ClearClosure;
 // R7-C2e2-1, R7-C2e2-2) and the tables a request owns or keeps (the request tables; the kept rows, ViewIndex.Rows: KeepRows,
@@ -359,6 +362,39 @@ public sealed partial class Binding
     {
         var start = into.Count;
         FormAliases(into, start, this.FirstRows(subject, scope, into));
+    }
+
+    // The premise-row locator (R7-E3 E3b-1 and E3c-1, one component; DECISIONS R7-M75): the location a record relates for a premise.
+    // - Input: a premise row and the view it was read in, or a written fact and the scope stating it.
+    // - Output: the written use of its fact: in the stating declaration's clause that holds the fact (a conjunction's part included),
+    //   the requirement naming its bound Contract reference, else that clause (a premise of another kind, such as a Callable one, has
+    //   no Contract: its clause); else the stating scope's owner (a clause instance's or an ancestor's: its Contract row's scope), else
+    //   the view's owner.
+    // - Prohibitions: no proof and no search beyond the stating declaration's own clauses; read only when a record is written.
+    private Koto PremiseUse(PremiseRow row, BindingScope view)
+        => row is { Raw: { } raw, Stated: { } where } ? this.PremiseUse(raw, where) : row.Stated?.Owner ?? view.Owner;
+
+    private Koto PremiseUse(BoundConstraint fact, BindingScope scope)
+    {
+        var clauses = scope.Owner is FunctionKoto function ? function.TypeConstraints : scope.Owner is DeclarationContainerKoto container ? container.ConstraintNodes : [];
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            if (clauses[i] is IsKoto clause && Contains(clause.BoundConstraint, fact))
+            {
+                return fact.Contract is { } contract ? ContractUse(clause.Right, contract) ?? clause : clause;
+            }
+        }
+
+        return scope.Owner;
+
+        static bool Contains(BoundConstraint? root, BoundConstraint fact)
+            => ReferenceEquals(root, fact) || (root?.Kind == ConstraintKind.And && (Contains(root.Left, fact) || Contains(root.Right, fact)));
+
+        // The requirement naming the premise's bound Contract reference (ContractReferenceOf: its Type, else its selection).
+        Koto? ContractUse(Koto node, BindingSymbol contract)
+            => ReferenceEquals(this.ContractReferenceOf(node), contract) ? node
+            : node is BinaryKoto { Akind: KotoKind.And } conjunction ? ContractUse(conjunction.Left, contract) ?? ContractUse(conjunction.Right, contract)
+            : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
     }
 
     // A request's terms (PremiseRefines' and FirstRows'): its view, the view's identity classes, the subject's key in them, whether

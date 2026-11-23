@@ -101,25 +101,27 @@ public sealed partial class Binding
         this.reachedThroughBorrow = new(this);
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
-        this.callInferenceFailures = new(this);
-        this.callableSelectionFailures = new(this);
         this.baseCallFailures = new(this);
         this.objectErasureFailures = new(this);
         this.resultContexts = new(this);
-        this.arithmeticConformanceFailures = new(this);
         this.callableConstraints = new(this);
-        this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);
+        this.memberSelections = new(this);
+        this.inferredConstructionTargets = new(this);
+        this.qualificationStops = new(this);
         this.formationCauses = new(this);
         this.knownBases = new(this);
         this.earlyReads = new(this);
         this.resolvedSlices = new(this);
         this.matchPlans = new(this);
+        this.indexedPatterns = new(this);
         this.prerequisites = new(this);
         this.partPrerequisites = new(this);
         this.prerequisiteVisits = new(this);
         this.duplicateDeclarations = new(this);
+        this.resolvingTypes = new(this);
+        this.synthesizedCalls = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
         this.issuesView = new(own.Issues, layer.Issues);
@@ -262,7 +264,6 @@ public sealed partial class Binding
         // Source guards are all indexed now; a removed guard may have become an arm body.
         // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
         this.PruneCandidateScopes();
-        this.ValidateDefaultAliases();
         this.PrepareOriginDeclarations();
         this.BindSchemas();
         this.PrepareAssociatedOrigins();

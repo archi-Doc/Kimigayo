@@ -1478,6 +1478,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   landing): C3's row records b as landed in W-322 (`SelectConformance`, one selection of a Type's conformance by a Contract;
   DECISIONS R7-M82) and its remainder C3b-2 (PLAN G1300: a specification whose qualifier names a conformance of several members)
   as next. Nothing frozen.
+- Revision 117 (2026-11-23, plan §14; the Back's D-1179, B's X1 ruling 3, R8-X1 U4's records): §5.2's L1 row records L1 as
+  landed whole (DECISIONS R8-M51, R8-M53-M55); X1's row records that L2 landed before the exit run (U1 Q-661 W-317, U2 Q-671
+  W-319, U3 Q-677 W-322; DECISIONS R8-M58, R8-M59) and that X1's exit run was at 6e8ffd3b4; §10.2 item 3 reads `IntrinsicId` 27
+  for R8's set, 29 with OSF2's `VolatileRead` and `VolatileWrite` (the owner's O-489; DECISIONS T-M23). Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
@@ -1792,6 +1796,16 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   Linux row) and B7b2b (the import side), which follows B7b6 because before B7b6 puts the Kimi library's kernel32 imports under
   `#if windows` every Linux module would require `kernel32`. The owner's O-504 (Q1 (a), Q2 (i)): each call writes its own import's
   extension; B7b2a and B7b6 proceed while B7b2b's reading was open. No other decision changes. No SPEC or IMPL text. Nothing frozen.
+- Revision 17 (2026-11-23, T's D-1171; T-335's measurements): §8's later candidate 1 (direct O2 generation, LC1) is closed by its
+  measurement M1 (`artifacts/benchmarks/lc1-m1-20261123-1424`): the O2 text's second parse and verification cost 0.58% of
+  Milestone30's O2 build, 0.02% of Large's and 1.55% serial (about 0.26% of wall time at `-Parallel 6`) of the native check, all
+  below the 1% gate in wall time, so LC1 stops. Candidate 3 (link time by part, LC3) stays open on M-L
+  (`artifacts/benchmarks/lc3-ml-20261123-1427`; the whole link is 54% of Hello O0's warm build): S1 proceeds to a design, W2
+  (`/threads:1`) waits for a measured `kimi.exe` row, and read, resolve and the hash/record/move parts stop. No other decision
+  changes. No SPEC or IMPL text. Nothing frozen.
+- Revision 18 (2026-11-23, T's correction on D-1171): §8's candidate 3 states read accurately: it reaches the 1% gate (1.52% of
+  Hello O0 warm) but has no candidate (the LC3 design's §5), so nothing is designed; resolve and the hash/record/move parts stop
+  (revision 17 said read stops). No other change. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 
