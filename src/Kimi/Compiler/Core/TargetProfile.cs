@@ -7,14 +7,16 @@
 // Input: none. Output: the rows (Rows), the row of a triple (Find), and each row's columns: the triple, the profile name, data layout,
 // CPU, features and code generation settings, the module frame's extra function attributes (FunctionAttributes), the entry and a COFF
 // row's subsystem and float marker (null on a row without them), the platform layer (Layer: its template's resource name), the
-// reserved supplies (Supplies: each one's name, kind and symbol set; Supply(name)) and the reserved external names (ReservedSymbols,
-// IMPL 21.2), the runtime's import declarations, and the bound below which the system maps no address; table-wide, the C memory
-// functions every runtime defines (MemorySymbols).
+// reserved supplies (Supplies: each one's name, kind and symbol set; Supply(name)), the supply a program's C library starts through
+// (CRuntime, null for none; the Tatara plan's B7b2b), the convention by which the row's imports extend their arguments (ArgumentExtension,
+// IMPL 21.2's name, null for none) and the reserved external names (ReservedSymbols, IMPL 21.2), the runtime's import declarations, and
+// the bound below which the system maps no address; table-wide, the C memory functions every runtime defines (MemorySymbols) and the C
+// entry's symbol (MainSymbol).
 // Invariants: constants and arrays only; triples distinct; each row's Layer names exactly one of the Backend's RuntimeLayer records
 // (Core names no Backend type, so CoreModelTest pins it); each row's supplies distinct, in Ordinal name order (publication interleaves
-// a program's supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2); a row's reserved
-// external names are its float marker and its backend supply's symbols; the native build checks the embedded backend record against
-// them and keys its material by the supplies' names (ToolchainIdentity).
+// a program's supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2); a row's CRuntime
+// names one of its supplies; a row's reserved external names are its float marker and its backend supply's symbols; the native build
+// checks the embedded backend record against them and keys its material by the supplies' names (ToolchainIdentity).
 // Must not read a file, a resource or the toolchain (the native build's material is ToolchainIdentity's), nor stand for the checked
 // triple (Compilation.TargetTriple and IrTarget: any triple a check selects).
 
@@ -23,6 +25,10 @@ namespace Kimi.Compiler;
 /// <summary>A row of the target table: one executable target profile (SPEC 22). This is a partial language implementation.</summary>
 internal sealed class TargetProfile
 {
+    /// <summary>The C entry's one spelling (IMPL 21.5.2; the Tatara plan's B7b2b): the function a C runtime's startup calls after
+    /// initializing the C library, which a module starting through its row's CRuntime defines; a reserved external name (IMPL 21.2).</summary>
+    internal const string MainSymbol = "main";
+
     /// <summary>The C memory functions every runtime defines in its module's IR, whatever the row (IMPL 21.4.7; the Tatara plan's
     /// decision 24): the names the Backend's memory part (MemoryRuntime.ll.in) defines, in Ordinal order. Static initializers run in
     /// text order: this before the Windows row's values.</summary>
@@ -84,12 +90,15 @@ internal sealed class TargetProfile
                 ]),
             new("kimi_backend", "static", WindowsBackendSymbols),
         ],
+        CRuntime = null,
+        ArgumentExtension = null,
         ReservedSymbols = [WindowsFloatMarker, .. WindowsBackendSymbols],
     };
 
-    /// <summary>Gets the linux-x64 row, the static Linux execution profile without a C library (IMPL 21.5; the Tatara plan's decision
-    /// 21): its platform layer calls the kernel directly, so it has no runtime declarations, float marker or subsystem; its reserved
-    /// supplies are none until a program's C library (the Tatara plan's B7b2b).</summary>
+    /// <summary>Gets the linux-x64 row, the static Linux execution profile (IMPL 21.5; the Tatara plan's decision 21): its platform
+    /// layer calls the kernel directly, so it has no runtime declarations, float marker or subsystem, and a module links the C library
+    /// only when it requires a library, starting through it (CRuntime: c, a static library providing the C functions the layer stands
+    /// for); its imports extend 8- and 16-bit integers by the System V x86-64 convention (IMPL 21.2).</summary>
     internal static TargetProfile Linux { get; } = new()
     {
         Target = "x86_64-unknown-linux-musl",
@@ -107,7 +116,9 @@ internal sealed class TargetProfile
         Layer = "LinuxPlatform.ll.in",
         UnmappedBound = 65536,
         RuntimeDeclarations = [],
-        Supplies = [],
+        Supplies = [new("c", "static", ["write", "_exit", "exit", "mmap", "munmap", "clock_gettime"])],
+        CRuntime = "c",
+        ArgumentExtension = "SystemV",
         ReservedSymbols = [],
     };
 
@@ -160,6 +171,14 @@ internal sealed class TargetProfile
 
     /// <summary>Gets the reserved supplies (IMPL 20.4) in Ordinal name order, with disjoint symbol sets.</summary>
     internal required TargetSupply[] Supplies { get; init; }
+
+    /// <summary>Gets the name of the reserved supply through which a module that requires any library starts (IMPL 21.5.2: the C
+    /// runtime, linked and started first), one of <see cref="Supplies"/>, or null: the row links none.</summary>
+    internal required string? CRuntime { get; init; }
+
+    /// <summary>Gets the name of the convention by which the row's imports extend their 8- and 16-bit integer arguments and results
+    /// (IMPL 21.2: "SystemV", by signedness), or null: they pass at their own width.</summary>
+    internal required string? ArgumentExtension { get; init; }
 
     /// <summary>Gets the row's reserved external names (IMPL 21.2): the float marker and the backend supply's symbols.</summary>
     internal required string[] ReservedSymbols { get; init; }

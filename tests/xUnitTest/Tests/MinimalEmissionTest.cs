@@ -48,12 +48,15 @@ public class MinimalEmissionTest
     // The Tatara plan's B7b2a: Hello's linux-x64 module in the row's frame: its header without a float marker, its footer (#0 with
     // "probe-stack"="inline-asm"; no PIC Level module flag, a static row's), the libc-free start (module asm defining __kimi_start, which
     // calls the internal start body, which sets the process up before the startup body), no dllimport, the memory part and the Linux
-    // layer's own routines defined; Windows' module defines neither routine.
+    // layer's own routines defined; Windows' module defines neither routine. B7b2b's twin of the C path: the module requires no library
+    // (the Kimi library imports nothing on linux-x64), so it defines no main.
     [Fact]
     public void HelloOnTheLinuxRowIsLibcFree()
     {
         const string Hello = "::Kimi.Console.writeLine(\"Hello, world!\")";
-        var ir = CompilationTestHelper.WriteIr(Analyze(TargetProfile.Linux, Hello, "Hello.kimi", OutputKind.Application));
+        var hello = Analyze(TargetProfile.Linux, Hello, "Hello.kimi", OutputKind.Application);
+        var ir = CompilationTestHelper.WriteIr(hello);
+        Assert.Empty(hello.Generated.Libraries);
         Assert.StartsWith(
             "; Kimigayo checked pre-optimization IR (linux-x64-v1)\ntarget triple = \"x86_64-unknown-linux-musl\"\ntarget datalayout = \"" +
             TargetProfile.Linux.DataLayout + "\"\n%kimi.string = type { ptr, i64, i8 }\n@",
@@ -72,7 +75,7 @@ public class MinimalEmissionTest
         Assert.Contains(LlvmModuleText.MemoryRuntime, ir, StringComparison.Ordinal);
         Assert.Contains(RuntimeAbi.PlatformStart.GetDefinition(exported: false), ir, StringComparison.Ordinal);
         Assert.Contains(RuntimeAbi.Clock.GetDefinition(exported: false), ir, StringComparison.Ordinal);
-        foreach (var absent in new[] { "define void @__kimi_start(", "_fltused", "dllimport", "PIC Level", "llvm.module.flags" })
+        foreach (var absent in new[] { "define void @__kimi_start(", "@main(", "_fltused", "dllimport", "PIC Level", "llvm.module.flags" })
         {
             Assert.DoesNotContain(absent, ir, StringComparison.Ordinal);
         }
