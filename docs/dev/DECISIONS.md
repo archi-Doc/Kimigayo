@@ -7999,6 +7999,39 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `BareOf`'s Failed Place, z27r2 u2; MIR carries no HIR Adjust); the word "located" for this class (Z17's located part).
   - **Not done (no row):** the builder's own failed member step enclosing (t13's record is an Error member's kept receiver, PLAN
     G1324); a name at its binding's Place (p17 has no false record).
+- **R4-M240 A6's contract is DIAGNOSTICS' A6 code table, checked against the recording rules** (Middle, 2026-11-24; R7 plan stream
+  Z, Z21 (2g-7; PLAN G396 (4)); Major; Q-721, D-1209; the design review's ACCEPT WITH CONDITIONS C1-C5; K's ruling on its C2,
+  2026-11-23; the implementation review's C1 and C2) SPEC 23.1.2, 23.3.
+  - **Rule.** DIAGNOSTICS §12's A6 code table lists every (requirement, code) pair a MIR analysis records, the analysis it counts in
+    (R5-M56's consistency set) and the facts its problems may carry. Its two fact tables give each MIR fact kind's publication. It is
+    the one copy, and its read fails on an Analysis outside the closed set A1, A3, A4, A5, U and B:
+    - `MirAnalysisTest.EachRequirementHasItsA6Rows` reads it (`A6Rows`) over the requirement kinds (`OwnershipRequirement`'s members
+      and `ControlFlow`; a row naming any other requirement, a missing code or kind, a Binding kind or a repeated pair fails the
+      read). It checks the problems of the recording rules' programs (`Requirements`, `Rules`): each lies in a row of its requirement
+      and carries only that row's facts, and each Language or Proof row is recorded; a located code's row needs no program.
+    - `EachRecordingRuleNamesItsBody` pins each site's requirement, code, subject and body.
+    - `MirCensusTest` takes its pairs (`MirAnalysisOf`), and `MirPublicationTest.ASiteFactIsARelatedLocation` its roles and wording,
+      from the same tables; `EachMirFactKindHasOneA6FactRow` gives each MIR kind (Anchor to Cause) one fact row.
+    - Recorders still name their requirement (R4-M67: no code-to-requirement table in the compiler).
+  - **Where the tables change** (K's ruling: the existing rule). DIAGNOSTICS is a verification input (VERIFICATION "Source
+    identity"), so an edit of these tables reaches dev only in a window, whose Session runs the three classes with the whole suite.
+    - A D row that changes their meaning lands in its unit's window, on the window's docs branch, which the unit merges for its Unit
+      run; either order alone breaks dev.
+    - A wording-only edit also lands in a window, where a broken reading fails it.
+    - No AGENTS or VERIFICATION change.
+  - **Supersedes** the census pairs' hand copy (`MirCensusTest.Pairs`, R5-M56's set) and the hand copies of
+    `EachRecordingRuleNamesItsRequirement`, `MirProblemsNameRequirementsOfTheCensusPairs` and `ASiteFactIsARelatedLocation`'s rows.
+    `MirAnalysisOf(Ownership.Internal, InternalInvariant_Kd)` is now the table's `B` row (it was null, read as B).
+  - **Closes** 2g-7 and G105: (1a) is G1114; (1b), (3)'s refused target and G750's o3 move to G1184, which also carries G105's R7
+    exit clause (R7-M53), closed by Z28; (2)'s remainder closed with Z27 (R4-M239), whose open forms and (3)'s FailWrite are G1324.
+  - **Cause facts.** Only A3's (R5-M186) and rule W's (R4-M132, R4-M236) problems carry them (R7-M65's rejected Cause on each
+    problem); DIAGNOSTICS' `Cause` row says so, and the test checks it per row.
+  - **Rejected:**
+    - a contract table in the compiler (R4-M67's rejection stands);
+    - a hand table in the test (a second copy);
+    - one reproducer per row in the Theory (`Rules` keeps them in one source, as `Requirements` does);
+    - docs-first for a later A6 change (either order alone breaks dev);
+    - a VERIFICATION row for docs a test reads (the review's option (b)): the verification-input rule already covers it.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -30535,6 +30568,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Staging:** the native build stages every library through `StageInput(Stream)`, a reserved name from its resource and any other
     from its input; every row of the build record's `libraries[]` carries its staged path and hash (the reserved rows' `sha256` is no
     longer null), and the record's `kernel32` member is gone.
+    - Amended by T-M35 (LC3 S1, 2026-11-24): a reserved name's staged copy is first looked up by its catalog hash and reused when
+      its bytes still have it; `StageInput` stages its resource only when that copy is missing or changed.
   - **A program cannot supply them:** a project's own `kimi_backend` entry (dev's legacy override) is an error, as a `kernel32` entry
     was: `NativeConfiguration.CheckReserved`, one note for both names, both record kinds and any target ("<name> is supplied by the
     compiler. Remove the <name> entry from NativeLibraries."); `EmissionArtifacts.CheckLibraryInputs` (was `ResolveBackend`) only
@@ -31516,3 +31551,16 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     lookup; a clause keyed on a triple or a supply's name; a `Supports*` gate; a fallback to Windows' row for a target without one; a
     row-level `ReservedSymbols` kept beside the table's (C# cannot keep a static and an instance member of one name, and two lists
     would drift).
+- **T-M35 A compiler's supply is reused by its catalog hash** (Tatara, 2026-11-24; LC3 S1, Q-723, D-1204; Major; LC3 design §5-§6
+  and T-335 (`artifacts\benchmarks\lc3-ml-20261123-1427`): staging 3.99 % and its copy, hash and delete 2.72 % of Hello O0's later
+  session line; the Middle's review C-508). Amends T-M8. `StageSupply` looks up `<stem>.native/<CompilerSupply.Sha256>.lib` and
+  reuses it when its bytes still have that hash (the whole file hashed on every reuse), so a later build copies, hashes and deletes
+  no temporary and writes nothing there. Otherwise the resource is staged through `StageInput` as before, and the record names the
+  copy's hash. A program's supply is unchanged. `IsStaged` states the reuse rule once for both. The build still compares nothing
+  with the catalog (T-M8's C-434 C1): a defective Kimi (its resource not the catalog's bytes) hits when a copy with the catalog's
+  hash is already staged in that folder (an earlier correct build's) and links the catalog's bytes; otherwise it misses and links
+  its resource under its own hash, so its output depends on the folder's state; the catalog row test and `toolchain verify` detect
+  it, as T-M8 states. Measured on the head (T-339): staging 1.052 -> 0.223 ms warm (Hello O0; O2 1.075 -> 0.224), BuildChain
+  paired p50 B/A 0.977-1.014, peak commit within ±4.3 MiB. Rejected: identity (size, time) instead of the hash; a session's memory
+  of what it staged; one rule hashing a program's input before its copy (unmeasured, two reads); a per-user cache outside the
+  output; supplies from memory (a `tatara.h` ABI).
