@@ -137,13 +137,24 @@ internal sealed partial class ModuleCodegen
         output.Write(frame.Footer);
     }
 
-    // The row's layer's start form (IMPL 21.4.2, 21.5.3): its module asm defining the entry, if any, then its start routine (the entry
-    // itself, exported, or the body the asm calls, internal), which calls the layer's routines before the startup body, the startup body,
-    // which takes no parameter (Binding's startup check), then a normal exit with 0.
+    // The start (IMPL 21.4.2, 21.5.2): on the C path, a module whose Libraries hold its row's C runtime (Require), main, which the C
+    // runtime's startup calls after initializing the C library and whose 0 its exit returns, running the C library's exit handlers;
+    // otherwise the row's layer's start form, its module asm defining the entry, if any, then its start routine (the entry itself,
+    // exported, or the body the asm calls, internal), which exits with 0. Either calls the layer's routines before the startup body, then
+    // the startup body, which takes no parameter (Binding's startup check).
     private void WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
     {
-        output.Write(layer.StartAssembly);
-        output.Write(layer.Start.GetDefinition(exported: layer.Start.Name == this.row.EntrySymbol));
+        var main = this.row.CRuntime is { } runtime && this.Requires(runtime);
+        if (main)
+        {
+            output.Write(RuntimeAbi.Main.GetDefinition(exported: true));
+        }
+        else
+        {
+            output.Write(layer.StartAssembly);
+            output.Write(layer.Start.GetDefinition(exported: layer.Start.Name == this.row.EntrySymbol));
+        }
+
         output.Write("entry:\n");
         foreach (var call in layer.StartCalls)
         {
@@ -155,6 +166,12 @@ internal sealed partial class ModuleCodegen
         }
 
         this.bodies.WriteEntryCall(output, startup);
+        if (main)
+        {
+            output.Write("  ret i32 0\n}\n");
+            return;
+        }
+
         output.Write("  call void @");
         output.Write(RuntimeAbi.Exit.Name);
         output.Write("(i32 0)\n  unreachable\n}\n");

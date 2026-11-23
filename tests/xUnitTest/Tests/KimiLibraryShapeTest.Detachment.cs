@@ -2,7 +2,6 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
@@ -231,32 +230,30 @@ public partial class KimiLibraryShapeTest
         Assert.True(owner.HasSyntaxRecords(module));
     }
 
-    // The boundary of U3's registration (B's U3 ruling 25; SPEC 19.4, docs/dev/DIAGNOSTICS.md's excludedBy): the detached syntax list
-    // carries no excluded range, so a reading compilation would publish a library record in excluded syntax without its excludedBy
-    // location. No library file holds a compile-time directive: a text check of every embedded library source (Kimi.csproj's Library *.kimi,
-    // the files the library parses), with no freeze (B's U3 ruling 28; the library module's SourceDocuments lists none of them, since the
-    // library parses its sources itself). When one gains one, U3's registration carries the freeze owner's excluded ranges with the list,
-    // and this row goes.
+    // B's U3 ruling 25 (SPEC 19.4, docs/dev/DIAGNOSTICS.md's excludedBy): the detached syntax list carries the excluded syntax of each
+    // recorded library document, so a reading compilation names the excluding directive of a library record in excluded syntax, as the
+    // freeze compilation does: the seam's library refused for a syntax error inside `#if not windows`, read by a windows-x64 compilation.
+    // Fail-before: the list carried no excluded range (a tripwire kept every library file free of directives until the Kimi library
+    // gained its first, the Tatara plan's B7b6), and the published record had no excludedBy location.
     [Fact]
-    public void TheShippedLibraryHoldsNoCompileTimeDirective()
+    public void ARefusedLibrarysExcludedRecordNamesItsDirective()
     {
-        var directive = new Regex(@"^[ \t]*#(if|switch|case)\b", RegexOptions.Multiline);
-        Assert.Matches(directive, "func f() => ()\n    #if feature\n"); // The pattern finds a directive line.
-        var assembly = typeof(KimiLibrary).Assembly;
-        var names = assembly.GetManifestResourceNames().Where(static x => x.StartsWith("Kimi.Library.", StringComparison.Ordinal) && x.EndsWith(".kimi", StringComparison.Ordinal)).ToArray();
-        Assert.NotEmpty(names);
-        var holding = names.Where(x => directive.IsMatch(Text(x))).ToArray();
-        var removal = $"{string.Join(", ", holding)} hold a compile-time directive (#if, #switch or #case): a reading compilation (PLAN G949 Stage 2 U3) " +
-            "would publish such a document's syntax records without their excludedBy location (SPEC 19.4), since the detached list carries no " +
-            "excluded range. Carry the freeze owner's excluded ranges with the detached syntax list in U3's registration (B's U3 ruling 25), then " +
-            "remove this row.";
-        Assert.True(holding.Length == 0, removal);
-
-        string Text(string name)
-        {
-            using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
-            return reader.ReadToEnd();
-        }
+        const string Source = "public group ZX\n    #if not windows\n        let pending =\n";
+        var freeze = Unfrozen(TargetTriple.Parse(TargetProfile.Windows.Target), debugAndSetting: false);
+        freeze.Library.Kotonoha.AddSource(new("ZX.kimi", Source));
+        var library = KimiLibrary.Freeze(freeze);
+        Assert.NotNull(library.Layer.Refusal);
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        c.UseLibrary(library);
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
+        Assert.False(c.Check());
+        var result = c.Diagnostics.Finalize(rejected: true);
+        var record = Assert.Single(
+            result.Diagnostics,
+            x => x.Code != nameof(Kimi.DiagnosticCode.InternalInvariant_Kd) && x.Source >= 0 && result.Sources[x.Source].Path.EndsWith("ZX.kimi", StringComparison.Ordinal));
+        var excludedBy = Assert.Single(record.Related ?? [], static x => x.Role == "excludedBy");
+        Assert.Equal((record.Source, new Kimi.Diagnostics.SourceSpan(Source.IndexOf("not windows", StringComparison.Ordinal), 11)), (excludedBy.Source, excludedBy.Span!.Value));
     }
 
     // n2 (PLAN G949 Stage 2 U3, design R2.2; the Front's U2b N2, form (b)): a library's detached data exist only once its freeze detached
@@ -292,7 +289,7 @@ public partial class KimiLibraryShapeTest
         Kimi.Diagnostics.DiagnosticFact Fact(int source) => new(Kimi.DiagnosticCode.MissingSyntax_Kd, new(null, source, 7, 1, requirement), source, 7, 1, ")", null, null, null);
         var owner = new Kimi.Diagnostics.DiagnosticOwner();
         owner.DocumentSource(new SourceDocument("program.kimi", "func main() => ()\n"), owner.ModuleIndex(Compilation.CreateForTest().Kotonoha));
-        owner.AddLibrary(module, new([Fact(5), Fact(3)], [b, a]));
+        owner.AddLibrary(module, new([Fact(5), Fact(3)], [b, a], []));
         Assert.True(owner.HasSyntaxErrors(a));
         Assert.True(owner.HasSyntaxErrors(b));
         var result = owner.Finalize(Kimi.Diagnostics.DiagnosticPartition.Syntax, Kimi.Diagnostics.DiagnosticPartition.Syntax);

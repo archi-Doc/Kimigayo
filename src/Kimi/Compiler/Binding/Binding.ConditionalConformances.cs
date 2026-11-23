@@ -7,6 +7,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 8.3.3 Finality, 15.3.6 (R7-O2 A1+A2; the owner's O-471 (a)): the depth of a bound body's binding, below every obligation's: an
+    // answer that read a local region with no answer yet (StaticOrigin, through ValueIn's deferral fact) depends on that binding (EndAnswer),
+    // so its work is forgotten after its outermost request (ForgetDependentCapabilities) and its asker judges it once the body is bound
+    // (JudgeErasedOwned).
+    private const int BodyBinding = -1;
+
     // SPEC 8.3.3 Recursion (R7-C2e2 e2-3b): the obligations being proven, each open at its depth (the number open when it opened; they
     // nest, every open and close a try/finally pair): a nominal `T is C` while ResolveConformance proves it, keyed by the obligation,
     // not the requester, and a declaration path while VerifyConformance verifies it (every instance), keyed by the path. A request
@@ -507,6 +513,9 @@ public sealed partial class Binding
         depth = this.openObligations.Count - 1;
         return true;
     }
+
+    // The answers in progress read a local region with no answer yet: they depend on the body's binding (BodyBinding).
+    private void ReadBodyBinding() => this.dependence = Math.Min(this.dependence, BodyBinding);
 
     // Whether a request reaching `key` finds it open (it then reads no evidence, and the answers in progress read it).
     private bool ReadOpen(Obligation key)
