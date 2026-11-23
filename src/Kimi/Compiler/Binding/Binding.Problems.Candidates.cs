@@ -22,7 +22,9 @@ namespace Kimi.Compiler;
 //   decided); no message text is recorded.
 public sealed partial class Binding
 {
-    // The parties of the selection being recorded, cleared by each recorder after its record (RecordSelection), capacity kept.
+    // The facts of the selection-family record being built: a selection's candidates, a rejected candidate's checked part, a constructor
+    // check's parties, an unbound slot's Type parameter and waiting argument, a pending judgment's argument and slot; cleared by the
+    // recorder after its record (RecordSelection), capacity kept.
     private readonly List<ProblemFact> candidateFacts = [];
 
     // A candidate's closed reasons, the low byte of its packed Reason.

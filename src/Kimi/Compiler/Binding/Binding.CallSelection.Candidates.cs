@@ -856,7 +856,9 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.ErasedArgumentsEnvironment(operations), true);
             }
 
-            row.ConstraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
+            // SPEC 8.3: a Pending candidate's explanation, published at the trial's final verdict (BU-240's split Unknown included), so a
+            // clause record reads the owner's verdict (FailClauseRecord's ConstraintFailureOf; Records' invariant).
+            row.ConstraintFailure = proof == ConstraintProof.Unknown && failure is { } clause ? clause with { Proof = proof } : null;
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
                 this.ResolvedClauseUnknown(function.TypeConstraints, solution.Substitution(frame.Types[..CallSlotCount(function)]), scope, self))

@@ -193,18 +193,12 @@ public sealed partial class Binding
         }
 
         // SPEC 4.6.4: a range Subject's record relates its selected entry (role 2, "entry") and keeps the proposition, whose boundary Types
-        // it shows. Transitional, R7-E5 (B's E3 ruling 4, O6 (a)): an iterable that already failed keeps its first failure, as a Fail
-        // does, until R7-E5's per-problem inputs (RangeDiagnosticTest's `missing..3`).
-        var failure = proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint;
-        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && source.Iterable.BindingFailure == BindingFailure.None && IsRangeShape(subject))
-        {
-            this.Record(source.Iterable, failure, [new(ProblemFactKind.Related, this.FactSite(entry.Declaration), 2), new(ProblemFactKind.Constraint, this.FactSite(source.Iterable), this.report.Keep(proposition))]);
-        }
-        else
-        {
-            this.Fail(source.Iterable, failure);
-        }
-
+        // it shows; the constraint family's record (RecordConstraint), whose read keeps an iterable's first failure (RangeDiagnosticTest's
+        // `missing..3`).
+        this.RecordConstraint(
+            source.Iterable,
+            proof,
+            proof != ConstraintProof.Error && IsRangeShape(subject) ? [new(ProblemFactKind.Related, this.FactSite(entry.Declaration), 2), this.PropositionFact(source.Iterable, proposition)] : []);
         return Complete(source, null);
     }
 
