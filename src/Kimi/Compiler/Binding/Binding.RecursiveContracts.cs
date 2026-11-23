@@ -27,7 +27,7 @@ public sealed partial class Binding
         {
             foreach (var contract in this.recursiveContracts)
             {
-                if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, b, contract: contract)), scope) == ConstraintProof.Proven)
+                if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, b, contract: contract)), scope, QuerySite.AfterPass) == ConstraintProof.Proven)
                 {
                     return true;
                 }

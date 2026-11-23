@@ -20,8 +20,8 @@ public sealed partial class Binding
         => type.Semantics == SemanticsKind.Owner && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed &&
             type.Symbol is { Declaration: StructKoto or EnumKoto, LibraryDeclaration: not (KimiDeclarationId.Wrapping or KimiDeclarationId.Loan) };
 
-    private bool BuiltinNumeric(BoundType type, BindingScope scope)
-        => type.IsNumeric || this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
+    private bool BuiltinNumeric(BoundType type, BindingScope scope, QuerySite site)
+        => type.IsNumeric || this.IsGenericInteger(type, scope, site) || this.IsGenericWrapping(type, scope, site);
 
     private bool ValidArithmeticConformance(BoundConformancePath path, BoundType self)
     {
@@ -43,10 +43,10 @@ public sealed partial class Binding
         var counterpart = this.ContractType(path.Contract.Type!.Components[0], path.Scope);
         if (KimiLibraryCatalog.IsLeftContract(id))
         {
-            return this.BuiltinNumeric(counterpart, path.Scope) || Fail(counterpart, ArithmeticConformanceCause.LhsNotNumeric);
+            return this.BuiltinNumeric(counterpart, path.Scope, path.Use) || Fail(counterpart, ArithmeticConformanceCause.LhsNotNumeric);
         }
 
-        return (this.ResultSemantics(counterpart, path.Scope) == SemanticsMask.Owner && this.NotString(counterpart, path.Scope)) ||
+        return (this.ResultSemantics(counterpart, path.Scope, path.Use) == SemanticsMask.Owner && this.NotString(counterpart, path.Scope, path.Use)) ||
             Fail(counterpart, ArithmeticConformanceCause.RhsNotOwner);
 
         // The cause (Reason), the arithmetic Contract's declaration (Related, role 0) and, for a counterpart, the Contract instance the
@@ -66,9 +66,9 @@ public sealed partial class Binding
         }
     }
 
-    private bool NotString(BoundType type, BindingScope scope)
+    private bool NotString(BoundType type, BindingScope scope, QuerySite site)
         => !type.IsAbstract ? !ReferenceEquals(type, BoundType.String)
-            : this.BuiltinNumeric(type, scope) || this.ProveConstraint(this.NotStringConstraint(type), scope) == ConstraintProof.Proven;
+            : this.BuiltinNumeric(type, scope, site) || this.ProveConstraint(this.NotStringConstraint(type), scope, site) == ConstraintProof.Proven;
 
     private BoundConstraint NotStringConstraint(BoundType type)
         => this.NegateConstraint(this.InternConstraint(new(ConstraintKind.TypeIdentity, type, BoundType.String)));

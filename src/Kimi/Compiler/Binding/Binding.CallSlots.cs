@@ -557,7 +557,7 @@ public sealed partial class Binding
             // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
             // argument is then value-read.
             if (!structural && actual.SafeReferent is not null &&
-                ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, binder.Declaration))
+                ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, binder.Declaration, frame.Node))
             {
                 actual = referent;
             }
@@ -651,7 +651,7 @@ public sealed partial class Binding
                 // rule (PerCallReferenceSlot) and the limit's fixed-Origin test (VariableReferenceSlot's InputOrigins), and the recorded
                 // bindings make a slot that would need variables the located limit. A call records its bindings above. It goes when a
                 // reference's solve owns its bindings and gives those three readers its values (PLAN's R1.3 (h) line).
-                if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
+                if (commonOrigins && this.CommonOriginType(previous, actual, frame.Node, out _) is { } common)
                 {
                     if (reference)
                     {

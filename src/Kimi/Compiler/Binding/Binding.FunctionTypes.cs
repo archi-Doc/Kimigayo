@@ -438,13 +438,13 @@ public sealed partial class Binding
             // required signature's quantifiers and fixed Origins remain rigid.
             this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
             inference.Source = ((byte)(i + 1), null, false);
-            this.CollectOriginInference(parameter, parameters.Components[i], inference);
+            this.CollectOriginInference(parameter, parameters.Components[i], inference, use);
         }
 
         if (Read(Declared(function.Parameters.Count)) is { } produced)
         {
             inference.Source = (ComparisonFailure.ResultStep, null, false);
-            this.CollectOriginInference(produced, required.Components[1], inference, result: true);
+            this.CollectOriginInference(produced, required.Components[1], inference, use, result: true);
         }
 
         // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.

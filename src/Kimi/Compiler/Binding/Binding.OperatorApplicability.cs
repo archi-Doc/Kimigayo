@@ -98,7 +98,7 @@ public sealed partial class Binding
             left = this.OperandTerminal(source, left);
         }
 
-        var decision = this.LeftOperatorApplicability(left, kind, scope);
+        var decision = this.LeftOperatorApplicability(left, kind, scope, operation);
         if (decision.Failure != BindingFailure.None)
         {
             return decision with { Operand = operand };
@@ -112,7 +112,7 @@ public sealed partial class Binding
         // SPEC 13.3.4: the counterpart is judged at its terminal Type, as the left operand is, and keeps its own Type.
         if (left.IsNumeric && rightCore is not null)
         {
-            var counterpart = this.NumericApplicability(rightCore, scope);
+            var counterpart = this.NumericApplicability(rightCore, scope, operation);
             if (counterpart.Failure != BindingFailure.None)
             {
                 return counterpart with { Operand = right };
@@ -167,7 +167,7 @@ public sealed partial class Binding
             right = this.OperandTerminal(binary.Right, right);
         }
 
-        var decision = this.LeftOperatorApplicability(right, kind, scope);
+        var decision = this.LeftOperatorApplicability(right, kind, scope, binary);
         if (arithmetic && !right.IsNumeric && !right.HasIntegerArithmetic && decision.Proof != ConstraintProof.Proven)
         {
             return default;
@@ -181,29 +181,29 @@ public sealed partial class Binding
         return decision with { ExpectedOperand = binary.Left, Counterpart = right };
     }
 
-    private OperatorApplicability LeftOperatorApplicability(BoundType type, KotoKind kind, BindingScope scope)
+    private OperatorApplicability LeftOperatorApplicability(BoundType type, KotoKind kind, BindingScope scope, QuerySite site)
     {
         var terminal = type;
         OperatorApplicability decision;
         if (ComparisonOperator(kind))
         {
             terminal = ComparisonReferent(type);
-            decision = this.ComparisonApplicability(terminal, kind, scope);
+            decision = this.ComparisonApplicability(terminal, kind, scope, site);
         }
         else
         {
             decision = kind switch
             {
                 KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret
-                    => this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand),
+                    => this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand),
                 KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan
-                    => this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand),
+                    => this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand),
                 KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement
-                    => this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand),
-                KotoKind.PrefixMinus => this.NegationApplicability(type, scope),
-                KotoKind.PrefixPlus => type.IsNumeric ? default : this.IntegerApplicability(type, scope, BindingFailure.OperatorNotDefined),
+                    => this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand),
+                KotoKind.PrefixMinus => this.NegationApplicability(type, scope, site),
+                KotoKind.PrefixPlus => type.IsNumeric ? default : this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined),
                 KotoKind.Plus or KotoKind.Minus when type.IsPointer => default,
-                KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash => this.NumericApplicability(type, scope),
+                KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash => this.NumericApplicability(type, scope, site),
                 _ => default,
             };
         }
@@ -211,7 +211,7 @@ public sealed partial class Binding
         return decision.Failure == BindingFailure.None ? decision : decision with { Operand = type, Terminal = terminal };
     }
 
-    private OperatorApplicability IntegerApplicability(BoundType type, BindingScope scope, BindingFailure failure)
+    private OperatorApplicability IntegerApplicability(BoundType type, BindingScope scope, QuerySite site, BindingFailure failure)
     {
         if (type.HasIntegerArithmetic)
         {
@@ -222,13 +222,13 @@ public sealed partial class Binding
             type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping ? type.Components[0] : type;
         if (subject.IsProofDecided)
         {
-            return this.OperatorRequirement(subject, this.Library.PrimitiveInteger, scope, failure);
+            return this.OperatorRequirement(subject, this.Library.PrimitiveInteger, scope, site, failure);
         }
 
         return new(null, null, NonNumericOperand(type) ? BindingFailure.NonNumericOperand : failure, null, null, type, type);
     }
 
-    private OperatorApplicability ShiftCountApplicability(BoundType type, BindingScope scope)
+    private OperatorApplicability ShiftCountApplicability(BoundType type, BindingScope scope, QuerySite site)
     {
         if (type.IsInteger || ReferenceEquals(type, BoundType.Never))
         {
@@ -236,11 +236,11 @@ public sealed partial class Binding
         }
 
         return type.IsProofDecided
-            ? this.OperatorRequirement(type, this.Library.PrimitiveInteger, scope, BindingFailure.InvalidShiftCount)
+            ? this.OperatorRequirement(type, this.Library.PrimitiveInteger, scope, site, BindingFailure.InvalidShiftCount)
             : new(null, null, BindingFailure.InvalidShiftCount, null, null, type, type);
     }
 
-    private OperatorApplicability NumericApplicability(BoundType type, BindingScope scope)
+    private OperatorApplicability NumericApplicability(BoundType type, BindingScope scope, QuerySite site)
     {
         if (type.IsNumeric || ReferenceEquals(type, BoundType.Never))
         {
@@ -258,11 +258,11 @@ public sealed partial class Binding
         }
 
         // A successful PrimitiveInteger query selects the built-in path; a non-integer arithmetic provider retains selection.
-        var integer = this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand);
+        var integer = this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand);
         return integer.Proof == ConstraintProof.Proven ? integer : default;
     }
 
-    private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope)
+    private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope, QuerySite site)
     {
         if (type.IsNumeric)
         {
@@ -276,18 +276,18 @@ public sealed partial class Binding
 
         if (type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand);
+            return this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand);
         }
 
         if (type.IsProofDecided)
         {
-            return this.OperatorRequirement(type, this.Library.GetSymbol(KimiDeclarationId.Negatable)!, scope, BindingFailure.UnsatisfiedConstraint);
+            return this.OperatorRequirement(type, this.Library.GetSymbol(KimiDeclarationId.Negatable)!, scope, site, BindingFailure.UnsatisfiedConstraint);
         }
 
         return new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
     }
 
-    private OperatorApplicability ComparisonApplicability(BoundType type, KotoKind kind, BindingScope scope)
+    private OperatorApplicability ComparisonApplicability(BoundType type, KotoKind kind, BindingScope scope, QuerySite site)
     {
         var equality = kind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
         var ordered = type.IsNumeric || ReferenceEquals(type, BoundType.Char) || ReferenceEquals(ComparisonReferent(type), BoundType.String);
@@ -301,7 +301,7 @@ public sealed partial class Binding
             return equality ? default : new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
         }
 
-        var integer = this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand);
+        var integer = this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand);
         if (integer.Proof == ConstraintProof.Proven)
         {
             return integer;
@@ -310,10 +310,10 @@ public sealed partial class Binding
         var contract = this.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
         if (!TyCtxt.IsComposite(type))
         {
-            return this.OperatorRequirement(type, contract, scope, BindingFailure.UnsatisfiedConstraint);
+            return this.OperatorRequirement(type, contract, scope, site, BindingFailure.UnsatisfiedConstraint);
         }
 
-        var proof = this.ComparisonProof(type, contract, scope, operators: true, out var witness);
+        var proof = this.ComparisonProof(type, contract, scope, site, operators: true, out var witness);
         return new(
             null,
             null,
@@ -324,10 +324,10 @@ public sealed partial class Binding
             proof == ConstraintProof.Proven ? null : type);
     }
 
-    private OperatorApplicability OperatorRequirement(BoundType subject, BindingSymbol contract, BindingScope scope, BindingFailure refuted)
+    private OperatorApplicability OperatorRequirement(BoundType subject, BindingSymbol contract, BindingScope scope, QuerySite site, BindingFailure refuted)
     {
         var requirement = this.InternConstraint(new(ConstraintKind.Contract, subject, contract: contract));
-        var proof = this.ProveConstraint(requirement, scope);
+        var proof = this.ProveConstraint(requirement, scope, site);
         return new(
             null,
             null,

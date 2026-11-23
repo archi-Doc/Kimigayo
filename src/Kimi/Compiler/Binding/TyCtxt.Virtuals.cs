@@ -22,7 +22,7 @@ internal sealed partial class TyCtxt
     {
         if (!this.applicability.TryGetValue((original, declaring), out var applies))
         {
-            applies = binding.VirtualApplicability(new((FunctionKoto)original.Declaration, declaring)) switch
+            applies = binding.VirtualApplicability(new((FunctionKoto)original.Declaration, declaring), Binding.QuerySite.AfterPass) switch
             {
                 ConstraintProof.Proven => true,
                 ConstraintProof.Refuted => false,

@@ -31,8 +31,11 @@ namespace Kimi.Compiler;
 //   contract; Binding writes nothing else. After Binding's run the instance's formation owns its refusals in every frame (PLAN G651
 //   U2a, OpenStorageFormation), so no reader meets a part refused without its HeightLimit, unless a consultation frame open after the
 //   run fails its node first (G881b N6; U2c); outside the collector's frame it still records the site-less record at its close, since
-//   no reader there gives a site yet (G651 U2b). Otherwise nothing is answered outside the frame (Binding's run, code generation; the
-//   passes not yet framed: PLAN G651 a1-a4 make the site SubstituteType's input).
+//   no reader there gives a site yet (G651 U2b). Otherwise nothing is answered outside the frame (Binding's run, code generation).
+//   SubstituteType's family (SubstituteType, ContractType, StoredType, KeptType, StorageInstance, the identity judge, proof
+//   normalization, the relations' context-free fits) takes no site: its refusal reads the frame its caller holds open; the proof
+//   entries and openers name their judgment's site (QuerySite, PLAN G651 a1), where R7-C6 a's second commit opens the frame when none
+//   is open. A family formation in a pass step no frame covers keeps the site-less interim until PLAN G651 a2-a4 frame the step.
 // - Prohibitions: no check before a walk from its inputs' heights (it over-approximates); no other suppression than SPEC 23.1.2's rests.
 public sealed partial class Binding
 {
@@ -40,12 +43,12 @@ public sealed partial class Binding
     internal const int TypeHeightLimit = 8192;
 
     // A refusal without a site in this pass (a broken contract, reported by ReportDiagnostics; the library's freeze counts it as a record).
-    [Transitional("G651 a1", Reason = "A refusal has no site only in a pass not yet framed during the run, or in an instance's formation after the run outside the collector's frame (PLAN G651 U2a); a1 makes the site SubstituteType's input (the C# build as the census) and a4 removes the last unframed path during the run; U2b removes the after-run path by giving each reader of such an instance a site of its own.")]
+    [Transitional("G651 a4", Reason = "A refusal has no site only in a pass step not yet framed during the run, or in an instance's formation after the run outside the collector's frame (PLAN G651 U2a): the proof entries and openers name their site (a1) and SubstituteType's family reads the open frame, so a4, which frames the last such step, removes the run's path; U2b removes the after-run path by giving each reader of such an instance a site of its own.")]
     private bool sitelessHeightRefusal;
 
     // The answer frame (OpenAnswer) and the innermost formation in it (OpenFormation): whether a frame is open and whether a refusal was
-    // answered to the formation, else to the frame.
-    [Transitional("G651 a1", Reason = "The interim form of the after-run site kind \"the caller records\" for the instance collector's run (R7-T1; PLAN G651 U2's collector row) and, after the run, an instance's storage formation outside the collector's run (G651 U2a): a1 makes the site SubstituteType's input and this frame that site kind; a1's site kind covers the instance's formation, else it goes with U2b.")]
+    // answered to the formation, else to the frame. The after-run form of the one frame a refusal reads (R7-M54; F's C8 ruling 13): the
+    // instance collector's run and, after the run, an instance's storage formation outside it (G651 U2a, OpenStorageFormation).
     private (bool Open, bool Answered) answer;
 
     /// <summary>Opens the answer frame of the instance collector's run (TyCtxt.OpenAnswer, its only opener; R7-T1): a refusal of a Type

@@ -147,7 +147,7 @@ public sealed partial class Binding
             return this.BindBitConversion(conversion, scope, target, number, negative);
         }
 
-        if (target is not null && number is { IsInteger: true } && this.IsArithmeticInteger(target, scope))
+        if (target is not null && number is { IsInteger: true } && this.IsArithmeticInteger(target, scope, conversion))
         {
             if (!number.TryGetIntegerMagnitude(out var magnitude))
             {
@@ -174,7 +174,7 @@ public sealed partial class Binding
         }
 
         source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
-        if (!this.IsArithmeticInteger(source, scope) || !this.IsArithmeticInteger(target, scope))
+        if (!this.IsArithmeticInteger(source, scope, conversion) || !this.IsArithmeticInteger(target, scope, conversion))
         {
             return this.Record(conversion, BindingFailure.InvalidWrapConversion, []);
         }

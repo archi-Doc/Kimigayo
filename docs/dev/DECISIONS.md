@@ -13945,6 +13945,10 @@ resumed by R4-M86 (2026-10-20).
     generation treats it as a broken contract, Hover writes none.
   - Superseded in part by R7-M63 (R7-C3 C3-1): the environment's whole invalidity (`Fail`, `Failed`, `InvalidEnvironment`) is
     deleted, since a proof reads the failed fact's own Failed state through the one consult; the frames and the height rule stand.
+  - Superseded in part by R7-M93 (R7-C8 C6a-1, 2026-11-24): the Interim's removal condition "G651 a1 makes the site
+    `SubstituteType`'s input": a1 is the site (`QuerySite`) as every proof entry's and opener's input, and `SubstituteType`'s family
+    reads the open frame; `sitelessHeightRefusal` is `[Transitional("G651 a4")]`, going with the last unframed step (a4) once U2b
+    has removed the after-run path.
 
 - **BU-168 A node-form pair layer's bare acquisition is one per-case plan; an omitted list reads "Copies in every case" (PLAN G748,
   G755's family part)** (2026-11-11; Front, Binding; Major; design reviews 1-2 REVISE, 3 ACCEPT, implementation review 1 REVISE, 2
@@ -25094,6 +25098,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     the Limit verdict, which the builder's default copy refuses (`Readable`)" and the collector bullet's "`Compose` keeps the only
     one, for its MIR reader": `Compose` and `Answered(inner, outer)` give (Subst, Cause) only, and the builder's copy reads the
     formation.
+  - Superseded in part by R7-M93 (R7-C8 C6a-1, 2026-11-24; F's C8 ruling 13 (A)): the Temporary bullet's answer frame and the G651
+    U2a line's "a1's site kind covers it, else it goes with U2b": `Binding.answer` carries no Transitional attribute; it is the
+    after-run form of the one frame mechanism, U2a's storage formation included, so no removal condition remains.
 - **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
   D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
   CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
@@ -26710,6 +26717,53 @@ R8-M* and R9-M* by the stage of the recording unit.
     it.
   - Open: PLAN G1327 (one comparison condition, two record kinds by where it is judged) and G1328 (the deferral reading's three copies
     and BU-240's eager Owned proofs, under G886).
+- **R7-M93 A proof query names its judgment's site (PLAN G651 a1, landed with R7-C6 a)** (Front, 2026-11-24; R7-C8 C6a-1, C6a-1a
+  and C6a-1b; Major, behaviour-preserving; Q-718, D-1196; design `front\notes\C8\design-ud3-d3-c6a.md` Revision 3 (R3.1, R3.4) and
+  Revision 3.8 (R3.8.3, R3.8.4, option (i)); F's C8 rulings 10-13 and 22; the review of C6a-1 as one delta, ACCEPT WITH CONDITIONS,
+  `C8\c6a-refresh\review.md`) SPEC 8.3.3 Limits, 23.1.2; IMPL A.4, 21.3.2. Extends BU-134, BU-161.
+  - **Rule.** Every proof query's input is a `QuerySite` (`Binding.Diagnostics.Prerequisites`, beside BU-161's frame forms), with no
+    default, so a query that names no site does not compile: the judgment's node (a `Koto` converts to it: the node whose validity,
+    acquisition or published plan reads the verdict), `Nested` (a scope inside a running proof or capability work: the outermost
+    query's site) or `AfterPass` (R7-M38's after-pass rule; PLAN G651 U2). It is an input of every proof entry (`ProveConstraint`,
+    `RequestCapability` and the members that reduce to them: `ProveCopy`, `ProveSealed`, `ProveOwned`, ...) and every proof opener
+    (each member calling `BeginProof` at nesting 0, and `BeginProof(QuerySite)` itself): an opener's own clause list is the
+    judgment's proof, so its inner queries are `Nested`. A member reached both from a judgment and from inside a proof takes the site.
+    `Nested` has no frame of its own: a connective's operand, a clause of an opener's clause list, a work's read, a query
+    `SubstituteType`'s family asks while it forms a Type, or a publication whose checks open their own site frames
+    (`PublishSourceStates`); its site is the open frame's, inside a running proof the outermost query's. `Nested` and `AfterPass` are
+    one value at run time; their two names are the census's reading. The C# build is the census (the commit lists it; since the
+    refresh onto dev c6c481891, G302's selection, `SelectConformance` and `IsSelectionCandidate`, takes the site too).
+  - **`SubstituteType`'s family takes no site** (R3.8.4; ruling 13): it reads the open frame, and its own queries are `Nested`; a
+    family member that holds the element it forms for names that node (`CompletedProjection`'s declaration, `InlineSummary.Site`,
+    `RelationWalk`'s `Site`). A capability work's height refusal with no frame open is `RefuseProof`'s at the work's declaration
+    (R7-M38's rule; from C6a-2, R3.8.6) until G651 a2-a4 frame the step. Supersedes PLAN G651 a1's "the site parameter on
+    `SubstituteType` and its Binding wrappers ... `ConsultationSite.Unframed` ... source ratchet": its reason, that an unframed proof
+    path should not compile, is met by the proof entries and openers, the only members that open a frame; on the family a parameter
+    would be a second carrier beside the frame (BU-134's rejected height-only site field), shared with TyCtxt's after-pass readers,
+    on the deepest recursion BU-134's margin counts, and not the record's site on a memo hit.
+  - **Staging.** C6a-1 (this landing; the growth guard in) makes the site an input only: nothing reads `QuerySite.Node`, and
+    `BeginProof(QuerySite)` ignores it. C6a-2 (a later unit) gives it its behaviour: during the pass a query at a node runs inside
+    the caller's frame, or a site frame at its node where none is open (BU-161's third form, opened by the outermost `BeginProof` and
+    by the engine's drain for a judgment's `RequestCapability`); the guard and `CapabilityWork.Parent` go; a query no judgment needs
+    is not asked (an enum payload that is not a bare Place; a binding of a transferred subject). Revision 2's staging (a1 at the
+    Copy query only) is superseded (ruling 9: two more entries reached H unframed).
+  - **Transitionals (ruling 13).** The six `[Transitional("C6a-1b")]` bridges are deleted. `sitelessHeightRefusal` is
+    `[Transitional("G651 a4")]`, its ledger row's own removal (the flag goes with the last unframed step, a4, once U2b has removed
+    the after-run path): a tag correction, not a postponed stage. `answer` has no attribute: the answer frame is the after-run form
+    of the one frame mechanism (the collector's run and U2a's storage formation, R7-M54), so no removal condition remains; staging it
+    to U2 (option (B)) would be a postponed stage needing the owner's approval and was not taken.
+  - **Rejected.** A member doubled per form (a nested `ProveInFrame` beside the judgment form): a helper reached from both
+    (`ResultSemantics`, `SameConformanceType`, `IsGenericInteger`) would need two copies or a nullable site that compiles silently;
+    the site as a parameter of the family (option (ii): 171 members and 571 rows into TyCtxt and the pass drivers; the reasons
+    above); another owner of the site (`CallSubstitution`: BU-134's height-only field; the scope's declaration: BU-161's rejection,
+    it moves the record off the forming expression); a site threaded through `Run`, `RunPass`, `BindDeclarations` and `Bind` (a
+    site is a judgment's node, never a pass's parameter; ruling 12).
+  - **Cost.** One `QuerySite` argument (a reference-sized struct) per query; no allocation, no table.
+  - **Moves (Q13).** None: diagnostic snapshot 0 differences against shared-base/c6c481891 and semantic HIR+MIR 0 of 2,037 files on
+    ae729c747.
+  - **Open, for C6a-2's design (ruling 22, the review's C1):** `VerifyConformance` names two sites (`SpecifiesContract(.., site)`
+    beside `ProveSpecification(.., conformance.Use)`), which differ under `VerifyConformanceAgreement` and `ResolveConformance`'s
+    `Nested`; inert in C6a-1.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
