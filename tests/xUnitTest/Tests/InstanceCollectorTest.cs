@@ -1022,14 +1022,14 @@ public sealed partial class InstanceCollectorTest
     // D past the height at `let o`, its record beside the handle key's own limit (ruling 25's rows).
     // Fail-before: dev gives InternalInvariant_Kd at each use.
     [Theory]
-    [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40)")]
-    [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("stored250", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>|TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("raw192", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>|TypeHeightLimit_Kd@noneD(p40)")]
     [InlineData("raw191", "")]
-    [InlineData("copy250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>>.None")]
-    [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("copy250", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>.None")]
+    [InlineData("clo250", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>|TypeHeightLimit_Kd@noneD(p40)")]
     [InlineData("open250", "TypeHeightLimit_Kd@noneD(p40)")]
-    [InlineData("opentwo250", "TypeHeightLimit_Kd@noneD(p40) TypeHeightLimit_Kd@noneD(p40)")]
-    [InlineData("obj250", "GenerationResourceLimit_Kd@let TypeHeightLimit_Kd@let")]
+    [InlineData("opentwo250", "TypeHeightLimit_Kd@noneD(p40)|TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("obj250", "GenerationResourceLimit_Kd@let o = noneO(p40)|TypeHeightLimit_Kd@let o = noneO(p40)")]
     public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
     {
         var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
@@ -1054,7 +1054,7 @@ public sealed partial class InstanceCollectorTest
 
         var c = MinimalEmissionTest.Check(name == "obj" ? source.Replace("public func main", "func noneO<T>(p: raw/T) -> Option<obj/D<T>> => .None\npublic func main", StringComparison.Ordinal) : source);
         var seen = TestDiagnostics.Of(c).Where(x => name != "clo" || x.Code != nameof(DiagnosticCode.OwnershipDepthLimit_Kd)); // A4's own, clo250's alone.
-        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{(x.Text ?? "-").Split(' ')[0]}")); // A statement's text: its first word.
+        Assert.Equal(records.Split('|', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
 
         // W^8000<i32> by 40 lifts of 200 levels, each within the height and within its frame.
         static string Lifted(string stored, string statement)
