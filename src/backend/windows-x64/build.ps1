@@ -59,7 +59,7 @@ $unverified = -not $matched -or -not $toolIdentities['llvm-dlltool'].hashMatched
 $kernel = New-KimiKernel32Library $tools (Join-Path $outDir ([IO.Path]::GetFileName((Get-KimiKernel32))))
 $kernelPath = $kernel.path
 $objects = @()
-foreach ($name in @('memcmp', 'memcpy', 'memmove', 'memset', 'chkstk')) {
+foreach ($name in @('chkstk')) {
     $obj = Join-Path $workDir "$name.obj"
     Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', (Join-Path $PSScriptRoot "src/$name.S"), '-o', $obj)
     $objects += $obj
@@ -82,13 +82,13 @@ try {
 }
 finally { Pop-Location }
 $members = @(& $librarian /list $archive)
-if ($LASTEXITCODE -ne 0 -or (($members | Sort-Object) -join ',') -cne 'chkstk.obj,memcmp.obj,memcpy.obj,memmove.obj,memset.obj') {
+if ($LASTEXITCODE -ne 0 -or (($members | Sort-Object) -join ',') -cne 'chkstk.obj') {
     throw 'Archive members must use filenames without build directory paths'
 }
 $defined = & $tools['llvm-nm'] --defined-only --extern-only --format=posix $archive | Out-String
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect archive exports' }
 $symbols = @([regex]::Matches($defined, '(?m)^(\S+) T ') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -CaseSensitive)
-if (($symbols -join ',') -cne '__chkstk,memcmp,memcpy,memmove,memset' -or $defined -match '_fltused') { throw "Wrong archive exports: $defined" }
+if (($symbols -join ',') -cne '__chkstk' -or $defined -match '_fltused') { throw "Wrong archive exports: $defined" }
 
 $probe = Join-Path $workDir 'probe.obj'
 Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', (Join-Path $PSScriptRoot 'tests/probe.S'), '-o', $probe)
