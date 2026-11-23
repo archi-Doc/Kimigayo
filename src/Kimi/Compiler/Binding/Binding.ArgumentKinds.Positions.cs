@@ -235,7 +235,7 @@ public sealed partial class Binding
             return PartKind.Call; // U1.6h site 3: Waiting under 10.5.1.
         }
 
-        if (end == start || (type = this.PositionType(start, end, this.ConstraintScope(this.positionParts[start]), out var typed)) is not null)
+        if (end == start || (type = this.PositionType(start, end, this.ConstraintScope(this.positionParts[start]), this.positionParts[start], out var typed)) is not null)
         {
             return PartKind.Typed;
         }

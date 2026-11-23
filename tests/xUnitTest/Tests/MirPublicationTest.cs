@@ -27,6 +27,18 @@ public sealed class MirPublicationTest
     private static readonly DiagnosticRequirement Limit = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
     private static readonly DiagnosticRequirement Depth = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
 
+    // DIAGNOSTICS §12's A6 fact tables (2g-7, Z21), the two whose header's first cell is Fact: per row its kinds (every backticked name of
+    // its first cell) and, unless its third cell starts "None:", that cell split at its first ": ", the related location's role (the
+    // backticked name before it) and wording (the text after it).
+    private static readonly Lazy<(ProblemFactKind[] Kinds, string[]? Related)[]> FactRows = new(static () =>
+        [.. MirAnalysisTest.DiagnosticsRows(static x => x.StartsWith("| Fact |", StringComparison.Ordinal)).Select(static x => (
+            MirAnalysisTest.Names(x[0]).Select(static y => Enum.Parse<ProblemFactKind>(y)).ToArray(),
+            x[2].StartsWith("None:", StringComparison.Ordinal) ? null : x[2].Split(": ", 2)))]);
+
+    // The fact kinds whose row relates a location, with its role and wording (FactRows).
+    public static TheoryData<byte, string, string> SiteFacts
+        => [.. FactRows.Value.Where(static x => x.Related is not null).SelectMany(static x => x.Kinds.Select(k => ((byte)k, MirAnalysisTest.Names(x.Related![0]).Single(), x.Related![1])))];
+
     // Design 3.2: a located problem (a record class, or a code of category Unsupported, Resource or Internal without Arguments) is keyed by
     // its location, so one at each sibling of a for expansion is one record at the loop.
     [Fact]
@@ -163,16 +175,9 @@ public sealed class MirPublicationTest
         Assert.Equal(("InternalInvariant_Kd", "return total"), (error.Code, error.Text));
     }
 
-    // Design 3.3 (DIAGNOSTICS' A6 fact tables): a fact naming a site is a related location with its role and wording.
+    // Design 3.3 (DIAGNOSTICS' A6 fact tables, SiteFacts; Z21): a fact naming a site is a related location with its role and wording.
     [Theory]
-    [InlineData((byte)ProblemFactKind.Anchor, "borrow", "borrow that created the loan")]
-    [InlineData((byte)ProblemFactKind.Use, "loan", "later use of the value retaining the conflicting loan")]
-    [InlineData((byte)ProblemFactKind.Store, "loan", "value retaining the conflicting loan")]
-    [InlineData((byte)ProblemFactKind.Reservation, "reservation", "conflicting exclusive call reservation")]
-    [InlineData((byte)ProblemFactKind.Evaluated, "default", "the default this call omits, evaluated here, does this")]
-    [InlineData((byte)ProblemFactKind.EffectRead, "declaration", "the call or destruction may read this static")]
-    [InlineData((byte)ProblemFactKind.EffectWrite, "declaration", "the call or destruction may write this static")]
-    [InlineData((byte)ProblemFactKind.EffectUnknown, "declaration", "the call's or destruction's effects are unknown, so they may access this static")]
+    [MemberData(nameof(SiteFacts))]
     public void ASiteFactIsARelatedLocation(byte kind, string role, string label)
     {
         var (c, program) = Program(Valid);
@@ -184,6 +189,13 @@ public sealed class MirPublicationTest
         var related = Assert.Single(record.Related!);
         Assert.Equal((role, "var total = 0", label), (related.Role, Text(Valid, related.Span), related.Label));
     }
+
+    // DIAGNOSTICS §12's A6 fact tables (Z21): every fact kind a MIR recording rule writes (Anchor to Cause, ProblemFact's contract) has
+    // exactly one row, and no Binding kind has one.
+    [Fact]
+    public void EachMirFactKindHasOneA6FactRow()
+        => Assert.Equal(
+            Enum.GetValues<ProblemFactKind>().Where(static x => x <= ProblemFactKind.Cause), FactRows.Value.SelectMany(static x => x.Kinds).Order());
 
     // Design 3.3: a storage limit's Required, Limit and Table facts are OwnershipStorageLimit_Kd's requiredBytes, limitBytes and table.
     [Fact]
