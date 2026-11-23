@@ -3007,8 +3007,7 @@ public sealed partial class InstanceCollectorTest
             "namesSwap" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<i32>", "C<Box<Box<T>>>", Get)),
             "namesItem" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<Box<Box<T>>>", "C<i32>", "    let f = U.get\n    return f()\n")),
             "premise" => Chain(last, $" => if h<{Nest("Box", n, "T")}>() => 0 else => 1\n", Premise()),
-            "premiseTwo" => Chain(last, $"\n    _ = h2<{Nest("Box", n, "T")}>()\n    return if h<{Nest("Box", n, "T")}>() => 0 else => 1\n",
-                Premise() + Premise()[Premise().IndexOf("func h<", StringComparison.Ordinal)..].Replace("func h<", "func h2<", StringComparison.Ordinal)),
+            "premiseTwo" => Chain(last, $"\n    _ = h2<{Nest("Box", n, "T")}>()\n    return if h<{Nest("Box", n, "T")}>() => 0 else => 1\n", PremiseTwo()),
             "prop" => Chain(last, $"\n    return g<Ph<{Nest("Box", n, "T")}>>(Ph<{Nest("Box", n, "T")}>.init()) - 1\n", HasN),
             "nest" => Chain(last, $"\n    func inner() -> i32\n        let y: Option<raw/{Nest("Box", n, "T")}> = .None\n        return 0\n    return inner()\n"),
             "cap" => Chain(last, $"\n    let h = H<{Nest("Box", n, "T")}>.init()\n    return h.run()\n", H),
@@ -3040,6 +3039,9 @@ public sealed partial class InstanceCollectorTest
             => $"    Self is Eqv<{Nest("Box", 8, "Self")}>\ncontract Eqv<X>\nstruct W<T>\n    Self is Equatable when T is Eqv<{Nest("Box", 8, "T")}>\n" +
                 "        public func equals(self: ref/Self, other: ref/Self) -> bool => false\n    public init() => ()\n" +
                 $"func h<T>() -> bool\n    T is Eqv<{Nest("Box", 8, "T")}>\n    let w = W<T>.init()\n    return not (w == w)\n";
+
+        // Premise's declarations and h's twin h2, the same comparison in a second declaration.
+        static string PremiseTwo() => Premise() + Premise()[Premise().IndexOf("func h<", StringComparison.Ordinal)..].Replace("func h<", "func h2<", StringComparison.Ordinal);
 
         // A generic struct's Field and a generic enum's Case payload over Box^n of the parameter, behind raw (R7-T1: an instance's stored
         // Types).
