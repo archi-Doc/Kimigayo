@@ -412,10 +412,6 @@ public sealed partial class Binding
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
             ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.InaccessibleBinding_Kd && issue.Node is MemberAccessKoto { BoundSymbol: { } inaccessible })
-        {
-            issue.Node.ReportIn(store, requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
-        }
         else if (issue.Failure == BindingFailure.InvalidConstraint)
         {
             // A plain Fail(node, InvalidConstraint) keeps no problem until its site records one (R7-E3's call sites; until R7-E5,

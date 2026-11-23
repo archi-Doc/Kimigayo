@@ -28,6 +28,14 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 23.1.2: where a Type use that selected nothing fails, at every Type position (BindNamedType, BindConstructedType) and a
+    // Contract's parent (BuildContract): a generic at its Name (its arguments keep their own records); an unresolved walk at its failing
+    // step when that step is a qualifier of the path, as `S.Missing` of `S.Missing.X`; else the use, where an ambiguity or a qualification
+    // stop keeps its own record. A generic's site reads no walk, so BindConstructedType passes none.
+    private static Koto UnselectedTypeSite(Koto syntax, ResolvedPath path)
+        => syntax is GenericsKoto generic ? generic.Identifier!
+            : path.End == PathEnd.Unresolved && StoppedAtQualifier(path.Use, syntax) ? path.Use : syntax;
+
     private static Koto UnwrapTypeSyntax(Koto node)
     {
         while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, ConversionOperation: null })
@@ -113,7 +121,7 @@ public sealed partial class Binding
 
         if (!this.resolvingTypes.Add(syntax))
         {
-            return this.Fail(syntax, BindingFailure.Cycle, true);
+            return this.Record(syntax, BindingFailure.Cycle, [], unresolved: true);
         }
 
         // A Type expression is checked like an expression: the components that failed are its prerequisites.
@@ -348,9 +356,7 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            // SPEC 23.1.2: an unresolved walk failed at its failing step (its use), as `S.Missing` of `S.Missing.X`, when that step is a
-            // qualifier of the path; an ambiguity or a qualification stop keeps its own record at the path.
-            return this.FailMissing(head.End == PathEnd.Unresolved && StoppedAtQualifier(head.Use, syntax) ? head.Use : syntax, scope, BindingFailure.MissingType);
+            return this.FailMissing(UnselectedTypeSite(syntax, head), scope, BindingFailure.MissingType);
         }
 
         syntax.BoundSymbol = symbol;
@@ -414,7 +420,7 @@ public sealed partial class Binding
         {
             // A missing Name, a head that is no Type or a wrong arity forms no application (SPEC 9.5, 9.7), and each is its own record.
             this.BindUnappliedArguments(generic, scope, context.Nested);
-            return definition is null ? this.FailMissing(generic.Identifier!, scope, BindingFailure.MissingType)
+            return definition is null ? this.FailMissing(UnselectedTypeSite(generic, default), scope, BindingFailure.MissingType)
                 : container is null or ContractKoto ? this.Fail(generic, BindingFailure.InvalidTypeFormation)
                 : this.RecordArity(generic, definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count);
         }

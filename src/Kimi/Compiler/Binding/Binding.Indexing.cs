@@ -412,7 +412,7 @@ public sealed partial class Binding
                     this.PairOuterOrigin(typeSymbol); // SPEC 8.1.1: the binder's outer Origin, interned with its binder (PLAN G949 S1-e).
                     if (!scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
                     {
-                        this.Fail(node, BindingFailure.Duplicate);
+                        this.RecordNumbered(node, BindingFailure.Duplicate, []); // SPEC 9.1: one namespace per declaration.
                     }
                 }
 
