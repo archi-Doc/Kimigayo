@@ -49,17 +49,17 @@ public sealed partial class Binding
         return (this.ResultSemantics(counterpart, path.Scope) == SemanticsMask.Owner && this.NotString(counterpart, path.Scope)) ||
             Fail(counterpart, ArithmeticConformanceCause.RhsNotOwner);
 
-        // SPEC 13.3.3: the cause (Reason), the arithmetic Contract's declaration (Related, role 0) and, for a counterpart, the Type the
-        // conformance binds the Contract's one Type parameter to (Instance at that parameter's declaration; ReportArithmeticConformance).
+        // The cause (Reason), the arithmetic Contract's declaration (Related, role 0) and, for a counterpart, the Contract instance the
+        // conformance states (Instance at that declaration, the Contract applied to the counterpart; ReportArithmeticConformance).
         bool Fail(BoundType? type, ArithmeticConformanceCause cause)
         {
             var at = SourceRef.Of(path.Use);
-            var declaration = path.Contract.Declaration;
+            var related = this.FactSite(path.Contract.Declaration);
             ReadOnlySpan<ProblemFact> facts =
             [
                 new(ProblemFactKind.Reason, at, (long)cause),
-                new(ProblemFactKind.Related, this.FactSite(declaration), 0),
-                type is null ? default : new(ProblemFactKind.Instance, this.FactSite(((DeclarationContainerKoto)declaration).GenericParameterNodes[0]), this.report.Keep(type)),
+                new(ProblemFactKind.Related, related, 0),
+                type is null ? default : new(ProblemFactKind.Instance, related, this.report.Keep(this.ArithmeticReference(id, type).Type!)),
             ];
             this.Record(path.Use, BindingFailure.ArithmeticConformance, type is null ? facts[..2] : facts);
             return false;

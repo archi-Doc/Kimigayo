@@ -203,9 +203,8 @@ public partial class SyntaxIdTest
     // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
     // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UnboundSlots, a call whose slot
     // nothing binds, and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
-    // D-986's
-    // FormReads, the kept operands `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query
-    // memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
+    // D-986's FormReads, the kept operands `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's
+    // query memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
     // result; the guess rule's is written only after a Bind, by the lint report and MIR:
     // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes; D-932's
     // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;

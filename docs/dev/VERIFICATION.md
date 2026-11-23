@@ -5,13 +5,18 @@
 `.github/workflows/test.yml` runs only on pushes to `main`, including merge updates, as recorded in [SETTLED.md](../SETTLED.md#running-full-ci-before-integration-into-main). Ubuntu checks the
 managed solution with warnings as errors. Windows uses the ordinary Session verifier for all functional/allocation
 regressions and every regenerated native fixture at O0/O2, then runs the native-worker PowerShell regressions, CLI
-integration, and extension unit/integration tests with the managed compiler. Neither job runs NativeAOT.
+integration, and extension unit/integration tests with the managed compiler. The `kimi` job publishes `kimi.exe` (NativeAOT)
+with `scripts/build-kimi.ps1` and its product check, beside the other two jobs.
 
 The Windows job downloads the adopted LLVM archive only on a toolchain-cache miss, checks its pinned SHA-256, extracts it
 and calls the backend setup script with `-LlvmRoot <the extracted archive>`, which also builds `tatara.dll`; the cache key
 covers `profile.json`, `setup.ps1`, the backend's sources and builders (`src/backend/windows-x64/src/**`, `build.ps1`,
 `kernel32.ps1`) and `src/Tatara`, so a change to any of them reruns setup, which must reproduce the committed libraries.
 Explicit toolchain verification checks cached installations too.
+The archive fetch is one composite action, `.github/actions/llvm-archive`, which publishes the extracted root as its output:
+the Windows job runs it on a toolchain-cache miss, the `kimi` job on every run. A red `kimi` job is the Tatara session's to
+answer; a break from a `src/Tatara`-only change is found at the next `main` push, not in its window. The job checks the
+runner's SDK (setup-dotnet 10.0.x), not a local one.
 Update the archive version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
 when a later step fails. A configured lane is not evidence of a successful hosted run; inspect that run's results.
 
@@ -172,18 +177,20 @@ own).
 `-VerifyToolchain` runs `kimi toolchain verify` (the compiler's self-check, `toolchain.json`) and then
 `src/backend/windows-x64/check-toolchain.ps1` (the development toolchain: the tools and `tatara.dll` against
 `installation.json` and the catalog, `check-toolchain.log`); the summary's `toolchainVerification` is `passed` only
-when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrote, and setup installs no archive DLL
-(`supportingDlls: {}`); a base before Tatara B6b3 still verifies such a root (its verify reads the empty object). A root
-made from B6b6 on has no `windows_x64`: it serves bases from B6a on for builds, from B6b3 on for verify and from B6b6 on
-for the native fixtures and the other scripts that linked the root's libraries. Existing roots, the shared one included,
-keep their files (setup deletes nothing). `src/backend/windows-x64/test-toolchain-verification.ps1` tests
+when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrote, and setup installs and records no
+archive DLL (Tatara G1231, DECISIONS T-M11; an older setup's `supportingDlls` and its DLLs are not read). A root set up
+from G1231 on has neither `windows_x64` nor that member: it serves bases from B6a on for builds, from G1231 on for
+`check-toolchain.ps1` (an older base's check requires the member) and from B6b6 on for the native fixtures and the other
+scripts that linked the root's libraries. Existing roots, the shared one included, keep their files (setup deletes nothing). `src/backend/windows-x64/test-toolchain-verification.ps1` tests
 `check-toolchain.ps1` and takes no `-Configuration` (it runs no compiler); its rows check, in turn, one root it makes
 (`artifacts/verify/toolchain/<guid>/toolchain`, removed at the end), whose tools and DLLs are hard links to the toolchain's
 (never written; a hard link needs the toolchain's volume) and whose `installation.json` is a copy, the only file the rows
 change.
 
 `scripts/build-kimi.ps1 -LlvmRoot <the pinned archive, extracted>` publishes `kimi.exe` with Tatara linked in and checks the
-product (PLAN G1245 says when a unit runs it). Tatara's objects embed the archive's absolute path, so the bytes of `tatara.dll`
+product (CI's `kimi` job runs it on every `main` push; a unit changing the script or `Kimi.csproj`'s publish items runs it under
+the tooling row, with the NativeAOT instruction in its brief); its product check includes a build of `docs/examples/Hello` by the
+published `Kimi.exe` (exactly 14 bytes, empty stderr, exit 0). Tatara's objects embed the archive's absolute path, so the bytes of `tatara.dll`
 and `kimi.exe` depend on where the archive is extracted: byte comparisons and start-cost runs extract it at one path.
 
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start

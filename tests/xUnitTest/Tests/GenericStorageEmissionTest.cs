@@ -78,8 +78,8 @@ public class GenericStorageEmissionTest
     // generic struct's Field and enum's Case payload within IMPL A.4's height and an instance past it named only as a Type argument.
     // R7-T1 c4: a requirement call's witness and a comparison's over a Self past Binding's bound (req80 at Wrap^80<i32>; cmpGen79 a Tuple's
     // Requirement leaf, cmpNest79 a nested Tuple's Composite part, at T = Wrap^79<i32>, whose `not (w == w)` holds only where Wrap's
-    // equals, false, runs), U.tag() at a Self of height 8,192 after the chain (dispatch91) and U.get() in the clause order forming only
-    // the matching conformance (namesSwap90).
+    // equals, false, runs), U.tag() at a Self of height 8,192 after the chain (dispatch91) and U.get() at S<Box^80<T>> in both clause
+    // orders, whose selection judges both conformances within the height (names80, namesSwap80; at Box^90 both orders record the limit).
     [Theory]
     [InlineData("raw62")]
     [InlineData("raw450")]
@@ -99,7 +99,8 @@ public class GenericStorageEmissionTest
     [InlineData("cmpGen79")]
     [InlineData("cmpNest79")]
     [InlineData("dispatch91")]
-    [InlineData("namesSwap90")]
+    [InlineData("names80")]
+    [InlineData("namesSwap80")]
     public void DeepTypesExecute(string shape, string stdout = "ok\n")
         => ScalarEmissionTest.EmitFixture("GenericStorageDeep" + char.ToUpperInvariant(shape[0]) + shape[1..], InstanceCollectorTest.DeepSource(shape), stdout);
 

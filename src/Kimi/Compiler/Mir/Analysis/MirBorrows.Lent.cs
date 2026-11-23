@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Mir;
 // that Deref; that borrow is found by the stores of the reference's root (MirBorrows.Loans' store
 // record, the one writer of a local's stores): its one store, through whole Copies and Moves and a Tuple's or fixed array's operands.
 // There is none (-1) where no one borrow forms the reference: an argument's, a call's result, a local stored twice, into a part or
-// written through a pointer (Exposed), a reference reached past a Deref, a runtime Index or a Downcast, a Cast, an Adt or Fill aggregate.
+// written through a pointer (ExposedHolder; an own-step entry's OwnerExposed is not read), a reference reached past a Deref, a runtime
+// Index or a Downcast, a Cast, an Adt or Fill aggregate.
 // A position's steps keep their kinds, classes, arguments and prefixes; a resolved step's Prefix is its own Place's, whose Type it reads.
 // Inputs: the view's body, the Loans' store record and Exposed, final once the Addresses pre-pass has run (it completes Exposed with the
 // holders a direct address names), and MirSteps' walk. Precondition: no Lent before the view's Addresses pre-pass has walked its uses
@@ -143,11 +144,13 @@ internal sealed partial class MirBorrows
 
     // The borrow whose reference a Place holds, by its location (SPEC 15.6.3; 5.7 Reading a Field: a read through the Place states that
     // borrow's Origin): the Place's root has one store, into its whole Place, none into a part, and no pointer the body formed may write it
-    // (Exposed); that store is the borrow where it is a Ref or Storage (raw ones included) or a PairAcquire the view makes a Reborrow and no
-    // step is left, and is followed where it Copies or Moves a Place (that Place, then the steps left) or is a Tuple's or fixed array's
-    // aggregate (the operand at the next step's position: a Tuple element, or a fixed array's constant index, MirSteps' ConstIndex reading
-    // of an Index row's Position; then the steps after it); -1 for any other store (a call's result, a Cast, an Adt or Fill aggregate, a
-    // constant), for none (an argument's), or past the body's statements. A whole local passed with no step left keeps the result.
+    // (ExposedHolder; an own-step entry's OwnerExposed is not read: it exposes its owner's storage, a struct's or Case's value or a
+    // handle's payload, which no store followed here passes); that store is the borrow where it is a Ref or Storage (raw ones included) or a PairAcquire the view makes
+    // a Reborrow and no step is left, and is followed where it Copies or Moves a Place (that Place, then the steps left) or is a Tuple's or
+    // fixed array's aggregate (the operand at the next step's position: a Tuple element, or a fixed array's constant index, MirSteps'
+    // ConstIndex reading of an Index row's Position; then the steps after it); -1 for any other store (a call's result, a Cast, an Adt or
+    // Fill aggregate, a constant), for none (an argument's), or past the body's statements. A whole local passed with no step left keeps
+    // the result.
     private int Lender(MirPlace place)
     {
         var (lender, stores) = (-1, this.body.Statements.Length);
