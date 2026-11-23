@@ -106,7 +106,7 @@ public sealed partial class Binding
 
         if (selection.Ambiguous)
         {
-            this.Fail(member, BindingFailure.Ambiguous, true);
+            this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // MemberSelection keeps a flag, not the candidates.
             return null;
         }
 

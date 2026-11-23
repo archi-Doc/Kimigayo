@@ -64,6 +64,24 @@ public class SyntaxEditInvalidationTest
         Assert.Null(c.Binding.IndexerCall(index, true));
     }
 
+    // A pattern node indexed by an earlier pass keeps no pattern row once an edit moves it into an expression: after `1 => 5`
+    // becomes `2 => 1`, the old pattern `1` now the arm's body, the body binds as in a fresh compilation (ResetMatches empties the
+    // IndexedPatterns family; a stale row would trip BindNodeCore's pattern guard).
+    [Fact]
+    public void AnEditedRoleLeavesNoStalePatternRow()
+    {
+        const string Matched = "func pick(v: i32) -> i32\n    return match v\n        1 => 5\n        _ => 0\n";
+        var c = MinimalEmissionTest.Analyze(Matched);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var match = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>().Single();
+        var (pattern, body) = (match.Arms[0].Pattern, match.Arms[0].Body);
+        var donor = KotoTree.Walk(ParseTestHelper.ParseSuccess(Matched.Replace("1 => 5", "2 => 5", StringComparison.Ordinal)).RootKoto).OfType<MatchKoto>().Single().Arms[0].Pattern;
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(match, pattern, donor));
+        Assert.True(KotoHelper.Replace(match, body, pattern));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

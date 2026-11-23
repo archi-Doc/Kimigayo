@@ -150,6 +150,10 @@ public sealed partial class Binding
     // SPEC 9.5.1, 9.6: the resolver's miss, the one decision of a Name or Type that no lookup selected: a missing one whose lookup
     // stopped at a declaration requiring qualification (QualificationStop) fails as QualificationRequired, a definite failure that
     // carries its stop (`qualificationFailures`); any other miss fails unresolved as given.
+    // Transitional, R7-E5 (R7-E2 E2-4b's O-m1 (a)): both keep the slot's Fail, fact-less: a lookup falls back here after a failure it
+    // already recorded (Expressions' FailMissing after SelectMember's Access: Member returns null for both outcomes), so a Record would
+    // publish a dependent miss beside it; R7-E5's per-problem inputs decide the fallback. QualificationRequired keeps its stop's one store
+    // for the repairs (ReportQualification) until then.
     private BoundType? FailUnselected(Koto name, BindingFailure missing)
     {
         if (missing is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(name) is { } qualification)
@@ -200,8 +204,14 @@ public sealed partial class Binding
         return null;
     }
 
+    // Its repairs locate their edits in the store Core's decision gives (PLAN G1083); a node that records nowhere publishes nothing.
     private void ReportQualification(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
+        if (store is null)
+        {
+            return;
+        }
+
         var fact = this.qualificationFailures[node];
         var container = fact.Container.Owner.BoundSymbol!;
         if (fact.Cause == QualificationCause.TypePath)
@@ -346,7 +356,7 @@ public sealed partial class Binding
 
             var verified = selected ? RepairConditionSet.Selection : RepairConditionSet.None;
             var required = (selected ? RepairConditionSet.None : RepairConditionSet.Selection) | (fact.Type ? RepairConditionSet.None : RepairConditionSet.UsageLegality);
-            (repairs ??= []).Add(new(RepairKind.Qualify, [fact.Name, prefix], [node.Edit(new(fact.At!.Span.Start, 0), prefix)], verified, required));
+            (repairs ??= []).Add(new(RepairKind.Qualify, [fact.Name, prefix], [store!.Edit(new(fact.At!.Span.Start, 0), prefix, fact.At.CodeContext.SourceDocument)], verified, required));
         }
     }
 
