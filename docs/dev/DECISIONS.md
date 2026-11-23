@@ -30661,6 +30661,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M34 (unit B7b5, 2026-11-23): the reserved names are every row's supplies (`kernel32`, `kimi_backend` and
     linux-x64's `c`), each an error as a `NativeLibraries` or `NativeRequirements` entry under every target key
     (`NativeConfiguration.Reserved` reads `TargetProfile.ReservedSupply`; change W1).
+  - Amended by T-M36 (unit B7r5, 2026-11-24): the backend archive is ABI 3's (626a858a...), the `kimi_backend` supply's symbols
+    `__chkstk` alone; the bytes above (4ef5b90f...) are the replaced ABI 2 archive's.
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -31211,6 +31213,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     every supplied archive (a second inspection for one form, while LLD reports the duplicate exactly when a second definition would
     enter the program); musl's functions; `memcpy` as an alias of `memmove` (not the archive's algorithm); internal or `linkonce`
     linkage; `rep movsb` (adopted only if the measurement shows the IR slower than the `.S` on large copies, decision 24's allowance).
+  - Amended by T-M36 (unit B7r5, 2026-11-24): "until B7r5" is done: the archive's four memory members are deleted, the Windows
+    backend supply's symbols are `__chkstk` alone, and the helper suite's memory cases are `tests/memory.c`'s, run on the part alone.
 - **T-M25 CI publishes and checks `kimi.exe`** (Tatara, 2026-11-23; PLAN G1245, Q-699, D-1150; Major; design
   `artifacts\handoff\tatara\units\G1245\design.md` Revision 0, option (J); the Middle's design review C-482 ACCEPT WITH CONDITIONS and
   its implementation review on C-482, ACCEPT). Amends T-M14. G1245 closes at the first green hosted `kimi` job.
@@ -31598,6 +31602,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     functions the platform layer stands for).
   - **Temporary structure:** `ReservedNames`' skip of a name already listed (until B7r5 Windows' `kimi_backend` supply still lists
     the four `mem*`); removal B7r5, whose commit deletes the skip and pins the parts disjoint in `CoreModelTest` (C-445 n4).
+    - Removed by T-M36 (unit B7r5, 2026-11-24): the skip is deleted; the parts are pairwise disjoint, pinned by `CoreModelTest`.
   - **Record moves (Windows):** row 10 `#LibraryImport("c", "getpid")`: `MissingNativeRequirement_Kd` →
     `UnavailableReservedImport_Kd`; row 11 `#LibraryImport("c", "write")` without an entry: `MissingNativeRequirement_Kd` → the
     located `Unsupported_Kd`. Uses in the repository: none (design fact 20).
@@ -31622,3 +31627,28 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   paired p50 B/A 0.977-1.014, peak commit within ±4.3 MiB. Rejected: identity (size, time) instead of the hash; a session's memory
   of what it staged; one rule hashing a program's input before its copy (unmeasured, two reads); a per-user cache outside the
   output; supplies from memory (a `tatara.h` ABI).
+- **T-M36 The backend archive holds `__chkstk` alone (ABI 3)** (Tatara, 2026-11-24; the plan's unit B7r5, the owner's decision 24,
+  Q-725, D-1205; Major; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.5.1 §3.6, §7.2, §7.3; implementation
+  review C-506, the Middle's ACCEPT and the Back's ACCEPT WITH CONDITIONS, its C1 met; lands in window W5 with T-M37). Amends T-M8's
+  catalog reading, T-M24 ("until B7r5": done) and T-M34 (its temporary structure removed); IMPL 21.4.7: the archive "supplies only
+  `__chkstk`".
+  - **The archive:** decision 24's removal: the windows-x64 backend archive (`kimi_backend_windows_x64_v1.lib`, 626a858a...,
+    replacing ABI 2's 4ef5b90f...) loses its four memory members (`memcmp`, `memcpy`, `memmove`, `memset`; unreferenced since B7r4,
+    T-M24) and `copy.inc`; it is the backend helper catalog's archive: `__chkstk`. The catalog (`profile.json`) states `abiVersion`
+    3, the new `artifactSha256` and `providedSymbols` `["__chkstk"]`; `ToolchainIdentity.BackendAbiVersion` is 3 and Core's
+    `kimi_backend` supply lists `__chkstk` alone (the initializer checks the record against the supply: they change together).
+  - **Products:** `build.ps1` reproduces the archive byte for byte (two runs, equal SHA-256), and its `chkstk.obj` (3a96db26...) is
+    byte-equal to the ABI 2 archive's, so every Windows executable, object and IR stays byte-equal. A link manifest's three
+    `backendSupport` fields (`abiVersion`, `artifactSha256`, `providedSymbols`) and a build record's staged `kimi_backend` path and
+    `sha256` change; an ABI 2 manifest (every pair emitted before B7r5) is not this compiler's: re-emit it.
+  - **The helper suite, split by owner:** the archive's `__chkstk` cases in `tests/native.c` (with `probe.S`), run by `build.ps1`
+    against the candidate; the memory functions' cases in `tests/memory.c`, run on the runtime's IR alone by
+    `TataraExecutorTest.TheMemoryPartPassesTheHelperSuite`, with no archive among the link's inputs. The native suite's `sizes`
+    takes static storage: at O0 a local constant array is zero-filled by a `memset` call, then stored (C-506 C1), and `native.c`
+    references no memory function.
+  - **The reserved names:** B7b5's temporary skip in `TargetProfile.ReservedNames` goes. The reserved names' parts (each row's float
+    marker and `kimi_backend` symbols, `MemorySymbols`, `MainSymbol`) are pairwise disjoint (`CoreModelTest` pins them) and appended
+    as they are; the value is unchanged (`_fltused, __chkstk, memcmp, memcpy, memmove, memset, main`), so
+    `#LibraryImport("codec", "memcpy")` stays `InvalidLibraryImport_Kd` through `MemorySymbols`.
+  - Rejected: keeping the members (unreferenced code, built, committed and catalogued); a preprocessor switch in `native.c`
+    selecting its cases, or a mode steering one file; building `memory.c` against a C copy of the functions (a second copy).
