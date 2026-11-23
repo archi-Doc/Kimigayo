@@ -84,8 +84,10 @@ public class CoreModelTest
 
     // The target table (IMPL 21.4, 21.5): two rows, windows-x64, whose triple is the literal the [InlineData] rows name, and linux-x64 (the
     // Tatara plan's B7b2a). Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
-    // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library). The Windows row: kernel32
-    // providing every runtime declaration (IMPL 21.4.7), and IMPL 21.2's reserved external names; the Linux row: none until B7b2b.
+    // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library), and a C runtime, if any,
+    // that names one of them. The Windows row: kernel32 providing every runtime declaration (IMPL 21.4.7), and IMPL 21.2's reserved
+    // external names, no C runtime and no argument extension; the Linux row (B7b2b): c, a static library providing the C functions the
+    // layer stands for, its C runtime, and System V's argument extension (IMPL 21.2).
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
@@ -111,6 +113,7 @@ public class CoreModelTest
 
             Assert.Null(row.Supply("codec"));
             Assert.Null(row.Supply(null));
+            Assert.True(row.CRuntime is null || row.Supply(row.CRuntime) is not null);
         }
 
         var windows = TargetProfile.Windows;
@@ -119,7 +122,14 @@ public class CoreModelTest
         var kernel32 = windows.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
         Assert.Subset(kernel32, windows.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
         Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], windows.ReservedSymbols);
-        Assert.Empty(TargetProfile.Linux.Supplies);
+        Assert.Null(windows.CRuntime);
+        Assert.Null(windows.ArgumentExtension);
+        var linux = TargetProfile.Linux;
+        var c = Assert.Single(linux.Supplies);
+        Assert.Equal(("c", "static"), (c.Name, c.Kind));
+        Assert.Equal(["write", "_exit", "exit", "mmap", "munmap", "clock_gettime"], c.Symbols);
+        Assert.Equal("c", linux.CRuntime);
+        Assert.Equal("SystemV", linux.ArgumentExtension);
     }
 
     // Each row's data layout is the one the pinned clang writes for its triple (`clang --target=<triple> -S -emit-llvm` of an empty C
