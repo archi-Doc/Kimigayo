@@ -569,63 +569,73 @@ public sealed partial class Binding
         in SlotSolution solution,
         BindingScope scope)
     {
-        var inference = this.BeginOriginInference(use, binder);
-        for (var i = 0; i < actuals.Length; i++)
+        // PLAN G1078: the solve's state is its own (Kept, at the call: `use`), rented here and returned once its openings are recorded;
+        // the value call's later checks read none of it (its solution carries none, D-971).
+        var kept = this.inferenceScratch.Rent(1);
+        var waited = solution with { Binder = binder, Kept = kept.AsSpan(0, 1), FirstSolve = true };
+        try
         {
-            this.ChildGroup(solution, i, out var start, out var end);
-            if (start == end && actuals[i] is { } actual)
+            var inference = waited.BeginInference();
+            for (var i = 0; i < actuals.Length; i++)
             {
-                this.CollectOriginInference(parameters.Components[i], actual, inference);
-            }
-            else if (solution.Rows[i].Part is { } root)
-            {
-                this.AddTemporaryBound(root, parameters.Components[i], inference, scope);
-            }
-
-            for (var j = start; j < end; j++)
-            {
-                if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j] is { Pattern: { } pattern, Part: var part } &&
-                    KotoHelper.UnwrapParentheses(part).BoundType is { } typed && !ReferenceEquals(typed, BoundType.Never) &&
-                    !this.WaitsForValueCallSolve(part, pattern) &&
-                    this.AdaptInput(part, FixedPattern.Of(this, pattern, solution.Fixed), this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
+                this.ChildGroup(solution, i, out var start, out var end);
+                if (start == end && actuals[i] is { } actual)
                 {
-                    this.CollectOriginInference(pattern, adapted, inference);
+                    this.CollectOriginInference(parameters.Components[i], actual, inference);
                 }
-                else if (this.childRows[j] is { Pattern: { } borrowed, Part: var temporary })
+                else if (solution.Rows[i].Part is { } root)
                 {
-                    this.AddTemporaryBound(temporary, borrowed, inference, scope);
+                    this.AddTemporaryBound(root, parameters.Components[i], inference, scope);
                 }
+
+                for (var j = start; j < end; j++)
+                {
+                    if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j] is { Pattern: { } pattern, Part: var part } &&
+                        KotoHelper.UnwrapParentheses(part).BoundType is { } typed && !ReferenceEquals(typed, BoundType.Never) &&
+                        !this.WaitsForValueCallSolve(part, pattern) &&
+                        this.AdaptInput(part, FixedPattern.Of(this, pattern, solution.Fixed), this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
+                    {
+                        this.CollectOriginInference(pattern, adapted, inference);
+                    }
+                    else if (this.childRows[j] is { Pattern: { } borrowed, Part: var temporary })
+                    {
+                        this.AddTemporaryBound(temporary, borrowed, inference, scope);
+                    }
+                }
+
+                this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);
             }
 
-            this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);
-        }
+            // J2 (SPEC 15.3.6, 15.2.2; PLAN G936; R7-O1 b1, the Middle's ruling of 2026-11-19): the direct call's rule, one member for both
+            // paths (SlotSolution.OpenWaited): an Origin parameter that a waiting part's position and an evidence position both name is a
+            // variable the waiting part's check bounds too, solved as `(E and region)` with the call's region, so the waiting part is completed
+            // over the region and its Type's clauses are the call's rows (CallRowRelation), never a second judgment of its formation. Only a
+            // function binds Origin parameters (a Function Type's Origins are per-call inputs, SPEC 15.3.4), and a value call's Type slots
+            // are fixed at its callee's reference, so only Origin parameters open.
+            var function = binder as FunctionKoto;
+            if (function is not null)
+            {
+                waited.OpenWaited();
+                waited.OpenWaitedSlots();
+            }
 
-        // J2 (SPEC 15.3.6, 15.2.2; PLAN G936; R7-O1 b1, the Middle's ruling of 2026-11-19): the direct call's rule, one member for both
-        // paths (SlotSolution.OpenWaited): an Origin parameter that a waiting part's position and an evidence position both name is a
-        // variable the waiting part's check bounds too, solved as `(E and region)` with the call's region, so the waiting part is completed
-        // over the region and its Type's clauses are the call's rows (CallRowRelation), never a second judgment of its formation. Only a
-        // function binds Origin parameters (a Function Type's Origins are per-call inputs, SPEC 15.3.4), and a value call's Type slots
-        // are fixed at its callee's reference, so only Origin parameters open.
-        var function = binder as FunctionKoto;
-        var waited = solution with { Binder = binder, OriginInference = inference, FirstSolve = true };
-        if (function is not null)
+            _ = function is not null
+                ? this.SolveCallOriginInference(inference, origins, inputs, [], null, select: true)
+                : this.SolveOriginInference(inference, origins, inputs, [], select: true);
+            if (function is not null)
+            {
+                this.RecordOpenings(waited.Call, waited);
+            }
+
+            // SPEC 15.3.6, 15.6.4 step 1: an Origin without a candidate is a local region of the call, direct or indirect: a Function Item's,
+            // or a Function Type's per-call inputs, a Callable bound's or an erased value's (PLAN G410). Selected-call clauses are judged at
+            // their supplying arguments, never as applicability.
+            this.OpenUnsolvedOrigins(use, origins.AsSpan(0, function?.Origins.Count ?? 0), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
+        }
+        finally
         {
-            waited.OpenWaited();
-            waited.OpenWaitedSlots();
+            this.ReturnInferences(kept, 1);
         }
-
-        _ = function is not null
-            ? this.SolveCallOriginInference(inference, origins, inputs, [], null, select: true)
-            : this.SolveOriginInference(inference, origins, inputs, [], select: true);
-        if (function is not null)
-        {
-            this.RecordOpenings(waited.Call, waited);
-        }
-
-        // SPEC 15.3.6, 15.6.4 step 1: an Origin without a candidate is a local region of the call, direct or indirect: a Function Item's,
-        // or a Function Type's per-call inputs, a Callable bound's or an erased value's (PLAN G410). Selected-call clauses are judged at
-        // their supplying arguments, never as applicability.
-        this.OpenUnsolvedOrigins(use, origins.AsSpan(0, function?.Origins.Count ?? 0), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
     }
 
     // A meet outlives an Origin exactly when each operand does, so each failing operand is its own chain (SPEC 15.6.1 Identity).

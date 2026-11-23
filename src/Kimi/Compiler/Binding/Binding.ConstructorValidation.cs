@@ -159,6 +159,7 @@ public sealed partial class Binding
                     FixedConstruction = true,
                     Rows = rows.AsSpan(0, argumentCount), // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
                     ChildSlice = ResetSlice(childSlice), // R3: the re-check's own composition, at its first solve.
+                    Kept = evaluation.Inferences.AsSpan(i, 1), // Candidate i's state: its first run's openings (FirstSolve is false).
                 };
                 Debug.Assert(
                     !solution.Rows.Overlaps(evaluation.Rows) && !solution.ChildSlice.Overlaps(evaluation.ChildSlices) &&
