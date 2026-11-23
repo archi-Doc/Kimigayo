@@ -103,9 +103,10 @@ public sealed partial class Binding
         }
     }
 
-    private void ReportBaseCallFailure(BaseReferenceKoto reference, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
+    // SPEC 6.4.4: the rule a base reference breaks, its record's Reason; its Note is pinned by the console and LSP row
+    // (BaseCallSyntaxTest.InvalidBaseContextIsLocatedInCliAndLspWhileOtherErrorsSurvive), so it is rendered from the Reason.
+    private static void ReportBaseCallFailure(Koto reference, DiagnosticCollection? store, in BindingProblem problem, BaseCallCause cause)
     {
-        var cause = this.baseCallFailures[reference];
         var note = cause switch
         {
             BaseCallCause.NotCall => "base has no value; use base.name(arguments)",
@@ -116,6 +117,6 @@ public sealed partial class Binding
             BaseCallCause.NotInstanceFunction => "base.name(arguments) must name an instance function; use Type qualification for receiverless functions",
             _ => throw new UnreachableException(),
         };
-        reference.ReportIn(store, requirement, code, note: note, evidence: [cause]);
+        reference.ReportIn(store, problem.Requirement, problem.Code, note: note, evidence: [cause], condition: problem.Condition);
     }
 }

@@ -276,6 +276,9 @@ public sealed partial class Binding
             case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
                 ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
                 break;
+            case BindingFailure.BaseCall when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
+                ReportBaseCallFailure(node, store, problem, (BaseCallCause)cause.Value);
+                break;
             case BindingFailure.InvalidConstraint when this.report.Facts(index) is [] or [{ Kind: ProblemFactKind.Cause }]: // An Error outcome's record (RecordConstraint)
                 this.ReportConstraint(node, store, problem.Requirement, problem.Code, problem.Condition, this.report.Facts(index) is [var named] ? this.compilation.SyntaxOf(named.Site) : null);
                 break;
