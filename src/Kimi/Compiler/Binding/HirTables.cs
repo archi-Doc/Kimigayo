@@ -341,6 +341,7 @@ internal struct NodeColumns
     internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
+    internal StampedColumn<(Binding.QualificationFact Value, Binding.QualificationFact Type), Binding.PassCounter> QualificationStops; // Work: a use's provisional qualification stop in each namespace, read by the resolver's miss, the running pass's working state, released at the freeze (Binding.Qualification.cs).
     internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
@@ -359,6 +360,8 @@ internal struct NodeColumns
     internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
+    internal StampedColumn<int, Binding.PassCounter> MemberSelections; // Work: a member access's published side and lookup selection, as its row's index in the pass's rows plus 1, the running pass's working state, released at the freeze (Binding.MemberLookup.cs).
+    internal StampedColumn<bool, Binding.PassCounter> InferredConstructionTargets; // Work: whether a construction qualifier leaves its own slots open for its construction to complete, the running pass's working state, released at the freeze (Binding.ContainerReferences.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> ResultCompletions; // Work: Binding's result, conversion and fallthrough checks' (Binding.ResultStructure) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
@@ -422,6 +425,7 @@ internal struct NodeColumns
         this.AliasTargets.Grow(length);
         this.ImportedContainers.Grow(length);
         this.QualificationFailures.Grow(length);
+        this.QualificationStops.Grow(length);
         this.PerCallOrigins.Grow(length);
         this.PairFollows.Grow(length);
         this.ImplicitPairFollows.Grow(length);
@@ -440,6 +444,8 @@ internal struct NodeColumns
         this.UnboundSlots.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
+        this.MemberSelections.Grow(length);
+        this.InferredConstructionTargets.Grow(length);
         this.ResultCompletions.Grow(length);
         this.GuessedCompletions.Grow(length);
         this.PublishedCompletions.Grow(length);
@@ -480,6 +486,7 @@ internal struct NodeColumns
         this.AliasTargets.Freeze(binding);
         this.ImportedContainers.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
+        this.QualificationStops.Release();
         this.PerCallOrigins.Freeze(binding);
         this.PairFollows.Freeze(binding);
         this.ImplicitPairFollows.Freeze(binding);
@@ -498,6 +505,8 @@ internal struct NodeColumns
         this.UnboundSlots.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
+        this.MemberSelections.Release();
+        this.InferredConstructionTargets.Release();
         this.ResultCompletions.Release();
         this.GuessedCompletions.Release();
         this.PublishedCompletions.Release();
@@ -562,6 +571,7 @@ internal struct NodeColumns
             AliasTargets = this.AliasTargets.Renumbered(length),
             ImportedContainers = this.ImportedContainers.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
+            QualificationStops = this.QualificationStops.Renumbered(length),
             PerCallOrigins = this.PerCallOrigins.Renumbered(length),
             PairFollows = this.PairFollows.Renumbered(length),
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
@@ -580,6 +590,8 @@ internal struct NodeColumns
             UnboundSlots = this.UnboundSlots.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),
+            MemberSelections = this.MemberSelections.Renumbered(length),
+            InferredConstructionTargets = this.InferredConstructionTargets.Renumbered(length),
             ResultCompletions = this.ResultCompletions.Renumbered(length),
             GuessedCompletions = this.GuessedCompletions.Renumbered(length),
             PublishedCompletions = this.PublishedCompletions.Renumbered(length),

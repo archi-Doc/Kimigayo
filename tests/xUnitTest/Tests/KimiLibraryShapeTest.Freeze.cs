@@ -68,6 +68,9 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.BaseCallFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.ObjectErasureFailures"] = "never written: the library erases no object view",
         ["NodeColumns.ReceiverOperations"] = "released at the freeze: its library rows are read only by the HIR publisher at the library's publication, before the freeze, and TryGetReceiverOperation refuses a library node (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.MemberSelections"] = "released at the freeze: the library pass's member accesses' sides and selections, its lookups' working state, no reader reads after it (R7-N5 B1b-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.InferredConstructionTargets"] = "released at the freeze: the library pass's construction qualifiers left open for their constructions, its working state, no reader reads after it (R7-N5 B1b-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.QualificationStops"] = "released at the freeze: the library pass's provisional qualification stops, its lookups' working state, no reader reads after it (R7-N5 B1b-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.ResultCompletions"] = "released at the freeze: the library pass's result checks' query memo, its working state, no reader reads after it (R7-N5 B6b)",
         ["NodeColumns.GuessedCompletions"] = "released at the freeze: the guess rule's query memo, its working state; the guess rule answers none at a frozen node (R7-N5 B6b)",
         ["NodeColumns.PublishedCompletions"] = "released at the freeze: the HIR publisher's query memo, read only at the library's publication, before the freeze (R7-N5 B6b)",
@@ -481,6 +484,8 @@ public partial class KimiLibraryShapeTest
     // library pass's counter value, 1 (FreezeLibrary refuses a rerun), so a column the freeze left at that stamp would answer the
     // library pass's rows (and the freeze Binding's pooled contexts) there; released, no library node's row answers, a library slice's
     // included, while the program's own `if` keeps its row.
+    // R7-N5 B1b-2's MemberSelections, InferredConstructionTargets and QualificationStops (the library pass's member accesses' sides
+    // and selections, its open construction qualifiers, its lookups' provisional stops) are released alike.
     [Fact]
     public void TheFreezeReleasesTheLibrarysWorkingState()
     {
@@ -496,6 +501,9 @@ public partial class KimiLibraryShapeTest
         Released(families.ResultContexts);
         Released(families.ReceiverOperations);
         Released(families.RequirementGroups);
+        Released(families.MemberSelections);
+        Released(families.InferredConstructionTargets);
+        Released(families.QualificationStops);
         Released(families.ReachedThroughBorrow);
         Released(families.ResolvedSlices);
         Released(families.Prerequisites);
