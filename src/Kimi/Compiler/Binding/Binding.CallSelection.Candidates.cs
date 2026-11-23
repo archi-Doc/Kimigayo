@@ -356,7 +356,7 @@ public sealed partial class Binding
         this.MatchResultOrigins(returnPattern, resultExpected, function, solution.Origins, solution.Inputs);
         if (returnPattern.CarriesOrigin)
         {
-            this.CollectOriginInference(returnPattern, resultExpected, solution.BeginInference(), result: true);
+            this.CollectOriginInference(returnPattern, resultExpected, solution.BeginInference(), solution.Frame.Node, result: true);
         }
 
         return structure;
@@ -824,7 +824,7 @@ public sealed partial class Binding
             row.ConstraintFailure = proof == ConstraintProof.Unknown && failure is { } clause ? clause with { Proof = proof } : null;
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
-                this.ResolvedClauseUnknown(function.TypeConstraints, solution.Substitution(frame.Types[..CallSlotCount(function)]), scope, self))
+                this.ResolvedClauseUnknown(function.TypeConstraints, solution.Substitution(frame.Types[..CallSlotCount(function)]), scope, self, call))
             {
                 // SPEC 10.5, 8.3: a Constraint that no waiting argument leaves open, such as a Callable clause on an F that an independent
                 // argument binds, waits on nothing; Unknown proves neither applicability nor negation, so another candidate is never

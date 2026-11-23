@@ -204,7 +204,7 @@ public sealed partial class Binding
                     var member = this.MemberOf(result.Components[0], scope, out var table);
                     completion = Meet(completion, table);
                     if (!ReferenceEquals(member, result.Components[0]) && this.ContractTypeAnswer(member, scope, self) is var formed &&
-                        this.UnconditionalBinding(formed.Image, result, out var unfinished) is { } grounded)
+                        this.UnconditionalBinding(formed.Image, result, QuerySite.Nested, out var unfinished) is { } grounded)
                     {
                         var instance = this.ContractTypeAnswer(grounded, scope, self);
                         return (instance.Image, inner, Meet(Meet(completion, formed.Completion), unfinished ? Completion.Provisional : instance.Completion));
@@ -213,7 +213,7 @@ public sealed partial class Binding
 
                 if (result.Kind == BoundTypeKind.AssociatedProjection)
                 {
-                    var outcome = this.ProjectionSpecification(result, scope);
+                    var outcome = this.ProjectionSpecification(result, scope, QuerySite.Nested);
                     completion = Meet(completion, outcome.Completion);
                     if (outcome.Type is { } specified)
                     {

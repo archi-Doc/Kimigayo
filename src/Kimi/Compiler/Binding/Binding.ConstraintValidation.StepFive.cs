@@ -20,7 +20,7 @@ namespace Kimi.Compiler;
 //   CandidateBindings holds no verdict, and no judgment but step 5's conjunction reads it.
 public sealed partial class Binding
 {
-    private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)
+    private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope, QuerySite site)
     {
         // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
         var target = this.Library.PresentedTarget(call.Target);
@@ -31,7 +31,7 @@ public sealed partial class Binding
 
         // SPEC 10.1: the selected candidate's obligation is its trial's conjunction (StepFiveConjunction), as one proof that keeps its
         // facts for the record, then the selected call's own Types.
-        this.BeginProof();
+        this.BeginProof(site);
         ConstraintProof proof;
         if (target.Declaration is FunctionKoto function)
         {
@@ -50,8 +50,8 @@ public sealed partial class Binding
         }
         else
         {
-            proof = call.DeclaringType is { } declaringType ? this.CheckTypeConstraints(declaringType, scope) : ConstraintProof.Proven;
-            proof = CombineProof(proof, this.ProveMemberConditions(target, call.DeclaringType, scope), true);
+            proof = call.DeclaringType is { } declaringType ? this.CheckTypeConstraints(declaringType, scope, QuerySite.Nested) : ConstraintProof.Proven;
+            proof = CombineProof(proof, this.ProveMemberConditions(target, call.DeclaringType, scope, QuerySite.Nested), true);
         }
 
         // The slots past the callee's own (a constructor's owner slots) keep the Final check's formation read.
@@ -60,7 +60,7 @@ public sealed partial class Binding
         {
             if (call.TypeArguments[i] is { } argument)
             {
-                proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope), true);
+                proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope, QuerySite.Nested), true);
             }
         }
 
@@ -69,10 +69,10 @@ public sealed partial class Binding
             proof = CombineProof(proof, ConstraintProof.Unknown, true);
         }
 
-        proof = CombineProof(proof, this.CheckTypeConstraints(call.ReturnType, scope), true);
+        proof = CombineProof(proof, this.CheckTypeConstraints(call.ReturnType, scope, QuerySite.Nested), true);
         if (call.ConformingType is { } conformingType)
         {
-            proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope), true);
+            proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope, QuerySite.Nested), true);
         }
 
         proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
@@ -103,10 +103,10 @@ public sealed partial class Binding
         {
             var function = bindings.Function;
             var open = !bindings.Unbound.IsEmpty;
-            var proof = this.CheckConstraints(CandidateClauses(function, slotOwner, 0)!, bindings.Substitution, scope, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
+            var proof = this.CheckConstraints(CandidateClauses(function, slotOwner, 0)!, bindings.Substitution, scope, QuerySite.Nested, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
             if (bindings.Owner is { } owner)
             {
-                proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
+                proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope, QuerySite.Nested), true);
             }
             else if (bindings.InfersOwner && bindings.DeclaringType is not null && slotOwner is StructKoto openOwner)
             {
@@ -114,7 +114,7 @@ public sealed partial class Binding
                 proof = CombineProof(
                     proof,
                     this.CheckConstraints(
-                        CandidateClauses(function, slotOwner, 1)!, new CallSubstitution(openOwner, bindings.Slots), scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
+                        CandidateClauses(function, slotOwner, 1)!, new CallSubstitution(openOwner, bindings.Slots), scope, QuerySite.Nested, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
                     true);
             }
 
@@ -123,12 +123,12 @@ public sealed partial class Binding
             for (var i = 0; i < own.Count && i < bindings.Slots.Length; i++)
             {
                 var slot = own[i] is LengthParameterKoto ? ((i < lengths.Length && lengths[i] is not null) || bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown)
-                    : bindings.Slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope)
+                    : bindings.Slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope, QuerySite.Nested)
                     : bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown;
                 proof = CombineProof(proof, slot, true);
             }
 
-            return CombineProof(proof, this.ProveMemberConditions(bindings.Target, bindings.DeclaringType, scope), true);
+            return CombineProof(proof, this.ProveMemberConditions(bindings.Target, bindings.DeclaringType, scope, QuerySite.Nested), true);
         }
         finally
         {
@@ -138,10 +138,10 @@ public sealed partial class Binding
 
     private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
     {
-        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope) : ConstraintProof.Proven;
+        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope, QuerySite.Nested) : ConstraintProof.Proven;
         if (operation.ParameterType is { } parameter && !ReferenceEquals(parameter, operation.SourceType))
         {
-            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope), true);
+            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope, QuerySite.Nested), true);
         }
 
         return proof;

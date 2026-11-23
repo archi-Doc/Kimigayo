@@ -284,7 +284,7 @@ public sealed partial class Binding
                 try
                 {
                     // Oldest first, in the arguments' order, so dev's record location is kept (R1.3 (i)).
-                    CollectOldestFirst(binding, head, skeleton, inference);
+                    CollectOldestFirst(binding, head, skeleton, inference, this.Call);
                 }
                 finally
                 {
@@ -301,12 +301,12 @@ public sealed partial class Binding
                 }
             }
 
-            static void CollectOldestFirst(Binding binding, SlotBinding? node, BoundType skeleton, OriginInference inference)
+            static void CollectOldestFirst(Binding binding, SlotBinding? node, BoundType skeleton, OriginInference inference, QuerySite site)
             {
                 if (node is not null)
                 {
-                    CollectOldestFirst(binding, node.Next, skeleton, inference);
-                    binding.CollectOriginInference(skeleton, node.Type, inference, node.Polarity);
+                    CollectOldestFirst(binding, node.Next, skeleton, inference, site);
+                    binding.CollectOriginInference(skeleton, node.Type, inference, site, node.Polarity);
                 }
             }
 
@@ -444,14 +444,14 @@ public sealed partial class Binding
             var function = this.Function;
             var constructor = function.IsConstructor;
             var arguments = constructor ? this.Types[..CallSlotCount(function)] : slots;
-            binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
+            binding.BeginProof(this.Call); // A candidate's applicability is one conjunction (DECISIONS BU-22), judged at its call.
             var closedOwner = this.DeclaringType is { } declaringType
                 ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
             var reference = this.RequirementContract; // The Contract reference the candidate is tried under (SPEC 8.6.4).
             var bindings = new CandidateBindings(
                 function, function.BoundSymbol!, this.Substitution(arguments), this.Self, this.DeclaringType, closedOwner, reference, unbound, constructor);
             var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
-            proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function), true); // The trial's alone until R7-C2 (b) (PLAN G375).
+            proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function, QuerySite.Nested), true); // The trial's alone until R7-C2 (b) (PLAN G375).
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
             var clause = binding.ProofClause(proof); // G351a: at the trial's verdict.
             proof = binding.EndProof(proof);

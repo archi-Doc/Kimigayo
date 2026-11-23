@@ -36,13 +36,13 @@ public sealed partial class Binding
 
             if (!ReferenceEquals(actualKey, BoundType.Never))
             {
-                key = key is null ? actualKey : this.CommonOriginType(key, actualKey, out _);
+                key = key is null ? actualKey : this.CommonOriginType(key, actualKey, literal, out _);
                 complete &= key is not null;
             }
 
             if (!ReferenceEquals(actualValue, BoundType.Never))
             {
-                value = value is null ? actualValue : this.CommonOriginType(value, actualValue, out _);
+                value = value is null ? actualValue : this.CommonOriginType(value, actualValue, literal, out _);
                 complete &= value is not null;
             }
         }

@@ -55,7 +55,7 @@ public sealed partial class Binding
 
         var element = expected.Components[0];
         if (element.Semantics != SemanticsKind.Owner ||
-            !(element.IsScalar || this.IsGenericInteger(element, scope) || this.IsGenericWrapping(element, scope)))
+            !(element.IsScalar || this.IsGenericInteger(element, scope, directive) || this.IsGenericWrapping(element, scope, directive)))
         {
             return this.RecordNoInit(directive, NoInitProblem.Element);
         }

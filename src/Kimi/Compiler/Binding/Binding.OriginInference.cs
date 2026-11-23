@@ -114,7 +114,7 @@ public sealed partial class Binding
         => type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } schema && index < schema.GenericSlots.Count ? ComposePolarity(polarity, schema.GenericSlots[index].OriginVariance)
             : IsInvariantLayer(type, this, null, comparison) ? 0 : type.Kind == BoundTypeKind.Function && index == 0 ? -polarity : polarity;
 
-    private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false, Koto? known = null)
+    private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, QuerySite site, int polarity = 1, bool result = false, Koto? known = null)
     {
         // SPEC 8.1.2 (PLAN G758): the evidence's pair layer's slot is its OuterOrigin, the original's implicit `o` included, an Origin
         // fixed in the evidence's body (G147 ruling 43: a slot's bound like any other); the pattern's own `o` is bound by its Type
@@ -136,7 +136,7 @@ public sealed partial class Binding
             this.slotWalks++;
         }
 
-        if (pattern.Origin is { } p && this.OuterOrigin(actual) is { } a && !this.InactiveOuterOrigin(pattern, this, null, inference.Comparison))
+        if (pattern.Origin is { } p && this.OuterOrigin(actual) is { } a && !this.InactiveOuterOrigin(pattern, this, null, site, inference.Comparison))
         {
             // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, as the walk's (SlotCondition).
             Add(p, a, polarity, SlotCondition(actual, this, inference.Use, inference.Comparison));
@@ -160,7 +160,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
-            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, this.ComponentPolarity(pattern, i, polarity, inference.Comparison), result, known);
+            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, site, this.ComponentPolarity(pattern, i, polarity, inference.Comparison), result, known);
         }
 
         inference.Quantifiers.RemoveRange(enclosing, inference.Quantifiers.Count - enclosing);
