@@ -6,12 +6,15 @@
 // reserved supply the record's library names), and the compiler's supplies (IMPL 20.4's reserved supplies): one row per supply of the
 // target profile (TargetProfile.Windows.Supplies: its name, kind and symbols), with the manifest fields that identify it and its bytes, which
 // the compiler carries as an embedded resource (Kimi.Kernel32.lib, Kimi.WindowsBackend.lib, committed beside the catalog) whose SHA-256
-// is the catalog's; this material is keyed by the supply's name.
-// Input: the embedded record and libraries. Output: those values, for the native build, publication's manifest and toolchain verify's
+// is the catalog's; this material is keyed by the supply's name. The linux-x64 row's material (Tatara B7b4) is its c supply, musl
+// 1.2.6's startup files and C library, read from the embedded Linux record (src/backend/linux-x64/profile.json, the resource
+// Kimi.LinuxBackendProfile.json) and keyed by (row, supply): the record's profile, TargetProfile.Linux's Name, and its library
+// (B7b7's native build reads its files).
+// Input: the embedded records and libraries. Output: those values, for the native build, publication's manifest and toolchain verify's
 // self-check (P13). Invariants: the record matches the target profile (TargetProfile.Windows's name; its library names a reserved supply, whose
 // symbols are its provided symbols) and pins a major.minor.patch LLVM version, and the material's keys are the profile's supplies' names
-// in the profile's order, else the type initializer throws InvalidDataException; each resource's SHA-256 is its row's
-// (NativeToolchainTest's catalog row; not checked at a start, stated by toolchain verify).
+// in the profile's order, and the Linux record names TargetProfile.Linux's c, else the type initializer throws InvalidDataException; each
+// resource's SHA-256 is its row's (NativeToolchainTest's catalog row; not checked at a start, stated by toolchain verify).
 // Must not be read by check (Binding, project configuration, LSP) or code generation: those read TargetProfile.Windows.
 
 using System.Text.Json;
@@ -41,6 +44,10 @@ public static class ToolchainIdentity
 
     /// <summary>Gets the compiler's supplies, one per reserved supply of the target profile, in the profile's order.</summary>
     internal static CompilerSupply[] Supplies { get; }
+
+    /// <summary>Gets the linux-x64 row's c supply: musl's startup files and C library, keyed by (row, supply), in the Linux record's
+    /// order.</summary>
+    internal static SupplyFile[] Musl { get; }
 
     static ToolchainIdentity()
     {
@@ -96,6 +103,25 @@ public static class ToolchainIdentity
         }
 
         Supplies = supplies;
+        using var linuxStream = typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.LinuxBackendProfile.json")!;
+        using var linux = JsonDocument.Parse(linuxStream);
+        var rowName = linux.RootElement.GetProperty("profile").GetString()!;
+        var supplyName = linux.RootElement.GetProperty("library").GetString()!;
+        if (rowName != TargetProfile.Linux.Name || supplyName != "c")
+        {
+            throw new InvalidDataException($"The embedded native supply catalog does not match {TargetProfile.Linux.Name}.");
+        }
+
+        var files = linux.RootElement.GetProperty("files");
+        var musl = new SupplyFile[files.GetArrayLength()];
+        var index = 0;
+        foreach (var file in files.EnumerateArray())
+        {
+            var name = file.GetProperty("name").GetString()!;
+            musl[index++] = new(rowName, supplyName, name, "Kimi.Linux." + name, file.GetProperty("sha256").GetString()!);
+        }
+
+        Musl = musl;
     }
 }
 
@@ -111,4 +137,18 @@ internal sealed record CompilerSupply(TargetSupply Supply, (string Name, string 
     /// <summary>Opens the library's bytes.</summary>
     /// <returns>The embedded resource's stream, which the caller disposes.</returns>
     internal Stream Open() => typeof(CompilerSupply).Assembly.GetManifestResourceStream(this.Resource)!;
+}
+
+/// <summary>One embedded file of a row's supply: the row and supply it is keyed by, its catalog name, its embedded resource and that
+/// resource's SHA-256, the catalog's.</summary>
+/// <param name="Row">The target profile's name.</param>
+/// <param name="Supply">The reserved supply's name.</param>
+/// <param name="Name">The file's catalog name.</param>
+/// <param name="Resource">The embedded resource holding the file's bytes.</param>
+/// <param name="Sha256">The catalog's SHA-256 of those bytes.</param>
+internal sealed record SupplyFile(string Row, string Supply, string Name, string Resource, string Sha256)
+{
+    /// <summary>Opens the file's bytes.</summary>
+    /// <returns>The embedded resource's stream, which the caller disposes.</returns>
+    internal Stream Open() => typeof(SupplyFile).Assembly.GetManifestResourceStream(this.Resource)!;
 }
