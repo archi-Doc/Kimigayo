@@ -92,7 +92,7 @@ public sealed partial class Binding
         if (!ReferenceEquals(operand, BoundType.Never) &&
             !this.IsSubtype(this.RegionValuesAt(right, binary.Right), this.RegionValuesAt(left, binary.Left), out var failure))
         {
-            if (this.CommonOriginType(left, right, out _) is not { } common)
+            if (this.CommonOriginType(left, right, binary, out _) is not { } common)
             {
                 return this.FailMismatch(binary, binary.Right, right, left, failure);
             }

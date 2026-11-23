@@ -98,7 +98,7 @@ public sealed partial class Binding
         }
 
         var plan = new BoundRuntimeTypeTest(operand, target);
-        var proof = this.CheckRuntimeTestTypeConstraints(plan, scope);
+        var proof = this.CheckRuntimeTestTypeConstraints(plan, scope, test);
         if (proof != ConstraintProof.Proven)
         {
             this.RequireConstraint(test, proof, this.capabilityMode);
@@ -115,6 +115,6 @@ public sealed partial class Binding
         return Complete(test, BoundType.Boolean);
     }
 
-    private ConstraintProof CheckRuntimeTestTypeConstraints(BoundRuntimeTypeTest test, BindingScope scope)
-        => CombineProof(this.CheckTypeConstraints(test.OperandType, scope), this.CheckTypeConstraints(test.TargetType, scope), true);
+    private ConstraintProof CheckRuntimeTestTypeConstraints(BoundRuntimeTypeTest test, BindingScope scope, QuerySite site)
+        => CombineProof(this.CheckTypeConstraints(test.OperandType, scope, site), this.CheckTypeConstraints(test.TargetType, scope, site), true);
 }

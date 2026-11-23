@@ -186,7 +186,7 @@ public sealed partial class Binding
     {
         var entry = this.IterationEntry(source, scope, ref subject, out _);
         var proposition = this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry));
-        var proof = this.ProveConstraint(proposition, scope);
+        var proof = this.ProveConstraint(proposition, scope, source);
         if (proof == ConstraintProof.Proven)
         {
             return this.Fail(source, BindingFailure.Unsupported);
@@ -239,8 +239,8 @@ public sealed partial class Binding
         // (SPEC 4.6.4).
         // A built-in Type's entry conformance is the witness table's (SPEC 22.1): it adds no member, so its requirement is the call.
         var library = WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null;
-        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } && this.SelectConformance(subject, entry, scope, out _) is not null &&
-                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
+        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } && this.SelectConformance(subject, entry, scope, source, out _) is not null &&
+                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope, source) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject))));
         if (!nominal && !this.PremiseRefines(subject, entry, scope))
         {

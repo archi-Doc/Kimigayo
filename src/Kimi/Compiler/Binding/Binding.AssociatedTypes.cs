@@ -43,7 +43,7 @@ public sealed partial class Binding
     // conformance that reference names at `type`'s Self in the clause's scope (SPEC 8.5.1, 8.5.5: a qualifier is a direct conformance,
     // normalized), so to a path whose Contract or one of its ancestors is a candidate of that selection (IsSelectionCandidate: every
     // member, never one representative), not to a sibling reference of the same declaration.
-    private bool SpecifiesContract(IsKoto clause, BindingSymbol type, BindingSymbol contract)
+    private bool SpecifiesContract(IsKoto clause, BindingSymbol type, BindingSymbol contract, QuerySite site)
     {
         var head = AssociatedHead(clause);
         head = head is OriginApplicationKoto applied ? UnwrapTransparentType(applied.Type) : head;
@@ -54,7 +54,7 @@ public sealed partial class Binding
 
         var self = this.SelfType(type);
         var scope = this.ConstraintScope(clause);
-        if (this.IsSelectionCandidate(contract, self, reference, reference.Type, scope))
+        if (this.IsSelectionCandidate(contract, self, reference, reference.Type, scope, site))
         {
             return true;
         }
@@ -62,7 +62,7 @@ public sealed partial class Binding
         var ancestors = contract.Contract?.Ancestors ?? [];
         for (var i = 0; i < ancestors.Count; i++)
         {
-            if (this.IsSelectionCandidate(ancestors[i], self, reference, reference.Type, scope))
+            if (this.IsSelectionCandidate(ancestors[i], self, reference, reference.Type, scope, site))
             {
                 return true;
             }
@@ -262,7 +262,7 @@ public sealed partial class Binding
     {
         var search = this.SearchAssociated(qualifier, scope, name, null);
         var both = search.Found is { } associated && (search.Alternative is not null || search.Source is not { } source || Unconditional(this.impls.PathsOf(source)) ||
-            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: search.Reference ?? associated.Scope.Owner.BoundSymbol!)), scope) == ConstraintProof.Proven);
+            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: search.Reference ?? associated.Scope.Owner.BoundSymbol!)), scope, path) == ConstraintProof.Proven);
         if (!both && !this.contractHeadersReady)
         {
             this.earlyProjections.Add((path, PathEnd.Selected, qualifier, scope, name, null));
@@ -372,7 +372,7 @@ public sealed partial class Binding
 
         var evidence = ProjectionEvidence(associated, reference, qualifier);
         this.projectionUses.Add((syntax, type, evidence));
-        if (this.SuppliesPremises(type, evidence, scope))
+        if (this.SuppliesPremises(type, evidence, scope, syntax))
         {
             // Expand only a referenced receiver's proved contract. This avoids eagerly generating
             // an unbounded chain for recursive associated requirements such as E is SelfContract.
@@ -396,8 +396,8 @@ public sealed partial class Binding
         => this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
 
     // SPEC 8.3.2: whether `type is evidence` (ProjectionEvidence) is proved in `scope`, so the Contract supplies its premises for `type`.
-    private bool SuppliesPremises(BoundType type, BindingSymbol evidence, BindingScope scope)
-        => !this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope) == ConstraintProof.Proven;
+    private bool SuppliesPremises(BoundType type, BindingSymbol evidence, BindingScope scope, QuerySite site)
+        => !this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope, site) == ConstraintProof.Proven;
 
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
     private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;
@@ -528,7 +528,7 @@ public sealed partial class Binding
                 return pending ? null : this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
 
-            if (!this.SelectorQualifies(owner, self, bound, scope))
+            if (!this.SelectorQualifies(owner, self, bound, scope, clause))
             {
                 return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
@@ -542,7 +542,7 @@ public sealed partial class Binding
         var candidates = 0;
         BoundConformance? selected = null;
         if (associated is null || (owner.Declaration is not ContractKoto &&
-            (selected = this.SelectConformance(self, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, scope, out candidates)) is null))
+            (selected = this.SelectConformance(self, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, scope, clause, out candidates)) is null))
         {
             // SPEC 23.1.2: FindAssociated may have recorded the Name's ambiguity at this clause first (SPEC 8.5.2) and found nothing, which
             // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1).
@@ -586,10 +586,10 @@ public sealed partial class Binding
     // SPEC 8.5.1 Qualification, 8.4.3: the Contract a selector names is a direct conformance or an ancestor of the owner. A Contract's
     // conformances are itself and its ancestors, and it is not its own ancestor, so it qualifies a proper ancestor; a struct's or an enum's
     // are the conformances it declares and their ancestors (8.6.2).
-    private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract, BindingScope scope)
+    private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract, BindingScope scope, QuerySite site)
         => owner.Declaration is ContractKoto
             ? !ReferenceEquals(contract, owner) && IsRefinement(owner, contract)
-            : this.SelectConformance(self, contract, scope, out _) is not null;
+            : this.SelectConformance(self, contract, scope, site, out _) is not null;
 
     private void PrepareAssociatedBindings()
     {
@@ -632,7 +632,7 @@ public sealed partial class Binding
             var container = (DeclarationContainerKoto)path.Type.Declaration;
             for (var j = 0; j < container.Members.Count; j++)
             {
-                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.Type, path.RootContract))
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.Type, path.RootContract, path.Use))
                 {
                     Collect(constraint, path);
                 }
@@ -804,7 +804,7 @@ public sealed partial class Binding
         => this.AssociatedBindingOf(path.RootPath, associated) is { Candidates.Count: > 0 } binding ? binding.Candidates[0] : null;
 
     private BoundRequirement? AssociatedInPath(
-        BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope)
+        BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope, QuerySite site)
     {
         BoundRequirement? found = null;
         foreach (var identity in path.Contract.Contract!.AssociatedStorage)
@@ -812,7 +812,7 @@ public sealed partial class Binding
             if (ReferenceEquals(identity.Symbol, associated))
             {
                 var reference = this.ProjectionContract(associated, identity.Contract);
-                if (qualifier is null || ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope))
+                if (qualifier is null || ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope, site))
                 {
                     if (found is not null)
                     {

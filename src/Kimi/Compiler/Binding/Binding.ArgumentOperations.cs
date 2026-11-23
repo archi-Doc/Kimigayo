@@ -320,7 +320,7 @@ public sealed partial class Binding
             }
 
             // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source, out _, null) && this.ReadTypeReferent(actual, scope) is { } read &&
+            if (!this.FitsTypeAt(actual, pattern, source, out _, null) && this.ReadTypeReferent(actual, scope, source) is { } read &&
                 this.FitsTypeAt(read, pattern, source, out _, null))
             {
                 adapted = read;

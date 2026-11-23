@@ -765,6 +765,34 @@ public sealed partial class Binding
         return pending.Count != count;
     }
 
+    /// <summary>PLAN G651 a1 (R7-C6 a, F's C8 rulings 9 and 13): where a proof query is asked from, an input of every proof entry and
+    /// every proof opener (BeginProof's callers at nesting 0), so a query that names no site does not compile: the node of the judgment
+    /// that needs the answer (a Koto converts to it: the node whose validity, acquisition or published plan reads the verdict); Nested,
+    /// no frame of its own: a scope inside a running proof or capability work (a connective's operand, a clause of a clause list, a
+    /// work's read), a query SubstituteType's family asks while it forms a Type, or a publication whose checks open their own site
+    /// frames, whose site is the open frame's; AfterPass, a query after Binding's pass (MIR, R7-M38's after-pass rule, PLAN G651 U2).
+    /// Nested and AfterPass are one value, a query that opens no frame of its own; their two names are the census's reading.
+    /// SubstituteType's family takes no site: its refusal reads the open consultation frame, the site's one carrier (BU-134, BU-161);
+    /// the frame at a judgment's node where none is open is R7-C6 a's second commit (the outermost BeginProof).</summary>
+    internal readonly struct QuerySite
+    {
+        private QuerySite(Koto node) => this.Node = node;
+
+        /// <summary>Gets a scope nested in a running proof or capability work.</summary>
+        internal static QuerySite Nested => default;
+
+        /// <summary>Gets a query after Binding's pass.</summary>
+        internal static QuerySite AfterPass => default;
+
+        /// <summary>Gets the judgment's node; null for Nested and AfterPass.</summary>
+        internal Koto? Node { get; }
+
+        /// <summary>The judgment at a node.</summary>
+        /// <param name="node">The node whose judgment needs the answer.</param>
+        /// <returns>The site at the node.</returns>
+        public static implicit operator QuerySite(Koto node) => new(node);
+    }
+
     // R7-N5 E (DECISIONS BU-220 as R7-N5 B2a-2 and B4 amend it): the Prerequisites family's one accessor, a node's consultation range in
     // prerequisiteStore (Count 0: none). Work: the running pass's dependence store, read by its checks and its publication only, released
     // at the freeze (on dev the program pass's ResetPass emptied the library pass's rows before any reader ran). The recorder decides the
