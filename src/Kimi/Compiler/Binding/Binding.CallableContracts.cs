@@ -13,7 +13,7 @@ public sealed partial class Binding
             return ConstraintProof.Refuted;
         }
 
-        var inference = this.BeginOriginInference(requirement.Binder, implementation.Binder);
+        var inference = this.BeginOriginInference(this.RentInference(requirement.Binder, implementation.Binder));
         var demanded = this.RentTypes(requirement.InputCount);
         var written = this.RentTypes(requirement.InputCount);
         var count = 0;
@@ -129,6 +129,7 @@ public sealed partial class Binding
             session?.Close();
             this.typeScratch.Return(written, clearArray: true);
             this.typeScratch.Return(demanded, clearArray: true);
+            this.ReturnInference(inference);
         }
 
         // An implementation Type with the requirement's slots for its own and its declaring Type's arguments projected.

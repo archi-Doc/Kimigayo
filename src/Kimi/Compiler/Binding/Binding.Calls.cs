@@ -396,7 +396,7 @@ public sealed partial class Binding
             }
 
             if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructionTargets.Contains(constructorMember.Left) &&
-                !this.ValidateFixedConstruction(evaluation, selectedType, winnerIndex, completedWaiting, waitingContexts))
+                !this.ValidateFixedConstruction(evaluation, selectedType, winnerIndex))
             {
                 return Complete(call, null);
             }

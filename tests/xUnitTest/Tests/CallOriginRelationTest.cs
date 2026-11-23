@@ -98,6 +98,14 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         "func pairc2(b: uniq/(ref/i32 during o), a: uniq/(ref/i32 during o), c: uniq/(ref/i32 during k)) -> i32\n    origin k outlives o\n    return 0\n" +
         "func caller(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), r: uniq/(ref/i32 during w)) -> i32\n";
 
+    // PLAN G1078 (SPEC 8.6.1, 8.6.4): pairk's and pairc's shapes as a requirement of a generic Contract, which a caller bound twice
+    // reaches as one declaration under two candidates; its `n: i32` selects Swap<i32>'s, the other is rejected after its evidence.
+    private const string SwapK = "contract Swap<X>\n    func sw(a: uniq/(ref/i32 during o), b: uniq/(ref/(ref/i32 during k) during o), v: X) -> ()\n\n" +
+        "func caller<T>(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/(ref/i32 during w) during y), n: i32) -> ()\n";
+
+    private const string SwapC = "contract Swap<X>\n    func sw(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o), c: uniq/(ref/i32 during k), v: X) -> ()\n        origin k outlives o\n\n" +
+        "func caller<T>(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), r: uniq/(ref/i32 during w), n: i32) -> ()\n";
+
     private const string PairW = "func pairw(a: uniq/(ref/i32 during o), b: (uniq/(ref/i32 during o) during g, ref/(ref/i32 during k) during m), d: uniq/(ref/i32 during m), e: ref/i32 during k) -> () => ()\n" +
         "func pairw2(b: (uniq/(ref/i32 during o) during g, ref/(ref/i32 during k) during m), a: uniq/(ref/i32 during o), d: uniq/(ref/i32 during m), e: ref/i32 during k) -> () => ()\n" +
         "func caller(x: ref/i32, y: ref/i32, z: ref/i32, p: uniq/(ref/i32 during x), q: (uniq/(ref/i32 during y) during v, ref/(ref/i32 during w) during u), s: uniq/(ref/i32 during u), t: ref/i32 during z) -> ()\n";
@@ -336,7 +344,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // again over the other variables and publishes the failure (OriginInference.Marked), so every clause and input premise of the call
     // that reads it, or a variable the solve formed from it, rests on that record in either argument order: o-inv's `y` and pairk's inner
     // `w outlives o` (whatever `o` is), pairc's clause `k outlives o` (rule W: it reads `o` directly). A failure independent of `o` stays
-    // (pairw's `z outlives u`). Valid controls: `origin b outlives a`, and a construction whose partners are equal.
+    // (pairw's `z outlives u`). Valid controls: `origin b outlives a`, and a construction whose partners are equal. The same holds at a
+    // requirement that a group offers as two candidates (SwapK, SwapC; PLAN G1078): each candidate's solve state is its own, so the
+    // rejected candidate's solve leaves the winner's published failure in place, whichever candidate is tried last (fail-before: the
+    // winner tried first gave 2 and 3 records).
     [Theory]
     [InlineData(InvO + "    invo(x, y)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(InvO + "    origin b outlives a\n    invo(x, y)\n", "clean")]
@@ -351,6 +362,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(PairW + "    pairw2(q@move, p, s, t)\n", "2*UnprovenOriginRelation_Kd")]
     [InlineData(PairW + "    origin z outlives u\n    pairw(p, q@move, s, t)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(EnumTwo + "    origin x == y\n    let e = E.Two(p, q, w)\n    return 0\n", "clean")]
+    [InlineData(SwapK + "    T is Swap<i32>\n    T is Swap<i64>\n    T.sw(p, q, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapK + "    T is Swap<i64>\n    T is Swap<i32>\n    T.sw(p, q, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapC + "    T is Swap<i32>\n    T is Swap<i64>\n    T.sw(p, q, r, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapK + "    T is Swap<i32>\n    T is Swap<i64>\n    origin x == y\n    origin w outlives x\n    T.sw(p, q, n)\n", "clean")]
     public void AFailedEqualityIsTheRecordItsReadersRestOn(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 

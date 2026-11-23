@@ -414,35 +414,42 @@ public sealed partial class Binding
             // misfit is blamed on the bindings its own Type reads, with those the required signature read before (CarrySplitPart), and
             // any other failure (an Origin, a premise, a clause) on the whole run: the solve joins every part.
             this.CarrySplitPart(this.splitPartStamp);
-            var inference = this.BeginOriginInference(use, function);
-            inference.Comparison = comparison;
-            this.contractFailure = default;
-            for (var i = 0; i < function.Parameters.Count; i++)
+            var inference = this.BeginOriginInference(this.RentInference(use, function));
+            try
             {
-                if (Read(Declared(i)) is not { } parameter)
+                inference.Comparison = comparison;
+                this.contractFailure = default;
+                for (var i = 0; i < function.Parameters.Count; i++)
                 {
-                    return false;
+                    if (Read(Declared(i)) is not { } parameter)
+                    {
+                        return false;
+                    }
+
+                    // Only the implementation's per-call binders are inferred; the
+                    // required signature's quantifiers and fixed Origins remain rigid.
+                    this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
+                    inference.Source = ((byte)(i + 1), null, false);
+                    this.CollectOriginInference(parameter, parameters.Components[i], inference, use);
                 }
 
-                // Only the implementation's per-call binders are inferred; the
-                // required signature's quantifiers and fixed Origins remain rigid.
-                this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
-                inference.Source = ((byte)(i + 1), null, false);
-                this.CollectOriginInference(parameter, parameters.Components[i], inference, use);
-            }
+                if (Read(Declared(function.Parameters.Count)) is { } produced)
+                {
+                    inference.Source = (ComparisonFailure.ResultStep, null, false);
+                    this.CollectOriginInference(produced, required.Components[1], inference, use, result: true);
+                }
 
-            if (Read(Declared(function.Parameters.Count)) is { } produced)
-            {
-                inference.Source = (ComparisonFailure.ResultStep, null, false);
-                this.CollectOriginInference(produced, required.Components[1], inference, use, result: true);
+                // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.
+                inference.Source = default;
+                if (!this.SolveCallOriginInference(inference, origins, inputs, [], null))
+                {
+                    this.contractFailure = inference.Failure;
+                    return false;
+                }
             }
-
-            // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.
-            inference.Source = default;
-            if (!this.SolveCallOriginInference(inference, origins, inputs, [], null))
+            finally
             {
-                this.contractFailure = inference.Failure;
-                return false;
+                this.ReturnInference(inference); // Nothing reads the state after its solve.
             }
 
             for (var i = 0; i < function.Parameters.Count; i++)
