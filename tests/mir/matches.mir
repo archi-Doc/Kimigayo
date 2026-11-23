@@ -478,13 +478,13 @@ fn quarter @199
   _3: Option<i32> temp (Subject) @209 s1
   _4: isize temp @212 s1
   _5: i32 var $try.value @216 s2
-  _6: isize temp @721 s1
-  _7: Option<i32> temp @725 s3
+  _6: isize temp @719 s1
+  _7: Option<i32> temp @723 s3
   _8: Option<i32> temp (Result) @199
   _9: Option<i32> temp @235 s1
   s1: lexical in s0 @205
   s2: lexical in s1 @212
-  s3: lexical in s1 @721
+  s3: lexical in s1 @719
   bb0:
       StorageLive(_2) @206 s1
       StorageLive(_3) @209 s1
@@ -494,15 +494,15 @@ fn quarter @199
       _4 = discriminant(_3) @212 s1
       switch copy _4 [0: bb4, otherwise: bb3] @212 s1
   bb2:
-      StorageDead(_6) @721 s1
+      StorageDead(_6) @719 s1
       StorageDead(_4) @212 s1
       StorageDead(_3) @209 s1
       StorageLive(_9) @235 s1
     * _9 = half(copy _2) -> bb14 @235 s1
   bb3:
-      StorageLive(_6) @721 s1
-      _6 = discriminant(_3) @721 s1
-      switch copy _6 [1: bb6, otherwise: bb5] @721 s1
+      StorageLive(_6) @719 s1
+      _6 = discriminant(_3) @719 s1
+      switch copy _6 [1: bb6, otherwise: bb5] @719 s1
   bb4:
       StorageLive(_5) @216 s2
       _5 = copy (_3 as case 0).0 @216 s2
@@ -512,8 +512,8 @@ fn quarter @199
   bb5:
       unreachable @208 s1
   bb6:
-      StorageLive(_7) @725 s3
-    * _7 = Adt case 1(): Option<i32> @725 s3
+      StorageLive(_7) @723 s3
+    * _7 = Adt case 1(): Option<i32> @723 s3
       goto bb12 check bb13 @227 s3
   bb7:
       return @199
@@ -524,18 +524,18 @@ fn quarter @199
       StorageDead(_2) @206 s1
       goto bb8 @199
   bb10:
-      StorageDead(_6) @721 s1
+      StorageDead(_6) @719 s1
       StorageDead(_4) @212 s1
       StorageDead(_3) @209 s1
       goto bb9 @199
   bb11:
-      StorageDead(_7) @725 s3
+      StorageDead(_7) @723 s3
       goto bb10 @199
   bb12:
       _8 = move _7 @227 s3
       goto bb11 @227 s3
   bb13:
-      StorageDead(_7) @725 s3
+      StorageDead(_7) @723 s3
       unreachable check bb2 @227 s1
   bb14:
       goto bb16 check bb17 @234 s1
@@ -1992,7 +1992,7 @@ fn init @715
   s1: lexical in s0 @716
   bb0:
       StorageLive(_1) @716
-    * _0.base1 = init() -> bb1 @720
+    * _0.base1 = init() -> bb1 @718
   bb1:
     * _1 = const () @716 s1
       FakeRead(_0) @715 s1

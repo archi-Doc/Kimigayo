@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 
 public partial class Compilation
 {
-    private static readonly string[] RequiredAliases = ["Kimi"];
+    internal static readonly string[] RequiredAliases = ["Kimi"];
     private DependencyPartition? dependencyGraph;
     private Dictionary<Kotonoha, IReadOnlyDictionary<string, BasicValue>>? moduleVariables;
     private Dictionary<Kotonoha, Dictionary<string, Kotonoha>>? moduleReferences;
@@ -28,6 +28,9 @@ public partial class Compilation
     /// (SPEC 23.2.2), and no fact of a parsed source exists.</summary>
     internal bool AnalyzesNoModule => this.SourceModules.Length == 0;
 
+    // A module's effective default-alias paths (SPEC 18.2.3): the required paths and the configured additions, each without a leading
+    // `::`, in ordinal order. A module adding no other path gets the RequiredAliases instance itself (never a copy), the key by which
+    // DefaultAliases returns the library's rows; a caller never writes the result.
     internal static string[] EffectiveAliases(string[] additions)
     {
         if (additions.Length == 0)
@@ -35,13 +38,13 @@ public partial class Compilation
             return RequiredAliases;
         }
 
-        var paths = new HashSet<string>(StringComparer.Ordinal) { "Kimi" };
+        var paths = new HashSet<string>(RequiredAliases, StringComparer.Ordinal);
         foreach (var path in additions)
         {
             paths.Add(path.StartsWith("::", StringComparison.Ordinal) ? path[2..] : path);
         }
 
-        return paths.Count == 1 ? RequiredAliases : paths.Order(StringComparer.Ordinal).ToArray();
+        return paths.Count == RequiredAliases.Length ? RequiredAliases : paths.Order(StringComparer.Ordinal).ToArray();
     }
 
     // A configured path read by the Type production (F.5; the alias target's, GroupKoto) in a configuration document of its module, as
@@ -128,13 +131,17 @@ public partial class Compilation
     internal ProjectFile? Configuration(Kotonoha module)
         => ReferenceEquals(module, this.Kotonoha) ? this.Project.ProjectFile : this.moduleConfigurations?.GetValueOrDefault(module);
 
-    // A module's configured default aliases, each path parsed once for the Compilation (F's ruling N1-4 (1), (2)): the configuration
-    // owner reads it by the Type production in a configuration document of the module, as KimiLibrary forms its built-in syntax; the
-    // node lives for the Compilation and Binding's index walk resets its rows each pass. A path the parse refused has no row (N1-9 (4)).
-    // The library's row is the library's own (KimiLibrary).
+    // A module's configured default aliases (SPEC 18.2.3). A required path's row is the library's (KimiLibrary.DefaultAliases, the owner's
+    // O-511 (a), PLAN G1320): the same alias in every module, which cannot fail, made and evaluated in the library's pass before its table
+    // freezes, so a module adding no path reads the library's rows and no Compilation parses or evaluates a required path again. Each path
+    // a module adds is parsed once for the Compilation (F's ruling N1-4 (1), (2)): the configuration owner reads it by the Type production
+    // in a configuration document of the module, as KimiLibrary forms its built-in syntax; the node lives for the Compilation and
+    // Binding's index walk resets its rows each pass. A path the parse refused has no row (N1-9 (4)).
     internal DefaultAlias[] DefaultAliases(Kotonoha module)
     {
-        if (ReferenceEquals(module, this.Library.Kotonoha))
+        var root = ReferenceEquals(module, this.Kotonoha);
+        var paths = ReferenceEquals(module, this.Library.Kotonoha) ? RequiredAliases : root ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
+        if (ReferenceEquals(paths, RequiredAliases))
         {
             return this.Library.DefaultAliases;
         }
@@ -142,13 +149,15 @@ public partial class Compilation
         var rows = this.defaultAliasRows ??= new();
         if (!rows.TryGetValue(module, out var parsed))
         {
-            var root = ReferenceEquals(module, this.Kotonoha);
-            var paths = root ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
             var configuration = root ? this.Project.FilePath ?? this.Project.Name : module.Url;
             var list = new List<DefaultAlias>(paths.Length);
             foreach (var path in paths)
             {
-                if (ParseConfiguredPath(module, configuration, path) is { } alias)
+                if (Array.IndexOf(RequiredAliases, path) is var required and >= 0)
+                {
+                    list.Add(this.Library.DefaultAliases[required]);
+                }
+                else if (ParseConfiguredPath(module, configuration, path) is { } alias)
                 {
                     list.Add(new(path, alias));
                 }

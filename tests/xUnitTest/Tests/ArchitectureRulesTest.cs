@@ -544,7 +544,7 @@ public class ArchitectureRulesTest
     // an Opaque site is added only there (AddSite, its one MirBody.AddOpaque call), Site is reached only from the gate, Unsupported and
     // Invariant, and each caller of the gate is a table row, so a new producer fails here until its row is reviewed.
     [InlineData("Formers of an Opaque site", "src/Kimi/Compiler/Mir", @"\.AddOpaque\(|\bthis\.AddSite\(", "Build/MirBuilder.Opaque.cs=3")]
-    [InlineData("Callers of the derived-value gate", "src/Kimi/Compiler/Mir/Build", @"\bthis\.(?:Opaque|Derived|DerivedValue|Site)\(", "MirBuilder.Acquisitions.cs=1;MirBuilder.Blocks.cs=2;MirBuilder.Constructors.cs=1;MirBuilder.Defaults.cs=1;MirBuilder.Match.cs=1;MirBuilder.Opaque.cs=5;MirBuilder.Places.cs=2;MirBuilder.Transfers.cs=1;MirBuilder.Values.cs=2;MirBuilder.cs=1")]
+    [InlineData("Callers of the derived-value gate", "src/Kimi/Compiler/Mir/Build", @"\bthis\.(?:Opaque|Derived|DerivedValue|Site)\(", "MirBuilder.Acquisitions.cs=1;MirBuilder.Blocks.cs=2;MirBuilder.Constructors.cs=1;MirBuilder.Defaults.cs=1;MirBuilder.Match.cs=1;MirBuilder.Opaque.cs=6;MirBuilder.Places.cs=2;MirBuilder.Transfers.cs=1;MirBuilder.Values.cs=2;MirBuilder.cs=1")]
     // DECISIONS Z17: the readers of MirUses are the census's, each reading an Opaque site's undecided use at its root through
     // MirDescriptors.Judged, or at its Place for A1's reason (MirInit, MirMoveData), so a new reader fails here until its census row is
     // reviewed. An implementer lists IMirUses in its base list after any other; a generic constraint (where T : struct, IMirUses) is none.
@@ -884,7 +884,7 @@ public class ArchitectureRulesTest
         string[] allowed =
         [
             "Add", "AddRow", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
-            "AvailableContractPremise", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
+            "AvailableContractPremise", "CauseOf", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
             "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
             "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",

@@ -113,7 +113,7 @@ internal sealed partial class MirValidator
             var walkable = true;
             foreach (var site in body.OpaqueSites)
             {
-                var valid = InRange(site.Start, site.Count, body.OpaqueUses.Length) && (uint)site.Kept <= (uint)site.Count;
+                var valid = InRange(site.Start, site.Count, body.OpaqueUses.Length) && InRange(site.Kept, site.Enclosing, site.Count);
                 foreach (var use in valid ? body.OpaqueUses.Slice(site.Start, site.Count) : default)
                 {
                     valid &= this.IsValid(use);
