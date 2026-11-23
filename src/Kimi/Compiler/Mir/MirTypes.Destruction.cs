@@ -251,7 +251,7 @@ internal static partial class MirTypes
     /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
     /// <param name="rank">The rank, below <see cref="LevelCount"/>.</param>
-    /// <returns>The step and its argument (MirBody.PartType gives the part's Type).</returns>
+    /// <returns>The step and its argument (MirBody.SelectsPart gives the part's Type).</returns>
     internal static (MirProjectionKind Step, long Arg) LevelPart(TyCtxt types, BoundType type, long rank) => type switch
     {
         { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count - 1 - rank),
