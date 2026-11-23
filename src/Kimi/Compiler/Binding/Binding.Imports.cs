@@ -10,7 +10,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-
     private BindingSymbol? AccessibleImport(BindingSymbol head, BindingScope scope)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
