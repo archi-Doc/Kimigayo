@@ -11,11 +11,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 10.6: the last reference slot that only per-call Origins of S would satisfy, as (Type parameter, parameters of S as bits,
-    // whether S's own positions bind every slot, so that a wrapper's call infers them), and why the last candidate's slots did not bind
-    // from S, with the slot when one is known; BindFunctionReference clears both before it checks a candidate and reads them for a single one.
+    // whether S's own positions bind every slot, so that a wrapper's call infers them), and whether the last candidate's slots bound
+    // from S; BindFunctionReference clears both before it checks a candidate and reads them for a single one.
     private (int Slot, ulong Parameters)? perCallReferenceSlot;
 
-    private (int Slot, ReferenceSlotFailure Failure) referenceSlotFailure;
+    private ReferenceSlotFailure referenceSlotFailure;
 
     // DECISIONS BU-240 (temporary, removed with (R)): a frame's first `count` slot bindings, each slot's Type, length and selector, by
     // which a part of a split search that bound one is told (InferReferencePart compares the references).
@@ -96,7 +96,7 @@ public sealed partial class Binding
         SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots, use, scope);
         BindingSymbol selected;
         (int Slot, ulong Parameters)? perCall = null;
-        (int Slot, ReferenceSlotFailure Failure) slotFailure = default;
+        var slotFailure = ReferenceSlotFailure.None;
         try
         {
             var index = 0;
@@ -122,7 +122,7 @@ public sealed partial class Binding
                 var state = this.Accessible(candidate, scope)
                     ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out constraint, operations.AsSpan(index * stride, stride - 1), trial)
                     : CandidateApplicability.Inapplicable;
-                if (this.referenceSlotFailure.Failure == ReferenceSlotFailure.SlotVariables)
+                if (this.referenceSlotFailure == ReferenceSlotFailure.SlotVariables)
                 {
                     return this.Fail(use, BindingFailure.Unsupported); // G1128 R1.3 (h): the located limit, the reference's one record.
                 }
@@ -208,7 +208,7 @@ public sealed partial class Binding
                 // clause (SPEC 23.1.2, DECISIONS Q13 rule W).
                 if (count == 1 && evaluated[0].Symbol is { Declaration: FunctionKoto function } single)
                 {
-                    var bound = slotFailure.Failure == ReferenceSlotFailure.None && (trial is not { } complete || ReferenceSlotsComplete(function, complete.Types, complete.Lengths));
+                    var bound = slotFailure == ReferenceSlotFailure.None && (trial is not { } complete || ReferenceSlotsComplete(function, complete.Types, complete.Lengths));
                     var candidateItem = bound ? this.FunctionItemType(single, trial is { } solved ? solved.Types[..slots] : default, this.ReferenceContainer(use, single), trial is { } solvedLengths ? solvedLengths.Lengths[..slots] : default)
                         : this.FunctionItemType(single, default);
                     var signatureMark = this.unformedWrites;
@@ -345,7 +345,7 @@ public sealed partial class Binding
             var unformedMark = this.unformedWrites;
             var state = this.Accessible(candidate, scope)
                 ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) : CandidateApplicability.Inapplicable;
-            if (this.referenceSlotFailure.Failure == ReferenceSlotFailure.SlotVariables)
+            if (this.referenceSlotFailure == ReferenceSlotFailure.SlotVariables)
             {
                 return true;
             }
@@ -407,23 +407,23 @@ public sealed partial class Binding
             {
                 if (ReferenceSlotsComplete(function, frame.Types, frame.Lengths) && (proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths)) != ConstraintProof.Proven)
                 {
-                    this.referenceSlotFailure = (-1, ReferenceSlotFailure.Constraint);
+                    this.referenceSlotFailure = ReferenceSlotFailure.Unbound;
                 }
                 else if ((this.perCallReferenceSlot = this.PerCallReferenceSlot(use, symbol, function, required, scope, explicitReference, container)) is null &&
-                    VariableReferenceSlot(count, frame, explicitReference, required, use) is >= 0 and var met)
+                    VariableReferenceSlot(count, frame, explicitReference, required, use) >= 0)
                 {
                     // G1128 R1.3 (h): after dev's Constraint and SPEC 10.6's per-call rule, a slot whose distinct bindings would take slot
                     // variables is the located limit, not an Origin conflict.
-                    this.referenceSlotFailure = (met, ReferenceSlotFailure.SlotVariables);
+                    this.referenceSlotFailure = ReferenceSlotFailure.SlotVariables;
                 }
                 else
                 {
-                    this.referenceSlotFailure = (count == 1 ? 0 : -1, ReferenceSlotFailure.OriginConflict);
+                    this.referenceSlotFailure = ReferenceSlotFailure.Unbound;
                 }
             }
             else
             {
-                this.referenceSlotFailure = (-1, ReferenceSlotFailure.Structure);
+                this.referenceSlotFailure = ReferenceSlotFailure.Unbound;
             }
 
             return false;
@@ -433,7 +433,7 @@ public sealed partial class Binding
         {
             if (function.GenericArguments[i] is LengthParameterKoto ? frame.Lengths[i] is null : frame.Types[i] is null)
             {
-                this.referenceSlotFailure = (i, ReferenceSlotFailure.Structure);
+                this.referenceSlotFailure = ReferenceSlotFailure.Unbound;
                 return false;
             }
         }
@@ -457,11 +457,11 @@ public sealed partial class Binding
                 // each call; when only per-call Origins of S would satisfy the slot, the reference's record names that slot and those parameters.
                 if (proof != ConstraintProof.Proven)
                 {
-                    this.referenceSlotFailure = (-1, ReferenceSlotFailure.Constraint);
+                    this.referenceSlotFailure = ReferenceSlotFailure.Unbound;
                     return false;
                 }
 
-                this.referenceSlotFailure = (i, ReferenceSlotFailure.InputOrigin);
+                this.referenceSlotFailure = ReferenceSlotFailure.Unbound;
                 this.perCallReferenceSlot = this.PerCallReferenceSlot(use, symbol, function, required, scope, explicitReference, container);
                 return false;
             }
@@ -469,7 +469,7 @@ public sealed partial class Binding
 
         if (proof != ConstraintProof.Proven)
         {
-            this.referenceSlotFailure = (-1, ReferenceSlotFailure.Constraint);
+            this.referenceSlotFailure = ReferenceSlotFailure.Unbound;
             return false;
         }
 
