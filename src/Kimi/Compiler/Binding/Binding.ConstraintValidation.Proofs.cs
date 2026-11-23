@@ -71,6 +71,10 @@ public sealed partial class Binding
     private long epochCounter;
     private long judgmentEnclosing;
 
+    // The site frame the outermost proof scope opened at its judgment's node (BeginProof, OpenQuerySite), closed with that scope (EndProof);
+    // null: none opened.
+    private (int Start, Koto? Node)? proofSite;
+
     // What the proof scope in progress read: the slot of the channel's stack at its depth.
     private ref ProofReads ScopeReads => ref this.proofScopes[this.proofNesting];
 
@@ -80,7 +84,9 @@ public sealed partial class Binding
     // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request. It pushes a
     // clear slot; the enclosing scopes' reads stay in theirs. A judgment (a scope whose answer EndProof no longer combines) opens a frame
     // and first drops the facts the last one left untaken (r2-6). `site` is the judgment's (QuerySite; PLAN G651 a1): its opener names
-    // it, a nested scope Nested; it is an input only until R7-C6 a's second commit opens the site frame at the outermost scope.
+    // it, a nested scope Nested. The outermost scope of a judgment's query asked during the pass with no consultation frame open runs in
+    // a site frame at its node (OpenQuerySite, BU-161's third form; R7-C6 a), the one opener of that frame: what its proof forms past the
+    // height limit, or a limit it reaches, is refused there (RefuseHeight, RefuseProof); its reads explain nothing.
     private void BeginProof(QuerySite site)
     {
         if (this.proofNesting == 0)
@@ -92,6 +98,7 @@ public sealed partial class Binding
             }
 
             this.judgmentEnclosing = this.OpenFrame();
+            this.proofSite = this.OpenQuerySite(site);
         }
 
         if (++this.proofNesting == this.proofScopes.Length)
@@ -114,6 +121,8 @@ public sealed partial class Binding
         if (--this.proofNesting == 0)
         {
             this.CloseFrame(this.judgmentEnclosing);
+            this.CloseQuerySite(this.proofSite);
+            this.proofSite = null;
         }
 
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
@@ -412,7 +421,8 @@ public sealed partial class Binding
     // failure whose record's category is Resource), so its negative answer is a resource failure, never Unknown or Refuted. The
     // limit is the declaration's that reaches it, the declaration whose premise closure the request extends (`scope`'s published
     // Declaration: a block, a loop body, a match arm or a Closure inside a definition is the definition's, a conformance path's is its
-    // conditional conformance's or else its Type's), and is reported once (SPEC 8.3.3): its record
+    // conditional conformance's or else its Type's; for a Type's height inside a capability work, the refused formation's site's scope,
+    // RefuseHeight), and is reported once (SPEC 8.3.3): its record
     // is at the first refused request's site in the run, the open consultation frame's node (the use; the owner's O-321 (b)), else
     // the declaration, and a later request of the run, in any of the declaration's bodies, rests on that record (Refusal.Reach),
     // so no refusal is without a node. Inside a proof the answer joins it
@@ -434,12 +444,13 @@ public sealed partial class Binding
         var owner = scope.Declaration;
 
         // The declaration's refusal, its row of the kept family NodeColumns.Refusals (DECISIONS BU-220), read and written here alone:
-        // one cause a declaration, so an answer computed again rests on the same cause (the capability engine's fixpoint compares causes
-        // by reference) and its requests share one record. A Refusal holds no pass state but the run its record's node is for
-        // (Reach), so it is kept across passes, as the capability works are: a refused declaration allocates it once and a warm pass
-        // reuses it (RP8's warm bytes). The library holds no row (no library node is a site or an owner).
+        // one cause a declaration and limit (the premise closure's, a Type's height: R7-C6 a), so an answer computed again rests on the
+        // same cause (the capability engine's fixpoint compares causes by reference) and its requests share one record. A Refusal holds
+        // no pass state but the run its record's node is for (Reach), so it is kept across passes, as the capability works are: a
+        // refused declaration allocates it once and a warm pass reuses it (RP8's warm bytes). The library holds no row (no library node
+        // is a site or an owner).
         ref var row = ref HirTables.Of(owner).Families.Refusals.Ref(owner.SyntaxId);
-        var refusal = row ??= new(this, limit);
+        var refusal = (row ??= new(this, limit)).Of(limit);
         refusal.Reach(this.consultationNode ?? owner);
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
@@ -463,6 +474,7 @@ public sealed partial class Binding
         this.trialPending = null;
         this.frameEpoch = 0;
         this.proofNesting = 0;
+        this.proofSite = null;
     }
 
     // SPEC 23.1.2: the Use of the cause that the Error a check just consumed rests on, and the U fact a settled Unknown left (no fact is a
@@ -479,6 +491,29 @@ public sealed partial class Binding
         this.failedCause = null;
         cause.Rest();
         return (cause.Use, fact);
+    }
+
+    // SPEC 3.5, 8.3.3 Limits, 23.1.2 (BU-134's dependents rule, as BU-103's Error rule for an acquisition; R7-C6 a, F's C8 rulings 7 and
+    // 9): whether a judgment at `site` that read a verdict other than Proven rests on a limit's record: an Error whose cause (the
+    // channel's failedCause) is a node a Resource record failed. Then the judgment adds no record of its own: the refused site keeps its
+    // record, and another site is its dependent (CompleteDependent). Any other verdict is the judgment's own failure, which its reader
+    // records. The one place for every reader that fails on such a verdict where the answer is no longer combined (EndProof leaves its
+    // cause in the channel): an acquisition's, `@copy`'s or a fill's Copy, and a validation pass's proof at a use (RequireConstraint:
+    // a conformance's verification, a Constraint use's clause).
+    private bool ProofRestsOnLimit(Koto site, ConstraintProof proof)
+    {
+        if (proof != ConstraintProof.Error || this.failedCause is not { Use: { } cause } || !this.ResourceFailed(cause))
+        {
+            return false;
+        }
+
+        this.TakeFailedCause();
+        if (!ReferenceEquals(cause, site))
+        {
+            this.CompleteDependent(site, cause);
+        }
+
+        return true;
     }
 
     // SPEC 15.6.1 (design-r2 Amendment 4): a Callable proof that is Unknown only in the Origin part of its whole-contract comparison, with
@@ -535,6 +570,7 @@ public sealed partial class Binding
     internal sealed class Refusal(Binding binding, BindingFailure limit) : ICheckCause
     {
         private ulong recorded; // The run (Binding.storageVersion) whose record Use holds, 0 before the first.
+        private Refusal? other; // The declaration's refusal of another limit (Of), in the same row.
 
         // The record's node: the latest refused request's site until the run records the limit (Settle), then the recorded node,
         // on which every later request of the declaration in the run rests (SPEC 8.3.3: reported once). Set by Reach before any read.
@@ -547,6 +583,9 @@ public sealed partial class Binding
         public void Rest()
         {
         }
+
+        // The declaration's refusal of `reached`: each limit a declaration reaches is its own record (SPEC 23.1.2: independent).
+        internal Refusal Of(BindingFailure reached) => reached == limit ? this : (this.other ??= new(binding, reached));
 
         // A request of the declaration refused at `site` (RefuseProof).
         internal void Reach(Koto site)

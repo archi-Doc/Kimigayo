@@ -464,6 +464,22 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
+    // R7-C6 a (PLAN G651 a1; BU-161's third form): the site frame of a judgment's proof query (a QuerySite at a node) asked during the pass
+    // with no consultation frame open, opened by the proof channel's outermost scope (BeginProof) and dropped at its close (EndProof), so
+    // its reads explain nothing; null where it opens none: inside a frame the frame is the site, Nested and AfterPass name no node, and
+    // after the pass no node is failed (Binding.TypeHeight, RefuseProof).
+    private (int Start, Koto? Node)? OpenQuerySite(QuerySite site)
+        => this.producing && this.consultationNode is null && site.Node is { } node ? this.BeginConsultation(node) : null;
+
+    // Closes the frame OpenQuerySite opened, if any.
+    private void CloseQuerySite((int Start, Koto? Node)? parent)
+    {
+        if (parent is { } opened)
+        {
+            this.DropConsultation(opened);
+        }
+    }
+
     // SPEC 23.1.2: a check whose result the node being checked does not read runs with no frame open, so nothing it fails becomes that
     // node's prerequisite: a header that a set Type demands is its declaration's (BindType), a part an unselected call binds on its
     // own is read by no check of that call (CompleteUnselected; DECISIONS U4b), and the binding result of a declaration that a container
@@ -773,7 +789,7 @@ public sealed partial class Binding
     /// frames, whose site is the open frame's; AfterPass, a query after Binding's pass (MIR, R7-M38's after-pass rule, PLAN G651 U2).
     /// Nested and AfterPass are one value, a query that opens no frame of its own; their two names are the census's reading.
     /// SubstituteType's family takes no site: its refusal reads the open consultation frame, the site's one carrier (BU-134, BU-161);
-    /// the frame at a judgment's node where none is open is R7-C6 a's second commit (the outermost BeginProof).</summary>
+    /// during the pass the outermost BeginProof opens a site frame at a judgment's node where none is open (OpenQuerySite).</summary>
     internal readonly struct QuerySite
     {
         private QuerySite(Koto node) => this.Node = node;

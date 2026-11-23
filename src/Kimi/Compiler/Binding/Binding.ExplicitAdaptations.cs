@@ -310,9 +310,13 @@ public sealed partial class Binding
             }
         }
         else if (operation != ConversionBinding.ObjectUpcast && this.IsBarePlace(conversion.Left) &&
-            this.ProveCopy(source, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
+            this.ProveCopy(source, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
         {
-            this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+            if (!this.ProofRestsOnLimit(conversion, copyProof))
+            {
+                this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+            }
+
             return false;
         }
 

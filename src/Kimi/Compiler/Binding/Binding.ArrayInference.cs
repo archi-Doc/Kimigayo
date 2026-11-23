@@ -87,9 +87,13 @@ public sealed partial class Binding
             return failed is not null ? this.CompleteDependent(fill, failed) : this.Fail(fill, BindingFailure.InvalidTypeFormation);
         }
 
-        if (this.ProveCopy(element, fill) != ConstraintProof.Proven)
+        if (this.ProveCopy(element, fill) is not ConstraintProof.Proven and var copyProof)
         {
-            this.FailConstraint(fill);
+            if (!this.ProofRestsOnLimit(fill, copyProof))
+            {
+                this.FailConstraint(fill);
+            }
+
             return null;
         }
 

@@ -200,7 +200,6 @@ public class ArchitectureRulesTest
         "Binding.CallableSelection.cs:SameProofPremise=1 key",
         "Binding.CallableSelection.cs:SelectValueCall=1 declared",
         "Binding.CandidateEvaluation.cs:BetterCandidate=1 declared",
-        "Binding.Capabilities.cs:RequestCapability=1 key",
         "Binding.Capabilities.cs:StructuralCapability=1 unchanged",
         "Binding.Capabilities.cs:TryLeafCapability=2 kind",
         "Binding.ClosureInstances.cs:ClosePartCore=1 unchanged",

@@ -208,9 +208,9 @@ public sealed partial class Binding
                 return this.Record(conversion, BindingFailure.InvalidAssignment, []);
             }
 
-            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
+            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
             {
-                return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+                return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }
 
             result = target;

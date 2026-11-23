@@ -309,7 +309,7 @@ public sealed partial class Binding
     }
 
     // SPEC 14.6.2, 15.1.6: a user iteration's item bindings are acquired by the match's rule (AcquireBinding) at the same point, after the
-    // declaration checks its Copy proof reads; a loop's plan has no written Pattern Type to recheck.
+    // declaration checks (an owned item's part Moves and asks no Copy); a loop's plan has no written Pattern Type to recheck.
     private void CompleteIterationAcquisitions()
     {
         for (var i = 0; i < this.userIterations.Count; i++)

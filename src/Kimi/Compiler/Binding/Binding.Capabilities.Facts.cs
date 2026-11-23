@@ -119,8 +119,6 @@ public sealed partial class Binding
         // evaluation (Binding.ForgetDependentCapabilities), so the erasure's Owned owner reads a forgotten subject as Final (OwnedMember).
         internal bool Depends { get; set; }
 
-        internal CapabilityWork? Parent { get; set; }
-
         // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read;
         // settled after the verdicts (Binding.SettleCauses), the least by CauseKey of its own and those of the works it read at its verdict.
         internal ICheckCause? Cause { get; set; }
@@ -154,7 +152,6 @@ public sealed partial class Binding
             this.Evaluated = false;
             this.Queued = false;
             this.Depends = false;
-            this.Parent = null;
             this.Cause = null;
             this.OwnCause = null;
             this.Fact = null;

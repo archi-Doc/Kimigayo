@@ -117,7 +117,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
             var a = this.impls.PathsOf(identity)[i];
-            var available = this.VerifyConformance(a, site);
+            var available = this.VerifyConformance(a);
             if (a.InheritedFrom is not null && available != ConstraintProof.Proven)
             {
                 if (available != ConstraintProof.Refuted)
@@ -391,7 +391,7 @@ public sealed partial class Binding
             for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
             {
                 var path = this.impls.PathsOf(identity)[i];
-                var definition = this.VerifyConformance(path, QuerySite.Nested);
+                var definition = this.VerifyConformance(path);
                 if (path.Unsupported && this.conformanceChecks == 0)
                 {
                     // SPEC 23.1.1, 23.1.2: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedCause).
