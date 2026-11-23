@@ -4454,6 +4454,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `PlanRow.Adjust`; Discard Context a bare acquisition position) and R5's three requirements on them). Supersedes R4-M128's interim
   by-value list and its Discard Context net. Requirement 2's unset-row sentences are superseded by BU-103. Its by-value list for the by-case mark is superseded by R7-M12 (`Take`'s ByCase).
   Its net row (a null take, the net's `Unsupported_Kd`) is superseded by R7-M58 (X3: a broken contract).
+  Its plan-row trigger is amended by BU-248 (an earlier take of the input by its consumer's calls, also the same call's preceding input).
   - Representation: `ClosureEffects.ConsumedByValue(place)` (`Binding.ClosureReceivers`), computed once per use (C7), reads the Adjust
     rule (R4-M142) instead of a list: the place's groups taken through (`Binding.Grouped` over `IsGroup`: parentheses and a label,
     which wraps only a control-flow construct, never a Place; `HirOp.Group` is wider, an identity or transfer conversion acquiring its
@@ -16819,8 +16820,9 @@ resumed by R4-M86 (2026-10-20).
   - **Mode.** `SelectionMode` (replacing `SelectsUniq` and its bool): 0 `index` (a shared use, or no `indexUniq`: a by-case use is
     then the uniq case's Language error), 1 `indexUniq` (exclusive), 2 by case (ByCase with `indexUniq` bound). The decider goes in the
     index's plan-row `Plan` slot, which no other writer uses on an IndexKoto (`Second` is TypeIdentity's identity premise; the
-    arithmetic, adaptation and constraint setters of `Plan` are other kinds). Read only through `HirTables.IndexCaseDecider` (the
-    review's C2); `ExpansionPlan.Of` reads it for its new member `Shared` (index's call under Mode 2; `Second` stays indexUniq's).
+    arithmetic, adaptation and constraint setters of `Plan` are other kinds). Read only through `HirTables.CaseDecider` (BU-248,
+    replacing `IndexCaseDecider`; the review's C2); `ExpansionPlan.Of` reads it for its new member `Shared` (index's call under
+    Mode 2; `Second` stays indexUniq's).
   - **Inputs.** Under Mode 2 `AdjustChildren` uses both calls' inputs in `CallPlan.Of`'s order, the existing two-row record of
     R4-M145 / R4-M109: a receiver's column is indexUniq's take, its plan row index's where they differ; a key's two takes are equal,
     its plan row default.
@@ -17566,6 +17568,56 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** `Self` and the parameters in `Types` (a filter case in every outside reader); reading `Parameters` before `Types`
     (moves the first candidate of a duplicate program); chaining a member and a parameter of one name across the two tables; a symbol
     Kind of its own for struct Self (vocabulary).
+- **BU-248 A by-case value call's decider and Shared receiver acquisition: `CallPlan.CaseDecider` and `CallPlan.SharedReceiver`**
+  (2026-11-23; Front, Binding; PLAN G13 (a), Z4-F, Q-705, D-1165; design `middle\notes\z4f-design.md` §0, §2 and Revision 1 (R1.1,
+  R1.2, R1.4; Middle), the Front's review on C-487 (REVISE, then the delta read ACCEPT WITH CONDITIONS D1, D2); F's rulings Z4F-1 and
+  Z4F-3; Major, behaviour-preserving until Z4-M reads it) SPEC 7.7.3 ("each case has its own requirement"), 7.3.3, 15.1.5 ("An owned
+  Closure Place is borrowed shared for a Shared call and exclusively for an Exclusive call"), 8.15.2, 15.6.2. Amends BU-233 and
+  R4-M145.
+  - **Representation.** `CallPlan.CaseDecider` (`BoundType?`): the callee's Closure Type whose `Receiver` gave the call's mode
+    (`CallableClosure(CalledThrough(..))`, TryCallable's read), set exactly for a Value call in mode Uniq whose Closure's
+    `CaseFreeReceiver` is Ref; null means not by case (the presence). `CallPlan.SharedReceiver` (`BoundArgumentOperation`): how the
+    callee as a Shared call acquires it: default for an owned callee, a Reborrow at `ref/C` of a reference callee's `ReferentOrigin`, a
+    `PayloadProjection` at `ref` of a payload callee; default where `CaseDecider` is null. One writer: `BindValueCall` through
+    `SetCaseReceiver` right after `SetValue` (6 parameters, the limit); `SetValue`, `Set` and `Clear` reset both (storage reused on a
+    rebind). `ReceiverOperation` and `ReceiverKind` stay the Exclusive acquisition.
+  - **Accessor.** `HirTables.CaseDecider(binding, node)` replaces `IndexCaseDecider`: an `IndexKoto`'s plan row `{ Mode: 2, Plan:
+    decider }` (BU-233), or an `InvocationKoto`'s call read through the one path, `CallPlan.Of(binding, node)`, and its `CaseDecider`
+    (F's ruling Z4F-1 C1: no plan-row read beside it, which R5-M9's removal of `CallStorage` would not find); null otherwise. No
+    invocation Mode is written. Consumers read either decider through it; the HIR publisher (which writes the index's row and walks the
+    calls) and HasFacts read the stored members.
+  - **Formation and judgment.** `FormValueCallee` (and `FormPayloadReceiver`) form the callee acquisition in a receiver mode and record
+    nothing, returning a `CalleeOutcome` (Formed, LendsCallee, LendsHandle; Write, ObjectAuthority, TransferRequired, Located);
+    `AcquireValueCallee` records the failure once and judges the lent Place's static root once in the call's mode (`FailStaticBorrow`).
+    A by-case `BindValueCall` also forms in Ref; a failure there is a broken contract (throws, BU-102): a shared lending holds wherever an
+    exclusive one does (SPEC 15.6.2). `CalleeOutcome` is a private enum inside Binding's value-call owner (no vocabulary entry).
+  - **D1.** `BindValueCall` reads the call's Closure once, `CallableClosure(CalledThrough(..))`, for the decider and the declared
+    signature (R4-M159's `DeclaredSignature`; before: `CallableClosure(callee Type)` without `CalledThrough`).
+  - **Takes** (amends R4-M145). `AdjustChildren` takes a by-case callee twice under `Call(0)`, Shared then Exclusive, through one local
+    receiver rule (an owned callee borrowed by the mode, `ReceiverKind`'s mapping kept; any other by its operation): the plan row holds
+    the Shared take, the column the Exclusive one. R4-M145's trigger is "an earlier take of the input by its consumer's calls": at an
+    earlier call (`call > 0`, R4-M109) or as the same call's preceding input (only the by-case receiver takes one node as two
+    consecutive inputs). The rule lives once, in `EarlierAdjust(call, child, preceding, earlier, later)`; RowUses and TakeRecord each
+    keep the call's preceding input, reset by `Call`, and pass it, so operand takes before `Call(0)` never trigger it (Z4F-1 B1: no copy
+    of the trigger in a record). `Claimed`, `UseOf` and ClosureEffects' classification are unchanged (the Exclusive take decides).
+  - **D2.** FormReads keeps no such field on its own ground (it writes no plan row and keeps whichever take of a node reads its Place; a
+    resolved invocation published as an Error keeps its plan). `PlanRow.Adjust`'s contract names the row and, by F's ruling Z4F-3, says
+    why `Call`'s reset stays though no program observes it today (the review's mutant M5: a logging copy over 39 of the unit's classes
+    and ten targeted programs met no event): each operand that a node's first call also takes as its first input (an index's key, an
+    object creation's operand, a `for`'s Subject) is taken by the same Adjust both times, and the reset keeps the row a call's take, as
+    `Claimed`, `UseOf` and the MIR builder's `Taken` read it, without resting on that coincidence.
+  - **Census.** The formation side reads `SharedReceiver` beside each call's `ReceiverOperation`; it joins the Exclusive entry (same
+    outer Origin and referent), so no row, mode or `borrowVersion` moves.
+  - **HasFacts.** A Call plan with a `CaseDecider` is a Value plan in Uniq whose decider's Closure is `CaseFreeReceiver` Ref and
+    `Receiver` Uniq, with `SharedReceiver.Source` and `AdaptedType.Origin` the Exclusive one's (C4: the result's `ReceiverImage`); a plan
+    without one has a default `SharedReceiver`.
+  - **Readers.** Z4-M (the MIR builder's Closure-call frame, `MirCases`' Closure row through `ClosureReceiverIn`, validator row (4);
+    PD13 deleted there). Until then no reader reads the new members; the semantic printer prints a by-case call's decider.
+  - **Remainder** (PLAN G13 (c)). R4-M128's limits and a call of a captured by-case Closure (cc1) stay Exclusive in every case.
+  - **Unverified** (Z4F-1 N1). The payload callee's shared lending where the exclusive one holds (`LendsHandle(LendFold(handle, scope,
+    false))`) was read, probed only by the po rows and the `o()` rows; TakeRecord's preceding field is observed by no test (the
+    review's mutant M3t survives: the Exclusive `Last` decides the classification, as R1.1 says).
+  - **Rejected:** a mode or bool on the acquisition; try-then-fallback; deriving the Shared acquisition from the Exclusive one.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
