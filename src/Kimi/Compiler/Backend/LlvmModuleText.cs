@@ -5,7 +5,7 @@
 // platform layer (its RuntimeLayer's template; windows-x64's WindowsPlatform.ll.in owns every kernel32 call of the runtime in a program
 // module, linux-x64's LinuxPlatform.ll.in every system call), the common part (Runtime.ll.in) and Kimi's allocator (HeapRuntime.ll.in)
 // and expanded in one scan, with the layer's ABI definitions spliced in and the row's constants written, and its test variant (none for
-// a layer without test builds, where a test build is a broken contract), the memory part every module defines after it
+// a layer naming no test runtime, where a test build is a broken contract), the memory part every module defines after it
 // (MemoryRuntime.ll.in: the runtime's memcmp, memcpy, memmove and memset, TargetProfile.MemorySymbols), the erased writer's kept runtime
 // (ErasedWriterRuntime.ll.in: the ErasedReserve intrinsic's routine, a module part on request), the float formatting part
 // (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the 128-bit
@@ -151,7 +151,7 @@ internal static partial class LlvmModuleText
     }
 
     // The frame's runtime, in its test variant when a test build supplies its test runtime text, then the memory part, then that text. A
-    // test build on a row whose layer has no test builds is a broken contract (B7b8 refuses such a test before any build).
+    // test build on a row whose layer names no test runtime is a broken contract (B7b8 refuses such a test before any build).
     internal static void WriteRuntime(TextWriter output, ModuleFrame frame, string? testRuntime)
     {
         output.Write(testRuntime is null
@@ -321,7 +321,9 @@ internal static partial class LlvmModuleText
                 "target datalayout = \"" + row.DataLayout + "\"\n" + RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n" +
                 (row.FloatMarker is { } marker ? "@" + marker + " = global i32 0, align 4\n" : string.Empty);
             this.Runtime = ExpandRuntime(RuntimeTemplate(this.Layer), this.Layer.Definitions, RuntimeAbi.RowConstants(row)) + "\n";
-            this.TestRuntime = this.Layer.Tests ? ReportTestAbort(ReportTestAbort(this.Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage) : null;
+            this.TestRuntime = this.Layer.TestRuntime is null
+                ? null
+                : ReportTestAbort(ReportTestAbort(this.Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage);
             this.Footer = FooterText(row);
         }
 
@@ -337,7 +339,7 @@ internal static partial class LlvmModuleText
         internal string Runtime { get; }
 
         /// <summary>Gets a test build's runtime: each Abort definition first reports the aborted test to the test runtime; null for a layer
-        /// without test builds.</summary>
+        /// naming no test runtime.</summary>
         internal string? TestRuntime { get; }
 
         /// <summary>Gets the footer: every generated definition carries the row's profile attributes (SPEC 21.3.1) with its

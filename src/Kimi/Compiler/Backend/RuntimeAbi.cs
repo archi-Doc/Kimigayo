@@ -7,13 +7,14 @@
 // N6), one RuntimeLayer record per platform layer (windows-x64's over kernel32, linux-x64's over system calls: its template's resource
 // name, which a target row's Layer column names; its OS-error prefix; its definition list, the routines whose template definitions are
 // spliced from them; its start form, the start routine, the module asm defining the entry and the layer's routines called before the
-// startup root; whether test builds run on it), and
+// startup root; the test runtime its test builds link, if any), and
 // the text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes: the target-free ones (the
 // zero-sized buffer address at `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at
 // `{{static_release_kind}}` and `{{heap_release_kind}}`) and a row's (RowConstants: the row's unmapped bound at `{{unmapped_bound}}`,
 // and its layer's OS-error prefix at `{{os_prefix}}` with its length at `{{os_prefix_length}}`), which only the row's runtime expansion
 // is given.
-// Input: a target row (its Layer and UnmappedBound); the Windows and Linux rows' entry symbols; a marker's name, the row's constants and
+// Input: a target row (its Layer and UnmappedBound); the Windows and Linux rows' entry symbols; the test runtime's resource name
+// (Testing's TestRuntime.Resource); a marker's name, the row's constants and
 // the expanded text being written.
 // Output: the records, read by code generation and by LlvmModuleText's frame and runtime splice; a row's layer and constants; a
 // constant marker's text appended.
@@ -207,14 +208,14 @@ internal static class RuntimeAbi
 
     /// <summary>Gets the platform layers' records, one per layer template, which the target rows' Layer columns name (the Tatara plan's
     /// B7b2a), each runtime the layer, the common part (Runtime.ll.in) and the allocator (HeapRuntime.ll.in): windows-x64's
-    /// (WindowsPlatform.ll.in, over kernel32), whose start is the exported entry, with test builds; linux-x64's (LinuxPlatform.ll.in, over
-    /// system calls), whose module asm starts the internal start body after the process's setup, without test builds. A property after
-    /// the fields it reads, since static initializers run in text order.</summary>
+    /// (WindowsPlatform.ll.in, over kernel32), whose start is the exported entry and whose test builds link the test runtime;
+    /// linux-x64's (LinuxPlatform.ll.in, over system calls), whose module asm starts the internal start body after the process's
+    /// setup, without a test runtime. A property after the fields it reads, since static initializers run in text order.</summary>
     internal static RuntimeLayer[] Layers { get; } =
     [
-        new("WindowsPlatform.ll.in", " (win32=", [.. PlatformRoutines, .. CommonDefinitions], Start, null, [], true),
+        new("WindowsPlatform.ll.in", " (win32=", [.. PlatformRoutines, .. CommonDefinitions], Start, null, [], Testing.TestRuntime.Resource),
         new(
-            "LinuxPlatform.ll.in", " (errno=", [.. PlatformRoutines, PlatformStart, Clock, .. CommonDefinitions], StartBody, LinuxStart, [PlatformStart], false),
+            "LinuxPlatform.ll.in", " (errno=", [.. PlatformRoutines, PlatformStart, Clock, .. CommonDefinitions], StartBody, LinuxStart, [PlatformStart], null),
     ];
 
     /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>
@@ -284,7 +285,7 @@ internal static class RuntimeAbi
 /// <param name="StartAssembly">The module text that defines the entry and calls <paramref name="Start"/>, written before it; null when
 /// <paramref name="Start"/> is the entry.</param>
 /// <param name="StartCalls">The layer's routines the start calls before the startup root, each a Unit routine without parameters.</param>
-/// <param name="Tests">Whether a test build runs on the layer: the test runtime (Kimi.Testing's TestRuntime.ll) calls kernel32 and its
-/// entry defines the exported entry, so only windows-x64's layer has a test variant.</param>
+/// <param name="TestRuntime">The embedded resource of the test runtime the layer's test builds link (Kimi.Testing's TestRuntime.ll,
+/// which calls kernel32: windows-x64's), or null: the layer has none, so a test build on its row is a broken contract.</param>
 internal sealed record RuntimeLayer(
-    string Template, string OsErrorPrefix, FunctionAbi[] Definitions, FunctionAbi Start, string? StartAssembly, FunctionAbi[] StartCalls, bool Tests);
+    string Template, string OsErrorPrefix, FunctionAbi[] Definitions, FunctionAbi Start, string? StartAssembly, FunctionAbi[] StartCalls, string? TestRuntime);

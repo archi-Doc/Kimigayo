@@ -7,7 +7,7 @@
 // reports (Phase, the runner's numbering) with its save, set and restore around the code a phase covers (WritePhase, RestorePhase).
 // Input: the catalog Discover filled; a writer of each case's call, so a code generator calls its case functions its own way; a phase's
 // saved value's name.
-// Output: LLVM text; a frame kind.
+// Output: LLVM text; a frame kind; the text's resource name (Resource), which the platform layer that links it names.
 // Invariants: the cases run in the catalog's order; the routines' signatures are RuntimeAbi's; a phase is saved and set together, and its
 // saved value restored; warm writes allocate nothing (numbers on the stack, LlvmModuleText.WriteNumber).
 // Must not: decide which tests run (the catalog's), write a case's call itself (WriteEntry's caller does), or decide which code a phase
@@ -20,6 +20,10 @@ namespace Kimi.Testing;
 
 internal static class TestRuntime
 {
+    /// <summary>The embedded resource of the test runtime's text (TestRuntime.ll, which calls kernel32), which a platform layer that links
+    /// it names (RuntimeAbi's RuntimeLayer).</summary>
+    internal const string Resource = "Kimi.Testing.TestRuntime.ll";
+
     /// <summary>The phase a frame reports, as the runner reads it: the runtime's current phase, which starts as <see cref="Body"/>.</summary>
     internal enum Phase
     {
@@ -118,7 +122,7 @@ internal static class TestRuntime
 
     private static string Read()
     {
-        using var stream = typeof(TestRuntime).Assembly.GetManifestResourceStream("Kimi.Testing.TestRuntime.ll")!;
+        using var stream = typeof(TestRuntime).Assembly.GetManifestResourceStream(Resource)!;
         using var reader = new StreamReader(stream);
         return LlvmModuleText.ExpandRuntime(reader.ReadToEnd(), [], []);
     }
