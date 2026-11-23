@@ -207,7 +207,7 @@ public sealed partial class Binding
     private (BindingSymbol? Symbol, Koto? Failed) SelectAliasTarget(Koto target, BindingScope scope)
     {
         var path = this.NamePath(target, scope);
-        return path.Symbol is not null || this.BindType(target, scope, this.TypeContext(target, scope)) is not null ? (path.Symbol, null) : (null, UnselectedTypeSite(target, path));
+        return path.Symbol is not null || this.BindType(target, scope, this.TypeContext(target, scope)) is not null ? (path.Symbol, null) : (null, this.UnselectedTypeSite(target));
     }
 
     // Read only provenance that ordinary lookup actually selected in this target; no alias lookup or Type reconstruction occurs.

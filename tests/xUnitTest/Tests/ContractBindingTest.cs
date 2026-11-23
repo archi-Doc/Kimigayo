@@ -755,6 +755,10 @@ public class ContractBindingTest
     // its reference relating it, a missing one UnresolvedBinding_Kd; the Contract keeps its own record over its failed parent. Before E2-4b
     // the reference recorded InvalidConstraint_Kd (another requirement's record). The twin is valid. The miss sits where a Type use's does
     // (C-405 C1, probes x5, x2g with their Type-position twins x5t, x2gt): a walk at its failing qualifier step, a generic at its Name.
+    // The site is read from the use's published lookup (R7-N1 e3, F's ruling N1-13 B1, PLAN G1298): a generic whose walk fails at a
+    // qualifier records there too, as its plain twin (g2 as x5, g1 as x5t, g3 at `Missing`; before, each at its Name `G.Missing.P` or
+    // `Missing.P`), and a requirement too (r1, r1g; before, r1g at `G.Missing.P`), whose Constraint keeps its record over the failed
+    // requirement (one dependent InvalidConstraint_Kd at it, Q13).
     // The resolver's other outcomes keep their own records (C-405 C2): an inherited Contract reached without its qualifier is
     // QualificationRequired_Kd relating the base clause and the declaration (x6; SPEC 9.5, before E2-4b InvalidConstraint_Kd), and an
     // ambiguity is AmbiguousBinding_Kd alone (x7; its dependent InvalidConstraint_Kd went, M2). The qualified twins are valid.
@@ -767,6 +771,12 @@ public class ContractBindingTest
     [InlineData("group G\n    public contract Q\nfunc f(x: ref/G.Missing.P) -> () => ()\n", "UnresolvedBinding_Kd 3:15 G.Missing")] // x5t
     [InlineData("contract A: Nope<i32>\n", "InvalidConstraint_Kd 1:1 contract|UnresolvedBinding_Kd 1:13 Nope")] // x2g
     [InlineData("func f(x: ref/Nope<i32>) -> () => ()\n", "UnresolvedBinding_Kd 1:15 Nope")] // x2gt
+    [InlineData("group G\n    public contract Q\ncontract A: G.Missing.P<i32>\n", "InvalidConstraint_Kd 3:1 contract|UnresolvedBinding_Kd 3:13 G.Missing")] // g2
+    [InlineData("group G\n    public contract P<T>\ncontract A: G.P<i32>\n", "")] // g2t
+    [InlineData("group G\n    public contract Q\nfunc f(x: ref/G.Missing.P<i32>) -> () => ()\n", "UnresolvedBinding_Kd 3:15 G.Missing")] // g1
+    [InlineData("func f(x: ref/Missing.P<i32>) -> () => ()\n", "UnresolvedBinding_Kd 1:15 Missing")] // g3
+    [InlineData("group G\n    public contract Q\nstruct S<T>\n    T is G.Missing.P\n", "InvalidConstraint_Kd 3:1 struct|UnresolvedBinding_Kd 4:10 G.Missing|InvalidConstraint_Kd 4:10 G.Missing.P")] // r1
+    [InlineData("group G\n    public contract Q\nstruct S<T>\n    T is G.Missing.P<i32>\n", "InvalidConstraint_Kd 3:1 struct|UnresolvedBinding_Kd 4:10 G.Missing|InvalidConstraint_Kd 4:10 G.Missing.P<i32>")] // r1g
     [InlineData("open struct B\n    public contract P\n    public init() => ()\nstruct D: B\n    contract A: P\n    public init(): base() => ()\n", "InvalidConstraint_Kd 5:5 contract|QualificationRequired_Kd 5:17 P, base clause of D, inherited declaration")] // x6
     [InlineData("open struct B\n    public contract P\n    public init() => ()\nstruct D: B\n    contract A: B.P\n    public init(): base() => ()\n", "")] // x6t
     [InlineData("alias G1\nalias G2\ngroup G1\n    public contract P\ngroup G2\n    public contract P\ncontract A: P\n", "InvalidConstraint_Kd 7:1 contract|AmbiguousBinding_Kd 7:13 P")] // x7

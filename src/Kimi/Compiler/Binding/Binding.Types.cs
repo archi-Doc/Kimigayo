@@ -28,14 +28,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 23.1.2: where a Type use that selected nothing fails, at every Type position (BindNamedType, BindConstructedType) and a
-    // Contract's parent (BuildContract): a generic at its Name (its arguments keep their own records); an unresolved walk at its failing
-    // step when that step is a qualifier of the path, as `S.Missing` of `S.Missing.X`; else the use, where an ambiguity or a qualification
-    // stop keeps its own record. A generic's site reads no walk, so BindConstructedType passes none.
-    private static Koto UnselectedTypeSite(Koto syntax, ResolvedPath path)
-        => syntax is GenericsKoto generic ? generic.Identifier!
-            : path.End == PathEnd.Unresolved && StoppedAtQualifier(path.Use, syntax) ? path.Use : syntax;
-
     private static Koto UnwrapTypeSyntax(Koto node)
     {
         while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, ConversionOperation: null })
@@ -331,6 +323,15 @@ public sealed partial class Binding
         return this.BindNamedType(syntax, scope, context, applyingOrigins);
     }
 
+    // SPEC 23.1.2: where a Type use that selected nothing fails, at every Type position (BindNamedType, BindConstructedType), a Contract's
+    // parent (BuildContract) and an alias target (SelectAliasTarget), read from the use's published lookup alone (NamePath; F's ruling
+    // N1-13 B1, PLAN G1298), so every reader names one site whoever evaluated the walk: an Unresolved walk at its failing step when that
+    // step is a qualifier of the path, as `S.Missing` of `S.Missing.X` and of `S.Missing.X<T>`; else a generic at its Name (its arguments
+    // keep their own records); else the use, where an ambiguity or a qualification stop keeps its own record.
+    private Koto UnselectedTypeSite(Koto syntax)
+        => UseNode(syntax) is var use && HirTables.LookupOf(use) == PathEnd.Unresolved && this.PublishedStep(use) is var step && StoppedAtQualifier(step, syntax) ? step
+            : syntax is GenericsKoto generic ? generic.Identifier! : syntax;
+
     // The named Type a use's one lookup selected: the lookup published on the use (a requirement's, a qualifier's, a Contract parent's,
     // an Origin set's), else BindType's own, the use's first. Nothing here looks the name up again; a failed lookup's facts (a
     // qualification stop, an ambiguity) are the ones FailMissing explains.
@@ -356,7 +357,7 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            return this.FailMissing(UnselectedTypeSite(syntax, head), scope, BindingFailure.MissingType);
+            return this.FailMissing(this.UnselectedTypeSite(syntax), scope, BindingFailure.MissingType);
         }
 
         syntax.BoundSymbol = symbol;
@@ -420,7 +421,7 @@ public sealed partial class Binding
         {
             // A missing Name, a head that is no Type or a wrong arity forms no application (SPEC 9.5, 9.7), and each is its own record.
             this.BindUnappliedArguments(generic, scope, context.Nested);
-            return definition is null ? this.FailMissing(UnselectedTypeSite(generic, default), scope, BindingFailure.MissingType)
+            return definition is null ? this.FailMissing(this.UnselectedTypeSite(generic), scope, BindingFailure.MissingType)
                 : container is null or ContractKoto ? this.Fail(generic, BindingFailure.InvalidTypeFormation)
                 : this.RecordArity(generic, definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count);
         }
