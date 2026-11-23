@@ -13,7 +13,8 @@ __declspec(noinline) static int large_frame(void) {
     return 0;
 }
 static unsigned int run(void) {
-    // Static storage: at O0 a local constant array is copied by a memcpy call, and this suite references no memory function.
+    // Static storage: at O0 a local constant array is zero-filled by a memset call, then stored, and this suite references no
+    // memory function.
     static const size_t sizes[] = {0, 1, 4095, 4096, 4097, 16384, 65537};
     for (size_t i = 0; i < sizeof(sizes) / sizeof(sizes[0]); ++i)
         if (test_probe(sizes[i])) return 7;
