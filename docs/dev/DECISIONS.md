@@ -16161,6 +16161,8 @@ resumed by R4-M86 (2026-10-20).
     stays while a family is written through it, and the batch converting the last one (E) deletes it. `PairAdmitted` and
     `ImplicitPairAdmitted` keep `EnsurePassNode` for good (amended by R7-N5 B2a-2, below).
     `originInferences` stays out (B's ruling 2, PLAN G1078). Ratchet ("Node-keyed table members in Binding") 76 -> 70.
+    - Amended by BU-255 (Q-719; PLAN G1078 closed): `originInferences` is deleted, not migrated; an Origin solve's state lives as
+      long as its solve or its call's evaluation.
   - **R7-N5 B5b** (the Back's batch, Q-541; design `b4b5b-design.md` §4-§5, B's rulings 4, 7, 9): `effectBoundRejections` and
     `callablePremiseFailures`, step-cleared at `PrepareEffectBounds`, become pass families of `NodeColumns`
     (`StampedColumn<T, Binding.PassCounter>`), their Clears deleted: the order probe found no read or write of either before its step
@@ -17996,6 +17998,19 @@ resumed by R4-M86 (2026-10-20).
     options), a record at the Case Pattern, `RestOnPart` for it, binding the read siblings and resting them by a second walk, reading
     each payload twice; form L (`BoundMatch.Unheld` and the late recheck of the leaf's dropped positions: it kept only a dependent
     record; ruling 7, "Short").
+- **BU-255 An Origin solve's state lives as long as its solve or its call's evaluation (PLAN G1078, R7-N5)** (Back, 2026-11-24;
+  Binding; Q-719, D-1201; Major; design `back\notes\r7-n5\g1078-design.md`, B's rulings 1-6, its design review C-470; the Front's
+  implementation review and the Middle's RP17 consent on C-513; commits a067e2678, 95375fdf1) SPEC 8.6.4, 8.6.1, 23.1.2. An Origin
+  solve's state lives as long as its solve or its call's evaluation, with no table: a call keeps one state per candidate
+  (`CallEvaluation.Inferences`, `SlotSolution.Kept`) across the candidate's trial, re-trials, fixed re-check and judgment, returned
+  clean at `ReturnEvaluation`; a contract comparison, `ContractFits`, a value call and a Case construction rent a clean state and
+  return it in their own function. `Binding.originInferences` and `InferenceOf` are gone (ratchet "Node-keyed table members in
+  Binding" 11 -> 10). It fixes a defect: SPEC 8.6.4 with 8.6.1 makes one requirement reached through two bound references two
+  candidates with one declaration, which shared one state, so the later rejected candidate's solve cleared the winner's published
+  failure (Marked) and the call reported dependent records that rule W rests (SPEC 23.1.2); CallOriginRelationTest's SwapK/SwapC rows
+  pin it. It also removes the table's growth across edits. Rejected: (a) keying by the comparison's site (changes `Use`: a semantic
+  unit, the site not proven a program node); (b) a pool outside NodeColumns keyed as today (an owner-approved ratchet exception that
+  keeps the growth).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
