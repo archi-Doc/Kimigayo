@@ -2224,6 +2224,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and Part 3 (an Error node's value at its consumer's Type; a located one evaluated once, each consumer its own derived value).
   - Amended by R7-M65 (Z16): an operation keeps what it evaluates on every path (`and`'s right operand stays replaced), as a case
     of the one `Keeps` rule.
+  - Amended by BU-251 (D-1163, Q-732, 2026-11-24): the Opens' "a failed match" is a match failed for its own requirement
+    (non-exhaustive, Pending, a `try` whose operand failed or is not Option/Result); a match Binding resolves through its result
+    join is outside the owner reservation, by R4-M179's precedent.
 - **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, verbatim 「推奨どおり承認 (推奨)」 to the package with OQ-F5-1 to OQ-F5-6
   at their recommendations; R4-M74 OQ2) The package is `draft/Sketches/A5 Step 2/2b-D-package.md`. In short:
   - err(effect) is an access in `MirBorrows` (`AccessKind` rows `EffectRead`, `EffectWrite`; three effect fact kinds); the Call's
@@ -6007,6 +6010,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `NonExhaustiveMatch_Kd` and `UnreachablePattern_Kd`. No acceptance moves.
   - Rejected: an `Acquisition`-aware test in `MirBuilder.Match` (a second copy of the rule); a new plan flag (a mode); waiting for
     G121 (a resolved match is not its case).
+  - Amended by BU-251 (D-1163, Q-732, 2026-11-24): a Pattern the late recheck refutes keeps its kind and its test, and its plan,
+    Invalid, is built; a failed guard or arm body is that part's own failure, not an Error match.
 
 - **R4-M180 An erased substitution binds no Origin (PLAN G157 (30))** (2026-11-07; the owner, R5's dialog, verbatim 「(A)で決定します。」;
   supersedes R5-M39's clause on a substitution's and a closure context's Origins and Inputs) SPEC 8.13.3. `TyCtxt.Erase(Subst)`, and
@@ -17932,6 +17937,65 @@ resumed by R4-M86 (2026-10-20).
     setter would stay derived while MIR checks every Field); a Field Place over a receiver of no Type (d3, d4: a failed `self`); a
     Binding term for the identity premise's receiver (`HirTables.IdentityPremise`: BU-72 publishes no fact for a nested parameter, so
     x1, x2, x3, x5 faulted; the builder's `Field` owns the limit, one rule); a receiver-free predicate over the Field's own struct.
+- **BU-251 A match's own verdict is its result join; an Invalid position is a leaf; a Case stands only on read payloads** (Front,
+  2026-11-24; Binding with one MIR hunk the Middle read on C-497; Q-732, D-1214; Major; D-1163 with G1076's early form, design
+  `front\notes\restart11\d1163\design.md` Revision 1 and Revision 1a steps 1-3 without form L; F's rulings 1-9; the Front's design
+  review, delta read and implementation review; the Middle's C-497 read and delta read, C-a..C-e) SPEC 14.8, 14.8.1, 14.8.3, 14.9.2,
+  14.9.3, 23.1.2. Amends R7-M65, R4-M179 and R4-M88 (below).
+  - Rule (D1): a match's own requirements are its coverage (14.8.4) and its result join (14.9.2); `BindMatch` rejects a match only
+    for a Pending plan (its guards and bodies are not bound) or keeps it unavailable for a non-exhaustive coverage, and otherwise
+    decides by `FinishResult`, as an `if`, a `do` and a `loop` do. A failed Subject, a failed Pattern position, a failed guard and a
+    failed arm body are those parts' own failures, each with its record or resting on one: the join reads the arm bodies and the
+    expected Type, never the Subject or the Patterns, and a failed body is one failed source of it (BU-78). Deleted: `BindMatch`'s
+    second copy of "a failed part rests the construct" (`subject is null || plan.Invalid || pendingBody`).
+  - Representation (D2): `BoundPattern.MatchedType` is `BoundType?`, null exactly at a resting leaf: under a failed Subject each
+    arm's Pattern is one Invalid position, a leaf, which matched no Type (it replaces the arm-less plan of a failed Subject); its
+    Pattern's syntax and bindings rest on the Subject (`PatternMarker`, BU-234's failed slots). Permanent.
+  - D4: a Case position stands only where its Case is selected with its arity and every payload's Type is read at the position
+    (`BindPattern` reads them first, into the reused scratch stack `payloadReads`, then binds each read payload's Pattern, whose own
+    checks record as before). Where a payload's Type is not read, its Pattern keeps its record (`InvalidPattern_Kd`, or
+    `PayloadRead`'s located `Unsupported_Kd`) and the position stays the Invalid leaf (no record of its own): the positions the read
+    payloads' Patterns formed leave it, each resting on the first unread payload Pattern unless it failed on its own
+    (`RestOnFailure`'s guard: a node with its own recorded failure keeps it; only its slots lose their Types), a rested binding's
+    bound name rests with it, and the Case Pattern with what no position bound rests on that payload Pattern (`PatternMarker`).
+  - D3 (`HasFacts`' Match/Try row, `BoundPatternKind.Invalid`'s contract): a current, settled (not Pending) plan is published with
+    its form. Its precondition for the builder: **an Invalid position is a leaf that tests, selects and binds nothing** (its Pattern
+    failed with its own record, a payload Pattern of its Case was not read, or it rests on the failed Subject), built as an untested
+    link (`Pass(Const(true))`); **every other position is buildable** (a Case position has a child for each payload of its selected
+    Case, read at the position; a Tuple position one per element); a position the late recheck refutes keeps its kind and its test,
+    and a Binding position there takes the derived value (Acquisition None, HIR Failed, BU-103) (the Middle's C-d).
+  - D5 (MIR, the Middle's file): `MirBuilder.Typed(place)`, the one predicate "a Place has a Type, so an access a reader judges may
+    be built on it" (PLAN G1073, G1184; R7-M64, R7-M88, BU-234; rule W): factored out of `Reads`' acquire term, read by `Guard` (its
+    FakeRead of the arm's Place, which a failed Subject's local lacks) and by `Verification`'s test message view (its second copy,
+    replaced). Named by what it tests, not SPEC 13's "readable Place".
+  - Reasons: R1 (SPEC 14.9.2 forms the Expression Type from the expected Type and the arm bodies, never from the Subject or the
+    Patterns) and the builder reason (the builder builds every position kind and an Invalid position is a leaf built as an untested
+    link, so validity is no fact the builder reads: R7-M65's reason for "a match without a valid ... plan is Error" no longer holds).
+  - Amends **R7-M65**'s "`HasFacts` publishes a name of a binding without a Type, and a match or a try without a valid, settled plan,
+    as Error" to "... and a match or a try without a current, settled plan, as Error (BU-251: an Invalid position is a leaf)".
+  - Amends **R4-M179**'s "A failed Pattern (`ValidatePatternType`'s late recheck) keeps its Invalid plan and Opaque; a failed guard
+    or arm leaves an Error node (G121, R4-M88)" to "A Pattern the late recheck refutes keeps its kind and its test, and its plan,
+    Invalid, is built (BU-251); a failed guard or arm body is that part's own failure".
+  - Narrows **R4-M88**'s "Opens (G121, owner): ... a failed match, ..." to a match failed for its own requirement (non-exhaustive,
+    Pending, a `try` whose operand failed or is not Option/Result); a match Binding resolves through its result join is outside the
+    owner reservation, by R4-M179's precedent (F's ruling 1, Q2).
+  - Records (Q13): no valid program moves. Gone: the `InternalInvariant_Kd` of a `loop` (or a labeled `do`, or a function) whose
+    exit sat in an arm of a match rejected through a part (nope, mismatch, valueloop, min, full, nouse, subj, guard, guardty,
+    gsubjloop, valjoin, slotuses, dupbind, labeldo, c1t, c1tloop, c1tguard, matchinvloop, gsubjnest, nopebind, nopeguardbind,
+    nestnope, vjinferann, casefailloop, casefailsibloop, casefailguard, casefailnest2, caselatesibtwin, caselatesibloop); the false
+    `UninitializedPlace_Kd` such an unbuilt exit or assignment gave (valueloop, initarm, labeldo; SPEC 14.9.3). Regained
+    (independent, 23.1.2): the arms' records (lostrec, nopelost, gsubjmove, casefailmove: `MovedPlace_Kd`) and the join's (armfit:
+    `TypeMismatch_Kd`). Two dependent moves named by rule W (F's ruling 7): caselatesib's late `InvalidConstraint_Kd` at `.A(let n)`
+    13:12 and its loop form caselatesibloop's at 15:16 (a read sibling under a Case leaf; its check reads `E<Source>`'s proof, Error
+    because E's clause failed with its reported `InaccessibleBinding_Kd`).
+  - Rejected: `Keeps` keeping an Error match's arms (a sequential build runs both arms; G121 (2)); the Error publishing its outward
+    targets for MIR (a builder consumer row; the arms' records stay lost); the publisher's Completion counting only built jumps (a
+    second definition of 14.9.3); the builder exempting a target whose jumps sit under an Error (a consumer deciding by syntax); an
+    arm without a position for a failed Subject (a builder change); a fabricated matched Type (BU-234 rejected a sentinel); a
+    `Resting` position kind (a second name for Invalid); for D4, a builder skip of the Downcast or a `HasFacts` gate (the review's B1
+    options), a record at the Case Pattern, `RestOnPart` for it, binding the read siblings and resting them by a second walk, reading
+    each payload twice; form L (`BoundMatch.Unheld` and the late recheck of the leaf's dropped positions: it kept only a dependent
+    record; ruling 7, "Short").
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -25753,6 +25817,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Keeps` is unchanged.
   - Amended by BU-250 (Z28 F, PLAN G1184): `HasFacts` publishes a Field Place over its Field's failed slot (`FailedField`), not an
     Error; `Keeps`' formed row keeps it.
+  - Amended by BU-251 (D-1163, Q-732, 2026-11-24): `HasFacts` publishes a match or a try without a current, settled plan as Error,
+    not one without a valid plan: an Invalid position is a leaf the builder builds as an untested link. The reason that no longer
+    holds: the builder could not build an Invalid position.
 - **R7-M66 A body's Origin relations are judged by A5 alone; Binding forms their rows** (Middle, 2026-11-21; R7-O1 H, H1 and H2 as
   one unit, Q-588, D-944; Major, an acceptance mover by record class; R7-M51 extended from call positions to every body relation; the
   owner's H11b §11 approval with R5-M192's amendment, R7 plan revision 99) SPEC 15.6.1, 15.6.4, 15.6.5, 23.1.2, 8.13.2.
