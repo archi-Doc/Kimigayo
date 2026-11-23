@@ -51,9 +51,9 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.VirtualEffectBounds"] = "never written: the library declares no virtual function",
         ["NodeColumns.ImplicitConstructorDecisions"] = "never written: the library declares no derived structure",
         ["NodeColumns.ObjectErasures"] = "never written: the library erases no object view",
+        ["NodeColumns.DeferredDefaults"] = "never written: no library Closure header's result default reads a region with no answer yet (R7-O2 O2-F)",
         ["NodeColumns.ShapeContractHeads"] = "never written: the library declares no shape contract (TheLibraryDeclaresNoShapeContract)",
-        ["NodeColumns.AliasTargets"] = "never written: the library declares no alias",
-        ["NodeColumns.ImportedContainers"] = "never written: the library declares no alias, so no qualifier selects an alias import",
+        ["NodeColumns.ImportedContainers"] = "never written: the library's one alias, its configured `Kimi` (N1-13 C2), binds no environment, so no qualifier selects an alias import",
         ["NodeColumns.QualificationFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.PerCallOrigins"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.PairFollows"] = "never written: the library follows no pair layer",
@@ -63,11 +63,11 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.EffectBoundRejections"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.InferredArrayLengths"] = "never written: the library writes no length hole",
         ["NodeColumns.ArrayInferenceShapes"] = "never written: the library writes no fixed-array annotation with a hole",
-        ["NodeColumns.CallInferenceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.CallableSelectionFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.BaseCallFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.ObjectErasureFailures"] = "never written: the library erases no object view",
         ["NodeColumns.ReceiverOperations"] = "released at the freeze: its library rows are read only by the HIR publisher at the library's publication, before the freeze, and TryGetReceiverOperation refuses a library node (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.MemberSelections"] = "released at the freeze: the library pass's member accesses' sides and selections, its lookups' working state, no reader reads after it (R7-N5 B1b-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.InferredConstructionTargets"] = "released at the freeze: the library pass's construction qualifiers left open for their constructions, its working state, no reader reads after it (R7-N5 B1b-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.QualificationStops"] = "released at the freeze: the library pass's provisional qualification stops, its lookups' working state, no reader reads after it (R7-N5 B1b-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.ResultCompletions"] = "released at the freeze: the library pass's result checks' query memo, its working state, no reader reads after it (R7-N5 B6b)",
         ["NodeColumns.GuessedCompletions"] = "released at the freeze: the guess rule's query memo, its working state; the guess rule answers none at a frozen node (R7-N5 B6b)",
         ["NodeColumns.PublishedCompletions"] = "released at the freeze: the HIR publisher's query memo, read only at the library's publication, before the freeze (R7-N5 B6b)",
@@ -79,13 +79,13 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.PartPrerequisites"] = "released at the freeze: the library pass's part prerequisites, its dependence store, read only by that pass's checks and publication (R7-N5 E)",
         ["NodeColumns.Prerequisites"] = "released at the freeze: the library pass's consultation ranges, its dependence store, read only by that pass's checks and publication (R7-N5 E)",
         ["NodeColumns.ResultContexts"] = "released at the freeze: the library pass's result contexts, its working state, no reader reads after it (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
-        ["NodeColumns.ArithmeticConformanceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.CallableConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.UnboundSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UniqIndexing"] = "never written: the library indexes no user Indexable and no view",
         ["NodeColumns.EarlyReads"] = "never written: the library declares no struct with a base (TheLibraryDeclaresNoStructWithABase), so no library lookup sees a clause not ready",
         ["NodeColumns.RequirementGroups"] = "released at the freeze: the library pass's requirement groups, its member lookups' working state, no reader reads after it (R7-N5 B3-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.ResolvedSlices"] = "released at the freeze: the library pass's range-value slices, its working state; IsResolvedSlice refuses a library node (R7-N5 B2b-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.SynthesizedCalls"] = "released at the freeze: the library pass's synthesized calls and their consumers, its working state, read only by that pass's checks (R7-N5 B1b-1; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.ResolvingTypes"] = "released at the freeze: BindType's cycle guard, the library pass's working state, every row reset as its BindType returns (R7-N5 B1b-1; TheFreezeReleasesTheLibrarysWorkingState)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its
@@ -474,11 +474,14 @@ public partial class KimiLibraryShapeTest
     // library base. The library pass writes its rows in the freeze compilation's Binding (whose pool keeps the result contexts it
     // rented; with either Release row skipped, NoLaterStepWritesTheLibraryLayer and TheLibraryLayerAfterARestartIsTheEmptyPrograms
     // find the library pass's 125 receiver operations and 204 result contexts) and the freeze releases the library's ResultContexts,
-    // ReceiverOperations, RequirementGroups (B3-2: its 30 groups at library member accesses) and ResolvedSlices (B2b-2: its range-value
-    // slices) columns: stamp 0, no row and no arena. Counters are per Binding (R8-M53): a reading compilation's first run has the
+    // ReceiverOperations, RequirementGroups (B3-2: its 30 groups at library member accesses), ResolvedSlices (B2b-2: its range-value
+    // slices), ResolvingTypes (B1b-1: BindType's guard, whose pages hold no row) and SynthesizedCalls (B1b-1: its synthesized calls)
+    // columns: stamp 0, no row and no arena. Counters are per Binding (R8-M53): a reading compilation's first run has the
     // library pass's counter value, 1 (FreezeLibrary refuses a rerun), so a column the freeze left at that stamp would answer the
     // library pass's rows (and the freeze Binding's pooled contexts) there; released, no library node's row answers, a library slice's
     // included, while the program's own `if` keeps its row.
+    // R7-N5 B1b-2's MemberSelections, InferredConstructionTargets and QualificationStops (the library pass's member accesses' sides
+    // and selections, its open construction qualifiers, its lookups' provisional stops) are released alike.
     [Fact]
     public void TheFreezeReleasesTheLibrarysWorkingState()
     {
@@ -494,11 +497,16 @@ public partial class KimiLibraryShapeTest
         Released(families.ResultContexts);
         Released(families.ReceiverOperations);
         Released(families.RequirementGroups);
+        Released(families.MemberSelections);
+        Released(families.InferredConstructionTargets);
+        Released(families.QualificationStops);
         Released(families.ReachedThroughBorrow);
         Released(families.ResolvedSlices);
         Released(families.Prerequisites);
         Released(families.PartPrerequisites);
         Released(families.PrerequisiteVisits);
+        Released(families.ResolvingTypes);
+        Released(families.SynthesizedCalls);
         var nodes = library.Kotonoha.Syntax.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
         Assert.Contains(nodes, static x => x is IfKoto or MatchKoto or DoKoto or LoopKoto);
         Assert.Contains(nodes, static x => x is IndexKoto { Right: RangeKoto });

@@ -282,7 +282,7 @@ public class ArchitectureRulesTest
         "Binding.InPlaceReads.cs:StringThroughLayers=2 kind",
         "Binding.Indexers.cs:TryBindIndexer=1 unchanged",
         "Binding.InferCtxt.cs:BindsDistinctTypes=1 formed",
-        "Binding.InheritedConformances.cs:InheritedSelfMismatchNote=1 record",
+        "Binding.InheritedConformances.cs:RetainedImplementation=1 record",
         "Binding.InlineLayouts.cs:AddInlinePart=1 key",
         "Binding.InlineLayouts.cs:WithComponent=1 unchanged",
         "Binding.Interpolation.cs:BindTryWrite=1 kind",
@@ -324,6 +324,7 @@ public class ArchitectureRulesTest
         "Binding.OriginDiagnostics.cs:IsExcludedInputOrigin=1 record",
         "Binding.OriginInheritance.cs:CompleteImplementationOrigins=2 formed",
         "Binding.OriginRequirements.cs:PairOrdinal=1 key",
+        "Binding.OwnedConversions.cs:JudgeErasedOwned=2 key", // R7-O2 O2-N's N-B3a: an Owned obligation's Type against the use's published subject, which deferral is the use's last
         "Binding.PairCases.cs:CaseType=2 unchanged",
         "Binding.PairCases.cs:PairSlotCondition=1 key",
         "Binding.ParameterShapes.cs:SameBinding=1 sufficient",
@@ -409,9 +410,9 @@ public class ArchitectureRulesTest
         "Binding.TypeRelations.cs:CompatibleSignature=1 unchanged",
         "Binding.TypeRelations.cs:SubstituteTypeCore=3 unchanged",
         "Binding.Types.cs:BindTypeStructure=1 kind",
-        "Binding.ValueCalls.cs:AcquireValueCallee=1 unchanged",
         "Binding.ValueCalls.cs:BindValueCall=1 kind",
         "Binding.ValueCalls.cs:CallableClosure=1 unchanged",
+        "Binding.ValueCalls.cs:FormValueCallee=1 unchanged",
         "Binding.ValueCalls.cs:IndirectObjectCallee=1 unchanged",
         "Binding.ValueCalls.cs:TryCallable=1 unchanged",
         "Binding.ValueContext.cs:DiscardsFunctionBody=1 kind",
@@ -499,11 +500,11 @@ public class ArchitectureRulesTest
     // binding a declaration query; the header's use of it went to Binding.DeclQuery. A property pattern reads it too.
     [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
-    // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
+    // diagnostics adapter. None is left: R7-E3 E3b-1 records the unbound slot as a related location (UnboundSlotFact.Note went).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 24)]
-    [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 11)]
+    [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 0)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
     // R7-N1a (RP6): ResolvePath is the one evaluation of a Type name and PublishPath its one writer, so these entries stay gone.
@@ -538,7 +539,7 @@ public class ArchitectureRulesTest
     // an Opaque site is added only there (AddSite, its one MirBody.AddOpaque call), Site is reached only from the gate, Unsupported and
     // Invariant, and each caller of the gate is a table row, so a new producer fails here until its row is reviewed.
     [InlineData("Formers of an Opaque site", "src/Kimi/Compiler/Mir", @"\.AddOpaque\(|\bthis\.AddSite\(", "Build/MirBuilder.Opaque.cs=3")]
-    [InlineData("Callers of the derived-value gate", "src/Kimi/Compiler/Mir/Build", @"\bthis\.(?:Opaque|Derived|DerivedValue|Site)\(", "MirBuilder.Acquisitions.cs=1;MirBuilder.Blocks.cs=2;MirBuilder.Constructors.cs=1;MirBuilder.Defaults.cs=1;MirBuilder.Match.cs=1;MirBuilder.Opaque.cs=5;MirBuilder.Places.cs=2;MirBuilder.Transfers.cs=1;MirBuilder.Values.cs=2;MirBuilder.cs=1")]
+    [InlineData("Callers of the derived-value gate", "src/Kimi/Compiler/Mir/Build", @"\bthis\.(?:Opaque|Derived|DerivedValue|Site)\(", "MirBuilder.Acquisitions.cs=1;MirBuilder.Blocks.cs=2;MirBuilder.Constructors.cs=1;MirBuilder.Defaults.cs=1;MirBuilder.Match.cs=1;MirBuilder.Opaque.cs=6;MirBuilder.Places.cs=2;MirBuilder.Transfers.cs=1;MirBuilder.Values.cs=2;MirBuilder.cs=1")]
     // DECISIONS Z17: the readers of MirUses are the census's, each reading an Opaque site's undecided use at its root through
     // MirDescriptors.Judged, or at its Place for A1's reason (MirInit, MirMoveData), so a new reader fails here until its census row is
     // reviewed. An implementer lists IMirUses in its base list after any other; a generic constraint (where T : struct, IMirUses) is none.
@@ -568,8 +569,10 @@ public class ArchitectureRulesTest
     // be an enum, which keeps its whole list until PrepareStorage fails it, or a Contract, whose refinements are many (BuildContract).
     [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]
     // R7-N1a (RP6): ResolvePath reads the Type namespace; the others are the alias and module walks (R7-N1 e) and their own tables. PublishPath
-    // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
-    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
+    // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b. R7-N1 f: a scope's formal
+    // parameters (BindingScope.Parameters.Types) are Type-namespace reads too: TypeStage's (the root path reads its root through it) and
+    // the library witness rows' own slots.
+    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=1;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.ResolvePath.cs=1")]
     // PLAN G647: a walk of one Type's parts has no count of its own, so a depth or count compared with a literal stays at the census's
     // sites, over the whole compiler (Mir/Build and Mir/Analysis are in scope and have none): Origin-term nesting (FunctionTypes'
@@ -876,7 +879,7 @@ public class ArchitectureRulesTest
         string[] allowed =
         [
             "Add", "AddRow", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
-            "AvailableContractPremise", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
+            "AvailableContractPremise", "CauseOf", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
             "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
             "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",

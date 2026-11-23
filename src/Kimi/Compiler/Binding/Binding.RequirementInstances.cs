@@ -22,8 +22,8 @@ public sealed partial class Binding
         BindingSymbol requirement, BindingSymbol? recorded, Subst call, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
     {
         var self = call.Self!;
-        var contract = this.InstanceContract(recorded, self, call.Declaring);
-        var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition));
+        var contract = this.InstanceContract(recorded, self, call.Declaring, QuerySite.AfterPass);
+        var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition), QuerySite.AfterPass);
         // A comparison shim, by its Contract's lang item (TyCtxt.ShimContract), whose mapping the plan follows (Binding.PrepareBuiltinTargets).
         if (witness is { Kind: RequirementWitnessKind.Builtin, Target: { } target } &&
             TyCtxt.ShimContract(target) is (KimiDeclarationId.Equatable or KimiDeclarationId.Comparable) and var comparison)
@@ -58,7 +58,7 @@ public sealed partial class Binding
     // records its reference as a Type (TyCtxt.Witness(item)), so its Contract declaration with a reference of that declaration in the
     // instance is that reference (DECISIONS R5-M70). Null when the call recorded none or no instantiated reference names a conformance
     // of Self's Type.
-    internal BindingSymbol? InstanceContract(BindingSymbol? recorded, BoundType self, BoundType? reference)
+    internal BindingSymbol? InstanceContract(BindingSymbol? recorded, BoundType self, BoundType? reference, QuerySite site)
     {
         if (recorded is null || (!IsBoundContractReference(recorded) && !ReferenceEquals(reference?.Symbol, recorded)))
         {
@@ -66,7 +66,7 @@ public sealed partial class Binding
         }
 
         // A conformance of a generic Type names its reference in the Type's own parameters (`Self is Indexable<K>`): as written.
-        return reference is null || self.Symbol is not { } owner ? null : this.SelectConformance(self, recorded, reference, this.ConstraintScope(owner.Declaration), out _)?.Contract;
+        return reference is null || self.Symbol is not { } owner ? null : this.SelectConformance(self, recorded, reference, this.ConstraintScope(owner.Declaration), site, out _)?.Contract;
     }
 
     // SPEC 21.3.1: a witness's Origin in its requirement call's terms, the call's Origins and inputs over the requirement's binder; an
@@ -91,7 +91,7 @@ public sealed partial class Binding
     }
 
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
-    private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination = null)
+    private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, QuerySite site, CallPlan? destination = null)
     {
         if (call.ConformingType is { } open && open.HasAbstractPart)
         {
@@ -112,8 +112,8 @@ public sealed partial class Binding
         var recorded = call.RequirementContract;
         var reference = recorded is { Type: { } bound } && IsBoundContractReference(recorded) &&
             this.types.Instance(bound, this.types.StorageSubst(outer)) is ({ } instance, not StorageOutcome.Limit) ? instance : null;
-        var contract = this.InstanceContract(recorded, self, reference);
-        var witness = this.ResolveRequirementWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration));
+        var contract = this.InstanceContract(recorded, self, reference, site);
+        var witness = this.ResolveRequirementWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration), site);
         return witness.Kind switch
         {
             RequirementWitnessKind.Builtin => Copy(witness.Target!),

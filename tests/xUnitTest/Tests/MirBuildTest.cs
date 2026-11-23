@@ -61,15 +61,15 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         "    public func put(a: i32, self: ref/Self) => ()\nstruct Gauge\n    public var level: i32 = 0\n        set(value: i32) -> ()\n" +
         "            storage = value\n    public init() => ()\nfunc f(x: i32, box: ref/Box)\n    var y: i32 = 0\n    var gauge = Gauge.init()\n";
 
-    // An unbuilt form of a valid program: a call of Callee omitting its default, a template the call's substitution cannot instantiate (its
-    // zero<T> over Bx^65<i32>, whose storage nests past Binding's bound: MirBuilder.Defaults.cs, DECISIONS R4-M127), so the MIR records one
-    // located Unsupported_Kd at the call, an Opaque value reading the slots of the arguments before the default. Declarations declares the
-    // callee; a caller holding no Loan meets no limit of A5's. PD30's (e) row (the builder's B3, PLAN G396 (3)); its tests need another
-    // unbuilt form when B3's stage removes it. Before R7-T1 c4 it was the tuple operator over a leaf past the bound, which now builds its
-    // comparison (ATupleOperatorBuildsItsComparisonWhateverItsStorage).
-    internal static (string Declarations, string Callee) Unbuilt { get; } = (
-        "struct Bx<T>\n    public var v: T\nfunc zero<T>() -> i32 => 0\nfunc take<T>(a: i32, k: i32 = zero<T>()) -> i32 => a + k\n",
-        "take<" + string.Concat(Enumerable.Repeat("Bx<", 65)) + "i32" + new string('>', 65) + ">");
+    // An unbuilt form of a valid program: in a function generic in T under Premise, a selection on a receiver of Type T (`s.0` of
+    // `s: ref/T`), which Binding resolves through the identity premise (DECISIONS BU-72; PLAN G168b; AnIdentityPremisesSelectionIsOneUnsupported's
+    // row), so the MIR records one located Unsupported_Kd at the selection, an Opaque value naming the receiver's root. Declarations
+    // declares Pair. The builder's remaining located Unsupported_Kd; its tests need another unbuilt form when G168b's stage removes it
+    // (G355's ExpansionLimit_Kd, the builder's permanent construction record). Before PLAN G396 (3)'s B3 (the default's copy reads the
+    // instance's formation) it was a call omitting a default over Bx^65<i32>, which is now built; before R7-T1 c4 the tuple operator over
+    // a leaf past the bound, which now builds its comparison (ATupleOperatorBuildsItsComparisonWhateverItsStorage).
+    internal static (string Declarations, string Premise) Unbuilt { get; } = (
+        "struct Pair\n    public var a: i32 = 1\n    public init() => ()\n", "T is (Pair, i32)");
 
     // PLAN G949 S1-r1b (review-s1r1 Re-check 3, RB1; F's rulings 153, 156 and 158): the library's bodies built after a Provisional Bind
     // are the ones built after a Final Bind: the MIR builder reads the library's published HIR whatever the Bind's mode, and the HIR is

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -152,24 +151,6 @@ public sealed partial class Binding
                 (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
             issue.Node.ReportIn(store, requirement, issue.Code, condition: this.ConditionOf(issue.Problem), span: span);
         }
-        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures.TryGetValue(issue.Node, out var arithmetic))
-        {
-            ReportArithmeticConformance(issue.Node, requirement, issue.Code, arithmetic);
-        }
-        else if (issue.Failure == BindingFailure.ArithmeticSelection && this.arithmeticSelectionFailures?.TryGetValue(issue.Node, out var selection) == true)
-        {
-            this.ReportArithmeticSelection(issue.Node, store, requirement, selection);
-        }
-        else if (issue.Failure == BindingFailure.ArithmeticDirection && this.arithmeticDirectionFailures?.TryGetValue(issue.Node, out var direction) == true)
-        {
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                ArithmeticOperatorText(ArithmeticContractSyntax.Operator(direction.Id)),
-                evidence: [DiagnosticTypeName(direction.Left), DiagnosticTypeName(direction.Right), direction.Ordinary.Name, direction.Reverse.Name],
-                related: [("ordinary", direction.OrdinaryUse, direction.Ordinary.Name), ("reverse", direction.ReverseUse, direction.Reverse.Name)]);
-        }
         else if (issue.Failure == BindingFailure.CaseLimit)
         {
             this.ReportCaseLimit(issue.Node, store, requirement);
@@ -205,121 +186,6 @@ public sealed partial class Binding
                 requirement,
                 issue.Code,
                 note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
-        }
-        else if (this.ReportCallableSelection(issue.Node, store, requirement, issue.Code))
-        {
-        }
-        else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var range) == true)
-        {
-            var rejected = CollectionsMarshal.AsSpan(this.rejectedRows).Slice(range.Start, range.Count);
-            var relatedCount = rejected.Length;
-            foreach (var candidate in rejected)
-            {
-                relatedCount += candidate.ConstraintFailure is null ? 0 : 1;
-            }
-
-            var candidates = new (string Role, Koto At, string? Label)[relatedCount];
-            var nextConstraint = rejected.Length;
-            string? shapeNote = issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? "No candidate is better than every other remaining candidate under the argument, parameter Type, generic and default ranking rules. Anonymous bodies, captures and waiting function references do not select an overload" : null;
-            var referenceHasGenericCandidate = false;
-            for (var c = 0; c < rejected.Length; c++)
-            {
-                var candidate = rejected[c];
-                var label = candidate.Function.Name;
-                if (candidate.ReferenceSignature && issue.Code == DiagnosticCode.AmbiguousBinding_Kd)
-                {
-                    shapeNote = "No function reference candidate is better than every other fitting candidate under the parameter Type and generic ranking rules. Results do not rank candidates";
-                }
-
-                if (candidate.UnfixedReference)
-                {
-                    // SPEC 10.5: without a fixed expected call signature, an overload set is not a value.
-                    shapeNote = "A function reference without a fixed expected call signature is a value only when exactly one candidate remains and its Type parameters are bound";
-                    referenceHasGenericCandidate |= candidate.Function.GenericArguments.Count != 0;
-                    candidates[c] = ("candidate", candidate.Function, candidate.Actual is { } signature ? $"{label}: callable signature {DiagnosticText.Bound(DiagnosticTypeName(signature), 48).Text}" : label);
-                    continue;
-                }
-
-                if (candidate.ErasureIncomparable && issue.Code == DiagnosticCode.AmbiguousBinding_Kd)
-                {
-                    shapeNote = ErasureAmbiguityNote;
-                }
-
-                if (candidate.Selected)
-                {
-                    shapeNote = "This declaration was selected before completing its callable arguments; its argument constraints failed. Another overload is not selected";
-                    if (candidate.ActualReceiver is { } actualReceiver && candidate.RequiredReceiver is { } requiredReceiver)
-                    {
-                        label = $"{candidate.Function.Name}: closure requires {actualReceiver.ToString().ToLowerInvariant()}; Callable requires {requiredReceiver.ToString().ToLowerInvariant()}";
-                        shapeNote = $"{label}. {shapeNote}";
-                    }
-                }
-                else if (candidate.ActualReceiver is { } closureReceiver && candidate.RequiredReceiver is { } callableReceiver &&
-                    (uint)candidate.ReceiverParameter < (uint)candidate.Function.Parameters.Count)
-                {
-                    // SPEC 7.7.3, 8.10: the closure argument's minimum call receiver is the candidate's only refuted condition
-                    // (TryCandidate).
-                    var parameter = candidate.Function.Parameters[candidate.ReceiverParameter];
-                    var pattern = parameter.Type.BoundType;
-                    var slot = (pattern is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? pattern.Components[0] : pattern)?.Symbol?.Name ?? "F";
-                    var needed = closureReceiver.ToString().ToLowerInvariant();
-                    label = $"{candidate.Function.Name}: closure requires {needed}; Callable requires {callableReceiver.ToString().ToLowerInvariant()}";
-                    shapeNote ??= $"{label}. The closure argument of {parameter.InternalName} needs {CallReceiverText(closureReceiver)}, and the Callable Constraint of {slot} permits {PermittedCallsText(callableReceiver)} (SPEC 7.7.3, 8.10)";
-                }
-
-                if (candidate.Actual is { } actual && candidate.Expected is { } expected)
-                {
-                    var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
-                    label = candidate.ReferenceSignature && issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? $"{candidate.Function.Name}: callable signature {shownActual.Text}"
-                        : candidate.CallableSignature ? $"{candidate.Function.Name}: callable signature is {shownActual.Text}; requires {shownExpected.Text}"
-                        : candidate.SharedReceiver ? $"{candidate.Function.Name}: receiver has {shownActual.Text}; requires {shownExpected.Text}"
-                        : $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
-                    // Keep the compared Types even when the related-location limit omits this candidate.
-                    shapeNote ??= candidate.ReferenceSignature ? $"The function reference requires the fixed call signature {shownExpected.Text}; no candidate applies"
-                        : candidate.CallableSignature ? $"The argument's known call signature is {shownActual.Text}; the candidate requires {shownExpected.Text} from the supplied Type evidence"
-                        : candidate.SharedReceiver ? $"{SharedObjectAuthorityNote}. Receiver: {DiagnosticText.Bound(DiagnosticTypeName(actual), 48).Text}; required: {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}"
-                        : $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
-                }
-
-                if (candidate.ConstraintFailure is { } condition)
-                {
-                    var subject = ClauseSubject(condition.Constraint) is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
-                    var requirer = ForeignClauseOwner(condition.Clause, candidate.Function) is { } owner
-                        ? $"{candidate.Function.Name}: {owner}" : candidate.Function.Name;
-                    var conditionNote = $"{requirer} requires {condition.Clause}; this condition is refuted for {subject}";
-                    if (this.InheritedSelfMismatchNote(condition.Constraint) is { } inherited)
-                    {
-                        conditionNote += $". {inherited}";
-                    }
-
-                    label = conditionNote;
-                    shapeNote ??= conditionNote;
-                    candidates[nextConstraint++] = ("constraint", condition.Clause, conditionNote);
-                }
-
-                candidates[c] = ("candidate", candidate.Function, label);
-            }
-
-            // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
-            // writes of one literal are distinct problems at distinct locations (SPEC 23.3, 23.1).
-            var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
-            issue.Node.ReportIn(store, requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, at: at);
-        }
-        else if (this.callInferenceFailures.TryGetValue(issue.Node, out var callInference))
-        {
-            this.ReportCallInferenceFailure(issue.Node, store, requirement, issue.Code, callInference);
-        }
-        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots.TryGetValue(issue.Node, out var unboundSlot))
-        {
-            // SPEC 10.6, 10.8: the selected call's slot that no evidence binds, with the waiting argument whose signature holds it.
-            ReportUnboundSlots(issue.Node, unboundSlot, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && KotoHelper.UnwrapParentheses(issue.Node).BoundSymbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
-        {
-            // SPEC 10.5: the generic parameter that no expected call signature or explicit argument binds.
-            var lengths = ItemTypeArgumentCount(generic) != generic.GenericArguments.Count;
-            var note = lengths ? "A function reference without a fixed expected call signature binds its Type and length parameters only from a complete explicit argument list (SPEC 10.5)" : UnboundReferenceNote;
-            issue.Node.ReportIn(store, requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: note);
         }
         else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
         {
@@ -393,28 +259,14 @@ public sealed partial class Binding
             var mismatch = this.Mismatch(issue.Problem);
             issue.Node.ReportIn(store, requirement, issue.Code, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)], condition: this.ConditionOf(issue.Problem));
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures.TryGetValue(issue.Node, out var erasure))
-        {
-            var subject = DiagnosticTypeName(erasure.Source);
-            var viewTarget = DiagnosticTypeName(erasure.Target);
-            issue.Node.ReportIn(store, requirement, issue.Code, note: $"Erasing {subject} to the {viewTarget} object View requires {subject} is Owned", evidence: issue.Code == DiagnosticCode.UnprovenConstraint_Kd ? [subject, "Owned"] : null);
-        }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
             this.ReportOwnedConversion(issue.Node, store, owned, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.pendingJudgments?.TryGetValue(issue.Node, out var pending) == true)
-        {
-            ReportPendingJudgment(issue.Node, pending, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints.TryGetValue(issue.Node, out var callable))
         {
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
             ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.InaccessibleBinding_Kd && issue.Node is MemberAccessKoto { BoundSymbol: { } inaccessible })
-        {
-            issue.Node.ReportIn(store, requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
         }
         else if (issue.Failure == BindingFailure.InvalidConstraint)
         {

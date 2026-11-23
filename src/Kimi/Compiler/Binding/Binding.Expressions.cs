@@ -161,7 +161,7 @@ public sealed partial class Binding
         => type is null && expected is { ContainsOpen: true } && !this.HasFailureCauses(node);
 
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
-    private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
+    private bool TakesGenericLiterals(BoundType? type, BindingScope scope, QuerySite site) => this.IsGenericInteger(type, scope, site) || this.IsGenericWrapping(type, scope, site);
 
     // SPEC 12.3.2, 8.7.4: whether a direct integer literal (its number and sign) fits an integer or wrapping integer Type, concrete or
     // generic, and its constant (DECISIONS BU-133): a Type with a width holds its N-bit sign-extended payload; a Type whose literals are
@@ -175,7 +175,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.TakesGenericLiterals(type, scope))
+        if (this.TakesGenericLiterals(type, scope, number))
         {
             bits = (Int128)magnitude;
             return FitsGenericInteger(number, negative);
@@ -211,11 +211,11 @@ public sealed partial class Binding
         {
             // SPEC 12.3: every literal fits the Type its operator propagates and every operator is defined for that Type;
             // a shift count is typed independently of the candidate. A wrapping integer Type has unary - for every argument.
-            var integer = this.IsArithmeticInteger(type, scope);
+            var integer = this.IsArithmeticInteger(type, scope, node);
             var numeric = integer || type.IsFloatingPoint;
             return node switch
             {
-                UnaryKoto { Akind: KotoKind.PrefixMinus } negated => numeric && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
+                UnaryKoto { Akind: KotoKind.PrefixMinus } negated => numeric && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope, node) && this.FitsInputLiteral(negated.Operand, type, scope),
                 UnaryKoto { Akind: KotoKind.PrefixPlus } plus => numeric && this.FitsInputLiteral(plus.Operand, type, scope),
                 BinaryKoto { Akind: KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } shifted => integer && this.FitsInputLiteral(shifted.Left, type, scope),
                 BinaryKoto binary => numeric && this.FitsInputLiteral(binary.Left, type, scope) && this.FitsInputLiteral(binary.Right, type, scope),
@@ -361,7 +361,7 @@ public sealed partial class Binding
 
     private BoundType? BindNodeCore(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (this.pass.Part.PatternNodes.Contains(node))
+        if (this.indexedPatterns[node].Pattern)
         {
             throw new InvalidOperationException("Pattern syntax must be handled by the positional Pattern binder.");
         }
@@ -503,7 +503,7 @@ public sealed partial class Binding
             case InterpolatedStringKoto interpolation:
                 return this.BindInterpolation(interpolation, scope);
             case NumberLiteralKoto number:
-                if (this.TakesGenericLiterals(expected, scope))
+                if (this.TakesGenericLiterals(expected, scope, node))
                 {
                     return !number.IsInteger ? this.Fail(node, BindingFailure.TypeMismatch) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Fail(node, BindingFailure.InvalidLiteral);
                 }
@@ -518,7 +518,7 @@ public sealed partial class Binding
 
                 return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
             case NullLiteralKoto:
-                return expected is { IsPointer: true } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
+                return expected is { IsPointer: true } ? Complete(node, expected) : this.Record(node, BindingFailure.MissingType, [], unresolved: true);
             case BaseReferenceKoto baseReference:
                 return this.BindBaseReference(baseReference, scope);
             case IdentifierNameKoto identifier:

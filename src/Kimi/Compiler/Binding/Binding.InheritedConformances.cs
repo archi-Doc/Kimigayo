@@ -163,7 +163,7 @@ public sealed partial class Binding
             => IsBoundContractReference(contract) ? this.BoundContractReference(this.StoredType(contract.Type!, baseType)!) : contract;
     }
 
-    private ConstraintProof VerifyInheritedConformance(BoundConformancePath path)
+    private ConstraintProof VerifyInheritedConformance(BoundConformancePath path, QuerySite site)
     {
         if (this.ReadOpen(new(null, null, path)))
         {
@@ -193,7 +193,7 @@ public sealed partial class Binding
             var proof = ConstraintProof.Proven;
             for (var i = 0; i < path.InheritedSourceCount; i++)
             {
-                proof = CombineProof(proof, this.VerifyConformance(path.InheritedSource(i)), true);
+                proof = CombineProof(proof, this.VerifyConformance(path.InheritedSource(i), site), true);
             }
 
             if (proof != ConstraintProof.Proven)
@@ -212,8 +212,8 @@ public sealed partial class Binding
             foreach (var ancestor in shape.AncestorStorage)
             {
                 var inheritedProof = IntrinsicContract.Of(ancestor.Intrinsic).Judged
-                    ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope)
-                    : this.VerifyConformance(this.impls.Path(path.Type, ancestor, path.Declaration, path.RootContract));
+                    ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope, path.Use)
+                    : this.VerifyConformance(this.impls.Path(path.Type, ancestor, path.Declaration, path.RootContract), site);
                 proof = CombineProof(proof, inheritedProof, true);
             }
 
@@ -238,7 +238,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                proof = CombineProof(proof, this.ProveRequirement(constraint, scope, self), true);
+                proof = CombineProof(proof, this.ProveRequirement(constraint, scope, self, path.Use), true);
             }
 
             for (var s = 0; s < path.InheritedSourceCount; s++)
@@ -382,12 +382,14 @@ public sealed partial class Binding
         return new(null, null, null, Pending: true);
     }
 
-    private string? InheritedSelfMismatchNote(BoundConstraint constraint)
+    // SPEC 8.6.2, 23.3: the retained implementation whose kept implementation-side Self rejected a refuted clause's conformance path, the
+    // location that explains a candidate's refuted clause (CandidateFacts, run once at the failure: the proof read the paths first).
+    private Koto? RetainedImplementation(BoundConstraint constraint)
     {
         // SPEC 8.6: a refuted and/or keeps the cause of a refuted operand; a negated operand's failure is no such cause.
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            return this.InheritedSelfMismatchNote(constraint.Left!) ?? this.InheritedSelfMismatchNote(constraint.Right!);
+            return this.RetainedImplementation(constraint.Left!) ?? this.RetainedImplementation(constraint.Right!);
         }
 
         if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || this.ConformancesOf(owner) is not { } identities)
@@ -406,8 +408,7 @@ public sealed partial class Binding
             {
                 if (path.InheritedFrom is not null && path.RejectedSelfSignature is { } implementation)
                 {
-                    var declaring = implementation.Scope.Owner.BoundSymbol!.Name;
-                    return $"The retained implementation {declaring}.{implementation.Name} keeps {declaring} as Self, so its input signature does not match Self = {DiagnosticTypeName(self)}. Only a borrowed receiver may project to a base subobject; other inputs and owning receivers do not convert";
+                    return implementation.Declaration;
                 }
             }
         }

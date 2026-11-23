@@ -6,9 +6,53 @@ namespace Kimi.Compiler;
 
 // The Origin of a layer in a Type annotation (SPEC 15.3.1, 15.4.2, 15.4.4): its Type position (TypeContext), a written Origin
 // (BindOrigin, BindOriginName, through the candidate a name resolves to: OriginCandidate) or an omitted one (OmittedOrigin), and a
-// binder's inputs, whose atoms the omitted Origins of its signature are.
+// binder's inputs, whose atoms the omitted Origins of its signature are. A result slot's default (SPEC 15.4.3 rule 3) whose inputs'
+// Owned read a region with no answer while a body is bound is judged at Final (R7-O2 O2-F: ProveDefaultOwned, the slot's
+// DeferredDefaults row and its obligation, JudgeDeferredDefault). Until then the slot's provisional Origin is its own pending atom (the
+// atom PendingOrigin forms), which every reader names; Final proves it, and the atom reads as its completion at the intakes every Origin
+// passes (CompletedOrigin: DeclaredAtUse and SuppliedAtUse, ReadValueIn, the C1-F4 view's InternAtom, the Hover printer), or
+// refutes it, and the atom stays Unbound resting on the failed slot (UnboundCause's path b). Before Final, DeferredIn and DeferredAtomIn
+// are the one reading of "names an uncompleted deferred atom" (a comparison's row, LeavesBodyRows; an erasure's deferral).
+// Must not: publish `static` or any other Origin for a deferred slot before Final, or complete a refuted atom.
 public sealed partial class Binding
 {
+    private readonly DeferredDefaultRows deferredDefaults;
+
+    // The deferred defaults Final proved this pass (CompletedOrigin's gate: no reading changes while it is 0).
+    private int completedDefaults;
+
+    // SPEC 15.4.4 (R7-O2 O2-F): `origin` with each deferred slot's atom that Final proved read as the default it completes to, a meet
+    // operand by operand; an atom not proven, and any other Origin, as it is. The one completion reading: every reader of an Origin after
+    // the slot's resolution passes through it (DeclaredAtUse, SuppliedAtUse, ReadValueIn, InternAtom, HoverTypeName, SemanticQuery.OriginOf).
+    internal BoundOrigin CompletedOrigin(BoundOrigin origin)
+    {
+        if (this.completedDefaults == 0)
+        {
+            return origin;
+        }
+
+        if (origin.Kind == OriginKind.Unbound)
+        {
+            return this.DeferredAtom(origin) is { Proven: true } row ? row.Completion : origin;
+        }
+
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return origin;
+        }
+
+        var result = BoundOrigin.Static;
+        var changed = false;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            var operand = this.CompletedOrigin(origin.Operands[i]);
+            changed |= !ReferenceEquals(operand, origin.Operands[i]);
+            result = this.Meet(result, operand);
+        }
+
+        return changed ? result : origin;
+    }
+
     private static int InputCount(Koto owner) => owner is FunctionKoto f ? f.Parameters.Count : owner is PropertyAccessorKoto ? 2 : owner is FunctionTypeKoto t ? t.Parameters is TupleTypeKoto tuple ? tuple.ElementNodes.Count : 1 : 0;
 
     private static int InputOriginCount(Koto owner) => InputCount(owner) + (owner.BoundSymbol?.AggregateInputOrigins?.Count ?? 0);
@@ -460,6 +504,11 @@ public sealed partial class Binding
 
         if (context.Position == TypePosition.Result)
         {
+            if (this.deferredDefaults[use] is not null)
+            {
+                this.deferredDefaults[use] = null; // This resolution is the slot's last so far (ProveDefaultOwned).
+            }
+
             BoundOrigin? meet = null;
             var guaranteedBorrow = false;
             var inputCount = InputCount(context.Owner);
@@ -484,8 +533,8 @@ public sealed partial class Binding
                     return null;
                 }
 
-                return !guaranteedBorrow && aggregateSlot >= 0 && OwnedWithoutConditionalBorrows() is not ConstraintProof.Proven and var unowned
-                    ? this.MissingOrigin(use, unowned) : meet;
+                return !guaranteedBorrow && aggregateSlot >= 0 && OwnedWithoutConditionalBorrows(meet) is not ConstraintProof.Proven and var unowned
+                    ? this.MissingOrigin(use, unowned) : this.deferredDefaults[use]?.Atom ?? meet;
             }
 
             if (InSpecializationArgument(context.Owner))
@@ -505,14 +554,14 @@ public sealed partial class Binding
                     this.failedCause = null;
                     for (var i = 0; i < inputCount; i++)
                     {
-                        if (this.BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) is not ConstraintProof.Proven and var proof)
+                        if (this.BoundInputType(context.Owner, i) is { } input && this.ProveDefaultOwned(input, use, aggregateSlot, BoundOrigin.Static) is not ConstraintProof.Proven and var proof)
                         {
                             return this.MissingOrigin(use, proof);
                         }
                     }
                 }
 
-                return BoundOrigin.Static;
+                return this.deferredDefaults[use]?.Atom ?? BoundOrigin.Static;
             }
         }
 
@@ -532,7 +581,7 @@ public sealed partial class Binding
         this.Fail(use, BindingFailure.MissingOrigin);
         return null;
 
-        ConstraintProof OwnedWithoutConditionalBorrows()
+        ConstraintProof OwnedWithoutConditionalBorrows(BoundOrigin completion)
         {
             this.failedCause = null;
             var count = InputCount(context.Owner);
@@ -544,7 +593,7 @@ public sealed partial class Binding
                     input = input.Components[0];
                 }
 
-                if (input is not null && this.ProveOwned(input, use) is not ConstraintProof.Proven and var proof)
+                if (input is not null && this.ProveDefaultOwned(input, use, aggregateSlot, completion) is not ConstraintProof.Proven and var proof)
                 {
                     return proof;
                 }
@@ -553,6 +602,116 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
     }
+
+    // SPEC 15.4.3 rule 3, 15.4.4, 8.3.3 (R7-O2 O2-F): an input's Owned for a result slot's default `completion` (static, or the
+    // borrowed inputs' meet). A proof that is not Proven and whose reading met ValueIn's deferral fact (a local region of a body being
+    // bound, or a deferred slot's atom not yet completed) while a body is bound is no verdict: the slot takes its own pending atom, the
+    // input joins the slot's row and the slot's obligation (one per slot and body, Discharge ResultDefault) has JudgeObligations judge
+    // the row at Final, in a candidate trial as at a commitment. Each resolution of the slot clears the row where it starts, so the
+    // row is the slot's last resolution's: a commitment after trials replaces theirs, and a literal a trial reads and nothing commits keeps
+    // the trial's. This rests on one order, which call selection keeps: within a pass no resolution of a slot follows its literal's
+    // commitment (a probe after it would make the probe's inputs, for a literal with inferred parameters, the judged row). An input two
+    // parameters share may be appended twice; its one verdict is judged twice at most.
+    private ConstraintProof ProveDefaultOwned(BoundType input, Koto use, int slot, BoundOrigin completion)
+    {
+        var held = this.readsUnboundedRegion;
+        this.readsUnboundedRegion = false;
+        var proof = this.ProveOwned(input, use);
+        var deferred = proof == ConstraintProof.Unknown && this.readsUnboundedRegion && this.formingBody.IsBody;
+        this.readsUnboundedRegion = held;
+        if (!deferred)
+        {
+            return proof;
+        }
+
+        var row = this.deferredDefaults[use] ??= new(this.OriginAtom(use, OriginKind.Unbound, slot), completion);
+        row.Inputs.Add(input);
+        this.AddObligation(new(BindingObligationKind.Owned, use, BindingDeadline.BodyOrigins, Discharge: OriginDischarge.ResultDefault));
+        return ConstraintProof.Proven;
+    }
+
+    // SPEC 15.4.4, 8.3.3, 23.1.2 (R7-O2 O2-F): at Final, a slot whose last default resolution deferred (its row) completes as a
+    // pending Origin does: proven Owned over complete candidates, its atom reads as the default (CompletedOrigin); not, it records its
+    // missing Origin as at the header and its atom stays Unbound, resting on the failed slot (UnboundCause, path b), so a relation or
+    // Type that names it rests by what it names (Rests, rule W; A5's Dependent end).
+    private void JudgeDeferredDefault(in BindingObligation obligation)
+    {
+        var slot = obligation.Use;
+        if (slot.BindingFailure != BindingFailure.None || this.deferredDefaults[slot] is not { } row)
+        {
+            return;
+        }
+
+        foreach (var input in row.Inputs)
+        {
+            this.failedCause = null;
+            if (this.ProveOwned(input, slot) is not ConstraintProof.Proven and var proof)
+            {
+                _ = this.MissingOrigin(slot, proof);
+                return;
+            }
+        }
+
+        row.Proven = true;
+        this.completedDefaults++;
+        this.valueInVersion = -1; // ValueIn's reads of the atom so far are stale.
+    }
+
+    // The first deferred slot's atom that Final has not completed in `type`'s Origins (the result's, its arguments', its components'), or
+    // null: before Final every deferred atom, at Final a refuted one.
+    private BoundOrigin? DeferredAtomIn(BoundType type)
+    {
+        if (!type.CarriesAnyOrigin)
+        {
+            return null;
+        }
+
+        if (type.Origin is { } origin && this.DeferredIn(origin) is { } atom)
+        {
+            return atom;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (this.DeferredIn(type.OriginArguments[i]) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.DeferredAtomIn(type.Components[i]) is { } component)
+            {
+                return component;
+            }
+        }
+
+        return null;
+    }
+
+    // The first deferred atom Final has not completed in an Origin, itself or a meet's operand, or null.
+    private BoundOrigin? DeferredIn(BoundOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Unbound)
+        {
+            return this.DeferredAtom(origin) is { Proven: false } ? origin : null;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (this.DeferredIn(origin.Operands[i]) is { } operand)
+            {
+                return operand;
+            }
+        }
+
+        return null;
+    }
+
+    // The row whose provisional Origin `atom` is (a deferred slot's own pending atom), or null.
+    private DeferredDefault? DeferredAtom(BoundOrigin atom)
+        => atom is { Kind: OriginKind.Unbound, Binder: { } slot } && this.deferredDefaults[slot] is { } row && ReferenceEquals(row.Atom, atom) ? row : null;
 
     // SPEC 15.4.2, 23.1.2: a result Origin needs its inputs Owned; one that is not is a missing Origin, unless its Error rests on a cause.
     private BoundOrigin? MissingOrigin(Koto use, ConstraintProof unowned)
@@ -567,5 +726,30 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    /// <summary>The `deferredDefaults` family's one accessor (DECISIONS BU-220): a pass family, a result slot's deferred default
+    /// (ProveDefaultOwned), kept in its node's module's NodeColumns at its SyntaxId; absent after a pass until the column's first write.</summary>
+    private readonly struct DeferredDefaultRows(Binding binding)
+    {
+        internal DeferredDefault? this[Koto slot]
+        {
+            get => slot.SyntaxOwner is { } table ? table.Hir.Families.DeferredDefaults.Get(slot.SyntaxId, binding) : null;
+            set => HirTables.Of(slot).Families.DeferredDefaults.Ref(slot.SyntaxId, binding) = value;
+        }
+    }
+
+    /// <summary>A result slot's last default resolution when it deferred (R7-O2 O2-F): the slot's own pending atom, its provisional
+    /// Origin every reader names until Final; the default it completes to (static, or the borrowed inputs' meet); the inputs whose Owned
+    /// it deferred; and whether Final proved them (then CompletedOrigin reads the atom as the default).</summary>
+    internal sealed class DeferredDefault(BoundOrigin atom, BoundOrigin completion)
+    {
+        internal BoundOrigin Atom => atom;
+
+        internal BoundOrigin Completion => completion;
+
+        internal List<BoundType> Inputs { get; } = new(1);
+
+        internal bool Proven { get; set; }
     }
 }

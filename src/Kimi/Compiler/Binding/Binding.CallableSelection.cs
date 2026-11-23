@@ -8,8 +8,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<CallableCandidate> callableCandidateScratch = new();
-    private readonly CallableSelectionFailureRows callableSelectionFailures;
-    private readonly List<CallableCandidate> callableSelectionParties = [];
 
     // G812 ruling 132: what a value call's split check found at each argument (from the check's own start in the list): whether it
     // was prepared (one that failed there is rule W's wildcard), the parameter a run formed for it and whether that run read a split
@@ -68,7 +66,7 @@ public sealed partial class Binding
         var owner = this.CallableContractType(type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type, scope);
 
         // The candidates are the callee's available Callable rows (TryCallable's), one per normalized signature with its weakest
-        // receiver; a failure names a candidate's first row by its Source (the written premise, or the clause and its scope).
+        // receiver; a failure relates a candidate's first row by its use (PremiseUse: the written clause, else its scope's owner).
         var start = this.premiseRows.Count;
         this.FirstRows(owner, scope, this.premiseRows);
         var rows = this.premiseRows.Count - start;
@@ -93,7 +91,7 @@ public sealed partial class Binding
 
                 if (index == count)
                 {
-                    candidates[count++] = new(signature, receiver, row.Raw ?? fact, (row.Stated ?? scope).Owner);
+                    candidates[count++] = new(signature, receiver, row);
                 }
                 else
                 {
@@ -109,7 +107,7 @@ public sealed partial class Binding
                 {
                     if (candidates[a].Receiver != candidates[b].Receiver)
                     {
-                        return this.FailCallableCandidates(call, choices, BindingFailure.ReceiverShapeMismatch);
+                        return this.FailCallableCandidates(call, scope, choices, BindingFailure.ReceiverShapeMismatch);
                     }
 
                     var left = candidates[a].Signature.Components[0].Components;
@@ -118,7 +116,9 @@ public sealed partial class Binding
                     {
                         if (!ReferenceEquals(left[p], right[p]) && this.ParameterShapesConflict(left[p], right[p], this.ShapeOf(left[p], scope.Owner, true), this.ShapeOf(right[p], scope.Owner, true), out var mode, out var other, out _, out _))
                         {
-                            return this.FailCallableCandidates(call, choices, BindingFailure.ParameterShapeMismatch, p, mode, other);
+                            // The subject's fact first: the two modes, a byte each, and above them the position (ProblemFact.cs).
+                            this.candidateFacts.Add(new(ProblemFactKind.Reason, this.FactSite(call), (long)mode | ((long)other << 8) | ((long)(p + 1) << 24)));
+                            return this.FailCallableCandidates(call, scope, choices, BindingFailure.ParameterShapeMismatch);
                         }
                     }
                 }
@@ -126,7 +126,7 @@ public sealed partial class Binding
 
             if (call.Method is GenericsKoto)
             {
-                return this.FailCallableCandidates(call, choices, BindingFailure.NoApplicableCandidate);
+                return this.FailCallableCandidates(call, scope, choices, BindingFailure.NoApplicableCandidate);
             }
 
             var unknownArgument = !this.PrepareCallArguments(call, scope, callableContext: true);
@@ -173,7 +173,7 @@ public sealed partial class Binding
                     choices = candidates.AsSpan(0, remaining);
                 }
 
-                return this.FailCallableCandidates(call, choices, applicable == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
+                return this.FailCallableCandidates(call, scope, choices, applicable == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
             }
             finally
             {
@@ -259,7 +259,7 @@ public sealed partial class Binding
                 }
             }
 
-            return own || (!rests && !found) ? this.Fail(call, BindingFailure.NoApplicableCandidate)
+            return own || (!rests && !found) ? this.Record(call, BindingFailure.NoApplicableCandidate, [])
                 : failed is not null ? this.CompleteDependent(call, failed) : this.Fail(call, BindingFailure.Unsupported, true);
         }
         finally
@@ -552,86 +552,78 @@ public sealed partial class Binding
             ? CandidateApplicability.Inapplicable : CandidateApplicability.Applicable;
     }
 
-    private BoundType? FailCallableCandidates(InvocationKoto call, ReadOnlySpan<CallableCandidate> candidates, BindingFailure failure, int position = -1, AcquisitionMode mode = default, AcquisitionMode other = default)
+    // SPEC 8.10, 10.1, 10.4, 23.3: a failed Callable value call's record, after the subject's facts its caller wrote: per premise candidate
+    // its use (Related, role 5, "premise candidate", located once here: PremiseUse), the Callable signature the premise states (Instance,
+    // reading 1) and its receiver (Reason). Its omitted header Types wait, as at a failed selection (FailWaitingSelection).
+    private BoundType? FailCallableCandidates(InvocationKoto call, BindingScope scope, ReadOnlySpan<CallableCandidate> candidates, BindingFailure failure)
     {
-        var start = this.callableSelectionParties.Count;
         foreach (var candidate in candidates)
         {
-            this.callableSelectionParties.Add(candidate);
+            var at = this.FactSite(this.PremiseUse(candidate.Row, scope));
+            this.candidateFacts.Add(new(ProblemFactKind.Related, at, 5));
+            this.candidateFacts.Add(new(ProblemFactKind.Instance, at, this.report.Keep(candidate.Signature)));
+            this.candidateFacts.Add(new(ProblemFactKind.Reason, at, (long)candidate.Receiver));
         }
 
-        this.callableSelectionFailures[call] = (start, candidates.Length, position, mode, other);
-        return this.FailWaitingSelection(call, failure);
+        this.MarkWaitingHeaders(call);
+        return this.RecordSelection(call, failure);
     }
 
-    private bool ReportCallableSelection(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
+    // SPEC 8.10, 7.4, 10.1, 10.4: a failed Callable value call from its facts (FailCallableCandidates), each premise candidate related
+    // with its receiver and signature; a parameter-shape conflict's position and modes from the subject's Reason.
+    private void ReportCallableCandidates(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        if (!this.callableSelectionFailures.TryGetValue(node, out var failure))
+        var facts = this.report.Facts(index);
+        var parties = 0;
+        foreach (ref readonly var fact in facts)
         {
-            return false;
+            parties += fact is { Kind: ProblemFactKind.Related, Value: 5 } ? 1 : 0;
         }
 
-        var related = new (string Role, Koto At, string? Label)[failure.Count];
-        for (var i = 0; i < failure.Count; i++)
+        var related = new (string Role, Koto At, string? Label)[parties];
+        var shape = 0L;
+        for (int i = 0, c = 0; i < facts.Length; i++)
         {
-            var candidate = this.callableSelectionParties[failure.Start + i];
-            var at = candidate.Context;
-
-            // After the Bind (ReportDiagnostics): every pass's nodes.
-            foreach (var syntax in this.nodesView)
+            if (facts[i] is not { Kind: ProblemFactKind.Related, Value: 5 })
             {
-                if (syntax is IsKoto clause && ReferenceEquals(clause.BoundConstraint, candidate.Fact))
-                {
-                    at = clause;
-                    break;
-                }
+                shape = facts[i].Kind == ProblemFactKind.Reason ? facts[i].Value : shape; // The subject's, before the first party.
+                continue;
             }
 
-            related[i] = ("candidate", at, $"Callable<{candidate.Receiver.ToString().ToLowerInvariant()}, {DiagnosticTypeName(candidate.Signature)}>");
+            var at = this.compilation.SyntaxOf(facts[i].Site);
+            var (signature, receiver) = ((BoundType?)null, SemanticsKind.Ref);
+            for (; i + 1 < facts.Length && facts[i + 1] is not { Kind: ProblemFactKind.Related, Value: 5 }; i++)
+            {
+                (signature, receiver) = facts[i + 1].Kind == ProblemFactKind.Instance ? (this.report.Value(facts[i + 1]), receiver)
+                    : facts[i + 1].Kind == ProblemFactKind.Reason ? (signature, (SemanticsKind)facts[i + 1].Value) : (signature, receiver);
+            }
+
+            related[c++] = ("candidate", at, $"Callable<{receiver.ToString().ToLowerInvariant()}, {DiagnosticTypeName(signature!)}>");
         }
 
-        if (code == DiagnosticCode.ParameterShapeMismatch_Kd)
+        if (problem.Code == DiagnosticCode.ParameterShapeMismatch_Kd)
         {
             node.ReportIn(
                 store,
-                requirement,
-                code,
-                failure.Mode,
-                failure.Other,
-                evidence: [$"position {failure.Position + 1} of a Callable call", "overlapping Types"],
+                problem.Requirement,
+                problem.Code,
+                (AcquisitionMode)(byte)shape,
+                (AcquisitionMode)(byte)(shape >> 8),
+                evidence: [$"position {shape >> 24} of a Callable call", "overlapping Types"],
                 related: related,
-                note: "All available Callable signatures must agree on acquisition before arguments exclude any candidate (SPEC 8.10, 7.4)");
+                note: "All available Callable signatures must agree on acquisition before arguments exclude any candidate (SPEC 8.10, 7.4)",
+                condition: problem.Condition);
         }
         else
         {
-            var note = code == DiagnosticCode.ReceiverShapeMismatch_Kd ? "Distinct Callable signatures require one receiver; each signature uses its weakest declared receiver (SPEC 8.10)"
-                : code == DiagnosticCode.AmbiguousBinding_Kd ? "No Callable signature is better than every other applicable signature under the ordinary argument ranking rules (SPEC 10.4)"
+            var note = problem.Code == DiagnosticCode.ReceiverShapeMismatch_Kd ? "Distinct Callable signatures require one receiver; each signature uses its weakest declared receiver (SPEC 8.10)"
+                : problem.Code == DiagnosticCode.AmbiguousBinding_Kd ? "No Callable signature is better than every other applicable signature under the ordinary argument ranking rules (SPEC 10.4)"
                 : "No Callable signature applies; candidate checks use positional arguments and any fixed expected result (SPEC 8.10, 10.1)";
-            node.ReportIn(store, requirement, code, evidence: code == DiagnosticCode.ReceiverShapeMismatch_Kd ? null : [failure.Count], related: related, note: note);
+            node.ReportIn(store, problem.Requirement, problem.Code, evidence: problem.Code == DiagnosticCode.ReceiverShapeMismatch_Kd ? null : [parties], related: related, note: note, condition: problem.Condition);
         }
-
-        return true;
     }
 
-    /// <summary>The `callableSelectionFailures` family's one accessor (DECISIONS BU-220): a pass family, a failed Callable value call's
-    /// candidates (a range of callableSelectionParties) and its parameter-shape position, stored with its failure by the recorder
-    /// (RecordedFact; a row may be all zero but for its presence). Its members keep the names its readers use.</summary>
-    private readonly struct CallableSelectionFailureRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other), PassCounter> Family(ref NodeColumns columns)
-            => ref columns.CallableSelectionFailures;
-
-        internal (int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other) this[Koto call]
-        {
-            set => binding.SetRecordedFact(call, Family, (true, value.Start, value.Count, value.Position, value.Mode, value.Other));
-        }
-
-        internal bool TryGetValue(Koto call, out (bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other) failure)
-            => (failure = binding.RecordedFact(call, Family)).Failed;
-    }
-
-    private readonly record struct CallableCandidate(BoundType Signature, SemanticsKind Receiver, BoundConstraint Fact, Koto Context);
+    private readonly record struct CallableCandidate(BoundType Signature, SemanticsKind Receiver, PremiseRow Row);
 
     private readonly record struct SplitPart(bool Prepared, BoundType? Parameter, bool Split, bool Fails, Koto? Waiting, BoundType? Type);
 }

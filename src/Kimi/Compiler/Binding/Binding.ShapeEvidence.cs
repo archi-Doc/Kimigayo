@@ -187,7 +187,7 @@ public sealed partial class Binding
             if (a.Kind == BoundTypeKind.Parameter)
             {
                 hits++;
-                return this.InfersReadReferent(a, left) == this.InfersReadReferent(b, right);
+                return this.InfersReadReferent(a, left, call) == this.InfersReadReferent(b, right, call);
             }
 
             if (a.Symbol != b.Symbol)
@@ -435,7 +435,7 @@ public sealed partial class Binding
                             return;
                         }
 
-                        if (!fillOnly && this.InfersReadReferent(pattern, function))
+                        if (!fillOnly && this.InfersReadReferent(pattern, function, call))
                         {
                             actual = ComparisonReferent(actual);
                         }
@@ -510,7 +510,7 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        this.FailExplained(CallInferenceFailureRows.Family, call, BindingFailure.UnprovenAcquisitionCorrelation, new CallInferenceFailure(contract.Pair.Left, function, null, ConstructionCheck.AcquisitionCorrelation, slot, types[a], types[b]), true);
+                        this.RecordCorrelation(call, contract.Pair.Left, function, slot, types[a], types[b]);
                         return false;
                     }
                 }

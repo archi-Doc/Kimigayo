@@ -26,16 +26,16 @@ public sealed partial class MirBuildTest
     // of a local whose rejected declaration has no Type (one with a Type is its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage).
     // Building goes on after each. A Field Binding failed whose own Type is valid (a struct with a misplaced `length` slot) has its
     // initializer published (PLAN G1071's gate 1, F's C2 ruling 261 (3)), so each constructor builds it, with no Opaque, record or finding
-    // (it was an Opaque in each constructor while only a Resolved definition's parts were published). The unbuilt form is the tuple
-    // default the call's substitution cannot instantiate (Unbuilt); its Opaque names the roots of the slots before the default.
+    // (it was an Opaque in each constructor while only a Resolved definition's parts were published). The unbuilt form is the selection
+    // through an identity premise (Unbuilt); its Opaque names the receiver's root.
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = CompilationTestHelper.Parse(
             "struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            Unbuilt.Declarations + $"func f(a: i32, x: i32) -> i32\n    let c = {Unbuilt.Callee}(x)\n    return a\n" +
-            $"func g() -> i32 => missing\nfunc h(a: i32, c: bool, u: i32) -> i32\n    defer\n" +
-            $"        let d = {Unbuilt.Callee}(u)\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
+            Unbuilt.Declarations + $"func f<T>(a: i32, x: ref/T) -> i32\n    {Unbuilt.Premise}\n    let c = x.0.a\n    return a\n" +
+            $"func g() -> i32 => missing\nfunc h<T>(a: i32, c: bool, u: ref/T) -> i32\n    {Unbuilt.Premise}\n    defer\n" +
+            "        let d = u.0.a\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
         Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
         c.Bind();
         _ = c.Binding.CheckStartup(OutputKind.Application);
@@ -44,11 +44,11 @@ public sealed partial class MirBuildTest
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g" or "h" or "k").ToDictionary(static x => x.Key.Decl!.Name);
         var unbuilt = bodies["f"];
         Assert.True(unbuilt.HasOpaque);
-        Assert.Equal(new[] { 4 }, unbuilt.OpaqueUses.ToArray().Select(static x => x.Root)); // take's argument slot before the default.
+        Assert.Equal(new[] { 2 }, unbuilt.OpaqueUses.ToArray().Select(static x => x.Root)); // The receiver's root, f's parameter x.
         Assert.Contains(unbuilt.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
         var records = program.Records(MirRecordClass.Construction).Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
-        Assert.Equal([$"{Unbuilt.Callee}(u)", $"{Unbuilt.Callee}(x)"], records);
-        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == $"{Unbuilt.Callee}(u)"));
+        Assert.Equal(["u.0", "x.0"], records);
+        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "u.0"));
 
         Assert.Equal(0, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
@@ -64,8 +64,11 @@ public sealed partial class MirBuildTest
     // (fail-before: _1.1 undecided, kept 0); a kept invocation argument's written exclusive borrow is two-phase, while a tuple's element
     // and a Case payload stay Uniq (B6; fail-before: all Uniq); nested Errors keep their own parts (missing2's site none, the inner
     // Error's x and missing2's temp, the outer's the inner's temp); a failed default's site after an Error site keeps none (C2: its earlier
-    // slot only, a pending slot its call's entry activates). Each site's kept count and uses, in order, then the reads, then the exclusive
-    // borrows.
+    // slot only, a pending slot its call's entry activates). DECISIONS Z27 (SPEC 13.7.1 steps 1-2): a derived write's site names its
+    // target's in-place kept operand as an enclosing use (p, _1; fail-before: its root undecided, no count), and a right side neither read
+    // nor a Temporary (a Place whose bare Move rests on an Error Copy proof, published Failed without an Error node) is a site of its own
+    // at its node, before the target's parts, so the write's site names no use of it (fail-before: the write's one site named b, _1).
+    // Each site's kept count (and enclosing count) and uses, in order, then the reads, then the exclusive borrows.
     [Theory]
     [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing = p.n\n", "0: / FakeRead(_1.1) / ")]
     [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing(p.n)\n", "1: _3 /  / ")]
@@ -77,6 +80,8 @@ public sealed partial class MirBuildTest
     [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let e: Option<uniq/i32> = .Some(y@uniq, g(y))\n", "2: _3 _4 /  / &uniq")]
     [InlineData("func f()\n    var x = 1\n    missing(x + missing2)\n", "0: | 2: _4 _5 | 1: _3 /  / ")]
     [InlineData("func h(x: i32, y: i32 = missing) -> i32 => y\nfunc f()\n    let q = 2\n    let a = missing(q)\n    let b = h(1)\n", "1: _4 | 1: _3 | 0: _6 /  / ")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    p.nofield = 1\n", "0 enclosing 1: _1 /  / ")]
+    [InlineData("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc k() -> isize => 0\nfunc f(b: Bad)\n    missing[k()] = b\n", "0: _1 | 0: | 1 enclosing 1: _5 _4 /  / ")] // z27r2's u2
     public void AnOpaqueSiteNamesOnlyWhatItDoesNotDecide(string source, string expected)
     {
         var program = Compile("struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n" +
@@ -85,7 +90,8 @@ public sealed partial class MirBuildTest
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
-        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?(?: kept (\d+))?:(.*)$").Select(static x => $"{(x.Groups[1].Success ? x.Groups[1].Value : "0")}: {x.Groups[2].Value.Trim()}".Trim());
+        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?(?: kept (\d+))?( enclosing \d+)?:(.*)$")
+            .Select(static x => $"{(x.Groups[1].Success ? x.Groups[1].Value : "0")}{x.Groups[2].Value}: {x.Groups[3].Value.Trim()}".Trim());
         var reads = Regex.Matches(dump, @"FakeRead\([^)]*\)").Select(static x => x.Value);
         var borrows = Regex.Matches(dump, @"&uniq(?: two-phase)?").Select(static x => x.Value);
         Assert.Equal(expected, $"{string.Join(" | ", sites)} / {string.Join(" ", reads)} / {string.Join(" ", borrows)}");
@@ -527,6 +533,30 @@ public sealed partial class MirBuildTest
         Assert.Equal(receiver != "uniq/Self", body.HasOpaque);
     }
 
+    // PLAN G1184 (SPEC 6.3.3, 23.1.2; BU-234): a stored Field whose slot failed has its Field Place, of no Type (MirBody.Selects), so its
+    // constructor places its initializer there (MirBuilder.Stored, Construct), a literal Binding types and a receiverless struct function's
+    // call as the typed twin's literal, with no validator finding and no construction record (fail-before: not placed, no write into the
+    // Field).
+    [Theory]
+    [InlineData("Weak<rc/Node> = 5")]
+    [InlineData("Weak<rc/Node> = Node.mk()")]
+    [InlineData("i32 = 5")]
+    public void AFailedFieldsInitializerIsPlacedIntoItsFieldPlace(string field)
+    {
+        var c = Compile(
+            $"struct Node\n    public var w: {field}\n    public let v: i32\n    public init(v: i32)\n        self.v = v\n" +
+            "    public func mk() -> Weak<rc/Node>\n        return Node.mk()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+        var body = program.Bodies.ToArray().Single(static x => x.Source.Module == 0 && AdtDef.IsConstructor(x.Key.Decl));
+        bool Field(MirPlace place) => place is { Root: 0, Projection: > 0 } && body.Projections[place.Projection] is { Prefix: 0, Kind: MirProjectionKind.Field, Arg: 0 };
+        var written = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign).Select(static x => x.Place)
+            .Concat(body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(static x => x.Terminator.Place)).Where(Field).ToArray();
+        var place = Assert.Single(written);
+        Assert.Equal(field.StartsWith("i32", StringComparison.Ordinal), body.TypeOf(place) is not null);
+    }
+
     // PLAN G396 (3) Z1 (DECISIONS R4-M61; consumers trust validated IR): an arm of a closed HIR vocabulary, or of a fact a published Op
     // guarantees, that no published form takes is a broken contract, InternalInvariant_Kd at the node with an Opaque value in its place,
     // which the validator accepts. Each row publishes one node so by hand after the publish (fail-before: Unsupported_Kd at the same node):
@@ -746,7 +776,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var held = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref)
-            .Select(x => (Binding.HoverTypeName(body.Locals[x.Place.Root].Type!), Binding.HoverTypeName(x.Rvalue.Type!)));
+            .Select(x => (c.Binding.HoverTypeName(body.Locals[x.Place.Root].Type!), c.Binding.HoverTypeName(x.Rvalue.Type!)));
         Assert.Equal(Enumerable.Repeat(("uniq/i32 during (s and a)", "uniq/i32 during (s and a)"), 4), held);
     }
 

@@ -142,49 +142,4 @@ public static partial class KotoHelper
             ? fallback.ToString()
             : reader.GetSpan(new(TokenKind.Identifier, SourceSpan.FromBounds(first.Start, last.Span.End)));
     }
-
-    /// <summary>
-    /// Parses the dot-separated qualified Name of an alias target. A reserved word or any other token where a Name belongs is
-    /// where the Name was expected (SPEC F.3, DIAGNOSTICS.md §4.4); the caller then skips the declaration.
-    /// </summary>
-    /// <param name="reader">The token reader.</param>
-    /// <returns>The parsed name segments, or <see langword="null"/> after the Error; the separator after the Name is consumed.</returns>
-    public static List<string>? ParseQualifiedNameSegments(ref TokenReader reader)
-    {
-        var list = new List<string>(4);
-        while (true)
-        {
-            var token = reader.CurrentToken;
-            if (!token.Kind.IsIdentifierOrContextualKeyword())
-            {
-                reader.Expect(SyntaxForm.Name);
-                return null;
-            }
-
-            reader.Advance();
-            if (!reader.TryGetIdentifier(token, out var segment))
-            {
-                return null; // The invalid identifier is reported once.
-            }
-
-            list.Add(segment);
-            if (!reader.TryConsume(TokenKind.Dot))
-            {
-                break;
-            }
-        }
-
-        // The line ends after the Name: a separator is consumed, a dedent or a body is left for the caller.
-        if (reader.CurrentTokenKind == TokenKind.Separator)
-        {
-            reader.Advance();
-        }
-        else if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.EndBlock or TokenKind.StartBlock))
-        {
-            reader.Expect(SyntaxForm.LineEnd);
-            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-        }
-
-        return list;
-    }
 }

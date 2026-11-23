@@ -87,21 +87,18 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 reader.Advance();
             }
 
+            // SPEC F.6.1: every target is a ContainerReference, read by the Type production whether it is bound or plain.
             reader.TryConsume(TokenKind.ColonColon);
-            var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseType(ref reader, Parser.TypeContext.AnnotatedType) : null;
-            if (targetSyntax is not null)
-            {
-                // The line ends after the target, as after a plain path; an attached Origin block may follow.
-                reader.ExpectLineEnd(bodyMayFollow: true);
-            }
-
-            var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
-            if (qualifiedName is null)
+            var targetSyntax = Parser.ParseType(ref reader, Parser.TypeContext.AnnotatedType);
+            if (targetSyntax is ErrorKoto || reader.CodeContext.RecoveryCause(targetSyntax) is not null)
             {
                 // A target whose Name failed declares no alias; the declaration is skipped with what it would attach.
                 Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError);
                 return;
             }
+
+            // The line ends after the target; an attached Origin block may follow.
+            reader.ExpectLineEnd(bodyMayFollow: true);
 
             if (state.HasNonAliasDeclaration)
             {
@@ -109,7 +106,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
             else
             {
-                var alias = new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax);
+                var alias = new AliasKoto(ref reader, targetSyntax, aliasName, token.Span);
                 Parser.ParseAttachedOriginBlock(ref reader, alias);
                 this.AddLast(alias);
             }

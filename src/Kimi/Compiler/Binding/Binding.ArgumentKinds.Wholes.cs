@@ -157,7 +157,7 @@ public sealed partial class Binding
         }
 
         var scope = this.ConstraintScope(this.positionParts[start]);
-        var common = this.PositionType(start, end, scope, out var typed);
+        var common = this.PositionType(start, end, scope, this.positionParts[start], out var typed);
         if ((typed && common is null) || (common is not null && exact is not null && !this.SameBinding(common, exact)))
         {
             conflict = true;
@@ -263,7 +263,7 @@ public sealed partial class Binding
             types.Add(own);
         }
 
-        var common = this.SelectCommonType(types, this.ConstraintScope(this.positionParts[start]), out _);
+        var common = this.SelectCommonType(types, this.ConstraintScope(this.positionParts[start]), this.positionParts[start], out _);
         types.Clear();
         return common;
     }

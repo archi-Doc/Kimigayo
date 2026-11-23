@@ -7,9 +7,10 @@ namespace Kimi.Compiler.Mir;
 // Constructors (SPEC 6.3.3): the steps that build a constructor's object in its return local from fresh storage before its body runs.
 internal sealed partial class MirBuilder
 {
-    // The base constructor into the base subobject, then this layer's Field initializers in declaration order, each into its Field; a
-    // Field Binding formed no stored Type for has no Place (Stored), nor a base whose clause it formed no Type for (AdtDef.Base, as every
-    // Base step reads it), so its initializer or base call, a part of the declaration it rejected, is not placed.
+    // The base constructor into the base subobject, then this layer's Field initializers in declaration order, each into its Field (Stored:
+    // of no Type for a Field whose own slot failed, PLAN G1184); a part the instance does not store (Stored: past IMPL A.4's height or not
+    // substituted) has no Place, nor a base whose clause Binding formed no Type for (AdtDef.Base, as every Base step reads it), so its
+    // initializer or base call, a part Binding rejected, is not placed.
     private void Construct(BoundType self, FunctionKoto constructor)
     {
         if (constructor.BaseInitializer is { } baseCall && AdtDef.Base(compilation.Types, self) is not null)

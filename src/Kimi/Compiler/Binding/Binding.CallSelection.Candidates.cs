@@ -357,7 +357,7 @@ public sealed partial class Binding
         if (returnPattern.CarriesOrigin)
         {
             solution.OriginInference ??= this.BeginOriginInference(solution.Call, function);
-            this.CollectOriginInference(returnPattern, resultExpected, solution.OriginInference, result: true);
+            this.CollectOriginInference(returnPattern, resultExpected, solution.OriginInference, solution.Frame.Node, result: true);
         }
 
         return structure;
@@ -820,10 +820,12 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.ErasedArgumentsEnvironment(operations), true);
             }
 
-            row.ConstraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
+            // SPEC 8.3: a Pending candidate's explanation, published at the trial's final verdict (BU-240's split Unknown included), so a
+            // clause record reads the owner's verdict (FailClauseRecord's ConstraintFailureOf; Records' invariant).
+            row.ConstraintFailure = proof == ConstraintProof.Unknown && failure is { } clause ? clause with { Proof = proof } : null;
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
-                this.ResolvedClauseUnknown(function.TypeConstraints, solution.Substitution(frame.Types[..CallSlotCount(function)]), scope, self))
+                this.ResolvedClauseUnknown(function.TypeConstraints, solution.Substitution(frame.Types[..CallSlotCount(function)]), scope, self, call))
             {
                 // SPEC 10.5, 8.3: a Constraint that no waiting argument leaves open, such as a Callable clause on an F that an independent
                 // argument binds, waits on nothing; Unknown proves neither applicability nor negation, so another candidate is never

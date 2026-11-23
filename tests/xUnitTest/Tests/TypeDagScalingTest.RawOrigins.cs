@@ -145,6 +145,21 @@ public partial class TypeDagScalingTest
         Assert.Equal(OriginKind.Static, part.RawOrigin?.Kind);
     }
 
+    // Z6 Revision 8 (C-462's C1; SPEC 5.7 Authority, 5.2.1 condition 3, the owner's O-507 (B)): FittedExclusive's least fixed point marks
+    // one more holder per round on HolderChain (a holder's region takes the mark from its source in the round of its fit), and MayWrite's
+    // recursion moves outward only, so a chain of n holders binds in n + 1 rounds over the fits and the region graph's rows and the mark
+    // reaches its end: h_n.p fitted into HU's `uniq`-kept layer keeps the located Unsupported_Kd at the last put alone (valid, x-fu's form,
+    // the whitelist's cost, O-498 Q2 (b)). AllocationTests.AColdBindOfAHolderChainIsLinear bounds its allocation.
+    [Theory]
+    [InlineData(64)]
+    [InlineData(256)]
+    public void TheFitMarkCrossesAChainOfHoldersOneRoundPerHolder(int n)
+    {
+        var c = Checked(HolderChain(n));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(["Unsupported_Kd"], Problems(c));
+    }
+
     // BU's projection chain (G307's design): `H {s} { x: Dup<…Dup<L>.Item…>.Item }`, n projections deep, with `associate HasItem.Item is
     // (T, T)`, read by `rd` and passed by value to `pv`; s is a `ref` slot.
     internal static string ProjectionChain(string leaf, int n)
@@ -185,4 +200,16 @@ public partial class TypeDagScalingTest
             .Append(System.Globalization.CultureInfo.InvariantCulture, $"func rd(d: ref/D1<raw/i32 during static>) -> ()\n    let v = d{string.Concat(Enumerable.Repeat(".x", n))}.h\n    return\n")
             .Append("public func main() => ()\n").ToString();
     }
+
+    // C-462's chain: n `ref`-kept holders HP, h1 holding r's exclusive address of v and each next one initialized from the one before's
+    // p, then a `uniq`-kept HU from h_n.p, its put, and a write while v is live.
+    private static string HolderChain(int n)
+        => "func inspect<T>(value: ref/T) => ()\nstruct HP {s}\n    public var p: raw/u8 during s\n    var k: ref/i32 during s\n" +
+            "    public init(k: ref/i32 during s, q: raw/u8 during s)\n        self.p = q\n        self.k = k\n" +
+            "struct HU {s}\n    public var p: raw/u8 during s\n    var k: uniq/i32 during s\n    public init(k: uniq/i32 during s, q: raw/u8 during s)\n" +
+            "        self.p = q\n        self.k = k\n    public func put<U>(self: uniq/Self, v: U) => ()\n" +
+            "func p()\n    var y = 2\n    var z = 3\n    var m = 4\n    var v: ref/i32 = y@ref\n    var r = v@uniq\n" +
+            string.Concat(Enumerable.Range(1, n).Select(static i => $"    var x{i} = 1\n")) + "    var h1 = HP.init(x1@ref, r@follow@raw@raw/u8)\n" +
+            string.Concat(Enumerable.Range(2, n - 1).Select(static i => $"    var h{i} = HP.init(x{i}@ref, h{i - 1}.p)\n")) +
+            $"    var hu = HU.init(m@uniq, h{n}.p)\n    hu.put(z@ref)\n    z = 5\n    inspect(v)\npublic func main() => ()\n";
 }

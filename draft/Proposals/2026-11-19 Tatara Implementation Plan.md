@@ -282,6 +282,9 @@ Measured first; each one adopted is a unit of its own.
 
 1. **Direct O2 generation:** generate from the optimized module without re-parsing. Where an object changes this is a behavior change,
    so the differences over every fixture are counted first.
+   Closed 2026-11-23 by its measurement M1 (LC1 design Revision 0, T-335): the second parse and verification of an O2 text cost
+   0.58% of Milestone30's O2 build, 0.02% of Large's and 1.55% serial of the native check (about 0.26% of its wall time at
+   `-Parallel 6`); every reading is below the 1% gate in wall time, so LC1 stops (T's ruling). No unit.
 2. **Reuse of library check results** within an interactive session, for libraries of equal content (within IMPL §A.2).
    Examined 2026-11-23 (LC2 design Revision 0): the Kimi library's parse, Binding, HIR and library layer are already reused once per
    process and target (DECISIONS R8-M53, R8-M55); what a `kimi tatara` line still repeats is MIR work over the library (the owner's
@@ -289,6 +292,11 @@ Measured first; each one adopted is a unit of its own.
    stands; reuse of a project's library dependencies waits for a workload with one (none in the repository but
    `docs/examples/SourceDependencies`). No unit now; the design's options and owners are the starting point if a gate passes later.
 3. **Link time by part:** read, resolve, write, close; then choose a measure.
+   Measured 2026-11-23 (LC3's M-L, T-335): the whole link is 54% of Hello O0's warm build. Open: S1 (a staged compiler supply
+   verified by its catalog hash, without the temporary copy; removable 2.72% of Hello O0 warm) proceeds to a design; W2
+   (`/threads:1`) waits for a measured `kimi.exe` row (it reaches 1% only of the estimated row, the LC3 design's rule 3); read
+   reaches the 1% gate (1.52% of Hello O0 warm) but has no candidate (the LC3 design's §5), so nothing is designed; resolve and
+   the hash/record/move parts stop.
 4. **Schema 5:** each external declaration names its supplier, with PLAN T1's schema 5.
 
 ## 9. Working rules
