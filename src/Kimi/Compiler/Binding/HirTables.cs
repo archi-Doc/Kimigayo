@@ -120,17 +120,31 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
-    /// <summary>Gets the decider of a published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23):
-    /// its plan row's Mode 2, which the HIR publisher writes where the element's use needs exclusive capability only in the admitted cases
-    /// where a standing take Reborrows and <c>indexUniq</c> is bound, with the Type of the Place whose take is by case (the element's, or a
-    /// Field's or Tuple element's below it) in the row's Plan. In each admitted case the selection is <c>indexUniq</c> where that Type's
-    /// case Type is an exclusive reference or object view (the case in which the take Reborrows) and <c>index</c> otherwise; the index's
-    /// ExpansionPlan names both calls, and both calls' inputs are published, a receiver's two takes in its two rows (DECISIONS R4-M145).
-    /// Null for a selection that is one call in every case (Mode 0 <c>index</c>, Mode 1 <c>indexUniq</c>) and for any other node; no
-    /// reader reads Mode 2 or the decider otherwise.</summary>
-    /// <param name="index">The index expression.</param>
+    /// <summary>Gets the decider of a node whose acquisition is by case, through which consumers read either stored decider (the HIR
+    /// publisher, which writes the index's row and walks an invocation's calls, and HasFacts read the stored members); null for any other
+    /// node.
+    /// <list type="bullet">
+    /// <item>A published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23): its plan row's Mode 2,
+    /// which the HIR publisher writes where the element's use needs exclusive capability only in the admitted cases where a standing take
+    /// Reborrows and <c>indexUniq</c> is bound, with the Type of the Place whose take is by case (the element's, or a Field's or Tuple
+    /// element's below it) in the row's Plan. In each admitted case the selection is <c>indexUniq</c> where that Type's case Type is an
+    /// exclusive reference or object view (the case in which the take Reborrows) and <c>index</c> otherwise; the index's ExpansionPlan
+    /// names both calls, and both calls' inputs are published, a receiver's two takes in its two rows (DECISIONS R4-M145). A selection that
+    /// is one call in every case (Mode 0 <c>index</c>, Mode 1 <c>indexUniq</c>) has none; no reader reads Mode 2 otherwise.</item>
+    /// <item>A value call whose Closure receiver is by case (SPEC 7.7.3, 8.15.2; PLAN G13): its CallPlan's
+    /// <see cref="CallPlan.CaseDecider"/>, the callee's Closure Type. In each admitted case the call acquires the callee exclusively
+    /// (<see cref="CallPlan.ReceiverOperation"/>, the column's take) where that Type's case receiver is Exclusive and shared
+    /// (<see cref="CallPlan.SharedReceiver"/>, the plan row's take) otherwise. No invocation Mode is written.</item>
+    /// </list></summary>
+    /// <param name="binding">The reader's Binding, whose current pass's calls are read (<see cref="CallPlan.Of"/>).</param>
+    /// <param name="node">An index expression or an invocation.</param>
     /// <returns>The decider, or null.</returns>
-    internal static BoundType? IndexCaseDecider(Koto index) => index is IndexKoto && PlanOf(index) is { Mode: 2, Plan: BoundType decider } ? decider : null;
+    internal static BoundType? CaseDecider(Binding binding, Koto node) => node switch
+    {
+        IndexKoto => PlanOf(node) is { Mode: 2, Plan: BoundType decider } ? decider : null,
+        InvocationKoto => CallPlan.Of(binding, node)?.CaseDecider,
+        _ => null,
+    };
 
     /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
     /// operand is a Transfer whose Take OffersTake allowed through its raw branch (Binding.IsRawPlace; Binding.DestroysInPlace),
@@ -706,10 +720,16 @@ internal struct PlanRow
 
     /// <summary>The node's Adjust that the Adjust column cannot hold (DECISIONS R4-M145): the earlier of two calls of one consumer that take
     /// it by different Adjusts, whose later one the column keeps, a compound update's getter beside its setter (SPEC 13.7.2, 11.3; DECISIONS
-    /// R4-M109), written at each call input of each pass; or a Place in Discard Context's bare acquisition (SPEC 14.2.2), written at each such
-    /// Place of each pass, where the column's unset value is the container discarding its item. Default otherwise: a publish clears every
-    /// row's first, so it is always that publish's, a read of a take's claim (Binding.Claimed) included. A node three or more
-    /// calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
+    /// R4-M109), written at each call input of each pass; a by-case value call's Shared acquisition of its callee beside the Exclusive one
+    /// the column keeps (<see cref="CallPlan.SharedReceiver"/>; SPEC 7.7.3, PLAN G13), the same call's two takes of one input; or a Place in
+    /// Discard Context's bare acquisition (SPEC 14.2.2), written at each such
+    /// Place of each pass, where the column's unset value is the container discarding its item. At a call input it is never an operand
+    /// take before the node's first call: each record of the uses resets its preceding input at a call (<c>Binding.EarlierAdjust</c>). The
+    /// reset is unobservable today (the implementation review's mutant M5): each operand that a node's first call also takes as its first
+    /// input (an index's key, an object creation's operand, a <c>for</c>'s Subject) is taken by the same Adjust both times. It keeps the row
+    /// a call's take, as <c>Binding.Claimed</c>, <c>UseOf</c> and the MIR builder's <c>Taken</c> read it, without resting on that.
+    /// Default otherwise: a publish clears every row's first, so it is always that publish's, a read of a take's claim (Binding.Claimed)
+    /// included. A node three or more calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
     internal HirAdjust Adjust;
 
     /// <summary>The Type of the value a container or an explicit discard discards (SPEC 14.2.2, 14.2.4; DECISIONS BU-98), at the Place
