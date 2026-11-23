@@ -730,9 +730,14 @@ public sealed partial class MirBorrowsTest
     // storage, which the body does not own (15.6), though its holder's last use precedes it. In the *Read twins (the corpus's
     // A3-closure-ok) and t3letref the record rests on rule G's letter, as the holder's records above do: the storage past the holder keeps
     // the capture's Loan (SPEC 15.6.4's per-argument letter), which reaches what the holder keeps (15.6), so child's Loan stays live; PLAN
-    // G148 (2) (GXS) with E's record past a holder (its G492-a (ii) amendment) removes them together. Each of these rows is invalid in the
-    // uniq view by its own record at the Closure's store, the call's input `y` stored into the captured reference's referent, whose Type
-    // names an atom the enclosing body formed (`UnprovenOriginRelation_Kd`; SPEC 15.6.5, 15.3.4, DECISIONS BU-28); it is not listed here.
+    // G148 (2) (GXS) with E's record past a holder (its G492-a (ii) amendment) removes them together. At the Closure's store in each pair
+    // row, the call's input `y` stored into the captured reference's referent, A5 proves the store (R7-O2 A1+A2, 9cbad046b, which removed
+    // dev's `UnprovenOriginRelation_Kd` there in all seven: pairStoreBad, pairStoreRead, pairCellBad, pairCellRead, t3letref, t3letrefBad,
+    // t6; R7-O2 O2-N, C1): y's Origin is the pair Origin s, one for every s/T in its scope (SPEC 8.1.1), and slot's carried region reads
+    // as its candidate s (the owner's O-443 (a)). ViewProblems lists Loan codes and Unsupported_Kd only, so that record was never listed
+    // here. The *Read twins (pairStoreRead is the corpus's A3-closure-ok) and t3letref are therefore valid, rejected only by these limit
+    // records; the *Bad rows, t3letrefBad and t6 stay invalid by their listed records (the holder used after `v@follow = x`; t6's write
+    // into the caller's storage).
     [Fact]
     public void RuleGsSelfStoreReachesAClosureReceiver()
         => Assert.Equal(

@@ -12,13 +12,11 @@ namespace XunitTest;
 /// A shape is the declaration's source header with its direct member lines; Binding gives the same text the same meaning.</summary>
 public partial class KimiLibraryShapeTest
 {
-    // Read-only: no test changes the library or its Binding.
-    private static readonly Lazy<Compilation> Library = new(() =>
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
-        return c;
-    });
+    // Read-only: no test changes the library or its Binding. The library of a compilation without a target is windows-x64's selection
+    // (the Tatara plan's F1 (a)); the Linux row's library is selected under its own Conditions (B7b6: no Kimi.Windows, Time over the
+    // platform layer's clock).
+    private static readonly Lazy<Compilation> Library = new(() => BoundLibrary(null));
+    private static readonly Lazy<Compilation> LinuxLibrary = new(() => BoundLibrary(TargetProfile.Linux.Target));
 
     // PLAN G776-b (the owner's O-194 (a): a built-in conformance adds no member): the receiver groups no witness-table row names, the
     // fixed array's member group (SPEC 22.1).
@@ -67,25 +65,28 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.RawReadVolatile, "public unsafe func readVolatile<T>(storage: raw/T) -> T\nT is PrimitiveInteger"),
     ];
 
-    // The bodiless compiler functions without a lang item (R8-G1 G1-6: no C# reader names them), by their library path.
-    private static readonly (string Path, string Shape)[] UnnamedCompilerFunctionShapes =
+    // The bodiless compiler functions without a lang item (R8-G1 G1-6: no C# reader names them), by their library path, each with the
+    // target whose library alone declares it (null: every target's; the Tatara plan's B7b6: Time.monotonicNanoseconds where `windows`
+    // does not hold).
+    private static readonly (string Path, string Shape, string? Target)[] UnnamedCompilerFunctionShapes =
     [
-        ("Console.writeStdout", "internal unsafe func writeStdout(data: raw/u8, length: isize)"),
-        ("Storage.missingDictionaryKey", "internal func missingDictionaryKey() -> Never"),
-        ("Storage.countOverflow", "internal func countOverflow() -> Never"),
-        ("Storage.allocationSizeExceeded", "internal func allocationSizeExceeded() -> Never"),
-        ("Storage.clockFailure", "internal func clockFailure() -> Never"),
-        ("Storage.tryAllocateBytes", "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
-        ("Storage.stride", "internal func stride<T>() -> isize"),
-        ("Storage.destroyValues", "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
-        ("Storage.erasedReserve", "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>"),
-        ("Storage.reserveDispatch", "internal func reserveDispatch<W>() -> raw/u8 during static\nW is BufferWriter"),
-        ("Storage.formatFloat", "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize"),
-        ("Storage.formatInteger128", "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize"),
-        ("Raw.allocate", "public func allocate<T>(count: isize) -> raw/T"),
-        ("Raw.writeVolatile", "public unsafe func writeVolatile<T>(storage: raw/T, value: T)\nT is PrimitiveInteger"),
-        ("Storage.argumentOutOfRange", "internal func argumentOutOfRange() -> Never"),
-        ("Storage.indexBounds", "internal func indexBounds() -> Never"),
+        ("Console.writeStdout", "internal unsafe func writeStdout(data: raw/u8, length: isize)", null),
+        ("Storage.missingDictionaryKey", "internal func missingDictionaryKey() -> Never", null),
+        ("Storage.countOverflow", "internal func countOverflow() -> Never", null),
+        ("Storage.allocationSizeExceeded", "internal func allocationSizeExceeded() -> Never", null),
+        ("Storage.clockFailure", "internal func clockFailure() -> Never", null),
+        ("Storage.tryAllocateBytes", "internal func tryAllocateBytes(bytes: isize) -> raw/u8", null),
+        ("Storage.stride", "internal func stride<T>() -> isize", null),
+        ("Storage.destroyValues", "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)", null),
+        ("Storage.erasedReserve", "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>", null),
+        ("Storage.reserveDispatch", "internal func reserveDispatch<W>() -> raw/u8 during static\nW is BufferWriter", null),
+        ("Storage.formatFloat", "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize", null),
+        ("Storage.formatInteger128", "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize", null),
+        ("Raw.allocate", "public func allocate<T>(count: isize) -> raw/T", null),
+        ("Raw.writeVolatile", "public unsafe func writeVolatile<T>(storage: raw/T, value: T)\nT is PrimitiveInteger", null),
+        ("Storage.argumentOutOfRange", "internal func argumentOutOfRange() -> Never", null),
+        ("Storage.indexBounds", "internal func indexBounds() -> Never", null),
+        ("Time.monotonicNanoseconds", "func monotonicNanoseconds() -> i64", TargetProfile.Linux.Target),
     ];
 
     public static TheoryData<KimiDeclarationId> CatalogEntries
@@ -116,24 +117,26 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    public static TheoryData<string, string> UnnamedCompilerFunctions
+    public static TheoryData<string, string, string> UnnamedCompilerFunctions
     {
         get
         {
-            var data = new TheoryData<string, string>();
-            foreach (var (path, shape) in UnnamedCompilerFunctionShapes)
+            var data = new TheoryData<string, string, string>();
+            foreach (var (path, shape, target) in UnnamedCompilerFunctionShapes)
             {
-                data.Add(path, shape);
+                data.Add(path, shape, target ?? string.Empty);
             }
 
             return data;
         }
     }
 
-    [Fact]
-    public void LibraryBindsCompletely()
+    [Theory]
+    [InlineData("", 84)]
+    [InlineData("x86_64-unknown-linux-musl", 85)]
+    public void LibraryBindsCompletely(string target, int unnamed)
     {
-        var c = Library.Value;
+        var c = LibraryOf(target);
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
@@ -144,7 +147,7 @@ public partial class KimiLibraryShapeTest
         // three `splitAt`, four position and range `format` bodies, Array `index` and `indexUniq`, and seven Time functions; the Time unit's
         // `Storage.clockFailure` and `Time.readCounterFrequency`; O-412 (1)'s Array.sort(by:), which destroys `by` inside the operation;
         // R8-X1's Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share, PLAN G970; OSF2's Raw.writeVolatile,
-        // whose pair Raw.readVolatile is cataloged for its NoStore row).
+        // whose pair Raw.readVolatile is cataloged for its NoStore row); the Linux row's library adds Time.monotonicNanoseconds (B7b6).
         // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`.
         Assert.Equal(122, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
@@ -159,7 +162,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf(c));
         }
 
-        Assert.Equal((122, 84), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
+        Assert.Equal((122, unnamed), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
@@ -168,14 +171,17 @@ public partial class KimiLibraryShapeTest
     public void TheLibraryLiesWithinTheSyntaxNestingLimit()
         => WithinTheSyntaxNestingLimit(Compilation.CreateForTest().Library.Kotonoha.RootKoto);
 
-    // R5 K package 4.4 (P5, DECISIONS R5-M41): the bundled library collected with every module a root module, so every closed library body
-    // is a root, has no collector record; with no library declaration under a compile-time Condition and one target profile, rooting it in
-    // each compilation would add none. Its own build has the library range, which builds every library body (PLAN G951).
-    [Fact]
-    public void TheLibraryCollectsWithoutRecords()
+    // R5 K package 4.4 (P5, DECISIONS R5-M41 D-B, amended by the Tatara plan's F3): the bundled library collected with every module a root
+    // module, so every closed library body is a root, has no collector record; each target's library is one freeze (its declarations
+    // selected by that target's Conditions), so rooting it in each compilation would add none, checked for the library without a target
+    // and for each row's. Its own build has the library range, which builds every library body (PLAN G951).
+    [Theory]
+    [InlineData("")]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("x86_64-unknown-linux-musl")]
+    public void TheLibraryCollectsWithoutRecords(string target)
     {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+        var c = BoundLibrary(target.Length == 0 ? null : target);
         var program = new Kimi.Compiler.Mir.MirAnalysis(c.Types).Run(new Kimi.Compiler.Mir.MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
         var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(program, SyntaxTable.LibraryModule + 1);
         Assert.Empty(program.Records(Kimi.Compiler.Mir.MirRecordClass.Collection));
@@ -264,7 +270,7 @@ public partial class KimiLibraryShapeTest
         // member and no synthesized constructor (`#Lang("Weak")`: ManagedRepresentation); none is specialized. Source order: Core.kimi is
         // read before Intrinsics.kimi (R8-G1 G1-5: every library source is ordinary).
         var intrinsics = Assert.IsType<GroupKoto>(c.Library.MakeObj.Declaration.Parent); // Kimi.Intrinsics, makeObj's group (R8-G1 G1-5).
-        var unsupported = LibraryAttributes(AttributeKind.Unsupported).Select(static x => x.Target).ToArray();
+        var unsupported = LibraryAttributes(Library.Value, AttributeKind.Unsupported).Select(static x => x.Target).ToArray();
         Assert.Equal(["Weak", "downgrade", "upgrade", "makeRcCyclic", "makeArcCyclic"], unsupported.Select(static x => x is FunctionKoto function ? function.Name : ((StructKoto)x).Name));
         foreach (var function in unsupported.OfType<FunctionKoto>())
         {
@@ -312,12 +318,14 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    [Fact]
-    public void EveryCompilerFunctionHasAShape()
+    [Theory]
+    [InlineData("", 29)]
+    [InlineData("x86_64-unknown-linux-musl", 30)]
+    public void EveryCompilerFunctionHasAShape(string target, int count)
     {
         // Every registered intrinsic, Form function (L2) or linked constructor, named or not (R8-G1 G1-6), and no other declaration, has
-        // its row.
-        var library = Library.Value.Library;
+        // its row: the rows of every target's library and those of this target's alone (B7b6).
+        var library = LibraryOf(target).Library;
         var expected = new HashSet<Koto>(ReferenceEqualityComparer.Instance);
         foreach (var symbol in library.RegisteredSymbols)
         {
@@ -330,15 +338,15 @@ public partial class KimiLibraryShapeTest
         Koto[] shaped =
         [
             .. CompilerFunctionShapes.Select(x => library.GetSymbol(x.Id)!.Declaration),
-            .. UnnamedCompilerFunctionShapes.Select(x => LibrarySource.Declaration(library, x.Path)),
+            .. UnnamedCompilerFunctionShapes.Where(x => (x.Target ?? target) == target).Select(x => LibrarySource.Declaration(library, x.Path)),
         ];
-        Assert.Equal((29, 29), (expected.Count, shaped.Length));
+        Assert.Equal((count, count), (expected.Count, shaped.Length));
         Assert.True(expected.SetEquals(shaped));
     }
 
     // Plan 5.8: every library function and $abort has one disposition, its symbol's Definition: an intrinsic serves at most one of them,
-    // except Fail, which carries a fixed SPEC 22.5.2 code; a symbol of no compiler function has its Body; there are at most 29
-    // intrinsics (OSF2's volatile pair, the owner's O-489), the temporary ones of the owner's approvals of 2026-10-11 gone (FormatBuffer
+    // except Fail, which carries a fixed SPEC 22.5.2 code; a symbol of no compiler function has its Body; there are at most 30
+    // intrinsics (OSF2's volatile pair, the owner's O-489; MonotonicClock, the Tatara plan's decision 25, the owner's O-478 (i)), the temporary ones of the owner's approvals of 2026-10-11 gone (FormatBuffer
     // at R8-W2 c3b, FormatFinish at c3a, FormatSegment, R5-M133's rename of FormatHint, at c2b). A built-in target's Shim is MirBuildTest's
     // census key.
     [Fact]
@@ -358,7 +366,7 @@ public partial class KimiLibraryShapeTest
         var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
         Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
-        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 29);
+        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 30);
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the
@@ -481,8 +489,8 @@ public partial class KimiLibraryShapeTest
 
     [Theory]
     [MemberData(nameof(UnnamedCompilerFunctions))]
-    public void UnnamedCompilerFunctionShapesAreFixed(string path, string shape)
-        => Assert.Equal(shape, Shape(LibrarySource.Declaration(Library.Value.Library, path)));
+    public void UnnamedCompilerFunctionShapesAreFixed(string path, string shape, string target)
+        => Assert.Equal(shape, Shape(LibrarySource.Declaration(LibraryOf(target).Library, path)));
 
     // SPEC 4.9.3, 4.9.5, 15.7, 22.2 (R8-A1a, A1b, U1): the operations that became bodies keep the headers their compiler function rows held.
     [Theory]
@@ -767,6 +775,19 @@ public partial class KimiLibraryShapeTest
         Assert.False(function.IsSpecialization);
         Assert.True(HasBody(function));
     }
+
+    // A compilation without a source module, bound for a target (null: none), whose library is complete.
+    private static Compilation BoundLibrary(string? target)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(target is null || c.Prepare(target));
+        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+        return c;
+    }
+
+    // The class's bound library of a target: "" the one without a target (windows-x64's selection), else the Linux row's.
+    private static Compilation LibraryOf(string target)
+        => target.Length == 0 ? Library.Value : target == TargetProfile.Linux.Target ? LinuxLibrary.Value : throw new ArgumentOutOfRangeException(nameof(target));
 
     private static bool HasBody(Koto declaration)
         => declaration is FunctionKoto function && (function.Body is not null || function.ExpressionBody is not null);

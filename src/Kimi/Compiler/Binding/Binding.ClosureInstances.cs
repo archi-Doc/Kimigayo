@@ -83,10 +83,7 @@ public sealed partial class Binding
             : TyCtxt.HeldType(type) is { } held ? this.CloseHeldNested(signature, held) : signature;
 
     // SPEC 15.3.5: the variance of a Closure Type's Origin argument `index`: the composition of its atom's occurrences in its definition's
-    // signature (a parameter contravariant, the result covariant, each layer's target as ComponentVariance composes it); equal
-    // occurrences keep their variance, different ones are invariant. One query of `visitedParts` meets each distinct part once per
-    // polarity (a state bit per polarity): Join is idempotent, so a part met again at a polarity adds nothing (DECISIONS BU-63). The
-    // table is this Binding's, whether or not the caller reads premises (`binding`).
+    // signature (OccurrenceVariance); an argument the signature does not name is invariant.
     private OriginVariance ClosureArgumentVariance(BoundType type, int index, Binding? binding)
     {
         if (BoundClosure.Of(type) is not { Signature: { } signature, EnvironmentType: { } definition } || index >= definition.OriginArguments.Count)
@@ -94,56 +91,8 @@ public sealed partial class Binding
             return OriginVariance.Invariant;
         }
 
-        var query = this.visitedParts.Begin(this.storageVersion);
-        var variance = Occurrences(signature, definition.OriginArguments[index], OriginVariance.Covariant, binding, OriginVariance.Unused, this, query);
+        var variance = this.OccurrenceVariance(signature, definition.OriginArguments[index], binding);
         return variance == OriginVariance.Unused ? OriginVariance.Invariant : variance;
-
-        static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen, Binding owner, uint query)
-        {
-            if (!type.CarriesAnyOrigin)
-            {
-                return seen;
-            }
-
-            seen = Names(OwnedOrigin(type), atom) ? Join(seen, polarity) : seen;
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                seen = Names(type.OriginArguments[i], atom) ? Join(seen, ComposeVariance(polarity, owner.OriginArgumentVariance(type, i, binding))) : seen;
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                var part = type.Components[i];
-                var position = ComposeVariance(polarity, ComponentVariance(type, i, binding));
-                if (part.CarriesAnyOrigin && owner.FirstVisit(part, query, (byte)(1 << (int)position)))
-                {
-                    seen = Occurrences(part, atom, position, binding, seen, owner, query);
-                }
-            }
-
-            return seen;
-        }
-
-        static bool Names(BoundOrigin? origin, BoundOrigin atom)
-        {
-            if (origin is null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (Names(origin.Operands[i], atom))
-                {
-                    return true;
-                }
-            }
-
-            return ReferenceEquals(origin, atom);
-        }
-
-        static OriginVariance Join(OriginVariance seen, OriginVariance variance)
-            => seen == OriginVariance.Unused || seen == variance ? variance : OriginVariance.Invariant;
     }
 
     // SPEC 3.2.1, 15.3.4, 15.6.4 (DECISIONS R4-M159): the Type of the Closure `function` with its environment and call signature: its Origin
