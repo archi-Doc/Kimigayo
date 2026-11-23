@@ -15,8 +15,9 @@ namespace Kimi.Compiler;
 //   process's frozen library per target (Of, the one store, KimiLibrary.Process.cs), made by the freeze (Unfrozen, Freeze: a compilation
 //   over an empty program whose Binding binds the library by the one driver), and its refusal (LibraryLayer.Refusal, which Binding's
 //   FreezeLibrary decides); and the detachment (KimiLibrary.Process.cs, Detach): the frozen library names no compilation.
-// - Inputs: the embedded sources; the compilation the library is parsed in (its target's conditions, its documentation flags); for the
-//   freeze, the target and the preparation (a Kimigayo and its Project).
+// - Inputs: the embedded sources; the compilation the library is parsed in (its target's Conditions, windows-x64's without a target:
+//   Compilation.TryResolveValue, the Tatara plan's F1 (a); its documentation flags); for the freeze, the target and the preparation (a
+//   Kimigayo and its Project).
 // - Outputs: Of(target); the library's Kotonoha, symbols, Scope and Layer (LibraryLayer, with the refusal and the interners' frozen
 //   levels); Frozen, whether the layer's interner levels are sealed (PLAN G949 Stage 2 U4): the library table's freeze, the seal; the
 //   frozen library's DocumentationFailures, HoverAnchors and SyntaxRecords (data its freeze compilation recorded).
@@ -96,6 +97,7 @@ public sealed partial class KimiLibrary
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
         this.Abort = this.CreateAbort();
+        this.DefaultAliases = Array.ConvertAll(Compilation.RequiredAliases, path => new Compilation.DefaultAlias(path, Compilation.ParseConfiguredPath(this.Kotonoha, "compiler://configuration", path)!));
         this.Restore();
     }
 
@@ -309,6 +311,11 @@ public sealed partial class KimiLibrary
 
     // A compiler-only call identity, never entered into Kimi or source name lookup.
     internal BindingSymbol Abort { get; }
+
+    // The required default aliases' rows (Compilation.RequiredAliases, the required "Kimi", SPEC 18.2.3), one per path, made with the
+    // library, so each is evaluated inside the library's pass before its table freezes (F's ruling N1-7 (5)) and no later Compilation
+    // parses or writes in the shared library. Every module reads them for its required paths (Compilation.DefaultAliases; O-511 (a)).
+    internal Compilation.DefaultAlias[] DefaultAliases { get; }
 
     internal ReadOnlySpan<BindingSymbol> RegisteredSymbols => CollectionsMarshal.AsSpan(this.registeredSymbols);
 

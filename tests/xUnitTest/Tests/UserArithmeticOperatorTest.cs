@@ -228,13 +228,18 @@ public class UserArithmeticOperatorTest
         ScalarEmissionTest.EmitFixture("UserArithmeticGenericLiteral", Program, string.Empty);
     }
 
-    [Fact]
-    public void OppositeProviderPremisesConflictWithoutAnOperatorUse()
+    // SPEC 13.3.4: the record relates both premises; its pair is read from their Contract instances (R7-E3 E3c-1): the right from the
+    // ordinary premise's argument, the left from the reverse premise's, spelled as that premise writes it (`M`, one Type with `L`).
+    [Theory]
+    [InlineData("<L, R>", "R is LeftAddable<L>", "L")]
+    [InlineData("<L, R, M>", "R is LeftAddable<M>\n    M is L", "M")]
+    public void OppositeProviderPremisesConflictWithoutAnOperatorUse(string parameters, string reverse, string left)
     {
-        const string Program = "func conflict<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L>\n    ()\n()";
-        var result = DiagnosticCorpus.Check(Program);
+        var program = "func conflict" + parameters + "(left: ref/L, right: ref/R)\n    L is Addable<R>\n    " + reverse + "\n    ()\n()";
+        var result = DiagnosticCorpus.Check(program);
         var error = Assert.Single(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.ArithmeticDirection_Kd));
         Assert.Contains("opposite providers", error.Message, StringComparison.Ordinal);
+        Assert.Equal(new[] { "+", left, "R", "Addable", "LeftAddable" }, error.Reason!.Select(static x => x.Value));
         Assert.Equal(new[] { "ordinary", "reverse" }, error.Related!.Select(static x => x.Role));
     }
 
@@ -530,11 +535,13 @@ public class UserArithmeticOperatorTest
     }
 
     // SPEC 13.3.4: a right provider under a non-numeric left operand, and no fitting conformance on the ordinary route (a user
-    // provider's candidates, related) or without one (a Type parameter); each cause is explained by the Note alone (DECISIONS BU-111).
+    // provider's candidates, related) or without one (a Type parameter; a unary operand with no Negatable conformance, which has no
+    // counterpart); each cause is explained by the Note alone (DECISIONS BU-111).
     [Theory]
     [InlineData(Declarations + "\nlet value = Value.init()\nlet result = true + value", "LeftAddable", "NonNumericLeft", "A right provider requires a built-in numeric left operand", "provider: Value; counterpart: bool", 0)]
     [InlineData(Declarations + "\nlet value = Value.init()\nlet result = value + true", "Addable", "NoFit", "No proven conformance fits the counterpart structure", "provider: Value; counterpart: bool", 1)]
     [InlineData("func add<T>(a: T, b: T) -> T => a + b\npublic func main() => ()", "Addable", "NoFit", "No proven conformance fits the counterpart structure", "provider: T; counterpart: T", 0)]
+    [InlineData("struct M\n    Self is Addable<i32>\n    associate Output is i32\n    public func added(self: ref/Self, right: ref/i32) -> i32 => right\nlet m = M.init()\nlet result = -m", "Negatable", "NoFit", "No proven conformance fits the counterpart structure", "provider: M; counterpart: none (unary operation)", 0)]
     public void ASelectionFailureNamesItsCause(string source, string contract, string cause, string note, string label, int related)
     {
         var result = DiagnosticCorpus.Check(source);

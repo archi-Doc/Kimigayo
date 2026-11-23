@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -58,17 +59,20 @@ public sealed partial class Binding
 
             if (pending || matches != 1)
             {
-                var start = this.rejectedRows.Count;
-                for (var i = 0; i < count; i++)
+                // A reference use, no call: each earlier failure returns, so the record is always written (R7-E3 E3b delta 2.4); a Pending
+                // outcome records no candidate (R7-M62).
+                var flags = required is not null ? CandidateFlags.CallableSignature | CandidateFlags.ReferenceSignature : CandidateFlags.UnfixedReference;
+                for (var i = 0; !pending && i < count; i++)
                 {
                     if (matches == 0 || applicable[i])
                     {
-                        this.rejectedRows.Add(new((FunctionKoto)group.Members[i].Declaration, signatures[i], required, CallableSignature: required is not null, ReferenceSignature: required is not null, UnfixedReference: required is null));
+                        this.CandidateFacts((FunctionKoto)group.Members[i].Declaration, null, flags, signatures[i] is { } signature ? (use, signature, required) : null);
                     }
                 }
 
-                this.RecordRejected(use, start);
-                return this.Fail(use, pending ? BindingFailure.UnprovenConstraint : matches == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
+                this.Record(use, pending ? BindingFailure.UnprovenConstraint : matches == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous, CollectionsMarshal.AsSpan(this.candidateFacts));
+                this.candidateFacts.Clear();
+                return null;
             }
         }
         finally

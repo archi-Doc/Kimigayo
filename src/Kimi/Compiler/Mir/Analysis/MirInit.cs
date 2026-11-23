@@ -116,6 +116,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         private bool placing; // Whether the location places its operands, its facts applying: an Assign of a Use or an aggregate into a Move Path, or a Places Call.
         private bool placed; // Whether the next Place reported is the whole temp an operand of such a location moves.
         private int kept = -1; // The path the location defines that keeps its state: a Use places a temp there that may hold nothing; else -1.
+        private MirOpaque site; // The Opaque site the location assigns (MirBody.SiteOf), whose enclosing uses are checked for construction.
 
         internal required MirReport Report { get; init; }
 
@@ -165,11 +166,13 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 {
                     var assign = statement.Kind == MirStatementKind.Assign;
                     this.placing = assign && statement.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Aggregate && this.Tracked(statement.Place);
+                    this.site = body.SiteOf(statement);
                     var carries = this.placing ? moves.Carries(data.Start + i) : default;
                     this.Uses(carries, this.placing ? moves.NeverParts(data.Start + i) : default, carries.IsEmpty ? -1 : moves.Find(statement.Place, out _));
                 }
             }
 
+            this.site = default;
             if (data.Terminator.Kind != MirTerminatorKind.Return)
             {
                 (this.subject, this.scope, this.at) = (body.Subject(data.Terminator.Source), data.Terminator.Source.Scope, new(block, data.Count));
@@ -196,7 +199,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // 14.10.3). Through a Deref or an Index only the prefix's path is used, and a Move there has no Move Path (SPEC 15.1.3, 15.1.5). A2
         // judges a Drop from the state before it, by its path (-1: none), and whether the runtime edges reach it; a runtime Drop's Move
         // Path lacks no part (the header's invariant). An Opaque site's undecided use is checked as a read of its own Place, not at
-        // MirDescriptors.Judged's root: A1 asks only whether the part is usable (DECISIONS Z17).
+        // MirDescriptors.Judged's root: A1 asks only whether the part is usable (DECISIONS Z17); an enclosing one, whether it is constructed
+        // (Z27).
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             var transfer = this.placed;
@@ -242,6 +246,15 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             else if ((access & MirAccess.DropUse) != 0)
             {
                 this.Take(path, 1 << Uninit);
+            }
+            else if (MirDescriptors.IsUndecided(access) && body.OpaqueUses.Slice(this.site.Start + this.site.Kept, this.site.Enclosing).Contains(place))
+            {
+                // DECISIONS Z27 (SPEC 13.7.1, 15.1.2): an enclosing use, a Place its site designates strictly within, needs its construction
+                // only, as a definition's prefix: its own bit (a temp's is no construction fact) and its ancestors'.
+                if (this.Checks && this.Reported(path))
+                {
+                    this.Constructed(this.Checked(path) == path ? path : -1);
+                }
             }
             else
             {
@@ -368,13 +381,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         {
             var paths = moves.Paths;
             var checks = this.Checks && this.Reported(path);
-            for (var above = paths[path].Parent; checks && above >= 0; above = paths[above].Parent)
+            if (checks)
             {
-                if (MirDataflow.Any(state, Lanes, Uninit, above, above + 1))
-                {
-                    this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, above, above + 1), this.subject);
-                    break;
-                }
+                this.Constructed(paths[path].Parent);
             }
 
             if (checks && paths[path].Once && MirDataflow.Any(state, Lanes, Ever, path, paths[path].End))
@@ -385,6 +394,22 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             var cleared = path == this.kept ? 0 : (1 << Uninit) | (1 << Moved) | (1 << Partial) | (1 << Unplaced);
             MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: cleared);
             this.Event(path, set: true);
+        }
+
+        // A path and every ancestor constructed, their own bits initialized on every incoming path (SPEC 15.1.1, 15.1.2): a definition's
+        // prefix, from its parent, and an enclosing use's, from its own path; else UninitializedPlace_Kd, or MovedPlace_Kd where it may have
+        // been moved, at the location for the first one that is not; nothing from -1.
+        private readonly void Constructed(int from)
+        {
+            var paths = moves.Paths;
+            for (var above = from; above >= 0; above = paths[above].Parent)
+            {
+                if (MirDataflow.Any(state, Lanes, Uninit, above, above + 1))
+                {
+                    this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, above, above + 1), this.subject);
+                    break;
+                }
+            }
         }
 
         // A part its definition left unplaced (SPEC 14.10.3): a Never part, or a part a carried temp left so on this path. A Move Path holds

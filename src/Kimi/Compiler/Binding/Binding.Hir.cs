@@ -162,7 +162,7 @@ public sealed partial class Binding
                 (parts != HirOp.Syntax || (node is FunctionKoto function && binding.PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
                 // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1, 8.14), and a
-                // selection by case with its decider, read through HirTables.IndexCaseDecider (R7 plan Z23).
+                // selection by case with its decider, read through HirTables.CaseDecider (R7 plan Z23).
                 if (node is IndexKoto)
                 {
                     var mode = binding.SelectionMode(node, this.need.Use);

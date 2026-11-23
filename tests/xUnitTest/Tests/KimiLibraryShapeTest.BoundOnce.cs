@@ -124,6 +124,23 @@ public partial class KimiLibraryShapeTest
         }
     }
 
+    // The Tatara plan's F1 (a), its program half (C-496 C2): in a compilation without a target only the library's Kotonoha reads
+    // windows-x64's Conditions; a program source keeps the compilation's own (none), so its Condition Name is unknown (SPEC 19.3) while
+    // the library of the same compilation declares Kimi.Windows.
+    [Fact]
+    public void AProgramSourcesConditionStaysUnknownWithoutATarget()
+    {
+        var c = Compilation.CreateForTest();
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "#if windows\n    func a() -> i32 => 1\nfunc b() -> i32 => 2"));
+        c.Bind();
+        Assert.Equal(
+            ["UnknownCompileTimeName_Kd Program.kimi 4+7"],
+            TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Path} {x.Span.Start}+{x.Span.Length}"));
+        Assert.Equal(
+            ["queryPerformanceCounter", "queryPerformanceFrequency"],
+            c.Types.Imports.Where(x => ReferenceEquals(x.Declaration.Kotonoha, c.Library.Kotonoha)).Select(static x => x.Name));
+    }
+
     // PLAN G949 S1-r1b (s1r1-design 8.1, v9, at the layer below MIR's holding check: no existing row observes a library slot's keepers,
     // r1b/plan.md 11.3): a library slot's keepers are current after each Bind. A slot's list is found by the parts' one find (the
     // library layer's part first) and is current when its Pass is the RequirementCall of the part that holds it, the requirement
@@ -205,15 +222,15 @@ public partial class KimiLibraryShapeTest
     }
 
     // PLAN G949 S1-r1b (commit 9's premise; review-s1r1b Part 3, F's ruling 179): the documents' unnamed aliases are a per-pass map
-    // (PassPart.AliasesByDocument), and the library declares no unnamed alias, so the library pass's PrepareAliases prunes no entry a
-    // program document needs and the layer's map stays empty. A tripwire, true today: the unit that gives the library its first unnamed
-    // alias checks that each pass keeps and prunes its own documents' entries only.
+    // (PassPart.AliasesByDocument). The library's sources declare no unnamed alias; its one is its configured `Kimi` alias (F's ruling
+    // N1-13 C2), an alias of the library pass in its configuration document, so the layer's map holds that document's entry alone and a
+    // program pass, whose map is its own part's, neither reads nor prunes it (each pass keeps and prunes its own documents' entries).
     [Fact]
-    public void TheLibraryDeclaresNoUnnamedAlias()
+    public void TheLibrarysOnlyUnnamedAliasIsItsConfiguredOne()
     {
         var c = Bound(string.Empty);
         Assert.Empty(KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<AliasKoto>().Where(static x => x.Name is null).Select(static x => Line(x)));
-        Assert.Empty(c.Library.Layer.Part.AliasesByDocument);
+        Assert.Equal("compiler://configuration#Alias[Kimi]", Assert.Single(c.Library.Layer.Part.AliasesByDocument).Key.Path);
     }
 
     // The empty program's synthesized library nodes after its first Analyze, by id (c17's reference).
