@@ -124,6 +124,23 @@ public partial class KimiLibraryShapeTest
         }
     }
 
+    // The Tatara plan's F1 (a), its program half (C-496 C2): in a compilation without a target only the library's Kotonoha reads
+    // windows-x64's Conditions; a program source keeps the compilation's own (none), so its Condition Name is unknown (SPEC 19.3) while
+    // the library of the same compilation declares Kimi.Windows.
+    [Fact]
+    public void AProgramSourcesConditionStaysUnknownWithoutATarget()
+    {
+        var c = Compilation.CreateForTest();
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "#if windows\n    func a() -> i32 => 1\nfunc b() -> i32 => 2"));
+        c.Bind();
+        Assert.Equal(
+            ["UnknownCompileTimeName_Kd Program.kimi 4+7"],
+            TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Path} {x.Span.Start}+{x.Span.Length}"));
+        Assert.Equal(
+            ["queryPerformanceCounter", "queryPerformanceFrequency"],
+            c.Types.Imports.Where(x => ReferenceEquals(x.Declaration.Kotonoha, c.Library.Kotonoha)).Select(static x => x.Name));
+    }
+
     // PLAN G949 S1-r1b (s1r1-design 8.1, v9, at the layer below MIR's holding check: no existing row observes a library slot's keepers,
     // r1b/plan.md 11.3): a library slot's keepers are current after each Bind. A slot's list is found by the parts' one find (the
     // library layer's part first) and is current when its Pass is the RequirementCall of the part that holds it, the requirement
