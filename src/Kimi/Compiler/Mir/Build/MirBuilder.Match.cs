@@ -15,13 +15,15 @@ internal sealed partial class MirBuilder
     // SPEC 14.8, 17.3: a match, or a try with its synthesized arms, a target for a yield. The Subject and the tests' temporaries end
     // when the match does, after the selected arm's scope (SPEC 15.1.6); a link whose Pattern tests nothing and has no guard still branches,
     // on a constant, to the next one, so that even a catch-all can fail for the analyses; as a call's input, each arm's value as Result
-    // places it (input). Its plan is valid and settled (HasFacts' Match/Try row; one whose Pattern or guard failed is an Error).
+    // places it (input). Its plan is current and settled (HasFacts' Match/Try row): an Invalid position is a leaf, an untested link, and
+    // every other position is buildable.
     private void Match(MirPlace destination, MatchKoto match, bool input)
     {
         var plan = BoundMatch.Of(compilation.Binding, match)!;
 
-        // The Subject's Type, none for a Subject of no Type (KnownType, PLAN G1073: a use of a failed getter Binding keeps as the
-        // Subject, G492-a (iii) and D-823), whose patterns' accesses are the validator's findings (PLAN G1076's open issue), never a fault.
+        // The Subject's Type, none for a Subject of no Type (KnownType, PLAN G1073): a failed Subject, whose Patterns are resting leaves
+        // with no access and whose guards read nothing of it (Guard), or a use of a failed getter Binding kept as the Subject (G492-a
+        // (iii) and D-823), whose patterns' accesses are the validator's findings (PLAN G1076's open issue), never a fault.
         var scope = this.OpenScope(block: false);
         var subject = this.Hold(plan.SubjectBorrow ?? KnownType(match.Expression), match.Expression, MirLocalRole.Subject);
         this.Assign(subject, match.Expression);
@@ -68,8 +70,9 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 14.8.3: guard candidates borrow the selected Places among the condition's temporaries, and the guard-local Origin of each ends
-    // at their cleanup on every path (an EndBorrow before its StorageDead). Keep the Subject protected until then, then read it and branch
-    // while the bool's storage remains live for Enter in each successor.
+    // at their cleanup on every path (an EndBorrow before its StorageDead). Keep the Subject protected until then, then read the arm's
+    // Place where it has a Type (Typed: a failed Subject's has none, and its resting Pattern reads nothing) and branch while the bool's
+    // storage remains live for Enter in each successor.
     private MirPlace Guard(Koto condition, int whenFalse, int whenTrue, BoundMatch plan, int pattern, int start)
     {
         var tested = this.OpenScope(block: false);
@@ -89,7 +92,11 @@ internal sealed partial class MirBuilder
         this.Assign(test, condition);
         this.CloseScope(temporaries);
         this.Made(test);
-        this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
+        if (this.Typed(this.selected[start + pattern]))
+        {
+            this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
+        }
+
         this.Branch(test, condition, whenFalse, whenTrue);
         this.CloseScope(tested, clean: false);
         return test;

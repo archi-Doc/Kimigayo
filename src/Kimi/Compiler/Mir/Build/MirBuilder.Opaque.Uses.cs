@@ -167,7 +167,8 @@ internal sealed partial class MirBuilder
 
     // PLAN G1073, G1184 (DECISIONS R7-M64, R7-M88, BU-234; rule W): whether a Place has a Type, so that an access a reader judges (a read,
     // a borrow) may be built on it. One of no Type is a failed slot, or a last Field step whose stored slot failed, on which MirValidator's
-    // Bounded admits no such access; its consumer rests on that failure. Reads and a test message's view (Verification) decide by it.
+    // Bounded admits no such access; its consumer rests on that failure. Reads, a guard's read of its arm's Place (Guard) and a test
+    // message's view (Verification) decide by it.
     private bool Typed(MirPlace place) => this.body.TypeOf(place) is not null;
 
     // DECISIONS Z17c (R5-M63): whether a kept part's read is its secured Copy: its form reads it whole (KeptAdjust's Reads) and it is a

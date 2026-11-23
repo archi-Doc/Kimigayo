@@ -407,7 +407,7 @@ public sealed partial class HirFormsTest
     [InlineData("enum E\n    case A(i32, i32)\nfunc f() -> i32\n    var x: i32\n    let e = E.A(x, missing)\n    return 1\n", "E.A(x, missing)", "x missing")]
     [InlineData("func f() -> string\n    var x: i32\n    return \"\\(x) \\(missing)\"\n", "\"", "\"\" x \" \" missing \"\"")]
     [InlineData(
-        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n",
+        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n    r@follow = .None\n",
         "match y",
         "y")]
     [InlineData("func f() -> i32\n    var x: i32\n    for i in missing(x)\n        _ = i\n    return 1\n", "for i", "missing(x)")]
@@ -499,7 +499,7 @@ public sealed partial class HirFormsTest
     [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing", "c Copy/None -")]
     [InlineData("func f(v: [3 of i32]) -> i32\n    return v[missing]\n", "v[missing]", "missing Temporary/None -")]
     [InlineData(
-        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n",
+        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n    r@follow = .None\n",
         "match y",
         "y None/SharedBorrow -")]
     [InlineData("func f() -> i32\n    var x: i32\n    for i in missing(x)\n        _ = i\n    return 1\n", "for i in missing(x)", "missing(x) Temporary/None -")]
@@ -584,7 +584,7 @@ public sealed partial class HirFormsTest
     [InlineData("func f() -> i32\n    var x: i32\n    x = \"a\"\n    return x\n", "\"a\"")]
     [InlineData("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc a(b: Bad) -> Bad => b\n", "b")]
     [InlineData("func use(x: string) => ()\nfunc f()\n    let q = missing\n    use(q@move)\n    use(q@move)\n", "q")]
-    [InlineData("func f(v: Option<i32>) -> i32\n    return match v\n        .Some(let n) if missing(n) => 1\n        _ => 0\n", "match v")]
+    [InlineData("func f(v: Option<i32>) -> i32\n    return match v\n        .Some(let n) if missing(n) => 1\n        _ => 0\n", "missing(n)")]
     [InlineData("group G\n    public let s: Missing = 1\nfunc f() -> i32\n    return G.s\n", "G.s")]
     [InlineData("struct Q\n    public var n: Missing = 1\n    public var m: i32\n    public init(m: i32)\n        self.m = m\n", "")]
     [InlineData("group G\n    public let s: i32 = missing\nfunc f() -> i32\n    return G.s\n", "missing")]

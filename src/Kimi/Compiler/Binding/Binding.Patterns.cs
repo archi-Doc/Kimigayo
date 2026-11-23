@@ -111,7 +111,8 @@ public sealed partial class Binding
         }
     }
 
-    // A pattern under the failed Subject `failure`, when there is one, is left unbound and rests on it (PatternMarker).
+    // A pattern left unbound rests on the failure that left it so (PatternMarker): the failed Subject `failure`, when there is one, or
+    // the payload Pattern of its Case whose Type was not read (BindPattern's Case leaf).
     private void MarkPatternTree(Koto pattern, Koto? failure)
         => (this.patternMarker ??= new(this)).Mark(pattern, failure);
 
@@ -119,8 +120,10 @@ public sealed partial class Binding
     private void MarkUnsupportedTree(Koto node)
         => (this.unsupportedMarker ??= new()).Visit(node);
 
-    // SPEC 23.1.2: a pattern node no position bound rests on the failure above it. A binding it declares, for the body or as a guard
-    // candidate, has no Type, as a local rests on a failed initializer, so a use of it consults this declaration (ConsultTypeSource).
+    // SPEC 23.1.2: a pattern node no position bound, or no position holds (BindPattern's Case leaf), rests on the failure above it; one
+    // that failed on its own keeps that failure and its record. A binding it declares, for the body or as a guard candidate, has no
+    // Type, as a local rests on a failed initializer, so a use of it consults this declaration (ConsultTypeSource); its name, if bound,
+    // rests with it.
     private void RestOnFailure(Koto node, Koto failure)
     {
         if (node is SyntaxFormKoto { Akind: KotoKind.BindingPattern, BoundSymbol: { } symbol } binding)
@@ -130,9 +133,17 @@ public sealed partial class Binding
             {
                 candidate.Type = null;
             }
+
+            if (binding.Operands[0].BindingState == BindingState.Resolved)
+            {
+                this.CompleteDependent(binding.Operands[0], binding);
+            }
         }
 
-        this.CompleteDependent(node, failure);
+        if (this.RecordedFailure(node) == BindingFailure.None)
+        {
+            this.CompleteDependent(node, failure);
+        }
     }
 
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
@@ -206,7 +217,6 @@ public sealed partial class Binding
 
         this.CalculateMatchCoverage(plan, subject);
 
-        var pendingBody = false;
         var required = IsResultRequiringSelection(match);
         for (var i = 0; i < match.Arms.Count; i++)
         {
@@ -223,23 +233,17 @@ public sealed partial class Binding
 
                 this.MarkUnsupportedTree(arm.Body);
                 this.Fail(arm.Body, BindingFailure.Unsupported, true);
-                pendingBody = true;
                 continue;
             }
 
-            if (arm.Guard is { } guard)
+            if (arm.Guard is { } guard && this.BindNode(guard, this.scopes[guard], BoundType.Boolean) is { } guardType &&
+                !this.FitsType(guardType, BoundType.Boolean))
             {
-                var guardType = this.BindNode(guard, this.scopes[guard], BoundType.Boolean);
-                pendingBody |= guardType is null;
-                if (guardType is not null && !this.FitsType(guardType, BoundType.Boolean))
-                {
-                    this.Fail(guard, BindingFailure.TypeMismatch);
-                    plan.Invalid = true;
-                }
+                this.Fail(guard, BindingFailure.TypeMismatch);
+                plan.Invalid = true;
             }
 
-            var bodyType = this.BindNode(arm.Body, this.scopes[arm.Pattern], required ? resultContext.Expected : null);
-            pendingBody |= bodyType is null && !this.AwaitsCall(arm.Body) && !this.AwaitsPosition(arm.Body) && !this.Deferred(arm.Body);
+            this.BindNode(arm.Body, this.scopes[arm.Pattern], required ? resultContext.Expected : null);
         }
 
         if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
@@ -248,9 +252,11 @@ public sealed partial class Binding
             return Complete(match, null);
         }
 
-        // SPEC 23.1.2: a failed Subject, and an invalid plan's located failures at a position or a guard, were consulted; the match
-        // rests on them.
-        if (subject is null || plan.Invalid || plan.Pending || pendingBody)
+        // SPEC 14.8, 14.9.2, 23.1.2: the match's own requirements are its coverage and its result join, as an if's, a do's and a loop's
+        // are their joins (FinishResult). A failed Subject, a failed Pattern position, a failed guard and a failed arm body are those
+        // parts' own failures, each with its record or resting on one: the join reads the arm bodies and the expected Type, never the
+        // Subject or the Patterns, and a failed body is one failed source of it. A Pending plan's guards and bodies are not bound.
+        if (plan.Pending)
         {
             return this.Fail(match, BindingFailure.Unsupported, true);
         }
@@ -431,8 +437,9 @@ public sealed partial class Binding
                 syntax.BoundSymbol = selected.Symbol;
 
                 // SPEC 6.5.2, 14.8.1: every payload's Type is read at the position first (payloadReads: a nested Case's run lies above its
-                // parent's), then each read payload's Pattern is bound against it.
+                // parent's), then each read payload's Pattern is bound against it, making its own checks.
                 var first = this.payloadReads.Count;
+                Koto? unread = null;
                 for (var i = 0; i < children.Length; i++)
                 {
                     var payload = this.PartTypeIn(selected.Payload[i], type, outer) is { } stored ? this.PayloadRead(stored, plan, reach, children[i]) : null;
@@ -441,6 +448,7 @@ public sealed partial class Binding
                     {
                         plan.Invalid = true;
                         this.Fail(children[i], BindingFailure.InvalidPattern);
+                        unread ??= children[i];
                     }
                 }
 
@@ -453,8 +461,24 @@ public sealed partial class Binding
                 }
 
                 this.payloadReads.RemoveRange(first, children.Length);
-                position = position with { Kind = BoundPatternKind.Case, Case = selected };
-                break;
+                if (unread is null)
+                {
+                    position = position with { Kind = BoundPatternKind.Case, Case = selected };
+                    break;
+                }
+
+                // SPEC 14.8.1, 23.1.2: a Case position selects its Case's payload layout, so it stands only where every payload's Type is
+                // read; else it stays the Invalid leaf opened above, which records nothing of its own. The positions the read payloads'
+                // Patterns formed leave it, each resting on the first unread payload Pattern unless it failed on its own (RestOnFailure),
+                // and the Case Pattern with what no position bound rests on it too (PatternMarker).
+                for (var i = index + 1; i < plan.PositionStorage.Count; i++)
+                {
+                    this.RestOnFailure(plan.PositionStorage[i].Source, unread);
+                }
+
+                plan.PositionStorage.RemoveRange(index + 1, plan.PositionStorage.Count - index - 1);
+                this.MarkPatternTree(syntax, unread);
+                return index;
             default:
                 if (this.TryPatternLiteral(syntax, type, outer, out var literal))
                 {
@@ -749,8 +773,8 @@ public sealed partial class Binding
         }
     }
 
-    // Completes what BindPattern left unvisited: Unit, or resting on the nearest failure above it, a failed position or the failed
-    // Subject it starts from (RestOnFailure).
+    // Completes what BindPattern left unvisited: Unit, or resting on the nearest failure above it, a failed position or the failure it
+    // starts from, the failed Subject or a Case leaf's unread payload Pattern (RestOnFailure).
     private sealed class PatternMarker(Binding binding) : KotoVisitor
     {
         private Koto? failure;
