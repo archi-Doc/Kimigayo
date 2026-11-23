@@ -13394,9 +13394,6 @@ resumed by R4-M86 (2026-10-20).
     needed).
   - Open: the struct side (PLAN G701's remaining item); one record kind for every arity mismatch would need a `PathEnd` entry (owner
     approval), not taken: `Self<...>` reports `UnresolvedBinding_Kd` (the planning session's record selection, Q13).
-  - Superseded in part by BU-247 (R7-N1 f, Q-700, 2026-11-22): the "no candidate" clause; `Self<...>` records 9.7's
-    `InvalidTypeFormation_Kd` through the symbol's own arity. In a struct or enum a written `Self` selects the declaration's Self
-    symbol (`SelfOf` the declaration), not the declaration.
 - **BU-151 A Type-name use's row is SPEC 9.2's role of its position: `UseRow`, the one table** (2026-11-10; R7-N1e2-2a; Major;
   design reviews 1 REVISE, 2 ACCEPT) SPEC 9.2 (with D-174's Contract Reference row), 9.5, 9.6, 8.2.1, 8.5.2, 8.8, 8.11.1, 8.12; the
   owner's O-101 (1)(a), O-122 (a), O-128 (a).
@@ -17490,56 +17487,6 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** the prototype's stand-ins (`KindOp(parent) == Call`; a thread-static map); the take in `PlanRow.Adjust`, `Flag` or
     `Mode` (R7-M67); a two-byte take without `ExclusiveMode` to keep 56 bytes (a second representation of a take); Input only for
     read operands; the Case read at the callee by the Adjust rule (a second copy of KindOp's classification).
-- **BU-247 A scope's formal parameters are its own table; `Self` is a scope symbol** (2026-11-22; Front, Binding; Major; R7-N1 f,
-  Q-700, D-1153; design `front\notes\N1d\design-n1def.md` §2.2, §3, §4, design review ACCEPT WITH CONDITIONS
-  (C3, C5, C6, C7); implementation review `N1d\review-f-impl.md` ACCEPT WITH CONDITIONS; F's rulings N1-2, N1-6, N1-8, N1-10,
-  N1-12) SPEC 6.1.5, 8.1, 9.1, 9.5, 9.6, 9.7, 9.7.3, 18.2.1. Supersedes in part BU-150.
-  - **Parameters.** `BindingScope.Parameters` holds the Type-namespace formal parameters a scope's declaration declares (Type
-    parameters, pair targets and their binders; after f-2 also each Self context's `Self`), allocated when the scope declares one.
-    `DeclareKept` routes those kinds there and applies 9.1/9.7.3's one conflict rule across the scope's two Type tables; `TypeStage`
-    reads a scope's members, then its parameters, as one stage (SPEC 9.5: "found at their declaring positions"); no member reader (a
-    path's later component, an opening alias, inherited lookup, the qualification repair) reads `Parameters`, so none filters by
-    kind.
-  - Reason: with the parameters in the member table every outside reader filtered them by kind (four filters,
-    `IsGenericParameter`), and the two raw alias segment loops did not (d02i reached a formal parameter: R7-N1 e3).
-  - **By namespace** (f-1b, F's ruling N1-6 (1)). `Parameters` is keyed by namespace as the members are (`ScopeParameters.Types`,
-    `.Values`): a function's length slots (SPEC 4.4.1, the Value namespace) are in `Parameters.Values`, allocated only with a length
-    slot (f-1c, N1-8 C6), read by `ValueStage` after the scope's members and by the library witness rows; `IsLengthSlot` and its
-    three member-reader skips are gone. (f-1a, N1-6) The root path (`::A`, 9.6) reads its root scope through `TypeStage`:
-    ResolvePath's Type-namespace reads stay TypeStage's two.
-  - **Self** (f-2). A struct's and an enum's scope declares a Self symbol (Kind `Type`, `Declaration` the declaration, `SelfOf` the
-    declaration's symbol, `Type` the declaration applied to its own parameters, set with the schema in BindSchemas); a Contract's
-    scope declares its Self Type parameter (BU-150's symbol). One field holds a declaration's Self (`BindingSymbol.SelfSymbol`,
-    replacing `ContractSelf`), made once. The indexing walk declares Self after the declaration's subtree (an entry below its
-    children), so the parameters' provisional slots (`Parameters.Types.Count - 1`, which PairOuterOrigin reads at indexing) do not
-    count it. `EnclosingSelf` and the spelling tests (`EvaluatePath`, `ResolveAdaptationTarget`, BindNamedType's `isSelf`,
-    `EnumQualifierType`, `ConstructorQualifierType`) are deleted: the stage walk finds `Self` as any name, and the readers take
-    `SelfOf`. A written `Self`'s Symbols column is the Self symbol (`s=Type:Self`; HIR and MIR unchanged; N1-10 (1)).
-  - **`Self<...>`.** Supersedes BU-150's Self-arity clause ("written with Type arguments it has no candidate",
-    `UnresolvedBinding_Kd`): F.5 parses `Self<i32>`, 9.2 finds `Self`, 9.7 filters by the number of explicit Type arguments and none
-    remains, "a mismatch": `InvalidTypeFormation_Kd`, the code of `T<i32>`, for a Contract's Self (a Type parameter) as for a
-    struct's or enum's. A struct's or enum's carries 9.7's arity evidence (declared 0, written 1) and the named declaration as its
-    related site (`RecordArity`); a Type parameter's `T<i32>` and a Contract's `Self<X>` carry neither (N1-12 C2: a formation that
-    has a declaration to point at names it). A Constraint subject `U is Self<X>` keeps the function's `InvalidConstraint_Kd`; the
-    requirement's own `InvalidConstraint_Kd` over its failed name is no longer recorded (a dependent removal); `Self.(Self<X>).E`
-    keeps `UnresolvedBinding_Kd` (the Contract Reference role).
-  - **Arity.** BU-150's record was a choice of record, which the symbol's own arity removes: `BindingSymbol.GenericArity` (a Type
-    declaration's generic parameter count, length slots included; 0 for a Self and every other symbol) is read by AddTypeCandidates
-    and BindConstructedType (N1-6 (2)); `SelfType` returns a Self symbol's own Type (N1-6 (3)). Supersedes G701's option-C rejection
-    ("symbol identity is compared at many sites"): the census `front\notes\N1d\f\census-f2.md` answers each site. BU-150's rejected
-    "a Self parameter with another `Declaration`" stays rejected for the Contract side; the struct side keeps `Declaration` = the
-    declaration.
-  - **Readings** (corrected, N1-8). A struct's or enum's Self symbol is **not** its declaration's symbol in `Type` (the
-    declaration's applied Self Type `S<T...>`, against the declaration symbol's raw `S`) or `Schema` (none). The readers that ask a
-    selection for its declaration's facts read one published accessor, `BindingSymbol.Named` ("the declaration this selection
-    names": `SelfOf` for a struct's or enum's Self, the symbol itself otherwise, a Contract's Self and a binder among them):
-    QualifierSelection's requirement Type, TypeSideMember's Origin-qualifier Schema, ResolveMember's `associable` Type,
-    ResolvePatternCase's identity with the expected enum (`Self.Case` patterns) and the associated-inference clause subject's
-    identity. Rejected: five copies of `SelfOf ?? x` (N1-8 (a)); reading the formed Type's Symbol there (N1-8 (c): it changes the
-    raw `S` to `S<T...>` at five readers without a SPEC reason).
-  - **Rejected:** `Self` and the parameters in `Types` (a filter case in every outside reader); reading `Parameters` before `Types`
-    (moves the first candidate of a duplicate program); chaining a member and a parameter of one name across the two tables; a symbol
-    Kind of its own for struct Self (vocabulary).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
