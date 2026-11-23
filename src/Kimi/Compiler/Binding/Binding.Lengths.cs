@@ -352,29 +352,18 @@ public sealed partial class Binding
         return name is not null && this.Lookup(name, scope, syntax) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
     }
 
-    private bool InferLength(BoundType pattern, BoundType actual, Koto binder, SlotFrame frame)
+    // A fixed array's length as one expression: its expression, or its constant interned.
+    private BoundLength LengthOf(BoundType type) => type.LengthExpression ?? this.InternLength(LengthOperation.Constant, type.Length);
+
+    // SPEC 4.4.2, 10.8: a length pattern against a supplied length, the length-specific part of Infer's match. The binder's own length slot
+    // is returned (`slot`), whose bindings Infer's slot arm agrees by the Type slot's rule; any other pattern holds while not yet
+    // substitutable, when equal, or when the supplied length holds an atom.
+    private bool InferLength(BoundLength pattern, BoundLength supplied, Koto binder, SlotFrame frame, out int slot)
     {
-        if (actual.Length < 0)
+        slot = pattern is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder) ? parameter.Slot : -1;
+        if (slot >= 0)
         {
-            return true; // A local annotation's length hole supplies no evidence for a callee's length parameter.
-        }
-
-        var supplied = actual.LengthExpression ?? this.InternLength(LengthOperation.Constant, actual.Length);
-        return this.InferLength(pattern.LengthExpression ?? this.InternLength(LengthOperation.Constant, pattern.Length), supplied, binder, frame);
-    }
-
-    private bool InferLength(BoundLength pattern, BoundLength supplied, Koto binder, SlotFrame frame)
-    {
-        if (pattern is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
-        {
-            var previous = frame.Lengths[parameter.Slot];
-            if (previous is null)
-            {
-                frame.SetLength(parameter.Slot, supplied);
-                return true;
-            }
-
-            return ReferenceEquals(previous, supplied);
+            return true;
         }
 
         var required = this.SubstituteLength(pattern, binder, default, frame.Lengths); // A declared length holds no interpolation term.

@@ -697,7 +697,7 @@ public sealed partial class Binding
         // An interned leaf that passes these tests differs from the pattern in its Origin alone, which is evidence or a later relation
         // where Origins are not compared here: a pair layer's outer slot is such an Origin (SPEC 8.1.2, 15.3.6; PLAN G758).
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
-            !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, binder.SlotOwner, frame) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
+            !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? actual.Length < 0 || InferLengthSlot(this.LengthOf(pattern), this.LengthOf(actual)) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
             (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0 && (ReferenceEquals(pattern.Origin, actual.Origin) || !ReferenceEquals(pattern.InstanceContext, actual.InstanceContext))))
         {
             return false;
@@ -707,7 +707,7 @@ public sealed partial class Binding
         {
             var required = pattern.LengthArguments[i];
             var supplied = actual.LengthArguments[i];
-            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || !lengths || !this.InferLength(required, supplied, binder.SlotOwner, frame)))
+            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || !lengths || !InferLengthSlot(required, supplied)))
             {
                 return false;
             }
@@ -741,6 +741,42 @@ public sealed partial class Binding
         }
 
         return true;
+
+        // A local annotation's length hole (a negative Length, above) supplies no evidence for a callee's length slot. SPEC 10.8 Solving,
+        // Binding.OpenSlots (ArgFlow rulings 166, 167): a length slot's bindings agree by the Type slot's rule above: the first is kept and an
+        // equal one agrees; evidence held against a fill's atom waits; in the expected result's match a length atom takes the closed length
+        // its fill meets, and two distinct atoms agree in none. InferLength keeps the length-specific forms.
+        bool InferLengthSlot(BoundLength required, BoundLength supplied)
+        {
+            var holds = this.InferLength(required, supplied, binder.SlotOwner, frame, out var slot);
+            if (slot < 0)
+            {
+                return holds;
+            }
+
+            if (frame.Lengths[slot] is not { } previous)
+            {
+                frame.SetLength(slot, supplied);
+                return true;
+            }
+
+            if (ReferenceEquals(previous, supplied) || (((relateLater && !structural) || evidence is not null) && previous.ContainsOpenSlot != supplied.ContainsOpenSlot))
+            {
+                return true;
+            }
+
+            if (structural || !inferOrigins || previous.ContainsOpenSlot == supplied.ContainsOpenSlot)
+            {
+                return false;
+            }
+
+            if (previous.ContainsOpenSlot)
+            {
+                frame.SetLength(slot, supplied);
+            }
+
+            return true;
+        }
     }
 
     // SPEC 10.8, 10.8.1, 6.5.2 step 2 (DECISIONS: the fixed bindings): a solution's slot bindings fixed before any evidence, over the slot
