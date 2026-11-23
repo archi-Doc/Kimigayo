@@ -88,11 +88,12 @@ public class PatternTypeFormationBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
 
-        // A Pattern whose Type fails the late recheck has no tests to build, so its match stays Opaque (DECISIONS R4-M179).
+        // A Pattern whose Type fails the late recheck keeps its kind and its test (this Wildcard tests nothing), so its match is built
+        // with its coverage Invalid, no longer an Opaque (DECISIONS R4-M179 as D-1163 amends it).
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
-        Assert.Single(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque });
+        Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque });
     }
 
     [Fact]
