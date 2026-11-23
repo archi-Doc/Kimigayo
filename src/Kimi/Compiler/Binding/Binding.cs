@@ -63,6 +63,7 @@ public sealed partial class Binding
         this.associatedOrigins = new(this);
         this.shapeContractHeads = new(this);
         this.objectErasures = new(this);
+        this.deferredDefaults = new(this);
         this.enumConstructions = new(this);
         this.copyDeclarations = new(this);
         this.copyByType = new(this);

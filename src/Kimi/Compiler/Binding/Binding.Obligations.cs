@@ -5,14 +5,16 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Binding's obligations (DECISIONS BU-85). Responsibility: record each obligation a rule requires (AddObligation), one entry per
-// distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length
-// and call rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at the
-// obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one is a problem of its use, which it
-// leaves Resolved: RecordFurtherOriginRecord); each is stamped with the body Binding formed it in, but an Origin relation formed in a
-// body with an end foreign to it (ForeignEnd) is its nested signature's declaration row (R7-O3 U-O3); a Definition
-// obligation still recorded at Final fails its use; any other obligation but an Origin relation with both ends is proven or
-// discharged by Final unless it rests on a failed part, and one that is not fails its use as InternalInvariant_Kd. Prohibitions: no
-// consumer decides an obligation's verdict from its own reading; it reads Binding's.
+// distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length,
+// call and erasure rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at
+// the obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one is a problem of its use, which
+// it leaves Resolved: RecordFurtherOriginRecord); each is stamped with the body Binding formed it in, but an Origin relation formed in a
+// body with an end foreign to it (ForeignEnd) is its nested signature's declaration row (R7-O3 U-O3); a Definition obligation still
+// recorded at Final fails its use; an Owned obligation is judged at Final by its discharge: an erasure's Owned condition deferred while
+// a body is bound (Judgment), its failure the erasure's Language record at its use (JudgeErasedOwned), or a result slot's default
+// deferred at its last resolution (ResultDefault), its failure the slot's missing Origin (JudgeDeferredDefault); any other obligation
+// but an Origin relation with both ends is proven or discharged by Final unless it rests on a failed part, and one that is not fails
+// its use as InternalInvariant_Kd. Prohibitions: no consumer decides an obligation's verdict from its own reading; it reads Binding's.
 public sealed partial class Binding
 {
     internal bool IsVerifiedLengthObligation(BindingObligation obligation)
@@ -43,9 +45,10 @@ public sealed partial class Binding
     }
 
     // SPEC 8.1.1, 8.1.2, 23.1.2: the Final pass's verdict on the obligations still recorded. A Definition obligation's use fails with
-    // its Language cause (FailTypeRole); an Origin relation with both ends is the Origin judgment's. Any other obligation is proven
-    // where it forms or discharged when its local binds, so one left over parts that bound is a broken contract at its use
-    // (InternalInvariant_Kd); over a failed part it rests on that failure (rule W, BU-79).
+    // its Language cause (FailTypeRole); an Owned obligation is judged here by its discharge (an erasure's, JudgeErasedOwned, SPEC
+    // 15.2.3, 8.3.3; a result slot's default, JudgeDeferredDefault, SPEC 15.4.4); an Origin relation with both ends is the Origin
+    // judgment's. Any other obligation is proven where it forms or discharged when its local binds, so one left over parts that bound
+    // is a broken contract at its use (InternalInvariant_Kd); over a failed part it rests on that failure (rule W, BU-79).
     private void JudgeObligations()
     {
         for (var i = 0; i < this.obligations.Count; i++)
@@ -54,6 +57,14 @@ public sealed partial class Binding
             if (obligation.Deadline == BindingDeadline.Definition)
             {
                 this.FailTypeRole(obligation);
+            }
+            else if (obligation is { Kind: BindingObligationKind.Owned, Discharge: OriginDischarge.ResultDefault })
+            {
+                this.JudgeDeferredDefault(obligation);
+            }
+            else if (obligation.Kind == BindingObligationKind.Owned)
+            {
+                this.JudgeErasedOwned(obligation);
             }
             else if (this.IsUnjudged(obligation))
             {
@@ -90,7 +101,7 @@ public sealed partial class Binding
             return;
         }
 
-        var chain = BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), equality, this.formingBody);
+        var chain = BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), this.formingBody);
         if (!chain && !equality && longer.Kind == OriginKind.Intersection && !this.FitConjunct(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)

@@ -457,7 +457,6 @@ public class ClosureEnvironmentOriginTest
     [InlineData(CopyStore, Unsatisfied, "local@ref", "let local: i32 = n")]
     [InlineData(MovedStore, Unsatisfied, "inner@move", "let local: i32 = 1")]
     [InlineData(TwoRegions, Unproven, "a1[0]")]
-    [InlineData(InputDuringP, Unproven, "x)")]
     [InlineData(CapturedParameter, Unproven, "p)")]
     [InlineData(CopiedOption, Unproven, "p)")]
     [InlineData(EntryBorrow, Unproven, "outer)")]
@@ -484,6 +483,17 @@ public class ClosureEnvironmentOriginTest
         Assert.Equal(code, error.Code);
         Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
     }
+
+    // SPEC 15.6.5's Closure sentence (R7-O2 A1; the owner's O-440 (a), class S's split): p stored into a captured `var` array whose element
+    // region's one bound is p, by the call's input during p (InputDuringP, c20), by a captured p (cs_u2) or through a `let` of p (cs_u3):
+    // the body carries the region, read at its value p. Each was UnprovenOriginRelation_Kd before (BU-28's class S); CapturedParameter, the
+    // array without a bound (cs_u1), keeps its record above.
+    [Theory]
+    [InlineData("c20", InputDuringP, "")]
+    [InlineData("cs_u2", "public func main() => ()\nfunc g(p: ref/i32) -> isize\n    var arr: Array<ref/i32> = []\n    arr.append(p)\n    var f = func [var arr@move, p] () -> isize\n        arr.append(p)\n        return arr.length\n    return f@uniq()\n", "")]
+    [InlineData("cs_u3", "public func main() => ()\nfunc g(p: ref/i32) -> isize\n    let q = p\n    var arr: Array<ref/i32> = []\n    arr.append(q)\n    var f = func [var arr@move] (x: ref/i32 during p) -> isize\n        arr.append(x)\n        return arr.length\n    return f@uniq(p)\n", "")]
+    public void AStoreIntoACarriedRegionReadsItsValue(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 
     // SPEC 23.1 (DECISIONS BU-28): an enclosing local's region is shown as that local's omitted Origin, never by its atom's kind.
     [Fact]
@@ -838,8 +848,9 @@ public class ClosureEnvironmentOriginTest
 
     // The valid twins (DECISIONS R4-M126 §1): under `owner/Self` ρ is no borrow, so a Reborrow through a captured reference keeps its Origin
     // (t4e, t4f, the Consuming outer of n2b, a result over it, which ρ never makes call-local); a nested exclusive slot entry, a Consuming
-    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under a Shared receiver and its Option form under an Exclusive one
-    // (its `swap` and its store over `let` locals under an Exclusive receiver are the next theory's); a nested bare entry of a pair
+    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under Shared and Exclusive receivers (its `swap` and its store over
+    // `let` locals: each capture's region is carried, read at its value p, SPEC 15.6.5's Closure sentence; R7-O2 A1, the owner's O-443 (a),
+    // returning the rows Q-542 rejected under O-261 Q1 (a), PLAN G1105); a nested bare entry of a pair
     // capture, whose binding meets ρ on the pair layer's outer slot. A call whose relations need the receiver's well-formedness, `p outlives
     // ρ` (SPEC 15.6.1, 15.8.2; DECISIONS R4-M152, PLAN G270: a premise of the body, R2 of its receiver input): an exclusive input with its
     // clause (also in a nested Closure and through a local Reborrow), and the contextual parts over a captured Borrow that a call judging
@@ -856,8 +867,11 @@ public class ClosureEnvironmentOriginTest
         "        var inner = func [count@uniq] () => count@follow += 1\n        inner()\n        consume(item@move)\n        return count\n    return outer@move()\n")]
     [InlineData(Resource + "func use() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n" +
         "    let first = next()\n    let item = makeResource()\n    let take = func [item@move] () => item@move\n    let taken = take@move()\n    return first\n")]
+    [InlineData("func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let a = p\n    let b = p\n    var c = func [var a, var b] () -> ()\n" +
+        "        swap(a@uniq, b@uniq)\n    c()\n    return 0\n")]
     [InlineData("func same<T>(x: ref/T, y: ref/T) => ()\nfunc use(p: ref/i32) -> i32\n    let a = p\n    let b = p\n    let c = func [a, b] () -> ()\n" +
         "        same(a@ref, b@ref)\n    c()\n    return 0\n")]
+    [InlineData("func use(p: ref/i32) -> i32\n    let a = p\n    let r = p\n    var c = func [var a, r] () -> ()\n        let q = a@uniq\n        q@follow = r\n    c()\n    return 0\n")]
     [InlineData("func use(p: ref/i32) -> i32\n    let a = p\n    let r = p\n    let c = func [a, r] () -> i32\n        let q = a@ref\n        let v = q@follow\n" +
         "        return v@follow + r@follow\n    return c()\n")]
     [InlineData("func use(p: ref/i32) -> i32\n    let a: Option<ref/i32 during p> = .Some(p)\n    let c = func [a] () -> i32\n        let q = a@ref\n        let w = q@follow\n" +
@@ -871,6 +885,8 @@ public class ClosureEnvironmentOriginTest
         "            fu(a@uniq)\n        d()\n    c()\n    return 0\n")]
     [InlineData(ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        let r = a@uniq\n        fu(r)\n    c()\n    return 0\n")]
     [InlineData("func same3<T>(x: Option<ref/T during c>, y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n        same3(.Some(a@ref), b@ref)\n" + CallF)]
+    [InlineData("func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + TwoCaptures + "    var f = func [var a, var b] () -> ()\n" +
+        "        swap3(.Some(a@uniq), b@uniq)\n" + CallF)]
     [InlineData("func same4<T>(x: (ref/T during c, Option<ref/T during c>), y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
         "        same4((a@ref, .None), b@ref)\n" + CallF)]
     [InlineData("func same5<T>(x: [2 of Option<ref/T during c>], y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
@@ -886,10 +902,7 @@ public class ClosureEnvironmentOriginTest
     // captured references of independent Origins are not equal (`swap` and `swap3` instantiate one `T`), and a Borrow of a Closure local
     // stored into an environment binding does not outlive that binding's Origin. Under `owner/Self` the receiver is the environment by
     // value, with no ρ, so a captured reference returned as a static one stays Unproven (BU's own3, the guard's twin). Each keeps its
-    // record. Two `let` locals of one source are two regions (PLAN G492-a (ii); SPEC 7.7.2, 15.6.5; the owner's O-261 Q1 (a)): a
-    // capture's slot is a fixed Origin of the Closure body with no premise relating it to another capture's or to `p`, so `swap` and
-    // `swap3` over `[var a, var b]` and the store of `r` through `a@uniq` are Unknown, as their `var` twins (rc1, rc4, rc2; each was
-    // accepted before).
+    // record.
     [Theory]
     [InlineData(
         "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n" +
@@ -907,16 +920,6 @@ public class ClosureEnvironmentOriginTest
         Consume + "func use(p: ref/i32) -> i32\n    let a = p\n    let t = \"t\"\n    let c = func [a, t@move] () -> ref/i32\n        consumeText(t@move)\n" +
             "        return a\n    _ = c@move()\n    return 0\n",
         "a\n")]
-    [InlineData(
-        "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + TwoCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n    c()\n    return 0\n",
-        "b@uniq")]
-    [InlineData(
-        "func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + TwoCaptures + "    var f = func [var a, var b] () -> ()\n" +
-            "        swap3(.Some(a@uniq), b@uniq)\n" + CallF,
-        "a@uniq")]
-    [InlineData(
-        "func use(p: ref/i32) -> i32\n    let a = p\n    let r = p\n    var c = func [var a, r] () -> ()\n        let q = a@uniq\n        q@follow = r\n    c()\n    return 0\n",
-        "r\n")]
     public void TheReceiversWellFormednessProvesOnlyItsStoredOrigins(string function, string at)
     {
         var source = function + "public func main() => ()\n";

@@ -55,11 +55,11 @@ public sealed partial class Binding
     // than the walk's, so it reads only a part decided on settled verdicts (an assumption or a re-entry read holds only at the depth it
     // was read at), and it stores nothing in that walk's query: what it computes there may rest on provisional verdicts and is decided in
     // a query of its own, which ends with it.
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
+    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, QuerySite site)
     {
         if (ReferenceEquals(this.openFormation.Scope, scope) && this.formedParts.TryGet(type, this.openFormation.Query, out var decided) && decided.Settled)
         {
-            this.BeginProof();
+            this.BeginProof(site);
             return this.ReadPart(decided);
         }
 
@@ -67,7 +67,7 @@ public sealed partial class Binding
         this.openFormation = (scope, this.formedParts.Begin(this.storageVersion));
         try
         {
-            return this.CheckTypeConstraints(type, scope, this.openFormation.Query);
+            return this.CheckTypeConstraints(type, scope, this.openFormation.Query, site);
         }
         finally
         {
@@ -75,9 +75,9 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query)
+    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query, QuerySite site)
     {
-        if (this.BeginTypeFormation(type, scope) is not { } proof)
+        if (this.BeginTypeFormation(type, scope, site) is not { } proof)
         {
             return ConstraintProof.Error;
         }
@@ -99,12 +99,12 @@ public sealed partial class Binding
     // SPEC 15.6.1, 15.3.4 (DECISIONS R4-M163): the declaration walk, over a Type written in a callee's own signature, in that callee's
     // scope. It enters no Function Type's components at any depth: a nested signature's result is judged where it is written
     // (BindFunctionType, R4-M162), and its inputs are that signature's premises, proven at its value calls (R4-M137).
-    private ConstraintProof CheckDeclaredTypeConstraints(BoundType type, BindingScope scope)
-        => this.CheckDeclaredTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion));
+    private ConstraintProof CheckDeclaredTypeConstraints(BoundType type, BindingScope scope, QuerySite site)
+        => this.CheckDeclaredTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion), site);
 
-    private ConstraintProof CheckDeclaredTypeConstraints(BoundType type, BindingScope scope, uint query)
+    private ConstraintProof CheckDeclaredTypeConstraints(BoundType type, BindingScope scope, uint query, QuerySite site)
     {
-        if (this.BeginTypeFormation(type, scope) is not { } proof)
+        if (this.BeginTypeFormation(type, scope, site) is not { } proof)
         {
             return ConstraintProof.Error;
         }
@@ -119,15 +119,15 @@ public sealed partial class Binding
     }
 
     // The step's opening: a part whose declaration context failed is Error with no component entered (null); otherwise its proof scope
-    // opens with its unresolved declaration context and its Origin clauses.
-    private ConstraintProof? BeginTypeFormation(BoundType type, BindingScope scope)
+    // opens with its unresolved declaration context and its Origin clauses; `site` is the walk's (a part's: Nested).
+    private ConstraintProof? BeginTypeFormation(BoundType type, BindingScope scope, QuerySite site)
     {
         if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
         {
             return null;
         }
 
-        this.BeginProof();
+        this.BeginProof(site);
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ?
             ConstraintProof.Unknown : ConstraintProof.Proven;
         return CombineProof(proof, this.CheckTypeOriginRelations(type, scope.Owner), true);
@@ -142,7 +142,7 @@ public sealed partial class Binding
         {
             for (var parent = container; parent is not null && !parent.IsRoot; parent = parent.Parent as DeclarationContainerKoto)
             {
-                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope), true);
+                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, QuerySite.Nested), true);
             }
         }
 
@@ -156,14 +156,14 @@ public sealed partial class Binding
     {
         if (part.Components.Count == 0)
         {
-            return this.CheckTypeConstraints(part, scope, query);
+            return this.CheckTypeConstraints(part, scope, query, QuerySite.Nested);
         }
 
-        this.BeginProof();
+        this.BeginProof(QuerySite.Nested);
         if (!this.formedParts.TryGet(part, query, out var known))
         {
             var (mark, reads) = (this.BeginAnswer(), this.ProvisionalReads + this.unsettledReads);
-            var proof = this.CheckTypeConstraints(part, scope, query);
+            var proof = this.CheckTypeConstraints(part, scope, query, QuerySite.Nested);
             var settled = !this.EndAnswer(mark, proof) && this.ProvisionalReads + this.unsettledReads == reads;
             known = (proof, this.ProofCause(proof), this.ProofFact(proof), this.ProofClause(proof), settled);
             this.formedParts.Set(part, query, known);
@@ -186,13 +186,13 @@ public sealed partial class Binding
     {
         if (part.Components.Count == 0)
         {
-            return this.CheckDeclaredTypeConstraints(part, scope, query);
+            return this.CheckDeclaredTypeConstraints(part, scope, query, QuerySite.Nested);
         }
 
-        this.BeginProof();
+        this.BeginProof(QuerySite.Nested);
         if (!this.formedParts.TryGet(part, query, out var known))
         {
-            var proof = this.CheckDeclaredTypeConstraints(part, scope, query);
+            var proof = this.CheckDeclaredTypeConstraints(part, scope, query, QuerySite.Nested);
             known = (proof, this.ProofCause(proof), this.ProofFact(proof), null, false);
             this.formedParts.Set(part, query, known);
         }
@@ -206,7 +206,7 @@ public sealed partial class Binding
     // A requirement's call is proven under its reference, not as its declaration, so that demand stays outside the query until R7-C2. So
     // does a demand before the gate (contractHeadersReady; DECISIONS BU-120's line, PLAN G949 S1-r2): it forms the signature without
     // entering the row, so no Running state is set and no Done is read before the gate, for every subject, and it counts as a walk.
-    private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
+    private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function, QuerySite site)
     {
         if (this.activeRequirementContract is not null || !this.contractHeadersReady)
         {
@@ -215,14 +215,14 @@ public sealed partial class Binding
                 this.signatureWalks++; // A pre-gate demand counts its walk, as the query's did (the S1-r2 note's C4).
             }
 
-            return this.FormSignature(function);
+            return this.FormSignature(function, site);
         }
 
         var symbol = function.BoundSymbol!;
         switch (this.BeginQuery(symbol, DeclQueryKind.SignatureVerdict))
         {
             case DeclState.Done:
-                this.BeginProof(); // A kept answer and a computed one leave the same facts: outside every scope, the frame drops untaken ones.
+                this.BeginProof(site); // A kept answer and a computed one leave the same facts: outside every scope, the frame drops untaken ones.
                 return this.EndProof(ConstraintProof.Proven);
             case DeclState.Running:
                 return ConstraintProof.Unknown; // SPEC 8.3.3: a revisited obligation supplies no evidence.
@@ -231,7 +231,7 @@ public sealed partial class Binding
         // A frozen library verdict (PLAN G949 S1-1; G949 ruling 187 (c)) is read, never written: Done answered above, and one the freeze
         // left not Done is final too, so its use forms the signature in its own scope (PLAN G375's per-use form) and completes nothing.
         this.signatureWalks++;
-        var proof = this.FormSignature(function);
+        var proof = this.FormSignature(function, site);
         if (symbol.QueriesFrozen)
         {
             return proof;
@@ -261,21 +261,21 @@ public sealed partial class Binding
             if (this.nodes[i] is FunctionKoto function && ReferenceEquals(function.CodeContext?.Kotonoha, library) &&
                 function.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && ReferenceEquals(symbol.Declaration, function))
             {
-                this.BeginProof();
-                this.EndProof(this.CheckSignatureTypeConstraints(function));
+                this.BeginProof(function);
+                this.EndProof(this.CheckSignatureTypeConstraints(function, QuerySite.Nested));
             }
         }
     }
 
-    private ConstraintProof FormSignature(FunctionKoto function)
+    private ConstraintProof FormSignature(FunctionKoto function, QuerySite site)
     {
         var scope = this.scopes[function];
-        var proof = function.BoundSymbol?.Type is { } result ? this.CheckDeclaredTypeConstraints(result, scope) : ConstraintProof.Unknown;
+        var proof = function.BoundSymbol?.Type is { } result ? this.CheckDeclaredTypeConstraints(result, scope, site) : ConstraintProof.Unknown;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             proof = CombineProof(
                 proof,
-                function.Parameters[i].Type.BoundType is { } parameter ? this.CheckDeclaredTypeConstraints(parameter, scope) : ConstraintProof.Unknown,
+                function.Parameters[i].Type.BoundType is { } parameter ? this.CheckDeclaredTypeConstraints(parameter, scope, site) : ConstraintProof.Unknown,
                 true);
         }
 

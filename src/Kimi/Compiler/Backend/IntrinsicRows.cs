@@ -124,6 +124,8 @@ internal static class IntrinsicRows
         // T is the call's by-value result or operand, so neither reads another layout (Need None, as RawInitialize's).
         new(IntrinsicId.VolatileRead, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.VolatileRead, null),
         new(IntrinsicId.VolatileWrite, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.VolatileWrite, null),
+        // The platform layer's clock (the Tatara plan's decision 25): Time.monotonicNanoseconds, declared where `windows` does not hold.
+        new(IntrinsicId.MonotonicClock, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.Clock),
     ]);
 
     /// <summary>Gets the row of an intrinsic.</summary>

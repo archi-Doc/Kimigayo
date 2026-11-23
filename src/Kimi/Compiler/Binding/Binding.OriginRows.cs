@@ -12,7 +12,7 @@
 // formed in a body names no other, R4-M101 E1, BU-89, R7-O3 U-O3);
 // a case binder is its body's (only a declaration declares a pair binder, so the binders at a use are its body root's); every atom has a
 // class and none is Dependent (a body stamps each non-declaration atom it forms, E1; only a Binding failure leaves an Unbound or pending
-// atom, R4-M118); a unit names a non-Fixed atom of its own part or of none (an atom's part is its forming unit's, E4, and one body forms
+// atom, R4-M118: the intake completes a deferred result slot's atom Final proved first, InternAtom, R7-O2 O2-F); a unit names a non-Fixed atom of its own part or of none (an atom's part is its forming unit's, E4, and one body forms
 // a meet's operands). A break throws at its site in a complete compilation, ending the check as CheckFaulted_Kd (BrokenContract); the
 // pass's state is stored only after its check passes, so every later read throws again. In an incomplete compilation such a state rests
 // on a Binding failure (SPEC 23.1.2, R4-M118) and the view keeps it. Unverified (R4-M118, BU-102): an Unbound atom left by path d

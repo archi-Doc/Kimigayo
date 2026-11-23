@@ -114,7 +114,7 @@ public sealed partial class Binding
 
         var forwardProven = this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
         var backwardProven = !equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
-        if (BodyChain(longer, shorter, equality, this.formingBody))
+        if (BodyChain(longer, shorter, this.formingBody))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, longer, shorter, Equality: equality, WellFormed: wellFormed, Condition: condition));
             return;
@@ -262,7 +262,7 @@ public sealed partial class Binding
         obligation = obligation with { Body = this.formingBody }; // Judged in the body that forms it (SPEC 15.6.5; DECISIONS BU-28).
         var resolvedLonger = this.OriginAtUse(relation.Longer, use);
         var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
-        if (RegionChain(resolvedLonger, resolvedShorter, relation.Equality, this.formingBody) || !FixedIn(resolvedShorter, this.formingBody))
+        if (RegionChain(resolvedLonger, resolvedShorter, this.formingBody) || !FixedIn(resolvedShorter, this.formingBody))
         {
             this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
             return null;

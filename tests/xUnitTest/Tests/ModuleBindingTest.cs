@@ -859,7 +859,9 @@ public partial class ModuleBindingTest
         return compilation;
     }
 
-    internal static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null, bool rootReferencesChild = false)
+    // A root module and its dependency (and the dependency's child) prepared for a target row, windows-x64 unless one is given.
+    internal static Compilation Create(
+        string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null, bool rootReferencesChild = false, TargetProfile? row = null)
     {
         var compilation = Compilation.CreateForTest();
         var project = compilation.Project;
@@ -882,7 +884,7 @@ public partial class ModuleBindingTest
             nodes = [root, library, child];
         }
 
-        Assert.True(compilation.Prepare(TargetProfile.Windows.Target, new(nodes)));
+        Assert.True(compilation.Prepare((row ?? TargetProfile.Windows).Target, new(nodes)));
         compilation.SourceModules[0].AddSource(new SourceDocument("root.kimi", rootSource));
         compilation.SourceModules[1].AddSource(new SourceDocument("library.kimi", librarySource));
         if (childSource is not null)

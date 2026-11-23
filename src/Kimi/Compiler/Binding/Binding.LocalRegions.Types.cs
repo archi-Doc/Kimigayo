@@ -150,7 +150,9 @@ public sealed partial class Binding
     // 15.6.5, 15.3.4 (PLAN G492-a (ii)): a region owner's unwritten slots are its regions, `let` and `var` alike, opened at its declaration
     // (15.4.4), one per stored part and place: each path of a reassignable binding's storage is a place a store writes apart
     // (IsMutableDeclaration), so its paths are opened apart; a `let` local is one place, so a stored part met on several of its paths is
-    // opened once, in one query of rewrittenParts. The fit records each region's bound from the value (CheckTypeUse).
+    // opened once, in one query of rewrittenParts. The fit records each region's bound from the value (CheckTypeUse). Each slot's row is
+    // its position's variance in the local's Type, composed as RelationWalk composes it; a `let` local's part met again keeps its first
+    // row, which no reader reads (its value is published).
     private BoundType LocalBorrowType(BoundType type, Koto owner, Koto value, int slot)
     {
         if (!IsRegionOwner(owner) || !type.StoresOrigin)
@@ -159,33 +161,33 @@ public sealed partial class Binding
         }
 
         var query = IsMutableDeclaration(owner) ? 0u : this.rewrittenParts.Begin(this.storageVersion);
-        var result = Open(type);
+        var result = Open(type, OriginVariance.Covariant);
         _ = this.CheckTypeUse(type, result, value, out _);
         return result;
 
-        BoundType Open(BoundType current)
+        BoundType Open(BoundType current, OriginVariance variance)
         {
             if (query == 0)
             {
-                return OpenPart(current);
+                return OpenPart(current, variance);
             }
 
             if (!this.rewrittenParts.TryGet(current, query, out var opened))
             {
-                opened = OpenPart(current);
+                opened = OpenPart(current, variance);
                 this.rewrittenParts.Set(current, query, opened);
             }
 
             return opened!;
         }
 
-        BoundType OpenPart(BoundType current)
+        BoundType OpenPart(BoundType current, OriginVariance variance)
         {
             // SPEC 15.6.5, 8.1.2 (PLAN G758): a pair layer's outer-Origin slot, the original's implicit `o` included (OuterOrigin), is a
             // slot of the local's Type as a concrete layer's Origin is; its target stays the binder's.
             if (current.Kind == BoundTypeKind.Parameter && this.OuterOrigin(current) is { } outer)
             {
-                return this.types.Rebuild(current, (BoundType[])current.Components, Region(outer), (BoundOrigin[])current.OriginArguments);
+                return this.types.Rebuild(current, (BoundType[])current.Components, Region(outer, variance), (BoundOrigin[])current.OriginArguments);
             }
 
             // A complete generic binding and a callable's quantified signature are contracts, not local storage slots.
@@ -198,15 +200,15 @@ public sealed partial class Binding
             var arguments = this.originScratch.Rent(current.OriginArguments.Count);
             try
             {
-                var origin = current.Origin is { } own ? Region(own) : null;
+                var origin = current.Origin is { } own ? Region(own, variance) : null;
                 for (var i = 0; i < current.OriginArguments.Count; i++)
                 {
-                    arguments[i] = Region(current.OriginArguments[i]);
+                    arguments[i] = Region(current.OriginArguments[i], ComposeVariance(variance, this.OriginArgumentVariance(current, i, this)));
                 }
 
                 for (var i = 0; i < current.Components.Count; i++)
                 {
-                    components[i] = Open(current.Components[i]);
+                    components[i] = Open(current.Components[i], ComposeVariance(variance, ComponentVariance(current, i, this)));
                 }
 
                 return this.types.Rebuild(current, components.AsSpan(0, current.Components.Count), origin, arguments.AsSpan(0, current.OriginArguments.Count));
@@ -219,9 +221,9 @@ public sealed partial class Binding
         }
 
         // A `let` region's value is the initializer's Origin at its slot (SPEC 15.3.6, 15.4.4: its one bound, fixed at the declaration).
-        BoundOrigin Region(BoundOrigin initial)
+        BoundOrigin Region(BoundOrigin initial, OriginVariance row)
         {
-            var region = this.LocalRegionSlot(owner, slot--);
+            var region = this.LocalRegionSlot(owner, slot--, row);
             if (query != 0)
             {
                 this.PublishRegionValue(region, initial, value);
@@ -269,8 +271,10 @@ public sealed partial class Binding
         return read;
     }
 
-    // SPEC 15.3.6, 15.8.2 (DECISIONS: G570): a Closure's result with the regions of its own body resolved. An enclosing region is fixed in
-    // `body` (BU-28), so it stays: the result and the environment name one Origin, solved over all its bounds. One call is one query of
+    // SPEC 15.3.6, 15.8.2 (DECISIONS: G570): a Closure's result with the regions of its own body resolved: a local region as its value
+    // (RegionValue, R7-O2 A1), a call's open region as its sources' meet (it has no local value; retention's AddRegionMeet reads it so),
+    // each in turn until no region of the body is left. An enclosing region is fixed in `body` (BU-28), so it stays: the result and the
+    // environment name one Origin, solved over all its bounds. One call is one query of
     // rewrittenParts (DECISIONS BU-19), as PublishedResult is: a part's resolution is a function of the part and `body`, so each distinct
     // part is resolved once (PLAN G492-a (ii)).
     private BoundType ResolveLocalResultOrigins(BoundType type, ExecutableBody body)
@@ -338,6 +342,11 @@ public sealed partial class Binding
             if (!RegionIn(origin, body))
             {
                 return origin;
+            }
+
+            if (SlotRegion(origin))
+            {
+                return this.RegionValue(origin) is { } value ? Resolve(value) : origin;
             }
 
             var sources = this.LocalRegionSources(origin);
