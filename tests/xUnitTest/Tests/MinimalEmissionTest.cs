@@ -360,12 +360,17 @@ public class MinimalEmissionTest
         return c;
     }
 
-    // A program checked for `output` as a build checks it (Compilation.Check): every phase run and its records published.
+    // A program checked for `output` as a build checks it (Compilation.Check): every phase run and its records published, on the Windows
+    // row.
     internal static Compilation Check(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
+        => Check(TargetProfile.Windows, source, path, output);
+
+    // A program checked for `output` on a target row as a build checks it.
+    internal static Compilation Check(TargetProfile row, string source, string path, OutputKind output)
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.OutputKind = output;
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        Assert.True(c.Prepare(row.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Check();
         Assert.Equal(0, c.Binding.IdlessFactSites);

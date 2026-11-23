@@ -48,9 +48,10 @@ public partial class KimiLibraryShapeTest
         SameAsTheEmptyPrograms(c);
     }
 
-    // The inputs a compilation gives besides the program: C9's test build (Binding) and target (the frozen library's key, design §4, so a
-    // library that came to read it would move this row to a comparison per target), and C11's parse-time inputs: the compile-time
-    // variables (Debug; Parser.Directives) and the documentation and hover collection, which the LSP sets together (Project.cs).
+    // The inputs a compilation gives besides the program: C9's test build (Binding) and target (the frozen library's key, design §4; the
+    // library reads it since the Tatara plan's B7b6, whose Conditions select its declarations, so this row compares per target: with the
+    // empty program checked for its own target), and C11's parse-time inputs: the compile-time variables (Debug; Parser.Directives) and the
+    // documentation and hover collection, which the LSP sets together (Project.cs).
     [Theory]
     [InlineData("test build")]
     [InlineData("32-bit target")]
@@ -168,9 +169,12 @@ public partial class KimiLibraryShapeTest
         return c;
     }
 
+    // The facts compared with the empty program's for the same target: windows-x64's, the reference read once, or the empty program
+    // checked for another target (the library is that target's freeze, design §4, its declarations selected by its Conditions).
     private static void SameAsTheEmptyPrograms(Compilation c)
     {
-        foreach (var ((fact, expected), (_, actual)) in EmptyProgramFacts.Value.Zip(Facts(c)))
+        var reference = c.TargetTriple == EmptyProgram.Value.TargetTriple ? EmptyProgramFacts.Value : Facts(Check(Compilation.CreateForTest(), string.Empty, c.TargetTriple.Value));
+        foreach (var ((fact, expected), (_, actual)) in reference.Zip(Facts(c)))
         {
             var line = 0;
             while (line < expected.Length && line < actual.Length && expected[line] == actual[line])

@@ -98,6 +98,7 @@ internal enum IntrinsicId : byte
     StaticEnsure, // SPEC 22.4.3.
     VolatileRead, // Volatile access (SPEC 5.6).
     VolatileWrite,
+    MonotonicClock, // SPEC 22.8.2, IMPL 21.5.5 (the Tatara plan's decision 25): the platform layer's monotonic clock.
 }
 
 /// <summary>What a function without a MIR body is (SPEC 8.11.2, 22.1, 22.6; TyCtxt.Bodyless), Binding's one category of it, which A4

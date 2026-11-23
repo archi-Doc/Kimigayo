@@ -103,18 +103,23 @@ public partial class KimiLibraryShapeTest
 
     // PLAN G949 S1-r1b (r1b-5; review-s1r1 Re-check 3, RC-a): the import declarations are a part of each pass (PassPart), read after a
     // Bind as one composed list, so the library's imports (Windows.kimi's two kernel32 functions), which the Backend lays out through
-    // TyCtxt.Imports, are listed after a first and a second Bind, and from the split after a program pass that declares none.
-    [Fact]
-    public void TheLibrarysImportsAreListedAfterEachBind()
+    // TyCtxt.Imports, are listed after a first and a second Bind, and from the split after a program pass that declares none. The Tatara
+    // plan's B7b6: they are declared where `windows` holds, so windows-x64's library and the one without a target (its selection, F1 (a))
+    // list them, and the Linux row's library has no import (every library import lies under `#if windows`, B3).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "queryPerformanceCounter,queryPerformanceFrequency")]
+    [InlineData("", "queryPerformanceCounter,queryPerformanceFrequency")]
+    [InlineData("x86_64-unknown-linux-musl", "")]
+    public void TheLibrarysImportsAreListedAfterEachBind(string target, string imports)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        Assert.True(target.Length == 0 || c.Prepare(target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
         for (var bind = 0; bind < 2; bind++)
         {
             Assert.True(c.Bind().IsComplete);
             Assert.Equal(
-                ["queryPerformanceCounter", "queryPerformanceFrequency"],
+                imports.Split(',', StringSplitOptions.RemoveEmptyEntries),
                 c.Types.Imports.Where(x => ReferenceEquals(x.Declaration.Kotonoha, c.Library.Kotonoha)).Select(static x => x.Name));
         }
     }
