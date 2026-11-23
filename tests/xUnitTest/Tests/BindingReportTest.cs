@@ -268,8 +268,9 @@ public sealed class BindingReportTest
         var c = MinimalEmissionTest.Analyze("func f(b: bool) -> ()\n    b++\npublic func main() => ()");
         var issues = c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").ToArray();
         Assert.Equal([DiagnosticCode.InvalidAssignment_Kd, DiagnosticCode.NonNumericOperand_Kd], issues.Select(static x => x.Code));
-        Assert.Equal(-1, issues[0].Problem);
+        Assert.True(issues[0].Problem >= 0); // R7-E4 E4a-1: the denied write records its problem (RecordWrite), the slot's.
         Assert.True(issues[1].Problem >= 0);
+        Assert.NotEqual(issues[0].Problem, issues[1].Problem);
         Assert.False(c.Binding.CheckBound().IsComplete);
         Assert.Equal(issues.Select(static x => x.Code), c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").Select(static x => x.Code));
     }
