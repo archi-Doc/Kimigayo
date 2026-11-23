@@ -20,6 +20,12 @@ public sealed partial class Binding
     // G1128: the top of the keys of a call's slot variables (SlotVariable), below SlotRegion's range.
     private const int SlotVariableKey = SlotRegionKey - (1 << 28) - 1;
 
+    // B1 (C-488 C1, D-C1): the key of a value call's call result region (CallResultRegion), the one key of the call-region family
+    // between SlotRegion's range (SlotRegionKey - 2^28, SlotRegionKey] and SlotVariable's (SlotVariableKey - 2^26, SlotVariableKey]: below
+    // UnsolvedKey / 2 (IsCallRegion), above UnsolvedKey, so no input key UnsolvedKey - 1 - i of any arity, and reached by a parameter key
+    // UnsolvedKey + i only past i = 2^28 - 1, beyond the parameters that already stay below SlotVariable's range.
+    private const int CallResultKey = SlotRegionKey - (1 << 28);
+
     // G1128 (C1): the count of a call's slot variables its key range holds (IsSlotVariable); past it the call is the located limit.
     private const int MaxSlotVariables = 1 << 26;
 
@@ -320,6 +326,11 @@ public sealed partial class Binding
     private bool CallRegionComplete(BoundOrigin region)
         => IsCallRegion(region) && region.Binder is { BoundType: { } result } && this.Region(region) is not { Parents.Count: not 0 } &&
             this.OccurrenceVariance(result, region, this) == OriginVariance.Covariant;
+
+    // SPEC 15.8.2, 15.6.4, 15.3.6 (B1; DECISIONS BU-104): a value call's instance of its callee Closure's call result atom, the per-call
+    // result Origin P8 publishes where a source was left out: a region of the calling body that only the call's result names, so with no
+    // source it has no answer (CallRegionComplete reads it once the call is bound). Binding.ValueCalls' ValueCallResult builds it.
+    private BoundOrigin CallResultRegion(Koto call) => this.OpenOrigin(call, CallResultKey);
 
     // SPEC 8.1.2, 10.8: the open region of a solve's node (a call, a function reference's use) for the outer Origin that an annotated
     // occurrence of pair slot `slot`'s original leaves to other evidence; keyed apart from argument evidence and from CallRegion.
