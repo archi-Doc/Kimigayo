@@ -444,7 +444,7 @@ public sealed partial class Binding
         // the receiver checks below read the bound callee, which a generic application never is.
         if (call.Method is GenericsKoto)
         {
-            return this.Fail(call, BindingFailure.NoApplicableCandidate);
+            return this.Record(call, BindingFailure.NoApplicableCandidate, []);
         }
 
         // The callee's failure is the call's own record, which reads no argument: an argument judged after it would become its
@@ -460,7 +460,7 @@ public sealed partial class Binding
         // bound on their own (CompleteUnselected) and none is its prerequisite.
         if (!MapValueCallArguments(call, signature).Valid)
         {
-            return this.Fail(call, BindingFailure.NoApplicableCandidate);
+            return this.Record(call, BindingFailure.NoApplicableCandidate, []);
         }
 
         // A per-call input is one bound by the callee's own binder; an input written over a fixed Origin of the calling body is fitted

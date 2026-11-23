@@ -144,7 +144,7 @@ public sealed partial class Binding
         {
             return ConstructsCase(call, group) // Then the callee is the call's Method: it is no generic name.
                 ? this.BindEnumConstruction(call, callee, this.PublishedTarget(callee, group, expected), call, scope, expected)
-                : this.Fail(call, BindingFailure.NotCallable);
+                : this.Record(call, BindingFailure.NotCallable, []);
         }
 
         if (callee is InvocationKoto || group?.Kind != BindingSymbolKind.Function)
@@ -197,7 +197,7 @@ public sealed partial class Binding
 
         if (group.Kind != BindingSymbolKind.Function)
         {
-            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
+            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Record(call, BindingFailure.NotCallable, []);
         }
 
         var requirementGroup = candidates.Requirements;
@@ -246,7 +246,7 @@ public sealed partial class Binding
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
                 // associated specification or limited by OCC-X, so the selection rests on that failure (SPEC 23.1.2).
                 return (evaluation.InvalidDeclaration ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(call, cause)
-                    : this.Fail(call, BindingFailure.InvalidConstraint);
+                    : this.Record(call, BindingFailure.InvalidConstraint, []);
             }
 
             if (!this.CheckCallShapeContracts(in evaluation, shape.Generics))
@@ -377,7 +377,7 @@ public sealed partial class Binding
             {
                 if (CallOwnSlots(selected)[i] is LengthParameterKoto ? solveFrame.Lengths[i] is null : solveFrame.Types[i] is null)
                 {
-                    return this.Fail(call, BindingFailure.MissingType, true);
+                    return this.Record(call, BindingFailure.MissingType, [], unresolved: true);
                 }
             }
 
@@ -404,7 +404,7 @@ public sealed partial class Binding
                 ? (instantiated.HasAbstractPart ? this.CallableContractType(instantiated, scope) : instantiated) : null;
             if (result is null)
             {
-                return this.Fail(call, BindingFailure.MissingType, true);
+                return this.Record(call, BindingFailure.MissingType, [], unresolved: true);
             }
 
             var selectedOperations = evaluation.OperationsOf(winnerIndex);

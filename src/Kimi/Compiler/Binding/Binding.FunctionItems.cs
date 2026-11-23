@@ -371,7 +371,7 @@ public sealed partial class Binding
 
         if (candidates != 1)
         {
-            return this.Fail(use, candidates == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
+            return this.Record(use, candidates == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous, []);
         }
 
         var target = (FunctionKoto)selected!.Declaration;
@@ -386,7 +386,7 @@ public sealed partial class Binding
         {
             if (!this.ExplicitReferenceArguments(explicitReference, target, scope, arguments, lengths))
             {
-                return this.Fail(use, BindingFailure.NoApplicableCandidate, true);
+                return this.Record(use, BindingFailure.NoApplicableCandidate, [], unresolved: true);
             }
 
             var container = this.ReferenceContainer(use, selected);

@@ -259,7 +259,7 @@ public sealed partial class Binding
                 }
             }
 
-            return own || (!rests && !found) ? this.Fail(call, BindingFailure.NoApplicableCandidate)
+            return own || (!rests && !found) ? this.Record(call, BindingFailure.NoApplicableCandidate, [])
                 : failed is not null ? this.CompleteDependent(call, failed) : this.Fail(call, BindingFailure.Unsupported, true);
         }
         finally
