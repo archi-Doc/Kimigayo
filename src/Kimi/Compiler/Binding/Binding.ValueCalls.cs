@@ -8,7 +8,8 @@
 //   parts at their instantiated parameters (PLAN G494); the substitution, and the result (ValueCallResult). P9: a Closure's result
 //   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage), the image of the Closure binder's reserved atom
 //   built only where the result names it (CallAtomsOf, PerCallImages); its call result atom, which names a Refuted relation A5 judges in
-//   the Closure's body (P8), is published as it is, never an Unbound atom resting on no Binding failure (R4-M118; R7-O1 H); a Closure value
+//   the Closure's body (P8), is published as it is, never an Unbound atom resting on no Binding failure (R4-M118; R7-O1 H) but a
+//   deferred result slot's atom Final proved, which the intakes complete (CompletedOrigin, R7-O2 O2-F); a Closure value
 //   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
 //   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
 //   Unsupported_Kd.
@@ -438,7 +439,7 @@ public sealed partial class Binding
             }
 
             // SPEC 7.7.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
-            return receiverType.Semantics == SemanticsKind.Owner && this.IsBarePlace(call.Method) && this.ProveCopy(receiverType, this.ConstraintScope(call)) != ConstraintProof.Proven
+            return receiverType.Semantics == SemanticsKind.Owner && this.IsBarePlace(call.Method) && this.ProveCopy(receiverType, this.ConstraintScope(call), call) != ConstraintProof.Proven
                 ? CalleeOutcome.TransferRequired : CalleeOutcome.Formed;
         }
 
@@ -473,13 +474,14 @@ public sealed partial class Binding
         return receiverType.Semantics == SemanticsKind.Owner ? CalleeOutcome.LendsCallee : CalleeOutcome.Formed;
     }
 
+    [Transitional("R7", Reason = "A part's structural misfit fails the call with no problem (R7-E3 E3b-1, ruling 8 (2)): its input is the call's NoApplicableCandidate from an earlier part of the same fit loop or from AcquireValueCallPart, so a Record per misfit may duplicate a problem, until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
     private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature, SemanticsKind receiver = SemanticsKind.Ref)
     {
         // A function value has no Type parameters of its own, so explicit Type arguments select nothing (SPEC 7.7, 12.5.2);
         // the receiver checks below read the bound callee, which a generic application never is.
         if (call.Method is GenericsKoto)
         {
-            return this.Fail(call, BindingFailure.NoApplicableCandidate);
+            return this.Record(call, BindingFailure.NoApplicableCandidate, []);
         }
 
         // The callee's failure is the call's own record, which reads no argument: an argument judged after it would become its
@@ -509,7 +511,7 @@ public sealed partial class Binding
         // bound on their own (CompleteUnselected) and none is its prerequisite.
         if (!MapValueCallArguments(call, signature).Valid)
         {
-            return this.Fail(call, BindingFailure.NoApplicableCandidate);
+            return this.Record(call, BindingFailure.NoApplicableCandidate, []);
         }
 
         // A per-call input is one bound by the callee's own binder; an input written over a fixed Origin of the calling body is fitted
@@ -584,7 +586,7 @@ public sealed partial class Binding
                     var erasure = instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function;
                     if (failure.Kind == ComparisonFailureKind.Shape && !erasure)
                     {
-                        this.Fail(call, BindingFailure.NoApplicableCandidate);
+                        this.Fail(call, BindingFailure.NoApplicableCandidate); // Fail, not Record: the method's Transitional (R7-E5).
                     }
                     else
                     {
@@ -705,6 +707,7 @@ public sealed partial class Binding
     // argument fits structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it
     // supplies kept. A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the
     // part is taken and acquired.
+    [Transitional("R7", Reason = "A part's misfit fails the call with no problem (R7-E3 E3b-1, ruling 8 (2)): it runs once per argument, so its input is the call's NoApplicableCandidate from an earlier argument, and a Record per misfit may duplicate a problem, until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
     private void AcquireValueCallPart(
         InvocationKoto call,
         int i,
@@ -729,7 +732,7 @@ public sealed partial class Binding
         if (!this.AdaptInput(source, FixedPattern.Open(parameter), actual, scope, null, null, out var adapted, out var quality, out var kind, deferAcquisition: true) ||
             (this.acquisitionFailure is not null && !this.FitsStructuralPartAt(adapted, parameter, source)))
         {
-            this.Fail(call, BindingFailure.NoApplicableCandidate);
+            this.Fail(call, BindingFailure.NoApplicableCandidate); // Fail, not Record: the method's Transitional (R7-E5).
             formed = false;
             return;
         }

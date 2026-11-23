@@ -337,10 +337,11 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite); a derived right
-        // side's Type may be unknown (KnownType).
+        // Of the Type it is placed at, the target's published Type (none for a Field Place of no Type, a stored Field whose slot failed,
+        // PLAN G1184), or the Never value of a right side of Type Never, which is not placed (Overwrite); a derived right side's Type may be
+        // unknown (KnownType).
         var source = ReferenceEquals(KnownType(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left;
-        var value = this.Hold(TypeOf(source), source, MirLocalRole.Assigned);
+        var value = this.Hold(KnownType(source), source, MirLocalRole.Assigned);
         var rest = this.AssignApart(value, assignment.Right);
         this.Made(value);
         var target = this.Place(assignment.Left);

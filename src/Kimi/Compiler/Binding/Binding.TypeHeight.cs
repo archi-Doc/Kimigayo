@@ -20,20 +20,23 @@ namespace Kimi.Compiler;
 //   reading it rests on it (SPEC 23.1.2, 8.3.3 Limits) and a later failure of the same node is not recorded.
 // - Invariants: one compare per check, no table; Binding's walks recurse at most the limit plus a written layer's syntax depth
 //   (BU-112), inside the compile stack's margin (DECISIONS U-D2's entry). A refusal outside every consultation frame during the run
-//   is a broken contract: InternalInvariant_Kd at the project, never a silent null (a pass step not yet framed; PLAN G651 a4 makes it a
-//   throw). After the run it is answered to the innermost after-run owner (PLAN G651 U2b R1): the instance collector's answer frame
-//   (R7-T1; TyCtxt.OpenAnswer, CloseAnswer: every substitution the collector, Layout or a witness causes is inside it) or an after-run
-//   site (a MIR driver's body site and the node sites inside it; Binding's after-Check walk and the editor boundary, whose marks are
-//   dropped; TyCtxt.OpenBodySite, OpenSite). There a refusal is answered to the innermost formation owning the Type (OpenFormation): a
-//   substitution at a requesting site (TyCtxt.Answered, giving TyCtxt.Formation.HeightLimit), an instance's stored Types (Instance,
-//   published as the instance's HeightLimit, which Binding's storage walk reads as a limit and Layout as its HeightLimit) or a
-//   requirement call's witness resolution (TyCtxt.Witness, its target's Cause HeightLimit); a formation publishes it and records
-//   nothing. Every after-run read of a published refusal, and a refusal no formation owns, is a use at the innermost owner
-//   (AnswerSite): in the frame the collector's readers record it; in a site it marks the site, whose driver records each mark through
-//   MirReport's least-use table (R5-M171); with no owner it is a broken contract, thrown (R13.1; code generation opens none: it runs on
-//   an accepted program, whose Types the collector formed). A refusal the frame took that no formation owned is R7-T1's broken
-//   contract, which the collector's run throws after the frame's close. A consultation frame open after the run fails its node first
-//   (G881b N6; U2c).
+//   is a broken contract: InternalInvariant_Kd at the project, never a silent null (a pass step no frame covers yet, until PLAN G651
+//   a2-a4 frame the step; a4 makes it a throw). After the run it is answered to the innermost after-run owner (PLAN G651 U2b R1): the
+//   instance collector's answer frame (R7-T1; TyCtxt.OpenAnswer, CloseAnswer: every substitution the collector, Layout or a witness
+//   causes is inside it) or an after-run site (a MIR driver's body site and the node sites inside it; Binding's after-Check walk and the
+//   editor boundary, whose marks are dropped; TyCtxt.OpenBodySite, OpenSite). There a refusal is answered to the innermost formation
+//   owning the Type (OpenFormation): a substitution at a requesting site (TyCtxt.Answered, giving TyCtxt.Formation.HeightLimit), an
+//   instance's stored Types (Instance, published as the instance's HeightLimit, which Binding's storage walk reads as a limit and Layout
+//   as its HeightLimit) or a requirement call's witness resolution (TyCtxt.Witness, its target's Cause HeightLimit); a formation
+//   publishes it and records nothing. Every after-run read of a published refusal, and a refusal no formation owns, is a use at the
+//   innermost owner (AnswerSite): in the frame the collector's readers record it; in a site it marks the site, whose driver records
+//   each mark through MirReport's least-use table (R5-M171); with no owner it is a broken contract, thrown (R13.1; code generation
+//   opens none: it runs on an accepted program, whose Types the collector formed). A refusal the frame took that no formation owned is
+//   R7-T1's broken contract, which the collector's run throws after the frame's close. A consultation frame open after the run fails
+//   its node first (G881b N6; U2c). SubstituteType's family (SubstituteType, ContractType, StoredType, KeptType, StorageInstance, the
+//   identity judge, proof normalization, the relations' context-free fits) takes no site: its refusal reads the frame its caller holds
+//   open; the proof entries and openers name their judgment's site (QuerySite, PLAN G651 a1), where R7-C6 a's second commit opens the
+//   frame when none is open.
 // - Prohibitions: no check before a walk from its inputs' heights (it over-approximates); no other suppression than SPEC 23.1.2's rests.
 public sealed partial class Binding
 {
@@ -41,12 +44,13 @@ public sealed partial class Binding
     internal const int TypeHeightLimit = 8192;
 
     // A refusal without a site in this pass (a broken contract, reported by ReportDiagnostics; the library's freeze counts it as a record).
-    [Transitional("G651 a4", Reason = "A refusal has no site only during the run, in a pass step no consultation frame covers (RefuseHeight's in-run arm); after the run it is answered to an owner or thrown (PLAN G651 U2b R13.1). a4 frames the last such step and makes that arm the throw, removing this flag, RecordSitelessHeightRefusal, ReportFailures' re-report, FreezeLibrary's term and ResetPass' clear.")]
+    [Transitional("G651 a4", Reason = "A refusal has no site only during the run, in a pass step no consultation frame covers (RefuseHeight's in-run arm; the proof entries and openers name their site, a1, and SubstituteType's family reads the open frame); after the run it is answered to an owner or thrown (PLAN G651 U2b R13.1). a4 frames the last such step and makes that arm the throw, removing this flag, RecordSitelessHeightRefusal, ReportFailures' re-report, FreezeLibrary's term and ResetPass' clear.")]
     private bool sitelessHeightRefusal;
 
     // The answer frame (OpenAnswer) and the innermost formation in it (OpenFormation): whether a frame is open and whether a refusal was
-    // answered to the formation, else to the frame.
-    [Transitional("G651 a1", Reason = "The interim form of the after-run site kind \"the caller records\" for the instance collector's run (R7-T1; PLAN G651 U2's collector row) and, after the run, every formation's state under the innermost after-run owner (G651 U2b, whose owner field carries the site): a1 makes the site SubstituteType's input and this frame that site kind.")]
+    // answered to the formation, else to the frame. The after-run form of the one frame a refusal reads (R7-M54; F's C8 ruling 13): the
+    // instance collector's run and, after the run, every formation's state under the innermost after-run owner (G651 U2b, whose owner
+    // field carries the site).
     private (bool Open, bool Answered) answer;
 
     private (AfterRunOwner Kind, SourceRef Subject) owner; // The innermost after-run owner (PLAN G651 U2b R2).

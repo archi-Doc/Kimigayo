@@ -209,6 +209,11 @@ public enum BindingObligationKind : byte
     OriginInference,
     TypeRole,
     TypeFormation,
+
+    /// <summary>An erasure's Owned condition at <c>Use</c>, the converted value, whose proof read a region with no answer yet while a body
+    /// is bound; <c>Type</c> is its subject, judged under Finality at the Final pass (SPEC 7.7.4, 15.8.1, 15.2.3, 8.3.3). With
+    /// <see cref="OriginDischarge.ResultDefault"/>, a result slot's default at <c>Use</c>, the slot, with no <c>Type</c>.</summary>
+    Owned,
 }
 
 public enum BindingDeadline : byte
@@ -228,6 +233,10 @@ public enum OriginDischarge : byte
     /// <summary>The well-formedness of a direct borrowed input: its stored Origins outlive the borrow at each call, which judges the
     /// instantiated input's well-formedness (SPEC 8.1.2, 15.6.4 step 3).</summary>
     CallBorrows,
+
+    /// <summary>A result slot's default (SPEC 15.4.3 rule 3) whose inputs' Owned its last resolution deferred while a body was bound: an
+    /// Owned obligation at the slot with no Type, judged at Final over the slot's deferred inputs (SPEC 15.4.4, 8.3.3).</summary>
+    ResultDefault,
 }
 
 /// <summary>A declared slot; a pair consumes one argument and retains its whole type.</summary>

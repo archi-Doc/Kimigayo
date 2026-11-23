@@ -78,7 +78,7 @@ public sealed partial class Binding
         BoundConformance? uniq = null;
         if (core.Symbol is { Declaration: StructKoto or EnumKoto })
         {
-            var conformance = this.SelectConformance(core, indexable, scope, out var candidates);
+            var conformance = this.SelectConformance(core, indexable, scope, source, out var candidates);
             if (conformance is null)
             {
                 if (candidates == 0)
@@ -99,10 +99,10 @@ public sealed partial class Binding
             }
             else
             {
-                uniq = this.Library.UniqIndexable is { } uniqIndexable ? this.SelectConformance(core, uniqIndexable, scope, out _) : null;
+                uniq = this.Library.UniqIndexable is { } uniqIndexable ? this.SelectConformance(core, uniqIndexable, scope, source, out _) : null;
             }
 
-            exclusiveAvailable = this.ConformsHere(core, uniq, scope);
+            exclusiveAvailable = this.ConformsHere(core, uniq, scope, source);
         }
         else if (core.Kind == BoundTypeKind.Parameter && this.PremiseRefines(core, indexable, scope))
         {
@@ -172,13 +172,13 @@ public sealed partial class Binding
     // is ref/Key) for `core` in `scope` (SelectConformance), or null for none or several.
     private BoundConformance? ConformanceForKey(BoundType core, BindingSymbol contract, Koto keyNode, BindingScope scope)
         => KeyType(keyNode) is { } written
-            ? this.SelectConformance(core, contract, this.types.Rebuild(this.SelfType(contract), [this.LayersTerminal(written, scope)], null, []), scope, out _)
+            ? this.SelectConformance(core, contract, this.types.Rebuild(this.SelfType(contract), [this.LayersTerminal(written, scope)], null, []), scope, keyNode, out _)
             : null;
 
     // SPEC 8.3.3: a registered conformance supplies its requirements to this instance only when its conditions hold here;
     // a refuted or unproven condition supplies nothing, and the Type stays usable through its other conformances.
-    private bool ConformsHere(BoundType type, BoundConformance? conformance, BindingScope scope)
-        => conformance is not null && this.ProveConformance(type, conformance.Contract, scope) == ConstraintProof.Proven;
+    private bool ConformsHere(BoundType type, BoundConformance? conformance, BindingScope scope, QuerySite site)
+        => conformance is not null && this.ProveConformance(type, conformance.Contract, scope, site) == ConstraintProof.Proven;
 
     private InvocationKoto? BindIndexerCall(IndexKoto source, BindingScope scope, bool exclusive)
     {

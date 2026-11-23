@@ -17,7 +17,7 @@ namespace Kimi.Compiler.Mir;
 //   stays in its key's merged problem, its body among the members and its causes counted, where Add drops such a problem for the defect
 //   (R4's U1b note n1); a merged problem's facts are its first member's but their Cause tail, then, when every member is derived, their
 //   causes once each, a Value >= 0 the index in Merged of the problem's merged problem (the remap is total) but never its own (members
-//   causing one another, across NoBody and a body, name no other problem; R4's U1b note n2), -1 (2g-1's Binding cause) kept; the view is
+//   causing one another, across NoBody and a body, name no other problem; R4's U1b note n2), -1 (A3's Binding cause, R5-M186) kept; the view is
 //   computed once, on its first read after an Add or a Clear, in pooled storage, so a warm version allocates nothing.
 // - Prohibitions: no write to All or its facts but the limit table's flush on the first Merged read after a committed least use
 //   changed (MirReport.Limits.cs); no publication.

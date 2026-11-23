@@ -125,6 +125,7 @@ public sealed partial class Binding
     // checked before the atom is stored.
     private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte unit)
     {
+        atom = this.CompletedOrigin(atom); // R7-O2 O2-F: a deferred slot's atom Final proved enters the view as its completion.
         IOriginRowSetBuilder builder = slice;
         if (!builder.Index.TryGetValue(atom, out var index))
         {
@@ -193,9 +194,9 @@ public sealed partial class Binding
 
         if (EnclosingAtom(atom, slice.Body))
         {
-            // Row 6: an enclosing body's atom, whether it is a call region, and a local region's solved value (RegionValue; DECISIONS
-            // BU-127, O-422 (a)): A5 judges a relation the region fails at a longer end as the value's (PLAN G492-a (ii)).
-            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom), this.RegionValue(atom));
+            // Row 6: an enclosing body's atom, whether it is a call region, and for a region B carries, in turn included, its value
+            // (CarriedRegion; R7-O2 A1): A5 judges a relation the region fails at a longer end as the value's (PLAN G492-a (ii)).
+            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom), this.CarriedRegion(atom, slice.Body.Definition?.Declaration, out var value) ? value : null);
         }
 
         return new(atom, OriginAtomKind.Unclassed, role); // Row 9: another body's root seen from B.

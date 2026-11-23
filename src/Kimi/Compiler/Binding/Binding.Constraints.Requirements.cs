@@ -93,7 +93,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.RecordConstraint(UnwrapTransparentType(node)!, cause);
+                this.RecordConstraint(UnwrapTransparentType(node)!, ConstraintProof.Error, [new(ProblemFactKind.Cause, this.FactSite(cause), -1)]);
             }
         }
         else if (result.HasUnresolved && node.BindingState != BindingState.Invalid)

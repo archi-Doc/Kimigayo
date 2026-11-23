@@ -157,8 +157,8 @@ internal sealed partial class TyCtxt
             return default;
         }
 
-        var instance = binding.InstanceContract(contract, self, subst.Declaring);
-        var witness = binding.ResolveRequirementWitness(requirement, self, instance, binding.EffectPremises(null));
+        var instance = binding.InstanceContract(contract, self, subst.Declaring, Binding.QuerySite.AfterPass);
+        var witness = binding.ResolveRequirementWitness(requirement, self, instance, binding.EffectPremises(null), Binding.QuerySite.AfterPass);
         return witness.Kind switch
         {
             Binding.RequirementWitnessKind.Builtin => new(RequirementTargetKind.Builtin, witness.Target, subst, default),

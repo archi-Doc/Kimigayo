@@ -63,6 +63,7 @@ public sealed partial class Binding
         this.associatedOrigins = new(this);
         this.shapeContractHeads = new(this);
         this.objectErasures = new(this);
+        this.deferredDefaults = new(this);
         this.enumConstructions = new(this);
         this.copyDeclarations = new(this);
         this.copyByType = new(this);
@@ -101,13 +102,9 @@ public sealed partial class Binding
         this.reachedThroughBorrow = new(this);
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
-        this.callInferenceFailures = new(this);
-        this.callableSelectionFailures = new(this);
         this.baseCallFailures = new(this);
-        this.objectErasureFailures = new(this);
         this.resultContexts = new(this);
         this.callableConstraints = new(this);
-        this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);
         this.memberSelections = new(this);

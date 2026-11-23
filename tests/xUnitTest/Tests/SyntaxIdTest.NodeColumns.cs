@@ -201,12 +201,10 @@ public partial class SyntaxIdTest
     // would satisfy; PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
     // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
-    // under a holed annotation; CallInferenceFailures, ConstructorInferenceDiagnosticTest's changed constructor selection;
-    // CallableSelectionFailures, a Callable value call no bound applies to; BaseCallFailures, a `base` reference that calls nothing;
-    // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
-    // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
-    // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UnboundSlots, a call whose slot
-    // nothing binds, and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
+    // under a holed annotation; BaseCallFailures, a `base` reference that calls nothing;
+    // B2a-2's ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
+    // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UniqIndexing, a Dictionary's
+    // user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
     // B1b-2's MemberSelections, a stored Field read and a method call, InferredConstructionTargets, a generic struct's construction
     // without its Type arguments, and QualificationStops, an instance member named without `self`; D-986's FormReads, the kept operands
     // `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query memos written in a Bind: the
@@ -218,7 +216,8 @@ public partial class SyntaxIdTest
     // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute; PrerequisiteVisits, the walk of a
     // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`; B1b-1's ResolvingTypes,
     // a written Type's BindType, whose rows are reset as it returns, so the column holds carved pages, not rows; SynthesizedCalls,
-    // Milestone23's range calls).
+    // Milestone23's range calls; R7-O2 O2-F's DeferredDefaults, a Closure header's result default over an omitted list's own capture,
+    // judged at Final).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -247,14 +246,10 @@ public partial class SyntaxIdTest
     [InlineData("ReceiverOperations", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
     [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
     [InlineData("ArrayInferenceShapes", "let values: [_ of i32] = []\n")]
-    [InlineData("CallInferenceFailures", "struct C<T>\n    public init(x: ref/i32, y: ref/T) => ()\n    public init(x: ref/T, y: ref/T) => ()\nlet n: i32 = 42\nlet r = n@ref\nlet c = C.init(r@ref, n@ref)", DiagnosticCode.ConstructorSelectionChanged_Kd)]
-    [InlineData("CallableSelectionFailures", "func both<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i32>\n    return action(true)\n", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("BaseCallFailures", "open struct Base\n    public let value: i32 = 7\n    public func read(self: ref/Self) -> i32 => 1\nstruct Derived : Base\n    func f(self: ref/Self) -> i32 => base()\n()", DiagnosticCode.InvalidBaseCall_Kd)]
-    [InlineData("ObjectErasureFailures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return other.ordinary()\n()", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("ReachedThroughBorrow", "struct S1\n    internal var x: Array<i32>\nstruct S2\n    internal var x: Array<S1>\nfunc f(s: S2) -> i32 => s.x[0].x[0]\n")]
     [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("CallableConstraints", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", DiagnosticCode.UnprovenConstraint_Kd)]
-    [InlineData("UnboundSlots", "func make<T>() -> i32 => 1\nlet x = make()\n", DiagnosticCode.UnboundTypeArgument_Kd)]
     [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
     [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
     [InlineData("MemberSelections", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
@@ -272,6 +267,7 @@ public partial class SyntaxIdTest
     [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
     [InlineData("ResolvingTypes", "let x: i32 = 1\n")]
     [InlineData("SynthesizedCalls", "milestone:Milestone23")]
+    [InlineData("DeferredDefaults", "struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    return 0\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

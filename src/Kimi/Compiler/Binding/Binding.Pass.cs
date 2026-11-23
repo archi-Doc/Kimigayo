@@ -52,7 +52,6 @@ public sealed partial class Binding
         this.sitelessHeightRefusal = false;
         this.ResetSites();
         this.lints.Clear();
-        this.callableSelectionParties.Clear();
         this.importDeclarations.Clear();
         this.libraryImports.Clear();
         this.environmentsJudged = -1;
@@ -75,6 +74,7 @@ public sealed partial class Binding
         this.aliases.Clear();
         this.ResetAliases();
         this.obligations.Clear();
+        this.completedDefaults = 0;
         this.ResetLocalRegions();
         this.ResetBorrows();
         this.rawFits.Clear();

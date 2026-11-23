@@ -118,7 +118,7 @@ public sealed partial class Binding
         var selection = new OmittedBaseSelection(OmittedBaseOutcome.Dependent, Cause: clause);
         this.implicitConstructorDecisions.Add(structure, selection);
         if (this.inheritanceStates.TryGetValue(structure.BoundSymbol!, out var state) && state == 2 && clause.BoundType is { } baseType &&
-            this.CheckTypeConstraints(baseType, this.scopes[structure]) == ConstraintProof.Proven)
+            this.CheckTypeConstraints(baseType, this.scopes[structure], structure) == ConstraintProof.Proven)
         {
             // A base synthesized constructor that does not exist for a reason other than absence leaves this one resting on that reason.
             if (baseType.Symbol?.Declaration is StructKoto parent && (parent.ImplicitConstructorPending || this.implicitConstructorDecisions.ContainsKey(parent)) &&

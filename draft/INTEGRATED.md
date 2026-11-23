@@ -1478,6 +1478,13 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   landing): C3's row records b as landed in W-322 (`SelectConformance`, one selection of a Type's conformance by a Contract;
   DECISIONS R7-M82) and its remainder C3b-2 (PLAN G1300: a specification whose qualifier names a conformance of several members)
   as next. Nothing frozen.
+- Revision 117 (2026-11-23, plan §14; the Back's D-1179, B's X1 ruling 3, R8-X1 U4's records): §5.2's L1 row records L1 as
+  landed whole (DECISIONS R8-M51, R8-M53-M55); X1's row records that L2 landed before the exit run (U1 Q-661 W-317, U2 Q-671
+  W-319, U3 Q-677 W-322; DECISIONS R8-M58, R8-M59) and that X1's exit run was at 6e8ffd3b4; §10.2 item 3 reads `IntrinsicId` 27
+  for R8's set, 29 with OSF2's `VolatileRead` and `VolatileWrite` (the owner's O-489; DECISIONS T-M23). Nothing frozen.
+- Revision 118 (2026-11-23, plan §14; the Back's D-1186, the owner's O-513 (c) and O-514 (a), R8's exit): X1's row records
+  that R8 exited 2026-11-23 (DECISIONS R8-M60; the owner's O-513 (c), O-514 (a)). No other decision changes. No SPEC or IMPL
+  text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
@@ -1802,6 +1809,13 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 18 (2026-11-23, T's correction on D-1171): §8's candidate 3 states read accurately: it reaches the 1% gate (1.52% of
   Hello O0 warm) but has no candidate (the LC3 design's §5), so nothing is designed; resolve and the hash/record/move parts stop
   (revision 17 said read stops). No other change. Nothing frozen.
+- Revision 19 (2026-11-24, T's D-1203; LC3 Revision 1 with its probes P-D and P-W, and B10's brief note H12): §8's candidate 3
+  states LC3's outcome in place of revisions 17-18's text: the whole link 15.4 ms warm (54% of Hello O0's warm line), 24.8 ms
+  cold; S1 and D1 (`/lldignoreenv /winsysroot:<stem>.native`, the fix of PLAN G1334) adopted; W-c, write and close otherwise,
+  and W2 (until a measured `kimi.exe` row) stopped. Decision 42 names the interrupt run under QEMU OSF3c, not OSF3b (a wording
+  correction: B10 Revision 1 split the evidence unit, and §7's B10 row already says OSF3c), and its "the interrupt entries (OSF3a)" reads "the interrupt declarations (OSF3a)
+  and entries (OSF3b)" as B10 Revision 1's split and §7's row state (T's D-1203 cell (3)). No other decision changes. No SPEC or
+  IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 

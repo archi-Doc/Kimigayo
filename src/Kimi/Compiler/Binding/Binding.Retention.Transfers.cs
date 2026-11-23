@@ -98,7 +98,7 @@ public sealed partial class Binding
         }
 
         return this.SelectsWitness(symbol, self, this.Library.Iterator) &&
-            this.ResolveConformance(self, this.Library.Iterator, premises ?? this.EffectPremises(null), out _) == ConstraintProof.Proven
+            this.ResolveConformance(self, this.Library.Iterator, premises ?? this.EffectPremises(null), QuerySite.Nested, out _) == ConstraintProof.Proven
             ? Transfer.Values : Transfer.None;
     }
 
