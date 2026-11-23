@@ -3377,6 +3377,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Amended by R7-M66 (F-H1-4): the Dependent meet class covers only the operands resting on the failed input. A meet outlives a
     region only when every operand does (SPEC 15.3), so an operand not resting on the failed input is a conjunct of its own and, when
     unproven, A5's independent record (SPEC 23.1.2). With R4-M152's P9 image gone, Unbound has one source, `PendingOrigin`.
+  - Amended by R7-M92 (R7-O2 O2-F, 2026-11-23): a deferred result slot's atom is `PendingOrigin`'s own (one source stays), but once
+    Final proves it, it stays Unbound in published HIR Types on valid programs and is completed at the intakes; the C1-F4 view keeps
+    this entry's invariant (InternAtom completes first).
 - **R4-M119 R4's concurrency by lane, and heavy runs capped across sessions** (owner, 2026-10-24, verbatim 「先ほどの推奨の制約に変更してください。」,
   adopting the recommended rule; supersedes R4-M110's process bullet and the owner's 「1+1 のまま続けてください。」 of the same day;
   amended by Q11; superseded in part by R7-M2: the session names)
@@ -6077,6 +6080,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Narrowed by BU-127 (PLAN G572 U1): the forms BU-127 accepts leave the class; `t31`, `n21` (G572 U2), `s1`, `w4`, `s2`, `s4` (G565) stay, now pinned by `AConstraintOverAnEnclosingRegionIsARecordedLimit` (renamed from `AFixedPositionOverAnEnclosingRegionIsARecordedLimit`) and `AnErasedCaptureOverAStaticRegionIsARecordedLimit`.
   - Narrowed by BU-136 (PLAN G572 U2a): `s1`, `s4` leave the class.
   - Superseded in part by R8-M56 (PLAN G492-a (ii), 2026-11-19): rule (3)'s retention edge to the meet of all the sources stays only for a local region with no solved value (a call's open region); a local region with BU-127's solved value equals it in retention (two premise edges). Reason that no longer holds: rule (3) was retention's only reading of a local region and predates BU-127's solved value; a one-way edge cannot prove the retention of a capture that SPEC 15.6.4 and 15.8.2 require. Refined by R8-M56 too: "the meet of all its sources" stays the A5 oracle's region reading, which decides first; a relation it fails is decided by the solved value's operands.
+  - Amended by R7-M89 (R7-O2 A1+A2, 2026-11-22): rule (3)'s retention edge is N6's; under the owner's O-481 (b) the O-61 (a) line's
+    `s2h` and `s2c` are valid (an erasure's Owned condition over a local `var` region reads the region's candidate once its body is
+    bound: `s2h` accepted, `s2c` keeping O-406 (a)'s located limit) and `c12` stays invalid; the O-57 class is narrowed by `s2`
+    (accepted).
 - **R4-M185 A Function Item's Value call covers as a direct call (PLAN G584)** (2026-11-09; Major; design review 2 and implementation review ACCEPT, the Middle's reviewer; the Front's C-164 for the `TyCtxt` hunk; amends R4-M183) SPEC 7.2.2, 7.3.4, 7.7.4, 15.6.4.
   - R4-M183 gave a Value callee no covering, on the ground of "no declaration to read". Now `MirBorrows.Cover` reads the declaration of the Function Item the callee calls, `TyCtxt.CalledItem`, which is one `Binding.CallableCore` read. It runs the direct path under that Item's substitution, `TyCtxt.SubstOfItem`, and gives no covering where there is no substitution.
   - Why it is sound: a Function Item value's target and slot order are fixed. Distinct declarations have distinct Item Types (7.7.4), and slots are positional (7.3.4). Closures, Function-typed parameters and erased values are not Items, so they stay uncovered.
@@ -6974,6 +6981,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (rulings-f); the first part's Origin (B2); parts on the structural path alone (review-r4 C1); a second copy of 15.6.5's refutation
   (review-r4 C2); a limit keyed on the candidate count or the ambiguity; the `Final` limit at the record (it moves O-57's recorded
   rows with no selection to protect).
+  - Amended by R7-M89 (R7-O2 A1+A2, 2026-11-22; the owner's O-481 (b)): s2c, e6c, s9, e-owul and c-ntup are valid, their records
+    unchanged (O-406 (a)'s located `Unsupported_Kd` at the argument); e-owu stays invalid.
 - **R4-M216 An operand's check set takes its own value only where its operation keeps it (the A5 one-tree landing's (c2))**
   (2026-11-19, landing with Q-539; Middle, A5; Major, restores dev's verdicts; commit 9c0896ed8) SPEC 15.6, 12.2. Supersedes in part
   R4-M66 (design A3 §12 E13 (1) (a): an operand's check set holds its own value, an rvalue's single one's too).
@@ -7478,6 +7487,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `CallableRegionScalingTest.TheNamingSearchOverManyInputsScales`) are deleted, and an anonymous function's per-call Origin at the
     shorter end (`PerCallBinder`) joins the case the comparison decides by SPEC, so n8r, n8rv and a13 are accepted instead of A5's
     located limit.
+  - Superseded in part by R7-M89 (R7-O2 A1+A2, 2026-11-22; the owner's O-481 (b)): "it stands for the conversion's Owned condition, a
+    Constraint" no longer holds for an erasure's Owned condition over a local `var` region, which reads the region's candidate once its
+    body is bound; it stands for a Constraint's comparison (c12).
 - **R4-M223 A setter's receiver is reserved where it is located (stream Z's Z11, A5-F8's 2d-2, PLAN G396 (1))** (2026-11-20, landing
   with Q-553; Middle, MIR build; Major, no record or acceptance moves; the Middle's independent design and code review ACCEPT WITH
   CONDITIONS) SPEC 13.7.2, 11.3.1. Amends R4-M37's Open "a custom setter's receiver is reserved only at the setter call, not from
@@ -9322,6 +9334,8 @@ resumed by R4-M86 (2026-10-20).
     initializer" no longer holds for a capture of a `let` local, whose Origin is now the local's region, an enclosing region of the
     Closure (BU-127's), whose relation is A5's row and record (at the clause). The reason that no longer holds is BU-197's "a `let`
     binding keeps the bound value's Type", superseded by R8-M56.
+  - Superseded in part by R7-M89 (R7-O2 A1+A2, 2026-11-22): its InputDuringP moves (the owner's O-440 (a)): a Closure body that
+    carries an enclosing region reads it as its SPEC 15.3.6 candidate.
 
 - **BU-29** (superseded in part by BU-59: the staging of `SourceState` and of a source check's `UnderCheck`, and the reason for
   staging `Completion`; by R7-M20: the staging of `Completion` to C3) (2026-10-23; PLAN G170 unit C2, bu30, under PlanB C and C1's
@@ -12858,6 +12872,10 @@ resumed by R4-M86 (2026-10-20).
   - Superseded in part by R4-M222 (PLAN G492-a (iii), 2026-11-19): "A comparison with a Function Type reads the contract alone (O-61
     (a)) and is no member" no longer holds for the comparison's Origin relations: a region conjunct its premises leave unproven is its
     body's row, which A5 judges. It stands for the conversion's Owned condition, a Constraint.
+  - Superseded in part by R7-M89 (R7-O2 A1+A2, 2026-11-22): the shorter-end limit and its open issue (4) (a carried region reads as
+    its candidate at either end), and the each-bound reading for an enclosing region (kept only for a call's open region of the
+    judging body, `SolvedStatic`, until PLAN G936); the comparison sentence's remaining scope is a Constraint's comparison only: an
+    erasure's Owned condition over a local `var` region reads the region's candidate once its body is bound (the owner's O-481 (b)).
 - **BU-136 Step 5's Unknown is an obligation judged under Finality** (2026-11-09; PLAN G565, G572 U2a; Major; design review 2 ACCEPT at c5ab60289, implementation review 2 ACCEPT at e2c912e52) SPEC 10.1, 8.3.3, 15.2.3, 15.3.6.
   - Cause. Selection deferred a call whose strictly best candidate was Unknown at step 5 and failed it there (`PremisesCannotAffect`, `CallSelection.Unproven`, `FailPendingConstraint`), judging it while bodies were bound; a local region's bounds were incomplete, so `T is Owned` over a `static`-only region was a false error (G565, R4-M184's limit `s1`, `w4`, `s4`).
   - Rule.
@@ -12883,6 +12901,8 @@ resumed by R4-M86 (2026-10-20).
     caller-context read of a written Type argument under the requirement's reference).
   - Amended by BU-182 (PLAN G707): `CandidateBindings` holds the candidate's substitution as one `CallSubstitution`, in place of its
     Slots and Lengths columns; the rule is unchanged.
+  - Superseded in part by R7-M89 (R7-O2 A1+A2, 2026-11-22): "`StaticOrigin` reads a local region's solved value once no body is being
+    bound": it reads `ValueIn`'s value at Final, and `SolvedStatic` only a call's open region.
 - **BU-128 A binding-only inline cycle is judged at the binding** (2026-11-08; R7-V5b-1, PLAN G588; the owner's O-70 (a), verbatim
   「すべてa」) SPEC 6.2, 8.2.3, 8.5.1, 8.5.5, 23.1.2. Supersedes in part BU-65 ("Only declarations are reported; a cycle of binding nodes alone is its
   conformance's error (SPEC 8.3.3)") and the prohibition "no record for a binding node" in `Binding.InlineLayouts.cs`: O-54 (a) makes a
@@ -16274,6 +16294,8 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-241 (G1128, Q-618): the solve holds each representative it takes and solves the other variables again with it,
     and it publishes an invariant variable's failed equality (`OriginInference.Marked`), on which the call's clause and input-premise
     checks rest.
+  - Amended by R7-M89 (R7-O2 A1+A2, 2026-11-22): its member `RowCandidate`'s contract names its two departures from SPEC 15.3.6's
+    table (PLAN G1208); `StrongestLowerBound` is shared with `VarCandidate`.
 - **BU-222 A nested definition's Type carries the instance it was formed in; its inherited arguments are Owned parts read
   through it** (2026-11-14; Front, designed and implemented at the Back's seat (C-305); Binding; PLAN G846, G856; Q17 class 1;
   Major, an acceptance mover; the owner's O-249 Q4 (a), verbatim 「Q1〜Q4 は、すべてa」, O-258 (a), verbatim 「O-258 a」, O-262 (a),
@@ -16936,6 +16958,8 @@ resumed by R4-M86 (2026-10-20).
   - Records (Q13): bodies under a failed slot regain their independent records (a W among them); no acceptance move.
   - Rejected: a builder-side check (R4-M42's form, superseded by R4-M61); a flag written by each slot writer; the node's Type column;
     a `BoundType.Error` sentinel; a second source member beside TypeSource.
+  - Amended by R7-M92 (R7-O2 O2-F, 2026-11-23): a result slot refuted at Final keeps a Type naming its Unbound atom resting on the
+    slot, beside the header's failed-slot form (two forms of one failed slot); removal condition PLAN G1081.
 - **BU-235 A Closure whose parameter or result slot failed publishes its definition** (Front, 2026-11-21; PLAN G1110, D-865, Q-579;
   Major; design `...\front\notes\C2\c2\design-d865.md` with its Revision 1; F's C2 rulings 277, 279, 280, 285) SPEC 23.1.2, 10.5.
   Amends R5-M63 (1); extends BU-234's failed-slot fact to a Closure's slots; supersedes D-834's sentence "a published Closure needs no
@@ -26500,6 +26524,192 @@ R8-M* and R9-M* by the stage of the recording unit.
     every null stored part (`AdtDef.FieldType` null; the review's C-ir1 and N-e: it would make a part the instance does not store, one
     past IMPL A.4's height or unsubstituted, a Place of no Type, which a typed node could read or borrow (a validator finding);
     unreached by the U2b corpus and h0-h2); the target's own derived site defining its Move Path (R4-M232).
+- **R7-M89 A local region's SPEC 15.3.6 value has one reading, `RegionValue`; a Closure body that carries an enclosing region, and an
+  erasure's Owned condition, read it as its candidate once its body is bound (R7-O2 A1+A2)** (Middle, 2026-11-22; Major, an
+  acceptance mover; PLAN G194, G572 (ii) and its retention row, G1105 (closed), G1099 (closed for its rows, D-862), G565's half;
+  Q-640, D-1050; design `artifacts\handoff\2026-11-16-pause\middle\notes\r7-o2-design.md` Revision 3.3, rulings
+  `notes\r7-o2-a1-rulings.md`; the Front's design reviews 1-5 (C-417, the fifth ACCEPT WITH CONDITIONS E1-E4); the owner's O-440 (a),
+  O-442 (a), O-443 (a), O-466 (b), O-471 (a), O-481 (b)) SPEC 15.3.4, 15.3.6 (with D-993's clause), 15.4.4, 15.6.4, 15.6.5 (its
+  Closure sentence and last clause, D-868; D-993's read-in-turn bullet), 15.8.2. Lands in window W-336 with R7-M90 (O2-N), R7-M91
+  (O2-H) and R7-M92 (O2-F) on one head.
+  - Extends PLAN G492-a (ii)'s owner (Q-542): `PublishRegionValue` stays the one writer of a `let` region's value; `RegionValue` is the
+    one reading of any local region's value: a `let` region's as published, fixed at its declaration (SPEC 15.4.4); a `var` region's
+    candidate by its row (`LocalRegion.Row`, written by `LocalRegionSlot`; `LocalRegion.Targets`, its recorded lower bounds) through
+    `VarCandidate`, SPEC 15.3.6's table for a local region's candidate as SPEC states it (covariant the meet of the upper bounds, none
+    without one; contravariant the strongest lower bound; invariant the proven equality, otherwise the covariant, else the
+    contravariant candidate). The candidate is formed from the bounds as recorded (O-466 (b); D-993's SPEC 15.3.6 sentence: "a bound
+    that is another variable stays that variable, whose own candidate is read in turn (variables in a cycle being one)"; in the body
+    that declares a `let` local, outside a contract comparison made there, a bound that is that local's region is the Origin its
+    declaration fixes for it). It has no answer until the region's body is bound (`RegionBounded`, the one gate of a candidate's
+    Binding-time reading, which `SolvedStatic` reads too; the code review's B1): a Binding-time judgment in a body nested in it, as a
+    Closure's body bound at its literal, reads the region, and Final reads the candidate.
+  - **Two members for SPEC 15.3.6's table, staged:** the call solve keeps its own reading, `RowCandidate` (BU-221's member; the
+    solve's fixpoint, the representative and `SolveLocalBounds` read it), which departs from the table twice (a covariant variable
+    without an upper bound takes the lower bound; an invariant one gives none unless its bounds are proven equal); both share
+    `StrongestLowerBound`. Its contract names the departures and its removal condition: PLAN G1208 (D-998), the unit in which the solve
+    reads the table itself and its records move. No single rule is claimed until then.
+  - `CarriedRegion(region, function, out value)` (Binding.OriginClasses.cs, beside `EnclosingAtom`) is the one read-time reading of
+    carried regions: whether the body of a Closure carries a region and what it reads it as (its `RegionValue`). Its walk
+    (`CarriedRegions`) takes the regions the Closure's own entries' Types name (`BoundClosure.Carried`, stored by the capture
+    formation, `CarryOrigin`, with no admission test), admitted at read time (each such region that is the evaluating body's own or
+    one it carries; ruling 1's c11 reading), then, in turn, each region slot named by a carried region's value, so a `var` region's
+    candidate is read once its body is bound. J2's interim is part of that walk: a value naming a call's open region
+    (`NamesOpenRegion`) is read as it (A5's split meets J2's located limit there) but carries nothing in turn, and the body's oracle
+    does not equate it, so no premise proves what the limit leaves open; removed with PLAN G936's late solve (q4, q4vs, q4vr, q4vv keep
+    `Unproven@s` and J2's `Unsupported@s`; WaitedSolution:274 keeps `Unsupported_Kd@r`, a valid form left Unsupported). A Closure that
+    captures no binding naming the region carries nothing, though it is evaluated in one that does (the code review's B2: vn2cap,
+    f3vcap, f3vcapl). Its readers: the body's oracle (`OriginPremiseRule.Value`, a new premise rule of the catalog: two edges for each
+    carried region and its value, the graph's nodes and the carried regions their values name, so it is read so at either end and at an
+    inner node; a region reached through a carried region's candidate is read in turn even where only the nested signature names it:
+    cap15e, vn1cap; D-993's 15.6.5 bullet), `StaticOrigin` (through `ValueIn`, which replaces `LetRegionValue`, judged in the
+    function's own body, `JudgedAt`: a literal stands in the enclosing body, whose `let` regions are not its values; D-862's e-owsin)
+    and the view's row 6 Value (A5's split); nothing else walks carried regions. A region a nested signature only names stays a fixed
+    Origin with no premise (SPEC 15.3.4, 15.6.5's last clause; O-249 Q1 (a)). `RegionChain` is a local region at either end;
+    `LeavesBodyRows` keeps the one-way form (R4-M222: it owns which ends leave a row; its contract says why).
+  - **Every reader of a carried region's candidate reads at Final or in A5** (O-471 (a)): the capture formation stores the own
+    entries' region slots (`BoundClosure.Carried`) and reads no candidate; the walk admits them at read time and is formed once per
+    Closure per region-graph version once no body is being bound (`BoundClosure.Walk`, `WalkVersion`; `CarriedWalk`, which
+    `CarriedRegion` and the body's oracle read: one walk); while a body is bound `CarriedRegion` answers only an own entry's region of
+    the evaluating body. `ValueIn` reads an own `var` region's candidate (A2's own-body half, O-481 (b)) and a carried one's, memoized
+    per (Origin, body) per graph version at Final.
+  - **The deferral fact** (a new representation): `ValueIn`'s reading sets `readsUnboundedRegion` where a local region with no answer
+    yet (`RegionBounded` false) stays; `StaticOrigin` marks such an Unknown dependent on the body's binding (`BodyBinding`, the named
+    depth below every obligation, `ReadBodyBinding`; EndAnswer's contract), so its work is forgotten past its outermost request with
+    its parts kept (`CapabilityWork.ReadsBodyBinding`, `Forget`): only its verdict is not cached (Revision 3.2). `ErasesToFunction`
+    judges the erasure's other parts at the literal and records the Owned part as the erasure's obligation (`pendingErasures`, pass
+    state: one entry per node, replaced on a re-bind, reset in `ResetPrerequisites`), judged in Binding.Check's Final prologue after
+    `JudgeObligations` (`JudgePendingErasures`), its record facts in the erasure's body (`RefutedStatic`); `ProduceFailures` throws
+    (InternalInvariant) if a region bound is recorded at Final after it. `ObjectViews.RequireObjectErasure` takes the same deferral
+    (D2: obj1v). At applicability `OwnedMember` classifies as on dev (a refuted leaf first; a region with no answer yet `Final`):
+    BU-22's L, the owner's O-406 (a). A Closure literal at a call argument is bound at its destination and judged at the literal
+    (ag1v accepted), not by the applicability row that judges a named value's erasure (s2c, e6c, s9 keep the limit).
+  - Kept, with its staged removal: BU-127's each-bound reading for a call's open region of the judging body only (`SolvedStatic`),
+    removed with PLAN G936's late solve.
+  - Supersedes in part: BU-28 (InputDuringP moves, O-440 (a)); BU-127 (the shorter-end limit, its open issue (4), its each-bound
+    reading for an enclosing region); O-261 Q1 (a) for every captured region with a candidate (O-443 (a): C15's three rows, the
+    SwapOmitted row and the Session's rows; it stands for a region only a nested signature names); G572 U1 / J1's valid reading of f3v
+    (O-264 Q5 (a)) for a region only a nested signature names (ruling 2: vn1, vn1v, vn2, vrc, f3v, sib2ok, sib2okv invalid); G572 U3's
+    "c11 invalid under O-61 (a)" (ruling 1: valid, the inner Closure carries r through outer); B's ruling 28's "wherever asked"
+    (`LetRegionValue` deleted); Q-542's e-owsin open-issue pin; R8-M56's nf_lift reading (R8-M56's R7-M89 line). Naming the owner's O-481
+    (b): G570's (R4-M184's) O-61 (a) sentence and R4-M222's "it stands for the conversion's Owned condition, a Constraint", for an
+    erasure's Owned condition over a local `var` region (it reads the region's candidate once its body is bound); c12 unchanged (a
+    Callable Constraint's comparison, SPEC 15.6.1, keeps premises alone); BU-127's comparison sentence keeps its remaining scope, a
+    Constraint's comparison only; R4-M184's O-57 class narrowed by s2 (accepted); R4-M215's s2c, e6c and s9 relabelled valid with
+    their records unchanged (O-406 (a)'s located `Unsupported_Kd` at the argument), and e-owul, c-ntup likewise (E3); e-owu stays
+    invalid (ambiguous beside `run<F>`); BU-136's "`StaticOrigin` reads a local region's solved value once no body is being bound" (it
+    reads `ValueIn`'s value at Final; `SolvedStatic` only a call's open region). Amends R4-M184 (3) (N6 is its retention edge) and
+    BU-221 (its members: `RowCandidate`'s contract names its departures; `StrongestLowerBound` shared with `VarCandidate`).
+  - Rows ruled: cap15e (valid, newly accepted: read in turn, `r outlives b` holds inside g) and its guard twin (`a = n@ref` after
+    `var a = p`: invalid, `UnprovenOriginRelation_Kd` at `return r`'s `r`, a chain between fixed Origins being Unknown, never
+    Refuted); the code review's B1 rows (c11own, s2own rejected; c11late, s2late, c11b keep dev's `UnprovenConstraint_Kd` beside the
+    relation's record) and B2 rows (vn2cap, f3vcap, f3vcapl rejected; vn2capd accepted); A2's half: c11own0, s2own0, c11, s2 accepted;
+    O-481 (b)'s e6v, s2h, vl1cv, eo0v, eol0v, rt1v valid, newly accepted; eo0n, eol0n, s2own, s2late `UnprovenConstraint_Kd` ->
+    `UnsatisfiedConstraint_Kd` (Refuted in the region's own body; Q13 record-kind moves toward SPEC); s2c, e6c, s9 keep O-406 (a)'s
+    located `Unsupported_Kd` at the argument; ag1v and obj1v accepted (valid), obj1n rejected; vn1nocap invalid, newly rejected (the
+    class of vn1, vn1v). Moves (Q13): Q-640's Moves line.
+  - Removes: `LetRegionValue`, the oracle's each-bound reading for an enclosing region, `ResolveLocalResultOrigins`' sources meet for a
+    slot region, `RegionChain`'s and `BodyChain`'s `equality` parameter, `CarriedRegion`'s walk of enclosing Closures (B2), the
+    oracle's and `ValueIn`'s own in-turn readings (`inTurn`: the one walk replaces them), `SolvedStatic`'s own "no body is being
+    bound" gate (B1: `RegionBounded`) and its region-slot path, `CarryOrigin`'s admission test, the scratch walk `carriedWalk`; the
+    pins `ARegionAtTheShorterEndIsARecordedLimit`, `AVarPairLocalsRegionAtTheShorterEndIsG572sLimit` (valid rows),
+    `AnErasedCaptureOverAStaticRegionIsARecordedLimit` (s2, valid), Q-542's e-owsin open-issue pin (an invalid row) and the O-61 (a)
+    rows e6v and s2h of `AComparisonWithAFunctionTypeReadsTheContractAlone`.
+  - Rejected: a second owner of the value (`LocalRegionValue`, Revision 1; B4, O-442 (a)); the value read for every enclosing region
+    (e-owsin accepted); a located `Unsupported_Kd` at a carried region's shorter end (newly rejects programs dev accepts); the
+    candidate followed to fixed Origins (ruling 3, O-466 (a)); a region carried by every Closure evaluated in a carrying one (B2); a
+    carried set of the entries' own names alone, read so by row 6 while the oracle read in turn (q4 lost J2's limit); the set closed in
+    turn at the capture formation (a `var` region has no candidate at the literal, so q4vs and q4vv lost the limit, and :274 was
+    accepted past J2's interim); the walk at the capture (F1: nestq); a reader's own gate beside `RegionValue`'s (B1); one owner of the
+    table for both readers (B3: it moves the call solve's records, G1208's unit); `NamesOpenRegion` in `RegionValue` (it would drop the
+    value A5's split needs to meet J2's located limit: WaitedSolution:273); a Binding-time Owned verdict over an incomplete candidate
+    (B1); `SolvedStatic`'s sources reading for a region slot at Final (e-ownf); forgetting the deferred work's parts (finref-q lost its
+    Refuted part to BU-22's L; Revision 3.2); an exemption for a reading the forming body already refutes (a clause for one form).
+  - Open: PLAN G1208 (the call solve's departures), G1201 (the code review's N9: chc2, dagc4-dagc20, whose record becomes
+    `UnprovenOriginContract_Kd`), G1209 (D-1001's compile time). D-993's `let` sentence settles N8 (hp1/swl, cap15dlet, cap15dlv
+    invalid as recorded; their `var` forms valid). The Closure signature's result default that read no carried value (ann1v, ann1l)
+    is closed by R7-M91 (ann1l) and R7-M92 (ann1v).
+  - Superseded in part by R7-M90 (O2-N): the deferred Owned part's owner is a Binding obligation (`BindingObligationKind.Owned`), not
+    a pass list (`pendingErasures`, `JudgePendingErasures`); and by R7-M91 (O2-H): while a body is bound `CarriedRegion` answers by
+    `AdmittedEntry`, and a written header reads an enclosing body's region as its value exactly when the Closure carries it.
+- **R7-M90 An erasure's deferred Owned part is a Binding obligation, `BindingObligationKind.Owned` (R7-O2 O2-N)** (Middle, 2026-11-22;
+  Major; Q-640, D-1050; design `r7-o2-design.md` Revision 4 §9, the owner's O-487 (a); the Front's O2-N implementation review ACCEPT
+  WITH CONDITIONS (C-417 14:05), N1 and N5 met; the planning session's decision, no owner question: `BindingObligationKind` is not a
+  COMPILER_ARCHITECTURE closed vocabulary) SPEC 7.7.4, 8.3.3, 15.2.3, 15.8.1. Supersedes in part R7-M89's deferral owner.
+  - **Rule:** an erasure's Owned condition (SPEC 7.7.4, 15.8.1, 15.2.3) whose proof read a region with no answer yet while a body is
+    bound (ValueIn's deferral fact) is a retained requirement judged under Finality (8.3.3), so its owner is BU-85's obligations: a
+    fifth kind, recorded by ErasesToFunction and RequireObjectErasure through AddObligation (Use: the converted value; Type: the
+    erasure's subject; Body: the forming body; Deadline BodyOrigins), judged by JudgeObligations at the Final prologue
+    (JudgeErasedOwned). A failed use keeps its failure; only the obligation whose Type is the use's published subject records (a
+    function erasure's ErasedFunctionType over the use's own Type, an object view's objectErasures row over its Source), so a trial's
+    obligation records nothing. The judgment's body is its input (ProveErasedOwned -> OwnedMember -> RefutedLeaf -> RefutedStatic):
+    the forming body at the literal and at applicability, the obligation's Body at Final.
+  - Removes `pendingErasures`, `erasureBody`, `DeferErasedOwned`, `ForgetErasedOwned`, `JudgePendingErasures`.
+  - **C1 (record only):** A3-closure-ok's uniq case is valid (SPEC 8.1.1: one pair Origin s for every s/T in its scope; O-443 (a):
+    slot's carried region reads as its candidate s, so A5 proves `slot@follow = y@move`), rejected only by PLAN G148 (2)'s limit;
+    A3-closure stays invalid by its `ComparisonLoanConflict_Kd` at `v@follow = x`. The Middle's a3cok label ("invalid", "Y outlives
+    O") is corrected by 8.1.1's reason. 9cbad046b also removed `UnprovenOriginRelation_Kd` at the Closure's store in
+    `RuleGsSelfStoreReachesAClosureReceiver`'s five other pair functions (pairCellBad, pairCellRead, t3letref, t3letrefBad, t6), proven
+    by the same reading; pairCellRead and t3letref are valid, rejected only by PLAN G148 (2)'s limit.
+  - Rejected: the node-keyed `pendingErasures` table (a Dictionary over the 24-table ratchet; a List searched by node, a renaming that
+    evades the limit: the Front's B3); a NodeColumns column (BU-220: a requirement iterated at Final is not a fact of a node);
+    `ownedConversions` (its failure's record: one table, two meanings); the mode field `erasureBody` (N5).
+- **R7-M91 A Closure literal's written header is bound only in the scope `ClosureHeaderScope` gives (R7-O2 O2-H)** (Middle,
+  2026-11-22; Major; Q-640, D-1050; design `r7-o2-design.md` Revision 4.1 §8.8, the owner's O-487 (a); the Front's design review
+  ACCEPT (C-417 12:27); the planning session's decision, no owner question) SPEC 15.4.3 rule 3, 15.6.5, 7.7.2, 15.4.4 (the owner's
+  O-443 (a), O-487 (a)). Supersedes in part R7-M89.
+  - **Rule:** `ClosureHeaderScope` (Binding.Captures) records first what the header's Owned proofs read: a header reads an enclosing
+    body's region as its value exactly when the Closure carries it. Every site that binds a literal's written header (BindClosureHeader,
+    the header probe ClosureSignatureFits, FailClosureHeader, the call-signature evidence InferClosureHeader) takes its scope there, the
+    one way to it: the plan (created when absent) and its evaluating body (its one writer; the responsibility moves from
+    BindConcreteClosure to Binding.Captures), and the regions the written entries name, in the literal's Carried and in each enclosing
+    omitted list's that forwards the entry (`ForwardsThrough`, the one statement of SPEC 7.7.2's forwarding, which Capture reads). It
+    forms no capture (N6). **`AdmittedEntry`** (Binding.OriginClasses), the walk's admission of an own entry's region (its body is the
+    evaluating body, or the evaluating body's Closure carries it), is also CarriedRegion's answer while a body is bound
+    (`Carried.Contains && AdmittedEntry`), reading no candidate (O-471 (a) holds).
+  - Rejected: Revision 4's `CarryWrittenEntries` called at two sites (a third site, the call-signature evidence, stayed uncovered: the
+    Front's R1) and its `Forwarded` early capture in a probe (it could move an enclosing omitted list's slot order: N6).
+  - Supersedes in part R7-M89's "the header reads only an own entry's region of the evaluating body while bound" (Revision 3's §1
+    rows 2-3).
+- **R7-M92 A Closure header's result default under Finality: a deferred slot's provisional Origin is its own pending atom (R7-O2
+  O2-F)** (Middle, 2026-11-23; Major; Q-640, D-1050; design `r7-o2-design.md` §10, Revisions 4.2-4.7, the Middle's ruling of 11-22
+  10:4x (option (a) of §8.5); the Front's design reviews (C-417; the third ACCEPT WITH CONDITIONS C1-C4) and delta read (C-417 11-24
+  00:08, D1-D3); the Middle's implementation review ACCEPT WITH CONDITIONS (`notes\o2f-impl-review.md`, C1 ruled as design row 4.7);
+  the owner's GO, O-505 (a)) SPEC 15.4.3 rule 3, 15.4.4, 8.3.3, 23.1.2. Departs from R4-M118 and BU-234 (below).
+  - **Rule:** at the result default (`Origins.Annotations`' two Owned readings of the inputs), each input's Owned is proved by one
+    reader, `ProveDefaultOwned(input, use)`: a proof that is not Proven and whose reading met the deferral fact
+    (`readsUnboundedRegion`) while a body is bound is no verdict: the slot takes its own pending atom now and the input joins the
+    slot's deferred inputs (`DeferredDefaults`, a NodeColumns pass family, one row per slot, written by its last resolution); the
+    slot's obligation (`BindingObligation(Owned, Use: the slot, BodyOrigins, Discharge: OriginDischarge.ResultDefault)`) is judged
+    once at Final, committed or not (`JudgeDeferredDefault`: the slot's record exactly as at the header, MissingOriginBinding_Kd).
+    `OriginDischarge` gains the entry `ResultDefault` (not a closed vocabulary; the planning session's).
+  - A deferred slot's provisional Origin is the slot's own pending atom (the atom PendingOrigin forms), completed at Final as a pending
+    Origin is (CompletedOrigin, read by DeclaredAtUse/SuppliedAtUse, ValueIn and the C1-F4 view's intake) or, refuted, left Unbound
+    resting on the failed slot (UnboundCause's path b), so a relation or Type naming it rests by what it names; before Final a
+    comparison condition naming it is one Compared row (LeavesBodyRows) and an erasure to a Type naming it defers its Owned part,
+    which rests on a refuted slot as a derived failure (FailDerived); the late path keeps the declared slot's Type (BU-234's
+    failed-slot form only at the header). Rejected: 4.4's clearing of the slot's Type and re-publication of the definition (a relation
+    formed against the expected Type and a use bound before the clearing read the provisional `static` as a fact: t8), the erasure's
+    rest by CompleteDependent (it clears a Type MIR's inputs already read: t11), (B2) a list of the slot's result readers plus a
+    late-rest row (two mechanisms; a reader outside the body uncovered), keeping `static` with a local's Type kept (a published Type
+    naming `static`, BU-234 broken).
+  - **Departures (C2):** departs from R4-M118 and from ValueCalls' contract (`Binding.ValueCalls.cs`: a published result is never an
+    Unbound atom resting on no Binding failure): the deferred atom is PendingOrigin's own (one source stays), but a proven slot's atom
+    stays Unbound in published HIR Types on valid programs and is completed at the intakes (DeclaredAtUse/SuppliedAtUse, ReadValueIn,
+    the C1-F4 view's InternAtom, and SemanticQuery below); the C1-F4 view keeps R4-M118's invariant (InternAtom completes first).
+    Departs from BU-234 (one form of a failed result slot): a slot that fails at its header has no Type, a slot refuted at Final keeps
+    a Type naming its Unbound atom resting on the slot, two forms of one failed slot; removal condition PLAN G1081 (one form for both
+    paths). ValueCalls' contract sentence names the exception (a deferred slot's atom Final proved, completed at the intakes).
+  - **SemanticQuery's split (design row 4.7, §10.8; the Front's D1):** SemanticQuery publishes a node's Type as Binding holds it
+    (TypeOf: a deferred slot's atom Final proved stays in it, as in HIR); every Origin Hover prints passes CompletedOrigin inside the
+    printer (`Binding.HoverTypeName`, a Binding member, the one intake of every printed Type, a Closure's signature included, which no
+    Type walk reaches: a Closure Type has no components), and OriginOf completes. Supersedes the design's `CompletedType` (R7-O2 design
+    §10.7 C1). Rejected: a `CompletedType` walk at TypeOf and TypeName: it is a self-rebuild of a Type (BU-24's closed family), adds
+    `.RawOrigin` reads and a Type comparison outside the judge (R7-C3 C3c), three ratchets that may not rise (measured on 548c22d4e);
+    and a completed TypeOf differs by reference from the symbol's Type, which Hover's Variable reads as a declared Type differing from
+    the use's. Consequence: a reader of TypeOf's Origins reads the atom; the one reader, Hover's identity key, keys it without printing
+    it.
+  - Open: PLAN G1327 (one comparison condition, two record kinds by where it is judged) and G1328 (the deferral reading's three copies
+    and BU-240's eager Owned proofs, under G886).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -29419,6 +29629,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     (they break R4-M133, 15.3.6, SPEC 23.1.2 and AGENTS' Diagnostics); the declaration's bound row kept for every `let` region (an atom
     and a row per `let` slot in every slice, needed only where a comparison names the region); the value row formed by `LeavesBodyRows`
     (a second copy of the declaration's bound, recorded again in Binding's graph).
+  - Amended by R7-M89 (R7-O2 A1+A2, 2026-11-22): `LetRegionValue` is deleted (`StaticOrigin` reads through `ValueIn`; B's ruling 28's
+    "wherever asked"); a carried region reads at its SPEC 15.3.6 candidate, so O-443 (a)'s and O-444 (a)'s twelve valid programs and
+    c20, z3v, r18 are accepted (PLAN G1105 closed); nf_lift stays accepted (class 1) until PLAN G230 (A), since its `=> v` forms no
+    relation over r's region (its Closure form a_nf_lift_clo is rejected by A1's rule); D-862 (PLAN G1099) closes for e-owsin,
+    e-owpin, e-owsinv and e-ownf.
 - **R8-M57 A fixed array without an element destroys nothing: the destruction walk's Type fact (SPEC 4.1)** (Back, 2026-11-22;
   R8-X1 U3, Q-654; the owner's O-486 part 4 (a), verbatim 「3a 4a（推奨）」; Major: a Type fact of Mir changes its contract, with
   acceptance moves in A4 and A5; the Middle's consent C-454 with C1-C3, and RP17).
