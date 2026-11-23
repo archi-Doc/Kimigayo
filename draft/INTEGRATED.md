@@ -1478,6 +1478,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   landing): C3's row records b as landed in W-322 (`SelectConformance`, one selection of a Type's conformance by a Contract;
   DECISIONS R7-M82) and its remainder C3b-2 (PLAN G1300: a specification whose qualifier names a conformance of several members)
   as next. Nothing frozen.
+- Revision 117 (2026-11-23, plan §14; the Back's D-1179, B's X1 ruling 3, R8-X1 U4's records): §5.2's L1 row records L1 as
+  landed whole (DECISIONS R8-M51, R8-M53-M55); X1's row records that L2 landed before the exit run (U1 Q-661 W-317, U2 Q-671
+  W-319, U3 Q-677 W-322; DECISIONS R8-M58, R8-M59) and that X1's exit run was at 6e8ffd3b4; §10.2 item 3 reads `IntrinsicId` 27
+  for R8's set, 29 with OSF2's `VolatileRead` and `VolatileWrite` (the owner's O-489; DECISIONS T-M23). Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
