@@ -298,10 +298,10 @@ public sealed partial class Binding
             : (retention.Result.Kinds[0] & RetentionKind.Value) != 0 ? ConstraintProof.Refuted : ConstraintProof.Proven;
     }
 
-    // SPEC 7.7.4, 10.7, 15.3.7 (PLAN G504): the receiver and signature part of an erasure as its decision reads it, under the premises
+    // SPEC 7.7.4, 10.7, 15.3.7, 15.6.1: the receiver and signature part of an erasure as its conversion reads it, under the premises
     // of `use`: a Closure's Shared receiver and its contract (DefinitionContractFits), a Function Item's contract (ItemSignatureFits).
-    // ErasesToFunction's, and a join source's late Type (LateAdaptation), so a join decides no erasure apart from it. `rows` takes the
-    // comparison's region conjuncts (CallableInstance.Rows).
+    // ErasesToFunction's alone: every fit before it, a join source's late Type included (LateAdaptation), reads the structural part
+    // (ErasureSignatureFits; ArgFlow ruling 184). `rows` takes the comparison's region conjuncts (CallableInstance.Rows).
     private bool ErasureFits(BoundType actual, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
@@ -349,7 +349,8 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4, 10.5, 10.5.3, 10.7, 10.8, 15.6.1 (DECISIONS R4-M155, R4-M213; ArgFlow ruling 181): the signature part of an erasure,
-    // which every fit before selection reads (a candidate trial, a checked part's query, FitPerCall): the structural part of the
+    // which every fit before selection reads (a candidate trial, a checked part's query, FitPerCall, a join source's late Type:
+    // LateAdaptation, ArgFlow ruling 184): the structural part of the
     // callable's signature's compatibility (FitsStructuralPartAt, every pre-selection fit's one entry), a Closure's with its Shared
     // receiver (SharedReceiver, a fact of its bound body), a Function Item's alike. Its Origin and Loan contract is the conversion's
     // alone (ErasesToFunction, ErasureFits), judged after selection at the argument, where a failure never selects another candidate; a
@@ -380,8 +381,8 @@ public sealed partial class Binding
     // temporary, PLAN G886): an Item whose signature formed a Type no binding represents has its binder fixed before any evidence, so
     // the same check is judged in each combination of split cases (RestsOnSplitCases). One that no combination fits fails by itself;
     // one that some combination fits rests on the split: it fits here, and its writes stay, so its reader rests on it too (the
-    // conversion's decision, ErasesToFunction; a join source's late Type, LateAdaptation). `rows` takes the contract's region
-    // conjuncts in every combination (CallableInstance.Rows), which its reader forms or drops.
+    // conversion's decision, ErasesToFunction). `rows` takes the contract's region conjuncts in every combination
+    // (CallableInstance.Rows), which its reader forms or drops.
     private bool ItemSignatureFits(BoundType item, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
