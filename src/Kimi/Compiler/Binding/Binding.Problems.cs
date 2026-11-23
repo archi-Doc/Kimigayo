@@ -351,7 +351,7 @@ public sealed partial class Binding
                 when node is FunctionKoto function && this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportOverrideFailure(function, store, index, problem);
                 break;
-            case BindingFailure.BoundMethodValue when this.FactOf(index, ProblemFactKind.Related) is { } named && this.compilation.SyntaxOf(named.Site) is FunctionKoto method:
+            case BindingFailure.BoundMethodValue when this.FactOf(index, ProblemFactKind.Related) is { } valueMethod && this.compilation.SyntaxOf(valueMethod.Site) is FunctionKoto method:
                 // Role 0, "declaration": the method the value names, whose receiver it would need (SPEC 7.3.4).
                 node.ReportIn(store, problem.Requirement, problem.Code, evidence: [method.Name], related: [("declaration", method, null)], condition: problem.Condition);
                 break;
