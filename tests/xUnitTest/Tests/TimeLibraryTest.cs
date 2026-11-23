@@ -3,12 +3,18 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
 public class TimeLibraryTest
 {
+    // A Stopwatch reaching each clock read (start, stop and elapsed), which the Linux row's modules emit and link too (TataraExecutorTest).
+    internal const string Measured = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nlet duration = watch.elapsed()";
+
+    private const string WindowsCounter = "var count: i64 = 0\nlet ok = Windows.queryPerformanceCounter(count@uniq)";
+    private const string SelectedCounter = "#if windows\n    var count: i64 = 0\n    let ok = Windows.queryPerformanceCounter(count@uniq)\n" + Measured;
     private const string Started = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()";
     private const string Restarted = "var watch = Kimi.Time.Stopwatch.init()\nwatch.restart()";
     private const string Snapshot = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\n_ = watch.elapsed()";
@@ -48,6 +54,32 @@ public class TimeLibraryTest
         ScalarEmissionTest.WriteFixture("TimeLibrary" + name, ir, string.Empty, 1, stderr);
     }
 
+    // SPEC 22.1, 22.8.3 (the Tatara plan's B7b6, Q4b (a)): the group `Kimi.Windows` is declared where the Condition `windows` holds, so
+    // on linux-x64 `Windows` is an unknown name; selected by `#if windows`, the call and a Stopwatch are valid on both rows.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", WindowsCounter, "")]
+    [InlineData("x86_64-unknown-linux-musl", WindowsCounter, "UnresolvedBinding_Kd Windows.queryPerformanceCounter")]
+    [InlineData("x86_64-pc-windows-msvc", SelectedCounter, "")]
+    [InlineData("x86_64-unknown-linux-musl", SelectedCounter, "")]
+    public void WindowsIsDeclaredWhereWindowsHolds(string triple, string source, string errors)
+    {
+        var c = MinimalEmissionTest.Check(TargetProfile.Find(triple)!, source, "Hello.kimi", OutputKind.Application);
+        Assert.Equal(errors, string.Join(" | ", TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}")));
+    }
+
+    // IMPL 21.5.5 (the Tatara plan's B7b6, C1): the Linux row's Stopwatch reads the platform layer's clock, a counter of nanoseconds: its
+    // verified module calls __kimi_clock, which the row's layer defines (MinimalEmissionTest.HelloOnTheLinuxRowIsLibcFree), and names no
+    // QueryPerformance function; Tatara emits it with no undefined symbol (TataraExecutorTest.TheLinuxRowsModulesLinkStatically).
+    [Fact]
+    public void TheLinuxStopwatchReadsTheLayersClock()
+    {
+        var c = MinimalEmissionTest.Analyze(TargetProfile.Linux, Measured, "Hello.kimi", OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Contains("call i64 @__kimi_clock()", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("QueryPerformance", ir, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void UnusedClockHasNoNativeReferencesOrInitializer()
     {
@@ -59,7 +91,7 @@ public class TimeLibraryTest
     [Fact]
     public void WarmTimeAnalysisAndEmissionReuseStorage()
     {
-        var c = MinimalEmissionTest.Analyze("var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nlet duration = watch.elapsed()");
+        var c = MinimalEmissionTest.Analyze(Measured);
         var valid = true;
         var bytes = AllocationMeasurement.Measure(() =>
         {
