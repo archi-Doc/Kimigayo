@@ -1809,6 +1809,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 18 (2026-11-23, T's correction on D-1171): §8's candidate 3 states read accurately: it reaches the 1% gate (1.52% of
   Hello O0 warm) but has no candidate (the LC3 design's §5), so nothing is designed; resolve and the hash/record/move parts stop
   (revision 17 said read stops). No other change. Nothing frozen.
+- Revision 19 (2026-11-24, T's D-1203; LC3 Revision 1 with its probes P-D and P-W, and B10's brief note H12): §8's candidate 3
+  states LC3's outcome in place of revisions 17-18's text: the whole link 15.4 ms warm (54% of Hello O0's warm line), 24.8 ms
+  cold; S1 and D1 (`/lldignoreenv /winsysroot:<stem>.native`, the fix of PLAN G1334) adopted; W-c, write and close otherwise,
+  and W2 (until a measured `kimi.exe` row) stopped. Decision 42 names the interrupt run under QEMU OSF3c, not OSF3b (a wording
+  correction: B10 Revision 1 split the evidence unit, and §7's B10 row already says OSF3c). No other decision changes. No SPEC or
+  IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 
