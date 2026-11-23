@@ -31652,3 +31652,61 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `#LibraryImport("codec", "memcpy")` stays `InvalidLibraryImport_Kd` through `MemorySymbols`.
   - Rejected: keeping the members (unreferenced code, built, committed and catalogued); a preprocessor switch in `native.c`
     selecting its cases, or a mode steering one file; building `memory.c` against a C copy of the functions (a second copy).
+- **T-M37 musl 1.2.6 built once and embedded: linux-x64's `c`** (Tatara, 2026-11-22; the plan's unit B7b4, decision 26 (O-478 (ii)
+  (a)), the owner's 「はい、実行して」 in T's dialog 11-22 12:4x; Q-726, D-1205; Major; design
+  `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.2 §3.8, design review C-445 ACCEPT WITH CONDITIONS; implementation
+  review C-469 ACCEPT WITH CONDITIONS, its conditions met, and the Back's CONSENT; lands in window W5 with T-M36). IMPL 20.4: `c` is
+  musl 1.2.6's C library and startup files, whose pinned bytes the compiler carries, and includes no compiler runtime.
+  - **The material:** `src/backend/linux-x64/` holds musl 1.2.6's `crt1.o`, `crti.o`, `crtn.o` and `libc.a`, built once by the
+    development script `build-musl.ps1` and committed unmodified (`.gitattributes`: `*.o`, `*.a` binary), with the tarball's
+    `COPYRIGHT` (MIT). `profile.json` (the resource `Kimi.LinuxBackendProfile.json`) is the Linux catalog: the row (`linux-x64-v1`),
+    the supply (`c`), musl's version, source URL, `sourceSha256`, `copyrightSha256` and signing key, `c`'s symbols, the
+    compiler-runtime symbols `libc.a` needs, and each product's name and SHA-256. `Kimi.csproj` names the four products and
+    `COPYRIGHT` and embeds them as `Kimi.Linux.<file>`; the release (`kimi.exe` alone) carries musl's notice as `Kimi.Linux.COPYRIGHT`
+    (T's ruling (3)), which `NativeToolchainTest`'s catalog row pins to the catalog's `copyrightSha256` and the committed file;
+    `docs/LICENSE.Full.md` carries it too (C-469 C2).
+  - **Keyed by (row, supply):** `ToolchainIdentity.Musl` reads the Linux catalog into `SupplyFile(Row, Supply, Name, Resource,
+    Sha256)` rows; its initializer requires the record's profile to be Core's row name `TargetProfile.Linux.Name` (`linux-x64-v1`;
+    T's ruling (2): B7b2's row landed first, so W5's refresh reads it, and no literal row name or temporary structure remains) and its
+    library `c`. This unit carries and checks the files: their readers are `toolchain verify` and the catalog test, and nothing
+    stages or links them before B7b7. B7b5's `c` `TargetSupply` names the supply, so B7b7, which brings the files to the C path's
+    link, finds them by `(TargetProfile.Linux.Name, "c")`; B7b7 adds the check that the catalog's `providedSymbols` equal the row's
+    `c` symbols (as windows-x64's `providedSymbols` equal `kimi_backend`'s; B7b5 landed without it). windows-x64's
+    `ToolchainIdentity.Supplies` and every Windows build are unchanged. `CompilerSupply` and `SupplyFile` are two representations of
+    a supply's material; B7b7's design makes them one (C-469 n1).
+  - **`toolchain verify`** states each Linux file after windows-x64's supplies: "linux-x64-v1 c crt1.o: <sha256> (the catalog's)",
+    its report entry `{name, row, file, sha256, expectedSha256, hashMatched}`; a mismatch is the toolchain's `InvalidDataException`
+    ("The compiler's linux-x64-v1 c libc.a does not match its catalog SHA-256.").
+  - **The build (route M1):** a WSL distribution (`-Distribution`, Ubuntu by default) runs musl's own `configure
+    --target=x86_64-linux-musl --disable-shared` and `make` on the extracted tarball, calling the pinned LLVM 22.1.8 archive's
+    `clang.exe --target=x86_64-linux-musl`, `llvm-ar.exe` and `llvm-ranlib.exe` through interop (each tool's version banner checked
+    against the profile's LLVM version). Two wrappers the script writes beside the extracted tree: `cc` gives clang `NUL` for
+    configure's `-o /dev/null` (a Windows process cannot open `/dev/null`), and `ar` passes `libc.a`'s 1,4xx members to llvm-ar in
+    a response file (Windows' 32,767-character command line). Clang defaults to PIC for the triple, so musl's configure builds
+    `libc.a` from its `.lo` objects (members `*.lo`).
+  - **The checks** (`build-musl.ps1`), all before anything is copied to the output: the tarball's SHA-256 is the catalog's; every
+    non-weak undefined symbol of `libc.a`'s members is defined in `libc.a` or the crt, **except exactly** the catalog's
+    `compilerRuntimeSymbols` `__muldc3`, `__mulsc3`, `__mulxc3` (T's ruling (1), below); `c`'s symbols (`write`, `_exit`, `exit`,
+    `mmap`, `munmap`, `clock_gettime`) are defined in `libc.a`; no product holds the build directory's path (Windows,
+    forward-slash and `/mnt/c` forms); each product is its catalog row's SHA-256 and the tarball's `COPYRIGHT` the catalog's
+    `copyrightSha256` (C-469 n2: a mismatch fails the run and nothing is copied). The report `build-musl.json` states the tools,
+    the distribution, its kernel (`uname -r`) and `make --version` (C-469 N1, N2), and each file's SHA-256 against the catalog's.
+  - **Reproduction (C-445 N8 (a), T-M8)** is a procedure of two runs around the script (C-469 N3): two builds in new directories
+    at different depths gave byte-equal products, `crt1.o` e4461fb9..., `crti.o` d139d7bb..., `crtn.o` 3a186a7d..., `libc.a`
+    73b4509b... (2,507,302 bytes), at the unit's runs (11-22) and again with the refreshed script (11-23, both runs passing the
+    catalog match).
+  - **The signing key (C-469 n4):** `musl.pub` came from musl.libc.org, the tarball's own origin, as O-478 (ii) (a) approved; its
+    fingerprint `836489290BB6B70F99FFDA0556BCDB593020450F` (musl's release key since 2014) is pinned as `signingKey`, so a later
+    download is checked against it. A stated limit: no second origin vouches for the key.
+  - **The compiler-runtime helpers (T's ruling (1)):** `libc.a`'s `cpow`, `cpowf` and `cpowl` call clang's complex-multiplication
+    helpers `__muldc3`, `__mulsc3` and `__mulxc3`, which libgcc or compiler-rt supplies in a C toolchain and no reserved supply
+    defines. §3.8's check "every undefined symbol is defined in `libc.a` or the crt" is false for exactly those three, so the
+    catalog names them (a closed whitelist; any other undefined name fails the build), and a program whose supplied static library
+    calls one of those three functions links only if a supplied library defines the helper: a stated limit (STATUS, IMPL 20.4),
+    with PLAN G1338 proposing compiler-rt's builtins (B9e).
+  - **Size:** `Kimi.dll` (Release) 4,571,136 → 7,092,224 bytes (+2,521,088, +55%) at the unit; the refresh adds no material.
+  - **No Linux backend archive (decision 25's C1, decision 24):** the runtime defines the four `mem*` (B7r4); `libc.a` stays
+    unmodified, and the module's `mem*` precede it on the C path's link line (B7b7).
+  - Rejected: M2 (a PowerShell port of musl's object list: a second copy of musl's build) and M3 (LLVM's Linux archive in WSL: a
+    second download) while M1 works; patching musl's sources or `libc.a`; a Linux backend archive for the three helpers (C1); the
+    runtime defining the three helpers in IR (compiler-rt's builtins are the canonical owner, and B9e builds them anyway).
