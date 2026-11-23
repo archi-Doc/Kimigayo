@@ -69,7 +69,7 @@ public class PatternLayerOriginTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var symbol = KotoTree.Walk(c.Kotonoha.RootKoto).Select(x => BoundMatch.Of(c.Binding, x)).OfType<BoundMatch>()
             .SelectMany(static x => x.Positions).Select(static x => x.BodySymbol).First(static x => x?.Name is "x" or "$try.value")!;
-        Assert.Equal(type, Binding.HoverTypeName(symbol.Type!).Split(" during ")[0]);
+        Assert.Equal(type, c.Binding.HoverTypeName(symbol.Type!).Split(" during ")[0]);
     }
 
     // SPEC 15.1.6, 15.1.5, 11.5: exclusive access past a pair layer admitting owner lends the Subject Place itself, which a getter

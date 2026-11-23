@@ -130,6 +130,80 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.True(large <= (4 * small) + 8, $"region reads {small} at depth 8, {large} at depth 24");
     }
 
+    // SPEC 15.6.5's Closure sentence (R7-O2 A1; the Front's T4): n nested Closures, each capturing the `let` binding of the level above's
+    // capture, the innermost returning it at p (chain); and each capturing two, whose values at the next level are both meets of the two
+    // above (dag: two carried paths per level, 2^n paths in all; the code review's N5). Each Closure's carried regions are walked once per
+    // region-graph version once no body is being bound (BoundClosure.Walk, which the body's oracle reads too) and each body's oracle reads
+    // each region once, in turn included: the region reads grow linearly with n (the row asserts them; the time is printed). n is 15, 30, 60 for the chain; the dag's is 5,
+    // 10, 20, below the knee of a compile time exponential in its depth that dev has without A1 (PLAN G1209: about 36 s at
+    // 30 levels); the unit that fixes G1209 raises the dag's depths to the chain's.
+    [Theory]
+    [InlineData("chain", 15)]
+    [InlineData("dag", 5)]
+    public void ACarriedRegionChainReadsEachRegionOnce(string shape, int depth)
+    {
+        var reads = new long[3];
+        var times = new long[3];
+        int[] depths = [depth, 2 * depth, 4 * depth];
+        for (var i = 0; i < depths.Length; i++)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            reads[i] = CarriedMetrics(shape == "dag" ? CarriedDag(depths[i]) : CarriedChain(depths[i])).RegionReads;
+            times[i] = watch.ElapsedMilliseconds;
+            Assert.NotEqual(0, reads[i]);
+        }
+
+        output.WriteLine($"carried {shape} N {string.Join(", ", depths)}: region reads {string.Join(", ", reads)}; ms {string.Join(", ", times)}");
+        Assert.True(MirBorrowsTest.Grows(reads, 2.5), $"region reads {string.Join(", ", reads)}");
+    }
+
+    // SPEC 15.6.5, 15.4.3 rule 3 (R7-O2 O2-H): n nested Closures, each capturing the `let` binding r of the outer body, the innermost a
+    // literal whose header names r's region: while its body is bound the header reads that region as its value through the admission
+    // (AdmittedEntry), one step per enclosing Closure's own entry, and at Final each walk admits its entries once: the admissions grow
+    // linearly with n (asserted; the time is printed). Each is valid (MissingOriginBinding_Kd at the header before O2-H). n is 15, 30, 60.
+    [Fact]
+    public void AHeadersCarriedRegionIsAdmittedOnceThroughEachEnclosingClosure()
+    {
+        var (admissions, times) = (new long[3], new long[3]);
+        int[] depths = [15, 30, 60];
+        for (var i = 0; i < depths.Length; i++)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            admissions[i] = CarriedMetrics(CarriedHeader(depths[i])).CarriedAdmissions;
+            times[i] = watch.ElapsedMilliseconds;
+            Assert.NotEqual(0, admissions[i]);
+        }
+
+        output.WriteLine($"carried header N {string.Join(", ", depths)}: admissions {string.Join(", ", admissions)}; ms {string.Join(", ", times)}");
+        Assert.True(MirBorrowsTest.Grows(admissions, 2.5), $"admissions {string.Join(", ", admissions)}");
+    }
+
+    // SPEC 15.2.3, 15.3.6, 15.6.5 (R7-O2 A1+A2; the owner's O-471 (a), O-481 (b); the Front's D6): n nested Closures, each declaring a `var`
+    // bound by the captured `var` of the level above (chain), or two, each bound by both above (diamond: two carried paths per level), and
+    // the erasure of a Closure over the innermost region, whose Owned is read through each candidate in turn to `static` at Final
+    // (JudgeErasedOwned): the walks (one per Closure per region-graph version, CarriedWalk) and the region reads in a body (one per
+    // region and body per version, ValueIn) grow linearly with n (asserted; the time is printed). Each is valid. n is 15, 30, 60 for the
+    // chain and 10, 20, 40 for the diamond.
+    [Theory]
+    [InlineData("chain", 15)]
+    [InlineData("diamond", 10)]
+    public void AnErasuresOwnedReadsEachCarriedCandidateOnce(string shape, int depth)
+    {
+        var (walks, values, times) = (new long[3], new long[3], new long[3]);
+        int[] depths = [depth, 2 * depth, 4 * depth];
+        for (var i = 0; i < depths.Length; i++)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var metrics = CarriedMetrics(ErasedCarried(shape == "diamond", depths[i]));
+            (walks[i], values[i], times[i]) = (metrics.CarriedWalks, metrics.ValueInReads, watch.ElapsedMilliseconds);
+            Assert.NotEqual(0, metrics.ValueInReads);
+        }
+
+        output.WriteLine($"erased {shape} N {string.Join(", ", depths)}: walks {string.Join(", ", walks)}; ValueIn reads {string.Join(", ", values)}; ms {string.Join(", ", times)}");
+        Assert.True(MirBorrowsTest.Grows(walks, 2.5), $"walks {string.Join(", ", walks)}");
+        Assert.True(MirBorrowsTest.Grows(values, 2.5), $"ValueIn reads {string.Join(", ", values)}");
+    }
+
     // SPEC 15.6.5, 23.1.2 (DECISIONS BU-62; PLAN G318): k Semantics binders and k declaration rows b >= x.s, each in one binder's borrow
     // cases, reach the last edge x.s >= a through x.s, which a failed clause leaves Unbound: the declaration judge's chain work grows with
     // the rows, never with the combinations of their conditions. Every size is invalid by the clause (15.3.3) and the chain (15.6.5).
@@ -279,6 +353,111 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         return source.Append(form == "dr"
             ? $"    let c = func [x{n}] () -> ref/i32 during x{n} => x{n}\n    let v = c()\n    see(v)\n"
             : $"    let c = func [x{n}] () -> ref/i32 during q => x{n}\n    return 0\n").Append("public func main() => ()\n").ToString();
+    }
+
+    private static string CarriedChain(int depth)
+    {
+        var source = new StringBuilder("func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    let x0 = p\n");
+        var indent = "    ";
+        for (var i = 1; i <= depth; i++)
+        {
+            source.Append($"{indent}let c{i} = func [x{i - 1}] ()\n");
+            indent += "    ";
+            source.Append($"{indent}let x{i} = x{i - 1}\n");
+        }
+
+        source.Append($"{indent}let w: ref/i32 during p = x{depth}\n{indent}see(w)\n");
+        return Called(source, indent, depth);
+    }
+
+    private static string CarriedDag(int depth)
+    {
+        var source = new StringBuilder("func see(p: ref/i32) => ()\nfunc f(p: ref/i32, k: bool)\n    let a0 = p\n    let b0 = p\n");
+        var indent = "    ";
+        for (var i = 1; i <= depth; i++)
+        {
+            source.Append($"{indent}let c{i} = func [a{i - 1}, b{i - 1}, k] ()\n");
+            indent += "    ";
+            source.Append($"{indent}let a{i} = if k => a{i - 1} else => b{i - 1}\n{indent}let b{i} = if k => b{i - 1} else => a{i - 1}\n");
+        }
+
+        source.Append($"{indent}let w: ref/i32 during p = a{depth}\n{indent}see(w)\n");
+        return Called(source, indent, depth);
+    }
+
+    // AHeadersCarriedRegionIsAdmittedOnceThroughEachEnclosingClosure's program at `depth` (the h1v twin, n levels deep).
+    private static string CarriedHeader(int depth)
+    {
+        var source = new StringBuilder("struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\n");
+        source.Append("public func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let r = p\n");
+        var indent = "    ";
+        for (var i = 1; i <= depth; i++)
+        {
+            source.Append($"{indent}let c{i} = func [r] () -> i32\n");
+            indent += "    ";
+        }
+
+        source.Append($"{indent}let h = func [r] (k: Option<ref/i32 during r>) -> Box => $abort(\"no\")\n{indent}return 1\n");
+        for (var i = depth; i >= 1; i--)
+        {
+            indent = indent[4..];
+            source.Append($"{indent}return c{i}()\n");
+        }
+
+        return source.ToString();
+    }
+
+    // The Front's vco (chain) and dvo (diamond) rows at `depth`: the innermost body erases a Closure over its `var` to `() -> i32`.
+    private static string ErasedCarried(bool diamond, int depth)
+    {
+        var source = new StringBuilder("public func main() => ()\nfunc f(s: ref/i32 during static) -> i32\n    var a0 = s\n");
+        source.Append(diamond ? "    var b0 = s\n" : string.Empty);
+        var indent = "    ";
+        for (var i = 1; i <= depth; i++)
+        {
+            source.Append(CultureInfo.InvariantCulture, $"{indent}let c{i} = func [a{i - 1}{(diamond ? $", b{i - 1}" : string.Empty)}] () -> i32\n");
+            indent += "    ";
+            source.Append(CultureInfo.InvariantCulture, $"{indent}var a{i} = a{i - 1}\n");
+            if (diamond)
+            {
+                source.Append(CultureInfo.InvariantCulture, $"{indent}a{i} = b{i - 1}\n{indent}var b{i} = b{i - 1}\n{indent}b{i} = a{i - 1}\n");
+            }
+        }
+
+        source.Append(CultureInfo.InvariantCulture, $"{indent}let g: () -> i32 = func [a{depth}] () -> i32 => a{depth}@follow\n{indent}return g()\n");
+        for (var i = depth; i > 0; i--)
+        {
+            indent = indent[..^4];
+            source.Append(CultureInfo.InvariantCulture, $"{indent}return c{i}()\n");
+        }
+
+        return source.ToString();
+    }
+
+    // The calls of the nested Closures c1..c{depth}, innermost first, and the entry point.
+    private static string Called(StringBuilder source, string indent, int depth)
+    {
+        for (var i = depth; i > 0; i--)
+        {
+            indent = indent[..^4];
+            source.Append($"{indent}c{i}()\n");
+        }
+
+        return source.Append("public func main() => ()\n").ToString();
+    }
+
+    private static OriginProofMetrics CarriedMetrics(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        c.Kotonoha.AddSource(new SourceDocument("carried.kimi", source));
+        var metrics = new OriginProofMetrics();
+        c.Binding.OriginProofMetrics = metrics;
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        Assert.Empty(c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
+        return metrics;
     }
 
     private static long RegionReads(int depth)

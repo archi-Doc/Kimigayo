@@ -94,7 +94,7 @@ public class InputDependentValueCallTest
     private const string SwapClosure = "    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n";
 
     // The capture's slot is written `during x`, so the Closure body holds by identity (PLAN G492-a (ii)); SwapOmitted leaves it to the
-    // `let` local's own region.
+    // `let` local's own region, which the capture carries at its candidate x (R7-O2 A1).
     private const string Swap = "func pass(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 during x = x\n" + SwapClosure;
 
     private const string SwapOmitted = "func pass(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n" + SwapClosure;
@@ -119,19 +119,21 @@ public class InputDependentValueCallTest
     // A fixed input is fitted as written; a finite local cannot satisfy an enclosing fixed Origin. Each row: the records in result
     // order, by code and text. Where the callee keeps the argument, A5 also records the local's end at its declaration (the MIR's
     // records, H5; counted by code, Q13). PLAN G492-a (ii): a capture written `during x` (Swap) or `during r` (hp1a) keeps the argument
-    // in that region, so the block local's end is recorded; unwritten (hp1 and SwapOmitted's two rows, the last three), the captured
-    // `let` local's slot is its own region, a fixed Origin of the Closure body with no premise relating it to the written one (SPEC
-    // 7.7.2, 15.6.5; the owner's O-261 Q1 (a)), so the store (and hp1's return) is Unknown there, as its `var start` twin's on the base,
-    // and the Loan conflict, which the base reported for the `let` form, is not reported beside it. SwapOmitted's second row is the
-    // base's accepted fixture "FixedResult" as it was written, rejected by that rule alone.
+    // in that region, so the block local's end is recorded. Unwritten (hp1 and SwapOmitted's two rows, the last three), the captured
+    // `let` local's slot is its own region, which `[var start]` carries: in the Closure body a fixed Origin equal to its SPEC 15.3.6
+    // candidate (15.6.5's Closure sentence; the owner's O-443 (a), superseding O-261 Q1 (a) in part; R7-O2 A1). SwapOmitted's start is
+    // bounded by x, so the store and the return hold and its two rows are Swap's: the first keeps the Loan conflict and the Refuted
+    // argument, the second is the accepted fixture "FixedResult" with the annotation omitted. hp1's start is bounded by r's value, the
+    // borrow x@ref, and c's signature names r's region, which nothing carries there (15.6.5: no premise), so the store and the return are
+    // Unknown beside the Loan conflict.
     [Theory]
     [InlineData(Swap + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
     [InlineData("func use(y: i32, x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 during x = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    if x@follow > y\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
     [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let local: i32 = 5\n    return c(local@ref)\n", "UnsatisfiedOriginRelation_Kd local@ref")]
     [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start: ref/i32 during r = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", "ComparisonLoanConflict_Kd let y: i32 = 5")]
     [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", "UnprovenOriginRelation_Kd n|UnprovenOriginRelation_Kd old|ComparisonLoanConflict_Kd let y: i32 = 5")]
-    [InlineData(SwapOmitted + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "UnprovenOriginRelation_Kd n|ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
-    [InlineData(SwapOmitted + "    let r = c(x)\n    return c(r)\n", "UnprovenOriginRelation_Kd n")]
+    [InlineData(SwapOmitted + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
+    [InlineData(SwapOmitted + "    let r = c(x)\n    return c(r)\n", "")]
     public void AFixedInputIsNoPerCallInput(string body, string records)
     {
         var source = body + "public func main() => ()\n";
