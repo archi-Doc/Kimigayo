@@ -2,7 +2,9 @@
 
 // Owns the read contract for Binding facts used by Hover, LSP and tests.
 // Input: the current compilation and Binding-owned tables. Output: semantic facts through queries.
-// Readers use this contract rather than semantic slots or private Binding state.
+// Readers use this contract rather than semantic slots or private Binding state. An Origin it publishes, and every Origin its printer
+// prints, passes Binding's completion (CompletedOrigin): a deferred result slot's atom Final proved reads as its completion (R7-O2
+// O2-F); a Type is published as Binding holds it, so a reader shows it through TypeName.
 // Must not repeat inference or create independent copies of Binding decisions.
 
 using Kimi.Checking;
@@ -26,7 +28,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal BoundType? TypeOf(Koto node) => HirTables.TypeOf(node);
 
-    internal BoundOrigin? OriginOf(Koto node) => HirTables.Meaning(node) as BoundOrigin;
+    internal BoundOrigin? OriginOf(Koto node) => HirTables.Meaning(node) is BoundOrigin origin ? binding.CompletedOrigin(origin) : null;
 
     internal BindingSymbol? SymbolOf(Koto node) => HirTables.Symbol(node);
 
@@ -82,8 +84,9 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal ConstraintProof ProveCopy(BoundType type, Koto context) => binding.ProveCopy(type, context);
 
-    // The complete contextual spelling, including every Origin; diagnostics share the printer.
-    internal string TypeName(BoundType type) => Binding.HoverTypeName(type);
+    // The complete contextual spelling, including every Origin; diagnostics share the printer. The one intake of every Type Hover prints,
+    // whatever its source: the printer completes each Origin it prints, a Closure's signature included.
+    internal string TypeName(BoundType type) => binding.HoverTypeName(type);
 
     internal string LengthName(BoundLength length, HoverBudget budget) => Binding.DiagnosticLengthName(length, budget);
 

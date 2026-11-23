@@ -103,20 +103,42 @@ public partial class KimiLibraryShapeTest
 
     // PLAN G949 S1-r1b (r1b-5; review-s1r1 Re-check 3, RC-a): the import declarations are a part of each pass (PassPart), read after a
     // Bind as one composed list, so the library's imports (Windows.kimi's two kernel32 functions), which the Backend lays out through
-    // TyCtxt.Imports, are listed after a first and a second Bind, and from the split after a program pass that declares none.
-    [Fact]
-    public void TheLibrarysImportsAreListedAfterEachBind()
+    // TyCtxt.Imports, are listed after a first and a second Bind, and from the split after a program pass that declares none. The Tatara
+    // plan's B7b6: they are declared where `windows` holds, so windows-x64's library and the one without a target (its selection, F1 (a))
+    // list them, and the Linux row's library has no import (every library import lies under `#if windows`, B3).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "queryPerformanceCounter,queryPerformanceFrequency")]
+    [InlineData("", "queryPerformanceCounter,queryPerformanceFrequency")]
+    [InlineData("x86_64-unknown-linux-musl", "")]
+    public void TheLibrarysImportsAreListedAfterEachBind(string target, string imports)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        Assert.True(target.Length == 0 || c.Prepare(target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
         for (var bind = 0; bind < 2; bind++)
         {
             Assert.True(c.Bind().IsComplete);
             Assert.Equal(
-                ["queryPerformanceCounter", "queryPerformanceFrequency"],
+                imports.Split(',', StringSplitOptions.RemoveEmptyEntries),
                 c.Types.Imports.Where(x => ReferenceEquals(x.Declaration.Kotonoha, c.Library.Kotonoha)).Select(static x => x.Name));
         }
+    }
+
+    // The Tatara plan's F1 (a), its program half (C-496 C2): in a compilation without a target only the library's Kotonoha reads
+    // windows-x64's Conditions; a program source keeps the compilation's own (none), so its Condition Name is unknown (SPEC 19.3) while
+    // the library of the same compilation declares Kimi.Windows.
+    [Fact]
+    public void AProgramSourcesConditionStaysUnknownWithoutATarget()
+    {
+        var c = Compilation.CreateForTest();
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "#if windows\n    func a() -> i32 => 1\nfunc b() -> i32 => 2"));
+        c.Bind();
+        Assert.Equal(
+            ["UnknownCompileTimeName_Kd Program.kimi 4+7"],
+            TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Path} {x.Span.Start}+{x.Span.Length}"));
+        Assert.Equal(
+            ["queryPerformanceCounter", "queryPerformanceFrequency"],
+            c.Types.Imports.Where(x => ReferenceEquals(x.Declaration.Kotonoha, c.Library.Kotonoha)).Select(static x => x.Name));
     }
 
     // PLAN G949 S1-r1b (s1r1-design 8.1, v9, at the layer below MIR's holding check: no existing row observes a library slot's keepers,
