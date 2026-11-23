@@ -18739,6 +18739,10 @@ structure is recorded here by the unit that first implements it.
     (SPEC
     19.2) and one target profile (windows-x64); a change to either reopens P5. Library instances user code requests are collected by
     edges and located by R5-M40's rule (KD12).
+    - Amended by T-M32 (B7b6, F3, K; 2026-11-23): both preconditions no longer hold (B7b2a: two rows; B7b6: directives). P5's
+      answer stands: the bundled library is no root in user compilations; each target's library is one freeze (its declarations
+      selected by that target's Conditions), collected by its key without records (`TheLibraryCollectsWithoutRecords` for the
+      target-less library and each row's).
   - Cost: a fresh check under sel allocates 0.15, 1.29, 2.31 and 4.61 MB more than under `mir` for 16, 450, 898 and 1,794 collected
     items, linear in the items; a warm Analyze allocates the same under sel as under `mir` (the collector's warm run is 0 B); the
     checked compilation retains 0.10, 0.97, 1.79 and 3.56 MB more under sel than under `mir` (the checked set, the `Erase` memos and
@@ -31086,3 +31090,47 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   kernel32 import), not by starting opt, llc, llvm-nm and lld-link; its dependency rule is the compiler's (the bare kernel32 form
   leaves; `_fltused` and default-library checks join; no unwind check, T-M21). Rejected: a tool switch, test-written manifests, a new
   CLI form, output parsing.
+- **T-M32 The Kimi library per target** (Tatara, 2026-11-23; the plan's unit B7b6, Q-714, D-1190; Major; design
+  `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.5 §3.10, §10, §16; design review C-445; implementation review C-496,
+  the Middle's ACCEPT, the Back's and the Front's ACCEPT WITH CONDITIONS, every condition met; T's rulings F1 (a), F2, F3, F4, F5
+  (11-23 00:5x) and 1 (a), 2 (b) (11-23 11:5x); the owner's Q4b (a) and O-478 (i) (a)). Lands in window W4 with T-M33 and T-M34
+  (all or none). Amends R5-M41's D-B.
+  - **Selection by Conditions:** the library's sources select their declarations by SPEC 19's directives: `Windows.kimi`'s group
+    `Windows` (the library's only `#LibraryImport`s) under `#if windows`; `Time.kimi`'s `readCounter` and `queryCounterFrequency`
+    under `#if windows` (over `Kimi.Windows`) and `#if not windows` (over the layer's clock); the shared arithmetic one copy. Every
+    library import lies under `#if windows` (B3; `KimiLibraryShapeTest.TheLibrarysImportsAreListedAfterEachBind`: the Linux row's
+    library has none), which B7b2b's C-path rule and B7b5 rely on.
+  - **The clock's form (C1, the plan's decision 25):** `IntrinsicId.MonotonicClock` (appended last, value 29), the MIR descriptor row
+    `Intrinsic(MirEffect.Environment, 0)` (a platform read, no Abort: `Time.readCounter` raises `clockFailure` on a negative read),
+    the Backend row (`Routine`, `RuntimeAbi.Clock`, the layer's `__kimi_clock`, `i64 ()`: nanoseconds or −1);
+    `Time.monotonicNanoseconds` is declared where `windows` does not hold, so no Windows module reaches it (Windows' layer defines no
+    `__kimi_clock`; N6's pin, `EachIntrinsicAttributeNamesItsIntrinsic`); `queryCounterFrequency` is 10^9 there. Rejected: C2 (a C
+    clock import) and C3 (a second runtime routine per row), §10.
+  - **F1, the target-less library's Conditions:** a Condition of the Kimi library's Kotonoha in a compilation without a target reads
+    windows-x64's built-in Conditions (Debug off, as `KimiLibrary.Of`'s freeze), SPEC 22 ¶1's validity basis, as BU-130 derives the
+    target-less width (`Compilation.TryResolveValue`, built once through the one `Conditions` table). The compilation's
+    `TargetTriple`, `IrTarget` and `Variables` stay; a program source keeps its own Conditions (none) and the store's
+    `TargetTriple.Invalid` key is unchanged (both halves pinned: `KimiLibraryShapeTest.TheLibrarysImportsAreListedAfterEachBind`'s
+    target-less row, and `AProgramSourcesConditionStaysUnknownWithoutATarget`, the Front's C-496 C2, which fails on option (c)). The
+    library's contract header names the owner (`KimiLibrary.cs`' Inputs, C-496 C1). The only producers of a compilation without a
+    target are tests, benchmarks and the process-wide library store's `TargetTriple.Invalid` key (`KimiLibrary.Process.cs:41-60`);
+    every product path prepares a target before any Binding (`Project.CheckFrontEnd`), so the windows-x64 selection never decides a
+    user program's validity (SPEC 22 ¶1), and a new product path without a target would be a broken contract, never this default
+    (review N2). Rejected: (b) a compilation binds only with a target (tests across three areas; BU-130 rejected the `CreateForTest`
+    form); (c) every compilation's Conditions default to the basis (moves user-source rows).
+  - **F2:** Windows generated code is equal except the text of `Time.fractionalMicroseconds`' location constants (library line
+    numbers moved by the directives above it) in programs reaching it (`Stopwatch.stop`, `elapsed`); output and exit codes equal;
+    no `docs/examples` or milestone program uses `Time`. Evidence: the commit's base-vs-head `.ll` diff of a Windows Stopwatch program.
+    Rejected: a layout keeping every line (against STYLE's blank-line and grouping rules).
+  - **The library's target in tests:** `KimiLibraryShapeTest.TheLibraryIsIndependentOfTheInputs`' 32-bit row compares with the empty
+    program checked for its own target (the row's recorded plan for a library that reads the target).
+  - **R5-M41 D-B amended (F3, K):** its preconditions "no library declaration under a compile-time Condition (SPEC 19.2) and one
+    target profile (windows-x64)" no longer hold (B7b2a: two rows; B7b6: directives). P5's answer stands per target (R5-M41's T-M32
+    line).
+  - **B's U3 ruling 25 amended (the detached list's excluded ranges; commit 1):** the tripwire
+    `TheShippedLibraryHoldsNoCompileTimeDirective` is removed, its removal condition met: `DetachedSyntax` carries each excluded range
+    of a recorded library document (taken by `DiagnosticOwner.TakeSyntax` from the freeze owner before its invalidation) and
+    `AddLibrary` registers them under the reading owner's index of that document, so a library record in excluded syntax names its
+    excluding directive (SPEC 19.4) in every reading compilation
+    (`KimiLibraryShapeTest.ARefusedLibrarysExcludedRecordNamesItsDirective`). Rejected: deleting the tripwire without carrying the
+    ranges.
