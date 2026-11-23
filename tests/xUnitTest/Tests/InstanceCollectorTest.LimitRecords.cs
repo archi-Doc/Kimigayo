@@ -77,4 +77,68 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(subjects, string.Join("|", c.BuildMir().Records(MirRecordClass.Collection).Select(x => c.SyntaxOf(x.Subject).ToString().Split(':')[0])));
         Assert.All(c.BuildMir().Records(MirRecordClass.Collection), x => Assert.Equal(DiagnosticCode.GenerationResourceLimit_Kd, x.Code));
     }
+
+    // PLAN G651 U2b R8 Rev 2, R11 OP1 Rev 2 (IMPL A.4, 21.3.2; DECISIONS R5-M171): A5's read of a function's own contract after the run
+    // forms the referent's storage at the input's written Type, a node site there, so a refused instance there is one TypeHeightLimit_Kd
+    // per declaration at its parameter: inlg (p's Outer<..> stores D12's Item past H), ictoru (Heir's base part), hfv41 (L41<i32>'s layers,
+    // L0 conforming to nothing: no record in the run, ruling 15's C-R2-1); a second declaration reading it has its own record at its own
+    // parameter in either order (q), a caller's call of the function its own at its parameter, never inside the callee (m). Records in
+    // report order as code@declaration:text. Fail-before (base f227e33ce): InternalInvariant_Kd at the project alone.
+    [Theory]
+    [InlineData("inlg", "", "", "p:ref/Outer<(D12<i32>.Item, i32)>")]
+    [InlineData("inlg", "", "func q(y: ref/Outer<(D12<i32>.Item, i32)>) => ()\n", "p:ref/Outer<(D12<i32>.Item, i32)> q:ref/Outer<(D12<i32>.Item, i32)>")]
+    [InlineData("inlg", "func q(y: ref/Outer<(D12<i32>.Item, i32)>) => ()\n", "", "q:ref/Outer<(D12<i32>.Item, i32)> p:ref/Outer<(D12<i32>.Item, i32)>")]
+    [InlineData("ictoru", "", "", "use:ref/Heir")]
+    [InlineData("ictoru", "", "func m(r: ref/Heir) => use(r)\n", "use:ref/Heir m:ref/Heir")]
+    [InlineData("ictoru", "func m(r: ref/Heir) => use(r)\n", "", "m:ref/Heir use:ref/Heir")]
+    [InlineData("hfv41", "", "", "t:ref/L41<i32>")]
+    public void AnOwnContractsReadOfARefusedInstanceIsARecordAtItsParameter(string shape, string before, string after, string records)
+    {
+        var source = shape switch
+        {
+            "inlg" => TypeHeightLimitTest.Doubling(12) + "struct Box<T>\n    var v: D12<T>.Item\nstruct Outer<T>\n    var b: Box<T>\n" +
+                before + "func p(x: ref/Outer<(D12<i32>.Item, i32)>) => ()\n" + after,
+            "ictoru" => TypeHeightLimitTest.Doubling(12) + "open struct Base<T>\n    var v: D12<T>.Item\nstruct Heir : Base<(D12<i32>.Item, i32)>\n" +
+                before + "func use(h: ref/Heir) => ()\n" + after,
+            _ => Layers41 + "func t(v: ref/L41<i32>) => ()\n",
+        };
+        Assert.Equal(records, HeightRecords(source + "public func main() => ()\n"));
+    }
+
+    // PLAN G651 U2b ruling 18 (SPEC 8.11.4, 15.6.4, 22.4.1; IMPL A.4, 21.3.2): A4 judges a selected Callable binding's confined bound on its
+    // callee's summary at the use (keep's bound on h<L41<i32>>, whose destruction walks L41<i32>'s storage past H) in the site of its
+    // premise definition's body, a node site at the argument: one TypeHeightLimit_Kd there, in main (its own evaluation's fallback merges
+    // into it) or in a module's top-level statements, beside A4's own depth limit there and h's record at its parameter; never
+    // InternalInvariant_Kd (fail-before: the obligation's read had no site, InternalInvariant_Kd at the project and main's fallback).
+    // Known limit (ruling 21, PLAN's open issue on the Callable use's body): a use inside a Closure is keyed by main's body, not the
+    // Closure's, so the Closure body's own read keeps its record at the literal beside the use's; the row changes when Binding publishes
+    // the use's body. It also guards U2b commit (3): no throw and no InternalInvariant_Kd for a Closure use.
+    [Theory]
+    [InlineData("public func main() -> ()\n    keep(h<L41<i32>>)\n    return\n", "h:T OwnershipDepthLimit_Kd@keep:h<L41<i32>> keep:h<L41<i32>>")]
+    [InlineData("keep(h<L41<i32>>)\n", "h:T OwnershipDepthLimit_Kd@keep:h<L41<i32>> keep:h<L41<i32>>")]
+    [InlineData(
+        "public func main() -> ()\n    let c = func () -> () => keep(h<L41<i32>>)\n    c()\n    return\n",
+        "h:T let:func () -> () => keep(h<L41<i32>>) OwnershipDepthLimit_Kd@let:h<L41<i32>> let:h<L41<i32>>")]
+    public void ACallableBindingsObligationReadsAtItsUse(string use, string records)
+        => Assert.Equal(
+            records,
+            HeightRecords(Layers41 + "func h<T>(x: T)\n    return\nfunc keep<F>(f: F)\n    F is Callable<owner, (L41<i32>) -> ()>\n        effect confined\n    return\n" + use));
+
+    // hfv41-u's layers (the Front's C8 probes): L(k)<X> : L(k-1)<W^200<X>> from an L0 conforming to nothing, so L41<i32> is formed within H
+    // in the run and its storage walk passes H after it.
+    private static string Layers41 => "struct W<T>\n    var v: T\nopen struct L0<X>\n    var v: X\n    public virtual func f(self: objref/Self) -> i32 => 1\n" +
+        string.Concat(Enumerable.Range(1, 41).Select(static i => $"open struct L{i}<X> : L{i - 1}<{Nest("W", 200, "X")}>\n"));
+
+    // A program's records in report order, each owner:text, the owner the declaration on its line (else the line's first word; - without
+    // a location), a code other than TypeHeightLimit_Kd before it.
+    private static string HeightRecords(string source)
+    {
+        var c = MinimalEmissionTest.Check(source);
+        return string.Join(' ', TestDiagnostics.Of(c).Select(x =>
+        {
+            var line = source[(source.LastIndexOf('\n', Math.Max(0, x.Span.Start - 1)) + 1)..].Split('\n')[0].Trim();
+            var owner = x.Text is null ? "-" : line.StartsWith("func ", StringComparison.Ordinal) ? line[5..line.IndexOfAny(['<', '('])] : line[..line.IndexOfAny([' ', '('])];
+            return (x.Code == nameof(DiagnosticCode.TypeHeightLimit_Kd) ? string.Empty : x.Code + "@") + owner + ":" + x.Text;
+        }));
+    }
 }

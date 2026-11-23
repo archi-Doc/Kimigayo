@@ -17,7 +17,8 @@
 // marked). Apply and Compose read no storage, so their cause is the substitution's alone; an instance's stored Types are formed by
 // Binding.Instance, which publishes its own cause beside them (AdtDef.InstanceStorage.HeightLimit), never Apply's or Compose's
 // (Instance's verdict walk may form them). Apply, Instance and Compose own no refusal, so one outside Answered, Witness and an instance
-// is the innermost after-run owner's: the frame's, recorded at its close as PLAN G651's site-less record (R7-T1, N1), or a site's mark.// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
+// is the innermost after-run owner's: the frame's, recorded at its close as PLAN G651's site-less record (R7-T1, N1), or a site's mark.
+// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
 // compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
 // grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.

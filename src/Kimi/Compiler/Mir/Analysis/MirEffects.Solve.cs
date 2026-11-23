@@ -151,20 +151,25 @@ internal sealed partial class MirEffects
     private bool Sited(int node)
     {
         var body = this.program.Body(this.Of(node)[node].Owner);
-        var site = types.OpenBodySite(body.Source);
-        bool grew;
-        ReadOnlySpan<SiteMark> marks;
+        var site = this.Open(body.Source, default);
         try
         {
-            grew = this.Evaluate(node);
+            return this.Evaluate(node);
         }
         finally
         {
-            marks = types.CloseBodySite(site);
+            this.Close(site, body.Key);
         }
+    }
 
-        this.report.Uses(types, marks, body.Key);
-        return grew;
+    // PLAN G651 U2b R5 (ruling 18): A4's site, a body site at its subject with a node site inside it where the node has syntax (TyCtxt.OpenSite),
+    // closed in a finally, its marks uses of the body's declaration (MirReport.Uses).
+    private (OwnerState Body, OwnerState Node) Open(SourceRef body, SourceRef node) => (types.OpenBodySite(body), types.OpenSite(node));
+
+    private void Close((OwnerState Body, OwnerState Node) site, MirDefKey key)
+    {
+        types.CloseSite(site.Node);
+        this.report.Uses(types, types.CloseBodySite(site.Body), key);
     }
 
     // A node's summary from its local facts and its callees' current summaries: whether it grew.
@@ -495,6 +500,9 @@ internal sealed partial class MirEffects
     // implementation (SPEC 8.4), which its summary includes (Owe).
     // A row whose subject is outside the root range is the library check's (PLAN G951 E3, DECISIONS R5-M168's input rule): Binding lists a
     // library declaration's rows from the library alone, so their verdicts are the same in every program.
+    // PLAN G651 U2b ruling 18: a row is judged in the site of its premise definition's body (the module's top-level statements when it has
+    // none): an owing definition's at its body's Source, a fallback; a Callable binding's at its use, a node site where it has syntax. A row
+    // that reads past no body (no Callable, no owing body) opens none.
     private void Obligations(int rootModules)
     {
         this.rows.Clear();
@@ -510,33 +518,53 @@ internal sealed partial class MirEffects
 
             (this.found, this.scratchCount, this.definition) = (0, 0, row.Definition);
             this.glued.Clear();
-            if (row.Callable is { } callable)
+            var owing = row.Callable is null && row.Definition is { } target ? this.program.Callee(new(MirCalleeKind.Fn, target)) : null;
+            if (row.Callable is null && owing is null)
             {
-                this.Begin(default);
-                this.Process(callable, (byte)(1 + (int)row.Receiver));
-                if (row.Owner)
-                {
-                    this.Process(callable, Drop);
-                }
+                this.Judge(row, null);
+                continue;
+            }
 
-                this.Verdict(row, this.Found); // SPEC 15.6.4: its first-access initializations among them (Compose).
-            }
-            else if (row.Definition is not { } target)
+            var site = this.Open(owing?.Source ?? row.Subject, owing is null ? row.Subject : default);
+            try
             {
-                this.report.Add(MirProblem.WithoutBody(row.Code, row.Requirement, row.Subject));
+                this.Judge(row, owing);
             }
-            else
+            finally
             {
-                this.Owe(row, target);
+                this.Close(site, new(row.Definition, MirBodyKind.Fn, row.Definition is null ? row.Subject.Module : 0));
             }
+        }
+    }
+
+    // An obligation row's verdict: a Callable binding's call through it, a row without a definition directly, an owing definition's bodies.
+    private void Judge(in EffectObligation row, MirBody? owing)
+    {
+        if (row.Callable is { } callable)
+        {
+            this.Begin(default);
+            this.Process(callable, (byte)(1 + (int)row.Receiver));
+            if (row.Owner)
+            {
+                this.Process(callable, Drop);
+            }
+
+            this.Verdict(row, this.Found); // SPEC 15.6.4: its first-access initializations among them (Compose).
+        }
+        else if (row.Definition is not { } target)
+        {
+            this.report.Add(MirProblem.WithoutBody(row.Code, row.Requirement, row.Subject));
+        }
+        else
+        {
+            this.Owe(row, target, owing);
         }
     }
 
     // An owing definition (SPEC 8.4: every implementation, which its summary includes, SPEC 15.6.4, Local): its body per view; a function
     // without a body in every view at once.
-    private void Owe(in EffectObligation row, BindingSymbol definition)
+    private void Owe(in EffectObligation row, BindingSymbol definition, MirBody? body)
     {
-        var body = this.program.Callee(new(MirCalleeKind.Fn, definition));
         for (var mask = body is null ? 1UL : this.Views(body, null); mask != 0; mask &= mask - 1)
         {
             (this.found, this.scratchCount) = (0, 0);

@@ -191,7 +191,7 @@ public sealed partial class Binding
     private OwnerState OpenRetentionSite(FunctionKoto? callee, int slot)
     {
         var parent = this.Saved();
-        if (callee is not null && this.owner.Kind == AfterRunOwner.Body && this.owner.Subject == SourceRef.Of(callee))
+        if (callee is not null && this.owner.Kind == AfterRunOwner.Body && this.owner.Subject == SourceRef.Written(callee))
         {
             var written = slot < callee.Parameters.Count ? TyCtxt.SignatureSite(callee, slot) : callee;
             (this.answer, this.owner) = ((false, false), (AfterRunOwner.Node, SourceRef.Of(written)));
@@ -209,7 +209,7 @@ public sealed partial class Binding
             ref var kept = ref this.marks[i];
             if (ReferenceEquals(kept.Refused, mark.Refused) && (mark.Refused is not null || kept.Subject == mark.Subject))
             {
-                if (kept.Fallback != mark.Fallback ? kept.Fallback : SourceRef.Order(mark.Subject, kept.Subject) < 0)
+                if (SourceRef.UseOrder((mark.Fallback, mark.Subject), (kept.Fallback, kept.Subject)) < 0)
                 {
                     kept = mark;
                 }

@@ -10,13 +10,16 @@ namespace Kimi.Compiler.Mir;
 // - Responsibility: each key's least use, a round's least held with its round, and the flush of every key's record at its least use.
 // - Inputs: the instance collector's uses (Limit), each a key (its record's code; an erased Type, or none where a forming site's
 //   substitution passes IMPL A.4's height; the forming site; the declaration) and its subject, made in its run's round (Begin with
-//   MirRecordClass.Collection); the run's end (FlushLimits, before Commit) and the first Merged read after a committed least changed.
-// - Outputs: per key one ControlFlow record of MirRecordClass.Collection at its least subject (SourceRef order: module, then the syntax
-//   table's pre-order), TypeHeightLimit_Kd with its limit fact (IMPL A.4), added through Add in subject order, then code.
+//   MirRecordClass.Collection); a MIR body site's marks at its close (Uses; PLAN G651 U2b R5), each a use in the body's declaration added at
+//   once in every round, a body site's own subject a fallback; the run's end (FlushLimits, before Commit) and the first Merged read after a
+//   committed least changed.
+// - Outputs: per key one ControlFlow record of MirRecordClass.Collection at its least subject (a fallback after every use subject, then
+//   SourceRef order: module, then the syntax table's pre-order), TypeHeightLimit_Kd with its limit fact (IMPL A.4), added through Add in
+//   subject order, then code.
 // - Invariants: a round's uses are its own (Drop discards them, FlushLimits merges them into the committed least); a flush writes each
 //   key's one row again through Add's key, so a repeated clean run of a version, its committed least unchanged, adds no problem (ruling 16).
-// - Prohibitions: no flush on a read of All or Records (A5's rule W and MirAnalysis read them while producers still run); no use outside
-//   the collector's round.
+// - Prohibitions: no flush on a read of All or Records (A5's rule W and MirAnalysis read them while producers still run); no collector
+//   use outside its round; no body site's use after the flush outside a Collection round or from a library body.
 internal sealed partial class MirReport
 {
     // The committed least use of each key and the open round's (Limit), each subject the least so far.
@@ -82,10 +85,6 @@ internal sealed partial class MirReport
         this.Flush();
     }
 
-    // The order of two uses (PLAN G651 U2b R6): a body site's fallback subject after every use subject, then SourceRef.Order.
-    private static int Order((bool Fallback, SourceRef Subject) x, (bool Fallback, SourceRef Subject) y)
-        => x.Fallback != y.Fallback ? (x.Fallback ? 1 : -1) : SourceRef.Order(x.Subject, y.Subject);
-
     // Keeps a use as its key's least; whether it changed the table.
     private static bool Least(
         Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), (bool Fallback, SourceRef Subject)> table,
@@ -93,7 +92,7 @@ internal sealed partial class MirReport
         (bool Fallback, SourceRef Subject) use)
     {
         ref var least = ref CollectionsMarshal.GetValueRefOrAddDefault(table, key, out var found);
-        if (found && Order(use, least) >= 0)
+        if (found && SourceRef.UseOrder(use, least) >= 0)
         {
             return false;
         }

@@ -7,8 +7,9 @@
 // through MirProgram.Report) and its facts (related sites, added by their first producer); a round's problems, held until it commits
 // (Rounds below); and a library segment's rows, which their owner keeps as data (Keep, Kept) and replays at the step where it first added
 // them (Replay; PLAN G950), Cause values moved by the offset; the limit table's uses (MirReport.Limits.cs; DECISIONS R5-M171, PLAN G651
-// U2b R6), each a key (its record's code, an erased Type or none, a forming site, a MirDefKey declaration) with its subject, the instance
-// collector's held with its run's round and dropped with a missed run.
+// U2b R6), each a key (its record's code, an erased Type or none, a forming site, a MirDefKey declaration) with its subject and fallback
+// bit and its producer's round: the instance collector's held with its run's round and dropped with a missed run; a MIR body site's (Uses)
+// added at once in every round.
 // Output: the limit table's records, one Collection-class ControlFlow record per key at its least use (SourceRef order), flushed at
 // each clean collector run's end (the round's least merged into the committed least, the flush, then Commit; a repeated clean run of a
 // version writes each key's row again) and, with no collector run, on the first read of Merged after a committed least changed; one
@@ -37,8 +38,8 @@
 // discards them, so a round that missed commits nothing; Clear closes a round. A kept row (Keep, Replay) was committed when it was kept
 // and is replayed outside any round, so a round holds only its own version's problems.
 // Must not publish, decide acceptance, derive a requirement from a code, or keep a problem a rule of Add drops; flush the limit table
-// on a read of All or Records (MirAnalysis and A5's rule W read them while producers still run) or take a limit use outside the
-// collector's round.
+// on a read of All or Records (MirAnalysis and A5's rule W read them while producers still run), take the collector's limit use outside
+// its round, or take a body site's use after the table flushed outside a Collection round or from a library body.
 
 using System.Runtime.InteropServices;
 using Kimi.Diagnostics;

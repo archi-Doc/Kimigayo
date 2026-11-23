@@ -348,6 +348,32 @@ public sealed partial class MirBuildTest
         static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
     }
 
+    // IMPL A.4, 21.3.2, SPEC 12 (interpolation; PLAN G651 U2b, U2c ruling 7 N3; the Front's C-503 lint1, lint0): an owning interpolation as a
+    // default (takes' s = "\(G<W^k<T>>.init(null))", fmt its written form) copied at takes(p40) forms the write's borrow temp
+    // ref/G<W^k<W^8000<i32>>> after Binding's run. Past IMPL A.4's height (k = 191: 8,193) its formation owns the refusal and the builder's
+    // read marks the omitting call's node site: exactly TypeHeightLimit_Kd there beside A4's own depth limits in takes' and fmt's
+    // interpolations; at the height (k = 190) A4's depth limits alone. Never InternalInvariant_Kd or Unsupported_Kd (fail-before for k = 191:
+    // both, as copy192 before U2b).
+    [Theory]
+    [InlineData(191, "TypeHeightLimit_Kd@takes(p40)")]
+    [InlineData(190, null)]
+    public void AnInterpolationCopyPastTheHeightIsARecordAtItsCall(int k, string? record)
+    {
+        var source = "struct W<T>\n    public var v: T\nstruct G<T>\n    Self is Utf8Format\n    public var q: raw/T\n    public init(q: raw/T) => self.q = q\n" +
+            "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"g\")\n" +
+            $"func lift<T>(p: raw/T) -> raw/{Nest(200)} => null\nfunc takes<T>(p: raw/T, s: string = \"\\(G<{Nest(k)}>.init(null))\") => ()\n" +
+            $"func fmt<T>(p: raw/T) -> string => \"\\(G<{Nest(k)}>.init(null))\"\n" + "public func main() -> ()\n    let p0: raw/i32 = null\n" + string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) +
+            "    takes(p40)\n    return\n";
+        var errors = TestDiagnostics.Of(MinimalEmissionTest.Check(source)).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code}@{x.Text ?? "-"}");
+        string[] expected = record is null ? [] : [record];
+        Assert.Equal(
+            expected,
+            errors.Where(static x => !x.StartsWith(nameof(DiagnosticCode.OwnershipDepthLimit_Kd), StringComparison.Ordinal)));
+        Assert.Contains(errors, static x => x.StartsWith(nameof(DiagnosticCode.OwnershipDepthLimit_Kd), StringComparison.Ordinal));
+
+        static string Nest(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
     // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M139; PLAN G396 (3)): a copy over storage Binding rejected is built in the call's instance, as the
     // written call forms it (TyCtxt.Apply) and as a non-generic template over that storage is: dep, dep3 and dep2 copy like their twins
     // with no builder record (BU-38's x3, `d(b)`, is dep's form); dep's copy holds `.None` of Option<Bad>, and dep2's calls `h<Bad>`.
