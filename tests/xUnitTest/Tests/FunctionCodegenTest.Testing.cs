@@ -232,7 +232,7 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(text);
         var ensure = ir.Function(Assert.Single(Regex.Matches(text, @"define internal void @(__kimi_static\d+_ensure)\(")).Groups[1].Value);
         Assert.Equal(
-            ["load i8, ptr @, align 1", "icmp ne i8 %, 0", "br i1 %, label %, label %", "call void @(i32 17, ptr %, i64 %, i64 -2)", "unreachable",
+            ["load i8, ptr @, align 1", "icmp ne i8 %, 0", "br i1 %, label %, label %", "call void @(i32 16, ptr %, i64 %, i64 -2)", "unreachable",
                 "store i8 1, ptr @, align 1", "load i32, ptr @", "store i32 3, ptr @", "call i32 @()", "store i32 %, ptr @, align 4",
                 "store i32 %, ptr @", "store i8 2, ptr @, align 1", "ret void"],
             ensure.Instructions.Select(static x => x.Shape));
