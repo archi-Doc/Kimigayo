@@ -22,8 +22,10 @@ namespace Kimi.Compiler;
 //   ordinary path ends at that Name, a `::` path at its outer member node). No publication arm judges.
 // - Prohibited: reading an outcome from anywhere but the result; a second stage walk; a publish on the way.
 // - Published per use (R7-N1e2-1R): a Type-name use's lookup is published on the use (HirTables.Lookups: its end; its selection in the
-//   Symbols column), once; NamePath, the only entry outside this file, reads the published lookup on every later call. The row is the
-//   use's position's (UseRow), which no caller passes and no column stores.
+//   Symbols column; an Unresolved end's failing step, wherever it is not the use, in the FailingSteps family: F's ruling N1-13 B1), once;
+//   NamePath, the only entry outside this file, reads the published lookup on every later call, so every reader of a failed walk
+//   (UnselectedTypeSite's record, the node an alias rests on) reads the step the walk failed at. The row is the use's position's (UseRow),
+//   which no caller passes and no column stores.
 // - A member access a former selects (SelectMember, BaseMember, ConstructorMember, a length argument's group member, the qualified Case
 //   pattern) is published by PublishPath too, as a MemberAccess step: its member, lookup, side and Type-path qualifier; a second
 //   publication keeps the side (R7-N1c). A projection path's selection (an associated Type, a member Type of its normal form) is its
@@ -108,13 +110,13 @@ public sealed partial class Binding
     }
 
     // One step of a path, with what its publication writes (PublishPath's table). A Head's role names the namespace whose stop it clears.
-    // A Qualifier is a path's left use, published with its end (End). An Unsupported step is a component the use verdict refused
-    // (Supported), its Use the component's Name. A MemberAccess is a selected member of a member access (SPEC 9.6): its role names the
+    // A Qualifier is a path's left use, published with its end (End) and the step its walk failed at (Failed). An Unsupported step is a
+    // component the use verdict refused (Supported), its Use the component's Name. A MemberAccess is a selected member of a member access (SPEC 9.6): its role names the
     // namespace of the path that selected it (Value: the value path, a receiver's member; Qualifier: the Type path), its Qualifier the
     // Type path's left to publish, its Selection the member lookup (none for a constructor). Every site writes every field (no optional
     // parameter, CR-R2); a field its kind does not read is null or default.
     private readonly record struct NameStep(
-        NameStepKind Kind, Koto Use, BindingSymbol? Symbol, BindingSymbol? Qualifier, AliasImport Import, LookupRole Role, PathEnd End, MemberSelection? Selection);
+        NameStepKind Kind, Koto Use, BindingSymbol? Symbol, BindingSymbol? Qualifier, AliasImport Import, LookupRole Role, PathEnd End, MemberSelection? Selection, Koto? Failed);
 
     private readonly record struct ResolvedPath(PathEnd End, BindingSymbol? Symbol, Koto Use, QualificationFact Stop = default);
 
@@ -197,25 +199,6 @@ public sealed partial class Binding
         };
     }
 
-    // Publishes a use's lookup once: a later publication (a path's walk evaluating a published qualifier again) must be equal, and a
-    // different end is a broken contract, as a different selection is (the Symbols entry's write, HirTables.WriteSymbol). Every
-    // publication of a use is in UseRow's row (NamePath's and the walk's left), so the column stores no row.
-    private static void PublishUse(Koto use, PathEnd end, BindingSymbol? symbol)
-    {
-        var published = HirTables.LookupOf(use);
-        if (published != PathEnd.None && published != end)
-        {
-            throw new InvalidOperationException($"`{use}` was published as {published}, then as {end} (InternalInvariant; R7-N1e2-1R).");
-        }
-
-        if (end == PathEnd.Selected)
-        {
-            use.BoundSymbol = symbol;
-        }
-
-        HirTables.Of(use).Lookups[use.SyntaxId] = end;
-    }
-
     // The node a use's lookup is published on: below the transparent wrappers and the parentheses that ResolvePath sees through.
     private static Koto UseNode(Koto syntax)
     {
@@ -234,6 +217,34 @@ public sealed partial class Binding
             }
         }
     }
+
+    // Publishes a use's lookup once: a later publication (a path's walk evaluating a published qualifier again) must be equal, and a
+    // different end is a broken contract, as a different selection is (the Symbols entry's write, HirTables.WriteSymbol). Every
+    // publication of a use is in UseRow's row (NamePath's and the walk's left), so the column stores no row. An Unresolved end carries
+    // the step its walk failed at when that is not the use (`failed`: FailingSteps), which PublishedStep reads back.
+    private void PublishUse(Koto use, PathEnd end, BindingSymbol? symbol, Koto? failed)
+    {
+        var published = HirTables.LookupOf(use);
+        if (published != PathEnd.None && published != end)
+        {
+            throw new InvalidOperationException($"`{use}` was published as {published}, then as {end} (InternalInvariant; R7-N1e2-1R).");
+        }
+
+        if (end == PathEnd.Selected)
+        {
+            use.BoundSymbol = symbol;
+        }
+
+        ref var hir = ref HirTables.Of(use);
+        hir.Lookups[use.SyntaxId] = end;
+        if (end == PathEnd.Unresolved && failed is not null && !ReferenceEquals(failed, use))
+        {
+            hir.Families.FailingSteps.Ref(use.SyntaxId, this) = failed;
+        }
+    }
+
+    // The step a use's published lookup ended at: an Unresolved end's failing step (PublishUse), else the use.
+    private Koto PublishedStep(Koto use) => use.SyntaxOwner?.Hir.Families.FailingSteps.Get(use.SyntaxId, this) ?? use;
 
     // The symbol a Type name selects, published. Its qualifiers' Types are bound once, in the role of the form the name selects, by
     // BindContainerReference for a nested Type and by BindAssociatedProjection for a projection base (SPEC 15.4.2).
@@ -256,7 +267,7 @@ public sealed partial class Binding
         early = false;
         if (HirTables.LookupOf(use) is var published and not PathEnd.None)
         {
-            return new(published, published == PathEnd.Selected ? use.BoundSymbol : null, use);
+            return new(published, published == PathEnd.Selected ? use.BoundSymbol : null, published == PathEnd.Unresolved ? this.PublishedStep(use) : use);
         }
 
         var reads = this.notReadyReads;
@@ -280,7 +291,7 @@ public sealed partial class Binding
         }
 
         var symbol = this.PublishPath(path, mark);
-        PublishUse(use, path.End, symbol);
+        this.PublishUse(use, path.End, symbol, path.Use);
         return path with { Symbol = symbol };
     }
 
@@ -331,7 +342,7 @@ public sealed partial class Binding
                     this.AddImportCandidates(step.Use, step.Qualifier!, step.Symbol!);
                     break;
                 case NameStepKind.Qualifier:
-                    PublishUse(step.Use, step.End, step.Symbol); // The state stays the binder's.
+                    this.PublishUse(step.Use, step.End, step.Symbol, step.Failed); // The state stays the binder's.
                     break;
                 case NameStepKind.Member:
                     var member = (MemberAccessKoto)step.Use;
@@ -429,7 +440,7 @@ public sealed partial class Binding
     private BindingSymbol? PublishMemberAccess(MemberAccessKoto member, BindingSymbol selected, BindingSymbol? qualifier, LookupRole path, MemberSelection? selection)
     {
         var mark = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.MemberAccess, member, selected, qualifier, default, path, default, selection));
+        this.nameSteps.Add(new(NameStepKind.MemberAccess, member, selected, qualifier, default, path, default, selection, null));
         return this.PublishPath(new(PathEnd.Selected, selected, member), mark);
     }
 
@@ -438,7 +449,7 @@ public sealed partial class Binding
     private void PublishProjectionMember(MemberAccessKoto syntax, BindingSymbol selected)
     {
         var mark = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.ProjectionMember, syntax, selected, null, default, default, default, null));
+        this.nameSteps.Add(new(NameStepKind.ProjectionMember, syntax, selected, null, default, default, default, null, null));
         this.PublishPath(new(PathEnd.Projection, null, syntax), mark);
     }
 
@@ -447,7 +458,7 @@ public sealed partial class Binding
     private void PublishHiddenMember(MemberAccessKoto member, BindingSymbol hidden)
     {
         var mark = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.HiddenMember, member, hidden, null, default, default, default, null));
+        this.nameSteps.Add(new(NameStepKind.HiddenMember, member, hidden, null, default, default, default, null, null));
         this.PublishPath(new(PathEnd.Unresolved, null, member), mark);
         this.RecordAccess(member, hidden, null);
     }
@@ -860,13 +871,13 @@ public sealed partial class Binding
             case MemberAccessKoto member:
                 var left = UseNode(member.Left);
                 var qualifier = this.ResolvePath(member.Left, scope, UseRow(left)); // The left's row is its position's, as NamePath asks it.
-                this.nameSteps.Add(new(NameStepKind.Qualifier, left, qualifier.Symbol, null, default, default, qualifier.End, null));
+                this.nameSteps.Add(new(NameStepKind.Qualifier, left, qualifier.Symbol, null, default, default, qualifier.End, null, qualifier.Use));
                 return this.ResolveMember(member, qualifier, scope, role, arity);
             case SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root:
                 var rooted = this.ResolveRootPath(root.Operands[0], this.ModuleScope(root.Operands[0]), role, arity);
                 if (rooted.End == PathEnd.Selected)
                 {
-                    this.nameSteps.Add(new(NameStepKind.RootOperand, root.Operands[0], rooted.Symbol, null, default, default, default, null));
+                    this.nameSteps.Add(new(NameStepKind.RootOperand, root.Operands[0], rooted.Symbol, null, default, default, default, null, null));
                 }
 
                 return rooted;
@@ -897,7 +908,7 @@ public sealed partial class Binding
         var parameter = this.ResolveName(name, scope, syntax, LookupRole.TypeSemantics, 0);
         if (target.End == PathEnd.Ambiguous || parameter.End == PathEnd.Ambiguous)
         {
-            this.nameSteps.Add(new(NameStepKind.AmbiguousRole, syntax, null, null, default, default, default, null));
+            this.nameSteps.Add(new(NameStepKind.AmbiguousRole, syntax, null, null, default, default, default, null, null));
         }
 
         if (target.Symbol is not null && parameter.Symbol is not null)
@@ -906,7 +917,7 @@ public sealed partial class Binding
         }
 
         var selected = parameter.Symbol is not null ? parameter : target;
-        this.nameSteps.Add(new(NameStepKind.AdaptationTarget, syntax, selected.Symbol, null, default, default, default, null));
+        this.nameSteps.Add(new(NameStepKind.AdaptationTarget, syntax, selected.Symbol, null, default, default, default, null, null));
         return selected;
     }
 
@@ -915,7 +926,7 @@ public sealed partial class Binding
     private ResolvedPath ResolveName(string name, BindingScope scope, Koto use, LookupRole role, int arity)
     {
         var step = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.Head, use, null, null, default, role, default, null));
+        this.nameSteps.Add(new(NameStepKind.Head, use, null, null, default, role, default, null, null));
         for (var current = scope; current is not null; current = current.Parent)
         {
             var stage = InValueNamespace(role) ? this.ValueStage(current, scope, use, name) : this.TypeStage(current, scope, use, name, role, arity, step);
@@ -984,20 +995,6 @@ public sealed partial class Binding
     private bool VisibleAt(BindingSymbol candidate, Koto use)
         => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && this.ParameterVisible(candidate);
 
-    // An alias target's segment and a default alias's segment: one unfiltered selection with its ambiguity reported (part e folds both walks).
-    private BindingSymbol? SelectQualifier(BindingSymbol? head, BindingScope scope, Koto use)
-    {
-        var candidates = default(TypeCandidates);
-        this.AddTypeCandidates(ref candidates, head, scope, LookupRole.Qualifier, 0);
-        if (candidates.Ambiguous)
-        {
-            this.Record(use, BindingFailure.Ambiguous, [], unresolved: true);
-            return null;
-        }
-
-        return this.Supported(use, candidates.Match ?? candidates.First);
-    }
-
     private ResolvedPath SelectedPath(in TypeCandidates candidates, Koto use, int step)
     {
         if (candidates.Ambiguous)
@@ -1062,14 +1059,14 @@ public sealed partial class Binding
 
             if ((candidates.Match ?? candidates.First) is { } target)
             {
-                this.nameSteps.Add(new(NameStepKind.Member, member, target, left, default, default, default, null));
+                this.nameSteps.Add(new(NameStepKind.Member, member, target, left, default, default, default, null, null));
                 return new(PathEnd.Selected, target, member);
             }
         }
 
         if (left.Declaration is StructKoto && this.LookupMember(this.SelfType(left), name, scope, role) is { Member: { } inherited })
         {
-            this.nameSteps.Add(new(NameStepKind.InheritedMember, member, inherited, left, default, default, default, null));
+            this.nameSteps.Add(new(NameStepKind.InheritedMember, member, inherited, left, default, default, default, null, null));
             candidates = default;
             this.AddTypeCandidates(ref candidates, inherited, scope, role, arity);
             if (candidates.Ambiguous)
@@ -1114,7 +1111,7 @@ public sealed partial class Binding
             var candidates = default(TypeCandidates);
             this.AddTypeCandidates(ref candidates, MemberTypes(members, rightName), root, role, arity);
             var selected = candidates.Ambiguous ? null : candidates.Match ?? candidates.First;
-            this.nameSteps.Add(new(NameStepKind.RootMember, member, selected, qualifier, default, default, default, null));
+            this.nameSteps.Add(new(NameStepKind.RootMember, member, selected, qualifier, default, default, default, null, null));
             if (candidates.Ambiguous)
             {
                 return new(PathEnd.Ambiguous, null, member);

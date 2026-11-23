@@ -588,10 +588,10 @@ public class UseLookupTest
     [Fact]
     public void ADisagreeingPublicationIsABrokenContract()
     {
-        var (qualifier, published, selected) = PublishedQualifier();
-        var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Static)!;
-        publish.Invoke(null, [qualifier, published, selected]);
-        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(null, [qualifier, PathEnd.Unresolved, selected]));
+        var (binding, qualifier, published, selected) = PublishedQualifier();
+        var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        publish.Invoke(binding, [qualifier, published, selected, qualifier]);
+        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(binding, [qualifier, PathEnd.Unresolved, selected, qualifier]));
         Assert.Contains("InternalInvariant", Assert.IsType<InvalidOperationException>(thrown.InnerException).Message);
     }
 
@@ -600,11 +600,11 @@ public class UseLookupTest
     [Fact]
     public void ASelectedUsesSymbolIsWrittenOnce()
     {
-        var (qualifier, published, selected) = PublishedQualifier();
+        var (binding, qualifier, published, selected) = PublishedQualifier();
         HirTables.WriteSymbol(qualifier, selected);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => HirTables.WriteSymbol(qualifier, null)).Message);
-        var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(null, [qualifier, published, null]));
+        var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(binding, [qualifier, published, null, qualifier]));
         Assert.Contains("InternalInvariant", Assert.IsType<InvalidOperationException>(thrown.InnerException).Message);
         Assert.Same(selected, HirTables.Symbol(qualifier));
     }
@@ -678,14 +678,14 @@ public class UseLookupTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
-    private static (Koto Qualifier, PathEnd Published, BindingSymbol Selected) PublishedQualifier()
+    private static (Binding Binding, Koto Qualifier, PathEnd Published, BindingSymbol Selected) PublishedQualifier()
     {
         var c = CompilationTestHelper.Parse("struct N\n    public struct Inner\nfunc f(v: N.Inner) -> i32 => 0");
         Assert.True(c.Bind().IsComplete);
         var qualifier = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single().Left;
         var published = HirTables.LookupOf(qualifier);
         Assert.Equal(PathEnd.Selected, published);
-        return (qualifier, published, Assert.IsType<BindingSymbol>(HirTables.Symbol(qualifier)));
+        return (c.Binding, qualifier, published, Assert.IsType<BindingSymbol>(HirTables.Symbol(qualifier)));
     }
 
     // The access `….A` of a bound program and each node of it with its published lookup, selection and Type.
