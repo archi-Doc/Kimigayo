@@ -907,9 +907,10 @@ public sealed partial class InstanceCollectorTest
     // R7-T1 (R1.2), DECISIONS R5-M151, BU-38: the collector's one reading of a substitution's cause at a site (Formed) makes the instance
     // for Formed and refuses the request otherwise. Incomplete, a substitution that does not complete, is a broken contract, which the
     // collector's one record path keeps only where TyCtxt.BindingComplete holds: in an incomplete compilation it may rest on a part Binding
-    // rejected, a dependent without a record; no source reaches it in a complete one, so it is read directly here. HeightLimit records
-    // nothing at once: its TypeHeightLimit_Kd is made at the run's end (AHeightPastTheLimitIsAResourceRecordAtItsFormingSite). Layout's
-    // Rejected row maps a part Binding rejected to the same broken contract.
+    // rejected, a dependent without a record; no source reaches it in a complete one, so it is read directly here. HeightLimit is a use in
+    // MirReport's limit table, made in the collector's run alone, its TypeHeightLimit_Kd at the run's end
+    // (AHeightPastTheLimitIsAResourceRecordAtItsFormingSite): read here, outside a run, it is a broken contract that throws (PLAN G651 U2b,
+    // B's ruling 16; before, the use was dropped silently). Layout's Rejected row maps a part Binding rejected to the same broken contract.
     [Theory]
     [InlineData(false, "")]
     [InlineData(true, "InternalInvariant_Kd")]
@@ -923,8 +924,9 @@ public sealed partial class InstanceCollectorTest
         Assert.NotEqual(0, set.Items.Length);
         var collected = program.Records(MirRecordClass.Collection).Count();
         var site = SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "main"));
-        var causes = new[] { TyCtxt.Formation.Formed, TyCtxt.Formation.Incomplete, TyCtxt.Formation.HeightLimit };
-        Assert.Equal([true, false, false], causes.Select(x => collector.Formed(x, 0, site, site)));
+        var causes = new[] { TyCtxt.Formation.Formed, TyCtxt.Formation.Incomplete };
+        Assert.Equal([true, false], causes.Select(x => collector.Formed(x, 0, site, site)));
+        Assert.Throws<InvalidOperationException>(() => collector.Formed(TyCtxt.Formation.HeightLimit, 0, site, site));
         Assert.Equal(records, string.Join(' ', program.Records(MirRecordClass.Collection).Skip(collected).Select(static x => x.Code)));
         Assert.Equal(DiagnosticCode.InternalInvariant_Kd, collector.RecordOf(Layout.Outcome.Rejected));
     }

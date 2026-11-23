@@ -19,7 +19,8 @@ namespace Kimi.Compiler.Mir;
 //   causes once each, a Value >= 0 the index in Merged of the problem's merged problem (the remap is total) but never its own (members
 //   causing one another, across NoBody and a body, name no other problem; R4's U1b note n2), -1 (2g-1's Binding cause) kept; the view is
 //   computed once, on its first read after an Add or a Clear, in pooled storage, so a warm version allocates nothing.
-// - Prohibitions: no write to All or its facts; no publication.
+// - Prohibitions: no write to All or its facts but the limit table's flush on the first Merged read after a committed least use
+//   changed (MirReport.Limits.cs); no publication.
 internal sealed partial class MirReport
 {
     private readonly Dictionary<(DiagnosticCode Code, SourceRef Subject, MirReason Reason, MirRecordClass? Class), int> merges = new(); // Each key's.
@@ -32,11 +33,17 @@ internal sealed partial class MirReport
     private readonly List<(int Start, int Count)> factSpans = []; // Each merged problem's facts.
     private bool isMerged; // Whether the view reflects All; an Add or a Clear resets it.
 
-    /// <summary>Gets the merged problems, one per code, subject, Reason and class, in the order of their first members.</summary>
+    /// <summary>Gets the merged problems, one per code, subject, Reason and class, in the order of their first members; the first read
+    /// after a committed least use changed flushes the limit table (MirReport.Limits.cs).</summary>
     internal ReadOnlySpan<MergedProblem> Merged
     {
         get
         {
+            if (this.unflushed)
+            {
+                this.Flush();
+            }
+
             this.MergeAll();
             return CollectionsMarshal.AsSpan(this.merged);
         }

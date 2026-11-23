@@ -45,7 +45,8 @@
 // root's storage, at the form (LayoutNeeds' rows and the Need columns, the Type its TypeOf names, past Layout.Indirect's boundary or a
 // pair layer the item's case makes a referent; DECISIONS R5-M149, R5-M166), and the parameters and result of each import a root module
 // declares, at their written Types (no item; SPEC 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd
-// once per erased Type and declaration, at the least of that declaration's failing uses, made at the run's end (DECISIONS R5-M171), a
+// once per erased Type and declaration, at the least of that declaration's failing uses, a use in MirReport's limit table (MirReport.Limit),
+// whose records the run's end flushes (DECISIONS R5-M171), a
 // C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
 // a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
 // complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
@@ -81,7 +82,8 @@
 // built during the run, misses: it goes on to its end and makes every demand but those of that body's Drop sites, which read A2's facts
 // (DropTargets requests nothing for a body A2 does not hold), so their targets wait for the next run and a chain through them takes
 // another; and it commits nothing: the report holds a run's records until it ends and drops a missed run's (MirReport's round, the one
-// commit A4's rounds share; a record made outside a run is added at once), a missed run makes no end-of-run record (RecordLimits) and its
+// commit A4's rounds share; a record made outside a run is added at once), a missed run's least uses are dropped with its round, no
+// end-of-run flush (MirReport.FlushLimits) is made, and its
 // checked set holds no version. Its driver (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it again until
 // a run is clean. A template records nothing, so the templates are kept across a version's runs and extend over the bodies in build
 // order as a replay finds bodies built since (a lookup's during the run); A3b's records, made in each run's root loop, are the run's. A
@@ -105,7 +107,7 @@
 // the library store grows once per body that joins the list, bounded by the library's range, once per library segment (PLAN G951 U2-K).
 // Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, Holds for its round
 // and LibraryHolds for a body's template store) or edit their driver; decide acceptance or publish its records (Compilation does); prove
-// anything on an erased value; add an IntrinsicId or BindingFailure (PD21).
+// anything on an erased value; add an IntrinsicId or BindingFailure (PD21); make a limit use outside its run (MirReport.Limit).
 
 using Kimi.Compiler.Mir;
 
@@ -117,11 +119,6 @@ internal sealed partial class InstanceCollector
     private readonly TyCtxt types;
     private readonly MirCases cases;
     private readonly Layout layout;
-    // The least use of each use over a limit per declaration (Limit), recorded at the run's end with its code (DECISIONS R5-M171): an
-    // erased Type over a Layout limit or the type-driven height cap, or a forming site whose substitution passes IMPL A.4's height
-    // (TypeHeightLimit_Kd, Type null; R7-T1).
-    private readonly Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), SourceRef> limits = new();
-    private readonly List<(SourceRef Subject, DiagnosticCode Code)> limitSubjects = new(); // RecordLimits' scratch.
     private readonly HashSet<MonoKey> refused = new(); // The keys refused for growth, each reported once (DECISIONS R5-M170).
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
@@ -216,7 +213,7 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets whether a substitution a site requests formed its instance, the collector's one reading of a cause (TyCtxt.Formation;
     /// R7-T1; DECISIONS R5-M151, R5-M171), the cause of TyCtxt's answer-frame query (TyCtxt.Answered): Formed makes the instance;
     /// HeightLimit (a Type past IMPL A.4's height, IMPL 21.3.2's Resource) is TypeHeightLimit_Kd at the site, a use of its forming site over
-    /// a limit in the requesting item's declaration (Limit), recorded once at its least use at the run's end; Incomplete is a broken
+    /// a limit in the requesting item's declaration (MirReport.Limit), recorded once at its least use at the run's end; Incomplete is a broken
     /// contract at the site (Report). The request is refused but for Formed.</summary>
     /// <param name="cause">The cause.</param>
     /// <param name="item">The requesting item.</param>
@@ -230,7 +227,7 @@ internal sealed partial class InstanceCollector
             case TyCtxt.Formation.Formed:
                 return true;
             case TyCtxt.Formation.HeightLimit:
-                this.Limit(DiagnosticCode.TypeHeightLimit_Kd, null, forming, this.Declaration(item), subject);
+                this.program!.Problems.Limit(DiagnosticCode.TypeHeightLimit_Kd, null, forming, this.Declaration(item), subject);
                 return false;
             case TyCtxt.Formation.Incomplete:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
@@ -245,7 +242,6 @@ internal sealed partial class InstanceCollector
     {
         set.Clear(program.Version);
         this.counts.Clear();
-        this.limits.Clear();
         this.refused.Clear();
         this.glueKeys.Clear();
         Array.Clear(this.declaring);
@@ -275,12 +271,12 @@ internal sealed partial class InstanceCollector
 
         if (this.missed)
         {
-            program.Problems.Drop(); // Round: a missed run commits nothing.
+            program.Problems.Drop(); // Round: a missed run commits nothing, its least uses included.
             set.Clear(0);
             return set;
         }
 
-        this.RecordLimits();
+        program.Problems.FlushLimits(); // DECISIONS R5-M171: each use over a limit's record at its least use, after the run's records.
         program.Problems.Commit();
         return set;
     }
