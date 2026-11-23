@@ -241,15 +241,13 @@ public sealed partial class Binding
                 return this.Fail(call, BindingFailure.Unsupported, true);
             }
 
-            var outermost = this.candidateTrials == 0;
+            // SPEC 10.6 (ArgFlow ruling 188): the call's resolution, its selection and every run of it on BU-240's split, is one count,
+            // read after each: past the limit no candidate is selected (RefusesResolution).
+            var outermost = this.BeginResolution();
             var (selection, winnerIndex) = this.SelectAt(ref evaluation, candidates);
-            if (outermost && this.resolutionLimited)
+            if (this.RefusesResolution(call, outermost))
             {
-                // SPEC 10.6 (the owner's O-351 (a)), 23.1.1: the queries of this resolution passed the limit; no candidate is selected,
-                // and the call's waiting parts rest on its record, a Resource record with its limit as every implementation limit's
-                // (Fail, ImplementationLimit), not a selection's record of parties (RecordSelection).
-                this.MarkWaitingHeaders(call);
-                return this.Fail(call, BindingFailure.ResolutionWorkLimit, true);
+                return null;
             }
 
             var count = evaluation.Count;
@@ -287,6 +285,11 @@ public sealed partial class Binding
                 // DECISIONS BU-240 (temporary, PLAN G886; ClassifySelection; G812 rulings 139, 141): judged case by case; a candidate every
                 // case selects, whose own trial reads no split, is the selection (SelectionOnSplit), else the call rests or fails there.
                 var split = this.SelectionOnSplit(in evaluation);
+                if (this.RefusesResolution(call, outermost))
+                {
+                    return null;
+                }
+
                 if (split.Selected < 0)
                 {
                     return this.FailUnformedCall(ref evaluation, split.Fails, split.Canonical);

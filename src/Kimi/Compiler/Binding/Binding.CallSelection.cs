@@ -360,7 +360,6 @@ public sealed partial class Binding
     // the caller acts on the outcome.
     private (CallSelection Kind, int Winner) SelectAt(ref CallEvaluation evaluation, in FunctionGroup candidates)
     {
-        this.BeginResolution();
         this.acquisitionFailure = null;
         this.failedCause = null;
         this.activeRequirementContract = null;

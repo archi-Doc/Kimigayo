@@ -22,8 +22,10 @@ namespace Kimi.Compiler;
 //   run's failure at that part (RunFitFails); neither judges the part again.
 // - Invariants: dependentChecks keys a part by its core's syntax identity (SourceRef, argumentParts' key) and E by reference (an
 //   interned Type); it lives for one pass (ResetPass) and a query starts only on a miss, so each part is checked once per distinct E;
-//   the queries one outermost resolution starts are counted (resolutionWork) and past ResolutionWorkLimit (IMPL A.4) no query runs:
-//   the part is kept unchecked and the outermost call is refused (ResolutionWorkLimit_Kd, BindCallCore), never selected. A verdict is
+//   the queries one outermost resolution starts are counted (resolutionWork; BeginResolution: a named call's selection with every run
+//   of it on BU-240's split, or a check with no evaluation open) and past ResolutionWorkLimit (IMPL A.4) no query runs: the part is
+//   kept unchecked and the resolution's outermost call, or the part whose check began it, is refused (ResolutionWorkLimit_Kd,
+//   RefusesResolution), never selected. A verdict is
 //   a function of (part, E) only: one whose query read a split layer (ReadSplitSince: a binding of the open combination, or a
 //   formation that formed none) is its run's, which E does not hold, and is not kept (DECISIONS BU-240, removed with its (R); ArgFlow
 //   ruling 152 C1), so a later run at the same E queries again. SPEC 10.4 step 1's exception (an unbound slot takes the argument
@@ -82,7 +84,7 @@ public sealed partial class Binding
             return kept;
         }
 
-        this.BeginResolution();
+        var began = this.BeginResolution();
         if (++this.resolutionWork > ResolutionWorkLimit)
         {
             this.resolutionLimited = true;
@@ -107,6 +109,11 @@ public sealed partial class Binding
             this.candidateTrials--;
         }
 
+        if (this.RefusesResolution(node, began))
+        {
+            return new(null, ArgumentAdaptation.ExpectedTypeFitting); // The part's own Resource record, on which its consumer rests.
+        }
+
         if (!this.ReadSplitSince(stamp, mark))
         {
             this.dependentChecks[key] = verdict;
@@ -115,14 +122,40 @@ public sealed partial class Binding
         return verdict;
     }
 
-    // SPEC 10.6: an outermost resolution (no evaluation open) starts its count afresh.
-    private void BeginResolution()
+    // SPEC 10.6 (ArgFlow ruling 188): an outermost resolution begins where no evaluation is open, its count afresh: a named call's
+    // (BindCallCore, around its selection and, on BU-240's split, every run of it, which opens no resolution of its own: SelectAt begins
+    // none), or a part checked with no evaluation open (CheckedAt: a construction's payload, a value call's argument, a run of an Item
+    // on the split). True when this entry began it: it reads the limit where its resolution ends (RefusesResolution).
+    private bool BeginResolution()
     {
-        if (this.candidateTrials == 0)
+        if (this.candidateTrials > 0)
         {
-            this.resolutionWork = 0;
-            this.resolutionLimited = false;
+            return false;
         }
+
+        this.resolutionWork = 0;
+        this.resolutionLimited = false;
+        return true;
+    }
+
+    // SPEC 10.6, 23.1.1 (the owner's O-351 (a); ArgFlow ruling 188): where the resolution an entry began ends: past the limit nothing is
+    // selected there; its outermost call or part is refused, a Resource record with its limit as every implementation limit's (Fail,
+    // ImplementationLimit), not a selection's record of parties (RecordSelection), and a call's waiting parts rest on it. True when
+    // refused; the one reader of resolutionLimited.
+    private bool RefusesResolution(Koto site, bool began)
+    {
+        if (!began || !this.resolutionLimited)
+        {
+            return false;
+        }
+
+        if (site is InvocationKoto call)
+        {
+            this.MarkWaitingHeaders(call);
+        }
+
+        this.Fail(site, BindingFailure.ResolutionWorkLimit, true);
+        return true;
     }
 
     // SPEC 10.5.1: the outcome of a part's check against an expected Type: Failure, the part's own resolution there has no applicable
