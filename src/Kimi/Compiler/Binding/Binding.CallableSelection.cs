@@ -14,19 +14,19 @@ public sealed partial class Binding
     // G812 ruling 132: what a value call's split check found at each argument (from the check's own start in the list): whether it
     // was prepared (one that failed there is rule W's wildcard), the parameter a run formed for it and whether that run read a split
     // layer (a binding of a search, or a formation that formed none); then the judgment, whether it fails in every case of what it
-    // reads, and at which waiting part, with the canonical case's Type (none: a misfit, the call's own record).
+    // reads, and at which waiting part (none: a misfit, the call's own record), a failed part's parameter being the canonical case's.
     private readonly List<SplitPart> splitParts = [];
 
     // DECISIONS BU-240 with rule W (G812 rulings 123-132; temporary with the search): of a value call's split check, the part awaiting
-    // its call (a named Call, a contextual Case or a Case construction) that failed the current part of a run, with the Type the run
-    // formed for its position (runWaiting, RunFitFails); the current run's failure, the part (an argument's index, the result's after
+    // its call (a named Call, a contextual Case or a Case construction) that failed the current part of a run, with the parameter the
+    // run formed for its argument (runWaiting, RunFitFails); the current run's failure, the part (an argument's index, the result's after
     // them, -1 the call's argument count) with that waiting part, none for a misfit (runFailure, ItemPartFails); and the failure of the search's
     // first run, the canonical case (each binding at its first admitted Semantics, the combination the first run takes whatever order
     // later runs take; ruling 130), with whether every failing run failed at that same part and waiting part (splitFailure,
     // FoldRunFailure; null before the first run).
-    private (Koto? Part, BoundType? Type) runWaiting;
-    private (int Part, Koto? Waiting, BoundType? Type) runFailure;
-    private (int Part, Koto? Waiting, BoundType? Type, bool Same)? splitFailure;
+    private (Koto? Part, BoundType? Parameter) runWaiting;
+    private (int Part, Koto? Waiting, BoundType? Parameter) runFailure;
+    private (int Part, Koto? Waiting, BoundType? Parameter, bool Same)? splitFailure;
 
     // DECISIONS BU-240 (G812 ruling 139): the first run's selection of a named call's split check (SelectionOnSplit; null before it).
     private ProbedSelection? canonicalSelection;
@@ -196,9 +196,10 @@ public sealed partial class Binding
     // (SPEC 23.1.2; ruling 132):
     // - where the call fails in every combination, each part from the canonical case's first failing one on is judged in every case
     //   of the bindings it reads: the search's verdict where every run failed there, else the part's own search (JudgeSplitPart);
-    //   one that fails so is a misfit, the call's own record, or a waiting Call or Case, completed at the canonical case's Type,
-    //   where its failure is its own record (CompleteFailedPart); the parts before it passed that case, and the result is judged
-    //   only where it failed first (a call that forms no result checks none: BindValueCall);
+    //   one that fails so is a misfit, the call's own record, or fails at a waiting Call or Case, its argument then completed whole
+    //   at the canonical case's parameter as the unsplit path completes an argument, where each part failing there is its own record
+    //   (CompleteFailedPart); the parts before it passed that case, and the result is judged only where it failed first (a call that
+    //   forms no result checks none: BindValueCall);
     // - a part whose parameter reads no split layer is completed at it as the unsplit path completes it (CompleteValueCallPart): its
     //   check rests on nothing, so an anonymous function's body is judged; any other part that fails in no case and awaits the call is
     //   completed the same way at the canonical case's open formed parameter (CompletePartOnSplit, OpenForm), where every check that
@@ -216,7 +217,7 @@ public sealed partial class Binding
         var parts = this.splitParts.Count;
         for (var i = 0; i < count; i++)
         {
-            this.splitParts.Add(new(this.PrepareArgument(call.ArgumentNodes[i], scope, default, callableContext: true), null, true, false, null, null));
+            this.splitParts.Add(new(this.PrepareArgument(call.ArgumentNodes[i], scope, default, callableContext: true), null, true, false, null));
         }
 
         for (var i = 0; i < count; i++)
@@ -236,12 +237,12 @@ public sealed partial class Binding
             var (own, found) = (!rests && canonical.Part < 0, false);
             for (var i = rests ? -1 : canonical.Part; i >= 0 && (i < count || i == canonical.Part); i++)
             {
-                var (fails, waiting, type) = i == canonical.Part && canonical.Same ? (true, canonical.Waiting, canonical.Type)
+                var (fails, waiting, parameter) = i == canonical.Part && canonical.Same ? (true, canonical.Waiting, canonical.Parameter)
                     : this.JudgeSplitPart((call, scope, item, expected, parts, i), static (binding, c) => binding.ItemPartFails(c.call, c.scope, c.item, c.expected, c.parts, c.i));
                 (own, found) = (own || (fails && waiting is null), found || fails);
                 if (fails && i < count)
                 {
-                    this.splitParts[parts + i] = this.splitParts[parts + i] with { Fails = true, Waiting = waiting, Type = type };
+                    this.splitParts[parts + i] = this.splitParts[parts + i] with { Fails = true, Waiting = waiting, Parameter = parameter };
                 }
             }
 
@@ -251,7 +252,7 @@ public sealed partial class Binding
                 var part = this.splitParts[parts + i];
                 if (part is { Fails: true, Waiting: { } waiting })
                 {
-                    this.CompleteFailedPart(waiting, part.Type!, scope);
+                    this.CompleteFailedPart(call.ArgumentNodes[i], part.Parameter!, scope);
                     failed ??= waiting;
                 }
                 else if (part is { Fails: false, Prepared: true } && this.CompletePartOnSplit(call, part, item, scope, i) is { } completed)
@@ -344,13 +345,13 @@ public sealed partial class Binding
 
     // G812 rulings 132, 156: whether one part of a split call's check (a value call's argument or its result after them, a named call's
     // argument) fails in every case of the bindings it reads, by its own search (`fails`, one run's judgment of the part), and the
-    // waiting part it fails at with the canonical case's Type where every failing run failed there (none: a misfit, or a failure that
-    // moves between its waiting parts by case: the call's own record).
-    private (bool Fails, Koto? Waiting, BoundType? Type) JudgeSplitPart<TState>(TState check, Func<Binding, TState, bool> fails)
+    // waiting part it fails at with the canonical case's parameter where every failing run failed there (none: a misfit, or a failure
+    // that moves between its waiting parts by case: the call's own record).
+    private (bool Fails, Koto? Waiting, BoundType? Parameter) JudgeSplitPart<TState>(TState check, Func<Binding, TState, bool> fails)
     {
         this.splitFailure = null;
         var failed = !this.RestsOnSplitCases(this.unformedWrites, (check, fails), static (binding, s) => binding.FoldRunFailure(s.fails(binding, s.check)));
-        return failed && this.splitFailure is { Same: true } failure ? (true, failure.Waiting, failure.Type) : (failed, null, null);
+        return failed && this.splitFailure is { Same: true } failure ? (true, failure.Waiting, failure.Parameter) : (failed, null, null);
     }
 
     // G812 rulings 126, 130, 132: a failing run's failure (runFailure) folded into its search's: the first run's is kept, the canonical
@@ -363,8 +364,8 @@ public sealed partial class Binding
         {
             var run = this.runFailure;
             this.splitFailure = this.splitFailure is { } kept
-                ? (kept.Part, kept.Waiting, kept.Type, kept.Same && kept.Part == run.Part && ReferenceEquals(kept.Waiting, run.Waiting))
-                : (run.Part, run.Waiting, run.Type, true);
+                ? (kept.Part, kept.Waiting, kept.Parameter, kept.Same && kept.Part == run.Part && ReferenceEquals(kept.Waiting, run.Waiting))
+                : (run.Part, run.Waiting, run.Parameter, true);
         }
 
         return fails;
@@ -444,7 +445,7 @@ public sealed partial class Binding
 
     private bool EndRunPart(int part, bool fails)
     {
-        this.runFailure = fails ? (part, this.runWaiting.Part, this.runWaiting.Type) : this.runFailure;
+        this.runFailure = fails ? (part, this.runWaiting.Part, this.runWaiting.Parameter) : this.runFailure;
         return fails;
     }
 
@@ -474,19 +475,20 @@ public sealed partial class Binding
     // judge, never a second judgment here) in source order: a part the fit kept, before any failure, whose selection there, or a part's
     // below it, is unproven (UnprovenWaiting: an obligation of the selected candidate, SPEC 10.1) fails the run at that part; else a
     // part that does not check there fails the fit, with its checked failure (CheckedPartFailure, taken right after the fit). The
-    // failing waiting part is the run's (runWaiting), with its Type, and argumentMisfit the components from the argument down to it.
+    // failing waiting part is the run's (runWaiting), with the argument's parameter, where a failed argument is completed whole
+    // (CompleteFailedPart), and argumentMisfit the components from the argument down to it.
     private bool RunFitFails(Koto argument, BoundType parameter, BindingScope scope, Koto use)
     {
         var fails = this.FitArgument(argument, parameter, scope, use, out _) == CandidateApplicability.Inapplicable;
         var failed = fails ? this.TakeTrialChecked(use) : null;
         if (this.UnprovenWaiting() is { } unproven)
         {
-            this.runWaiting = (KotoHelper.UnwrapParentheses(unproven.Part), unproven.Type);
+            this.runWaiting = (KotoHelper.UnwrapParentheses(unproven.Part), parameter);
             this.argumentMisfit = unproven.Unproven;
             return true;
         }
 
-        this.runWaiting = failed is { } part ? (part.Part, part.Expected) : default;
+        this.runWaiting = failed is { } part ? (part.Part, parameter) : default;
         return fails;
     }
 
@@ -598,5 +600,5 @@ public sealed partial class Binding
     // CheckedPart: SPEC 10.5.1, the argument checked against the row's parameter Type whose own resolution there failed (FitChecked).
     private readonly record struct CallableCandidate(BoundType Signature, SemanticsKind Receiver, BoundConstraint Fact, Koto Context, CheckedPartFailure? CheckedPart = null);
 
-    private readonly record struct SplitPart(bool Prepared, BoundType? Parameter, bool Split, bool Fails, Koto? Waiting, BoundType? Type);
+    private readonly record struct SplitPart(bool Prepared, BoundType? Parameter, bool Split, bool Fails, Koto? Waiting);
 }

@@ -597,15 +597,15 @@ public sealed partial class Binding
 
     // DECISIONS BU-240 with rule W (G812 rulings 143, 156; SPEC 23.1.2): argument `a` of a named call on the split, awaiting the call, at the
     // parameter `form` gives its declared Type in the canonical run's candidate. It is judged in each case of the bindings it reads as
-    // a value call's part is (JudgeSplitPart, ArgumentPartFails), so one failing in every case at a waiting part is completed at the
-    // canonical case's Type, where that failure is its record (CompleteFailedPart); any other is completed at the open formed parameter
-    // (OpenForm, CompleteOnSplit). The part that failed so, else null: the call rests on it.
+    // a value call's part is (JudgeSplitPart, ArgumentPartFails), so one failing in every case at a waiting part is completed whole at
+    // the canonical case's parameter, where each part failing there is its own record (CompleteFailedPart); any other is completed at
+    // the open formed parameter (OpenForm, CompleteOnSplit). The part that failed so, else null: the call rests on it.
     private Koto? CompleteNamedPartOnSplit<TState>(
         (InvocationKoto Call, int A, BoundType Declared, BindingScope Scope) part, TState state, Func<Binding, TState, BoundType, BoundType?> form)
     {
         var argument = part.Call.ArgumentNodes[part.A];
         this.PrepareWaitingCases(argument, part.Scope); // A run binds nothing (G812 ruling 123).
-        var (fails, waiting, type) = this.JudgeSplitPart(
+        var (fails, waiting, canonical) = this.JudgeSplitPart(
             (part, argument, state, form),
             static (binding, c) =>
             {
@@ -614,7 +614,7 @@ public sealed partial class Binding
             });
         if (fails && waiting is not null)
         {
-            this.CompleteFailedPart(waiting, type!, part.Scope);
+            this.CompleteFailedPart(argument, canonical!, part.Scope);
             return waiting;
         }
 
