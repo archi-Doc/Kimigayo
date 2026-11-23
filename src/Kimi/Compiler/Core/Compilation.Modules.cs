@@ -48,9 +48,9 @@ public partial class Compilation
     // KimiLibrary.CreateAbort forms its built-in syntax, and declared as the opening alias the configuration states (SPEC 18.2.3), so its
     // lookup row is an alias target's (UseRow: Qualifier). The document is named by its configuration file and entry and its text is
     // the path (F's ruling N1-9 (1)), so a record in it is located like any source's. A path that does not read whole is reported by
-    // the parse in that document, as a source alias's target is (GroupKoto), and gives no node (N1-9 (4)): null. The loader refused an
-    // empty path; the effective path has no leading `::`.
-    internal static Koto? ParseConfiguredPath(Kotonoha module, string configuration, string path)
+    // the parse in that document, as a source alias's target is (GroupKoto), and gives no alias (N1-9 (4)): null. The loader refused an
+    // empty path; the effective path has no leading `::`. The result is the alias, whose TargetSyntax is the path's node.
+    internal static AliasKoto? ParseConfiguredPath(Kotonoha module, string configuration, string path)
     {
         var source = new SourceDocument($"{configuration}#Alias[{path}]", path);
         _ = module.LogicalName(source);
@@ -73,8 +73,7 @@ public partial class Compilation
                 return null;
             }
 
-            _ = new AliasKoto(ref reader, target, null, target.Span);
-            return target;
+            return new AliasKoto(ref reader, target, null, target.Span);
         }
         finally
         {
@@ -149,9 +148,9 @@ public partial class Compilation
             var list = new List<DefaultAlias>(paths.Length);
             foreach (var path in paths)
             {
-                if (ParseConfiguredPath(module, configuration, path) is { } target)
+                if (ParseConfiguredPath(module, configuration, path) is { } alias)
                 {
-                    list.Add(new(path, target));
+                    list.Add(new(path, alias));
                 }
             }
 
@@ -259,7 +258,8 @@ public partial class Compilation
         return true;
     }
 
-    /// <summary>A module's configured default alias (SPEC 18.2.3, IMPL 20.2): its effective path and that path read once by the Type
-    /// production in a configuration document of the module (F's ruling N1-4 (1)), the node Binding evaluates by the path walk.</summary>
-    internal readonly record struct DefaultAlias(string Path, Koto Target);
+    /// <summary>A module's configured default alias (SPEC 18.2.3, IMPL 20.2): its effective path and the opening alias that path declares,
+    /// read once by the Type production in a configuration document of the module (F's rulings N1-4 (1), N1-15 C5), which Binding indexes
+    /// and evaluates as a source alias.</summary>
+    internal readonly record struct DefaultAlias(string Path, AliasKoto Alias);
 }

@@ -181,7 +181,7 @@ public sealed partial class Binding
     {
         foreach (var row in this.compilation.DefaultAliases(module))
         {
-            this.IndexWalk(new(row.Target.Parent!, scope, IndexEntryKind.Index));
+            this.IndexWalk(new(row.Alias, scope, IndexEntryKind.Index));
         }
     }
 

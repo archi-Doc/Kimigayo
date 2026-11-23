@@ -280,8 +280,7 @@ public partial class ModuleBindingTest
         var compilation = Create("func g() => ()", "public group Api");
         Assert.True(compilation.Bind().IsComplete);
         var row = Assert.Single(compilation.DefaultAliases(compilation.Library.Kotonoha));
-        var alias = Assert.IsType<AliasKoto>(row.Target.Parent);
-        Assert.Equal((BindingState.Resolved, "Kimi"), (HirTables.State(alias), HirTables.Symbol(alias)?.Name));
+        Assert.Equal((BindingState.Resolved, "Kimi"), (HirTables.State(row.Alias), HirTables.Symbol(row.Alias)?.Name));
     }
 
     [Fact]
