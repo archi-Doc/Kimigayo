@@ -429,9 +429,9 @@ public class PatternBindingTest
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
         Assert.Equal(0, binding.ImplicitFollows);
         Assert.Equal(PatternAcquisition.Copy, binding.Acquisition);
-        Assert.NotNull(binding.MatchedType.Origin);
+        Assert.NotNull(binding.MatchedType?.Origin);
         Assert.Same(binding.MatchedType, binding.BodySymbol!.Type);
-        Assert.Equal(OriginKind.Static, binding.MatchedType.Origin!.Kind);
+        Assert.Equal(OriginKind.Static, binding.MatchedType!.Origin!.Kind);
     }
 
     [Fact]

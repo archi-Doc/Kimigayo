@@ -157,13 +157,18 @@ internal sealed partial class MirBuilder
     // (Copy, Move, Reborrow or ByCase, any adaptation; SPEC 15.1.5: every acquisition requires its Place readable and complete) or
     // inspected through a shared borrow in place (SPEC 13.4, 15.1.6), of a Type; not a Temporary (its value), a part used in place
     // otherwise (a selection's receiver or base, a Deref's operand, a write's target, an exclusive borrow; SPEC 15.1.4), one whose
-    // acquisition failed (BU-103), one no consumer takes (Unset) or a Place of no Type (PLAN G1073).
+    // acquisition failed (BU-103), one no consumer takes (Unset) or a Place of no Type (Typed).
     private bool Reads(Koto part, MirPlace place)
     {
         var adjust = HirTables.AdjustOf(part);
         return (adjust.Acquire is HirAcquire.Copy or HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase ||
-            adjust == new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow)) && this.body.TypeOf(place) is not null;
+            adjust == new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow)) && this.Typed(place);
     }
+
+    // PLAN G1073, G1184 (DECISIONS R7-M64, R7-M88, BU-234; rule W): whether a Place has a Type, so that an access a reader judges (a read,
+    // a borrow) may be built on it. One of no Type is a failed slot, or a last Field step whose stored slot failed, on which MirValidator's
+    // Bounded admits no such access; its consumer rests on that failure. Reads and a test message's view (Verification) decide by it.
+    private bool Typed(MirPlace place) => this.body.TypeOf(place) is not null;
 
     // DECISIONS Z17c (R5-M63): whether a kept part's read is its secured Copy: its form reads it whole (KeptAdjust's Reads) and it is a
     // Place, no temp, of a Copy Type; a temp, or any other Place, stays as it is (its securing would be the consumer's taking, rule W).

@@ -15,6 +15,7 @@ public sealed partial class Binding
     private readonly MatchPlanRows matchPlans;
     private readonly IndexedPatternRows indexedPatterns;
     private readonly List<PatternWarning> patternWarnings = new();
+    private readonly List<BoundType?> payloadReads = new(); // BindPattern's Case payload Types, null where not read: a stack of runs.
     private PatternMarker? patternMarker;
     private UnsupportedMarker? unsupportedMarker;
 
@@ -183,6 +184,12 @@ public sealed partial class Binding
                 // SPEC 15.1.6: the Subject Place of a ByValue Subject is owned by the match; a bare Place's is a borrow of it.
                 var reach = new PatternReach(PatternAccessMode.Owned, null, OwnedPart: plan.Mode == SubjectMode.ByValue);
                 plan.ArmStorage.Add(new(arm, this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, reach)));
+            }
+            else
+            {
+                // Its Pattern is a resting leaf, which matched no Type: it selects nothing, and its bindings rest on the Subject.
+                plan.ArmStorage.Add(new(arm, plan.PositionStorage.Count));
+                plan.PositionStorage.Add(new(arm.Pattern, null, BoundPatternKind.Invalid, -1, 0, plan.PositionStorage.Count + 1));
             }
 
             this.MarkPatternTree(arm.Pattern, subject is null ? match.Expression : null);
@@ -421,22 +428,32 @@ public sealed partial class Binding
                     break;
                 }
 
-                position = position with { Kind = BoundPatternKind.Case, Case = selected };
                 syntax.BoundSymbol = selected.Symbol;
+
+                // SPEC 6.5.2, 14.8.1: every payload's Type is read at the position first (payloadReads: a nested Case's run lies above its
+                // parent's), then each read payload's Pattern is bound against it.
+                var first = this.payloadReads.Count;
                 for (var i = 0; i < children.Length; i++)
                 {
                     var payload = this.PartTypeIn(selected.Payload[i], type, outer) is { } stored ? this.PayloadRead(stored, plan, reach, children[i]) : null;
+                    this.payloadReads.Add(payload);
                     if (payload is null)
                     {
                         plan.Invalid = true;
                         this.Fail(children[i], BindingFailure.InvalidPattern);
                     }
-                    else
+                }
+
+                for (var i = 0; i < children.Length; i++)
+                {
+                    if (this.payloadReads[first + i] is { } payload)
                     {
                         this.BindPattern(children[i], payload, outer, plan, index, i, reach);
                     }
                 }
 
+                this.payloadReads.RemoveRange(first, children.Length);
+                position = position with { Kind = BoundPatternKind.Case, Case = selected };
                 break;
             default:
                 if (this.TryPatternLiteral(syntax, type, outer, out var literal))
@@ -577,9 +594,14 @@ public sealed partial class Binding
             var scope = this.ConstraintScope(plan.Syntax);
             for (var i = 0; i < plan.PositionStorage.Count; i++)
             {
+                // Recheck after late declaration/constraint validation, including discards; a resting leaf matched no Type to recheck.
                 var position = plan.PositionStorage[i];
-                // Recheck after late declaration/constraint validation, including discards.
-                if (!this.ValidatePatternType(plan, position.Source, position.MatchedType, scope))
+                if (position.MatchedType is not { } matched)
+                {
+                    continue;
+                }
+
+                if (!this.ValidatePatternType(plan, position.Source, matched, scope))
                 {
                     plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
                     continue;
@@ -613,7 +635,7 @@ public sealed partial class Binding
     private void AcquireBinding(BoundMatch plan, int index)
     {
         var position = plan.PositionStorage[index];
-        var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
+        var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType!, position.Source) : ConstraintProof.Refuted;
         var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
             : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
             : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
