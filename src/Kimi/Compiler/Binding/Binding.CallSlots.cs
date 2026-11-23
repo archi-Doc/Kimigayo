@@ -598,17 +598,39 @@ public sealed partial class Binding
                     actual = this.FillOpenOrigins(actual, previous, true);
                 }
 
+                var held = false;
                 if (((relateLater && !structural) || evidence is not null) && (ReferenceEquals(previous, actual) ||
-                    (this.FitsStructuralPart(actual, previous) && this.FitsStructuralPart(previous, actual))))
+                    (this.FitsStructuralPart(actual, previous, out held) && this.FitsStructuralPart(previous, actual))))
                 {
                     // SPEC 10.8 (as revised; O-450 (a), O-451 (a)), 15.3.6: Origin evidence for a slot never makes the candidate
                     // inapplicable, and the bindings agree in structure and Semantics. The frame keeps the first binding's Type until the
                     // late solve; every evidence binding is recorded with its composed polarity, this later one as the first below, by
                     // whichever caller matched it (an argument, a header, a Callable signature; G147 ruling 59: no caller's flag decides
                     // it), and its Origins bound the slot's variables, so Infer merges no Origins. Whether the slot is fixed is the slot
-                    // step's one test (SlotSolution.FixedSlot, read before the bindings): a fixed slot keeps its Type.
-                    frame.AddBinding(slot, actual, polarity);
+                    // step's one test (SlotSolution.FixedSlot, read before the bindings): a fixed slot keeps its Type. Evidence held
+                    // against a fill's atom waits and records nothing (Binding.OpenSlots: fill first, K's D-1132).
+                    if (!held)
+                    {
+                        frame.AddBinding(slot, actual, polarity);
+                    }
+
                     frame.SetType(slot, previous);
+                    return true;
+                }
+
+                // Binding.OpenSlots (SPEC 10.8 Solving; K's D-1132, ArgFlow ruling 154): the expected result's match fills a slot with
+                // the structure its fills agree in (FillOpenSlots), so no traversal order keeps the first atom met; fills that still meet
+                // an atom against a part agree in none, and the match fails.
+                if (!structural && inferOrigins && !relateLater && evidence is null && (previous.ContainsOpenSlot || actual.ContainsOpenSlot))
+                {
+                    var kept = this.FillOpenSlots(previous, actual);
+                    var met = this.FillOpenSlots(actual, previous);
+                    if (!ReferenceEquals(kept, met) && (!this.FitsStructuralPart(met, kept, out var apart) || apart || !this.IsSubtype(met, kept)))
+                    {
+                        return false;
+                    }
+
+                    frame.SetType(slot, kept);
                     return true;
                 }
 
@@ -665,10 +687,17 @@ public sealed partial class Binding
             return true;
         }
 
+        // PLAN G924 AF-3b v3-A (Binding.OpenSlots; S1): an atom on the actual side holds against a pattern part that is no slot of the
+        // solve and binds nothing; a slot of the solve takes it above, as any first binding (a fill).
+        if (actual.Kind == BoundTypeKind.OpenSlot)
+        {
+            return true;
+        }
+
         // An interned leaf that passes these tests differs from the pattern in its Origin alone, which is evidence or a later relation
         // where Origins are not compared here: a pair layer's outer slot is such an Origin (SPEC 8.1.2, 15.3.6; PLAN G758).
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
-            !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, binder.SlotOwner, frame) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
+            !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? actual.Length < 0 || InferLengthSlot(this.LengthOf(pattern), this.LengthOf(actual)) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
             (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0 && (ReferenceEquals(pattern.Origin, actual.Origin) || !ReferenceEquals(pattern.InstanceContext, actual.InstanceContext))))
         {
             return false;
@@ -678,7 +707,7 @@ public sealed partial class Binding
         {
             var required = pattern.LengthArguments[i];
             var supplied = actual.LengthArguments[i];
-            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || !lengths || !this.InferLength(required, supplied, binder.SlotOwner, frame)))
+            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || !lengths || !InferLengthSlot(required, supplied)))
             {
                 return false;
             }
@@ -712,6 +741,42 @@ public sealed partial class Binding
         }
 
         return true;
+
+        // A local annotation's length hole (a negative Length, above) supplies no evidence for a callee's length slot. SPEC 10.8 Solving,
+        // Binding.OpenSlots (ArgFlow rulings 166, 167): a length slot's bindings agree by the Type slot's rule above: the first is kept and an
+        // equal one agrees; evidence held against a fill's atom waits; in the expected result's match a length atom takes the closed length
+        // its fill meets, and two distinct atoms agree in none. InferLength keeps the length-specific forms.
+        bool InferLengthSlot(BoundLength required, BoundLength supplied)
+        {
+            var holds = this.InferLength(required, supplied, binder.SlotOwner, frame, out var slot);
+            if (slot < 0)
+            {
+                return holds;
+            }
+
+            if (frame.Lengths[slot] is not { } previous)
+            {
+                frame.SetLength(slot, supplied);
+                return true;
+            }
+
+            if (ReferenceEquals(previous, supplied) || (((relateLater && !structural) || evidence is not null) && previous.ContainsOpenSlot != supplied.ContainsOpenSlot))
+            {
+                return true;
+            }
+
+            if (structural || !inferOrigins || previous.ContainsOpenSlot == supplied.ContainsOpenSlot)
+            {
+                return false;
+            }
+
+            if (previous.ContainsOpenSlot)
+            {
+                frame.SetLength(slot, supplied);
+            }
+
+            return true;
+        }
     }
 
     // SPEC 10.8, 10.8.1, 6.5.2 step 2 (DECISIONS: the fixed bindings): a solution's slot bindings fixed before any evidence, over the slot

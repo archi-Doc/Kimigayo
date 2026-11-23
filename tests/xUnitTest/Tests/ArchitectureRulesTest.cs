@@ -137,6 +137,7 @@ public class ArchitectureRulesTest
     [
         "Binding.Access.cs:IsReceiverType=1 declared",
         "Binding.Aliases.cs:PrepareAliases=1 declared",
+        "Binding.ArgumentKinds.Checked.cs:CheckedClass=1 unchanged",
         "Binding.ArgumentKinds.Evidence.cs:InferBoundary=1 kind",
         "Binding.ArgumentKinds.Evidence.cs:InferClosureHeader=1 kind",
         "Binding.ArgumentKinds.Evidence.cs:InferComposite=3 unchanged",
@@ -186,7 +187,7 @@ public class ArchitectureRulesTest
         "Binding.CallSlots.cs:FittedPattern=1 unchanged",
         "Binding.CallSlots.cs:FormedApplication=1 unchanged",
         "Binding.CallSlots.cs:Infer=4 formed",
-        "Binding.CallSlots.cs:Infer=1 sufficient",
+        "Binding.CallSlots.cs:Infer=2 sufficient",
         "Binding.CallSlots.cs:Infer=1 unchanged",
         "Binding.CallSlots.cs:IsFormedLayer=1 finding", // PLAN G898 (D-next): a layer of a pair admitting only owner is its target by the pair row, read as written
         "Binding.CallSlots.cs:IsSource=1 finding", // PLAN G898 (D-next): two formed layers whose pairs admit one Semantics have one head, compared as written
@@ -261,7 +262,10 @@ public class ArchitectureRulesTest
         "Binding.ElementAccess.cs:IsSynthesizedAccess=2 unchanged",
         "Binding.Elements.cs:BindElement=3 kind",
         "Binding.Elements.cs:BindElement=1 unchanged",
-        "Binding.Enums.cs:BindEnumConstruction=2 kind",
+        "Binding.Enums.cs:BindEnumConstruction=1 declared",
+        "Binding.Enums.cs:BindEnumConstruction=1 kind",
+        "Binding.Enums.cs:FixConstructionSlots=1 kind",
+        "Binding.Enums.cs:QualifiedEnumAt=1 declared",
         "Binding.ExplicitAdaptations.cs:BindSemanticsAdaptation=1 kind",
         "Binding.ExplicitAdaptations.cs:BindSemanticsAdaptation=3 unchanged",
         "Binding.ExplicitAdaptations.cs:CheckAdaptationRows=2 unchanged",
@@ -311,6 +315,8 @@ public class ArchitectureRulesTest
         "Binding.OpenOrigins.cs:OpenSlotOrigins=1 unchanged",
         "Binding.OpenOrigins.cs:PerCallStandIn=1 unchanged",
         "Binding.OpenOrigins.cs:ReplaceOpenOrigins=1 unchanged",
+        "Binding.OpenSlots.cs:FillOpenSlots=1 sufficient",
+        "Binding.OpenSlots.cs:FillOpenSlots=1 unchanged",
         "Binding.OperatorApplicability.cs:ArithmeticPairApplicability=2 kind",
         "Binding.OperatorApplicability.cs:ComparisonApplicability=3 kind",
         "Binding.OperatorApplicability.cs:NumericApplicability=1 kind",

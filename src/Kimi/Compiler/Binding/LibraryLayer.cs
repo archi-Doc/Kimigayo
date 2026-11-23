@@ -50,7 +50,7 @@ internal sealed class LibraryLayer
 
     internal Dictionary<int, List<BoundOrigin>> Intersections { get; } = new();
 
-    internal Dictionary<(LengthOperation Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right, BoundType? Values), BoundLength> Lengths { get; } = new();
+    internal Dictionary<(LengthOperation Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right, BoundType? Values, BindingSymbol? OpenSlot), BoundLength> Lengths { get; } = new();
 
     internal Dictionary<ConstraintKey, BoundConstraint> Constraints { get; } = new();
 

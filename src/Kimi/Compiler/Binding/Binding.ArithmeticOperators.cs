@@ -143,7 +143,7 @@ public sealed partial class Binding
     // SPEC 23.1.2, rule W (DECISIONS BU-79): a probed operand that bound to nothing and is no deferred call or waiting callable has failed,
     // itself or through a part it rests on, so its operator rests at once; binding it again would bind the failed subtree again (PLAN G506).
     private bool RestsOn(Koto operand, BoundType? bound)
-        => bound is null && !this.IsWaitingPart(operand) && !this.IsWaitingCallable(operand);
+        => bound is null && !this.IsCheckedCall(operand) && !this.IsWaitingCallable(operand);
 
     private bool TryArithmetic(UnaryKoto unary, BindingScope scope, out BoundType? result)
     {
