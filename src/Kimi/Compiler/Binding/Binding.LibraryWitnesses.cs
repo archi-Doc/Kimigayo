@@ -189,12 +189,12 @@ public sealed partial class Binding
             return false;
         }
 
-        if (group.TypeParameter is { } typeName && scope.Types.TryGetValue(typeName, out var parameter))
+        if (group.TypeParameter is { } typeName && scope.Parameters?.Types.GetValueOrDefault(typeName) is { } parameter)
         {
             type = parameter.Slot;
         }
 
-        if (group.LengthParameter is { } lengthName && scope.Values.TryGetValue(lengthName, out var extent))
+        if (group.LengthParameter is { } lengthName && scope.Parameters?.Values?.GetValueOrDefault(lengthName) is { } extent)
         {
             length = extent.Slot;
         }

@@ -315,7 +315,7 @@ public sealed partial class Binding
                 // SPEC 8.13.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
                 if (!RestsOn(function, failed))
                 {
-                    this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
+                    this.Record(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch, []);
                 }
 
                 continue;

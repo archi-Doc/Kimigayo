@@ -152,24 +152,6 @@ public sealed partial class Binding
                 (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
             issue.Node.ReportIn(store, requirement, issue.Code, condition: this.ConditionOf(issue.Problem), span: span);
         }
-        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures.TryGetValue(issue.Node, out var arithmetic))
-        {
-            ReportArithmeticConformance(issue.Node, requirement, issue.Code, arithmetic);
-        }
-        else if (issue.Failure == BindingFailure.ArithmeticSelection && this.arithmeticSelectionFailures?.TryGetValue(issue.Node, out var selection) == true)
-        {
-            this.ReportArithmeticSelection(issue.Node, store, requirement, selection);
-        }
-        else if (issue.Failure == BindingFailure.ArithmeticDirection && this.arithmeticDirectionFailures?.TryGetValue(issue.Node, out var direction) == true)
-        {
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                ArithmeticOperatorText(ArithmeticContractSyntax.Operator(direction.Id)),
-                evidence: [DiagnosticTypeName(direction.Left), DiagnosticTypeName(direction.Right), direction.Ordinary.Name, direction.Reverse.Name],
-                related: [("ordinary", direction.OrdinaryUse, direction.Ordinary.Name), ("reverse", direction.ReverseUse, direction.Reverse.Name)]);
-        }
         else if (issue.Failure == BindingFailure.CaseLimit)
         {
             this.ReportCaseLimit(issue.Node, store, requirement);
@@ -411,10 +393,6 @@ public sealed partial class Binding
         {
             // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
             ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.InaccessibleBinding_Kd && issue.Node is MemberAccessKoto { BoundSymbol: { } inaccessible })
-        {
-            issue.Node.ReportIn(store, requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
         }
         else if (issue.Failure == BindingFailure.InvalidConstraint)
         {
