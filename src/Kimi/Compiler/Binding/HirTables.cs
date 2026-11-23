@@ -374,6 +374,10 @@ internal struct NodeColumns
     internal StampedColumn<Koto?, Binding.PassCounter> PartPrerequisites; // Work: the part a declaration-level check read outside a frame, the running pass's dependence store, released at the freeze (Binding.Diagnostics.Prerequisites.cs).
     internal StampedColumn<uint, Binding.PassCounter> PrerequisiteVisits; // Work: the publication walks' visited set (RestsOnRecoveryOrLimit, AddPrerequisiteKeys), a row carrying the walk's number, a row of another walk absent, released at the freeze (Binding.Diagnostics.Prerequisites.cs).
     internal StampedColumn<(Koto? Parent, Koto? Next), Binding.PassCounter> DuplicateDeclarations; // Pass: a declaration's duplicate group row, its parent toward the group's first and the first's earliest later declaration, written by the pairwise checks and read by RecordDuplicateGroups (Binding.DuplicateDiagnostics.cs).
+    internal StampedColumn<bool, Binding.PassCounter> ResolvingTypes; // Work: BindType's cycle guard, whether a Type syntax's BindType is on the stack, the running pass's working state, released at the freeze (Binding.Types.cs).
+    internal StampedColumn<Koto?, Binding.PassCounter> SynthesizedCalls; // Work: a call Binding synthesized in the pass, its consumer, the running pass's working state, released at the freeze (Binding.Check.cs).
+    internal PagedColumn<List<BindingSymbol>?> GatheredGroups; // Kept: a use's function group gathered at the alias stage, emptied in place at each publication of its head (Binding.Imports.cs).
+    internal PagedColumn<(bool Pattern, bool Guard)> IndexedPatterns; // Kept: whether the latest run of a node's pass indexed it as a pattern node or a guard scope, copied to the pass's previous-run lists and emptied at its reset (Binding.Patterns.cs).
 
     internal void Resize(int length)
     {
@@ -452,6 +456,10 @@ internal struct NodeColumns
         this.PartPrerequisites.Grow(length);
         this.PrerequisiteVisits.Grow(length);
         this.DuplicateDeclarations.Grow(length);
+        this.ResolvingTypes.Grow(length);
+        this.SynthesizedCalls.Grow(length);
+        this.GatheredGroups.Grow(length);
+        this.IndexedPatterns.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -505,6 +513,8 @@ internal struct NodeColumns
         this.PartPrerequisites.Release();
         this.PrerequisiteVisits.Release();
         this.DuplicateDeclarations.Freeze(binding);
+        this.ResolvingTypes.Release();
+        this.SynthesizedCalls.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -588,6 +598,10 @@ internal struct NodeColumns
             PartPrerequisites = this.PartPrerequisites.Renumbered(length),
             PrerequisiteVisits = this.PrerequisiteVisits.Renumbered(length),
             DuplicateDeclarations = this.DuplicateDeclarations.Renumbered(length),
+            ResolvingTypes = this.ResolvingTypes.Renumbered(length),
+            SynthesizedCalls = this.SynthesizedCalls.Renumbered(length),
+            GatheredGroups = this.GatheredGroups.Renumbered(length),
+            IndexedPatterns = this.IndexedPatterns.Renumbered(length),
         };
         return columns;
     }
@@ -626,6 +640,8 @@ internal struct NodeColumns
         this.FormationCauses.Retire();
         this.SpecializationStorage.Retire();
         this.KnownBases.Retire();
+        this.GatheredGroups.Retire();
+        this.IndexedPatterns.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -661,6 +677,8 @@ internal struct NodeColumns
         this.FormationCauses.MoveTo(ref target.FormationCauses, from, to);
         this.SpecializationStorage.MoveTo(ref target.SpecializationStorage, from, to);
         this.KnownBases.MoveTo(ref target.KnownBases, from, to);
+        this.GatheredGroups.MoveTo(ref target.GatheredGroups, from, to);
+        this.IndexedPatterns.MoveTo(ref target.IndexedPatterns, from, to);
     }
 }
 
