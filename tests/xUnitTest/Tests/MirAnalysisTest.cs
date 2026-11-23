@@ -112,6 +112,21 @@ public sealed class MirAnalysisTest
     // N reference locals live across N branches (ArenaWorkload's parts): they fit A1's arena but not A5's Loans table.
     internal const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
 
+    // DIAGNOSTICS §12's A6 code table (2g-7; DECISIONS R4-M67, R5-M23, R5-M56; Z21), the consistency set and its one copy: per row the
+    // requirement, the code, the analysis it counts in (the first word: A1, A3, A4, A5, U for a limit A4 and A5 share, B for a broken
+    // contract) and the fact kinds its problems may carry. A row naming a requirement no MIR analysis records (outside RecordedKinds), a
+    // code or kind that does not exist or a kind past Cause (Binding's), or a (requirement, code) twice, fails the read.
+    internal static readonly Lazy<(DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis, ProblemFactKind[] Facts)[]> A6Rows = new(static () =>
+    {
+        var kinds = RecordedKinds().ToDictionary(static x => x.Name);
+        var rows = DiagnosticsRows(static x => x == "| Requirement | Code | Analysis | Facts |").Select(x => (
+            Requirement: kinds[Names(x[0]).Single()], Code: Enum.Parse<DiagnosticCode>(Names(x[1]).Single()), Analysis: x[2].Split(' ')[0],
+            Facts: Names(x[3]).Select(static y => Enum.Parse<ProblemFactKind>(y)).ToArray())).ToArray();
+        Assert.All(rows, static x => Assert.All(x.Facts, y => Assert.True(y <= ProblemFactKind.Cause, $"{x.Code}: {y}")));
+        Assert.Equal(rows.Length, rows.DistinctBy(static x => (x.Requirement, x.Code)).Count());
+        return rows;
+    });
+
     private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
         "    public func discard<T>(item: T) => ()\n";
 
@@ -1189,6 +1204,22 @@ public sealed class MirAnalysisTest
             _ => Repository.ReadText(name.Split('/')),
         };
     }
+
+    // The rows of each DIAGNOSTICS table whose header line `header` selects, each row its trimmed cells (A6Rows; MirPublicationTest's A6
+    // fact tables).
+    internal static IEnumerable<string[]> DiagnosticsRows(Func<string, bool> header)
+    {
+        var lines = Repository.ReadText("docs", "dev", "DIAGNOSTICS.md").Split('\n');
+        return lines.Index().Where(x => header(x.Item)).SelectMany(x => lines.Skip(x.Index + 2).TakeWhile(static y => y.StartsWith('|')))
+            .Select(static x => x.Split('|')[1..^1].Select(static y => y.Trim()).ToArray());
+    }
+
+    // The names a table cell writes in backticks.
+    internal static IEnumerable<string> Names(string cell) => Regex.Matches(cell, "`([^`]+)`").Select(static x => x.Groups[1].Value);
+
+    // The requirement kinds a MIR analysis records: the Ownership partition's members and A3's ControlFlow.
+    private static DiagnosticRequirement[] RecordedKinds()
+        => [.. Enum.GetValues<OwnershipRequirement>().Select(DiagnosticRequirement.Ownership), DiagnosticRequirement.ControlFlow];
 
     // N requires whose failure bodies complete: in sequence in sequence(), nested in nest().
     private static string RequireEnds(int n)

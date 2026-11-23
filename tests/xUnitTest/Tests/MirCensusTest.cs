@@ -13,9 +13,10 @@ namespace XunitTest;
 /// <summary>The MIR census (docs/dev/DECISIONS.md R4-M12, R4-M74 OQ1; A5 step 2 plan PD22) over four sets, each loaded as its own tests
 /// load it: the Kimi library, the milestone programs, the <c>tests/mir</c> goldens and the variants of
 /// <c>tests/diagnostics/spec-cases.json</c> the SPEC accepts. In any program (R4-M12): no validator finding, which would leave it
-/// unanalyzed, no problem outside the census pairs (<see cref="Pairs"/>, a recording rule's defect, B) and no A5 problem (the analysis
-/// the pairs give a problem's requirement and code, R4-M4, R4-M67: A1's storage limit shares A5's pair and counts, A5's located
-/// Unsupported_Kd shares A4's and does not). In a Binding-complete program (R4-M47): no construction record, whose Opaque value would leave it partly
+/// unanalyzed, no problem outside the census pairs (DIAGNOSTICS' A6 code table, <see cref="MirAnalysisTest.A6Rows"/>; a recording
+/// rule's defect, B) and no A5 problem (the analysis the pairs give a problem's requirement and code, R4-M4, R4-M67: A1's storage limit
+/// shares A5's pair and counts, A5's located Unsupported_Kd shares A4's and does not). In a Binding-complete program (R4-M47): no
+/// construction record, whose Opaque value would leave it partly
 /// analyzed, and no problem of any MIR analysis (A1–A5, merged by A6's report). A program Binding rejects may have other records and
 /// problems that failure causes, whose report SPEC 23.1.2 leaves implementation-defined: the test output lists them, not asserted. With
 /// <c>KIMI_MIR_PROBLEMS</c> naming a directory, each set writes <c>census-&lt;set&gt;.tsv</c> there: per record, finding or problem
@@ -23,36 +24,6 @@ namespace XunitTest;
 /// for a record, a finding or a defect), code and subject. The class stays in the normal suite while its tests take under 60 s together in a Session's results.</summary>
 public sealed class MirCensusTest(ITestOutputHelper output)
 {
-    // R4-M4, R4-M67 (R6-check H10a D6): the requirement and code of each MIR problem a recording rule makes, with the analysis that owns
-    // it; the MIR names the Ownership requirement of each decision the old path reported under Binding (DIAGNOSTICS rule 1). They are the
-    // consistency set of PLAN10 §7: a MIR problem outside it is a recording rule's defect (B), as is MirReport.Add's disagreement record
-    // (Ownership.Internal).
-    private static readonly (DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis)[] Pairs =
-    [
-        (Ownership(OwnershipRequirement.UninitializedUse), DiagnosticCode.UninitializedPlace_Kd, "A1"),
-        (Ownership(OwnershipRequirement.PossiblyMovedUse), DiagnosticCode.MovedPlace_Kd, "A1"),
-        (Ownership(OwnershipRequirement.ReassignedLet), DiagnosticCode.ReassignedLet_Kd, "A1"),
-        (Ownership(OwnershipRequirement.StaticMovePathRequired), DiagnosticCode.StaticMovePathRequired_Kd, "A1"),
-        (Ownership(OwnershipRequirement.DefaultArgumentMove), DiagnosticCode.DefaultArgumentMove_Kd, "A1"),
-        (DiagnosticRequirement.ControlFlow, DiagnosticCode.RequireFallthrough_Kd, "A3"),
-        (Ownership(OwnershipRequirement.EffectBound), DiagnosticCode.IncompatibleContractImplementation_Kd, "A4"),
-        (Ownership(OwnershipRequirement.CallableEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
-        (Ownership(OwnershipRequirement.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
-        (Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.ComparisonLoanConflict_Kd, "A5"),
-        (Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.CallReservationConflict_Kd, "A5"),
-        (Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.CallActivationConflict_Kd, "A5"),
-        (Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.PlacementActivationConflict_Kd, "A5"),
-        (Ownership(OwnershipRequirement.DefaultArgumentAccess), DiagnosticCode.DefaultArgumentAccess_Kd, "A5"),
-        (Ownership(OwnershipRequirement.DefaultArgumentBorrow), DiagnosticCode.DefaultArgumentBorrow_Kd, "A5"),
-        (Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5"),
-        (Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnprovenOriginRelation_Kd, "A5"),
-        (Ownership(OwnershipRequirement.StorageLimit), DiagnosticCode.OwnershipStorageLimit_Kd, "A5"),
-        (Ownership(OwnershipRequirement.OwnStepDeparture), DiagnosticCode.OwnStepDeparture_Kd, "A5"),
-        (Ownership(OwnershipRequirement.UnretainedRawStore), DiagnosticCode.UnretainedRawStore_Kd, "A5"),
-        (Ownership(OwnershipRequirement.Unsupported), DiagnosticCode.Unsupported_Kd, "U"),
-        (Ownership(OwnershipRequirement.DepthLimit), DiagnosticCode.OwnershipDepthLimit_Kd, "U"),
-    ];
-
     // R4-M12, V17: the library bodies have no problems. The library case binds an empty program, whose compilation builds none of them
     // (PLAN G951 U2: a compilation builds the library bodies its program reaches), so the census reads the library check's build of it
     // (MirBuildTest.LibraryRange, analyzed as Compilation analyzes its own) after asserting its premise: the census covers every body of
@@ -112,14 +83,13 @@ public sealed class MirCensusTest(ITestOutputHelper output)
         Assert.Equal(expected, program.Problems.All.ToArray().TakeLast(3).Select(x => (x.Code, x.Requirement.Name, MirAnalysisOf(x.Requirement, x.Code) ?? "B", c.SyntaxOf(x.Subject))));
     }
 
-    // R4-M67: each census pair names one analysis, and pairs outside them, such as a Binding failure's or MirReport's disagreement
-    // record, have none.
+    // R4-M67: each census pair names one analysis (A6Rows' read requires it), and a pair outside them, such as a Binding failure's, has
+    // none; MirReport's disagreement record is the table's broken contract (B).
     [Fact]
     public void EachCensusPairNamesOneAnalysis()
     {
-        Assert.Equal(Pairs.Length, Pairs.Select(static x => (x.Requirement, x.Code)).Distinct().Count());
         Assert.Null(MirAnalysisOf(DiagnosticRequirement.Binding(BindingFailure.TransferRequired), DiagnosticCode.TransferRequired_Kd));
-        Assert.Null(MirAnalysisOf(DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), DiagnosticCode.InternalInvariant_Kd));
+        Assert.Equal("B", MirAnalysisOf(DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), DiagnosticCode.InternalInvariant_Kd));
     }
 
     // Tests read a requirement the census pairs map to several codes through one helper each (CompilationTestHelper): its codes are
@@ -133,7 +103,7 @@ public sealed class MirCensusTest(ITestOutputHelper output)
         Assert.All(Enum.GetValues<DiagnosticCode>(), x => Assert.Equal((conflicts.Contains(x), origins.Contains(x)), (x.IsLoanConflict(), x.IsUnprovenOrigin())));
 
         static DiagnosticCode[] Images(OwnershipRequirement requirement)
-            => [.. Pairs.Where(x => x.Requirement == Ownership(requirement)).Select(static x => x.Code)];
+            => [.. MirAnalysisTest.A6Rows.Value.Where(x => x.Requirement == Ownership(requirement)).Select(static x => x.Code)];
     }
 
     /// <summary>Gets whether a compilation is Binding-complete (R4-M47): Binding accepted its program, a complete result and no published
@@ -146,13 +116,13 @@ public sealed class MirCensusTest(ITestOutputHelper output)
         return compilation.Binding.Result.IsComplete && !compilation.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding);
     }
 
-    /// <summary>Gets the analysis that owns a MIR problem: its pair's in <see cref="Pairs"/> (R4-M67), where each pair names one analysis;
-    /// null outside it, a recording rule's defect.</summary>
+    /// <summary>Gets the analysis that owns a MIR problem: its pair's in DIAGNOSTICS' A6 code table (<see cref="MirAnalysisTest.A6Rows"/>;
+    /// R4-M67), where each pair names one analysis; null outside it, a recording rule's defect.</summary>
     /// <param name="requirement">The requirement the problem names.</param>
     /// <param name="code">The problem's code.</param>
     /// <returns>The analysis, or null.</returns>
     internal static string? MirAnalysisOf(DiagnosticRequirement requirement, DiagnosticCode code)
-        => Array.Find(Pairs, x => x.Requirement == requirement && x.Code == code).Analysis;
+        => Array.Find(MirAnalysisTest.A6Rows.Value, x => x.Requirement == requirement && x.Code == code).Analysis;
 
     // The selected cases of the semantic snapshot corpus, bound as their snapshots are.
     private static IEnumerable<(string Name, Compilation Compilation)> Corpus(Func<string, bool> selected)
