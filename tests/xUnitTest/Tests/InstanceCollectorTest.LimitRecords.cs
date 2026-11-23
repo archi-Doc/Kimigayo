@@ -107,23 +107,39 @@ public sealed partial class InstanceCollectorTest
 
     // PLAN G651 U2b ruling 18 (SPEC 8.11.4, 15.6.4, 22.4.1; IMPL A.4, 21.3.2): A4 judges a selected Callable binding's confined bound on its
     // callee's summary at the use (keep's bound on h<L41<i32>>, whose destruction walks L41<i32>'s storage past H) in the site of its
-    // premise definition's body, a node site at the argument: one TypeHeightLimit_Kd there, in main (its own evaluation's fallback merges
-    // into it) or in a module's top-level statements, beside A4's own depth limit there and h's record at its parameter; never
-    // InternalInvariant_Kd (fail-before: the obligation's read had no site, InternalInvariant_Kd at the project and main's fallback).
-    // Known limit (ruling 21, PLAN's open issue on the Callable use's body): a use inside a Closure is keyed by main's body, not the
-    // Closure's, so the Closure body's own read keeps its record at the literal beside the use's (a #Test body likewise: the body lookup
-    // does not answer its kind); the row changes when Binding publishes the use's body. It also guards the after-run throw (U2b R13.1): no
-    // throw and no InternalInvariant_Kd for a Closure use.
+    // premise definition's body, a node site at the argument: one TypeHeightLimit_Kd there, in main or a member function (the body's own
+    // evaluation's fallback merges into it: a fallback never beats a use) or in a module's top-level statements, beside A4's own depth
+    // limit there and h's record at its parameter; never InternalInvariant_Kd (fail-before: the obligation's read had no site,
+    // InternalInvariant_Kd at the project and main's fallback). A Container's body sees no document-local function (SPEC 6.1.1), so a
+    // member's struct, h and keep lie in one group.
+    // Known limit (rulings 21 and 28, PLAN's open issue on the Callable use's body): the use's site is keyed by its premise definition's
+    // body (MirProgram.Callee), not by the body holding the use. A use inside a Closure is keyed by main's body, so the Closure body's own
+    // read keeps its record at the literal beside the use's; a computed getter's body is keyed by its accessor function (SPEC 11.3), which
+    // the row's definition does not name, so the getter's own read keeps its record at the getter beside the use's (a #Test body likewise:
+    // the lookup does not answer its kind). The row changes when Binding publishes the use's body. It also guards the after-run throw (U2b
+    // R13.1): no throw and no InternalInvariant_Kd for a Closure or getter use.
     [Theory]
     [InlineData("public func main() -> ()\n    keep(h<L41<i32>>)\n    return\n", "h:T OwnershipDepthLimit_Kd@keep:h<L41<i32>> keep:h<L41<i32>>")]
     [InlineData("keep(h<L41<i32>>)\n", "h:T OwnershipDepthLimit_Kd@keep:h<L41<i32>> keep:h<L41<i32>>")]
     [InlineData(
         "public func main() -> ()\n    let c = func () -> () => keep(h<L41<i32>>)\n    c()\n    return\n",
         "h:T let:func () -> () => keep(h<L41<i32>>) OwnershipDepthLimit_Kd@let:h<L41<i32>> let:h<L41<i32>>")]
+    [InlineData(
+        "struct S\n    public var raw: i32\n    public func k(self: ref/Self) -> i32\n        keep(h<L41<i32>>)\n        return self.raw\n",
+        "h:T OwnershipDepthLimit_Kd@keep:h<L41<i32>> keep:h<L41<i32>>")]
+    [InlineData(
+        "struct S\n    public var raw: i32\n    public computed k: i32\n        get() -> i32\n            keep(h<L41<i32>>)\n            return self.raw\n",
+        "h:T get:get() -> i32\n                keep(h<L41<i32>>)\n                return self.raw OwnershipDepthLimit_Kd@keep:h<L41<i32>> keep:h<L41<i32>>")]
     public void ACallableBindingsObligationReadsAtItsUse(string use, string records)
-        => Assert.Equal(
-            records,
-            HeightRecords(Layers41 + "func h<T>(x: T)\n    return\nfunc keep<F>(f: F)\n    F is Callable<owner, (L41<i32>) -> ()>\n        effect confined\n    return\n" + use));
+    {
+        var source = "func h<T>(x: T)\n    return\nfunc keep<F>(f: F)\n    F is Callable<owner, (L41<i32>) -> ()>\n        effect confined\n    return\n" + use;
+        if (use.StartsWith("struct ", StringComparison.Ordinal))
+        {
+            source = "group G\n" + string.Concat(source.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(static x => $"    {x}\n")) + "public func main() -> ()\n    return\n";
+        }
+
+        Assert.Equal(records, HeightRecords(Layers41 + source));
+    }
 
     // hfv41-u's layers (the Front's C8 probes): L(k)<X> : L(k-1)<W^200<X>> from an L0 conforming to nothing, so L41<i32> is formed within H
     // in the run and its storage walk passes H after it.
