@@ -2085,7 +2085,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Null(body.TypeOf(w));
         MirRvalue Use(MirOperand operand) => MirRvalue.Use(AddOperands(body, [operand]));
         body.Push(block, MirStatement.Assign(held, Use(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 5)))), At));
-        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(n, body.AddOpaque(default, [], 0)), At));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(n, body.AddOpaque(default, [], 0, 0)), At));
         MirStatement? broken = form switch
         {
             "write" => MirStatement.Assign(w, Use(MirOperand.Copy(k)), Broken),
