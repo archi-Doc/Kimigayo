@@ -79,7 +79,7 @@ public sealed class NativeToolchainTest : IDisposable
             ["crt1.o", "crti.o", "crtn.o", "libc.a"],
             musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => x.GetProperty("name").GetString()));
         Assert.Equal(
-            musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"linux-x64-v1 c {x.GetProperty("name").GetString()} {x.GetProperty("sha256").GetString()}"),
+            musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"{TargetProfile.Linux.Name} c {x.GetProperty("name").GetString()} {x.GetProperty("sha256").GetString()}"),
             ToolchainIdentity.Musl.Select(static x => $"{x.Row} {x.Supply} {x.Name} {x.Sha256}"));
         foreach (var file in ToolchainIdentity.Musl)
         {

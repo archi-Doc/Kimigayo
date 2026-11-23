@@ -8,12 +8,12 @@
 // the compiler carries as an embedded resource (Kimi.Kernel32.lib, Kimi.WindowsBackend.lib, committed beside the catalog) whose SHA-256
 // is the catalog's; this material is keyed by the supply's name. The linux-x64 row's material (Tatara B7b4) is its c supply, musl
 // 1.2.6's startup files and C library, read from the embedded Linux record (src/backend/linux-x64/profile.json, the resource
-// Kimi.LinuxBackendProfile.json) and keyed by (row, supply): the record's profile and library, until Core's linux-x64 row exists
-// (B7b2's TargetProfile.Linux, whose Name is the record's profile; B7b7's native build reads its files).
+// Kimi.LinuxBackendProfile.json) and keyed by (row, supply): the record's profile, TargetProfile.Linux's Name, and its library
+// (B7b7's native build reads its files).
 // Input: the embedded records and libraries. Output: those values, for the native build, publication's manifest and toolchain verify's
 // self-check (P13). Invariants: the record matches the target profile (TargetProfile.Windows's name; its library names a reserved supply, whose
 // symbols are its provided symbols) and pins a major.minor.patch LLVM version, and the material's keys are the profile's supplies' names
-// in the profile's order, and the Linux record names linux-x64-v1's c, else the type initializer throws InvalidDataException; each
+// in the profile's order, and the Linux record names TargetProfile.Linux's c, else the type initializer throws InvalidDataException; each
 // resource's SHA-256 is its row's (NativeToolchainTest's catalog row; not checked at a start, stated by toolchain verify).
 // Must not be read by check (Binding, project configuration, LSP) or code generation: those read TargetProfile.Windows.
 
@@ -107,9 +107,9 @@ public static class ToolchainIdentity
         using var linux = JsonDocument.Parse(linuxStream);
         var rowName = linux.RootElement.GetProperty("profile").GetString()!;
         var supplyName = linux.RootElement.GetProperty("library").GetString()!;
-        if (rowName != "linux-x64-v1" || supplyName != "c")
+        if (rowName != TargetProfile.Linux.Name || supplyName != "c")
         {
-            throw new InvalidDataException("The embedded native supply catalog does not match linux-x64-v1.");
+            throw new InvalidDataException($"The embedded native supply catalog does not match {TargetProfile.Linux.Name}.");
         }
 
         var files = linux.RootElement.GetProperty("files");
