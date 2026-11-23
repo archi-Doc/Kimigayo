@@ -621,7 +621,7 @@ public sealed partial class Binding
             private void Fix(Koto child, ref ConsumedTakes takes, HirAdjust adjust)
             {
                 this.Count++;
-                takes = new(adjust, this.call >= 0 ? EarlierAdjust(this.call > 0 || ReferenceEquals(child, this.preceding), takes.Last, adjust) : takes.Earlier);
+                takes = new(adjust, this.call >= 0 ? EarlierAdjust(this.call, child, this.preceding, takes.Last, adjust) : takes.Earlier);
                 this.preceding = child;
             }
         }

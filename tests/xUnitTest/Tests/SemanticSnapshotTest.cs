@@ -413,14 +413,14 @@ public sealed class SemanticSnapshotTest
                     // A selection by case: its index call and its decider (HirTables.CaseDecider).
                     if (expansion.Shared is { } shared)
                     {
-                        hir.Append('|').Append(shared.Target.Name).Append('?').Append(this.Type(HirTables.CaseDecider(node)));
+                        hir.Append('|').Append(shared.Target.Name).Append('?').Append(this.Type(HirTables.CaseDecider(this.binding!, node)));
                     }
 
                     hir.Append(expansion.Evaluated >= 0 ? "#" + expansion.Evaluated : string.Empty).Append(expansion.Direct ? "*" : string.Empty);
                 }
 
                 // A value call by case: its decider (HirTables.CaseDecider; PLAN G13).
-                if (node is InvocationKoto && HirTables.CaseDecider(node) is { } caseDecider)
+                if (node is InvocationKoto && HirTables.CaseDecider(this.binding!, node) is { } caseDecider)
                 {
                     hir.Append(" ?").Append(this.Type(caseDecider));
                 }

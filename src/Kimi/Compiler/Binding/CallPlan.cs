@@ -118,7 +118,7 @@ public sealed class CallPlan
     /// <summary>Gets the decider of a value call whose Closure receiver is by case (SPEC 7.7.3, 8.15.2; PLAN G13): the callee's Closure
     /// Type whose <c>Receiver</c> gave the call's Exclusive mode while its <c>CaseFreeReceiver</c> is Shared, so that each admitted case
     /// acquires the callee as that Type's case receiver gives it. Null for any other call: the one presence of
-    /// <see cref="SharedReceiver"/>. Read through <see cref="HirTables.CaseDecider"/>.</summary>
+    /// <see cref="SharedReceiver"/>. Consumers read it through <see cref="HirTables.CaseDecider"/>.</summary>
     public BoundType? CaseDecider { get; private set; }
 
     /// <summary>Gets a by-case value call's Shared receiver acquisition, beside the Exclusive <see cref="ReceiverOperation"/> in

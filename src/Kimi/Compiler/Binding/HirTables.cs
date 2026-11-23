@@ -120,7 +120,8 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
-    /// <summary>Gets the decider of a node whose acquisition is by case, the one reader of either stored decider; null for any other
+    /// <summary>Gets the decider of a node whose acquisition is by case, through which consumers read either stored decider (the HIR
+    /// publisher, which writes the index's row and walks an invocation's calls, and HasFacts read the stored members); null for any other
     /// node.
     /// <list type="bullet">
     /// <item>A published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23): its plan row's Mode 2,
@@ -135,12 +136,13 @@ internal struct HirTables
     /// (<see cref="CallPlan.ReceiverOperation"/>, the column's take) where that Type's case receiver is Exclusive and shared
     /// (<see cref="CallPlan.SharedReceiver"/>, the plan row's take) otherwise. No invocation Mode is written.</item>
     /// </list></summary>
+    /// <param name="binding">The reader's Binding, whose current pass's calls are read (<see cref="CallPlan.Of"/>).</param>
     /// <param name="node">An index expression or an invocation.</param>
     /// <returns>The decider, or null.</returns>
-    internal static BoundType? CaseDecider(Koto node) => node switch
+    internal static BoundType? CaseDecider(Binding binding, Koto node) => node switch
     {
         IndexKoto => PlanOf(node) is { Mode: 2, Plan: BoundType decider } ? decider : null,
-        InvocationKoto { BindingState: BindingState.Resolved } => (PlanOf(node).Plan as CallPlan)?.CaseDecider,
+        InvocationKoto => CallPlan.Of(binding, node)?.CaseDecider,
         _ => null,
     };
 

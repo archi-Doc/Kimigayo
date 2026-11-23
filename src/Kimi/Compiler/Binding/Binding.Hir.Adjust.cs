@@ -92,12 +92,14 @@ public sealed partial class Binding
 
     // SPEC 13.7.2, 11.3, 7.7.3 (DECISIONS R4-M109, R4-M145; PLAN G13): the Adjust of a call input that a later take by its consumer's calls
     // replaces by another, which the builder still builds as the input's plan-row Adjust: the earlier of two takes of one input by one
-    // consumer. `Repeated`: the input has an earlier take by those calls, at an earlier call (`call > 0`: a compound update's getter before
-    // its setter) or as the same call's preceding input (a by-case value call's Shared acquisition of its callee before the Exclusive one,
-    // the only call that takes one node as two consecutive inputs); none at a first take. Each record of the uses keeps its call's
-    // preceding input, reset by Call, so an operand take before Call(0) is never one (a for's Subject, a compound assignment's right side).
-    // FormReads keeps no such field: it writes no plan row, and an Error invocation has no plan, so it meets no by-case receiver.
-    private static HirAdjust EarlierAdjust(bool repeated, HirAdjust earlier, HirAdjust later) => repeated && earlier != later ? earlier : default;
+    // consumer. The input `child` of the call `call` has an earlier take by those calls at an earlier call (`call > 0`: a compound update's
+    // getter before its setter) or as the same call's `preceding` input (a by-case value call's Shared acquisition of its callee before the
+    // Exclusive one, the only call that takes one node as two consecutive inputs); none at a first take. Each record of the uses (RowUses,
+    // TakeRecord) keeps its call's preceding input, reset by Call, so an operand take before Call(0) is never one (a for's Subject, a
+    // compound assignment's right side). FormReads keeps no such field on its own ground, met by a by-case receiver too (a resolved
+    // invocation published as an Error keeps its plan): it writes no plan row and keeps whichever take of a node reads its Place.
+    private static HirAdjust EarlierAdjust(int call, Koto child, Koto? preceding, HirAdjust earlier, HirAdjust later)
+        => (call > 0 || ReferenceEquals(child, preceding)) && earlier != later ? earlier : default;
 
     // The operand a parent projects, updates, groups or borrows.
     private static Koto? Operand(Koto? parent) => (parent as BinaryKoto)?.Left ?? (parent as UnaryKoto)?.Operand;
@@ -440,7 +442,7 @@ public sealed partial class Binding
         // ChildAdjust reads first, is the census's input (Binding.RawOrigins.Borrows).
         public void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place)
         {
-            var repeated = this.callOrdinal > 0 || (child is not null && ReferenceEquals(child, this.preceding));
+            var preceding = this.preceding;
             this.preceding = child;
             if (this.Owns(child))
             {
@@ -448,7 +450,7 @@ public sealed partial class Binding
                 ref var column = ref table.Hir.Adjusts![child!.SyntaxId];
                 if (this.callOrdinal >= 0)
                 {
-                    var earlier = EarlierAdjust(repeated, column, adjust);
+                    var earlier = EarlierAdjust(this.callOrdinal, child!, preceding, column, adjust);
                     HirTables.PlanFor(child, earlier != default).Adjust = earlier;
                 }
 
