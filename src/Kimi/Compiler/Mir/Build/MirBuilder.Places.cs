@@ -248,23 +248,24 @@ internal sealed partial class MirBuilder
         return temp;
     }
 
-    // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner; Stored); else an Opaque in an Opaque
-    // temp whose site names only the receiver's root, a part built already, never the node's syntax (R5-M63, R5-M84): the located
-    // Unsupported of a Place whose Type stores no such Field or has none (a Place of a Type parameter an identity premise makes a struct,
-    // SPEC 8.2.3), or the value derived from the error of a receiver of no Type (a failed slot or a value derived from one, rule W, PLAN
-    // G1073: an accessor's `storage` through its failed self, Body).
+    // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner); else an Opaque in an Opaque temp
+    // whose site names only the receiver's root, a part built already, never the node's syntax (R5-M63, R5-M84): the located Unsupported
+    // of a Place whose Type stores no such Field or has none (a Place of a Type parameter an identity premise makes a struct, SPEC 8.2.3),
+    // or the value derived from the error of a part its instance does not store (Stored; SPEC 23.1.2) or of a receiver of no Type (a
+    // failed slot or a value derived from one, rule W, PLAN G1073: an accessor's `storage` through its failed self, Body).
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
         var known = this.body.TypeOf(receiver);
-        if (known is { } type && AdtDef.FieldOwner(compilation.Types, type, field) is { } found)
+        var owner = known is { } type ? AdtDef.FieldOwner(compilation.Types, type, field) : null;
+        if (owner is { } found && this.Stored(receiver, found.Layer, found.Depth, found.Index) is { } place)
         {
-            return this.Stored(receiver, found.Depth, found.Index);
+            return place;
         }
 
         var temp = this.Temp(TypeOf(node), node);
         this.opaqueTemps.Add(temp.Root);
         this.SiteUses(receiver);
-        if (known is not null)
+        if (owner is null && known is not null)
         {
             this.Unsupported(node, temp, node);
         }
@@ -277,9 +278,11 @@ internal sealed partial class MirBuilder
     }
 
     // The Place of the stored Field at an own index of the layer `depth` Base steps up from a struct Place (the receiver's
-    // StorageProjection), of no Type for a Field Binding formed no stored Type for, its failed slot (BU-234; MirBody.Selects, PLAN G1184).
-    private MirPlace Stored(MirPlace receiver, int depth, int index)
-        => this.body.Project(
+    // StorageProjection), by the one projection rule (MirBody.SelectsPart): of no Type for a Field whose own slot failed (BU-234, PLAN
+    // G1184); none for a part the layer's instance does not store (past IMPL A.4's height, R7-T1, or not substituted), a value derived
+    // from that error (SPEC 23.1.2).
+    private MirPlace? Stored(MirPlace receiver, BoundType layer, int depth, int index)
+        => !MirBody.SelectsPart(compilation.Types, layer, MirProjectionKind.Field, index, out _) ? null : this.body.Project(
             compilation.Types,
             depth == 0 ? receiver : this.body.Project(compilation.Types, receiver, MirProjectionKind.Base, depth),
             MirProjectionKind.Field,

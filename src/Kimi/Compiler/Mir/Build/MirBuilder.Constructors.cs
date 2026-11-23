@@ -8,8 +8,9 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     // The base constructor into the base subobject, then this layer's Field initializers in declaration order, each into its Field (Stored:
-    // of no Type for a Field Binding formed no stored Type for, its failed slot, PLAN G1184); a base whose clause it formed no Type for has
-    // no Place (AdtDef.Base, as every Base step reads it), so its base call, a part of the declaration it rejected, is not placed.
+    // of no Type for a Field whose own slot failed, PLAN G1184); a part the instance does not store (Stored: past IMPL A.4's height or not
+    // substituted) has no Place, nor a base whose clause Binding formed no Type for (AdtDef.Base, as every Base step reads it), so its
+    // initializer or base call, a part Binding rejected, is not placed.
     private void Construct(BoundType self, FunctionKoto constructor)
     {
         if (constructor.BaseInitializer is { } baseCall && AdtDef.Base(compilation.Types, self) is not null)
@@ -19,9 +20,9 @@ internal sealed partial class MirBuilder
 
         for (var i = 0; i < AdtDef.Count(self); i++)
         {
-            if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer })
+            if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } && this.Stored(new(0), self, 0, i) is { } place)
             {
-                this.Initialize(this.Stored(new(0), 0, i), initializer);
+                this.Initialize(place, initializer);
             }
         }
     }

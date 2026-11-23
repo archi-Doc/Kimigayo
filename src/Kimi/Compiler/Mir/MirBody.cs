@@ -114,8 +114,9 @@ internal sealed class MirBody
     /// <param name="type">The Type of the value.</param>
     /// <param name="kind">The step.</param>
     /// <param name="arg">Its argument.</param>
-    /// <param name="part">The part's Type: null when the Type does not have the part, or for a stored Field whose slot failed (Binding's
-    /// failed slot, BU-234: <see cref="AdtDef.FieldType"/> is null at an index in range), a part it has, of no Type.</param>
+    /// <param name="part">The part's Type: null when the Type does not have the part, or for a stored Field whose own slot failed (Binding's
+    /// failed slot, BU-234: <see cref="AdtDef.FieldSlotFailed"/>), a part it has, of no Type. A struct part past IMPL A.4's height or
+    /// one that does not substitute (<see cref="AdtDef.FieldType"/> null, its slot typed) is no part.</param>
     /// <returns>Whether the Type has the part.</returns>
     internal static bool SelectsPart(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg, out BoundType? part)
     {
@@ -127,7 +128,7 @@ internal sealed class MirBody
                 break;
             case MirProjectionKind.Field when AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!):
                 part = AdtDef.FieldType(types, type!, arg);
-                return true;
+                return part is not null || AdtDef.FieldSlotFailed(type!, arg);
             case MirProjectionKind.Base:
                 for (var depth = arg; depth > 0 && type is not null; depth--)
                 {
@@ -242,7 +243,7 @@ internal sealed class MirBody
     /// <param name="type">The Type of the Place projected.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
-    /// <param name="part">The selected Type: null when the Type does not admit the projection, or for a stored Field whose slot failed
+    /// <param name="part">The selected Type: null when the Type does not admit the projection, or for a stored Field whose own slot failed
     /// (<see cref="SelectsPart"/>), a step it admits, of no Type.</param>
     /// <returns>Whether the Type admits the projection.</returns>
     internal bool Selects(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg, out BoundType? part)
