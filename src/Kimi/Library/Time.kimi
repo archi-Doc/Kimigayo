@@ -4,17 +4,31 @@ public group Time
     // readCounterFrequency raises a failure at the user's operation (SPEC 22.5.1).
     let counterFrequency: i64 = queryCounterFrequency()
 
-    #CallerLocation
-    func readCounter() -> i64
-        var value: i64 = 0
-        require Windows.queryPerformanceCounter(value@uniq) != 0 and value >= 0 else => Storage.clockFailure()
-        return value
+    #if windows
+        #CallerLocation
+        func readCounter() -> i64
+            var value: i64 = 0
+            require Windows.queryPerformanceCounter(value@uniq) != 0 and value >= 0 else => Storage.clockFailure()
+            return value
 
-    func queryCounterFrequency() -> i64
-        var value: i64 = 0
-        if Windows.queryPerformanceFrequency(value@uniq) == 0
-            return 0
-        return value
+        func queryCounterFrequency() -> i64
+            var value: i64 = 0
+            if Windows.queryPerformanceFrequency(value@uniq) == 0
+                return 0
+            return value
+
+    #if not windows
+        // The platform layer's clock (IMPL 21.5.5): __kimi_clock's monotonic nanoseconds, or -1 when the read fails.
+        #Intrinsic("MonotonicClock")
+        func monotonicNanoseconds() -> i64
+
+        #CallerLocation
+        func readCounter() -> i64
+            let value = monotonicNanoseconds()
+            require value >= 0 else => Storage.clockFailure()
+            return value
+
+        func queryCounterFrequency() -> i64 => 1000000000
 
     #CallerLocation
     func readCounterFrequency() -> i64

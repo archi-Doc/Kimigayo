@@ -1,11 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the physical representation records of the windows-x64-v1 profile (SPEC 21.1, 21.3.1; DECISIONS R5-M15): the storage
+// Owns the physical representation records of the executable target profiles (SPEC 21.1, 21.3.1; DECISIONS R5-M15): the storage
 // layout of a concrete Type (TypeLayout), its computation and argument representation (ValueLowering) and a physical signature
-// (FunctionAbi of AbiParameters) with its definition header. Code generation builds, compares and writes these records.
-// Input: LLVM type text, sizes, alignments, offsets, parameter names and kinds, signature flags.
+// (FunctionAbi of AbiParameters, with an import's argument extensions under Abi.Convention.SystemV, IMPL 21.2) with its definition
+// header. Code generation builds, compares and writes these records.
+// Input: LLVM type text, sizes, alignments, offsets, parameter names, kinds and extensions, signature flags.
 // Output: immutable records; a FunctionAbi's `define ... {` line, created once per linkage and cached.
-// Invariants: a FunctionAbi is identified by reference, and its definition and every call to it use the same parameters.
+// Invariants: a FunctionAbi is identified by reference, and its definition and every call to it use the same parameters; an external
+// function's declaration and every call to it use equal parameter Types, and each call's attributes are its own import's (the Tatara
+// plan's B7b2b, the owner's O-504 Q1 (a): imports of one symbol share one declaration, which states no extension).
 // Must not take BoundType, syntax or MIR types: deciding a Type's record belongs to Layout and a signature's to Abi (DECISIONS R5-M19,
 // R5-M58).
 
@@ -33,10 +36,12 @@ internal enum AbiParameterKind : byte
     Context,
 }
 
-/// <summary>A parameter of a physical signature: its LLVM type, its name, its kind and the logical parameter it passes (-1: none).</summary>
-internal readonly record struct AbiParameter(string Type, string Name, AbiParameterKind Kind = AbiParameterKind.Value, int LogicalIndex = -1)
+/// <summary>A parameter of a physical signature: its LLVM type, its name, its kind, the logical parameter it passes (-1: none) and its
+/// extension attribute (IMPL 21.2: <c> signext</c> or <c> zeroext</c> under Abi.Convention.SystemV, else empty).</summary>
+internal readonly record struct AbiParameter(
+    string Type, string Name, AbiParameterKind Kind = AbiParameterKind.Value, int LogicalIndex = -1, string Extension = "")
 {
-    internal string Attributes => this.Kind == AbiParameterKind.SharedReference ? " noundef nonnull align 8 dereferenceable(24)" : string.Empty;
+    internal string Attributes => this.Kind == AbiParameterKind.SharedReference ? " noundef nonnull align 8 dereferenceable(24)" : this.Extension;
 }
 
 /// <summary>A physical signature shared by definitions and calls (SPEC 21.3.1), with its definition's attributes (<c>noreturn</c>, and
@@ -56,6 +61,10 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
 
     internal bool ResultSlot { get; init; }
 
+    /// <summary>Gets the result's extension attribute, which a call writes after <c>call</c> (IMPL 21.2: <c> signext</c> or
+    /// <c> zeroext</c> under Abi.Convention.SystemV, else empty).</summary>
+    internal string ResultExtension { get; init; } = string.Empty;
+
     /// <summary>Gets the flags of <see cref="Abi.Of"/>'s input this signature records as given (<see cref="Abi.Recorded"/>).</summary>
     internal Abi.Flags Flags { get; init; }
 
@@ -68,7 +77,7 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
     /// <returns>A signature with the same parameters, result and flags.</returns>
     internal FunctionAbi Named(string name) => new(name, this.Result, this.Parameters)
     {
-        NoReturn = this.NoReturn, ResultSlot = this.ResultSlot, Flags = this.Flags,
+        NoReturn = this.NoReturn, ResultSlot = this.ResultSlot, Flags = this.Flags, ResultExtension = this.ResultExtension,
     };
 
     /// <summary>Gets the cached <c>define ... {</c> line, including the profile attribute group.</summary>

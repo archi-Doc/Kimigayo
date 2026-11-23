@@ -13,7 +13,8 @@
 // `{{static_release_kind}}` and `{{heap_release_kind}}`) and a row's (RowConstants: the row's unmapped bound at `{{unmapped_bound}}`,
 // and its layer's OS-error prefix at `{{os_prefix}}` with its length at `{{os_prefix_length}}`), which only the row's runtime expansion
 // is given.
-// Input: a target row (its Layer and UnmappedBound); the Windows and Linux rows' entry symbols; the test runtime's resource name
+// Input: a target row (its Layer and UnmappedBound); the Windows and Linux rows' entry symbols and the table's C entry symbol
+// (TargetProfile.MainSymbol, the C path's start, Main); the test runtime's resource name
 // (Testing's TestRuntime.Resource); a marker's name, the row's constants and
 // the expanded text being written.
 // Output: the records, read by code generation and by LlvmModuleText's frame and runtime splice; a row's layer and constants; a
@@ -59,6 +60,10 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi Entry = new("__kimi_entry_body", Unit.ComputationType, []);
     internal static readonly FunctionAbi Start = new(TargetProfile.Windows.EntrySymbol, Unit.ComputationType, []) { NoReturn = true };
     internal static readonly FunctionAbi Exit = new("__kimi_exit", Unit.ComputationType, [new("i32", "code")]) { NoReturn = true };
+
+    // The C path's start (IMPL 21.5.2; the Tatara plan's B7b2b): main, without parameters (musl's three arguments are ignored at the
+    // System V machine level), which returns 0 to the C runtime's exit.
+    internal static readonly FunctionAbi Main = new(TargetProfile.MainSymbol, "i32", []);
 
     internal static readonly FunctionAbi Abort = new(
         "__kimi_abort",
@@ -191,7 +196,7 @@ internal static class RuntimeAbi
     // The routines every layer's runtime defines after the layer's own: the allocator's, then the common part's compiler-facing ones.
     private static readonly FunctionAbi[] CommonDefinitions = [HeapAllocate, HeapRelease, DestroyString, Abort, AbortMessage];
 
-    // linux-x64's libc-free start (IMPL 21.5.3): the module asm defining the entry, which clears the frame pointer, aligns the stack to
+    // linux-x64's libc-free start (IMPL 21.5.2): the module asm defining the entry, which clears the frame pointer, aligns the stack to
     // 16 bytes and calls the start body, never returning; @llvm.used keeps the internal body, whose only caller the asm is.
     private static readonly string LinuxStart =
         "module asm \".text\"\nmodule asm \".globl " + TargetProfile.Linux.EntrySymbol + "\"\nmodule asm \".type " + TargetProfile.Linux.EntrySymbol +
@@ -274,7 +279,7 @@ internal static class RuntimeAbi
 
 /// <summary>A platform layer's runtime record (the Tatara plan's B7b2a): the layer a target row's Layer column names.</summary>
 /// <param name="Template">The layer template's resource name, the row's Layer.</param>
-/// <param name="OsErrorPrefix">The Abort report's OS-error prefix (IMPL 21.5.4): the layer template defines <c>@__kimi_os_prefix</c> from
+/// <param name="OsErrorPrefix">The Abort report's OS-error prefix (IMPL 21.5.2): the layer template defines <c>@__kimi_os_prefix</c> from
 /// it and the common runtime writes its length from it, so a layer's prefix of another length changes no common rule (the Tatara plan's
 /// B7b revision 2.2). A <c>c"..."</c> literal spells it as is.</param>
 /// <param name="Definitions">The routines whose definitions the row's runtime splices at their markers, each exactly once: the layer's
