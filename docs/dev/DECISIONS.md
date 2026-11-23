@@ -2733,9 +2733,6 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a Koto-keyed body table and a mutable enclosing link; scope chains and `Parent` walks; a per-node HIR column; per-body
     root lists; per-Field initializer slices (a second copy of `Construct`); per-constructor premises for layer rows; F1's `Definition`
     deadline in R4 (G210 is BU's); `ResultFit` windows now.
-  - Superseded in part by R7-M94 (R7-O3 O3-B c1, 2026-11-23): E1's stamp "`BindingObligation.Body` = the body Binding is binding" no
-    longer holds for a relation formed in a body with a nested signature's per-call end: `AddObligation` stamps it
-    `ExecutableBody.Declarations`, a declaration row of that signature (SPEC 15.3.4), which `JudgeDeclarationRows` judges.
 - **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b; its PD21 due states superseded by DEC
   Q9; the mark's recorder amended by R4-M233)
   - Adopted: `MirDropTable.Incomplete(body) → (DiagnosticCode Code, SourceRef Subject)?`, first-wins per body, stored with the body's
@@ -4283,10 +4280,6 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptance on both pipelines (`func k(q, r, f: () -> Option<ref/(ref/i32 during q) during r>) -> ref/i32 during r` returns `q`; a
     caller passing `func [] () => Option.None` keeps a pointer to a block's local after its scope; PLAN G216). After this unit no body
     slice has a `CallBorrows` row.
-  - Extended by R7-O3 O3-B commit 1 (Q-727, D-1206, 2026-11-23; F's ruling O3-7; BU-73's amendment of that unit): the Effect ("no
-    Unclassed `Input` in the evaluating body's slice") extends to a Function Type held under a borrow layer of a written Type: its
-    per-call Origins form no well-formedness row there (BU-73's amendment), so a body's slice gets no Unclassed `Input` from it. R7-M94
-    is this entry's result-side mirror.
 - **R4-M138 A5's Chain closure (R4-M131 Order 3 as BU-40 restated it); G255's C3 apart** (2026-10-26; under the R4 review of BU's N2
   rows, §8) SPEC 15.6.4 (Q4 (a), R′, the transfer rule). Supersedes R4-M131 Order 3 as BU-40 restated it, and bu41's interim (A5 read a
   Chain row as Content, one read).
@@ -11469,28 +11462,6 @@ resumed by R4-M86 (2026-10-20).
     Type at a formation outside the function names), so ClosureType's walk follows only the parts `BoundType.Height` counts. Only
     `EnclosingContainer` (`UnimagedClosure`) crosses the signature edge, with `ClosureArgumentVariance`: both are R7-D3 D3-2 (PLAN
     G348).
-  - Amended by R7-O3 O3-B commit 1 (Q-727, D-1206, 2026-11-23; Front, Binding; F's rulings O3-6, O3-7 and O3-9) SPEC 15.2.3, 15.6.1,
-    15.3.4: **a held Function Type's part of a borrow layer's well-formedness is its closed call signature.** BU-73's one rule gains the
-    well-formedness former as its second reader: `CompleteOrigins` -> `RetainInnerOutlives` (`Binding.TypeOrigins.cs`) relates to a
-    borrow layer's Origin the Origins of OwnedOrigins of the Type it stores (SPEC 15.6.1), and a Function Type there (one with
-    `BoundType.Binder`) is read as `ClosedSignature` under that binder: its fixed Origins (BU-73's list: a written `during`, an
-    enclosing atom, a Type argument's Origin) relate, its own per-call Origins (closed to `static`) never do (SPEC 15.2.3 "per-call
-    Origins are excluded"; 15.3.4 "Inner per-call Origins cannot escape their binder"). Only a held Function Type is closed: a layer
-    written inside a nested signature's result still relates that signature's per-call Origins inside its binder (G216 (b)'s row;
-    R4-M162, R7-M94). Census (O3-9, the implementation review's C1): `RetainInnerOutlives` is the reader that now reads
-    `ClosedSignature`; two other readers that decide which Origins of a held Function Type a borrow layer's well-formedness covers do
-    not read it yet: `StoredPremisePart` (`Binding.OriginPremises.cs:645`: a result premise enters no Function Type, an input enters
-    one whole) and `WellFormedPremises.EnterStored` (`Binding.WellFormedPremises.cs:199`: enters none). They are PLAN G1337 (O3-B2),
-    not readers already agreeing. Moves: valid forms accepted where a local's, a Field's or a result's Type holds a Function Type with
-    per-call inputs under a borrow layer (A5's located `Unsupported_Kd` or the declaration judge's `UnprovenOriginRelation_Kd` before:
-    rp1w, rp2v, rp1w_ref, f_loc_ref_ok, f_loc_res_ok, f_nest_ok, f_fld_ok, f_sig_res_ok, f_rq2r_ok, ResultPremiseTest's `pick`,
-    `forward` and `annotated`, so PLAN G56's annotated-call limit goes); the extra record of invalid programs goes (a4i, a5i, rn3m,
-    rp1i, rq2, rq2n, rq2v, rq2r, n1fm keep their Contract records); a fixed Origin's row stays (f_wf_bad's `b outlives q`). Corrects
-    c1d7b0eea's `pick`/`forward` pins (unlabelled, "as in dev"). Rejected: a per-call test in `RetainInnerOutlives` (a second copy of
-    BU-73's rule, and wrong for a layer inside a nested result); entering no Function Type (drops the fixed Origins' rows: f_wf_bad
-    accepted, SPEC 15.2.3 counts them); narrowing R7-M94's `ForeignEnd` and whitelisting the family (O3-6 (A): keeps the spurious
-    row, a family clause); an `AddObligation` guard (a catch-all after the fact); a fit or Callable comparison site (neither forms the
-    row).
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; the owner's 「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds
   publishes a part's relation to its call as one fact, and no consumer infers that relation from BoundType or BindingState. G1b B4 (a
@@ -26826,35 +26797,6 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open, for C6a-2's design (ruling 22, the review's C1):** `VerifyConformance` names two sites (`SpecifiesContract(.., site)`
     beside `ProveSpecification(.., conformance.Use)`), which differ under `VerifyConformanceAgreement` and `ResolveConformance`'s
     `Nested`; inert in C6a-1.
-- **R7-M94 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
-  (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
-  (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
-  lands with commit 1's BU-73 amendment) SPEC 15.3.4, 15.6.1, 15.4.3. Applies R4-M162, mirrors R4-M137; **supersedes R4-M101 E1 in
-  part**: its stamp "`BindingObligation.Body` = the body Binding is binding" no longer holds for a relation with a nested signature's
-  per-call end, because such a relation is no relation of the evaluating body: SPEC 15.3.4 makes the nested result "a Type of the
-  declaration that contains it ... for every choice of its per-call Origins", "never a premise of the containing body".
-  - Rule: `AddObligation` stamps an Origin relation formed in a body (`formingBody.IsBody`) with `ExecutableBody.Declarations` when an
-    end names an atom that `ForeignDeclarationAtom` classes foreign to the forming body, a meet tested by its operands as
-    `ClassifyMeet` tests them (`ForeignEnd`; C1: a Closure with two borrowed inputs defaults its result to their meet, SPEC 15.4.3
-    rule 1); every other relation keeps the forming body, and a relation formed while binding a declaration keeps the default value
-    (C2). One predicate decides formation and the view's row 1.
-  - Consequences: `JudgeDeclarationRows` judges the row from the premises at its use (the nested signature's own well-formed inputs and
-    the enclosing declarations', `ExtractOriginPremises`; an anonymous function's own result is never a premise, `AssumedResult`), so
-    a valid form is accepted and an invalid one is Binding's `UnprovenOriginRelation_Kd` at the written result Type (the A5 located
-    limit before, valid or not); in the declaration frame `BoundableIn` is false for every body atom, so the row records no
-    local-region bound (C2: x_sl_bad). A responsibility move, from the body analyses' located limit to Binding's declaration judge;
-    not a body relation, so R7-M66 ("Binding judges no Origin relation in an executable body") holds. `ExecutableBodies`' contract:
-    `ExecutableBody.Declarations` is stamped only by `AddObligation`, on such a row.
-  - Moves (Q13): valid forms accepted (r1ok, r2ok, r1locok, r4chain_ok, x_meet_ok, x_inner_chain, x_inner_okin, x_fn_in;
-    DereferenceUpdateTest's NestedReference runs again); invalid ones move from A5's located `Unsupported_Kd` to Binding's
-    `UnprovenOriginRelation_Kd` at the same written relation (r1bad, r2bad, r1loc, r4chain_bad, x_meet_bad, x_sl_bad, x_inner_bad,
-    and the rows tagged F-a in ResultPremiseTest and CallableOriginForwardingTest); x_sl_ok keeps its `InvalidOriginBinding_Kd` and
-    loses its result's located limit.
-  - Rejected: A5 judging it (three new representations and a second copy of the declaration judge; g216b-design §3); a test local to
-    `CompleteOrigins`' result context (misses the result's Type clauses, R4-M162, and would be a second copy of row 1); stamping the
-    default value (it lets the row bound a body-local region, C2).
-  - Removal that follows: the view's row 1 Unclassed producer for these rows; `OriginAtomKind.Unclassed` and A5's arms go in O3-B c2
-    if the Middle's trace on c1's head shows U2 and U3 unreached (F's O3-1 (3)(b); PLAN G216 (b)).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
