@@ -167,9 +167,10 @@ public sealed partial class Binding
             return null;
         }
 
-        if (recordPair)
+        // The selected destination's limits; a probe adapts a call result.
+        if (recordPair && !this.FailStaticBorrow(node, operation, adapted.Semantics))
         {
-            _ = this.FailStaticBorrow(node, operation, adapted.Semantics); // The selected destination's Borrow; a probe adapts a call result.
+            this.RecordBareReborrowLimit(node, actual, operation);
         }
 
         return operation switch
@@ -327,7 +328,7 @@ public sealed partial class Binding
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!receiver && this.StoresExclusiveReference(source, actual) && this.ReborrowedType(actual, source, null) is { } reborrowed)
+            else if (!receiver && this.StoresExclusiveReference(source, actual) && this.ReborrowedType(actual, source, null, [], out _) is { } reborrowed)
             {
                 // SPEC 3.5.1, 8.14, 10.1 step 1 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T` or
                 // `objuniq/T` or a pair layer in an exclusive case, is Reborrowed in its own Semantics before inference, so a parameter that

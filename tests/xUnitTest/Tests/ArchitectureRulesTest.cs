@@ -178,6 +178,7 @@ public class ArchitectureRulesTest
         "Binding.AssociatedTypes.cs:ResolveAssociated=1 declared",
         "Binding.Attributes.cs:HasNoCCounterpart=1 kind",
         "Binding.Attributes.cs:ImportAbi=1 kind",
+        "Binding.BareAcquisition.cs:ReborrowedType=1 unchanged",
         "Binding.BoundContracts.cs:BoundContractReference=2 declared",
         "Binding.BoundContracts.cs:SubstituteRequirementContract=1 unchanged",
         "Binding.CallRelations.cs:CollectCallRelations=1 sufficient",

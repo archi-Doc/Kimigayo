@@ -8,14 +8,18 @@ namespace Kimi.Compiler;
 // - Responsibility: the positions that do (IsBareAcquisitionPosition, a discarded node among them: Discards) and the Reborrow of a Place
 //   storing an exclusive reference there (StoredReborrow), recorded as the node's one adaptation, exactly as an annotation of the same
 //   complete Type would record it; the Reborrow by the Place's per-case plan, a pair layer's included, is ReborrowedType's, which a
-//   nested capture entry reads too (Binding.Captures).
-// - Inputs: the node, its bound Type, its Place (IsBarePlace), its position and Discard Context (IsValueContext), and the
-//   common adaptation (ExpectedAdaptation), which names the Reborrow.
-// - Outputs: the recorded adaptation and its Type; the bare entries of pair layers per Semantics case are Binding.PairCases'; how a
-//   consumer takes each child is the Adjust rule's (Binding.Hir.Adjust.cs).
+//   nested capture entry reads too (Binding.Captures), and its located limit where no one Type carries it (RecordBareReborrowLimit).
+// - Inputs: the node, its bound Type, its Place (IsBarePlace), its position and Discard Context (IsValueContext), the common
+//   adaptation (ExpectedAdaptation), which names the Reborrow, and the reach of the Place (its containment walk under a case assignment).
+// - Outputs: the recorded adaptation and its Type, the Reborrow's Type or the stored Type, and the limit; the bare entries of pair layers
+//   per Semantics case are Binding.PairCases'; how a consumer takes each child is the Adjust rule's (Binding.Hir.Adjust.cs).
 // - Invariants: a position with a fixed expected Type adapts by the common adaptation instead, and Reborrows a fitting Place that stores
-//   an exclusive reference by the same predicate (StoresExclusiveReference).
-// - Prohibitions: no consumer decides by its own position test whether a bare acquisition Reborrows.
+//   an exclusive reference by the same predicate (StoresExclusiveReference). The plan is BareAcquisition's, evaluated again per owner
+//   case, with no second plan; the reach is the one containment walk, run only where a layer is named; no warm allocation. Among bare
+//   inputs, a Reborrow-kind operation on a pair-layer Place has one producer, AdaptInput's non-reference branch, which reads
+//   ReborrowedType, so a selected Reborrow there is this rule's (RecordBareReborrowLimit's gate): a new such producer goes through the rule.
+// - Prohibitions: no consumer decides by its own position test whether a bare acquisition Reborrows; no family row (OuterOrigin has
+//   none); no branch per form.
 public sealed partial class Binding
 {
     // SPEC 3.5, 3.5.1, 10.2: the positions without a fixed expected Type that acquire any Place operand by bare acquisition, each
@@ -77,18 +81,94 @@ public sealed partial class Binding
     private BoundOrigin ReachOf(Koto place, ReadOnlySpan<PairCase> cases)
         => this.ContainedOrigin(place, new() { Met = BoundOrigin.Static, Dereferenced = true, Cases = cases }) ?? BoundOrigin.Static;
 
-    // SPEC 3.5.1, 8.14, 7.7.2, 8.1.2, 15.6.3 (DECISIONS BU-27; PLAN G254): the Type of the same-Semantics Reborrow that a bare acquisition of
-    // a Place storing `stored` makes by its per-case plan, null where it names none. The layer it Reborrows is a stored `uniq/T` or
-    // `objuniq/T` whose plan Reborrows (the caller's BareAcquire), or a pair layer whose plan (BareAcquisition) Reborrows the layer itself in
-    // an exclusive admitted case, its outer-Origin slot; that layer's Origin is met with the reach (Shortened): `reach`, a nested capture
-    // entry's enclosing receiver (EnvironmentContainment), else the layers that reach the Place `node` (ReachOf). Limits: the owner case's
-    // Reborrow of a nested layer (PLAN G254, O1) and a family (OuterOrigin has no family row) name no layer.
-    private BoundType? ReborrowedType(BoundType stored, Koto node, BoundOrigin? reach)
-        => (StoresConcreteExclusive(stored) ? stored.Origin
-            : this.BareAcquisition(stored, node, out var reborrow) == SemanticsMask.None && (reborrow & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
-                ? this.OuterOrigin(stored) : null) is { } layer
-            ? this.Shortened(stored, layer, reach ?? this.ReachOf(node, []))
-            : null;
+    // SPEC 3.5.1, 8.14, 8.15.2, 7.7.2, 8.1.2, 15.6.3 (DECISIONS BU-27 and its G254b amendment): the Type of the same-Semantics Reborrow that
+    // a bare acquisition of a Place storing `stored` makes by its per-case plan under `cases` (empty at the Place; inside, the owner cases of
+    // the pair layers above), null where it names none (no Reborrow, an incomplete plan, a family). Each layer it Reborrows has its Origin
+    // met with the reach (Shortened): `reach`, a nested capture entry's enclosing receiver (EnvironmentContainment) in every case, else the
+    // layers that reach the Place `node` under `cases` (ReachOf; the merged walk would meet slots only a Copy case has):
+    // - a stored `uniq/T` or `objuniq/T` whose plan Reborrows (the caller's BareAcquire): its Origin;
+    // - a pair layer whose plan (BareAcquisition) Reborrows the layer itself in an exclusive admitted case: its outer-Origin slot; and where
+    //   its owner case's target Reborrows, that target replaced by the target's own Reborrow Type under `cases` extended by the owner case
+    //   (BareAcquisition's recursion, in nested scratch); the stored Type where nothing is shortened;
+    // - the limit: a target replaced under a binder that also admits an invariant Semantics (InvariantAdmitted, SPEC 15.3.5), whose case
+    //   keeps that target exactly, so no one Type carries the Reborrow: the Type keeps the target and `limit` is set, recorded at the
+    //   selected input (RecordBareReborrowLimit). Interim: its removal condition is a per-case Reborrow Type (PLAN, G254b's limit row).
+    // A family names no layer (OuterOrigin has no family row; PLAN, G254b's family row).
+    private BoundType? ReborrowedType(BoundType stored, Koto node, BoundOrigin? reach, ReadOnlySpan<PairCase> cases, out bool limit)
+    {
+        limit = false;
+        if (StoresConcreteExclusive(stored))
+        {
+            return this.Shortened(stored, stored.Origin!, reach ?? this.ReachOf(node, cases));
+        }
+
+        if (!TryAdaptationSelector(stored, out var whole))
+        {
+            return null;
+        }
+
+        var assigned = CaseOf(cases, whole.Symbol!);
+        var mask = assigned?.ToMask() ?? SemanticsMask.All;
+        if ((this.BareAcquisition(stored, node, cases, out var reborrow) & mask) != SemanticsMask.None || (reborrow & mask) == SemanticsMask.None)
+        {
+            return null;
+        }
+
+        var result = (reborrow & mask & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 && this.OuterOrigin(stored) is { } slot
+            ? this.Shortened(stored, slot, reach ?? this.ReachOf(node, cases)) : null;
+        if ((reborrow & mask & SemanticsMask.Owner) == 0 || stored is not { Kind: BoundTypeKind.SemanticsApplication, Components: [var target] })
+        {
+            return result;
+        }
+
+        var scratch = this.caseScratch.Rent(cases.Length + 1);
+        BoundType? inner;
+        try
+        {
+            var extended = scratch.AsSpan(0, cases.Length + 1);
+            cases.CopyTo(extended);
+            extended[^1] = new(whole.Symbol!, SemanticsKind.Owner);
+            inner = this.ReborrowedType(target, node, reach, extended, out limit);
+        }
+        finally
+        {
+            this.caseScratch.Return(scratch, clearArray: true);
+        }
+
+        var outer = result ?? stored;
+        if (inner is null || ReferenceEquals(inner, target))
+        {
+            return inner is null ? result : outer;
+        }
+
+        if (assigned is null && this.InvariantAdmitted(stored, node, default))
+        {
+            limit = true;
+            return outer;
+        }
+
+        return this.types.Rebuild(outer, [inner], outer.Origin, (BoundOrigin[])outer.OriginArguments);
+    }
+
+    // SPEC 23.1.1, 8.15.2, 15.3.5 (DECISIONS BU-27's G254b amendment; the owner's O-515 (a)): the located Unsupported_Kd of a selected input
+    // whose adaptation is the bare Reborrow rule's Reborrow and whose Reborrow no one Type carries (ReborrowedType's limit), at the Place.
+    // Its callers are the selected-input points, each after FailStaticBorrow returns false: ExpectedAdaptation's selected destination (a
+    // fixed or bare position, a Case payload through its fixed expected Type), JudgeCallFit's selected argument (never its receiver: SPEC
+    // 7.3, a receiver is no bare acquisition) and a value call's selected part. It never changes applicability or ranking (SPEC 10.1). A
+    // stored `uniq/T` or `objuniq/T` never limits, so it returns before the rule's walk.
+    private void RecordBareReborrowLimit(Koto place, BoundType? stored, ArgumentOperationKind selected)
+    {
+        if (selected != ArgumentOperationKind.Reborrow || stored is null || StoresConcreteExclusive(stored) || !this.StoresExclusiveReference(place, stored))
+        {
+            return;
+        }
+
+        _ = this.ReborrowedType(stored, place, null, [], out var limit);
+        if (limit)
+        {
+            this.RecordLocated(place, place.Span);
+        }
+    }
 
     // A Reborrowed layer's Origin met with `reach`, as each case's Reborrow of its concrete reference is. A pair slot exists only in the
     // borrow cases (PairSlotCondition), and a case that Copies keeps the met slot, which no verdict of it needs longer (SPEC 8.15.2). The

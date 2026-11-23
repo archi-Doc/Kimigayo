@@ -223,9 +223,10 @@ public sealed partial class Binding
 
                 environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
                 if (bare is HirAcquire.Reborrow or HirAcquire.ByCase && this.EnvironmentContainment(source) is { } receiver &&
-                    this.ReborrowedType(type, function, receiver) is { } reborrowed)
+                    this.ReborrowedType(type, function, receiver, [], out var limit) is { } reborrowed)
                 {
                     environment.Type = reborrowed;
+                    return limit ? BindingFailure.Unsupported : null; // No one Type carries the Reborrow (ReborrowedType's limit).
                 }
 
                 return null;
