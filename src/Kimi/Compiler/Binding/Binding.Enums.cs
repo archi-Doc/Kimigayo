@@ -298,6 +298,22 @@ public sealed partial class Binding
             return true;
         }
 
+        if (expected.Kind == BoundTypeKind.OpenSlot)
+        {
+            // Binding.OpenSlots (SPEC 10.8.1, 10.5.1; design v3-A 11.8.7 B1): an atom is no owner Type of the declaration, so it fills
+            // nothing and holds against the result; each own slot left unbound is its open atom at the next owner level while the outer
+            // candidates are compared (as OpenType forms a call's), so a payload is checked at it as at any unbound slot.
+            for (var i = 0; i < slots; i++)
+            {
+                if (frame.Types[i] is null)
+                {
+                    frame.SetType(i, this.types.OpenSlot(declaration.BoundSymbol.Schema.GenericSlots[i].Symbol, this.infer.OwnerCount));
+                }
+            }
+
+            return true;
+        }
+
         if (ExpectedConstructionOrigins(expected, enumeration.Owner) is not { } supplied || expected.Components.Count < slots)
         {
             return false;

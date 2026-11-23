@@ -103,6 +103,12 @@ public sealed partial class Binding
                 var erases = node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && type.Kind == BoundTypeKind.Function;
                 operation = new(part, this.ArgumentTypeAt(node), type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
                 return CandidateApplicability.Applicable;
+            case var _ when type.ContainsOpenSlot && this.PlacedAtOpenSlot(node, kind, type, scope):
+                // SPEC 10.5.1, 10.8 (Binding.OpenSlots' place rule): a checked part that is not a nested call holds at a bare atom and
+                // binds nothing; it is completed after selection. Ranked as an owner value by its form, an awaited callable by erasure.
+                var placed = kind is PartKind.Function or PartKind.Reference ? ArgumentAdaptation.Erasure : this.CheckedClass(type, ownerResult: true);
+                operation = new(part, null, type, ArgumentOperationKind.Value, placed);
+                return CandidateApplicability.Applicable;
             case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
                 {

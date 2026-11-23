@@ -279,13 +279,6 @@ public sealed partial class Binding
 
         for (var i = 0; i < left.Length; i++)
         {
-            if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
-                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
-                this.IsWaiting(source))
-            {
-                continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
-            }
-
             var x = left[i].ParameterType;
             var y = right[i].ParameterType;
             if (ReferenceEquals(x, y) && (x is not null || left[i].Source is null))
@@ -294,8 +287,24 @@ public sealed partial class Binding
             }
 
             // SPEC 10.4 step 2: the structural parts must be identical (Origin bindings never rank, even inside Function Types), or the
-            // candidates are incomparable; open slots are never identical.
-            if (x is null || y is null || !this.FitsStructuralPart(x, y))
+            // candidates are incomparable; open slots are never identical, and a Type holding an atom is identical only to itself, at a
+            // waiting position too (Binding.OpenSlots: a pair whose walk met an atom is incomparable; a reference-equal pair is skipped
+            // above; SPEC 10.8 Unbound slots, ArgFlow ruling 166).
+            var metOpenSlot = false;
+            var fits = x is not null && y is not null && this.FitsStructuralPart(x, y, out metOpenSlot);
+            if (metOpenSlot)
+            {
+                return false;
+            }
+
+            if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
+                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
+                this.IsWaiting(source))
+            {
+                continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
+            }
+
+            if (!fits)
             {
                 return false;
             }

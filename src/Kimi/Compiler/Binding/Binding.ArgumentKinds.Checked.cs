@@ -26,7 +26,9 @@ namespace Kimi.Compiler;
 //   the part is kept unchecked and the outermost call is refused (ResolutionWorkLimit_Kd, BindCallCore), never selected. A verdict is
 //   a function of (part, E) only: one whose query read a split layer (ReadSplitSince: a binding of the open combination, or a
 //   formation that formed none) is its run's, which E does not hold, and is not kept (DECISIONS BU-240, removed with its (R); ArgFlow
-//   ruling 152 C1), so a later run at the same E queries again.
+//   ruling 152 C1), so a later run at the same E queries again. SPEC 10.4 step 1's exception (an unbound slot takes the argument
+//   whole) and step 2's MetOpenSlot read the candidates' declared patterns and the pair at the comparison, never a stored verdict, so
+//   the key stays (part, E) at an open E too (Binding.OpenSlots: no owner is carried into a query).
 // - Prohibitions: no binding, record or node write; no reader decides a checked part's fit but through FitArgument.
 public sealed partial class Binding
 {
@@ -42,10 +44,12 @@ public sealed partial class Binding
     // SPEC 10.4 step 1, 10.2.2 (design-af3 R1.2, ArgFlow ruling 63): the class of a part checked at `expected` by whether its resolution
     // there returns an owner value: at `ref/U` an owner value is the one temporary of U, borrowed (Cross-Semantics adaptation), and a
     // returned `ref/T` is passed as itself (Expected-Type fitting, 10.2.2 item 2); by value an owner value fits directly (Expected-Type
-    // fitting) and a borrow value is value-read (Cross-Semantics adaptation).
+    // fitting) and a borrow value is value-read (Cross-Semantics adaptation), but at a bare atom, an unbound `T`, which takes a returned
+    // value or a returned borrow whole (Expected-Type fitting, 10.2.2 item 2; Binding.OpenSlots). The one class source of a checked
+    // part at a closed and at an open position.
     private ArgumentAdaptation CheckedClass(BoundType expected, bool ownerResult)
         => ownerResult ? ExpectedTypeClass(ReferenceEquals(this.ExpectedTypeOf(expected), expected) ? null : expected)
-            : expected.Kind == BoundTypeKind.Semantics ? ArgumentAdaptation.ExpectedTypeFitting : ArgumentAdaptation.CrossSemanticsBorrow;
+            : expected.Kind is BoundTypeKind.Semantics or BoundTypeKind.OpenSlot ? ArgumentAdaptation.ExpectedTypeFitting : ArgumentAdaptation.CrossSemanticsBorrow;
 
     // FitArgument's row for a part that awaits its call as a Call or Case: Inapplicable with the failed check as the trial's fact, else
     // Waiting with its class at the position.

@@ -620,20 +620,50 @@ public sealed partial class Binding
                         // and before that only checks the slot-free shape of the fit. All established inputs were processed above.
                         if (this.PartDefault(argument, scope) is not { } shape)
                         {
+                            BoundType? openType = null;
                             if (this.KindOf(argument) != PartKind.Literal &&
-                                MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)))
+                                MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)) &&
+                                (this.AwaitedKind(argument) is not (PartKind.Call or PartKind.Case) || this.ProbedResultOpen(expected, call, function, unboundSlots) ||
+                                (openType = solution.OpenType(pattern)) is not null))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
                                 // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
                                 // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
-                                // A part checked against its expected Type ranks as its fit there ranks it (ExpectedTypeClass; PLAN G924,
-                                // G916): the open position's whole literal or join, nested call, construction or Case is the same operation
-                                // as at a closed one (SPEC 10.5.1: ranked by the Expected-Type fitting row; a call's or Case's result is
-                                // unknown here, so no borrow class).
+                                // A whole literal or join ranks as its fit there ranks it (ExpectedTypeClass; PLAN G924, G916).
+                                // SPEC 10.5.1 (PLAN G924 AF-3b v3-A commit 3a; ArgFlow rulings 156, 159, 160; design section 3's reader
+                                // table row 1, 11.8): a nested call, construction or Case that awaits its call is checked at the position's
+                                // open Type (OpenType), its candidate the in-flight owner, by FitArgument (FitChecked, or the place rule for
+                                // a leading-dot Case at a bare atom), as at a closed position: a part that does not check there makes the
+                                // candidate inapplicable, and CheckedClass is its one class source at both positions. Its waiting part is
+                                // completed after selection, never at an atom. Under the argument probe a candidate whose result holds a
+                                // slot no evidence binds queries none (ProbedResultOpen).
                                 var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure
-                                    : this.KindOf(argument) is PartKind.Aggregate or PartKind.Join or PartKind.Call or PartKind.Case
+                                    : this.KindOf(argument) is PartKind.Aggregate or PartKind.Join
                                     ? ExpectedTypeClass(this.Materialization(argument, pattern, scope)) : ArgumentAdaptation.Exact;
+                                if (openType is not null)
+                                {
+                                    var checkedFit = CandidateApplicability.Inapplicable;
+                                    var checkedOperation = default(BoundArgumentOperation);
+                                    this.infer.PushOwner(frame.Id);
+                                    try
+                                    {
+                                        checkedFit = this.FitArgument(call.ArgumentNodes[i], openType, scope, call, out checkedOperation);
+                                    }
+                                    finally
+                                    {
+                                        this.infer.PopOwner(frame.Id);
+                                    }
+
+                                    this.waitingParts.RemoveRange(this.waitingBase, this.waitingParts.Count - this.waitingBase);
+                                    if (checkedFit == CandidateApplicability.Inapplicable)
+                                    {
+                                        return checkedFit;
+                                    }
+
+                                    adaptation = checkedOperation.Adaptation;
+                                }
+
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
                                 {
@@ -784,8 +814,11 @@ public sealed partial class Binding
                 return solution.IsComplete() ? CandidateApplicability.Inapplicable : this.PendingOnEnvironment(environment);
             }
 
-            if (expected is not null && result is not null && !this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&
-                this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false) is null)
+            // Binding.OpenSlots (SPEC 10.8 Solving: a failed match makes the candidate inapplicable): a result holding an atom was formed by
+            // the fills, and its fit holds at every atom, so where the fills agree in no structure (FillOpenSlots) the match decides (tw3).
+            if (expected is not null && result is not null && ((result.ContainsOpenSlot && !expectedStructure) ||
+                (!this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&
+                this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false) is null)))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -972,4 +1005,12 @@ public sealed partial class Binding
             this.ReturnSlotSet(solution.EvidenceNamed);
         }
     }
+
+    // SPEC 10.5.1 bullet 1 (ArgFlow ruling 160 C3; design v3-A 11.8.7): under the argument probe (no expected result), whether the
+    // candidate's result holds a slot that no evidence binds, which only a checked part or a literal's default would reach: the call is
+    // then not independently typable whatever its checked parts give there (SolveSelected defers it by the same reading), so its trial
+    // queries none of them at an open position; each is checked at every outer candidate's expected Type, once per distinct Type.
+    private bool ProbedResultOpen(BoundType? expected, InvocationKoto call, FunctionKoto function, SlotSet unbound)
+        => expected is null && this.UnderArgumentProbe(call) &&
+            (function.IsConstructor || (function.BoundSymbol?.Type is { } result && MentionsSlots(result, CallSlotOwner(function), unbound)));
 }

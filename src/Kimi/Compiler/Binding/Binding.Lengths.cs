@@ -386,6 +386,14 @@ public sealed partial class Binding
 
     private bool ProveLength(BoundLength expression, FunctionKoto? function)
     {
+        // PLAN G924 AF-3b v3-A (Binding.OpenSlots; SPEC 4.4.2: a dependent obligation is checked at a concrete call after inference): a
+        // length holding an open atom is an unbound slot's, so its obligation is not judged while candidates are compared: the prover's
+        // intake rule, as at JudgeConstraintAtom; the completed Type after selection is judged here again.
+        if (expression.ContainsOpenSlot)
+        {
+            return true;
+        }
+
         if (expression.IsConstant)
         {
             return ValidLength(expression.Value);

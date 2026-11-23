@@ -598,17 +598,39 @@ public sealed partial class Binding
                     actual = this.FillOpenOrigins(actual, previous, true);
                 }
 
+                var held = false;
                 if (((relateLater && !structural) || evidence is not null) && (ReferenceEquals(previous, actual) ||
-                    (this.FitsStructuralPart(actual, previous) && this.FitsStructuralPart(previous, actual))))
+                    (this.FitsStructuralPart(actual, previous, out held) && this.FitsStructuralPart(previous, actual))))
                 {
                     // SPEC 10.8 (as revised; O-450 (a), O-451 (a)), 15.3.6: Origin evidence for a slot never makes the candidate
                     // inapplicable, and the bindings agree in structure and Semantics. The frame keeps the first binding's Type until the
                     // late solve; every evidence binding is recorded with its composed polarity, this later one as the first below, by
                     // whichever caller matched it (an argument, a header, a Callable signature; G147 ruling 59: no caller's flag decides
                     // it), and its Origins bound the slot's variables, so Infer merges no Origins. Whether the slot is fixed is the slot
-                    // step's one test (SlotSolution.FixedSlot, read before the bindings): a fixed slot keeps its Type.
-                    frame.AddBinding(slot, actual, polarity);
+                    // step's one test (SlotSolution.FixedSlot, read before the bindings): a fixed slot keeps its Type. Evidence held
+                    // against a fill's atom waits and records nothing (Binding.OpenSlots: fill first, K's D-1132).
+                    if (!held)
+                    {
+                        frame.AddBinding(slot, actual, polarity);
+                    }
+
                     frame.SetType(slot, previous);
+                    return true;
+                }
+
+                // Binding.OpenSlots (SPEC 10.8 Solving; K's D-1132, ArgFlow ruling 154): the expected result's match fills a slot with
+                // the structure its fills agree in (FillOpenSlots), so no traversal order keeps the first atom met; fills that still meet
+                // an atom against a part agree in none, and the match fails.
+                if (!structural && inferOrigins && !relateLater && evidence is null && (previous.ContainsOpenSlot || actual.ContainsOpenSlot))
+                {
+                    var kept = this.FillOpenSlots(previous, actual);
+                    var met = this.FillOpenSlots(actual, previous);
+                    if (!ReferenceEquals(kept, met) && (!this.FitsStructuralPart(met, kept, out var apart) || apart || !this.IsSubtype(met, kept)))
+                    {
+                        return false;
+                    }
+
+                    frame.SetType(slot, kept);
                     return true;
                 }
 
