@@ -234,6 +234,21 @@ public sealed class DependencyResolutionTest : IDisposable
             (failure.Code, failure.Message));
     }
 
+    // SPEC 23.1.2 (PLAN G1010): each read of a dependency, its project file's and its source's, is that input's failure; a read that
+    // fails is never the compiler's fault.
+    [Theory]
+    [InlineData("Leaf.kimiproj")]
+    [InlineData("main.kimi")]
+    public void EachReadOfADependencyIsItsInputFailure(string held)
+    {
+        this.Write("Leaf", "leaf", source: "func one() -> i32 => 1\n");
+        var root = this.Write("Root", "root", Edge("Leaf", "Leaf", "leaf"));
+        using (new FileStream(Path.Combine(this.directory, "Leaf", held), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.Equal("InvalidProjectInput", Failure(Resolve(root).Product).Code);
+        }
+    }
+
     private static ResolutionFailure Failure(DependencyPartition partition)
         => Assert.Single(partition.Failures ?? []);
 
