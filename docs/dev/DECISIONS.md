@@ -30475,6 +30475,16 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Temporary:** the unused `GetProcessHeap`/`HeapAlloc`/`HeapFree` declarations and their `RuntimeDeclarations` rows (removal:
     B7r3, T-M28, in W3, so they never reach dev and the ledger carries no line). B7r1's three temporary routines are removed.
   - **Class:** a behaviour change, measured in W3 (RP8 and the memory gate).
+  - **RP8 and the memory gate (window W-324's slots T-W324c and T-W324d; the owner's O-508 (a), verbatim 「a」 under
+    「最適化は、将来の課題にしましょう。」, T's dialog, 2026-11-23 09:4x).** T-W324c (A 49c99bd1a, B f3cb2e0b7, the whole W3;
+    `artifacts\benchmarks\rp8w-W-324-f3cb2e0b7-o2-20261123-092019` and `-Allocs-o2-20261123-093607`): the 13 corpus kernels inside
+    their A=A after R5-M135 and R5-M147, several faster (aligned ArrayLiteral 0.218, SharedHandles 0.307, Interpolation 0.640, Array
+    0.778, Strings 0.843); the allocation kernel `artifacts\tatara\b7r2\kernel\Allocs.kimi` (5×10^6 strings of 1-300 bytes through a
+    ring of 64, then 5,000 byte Arrays of 300 KiB, each built and dropped) aligned 1.975 (A=A 0.992-1.016), 11 of 11 R5-M147 pairs
+    above their A=A, so decision 23's rule read STOP. Decision 28's memory gate PASS
+    (`artifacts\benchmarks\memgate-w324-20261123-090942`): peak working set B/A 0.925-1.007 on every corpus kernel, peak commit up to
+    +1.0 MiB a program (the first region). T-W324d (B7r1 f5114b7c0 alone against its base 4ab9ccf34): `Allocs.kimi` inside (plain
+    1.067), so the gap is the allocator's. The owner landed W3 with the gap; its speed is PLAN G1311.
   - Rejected: Revision 0's 16-byte classes (above); location parameters or a null-heap check (the reason is gone); the allocator in
     Kimigayo (above); a second copy of the adapter's heap fakes (N11: the fakes move in the commit that first calls `VirtualAlloc`).
 - **T-M28 kernel32's set loses the process heap's three** (Tatara, 2026-11-22; the plan's unit B7r3, decision 23, Q-697, D-1146;
