@@ -254,6 +254,10 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     schema, not a member exception; its execution-deadline option is not propagated as an excess internal parameter.
   - Reused behavior from eb2d34be4261fda2d6997e632007d4b86bf1f7b9, adapted to G138-1's owners. Its catch converted a failed
     executable launch into failed with no execution, letting a known pending row accept an unobserved program.
+  - Amended by T-M31 (NV1): the fixture owner runs no LLVM tool and no dependency check of its own; each level's build is a
+    `kimi tatara` build of the IR/manifest pair, decided by its build record: a build whose record is not linked is a failure,
+    whatever stopped it (its dependency rule is the native build's, `NativeBuild.Inspect`); a line the session did not attempt
+    goes to the next round of lanes; unavailable input or evidence stays incomplete, as above.
     Rejected: merely increasing 200 ms, all exceptions becoming failed or incomplete, consumer exception-text inference,
     a generic process/build framework or test-only production mode. No compiler semantics or emitted instructions change.
     CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
