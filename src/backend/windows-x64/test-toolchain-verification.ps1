@@ -28,19 +28,19 @@ try {
     $installation = [IO.File]::ReadAllText($installationPath)
     # PLAN G983 (form J): a record that is not the JSON the check expects (a field missing or of another kind, tatara's sha256 among
     # them, a number that is not an integer, not an object) is an invalid installation before any tool; a tool's entry missing or of
-    # another kind is that tool's mismatch, after its version banner.
+    # another kind is that tool's mismatch, after its version banner. A record has no supportingDlls (PLAN G1231): the last two reach
+    # the tools.
     $rows = @(
-        @('{"profile":"windows-x64-v1","tools":{},"supportingDlls":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
-        @('{"schemaVersion":"1","profile":"windows-x64-v1","tools":{},"supportingDlls":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
-        @('{"schemaVersion":3.5,"profile":"windows-x64-v1","tools":{},"supportingDlls":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
-        @('{"schemaVersion":1,"profile":1,"tools":{},"supportingDlls":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
-        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":[],"supportingDlls":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
-        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
-        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{},"supportingDlls":{}}', 'Invalid toolchain installation record'),
-        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{},"supportingDlls":{},"tatara":{"sha256":7}}', 'Invalid toolchain installation record'),
+        @('{"profile":"windows-x64-v1","tools":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
+        @('{"schemaVersion":"1","profile":"windows-x64-v1","tools":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
+        @('{"schemaVersion":3.5,"profile":"windows-x64-v1","tools":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
+        @('{"schemaVersion":1,"profile":1,"tools":{},"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
+        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":[],"tatara":{"sha256":""}}', 'Invalid toolchain installation record'),
+        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{}}', 'Invalid toolchain installation record'),
+        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{},"tatara":{"sha256":7}}', 'Invalid toolchain installation record'),
         @('[]', 'Invalid toolchain installation record'),
-        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{},"supportingDlls":{},"tatara":{"sha256":""}}', 'Tool executable SHA-256 mismatch'),
-        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{"clang":7},"supportingDlls":{},"tatara":{"sha256":""}}', 'Tool executable SHA-256 mismatch'))
+        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{},"tatara":{"sha256":""}}', 'Tool executable SHA-256 mismatch'),
+        @('{"schemaVersion":1,"profile":"windows-x64-v1","tools":{"clang":7},"tatara":{"sha256":""}}', 'Tool executable SHA-256 mismatch'))
     for ($i = 0; $i -lt $rows.Count; $i++) {
         [IO.File]::WriteAllText($installationPath, $rows[$i][0])
         Test-Row "record-$i" $rows[$i][1]
@@ -53,6 +53,11 @@ try {
     $changed.tatara.sha256 = '0' * 64
     $changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
     Test-Row 'tatara-hash' 'tatara.dll SHA-256 mismatch'
+    # An older setup's supportingDlls is not read (PLAN G1231): a record naming a DLL the root lacks passes.
+    $changed = $installation | ConvertFrom-Json
+    $changed | Add-Member -NotePropertyName supportingDlls -NotePropertyValue ([pscustomobject]@{ 'absent.dll' = '0' * 64 }) -Force
+    $changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
+    Test-Row 'older-member'
     # A tool off profile.json's identity, though its record matches (llvm-dlltool's pin), fails naming the file and setup (C-452 R1).
     Remove-Item -LiteralPath (Join-Path $copy 'llvm-dlltool.exe')
     $null = New-Item -ItemType HardLink -Path (Join-Path $copy 'llvm-dlltool.exe') -Target (Join-Path $ToolchainRoot 'llvm-readobj.exe')

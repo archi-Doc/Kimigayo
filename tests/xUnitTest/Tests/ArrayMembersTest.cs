@@ -38,14 +38,16 @@ public class ArrayMembersTest
         "public func main()\n" +
         "    var values: Array<i32> = [30, 10, 20]\n" +
         "    require values.isEmpty == false else => $abort(\"isEmpty\")\n" +
-        "    match values.tryGet(0)\n        .Some(let head) => require head == 30 else => $abort(\"first\")\n        .None => $abort(\"first none\")\n" +
+        "    match values.first\n        .Some(let head) => require head == 30 else => $abort(\"first\")\n        .None => $abort(\"first none\")\n" +
+        "    match values.last\n        .Some(let tail) => require tail == 20 else => $abort(\"last\")\n        .None => $abort(\"last none\")\n" +
         "    match values.tryGet(5)\n        .Some(_) => $abort(\"tryGet\")\n        .None => Console.writeLine(\"Out of range.\")\n" +
         "    match values.tryGet(^1)\n        .Some(let x) => require x == 20 else => $abort(\"tryGet index\")\n        .None => $abort(\"tryGet none\")\n" +
         "    match values.tryGetUniq(1)\n        .Some(let slot) => slot@follow = 11\n        .None => $abort(\"uniq\")\n" +
         "    require values[1] == 11 else => $abort(\"uniq write\")\n" +
         "    let empty: Array<i32> = []\n" +
         "    require empty.isEmpty else => $abort(\"empty\")\n" +
-        "    match empty.tryGet(^1)\n        .Some(_) => $abort(\"empty last\")\n        .None => Console.writeLine(\"Empty has no first.\")\n" +
+        "    match empty.first\n        .Some(_) => $abort(\"empty first\")\n        .None => Console.writeLine(\"Empty has no first.\")\n" +
+        "    match empty.last\n        .Some(_) => $abort(\"empty last\")\n        .None => Console.writeLine(\"Empty has no last.\")\n" +
         "    Console.writeLine(\"Access ok.\")\n";
 
     private const string Mutation =
@@ -130,7 +132,7 @@ public class ArrayMembersTest
         { "Copies", Copies, "Copies ok.\n" },
         { "Capacity", Capacity, "Capacity ok.\nTag dropped.\n" },
         { "Field", Field, "Bag ready.\nDropped.\nDropped.\n" },
-        { "Access", Access, "Out of range.\nEmpty has no first.\nAccess ok.\n" },
+        { "Access", Access, "Out of range.\nEmpty has no first.\nEmpty has no last.\nAccess ok.\n" },
         { "Mutation", Mutation, "Mutation ok.\n" },
         { "Owned", Owned, "Truncating.\nDropped.\nDropped.\nTruncated.\nDropped.\nDropped.\n" },
         { "Repeating", Repeating, "Repeating ok.\n" },
@@ -237,4 +239,35 @@ public class ArrayMembersTest
         var c = MinimalEmissionTest.Analyze($"func f(p: {type}) => p.{member}");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
+
+    // SPEC 4.9.3, 11.3.1: first and last are computed Properties whose getter reads a shared receiver and lends an element
+    // during it, through a safe reference, for a generic element Type, and through an object handle, which stops selection at its
+    // View Target's declarations (SPEC 3.4.3): an `objref` receiver (a shared dereference) and an owned `obj/` one (an own step).
+    [Theory]
+    [InlineData("func f(p: ref/Array<i32>) -> Option<ref/i32> => p.first")]
+    [InlineData("func f(p: uniq/Array<i32>) -> Option<ref/i32> => p.last")]
+    [InlineData("func f<T>(p: ref/Array<T>) -> Option<ref/T> => p.last")]
+    [InlineData("func f(p: objref/Array<i32>) -> Option<ref/i32> => p.first")]
+    [InlineData(
+        "func some<T>(x: Option<ref/T during a>) -> bool\n    match x\n        .Some(_) => return true\n        .None => return false\n\n" +
+            "func f(h: obj/Array<i32>) -> bool\n    let t = h.first\n    return some(t)")]
+    public void EndsLendAnElementDuringTheArray(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 15, 15.6: the element first or last lends keeps its loan on the Array while the result lives, so an exclusive call, an
+    // element write or a Move of the Array meanwhile conflicts with it, and so does a Move of an owned object handle whose payload
+    // lent it (SPEC 15.6.2: a Move reaches the loan across the own step).
+    [Theory]
+    [InlineData("var values: Array<i32> = [1]\nlet head = values.first\nvalues.append(2)\nlet n = head", "CallActivationConflict_Kd")]
+    [InlineData("var values: Array<i32> = [1]\nlet head = values.first\nvalues[0] = 2\nlet n = head", "ComparisonLoanConflict_Kd")]
+    [InlineData("var values: Array<i32> = [1]\nlet tail = values.last\nlet moved = values@move\nlet n = tail", "ComparisonLoanConflict_Kd")]
+    [InlineData(
+        "func some<T>(x: Option<ref/T during a>) -> bool\n    match x\n        .Some(_) => return true\n        .None => return false\n\n" +
+            "func f(h: obj/Array<i32>) -> bool\n    let t = h.first\n    let g = h@move\n    return some(t)\nlet done = 0",
+        "ComparisonLoanConflict_Kd")]
+    public void EndsHeldAcrossAWriteReportTheLoanConflict(string source, string code)
+        => Assert.Equal(code, string.Join(", ", DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code)));
 }

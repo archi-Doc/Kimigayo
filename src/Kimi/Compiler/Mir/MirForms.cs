@@ -130,7 +130,8 @@ internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Pla
 /// <see cref="Symbol"/> the library declaration of the compiler function it serves, under its Subst, whose parameters its first operands
 /// pass (those the builder adds follow them, MirDescriptors), or null for one without a library declaration, whose result holds no Loan
 /// (A3 E14, DECISIONS R4-M63); a Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken
-/// constant at <see cref="Arg"/> (DECISIONS R4-M41).</summary>
+/// constant at <see cref="Arg"/> (DECISIONS R4-M41; CallPlan.DeclaredSignature: for an abstract callee the signature the call selected
+/// among its Callable premises, whose bounds A4 reads, SPEC 8.11.4).</summary>
 internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Symbol = null, Subst? Subst = null, int Arg = 0, BindingSymbol? Contract = null)
 {
     internal static MirCallee Intrinsic(IntrinsicId id, BindingSymbol? declaration = null, Subst? subst = null)
