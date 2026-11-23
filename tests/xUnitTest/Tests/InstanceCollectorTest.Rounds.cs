@@ -197,7 +197,7 @@ public sealed partial class InstanceCollectorTest
         int[] roots = [.. Enumerable.Range(0, set.RootCount)];
         set.Mark(roots);
         using var writer = new StringWriter();
-        Assert.True(new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests).Write(program, collector, c.Binding.Startup, roots, writer));
+        Assert.True(new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests, TargetProfile.Windows).Write(program, collector, c.Binding.Startup, roots, writer));
         return (items, Records(c, program), writer.ToString(), collector.RunCount);
     }
 

@@ -72,13 +72,14 @@ internal sealed partial class ModuleCodegen
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
 
-    // The complete module around the buffered definitions, an Application's entry calling its startup root.
+    // The complete module around the buffered definitions, in the row's frame, an Application's entry calling its startup root.
     private void Assemble(TextWriter output, FunctionAbi? start)
     {
+        var frame = LlvmModuleText.Frame(this.row);
         var testRuntime = this.IsTestBuild ? Testing.TestRuntime.Text : null; // A test build's routines.
-        LlvmModuleText.WriteHeader(output, this.constants);
-        LlvmModuleText.WriteRuntime(output, testRuntime);
-        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), testRuntime);
+        LlvmModuleText.WriteHeader(output, frame, this.constants);
+        LlvmModuleText.WriteRuntime(output, frame, testRuntime);
+        LlvmModuleText.WriteExternals(output, frame, CollectionsMarshal.AsSpan(this.externals), testRuntime);
         if ((this.needs & Needs.ZeroSized) != 0)
         {
             output.Write(ZeroSizedDefinition);
@@ -133,7 +134,7 @@ internal sealed partial class ModuleCodegen
             ObjectRuntime.WriteRuntime(output);
         }
 
-        output.Write(LlvmModuleText.Footer);
+        output.Write(frame.Footer);
     }
 
     // __kimi_start (IMPL 21.4.2): the startup body, which takes no parameter (Binding's startup check), then a normal exit with 0.

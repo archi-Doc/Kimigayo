@@ -120,6 +120,6 @@ internal static class TestRuntime
     {
         using var stream = typeof(TestRuntime).Assembly.GetManifestResourceStream("Kimi.Testing.TestRuntime.ll")!;
         using var reader = new StreamReader(stream);
-        return LlvmModuleText.ExpandRuntime(reader.ReadToEnd(), []);
+        return LlvmModuleText.ExpandRuntime(reader.ReadToEnd(), [], []);
     }
 }
