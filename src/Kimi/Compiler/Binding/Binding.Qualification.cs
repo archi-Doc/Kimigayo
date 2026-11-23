@@ -194,7 +194,7 @@ public sealed partial class Binding
             var names = InValueNamespace(role) ? members.Values : members.Types;
             for (var candidate = names.GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
-                if (!IsGenericParameter(candidate) && HasLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
+                if (HasLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
                 {
                     return candidate;
                 }
@@ -319,7 +319,7 @@ public sealed partial class Binding
 
             for (var member = (fact.Type ? scope.Types : scope.Values).GetValueOrDefault(fact.Name); member is not null; member = member.Next)
             {
-                if (!IsInstanceMember(member) && !IsGenericParameter(member) && HasLookupRole(member, fact.Role) && this.Accessible(member, fact.Scope))
+                if (!IsInstanceMember(member) && HasLookupRole(member, fact.Role) && this.Accessible(member, fact.Scope))
                 {
                     Add(path, member);
                     break;
