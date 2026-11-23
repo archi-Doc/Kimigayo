@@ -7,9 +7,10 @@
 // kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root; the built Application's run;
 // toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs, two steps: its Tatara's start check and
 // its supplies' bytes against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
-// toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is;
-// ToolchainIdentity, with Kernel32Imports' DLL and generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
-// development toolchain's tools and files are checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
+// toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is, a
+// staged copy that still has its catalog hash reused without copying the resource; ToolchainIdentity, with Kernel32Imports' DLL and
+// generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The development toolchain's tools and files are
+// checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the compiler's Tatara and embedded supplies (toolchain verify).
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and

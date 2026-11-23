@@ -65,7 +65,7 @@ tatara> exit
 | 39 | Volatile access is `Raw.readVolatile<T>(storage: raw/T) -> T` and `Raw.writeVolatile<T>(storage: raw/T, value: T)`, `unsafe`, `T is PrimitiveInteger`, on every target: each call is exactly one access, never merged, removed or reordered with another volatile access or an `X86` member; not atomic (O-489 (d) (a)). |
 | 40 | Interrupt functions are Kimi Contracts `X86.InterruptHandler` (`func handle(frame: ref/InterruptFrame)`) and `X86.ErrorCodeHandler` (`handle(frame, code: u64)`) over a C-layout `X86.InterruptFrame`, with `unsafe func entry<H>() -> usize` / `errorCodeEntry<H>()` giving the code address of a compiler-generated `x86_intrcc` thunk that calls `H.handle`. The entry's `- safety:` is the handler rule (no allocation, `Console`, task or deliberate Abort; only statics Initialized before interrupts are enabled; shared storage only through volatile accesses or with interrupts disabled). The none row's runtime executes `cli` before shutdown and on its Abort path. No Attribute and no syntax (O-489 (e) (a)). |
 | 41 | Sections are deferred: the runtime's Limine requests grow by rows as `Boot` fields, and Appendix D gains "Sections, eager statics and project linker scripts" (O-489 (f) (a)). |
-| 42 | The order: volatile (OSF2) in any window; the instruction family with `Board`'s members (OSF1a) after B9's second window and before B9h, so B9h's QEMU run reads COM1 and ends on QEMU's exit device; the remaining instructions (OSF1b) and the interrupt entries (OSF3a) after it; an interrupt run under QEMU (OSF3b, evidence) after B9h (O-489 (g) (a)). |
+| 42 | The order: volatile (OSF2) in any window; the instruction family with `Board`'s members (OSF1a) after B9's second window and before B9h, so B9h's QEMU run reads COM1 and ends on QEMU's exit device; the remaining instructions (OSF1b) and the interrupt declarations (OSF3a) and entries (OSF3b) after it; an interrupt run under QEMU (OSF3c, evidence) after B9h (O-489 (g) (a)). |
 | 43 | `IntrinsicId`'s limit rises 28 → 32 (`Instruction`, `VolatileRead`, `VolatileWrite`, `InterruptEntry`), each raised by its own unit with COMPILER_ARCHITECTURE's line; the documents are SPEC §5.6 and §22.1's `Raw` row, §22.1's per-target sentence for `X86`, Appendix D.6's two lines, IMPL §21.3 (the volatile lowering) and §21.6 ("Machine instructions", "Interrupt entries"), each with K's independent review; no download (O-489 (h) 1-3 (a)). |
 | 44 | SPEC §17.4.3 gains a freestanding exception: on a profile whose program supplies its platform (`x86_64-unknown-none`), stack exhaustion is undefined behaviour, and no stack check or probe is generated there (decision 34 kept). It is an explicit SPEC revision, landed with B9's unit that adds the row (B9b), with K's independent review. Rejected: a stack check at each function's entry against a runtime limit (O-494 M1 (a)) (the owner, 2026-11-22, O-494 M1 (b); C-458 M1). |
 | 45 | A `Platform` member, and every function it calls, must not access static storage: such a member is rejected at its declaration, a located Language error read from its effect summary. Re-entry through the runtime (allocation, `Console`, the clock, an Abort) still halts through the busy flag, and the platform keeps its state in `self` (decision 30). Rejected: composing the members' effects into the runtime operations' summaries (O-494 M2 (b)), and stating the consequence in SPEC §22.4.5 alone, which leaves an unsound acceptance from safe code (M2 (c)) (the owner, 2026-11-22, O-494 M2 (a); C-458 M2). |
@@ -292,11 +292,13 @@ Measured first; each one adopted is a unit of its own.
    stands; reuse of a project's library dependencies waits for a workload with one (none in the repository but
    `docs/examples/SourceDependencies`). No unit now; the design's options and owners are the starting point if a gate passes later.
 3. **Link time by part:** read, resolve, write, close; then choose a measure.
-   Measured 2026-11-23 (LC3's M-L, T-335): the whole link is 54% of Hello O0's warm build. Open: S1 (a staged compiler supply
-   verified by its catalog hash, without the temporary copy; removable 2.72% of Hello O0 warm) proceeds to a design; W2
-   (`/threads:1`) waits for a measured `kimi.exe` row (it reaches 1% only of the estimated row, the LC3 design's rule 3); read
-   reaches the 1% gate (1.52% of Hello O0 warm) but has no candidate (the LC3 design's §5), so nothing is designed; resolve and
-   the hash/record/move parts stop.
+   Measured (LC3 Revision 0, T-335, `artifacts\benchmarks\lc3-ml-20261123-1427`): the whole link 15.4 ms warm (54% of Hello O0's
+   28.6 ms line), 24.8 ms cold. LLD's driver (4.1 ms) is its MSVC toolchain and SDK detection; write (6.5) and close (2.1) are
+   LLVM's output buffer (an early writability probe, the output's temporary file, its commit). Adopted: S1 (a compiler's supply
+   reused by its catalog hash; in its measurement slot T-339) and D1 (`/lldignoreenv /winsysroot:<stem>.native`: no toolchain
+   detection and no environment, about 4 ms per warm link, and the fix of PLAN G1334 (D-1200); probe P-D: 11.9 → 0.35 ms per fresh
+   link, bytes equal). Stopped: W-c (a held CryptoAPI context: probe P-W shows no saving), write and close otherwise (no lever
+   without a patched LLD; P-W's split recorded in LC3 `r1\p-w.md`), W2 (`/threads:1`) until a measured `kimi.exe` row (D-1171).
 4. **Schema 5:** each external declaration names its supplier, with PLAN T1's schema 5.
 
 ## 9. Working rules
