@@ -80,6 +80,7 @@ public sealed partial class Binding
         return true;
     }
 
+    [Transitional("R7", Reason = "Two Fail sites record no problem (R7-E3 E3b-1, ruling 8 (2)): the receiver's InvalidAssignment, whose input is the receiver node's own failure, and the MissingType after JudgeSelected, whose input is the call's clause records; a Record there may duplicate a problem, until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
     private BoundType? BindCallCore(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         var callee = call.Method;
@@ -205,7 +206,8 @@ public sealed partial class Binding
 
         // SPEC 6.3.4, 7.3.2-7.3.3: a group with a receiver shape acquires the call's Receiver Expression whole, a use that a special
         // receiver's row without Whole never permits (BindReference rejects its other uses). The record is at the receiver, and the
-        // call's own judgments continue: its adaptations and verdict read the failed receiver (RefusedReceiver).
+        // call's own judgments continue: its adaptations and verdict read the failed receiver (RefusedReceiver). Fail, not Record: the
+        // method's Transitional (R7-E5).
         if (shape.Receiver && this.CallReceiver(callee) is { } callReceiver && Receiver(callReceiver) is { Whole: false })
         {
             this.Fail(callReceiver, BindingFailure.InvalidAssignment);
@@ -446,7 +448,7 @@ public sealed partial class Binding
 
             if (!formed)
             {
-                return this.Fail(call, BindingFailure.MissingType, true);
+                return this.Fail(call, BindingFailure.MissingType, true); // Fail, not Record: the method's Transitional (R7-E5).
             }
 
             this.RequireResultPremises(selected, result, call); // SPEC 15.3.7: the callee's result premises.
