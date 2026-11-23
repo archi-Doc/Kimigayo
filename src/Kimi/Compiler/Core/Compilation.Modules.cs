@@ -28,6 +28,9 @@ public partial class Compilation
     /// (SPEC 23.2.2), and no fact of a parsed source exists.</summary>
     internal bool AnalyzesNoModule => this.SourceModules.Length == 0;
 
+    // A module's effective default-alias paths (SPEC 18.2.3): the required paths and the configured additions, each without a leading
+    // `::`, in ordinal order. A module adding no other path gets the RequiredAliases instance itself (never a copy), the key by which
+    // DefaultAliases returns the library's rows; a caller never writes the result.
     internal static string[] EffectiveAliases(string[] additions)
     {
         if (additions.Length == 0)
@@ -35,13 +38,13 @@ public partial class Compilation
             return RequiredAliases;
         }
 
-        var paths = new HashSet<string>(StringComparer.Ordinal) { "Kimi" };
+        var paths = new HashSet<string>(RequiredAliases, StringComparer.Ordinal);
         foreach (var path in additions)
         {
             paths.Add(path.StartsWith("::", StringComparison.Ordinal) ? path[2..] : path);
         }
 
-        return paths.Count == 1 ? RequiredAliases : paths.Order(StringComparer.Ordinal).ToArray();
+        return paths.Count == RequiredAliases.Length ? RequiredAliases : paths.Order(StringComparer.Ordinal).ToArray();
     }
 
     // A configured path read by the Type production (F.5; the alias target's, GroupKoto) in a configuration document of its module, as

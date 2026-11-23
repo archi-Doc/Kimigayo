@@ -10,9 +10,10 @@ namespace Kimi.Compiler;
 // or Result (Binding.Patterns.cs).
 // - Responsibility: one iterative pre-order walk over the child slots (IndexWalk, over IndexStack's entries). It reaches each node in
 //   a slot of the trees it walks (the source roots; the library's non-intrinsic root containers and root members; each module's
-//   configured paths, IndexConfiguredPaths) once per holding slot, in one context (IndexEntryKind), and resets it once before the
-//   first write to it in the pass (ResetEntry: at its entry, or, for an attribute of a leading chain, at its chain owner's entry,
-//   since the declaration's row judges the Attributes that attach to it, SPEC 6.7).
+//   own configured paths, IndexConfiguredPaths, a required path's row being the library's, walked in the library pass) once per
+//   holding slot, in one context (IndexEntryKind), and resets it once before the first write to it in the pass (ResetEntry: at its
+//   entry, or, for an attribute of a leading chain, at its chain owner's entry, since the declaration's row judges the Attributes that
+//   attach to it, SPEC 6.7).
 //   In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
 //   functions, parameters, locals, generic and length parameters (in their scope's formal-parameter table, BindingScope.Parameters),
 //   each struct's, enum's and Contract's Self (DeclareSelf), enum cases, pattern bindings and guard candidates); a test function

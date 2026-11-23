@@ -306,6 +306,24 @@ public partial class ModuleBindingTest
         }
     }
 
+    // SPEC 18.4.1, 18.2.3, 23.1.2 (F's ruling N1-20 C1; DECISIONS Q13): a root declaration named `Kimi` is one record, at it (r04i, r04j;
+    // m06i in a dependency). The module's required alias is the library's row, so it opens the reserved Kimi Kotonoha whatever the module
+    // declares, and the use through it records nothing; a module's own parse of `Kimi`, walked from its root, opened the user's
+    // declaration and added an UnresolvedBinding_Kd at the use.
+    [Theory]
+    [InlineData("r04i", "group Kimi\n    func f() => ()\nfunc g() => Console.writeLine(\"Hello\")", "public group Api", 0)]
+    [InlineData("r04j", "struct Kimi\nfunc g() => Console.writeLine(\"Hello\")", "public group Api", 0)]
+    [InlineData("m06i", "func g() => Lib.Api.value()", "public group Kimi\n    public func f() => ()\npublic group Api\n    public func value() => Console.writeLine(\"lib\")", 1)]
+    public void ARootDeclarationNamedKimiIsTheOnlyRecord(string row, string root, string library, int module)
+    {
+        var compilation = Create(root, library);
+        Assert.False(compilation.Bind().IsComplete, row);
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(DiagnosticCode.DuplicateBinding_Kd, issue.Code);
+        Assert.Same(compilation.SourceModules[module], issue.Node.CodeContext.Kotonoha);
+        Assert.Equal("Kimi", Assert.IsAssignableFrom<DeclarationContainerKoto>(issue.Node).Name);
+    }
+
     [Fact]
     public void LibraryDefaultsDoNotLeakToTheCaller()
     {
