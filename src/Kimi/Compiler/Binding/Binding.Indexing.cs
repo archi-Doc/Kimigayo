@@ -9,10 +9,11 @@ namespace Kimi.Compiler;
 // (SemanticsIndexed false), and BindMatch indexes them during body binding (IndexMatchArms), once the Subject's Type selects Option
 // or Result (Binding.Patterns.cs).
 // - Responsibility: one iterative pre-order walk over the child slots (IndexWalk, over IndexStack's entries). It reaches each node in
-//   a slot of the trees it walks (the source roots; the library's non-intrinsic root containers and root members) once per holding
-//   slot, in one context (IndexEntryKind), and resets it once before the first write to it in the pass (ResetEntry: at its entry,
-//   or, for an attribute of a leading chain, at its chain owner's entry, since the declaration's row judges the Attributes that
-//   attach to it, SPEC 6.7). In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
+//   a slot of the trees it walks (the source roots; the library's non-intrinsic root containers and root members; each module's
+//   configured paths, IndexConfiguredPaths) once per holding slot, in one context (IndexEntryKind), and resets it once before the
+//   first write to it in the pass (ResetEntry: at its entry, or, for an attribute of a leading chain, at its chain owner's entry,
+//   since the declaration's row judges the Attributes that attach to it, SPEC 6.7).
+//   In the Index and Pattern contexts a node's scopes are created and its symbols declared (containers,
 //   functions, parameters, locals, generic and length parameters (in their scope's formal-parameter table, BindingScope.Parameters),
 //   each struct's, enum's and Contract's Self (DeclareSelf), enum cases, pattern bindings and guard candidates); a test function
 //   the build does not include is resolved without indexing its signature or body, which the ExcludedTest context walks for its
@@ -141,7 +142,9 @@ public sealed partial class Binding
     {
         foreach (var module in this.pass.Sources)
         {
-            this.IndexWalk(new(module.RootKoto, this.GetScope(module.RootKoto, null), IndexEntryKind.Index));
+            var scope = this.GetScope(module.RootKoto, null);
+            this.IndexWalk(new(module.RootKoto, scope, IndexEntryKind.Index));
+            this.IndexConfiguredPaths(module, scope);
         }
 
         this.IndexModuleReferences();
@@ -169,6 +172,20 @@ public sealed partial class Binding
         for (var i = 0; i < libraryRoot.Members.Count; i++)
         {
             this.IndexWalk(new(libraryRoot.Members[i], this.Library.Scope, IndexEntryKind.Index));
+        }
+
+        this.IndexConfiguredPaths(library, this.Library.Scope);
+    }
+
+    // A module's configured default aliases (SPEC 18.2.3; F's rulings N1-4 (2), N1-9 (1), N1-13 B2 and C2): each opening alias its
+    // configuration declares, which lives for the Compilation in its configuration document with its path's node, is walked with its
+    // module's trees, the library's in the library pass, so its rows are reset by the one reset step, it is an alias of the pass (its
+    // AliasKoto row) and its records are the pass's like any node's.
+    private void IndexConfiguredPaths(Kotonoha module, BindingScope scope)
+    {
+        foreach (var row in this.compilation.DefaultAliases(module))
+        {
+            this.IndexWalk(new(row.Alias, scope, IndexEntryKind.Index));
         }
     }
 

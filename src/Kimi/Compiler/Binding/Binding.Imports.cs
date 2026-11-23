@@ -10,8 +10,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(Kotonoha Module, string Path), BindingScope?> defaultAliasTargets = new();
-
     private BindingSymbol? AccessibleImport(BindingSymbol head, BindingScope scope)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
@@ -25,79 +23,11 @@ public sealed partial class Binding
         return null;
     }
 
-    private void ValidateDefaultAliases()
-    {
-        foreach (var module in this.pass.Sources)
-        {
-            foreach (var path in this.compilation.DefaultAliases(module))
-            {
-                if (this.DefaultAliasTarget(module.RootKoto, path) is null)
-                {
-                    // Transitional, R7-E5 (FailUnselected's reason): SelectQualifier may have recorded a segment's ambiguity at the root.
-                    this.Fail(module.RootKoto, BindingFailure.MissingName, true);
-                }
-            }
-        }
-    }
-
-    private BindingScope? DefaultAliasTarget(Koto use, string path)
-    {
-        if (path is "Kimi" or "::Kimi")
-        {
-            return this.Library.Scope;
-        }
-
-        var key = (use.CodeContext.Kotonoha, path);
-        if (this.defaultAliasTargets.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
-
-        this.defaultAliasTargets.Add(key, null);
-        var root = this.ModuleScope(use);
-        var scope = root;
-        var remaining = path.AsSpan();
-        if (remaining.StartsWith("::"))
-        {
-            remaining = remaining[2..];
-        }
-
-        var first = true;
-        while (!remaining.IsEmpty)
-        {
-            var dot = remaining.IndexOf('.');
-            var name = dot < 0 ? remaining : remaining[..dot];
-            scope.Types.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out var symbol);
-            if (first && name.SequenceEqual("Kimi"))
-            {
-                symbol = this.Library.Module;
-            }
-
-            symbol = this.SelectQualifier(symbol, root, use);
-
-            if (symbol is null && first && (!this.compilation.IsTestBuild || this.TestReferenceAllowed(use, name.ToString())) && this.compilation.References(use.CodeContext.Kotonoha) is { } references &&
-                references.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out var module))
-            {
-                symbol = this.moduleSymbols!.GetValueOrDefault(module);
-            }
-
-            if (symbol is null || !this.Accessible(symbol, root) || !this.scopes.TryGetValue(symbol.Declaration, out scope))
-            {
-                return null;
-            }
-
-            if (dot < 0)
-            {
-                this.defaultAliasTargets[key] = scope;
-                return scope;
-            }
-
-            remaining = remaining[(dot + 1)..];
-            first = false;
-        }
-
-        return null;
-    }
+    // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-4, N1-7 (5), N1-13 B2): a configured default alias is the opening alias its configuration
+    // declares (Compilation.ParseConfiguredPath), an alias of its module: indexed with its module's trees (IndexConfiguredPaths) and
+    // evaluated where every alias is (PrepareAliases, AliasTarget), so its records, its rest and its import (its environment included)
+    // are a source alias's; the module root is not failed. A use's miss rests on a failed one (ImportMiss).
+    private (BindingScope? Target, AliasImport Import) DefaultAliasTarget(Compilation.DefaultAlias row) => this.EvaluateAlias(row.Alias);
 
     // SPEC 9.5.1: function groups from several sources of one stage gather into one group (an ImportGroup step); any other kind beside a
     // source is ambiguous, which the caller returns.
@@ -119,7 +49,7 @@ public sealed partial class Binding
             return false;
         }
 
-        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported, default, default, default, null));
+        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported, default, default, default, null, null));
         return true;
     }
 
@@ -153,10 +83,12 @@ public sealed partial class Binding
             this.AddTypeCandidates(ref candidates, named.Declaration!.BoundSymbol, scope, role, arity, named);
         }
 
+        Koto? failed = null;
         for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
         {
             var alias = documentAliases[i];
             var target = this.AliasTarget(alias.Declaration!);
+            failed ??= target is null ? alias.Declaration : null;
             if (target is not null)
             {
                 this.AddTypeCandidates(ref candidates, MemberTypes(target, name), scope, role, arity, alias);
@@ -168,49 +100,71 @@ public sealed partial class Binding
             return this.SelectedPath(candidates, use, step);
         }
 
-        foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
+        foreach (var row in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
-            var target = this.DefaultAliasTarget(use, path);
-            this.AddTypeCandidates(ref candidates, target is null ? null : MemberTypes(target, name), scope, role, arity);
+            var (target, import) = this.DefaultAliasTarget(row);
+            failed ??= target is null ? import.Declaration : null;
+            this.AddTypeCandidates(ref candidates, target is null ? null : MemberTypes(target, name), scope, role, arity, import);
         }
 
-        return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);
+        return candidates.First is not null ? this.SelectedPath(candidates, use, step) : this.ImportMiss(use, failed);
     }
 
     // SPEC 9.5 stages 5 and 6 in the Value namespace: one stage's sources together (9.5.1). A use holds one imported environment, so two
-    // differing ones are Ambiguous: an implementation limit, not SPEC's rule (PLAN). A default alias's segment may fail here (part e).
+    // differing ones are an implementation limit (ImportStageEnd). A default alias's segment may fail here (part e).
     private ResolvedPath ResolveImportedValue(string name, BindingScope scope, Koto use, int step)
     {
         var stage = default(ValueImports);
         var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
-        for (var i = 0; !stage.Ambiguous && documentAliases is not null && i < documentAliases.Count; i++)
+        Koto? failed = null;
+        for (var i = 0; !stage.Ends && documentAliases is not null && i < documentAliases.Count; i++)
         {
             var alias = documentAliases[i];
-            this.AddImport(ref stage, this.AliasTarget(alias.Declaration!), alias, name, scope, use);
+            var target = this.AliasTarget(alias.Declaration!);
+            failed ??= target is null ? alias.Declaration : null;
+            this.AddImport(ref stage, target, alias, name, scope, use);
         }
 
-        // The sources merged before an ambiguity keep their environment as the use's import, as the table did.
+        // Stage 6, the configured default aliases, when stage 5 imported nothing (SPEC 9.5).
+        foreach (var row in stage.Imported is null ? this.compilation.DefaultAliases(use.CodeContext.Kotonoha) : [])
+        {
+            if (stage.Ends)
+            {
+                break;
+            }
+
+            var (target, import) = this.DefaultAliasTarget(row);
+            failed ??= target is null ? import.Declaration : null;
+            this.AddImport(ref stage, target, import, name, scope, use);
+        }
+
+        // The sources merged before an ambiguity keep their environment as the use's import, a configured source's too (N1-13 B2).
         if (stage.Import.Environment is not null)
         {
             this.nameSteps[step] = this.nameSteps[step] with { Import = stage.Import };
         }
 
-        if (stage.Imported is not null)
+        return this.ImportStageEnd(stage, name, scope, use, failed);
+    }
+
+    // SPEC 23.1.2 (rule W; F's rulings N1-2 C2, N1-9 (1)): a use whose import stages selected nothing read every opening alias of its
+    // document and every configured default alias, a failed one included, so its miss rests on that alias's record (a configured one's
+    // is at its path's failing component) and records nothing of its own.
+    private ResolvedPath ImportMiss(Koto use, Koto? failed)
+    {
+        if (failed is not null)
         {
-            return this.ImportStageEnd(stage, name, scope, use);
+            this.AddPrerequisite(use, failed);
         }
 
-        foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
-        {
-            if (stage.Ambiguous)
-            {
-                break;
-            }
+        return new(PathEnd.Unresolved, null, use);
+    }
 
-            this.AddImport(ref stage, this.DefaultAliasTarget(use, path), default, name, scope, use);
-        }
-
-        return this.ImportStageEnd(stage, name, scope, use);
+    // The walk's refusal at the Name (as Supported refuses a component): its Unsupported step, which PublishPath publishes as its failure.
+    private ResolvedPath ImportLimit(Koto use)
+    {
+        this.nameSteps.Add(new(NameStepKind.Unsupported, use, null, null, default, default, default, null, null));
+        return new(PathEnd.Unresolved, null, use);
     }
 
     // One opened source's same-name declarations join its stage (SPEC 9.5, 9.5.1): every accessible one takes part in the stage's
@@ -223,34 +177,43 @@ public sealed partial class Binding
         }
 
         var imported = stage.Imported;
-        var ambiguous = !this.MergeImport(use, accessible, ref imported) ||
-            (alias.Environment is { } environment && stage.Import.Environment is { } previous && !ReferenceEquals(previous, environment));
+        var ambiguous = !this.MergeImport(use, accessible, ref imported);
+        var limited = !ambiguous && alias.Environment is { } environment && stage.Import.Environment is { } previous && !ReferenceEquals(previous, environment);
         stage = stage with
         {
             Imported = imported,
             Source = stage.Source ?? target,
             Selectable = stage.Selectable || this.HasUnqualifiedCandidate(candidate, scope),
             Ambiguous = ambiguous,
+            Limited = stage.Limited || limited,
         };
 
-        if (!ambiguous && alias.Environment is not null)
+        if (!ambiguous && !limited && alias.Environment is not null)
         {
             stage = stage with { Import = stage.Import.Environment is null ? alias : stage.Import.MergeWitness(alias) };
         }
     }
 
     // SPEC 9.5, 9.5.1, 18.2.1 (PLAN G632): an import stage's end, once its same-name declarations are merged. The conflict first (a
-    // function and another value kind, or two other values: the ordinary same-name ambiguity); then 9.5's stop, the stage having only
-    // Cases and members needing a receiver (none Selectable); else the merged selection.
-    private ResolvedPath ImportStageEnd(in ValueImports stage, string name, BindingScope scope, Koto use)
+    // function and another value kind, or two other values: the ordinary same-name ambiguity); then the implementation limit (PLAN
+    // G633: one group gathered from two environments is valid, SPEC 9.5.1 and 7.4, but a use holds one imported environment), which
+    // refuses the Name with the walk's Unsupported step (the located Unsupported_Kd); then 9.5's stop, the stage having only Cases and
+    // members needing a receiver (none Selectable); else the merged selection. A miss rests on a failed alias (ImportMiss).
+    private ResolvedPath ImportStageEnd(in ValueImports stage, string name, BindingScope scope, Koto use, Koto? failed)
         => stage.Ambiguous ? new(PathEnd.Ambiguous, null, use)
-            : stage.Imported is not { } imported ? new(PathEnd.Unresolved, null, use)
+            : stage.Limited ? this.ImportLimit(use)
+            : stage.Imported is not { } imported ? this.ImportMiss(use, failed)
             : stage.Selectable ? new(PathEnd.Selected, imported, use)
             : new(PathEnd.QualificationStop, null, use, new(stage.Source!, scope, imported, name, LookupRole.Value, 0));
 
     // One import stage's same-name value declarations merged so far: the selection (a gathered group's first source), the merged
-    // environment, the first source, whether any candidate may be selected unqualified (HasUnqualifiedCandidate) and a conflict.
-    private readonly record struct ValueImports(BindingSymbol? Imported, AliasImport Import, BindingScope? Source, bool Selectable, bool Ambiguous);
+    // environment, the first source, whether any candidate may be selected unqualified (HasUnqualifiedCandidate), a conflict and the
+    // two-environment limit, met at any source so far (F's ruling N1-13 B4: only the conflict ends the stage, so the sources' order never
+    // decides which of the two the use reports; ImportStageEnd reads the conflict first).
+    private readonly record struct ValueImports(BindingSymbol? Imported, AliasImport Import, BindingScope? Source, bool Selectable, bool Ambiguous, bool Limited)
+    {
+        internal bool Ends => this.Ambiguous;
+    }
 
     /// <summary>The `gatheredGroups` family's one accessor (DECISIONS BU-220): a kept family, a use's function group gathered at the alias
     /// stage (its ImportGroup steps' publication), a list in the use's module's NodeColumns at its SyntaxId, made at the use's first

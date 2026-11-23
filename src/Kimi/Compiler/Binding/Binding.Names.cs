@@ -140,6 +140,11 @@ public sealed partial class Binding
                     return null;
                 }
 
+                if (group.Single is { } single && this.LacksRequirementSubject(node, single))
+                {
+                    return this.FailUnselected(node, BindingFailure.MissingName); // A group of one is its selection (N1-13 B3).
+                }
+
                 if (group.Single is { Declaration: FunctionKoto { IsAnonymous: false } named } && DirectCallOnly(named))
                 {
                     // SPEC 7.6, 22.6: such a function supports direct calls only. An overload group is checked after selection.

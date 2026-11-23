@@ -729,14 +729,14 @@ fn tried @357
   _7: isize temp @376 s1
   _8: uniq/i32 var $try.value @380 s2
   _9: uniq/i32 temp @382 s2
-  _10: isize temp @527 s1
+  _10: isize temp @529 s1
   _11: uniq/i32 temp @391 s3
-  _12: Option<i32> temp @531 s3
+  _12: Option<i32> temp @533 s3
   _13: Option<i32> temp (Result) @357
   _14: Option<i32> temp @400 s1
   s1: lexical in s0 @363
   s2: lexical in s1 @376
-  s3: lexical in s1 @527
+  s3: lexical in s1 @529
   bb0:
       StorageLive(_2) @364 s1
     * _2 = const 1_i32 @367 s1
@@ -751,15 +751,15 @@ fn tried @357
       _7 = discriminant(_5) @376 s1
       switch copy _7 [0: bb4, otherwise: bb3] @376 s1
   bb2:
-      StorageDead(_10) @527 s1
+      StorageDead(_10) @529 s1
       StorageDead(_7) @376 s1
       StorageDead(_6) @373 s1
       StorageDead(_5) @371 s1
       _3 = take(move _4, copy _1) -> bb15 @368 s1
   bb3:
-      StorageLive(_10) @527 s1
-      _10 = discriminant(_5) @527 s1
-      switch copy _10 [1: bb6, otherwise: bb5] @527 s1
+      StorageLive(_10) @529 s1
+      _10 = discriminant(_5) @529 s1
+      switch copy _10 [1: bb6, otherwise: bb5] @529 s1
   bb4:
       StorageLive(_8) @380 s2
       _8 = move (_5 as case 0).0 @380 s2
@@ -773,8 +773,8 @@ fn tried @357
       unreachable @370 s1
   bb6:
       StorageLive(_11) @391 s3
-      StorageLive(_12) @531 s3
-    * _12 = Adt case 1(): Option<i32> @531 s3
+      StorageLive(_12) @533 s3
+    * _12 = Adt case 1(): Option<i32> @533 s3
       goto bb13 check bb14 @391 s3
   bb7:
       return @357
@@ -789,20 +789,20 @@ fn tried @357
       StorageDead(_3) @368 s1
       goto bb9 @357
   bb11:
-      StorageDead(_10) @527 s1
+      StorageDead(_10) @529 s1
       StorageDead(_7) @376 s1
       StorageDead(_6) @373 s1
       StorageDead(_5) @371 s1
       goto bb10 @357
   bb12:
-      StorageDead(_12) @531 s3
+      StorageDead(_12) @533 s3
       StorageDead(_11) @391 s3
       goto bb11 @357
   bb13:
       _13 = move _12 @391 s3
       goto bb12 @391 s3
   bb14:
-      StorageDead(_12) @531 s3
+      StorageDead(_12) @533 s3
       StorageDead(_11) @391 s3
       unreachable check bb2 @391 s1
   bb15:

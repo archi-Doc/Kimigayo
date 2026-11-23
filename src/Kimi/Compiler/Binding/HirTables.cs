@@ -354,6 +354,7 @@ internal struct NodeColumns
     internal PagedColumn<Binding.TypeRoleCause> FormationCauses; // Kept: a pair occurrence's Language formation causes, emptied at each Final check (Binding.ConstraintValidation.cs).
     internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
+    internal StampedColumn<Koto?, Binding.PassCounter> FailingSteps; // Pass: the step a use's published Unresolved lookup failed at, where it is not the use (Binding.ResolvePath.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
     internal StampedColumn<(Binding.QualificationFact Value, Binding.QualificationFact Type), Binding.PassCounter> QualificationStops; // Work: a use's provisional qualification stop in each namespace, read by the resolver's miss, the running pass's working state, released at the freeze (Binding.Qualification.cs).
     internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
@@ -438,6 +439,7 @@ internal struct NodeColumns
         this.FormationCauses.Grow(length);
         this.AliasTargets.Grow(length);
         this.ImportedContainers.Grow(length);
+        this.FailingSteps.Grow(length);
         this.QualificationFailures.Grow(length);
         this.QualificationStops.Grow(length);
         this.PerCallOrigins.Grow(length);
@@ -499,6 +501,7 @@ internal struct NodeColumns
         this.ShapeContractHeads.Freeze(binding);
         this.AliasTargets.Freeze(binding);
         this.ImportedContainers.Freeze(binding);
+        this.FailingSteps.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
         this.QualificationStops.Release();
         this.PerCallOrigins.Freeze(binding);
@@ -584,6 +587,7 @@ internal struct NodeColumns
             FormationCauses = this.FormationCauses.Renumbered(length),
             AliasTargets = this.AliasTargets.Renumbered(length),
             ImportedContainers = this.ImportedContainers.Renumbered(length),
+            FailingSteps = this.FailingSteps.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
             QualificationStops = this.QualificationStops.Renumbered(length),
             PerCallOrigins = this.PerCallOrigins.Renumbered(length),
