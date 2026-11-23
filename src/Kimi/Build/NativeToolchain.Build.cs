@@ -406,17 +406,21 @@ internal static partial class NativeToolchain
         }
 
         // The executable: linked to Run's private file, so neither a failed link nor any failure before the commit publishes it, then the
-        // record's linked state, naming the private file's hash, which Run's commit publishes before the file.
+        // record's linked state, naming the private file's hash, which Run's commit publishes before the file. LLD reads no environment
+        // (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds no VC or
+        // Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1).
         private void Link(Tatara tatara, string obj, List<string> libraries, string undefined, string executable)
         {
-            var link = new string[libraries.Count + 7];
+            var link = new string[libraries.Count + 9];
             link[0] = "lld-link";
             link[1] = obj;
             libraries.CopyTo(link, 2);
-            link[^5] = "/entry:" + TargetProfile.Windows.EntrySymbol;
-            link[^4] = "/subsystem:" + TargetProfile.Windows.Subsystem;
-            link[^3] = "/nodefaultlib";
-            link[^2] = "/Brepro";
+            link[^7] = "/entry:" + TargetProfile.Windows.EntrySymbol;
+            link[^6] = "/subsystem:" + TargetProfile.Windows.Subsystem;
+            link[^5] = "/nodefaultlib";
+            link[^4] = "/Brepro";
+            link[^3] = "/lldignoreenv";
+            link[^2] = "/winsysroot:" + this.paths.Native;
             link[^1] = "/out:" + executable;
             tatara.Link(this.context, link);
             this.context.CancellationToken.ThrowIfCancellationRequested();

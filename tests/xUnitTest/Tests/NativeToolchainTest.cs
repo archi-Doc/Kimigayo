@@ -23,6 +23,9 @@ public sealed class NativeToolchainTest : IDisposable
 {
     private const string Windows = "Native builds run on Windows.";
 
+    // HelloUnderALinkerVariable's expected executable hash, which its parent passes.
+    private const string ExpectedExecutable = "KIMI_TEST_EXPECTED_EXECUTABLE";
+
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-native-" + Guid.NewGuid().ToString("N"));
 
     // The host's console of the test's projects, which reads a refusal's message.
@@ -855,6 +858,29 @@ public sealed class NativeToolchainTest : IDisposable
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, token));
         Assert.Equal("Invalid _fltused definition or hidden default library.", error.Message);
         Assert.False(File.Exists(paths.Executable));
+    }
+
+    // IMPL 20.3.2 and 20.4 (a native build reads no toolchain root and uses no search path; T's ruling 1 on LC3 Revision 1, a defect
+    // fix): the executable is the one the record's inputs determine, whatever LINK or _LINK_ holds; LLD otherwise adds either to its
+    // arguments (LC3's P-D: _LINK_=/filealign:4096 linked 74bdf2c3... against e201e8ab...). The environment is the process's and other
+    // tests link in this one, so the child HelloUnderALinkerVariable builds Hello under the variable and expects this process's
+    // executable (O2: the folder enters no byte). On the installed toolchain.
+    [Theory]
+    [InlineData("_LINK_")]
+    [InlineData("LINK")]
+    public async Task TheLinkReadsNoLinkerVariable(string variable)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, _, v1) = await this.BuildHello();
+        await FreshProcess.RunExplicit(typeof(NativeToolchainTest), nameof(NativeToolchainTest.HelloUnderALinkerVariable), (variable, "/filealign:4096"), (ExpectedExecutable, v1));
+    }
+
+    // TheLinkReadsNoLinkerVariable's child: Hello built in its own folder links the executable its parent passes.
+    [Fact(Explicit = true)]
+    public async Task HelloUnderALinkerVariable()
+    {
+        var (_, _, executable) = await this.BuildHello();
+        Assert.Equal(Environment.GetEnvironmentVariable(ExpectedExecutable), executable);
     }
 
     // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
