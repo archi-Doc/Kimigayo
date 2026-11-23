@@ -3,16 +3,18 @@
 // Owns the runtime ABI of the executable target profiles (SPEC 21.3.1, 22.1-22.7; DECISIONS R5-M15): the representations of Unit,
 // string values and string handles, the string release kinds, the zero-sized buffer address, and the FunctionAbi of each
 // runtime routine that generated code defines or calls, the platform layer's routines (PlatformRoutines, which the common runtime and
-// the allocator call and the layer template defines; the Tatara plan's decision 22), one RuntimeLayer record per platform layer (its
-// template's resource name, which a target row's Layer column names; its OS-error prefix; its definition list, the routines whose
-// template definitions are spliced from them), and
+// the allocator call and every layer template defines; the Tatara plan's decision 22) and a layer's own (PlatformStart, Clock; B7b2a,
+// N6), one RuntimeLayer record per platform layer (windows-x64's over kernel32, linux-x64's over system calls: its template's resource
+// name, which a target row's Layer column names; its OS-error prefix; its definition list, the routines whose template definitions are
+// spliced from them; its start form, the start routine, the module asm defining the entry and the layer's routines called before the
+// startup root; whether test builds run on it), and
 // the text of its constants' markers in a runtime template, which LlvmModuleText's one scan writes: the target-free ones (the
 // zero-sized buffer address at `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at
 // `{{static_release_kind}}` and `{{heap_release_kind}}`) and a row's (RowConstants: the row's unmapped bound at `{{unmapped_bound}}`,
 // and its layer's OS-error prefix at `{{os_prefix}}` with its length at `{{os_prefix_length}}`), which only the row's runtime expansion
 // is given.
-// Input: a target row (its Layer and UnmappedBound); the Windows row's entry symbol; a marker's name, the row's constants and the
-// expanded text being written.
+// Input: a target row (its Layer and UnmappedBound); the Windows and Linux rows' entry symbols; a marker's name, the row's constants and
+// the expanded text being written.
 // Output: the records, read by code generation and by LlvmModuleText's frame and runtime splice; a row's layer and constants; a
 // constant marker's text appended.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
@@ -148,6 +150,16 @@ internal static class RuntimeAbi
 
     internal static readonly FunctionAbi HeapRelease = new("__kimi_heap_release", "i64", [new("ptr", "block")]);
 
+    // Routines of a row's own layer, outside PlatformRoutines (the Tatara plan's B7b2a, N6): the process's setup before the program's
+    // start (linux-x64: SIGPIPE ignored, so a write to a closed pipe fails with its errno); the monotonic clock in nanoseconds, or -1
+    // (C1; the Kimi library's MonotonicClock intrinsic, declared only where `not windows` holds); and the body of a start whose entry the
+    // layer's module asm defines (linux-x64's libc-free __kimi_start), internal.
+    internal static readonly FunctionAbi PlatformStart = new("__kimi_platform_start", Unit.ComputationType, []);
+
+    internal static readonly FunctionAbi Clock = new("__kimi_clock", "i64", []);
+
+    internal static readonly FunctionAbi StartBody = new("__kimi_start_body", Unit.ComputationType, []) { NoReturn = true };
+
     /// <summary>Gets the platform layer's routines, which the common runtime and the allocator call and only the layer template defines;
     /// every kernel32 call of the runtime in a program module lies in their definitions, each routine's own calls pinned by
     /// NativeAllocationAudit.AssertOsCallsInLayer (the test runtime's calls and a program's own imports are outside the layer).</summary>
@@ -175,19 +187,34 @@ internal static class RuntimeAbi
         "void",
         [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
-    /// <summary>Gets the platform layers' records, one per layer template, which the target rows' Layer columns name (the Tatara plan's
-    /// B7b2a): windows-x64's (WindowsPlatform.ll.in, over kernel32), whose runtime is the layer, the common part (Runtime.ll.in) and the
-    /// allocator (HeapRuntime.ll.in), with the layer's routines, the allocator's, then the common part's compiler-facing ones.</summary>
-    internal static readonly RuntimeLayer[] Layers =
-    [
-        new("WindowsPlatform.ll.in", " (win32=", [.. PlatformRoutines, HeapAllocate, HeapRelease, DestroyString, Abort, AbortMessage]),
-    ];
+    // The routines every layer's runtime defines after the layer's own: the allocator's, then the common part's compiler-facing ones.
+    private static readonly FunctionAbi[] CommonDefinitions = [HeapAllocate, HeapRelease, DestroyString, Abort, AbortMessage];
+
+    // linux-x64's libc-free start (IMPL 21.5.3): the module asm defining the entry, which clears the frame pointer, aligns the stack to
+    // 16 bytes and calls the start body, never returning; @llvm.used keeps the internal body, whose only caller the asm is.
+    private static readonly string LinuxStart =
+        "module asm \".text\"\nmodule asm \".globl " + TargetProfile.Linux.EntrySymbol + "\"\nmodule asm \".type " + TargetProfile.Linux.EntrySymbol +
+        ", @function\"\nmodule asm \"" + TargetProfile.Linux.EntrySymbol + ":\"\nmodule asm \"  xorl %ebp, %ebp\"\nmodule asm \"  andq $-16, %rsp\"\n" +
+        "module asm \"  callq " + StartBody.Name + "\"\nmodule asm \"  ud2\"\n@llvm.used = appending global [1 x ptr] [ptr @" + StartBody.Name +
+        "], section \"llvm.metadata\"\n";
 
     // The target-free constants a runtime template spells through a marker, by the marker's name (Expand), each as its text.
     private static readonly (string Name, string Text)[] Constants =
     [
         ("zero_sized_buffer", Number(ZeroSizedBuffer)), ("no_os_error", Number(NoOsError)), ("static_release_kind", Number(StaticReleaseKind)),
         ("heap_release_kind", Number(HeapReleaseKind)),
+    ];
+
+    /// <summary>Gets the platform layers' records, one per layer template, which the target rows' Layer columns name (the Tatara plan's
+    /// B7b2a), each runtime the layer, the common part (Runtime.ll.in) and the allocator (HeapRuntime.ll.in): windows-x64's
+    /// (WindowsPlatform.ll.in, over kernel32), whose start is the exported entry, with test builds; linux-x64's (LinuxPlatform.ll.in, over
+    /// system calls), whose module asm starts the internal start body after the process's setup, without test builds. A property after
+    /// the fields it reads, since static initializers run in text order.</summary>
+    internal static RuntimeLayer[] Layers { get; } =
+    [
+        new("WindowsPlatform.ll.in", " (win32=", [.. PlatformRoutines, .. CommonDefinitions], Start, null, [], true),
+        new(
+            "LinuxPlatform.ll.in", " (errno=", [.. PlatformRoutines, PlatformStart, Clock, .. CommonDefinitions], StartBody, LinuxStart, [PlatformStart], false),
     ];
 
     /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>
@@ -250,5 +277,14 @@ internal static class RuntimeAbi
 /// it and the common runtime writes its length from it, so a layer's prefix of another length changes no common rule (the Tatara plan's
 /// B7b revision 2.2). A <c>c"..."</c> literal spells it as is.</param>
 /// <param name="Definitions">The routines whose definitions the row's runtime splices at their markers, each exactly once: the layer's
-/// routines, the allocator's, then the common part's compiler-facing ones.</param>
-internal sealed record RuntimeLayer(string Template, string OsErrorPrefix, FunctionAbi[] Definitions);
+/// routines (every layer's PlatformRoutines, then its own), the allocator's, then the common part's compiler-facing ones.</param>
+/// <param name="Start">The routine an Application's start defines (IMPL 21.4.2): it calls <paramref name="StartCalls"/>, the startup
+/// root, then exits with 0. Exported when it is the row's entry symbol, internal when <paramref name="StartAssembly"/> defines the entry
+/// and calls it.</param>
+/// <param name="StartAssembly">The module text that defines the entry and calls <paramref name="Start"/>, written before it; null when
+/// <paramref name="Start"/> is the entry.</param>
+/// <param name="StartCalls">The layer's routines the start calls before the startup root, each a Unit routine without parameters.</param>
+/// <param name="Tests">Whether a test build runs on the layer: the test runtime (Kimi.Testing's TestRuntime.ll) calls kernel32 and its
+/// entry defines the exported entry, so only windows-x64's layer has a test variant.</param>
+internal sealed record RuntimeLayer(
+    string Template, string OsErrorPrefix, FunctionAbi[] Definitions, FunctionAbi Start, string? StartAssembly, FunctionAbi[] StartCalls, bool Tests);

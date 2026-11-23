@@ -1,10 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14), one per target row (Frame, built once per
-// row on first use): the header with the pooled constants, the runtime, composed of the row's platform layer (its RuntimeLayer's
-// template; windows-x64's WindowsPlatform.ll.in owns every kernel32 call of the runtime in a program module), the common part
-// (Runtime.ll.in) and Kimi's allocator (HeapRuntime.ll.in) and expanded in one scan, with the layer's ABI definitions spliced in and
-// the row's constants written, and its test variant, the memory part every module defines after it
+// row on first use): the header with the pooled constants (the row's float marker where it has one), the runtime, composed of the row's
+// platform layer (its RuntimeLayer's template; windows-x64's WindowsPlatform.ll.in owns every kernel32 call of the runtime in a program
+// module, linux-x64's LinuxPlatform.ll.in every system call), the common part (Runtime.ll.in) and Kimi's allocator (HeapRuntime.ll.in)
+// and expanded in one scan, with the layer's ABI definitions spliced in and the row's constants written, and its test variant (none for
+// a layer without test builds, where a test build is a broken contract), the memory part every module defines after it
 // (MemoryRuntime.ll.in: the runtime's memcmp, memcpy, memmove and memset, TargetProfile.MemorySymbols), the erased writer's kept runtime
 // (ErasedWriterRuntime.ll.in: the ErasedReserve intrinsic's routine, a module part on request), the float formatting part
 // (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the 128-bit
@@ -149,23 +150,26 @@ internal static partial class LlvmModuleText
         }
     }
 
-    // The frame's runtime, in its test variant when a test build supplies its test runtime text, then the memory part, then that text.
+    // The frame's runtime, in its test variant when a test build supplies its test runtime text, then the memory part, then that text. A
+    // test build on a row whose layer has no test builds is a broken contract (B7b8 refuses such a test before any build).
     internal static void WriteRuntime(TextWriter output, ModuleFrame frame, string? testRuntime)
     {
-        output.Write(testRuntime is null ? frame.Runtime : frame.TestRuntime);
+        output.Write(testRuntime is null
+            ? frame.Runtime
+            : frame.TestRuntime ?? throw new InvalidOperationException("A test build's target row must have a test runtime."));
         output.Write(MemoryRuntime);
         output.Write(testRuntime);
     }
 
     // SPEC 22.6: one declaration per foreign symbol. A kernel32 import that the runtime WriteRuntime wrote (with the same frame and
-    // testRuntime) already declares shares that declaration; Binding proved their physical Types equal (SPEC 21.2).
+    // testRuntime) already declares shares that declaration; Binding proved their physical Types equal (SPEC 21.2). The runtime's test
+    // variant declares what the runtime declares (it adds calls only).
     internal static void WriteExternals(TextWriter output, ModuleFrame frame, ReadOnlySpan<ExternalFunction> externals, string? testRuntime)
     {
-        var runtime = testRuntime is null ? frame.Runtime : frame.TestRuntime;
         foreach (var external in externals)
         {
             var abi = external.Abi;
-            if (Declares(runtime, abi.Name) || (testRuntime is not null && Declares(testRuntime, abi.Name)))
+            if (Declares(frame.Runtime, abi.Name) || (testRuntime is not null && Declares(testRuntime, abi.Name)))
             {
                 continue;
             }
@@ -312,25 +316,29 @@ internal static partial class LlvmModuleText
     {
         internal ModuleFrame(TargetProfile row)
         {
-            var layer = RuntimeAbi.Layer(row);
+            this.Layer = RuntimeAbi.Layer(row);
             this.Header = "; Kimigayo checked pre-optimization IR (" + row.Name + ")\ntarget triple = \"" + row.Target + "\"\n" +
-                "target datalayout = \"" + row.DataLayout + "\"\n" +
-                RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + row.FloatMarker + " = global i32 0, align 4\n";
-            this.Runtime = ExpandRuntime(RuntimeTemplate(layer), layer.Definitions, RuntimeAbi.RowConstants(row)) + "\n";
-            this.TestRuntime = ReportTestAbort(ReportTestAbort(this.Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage);
+                "target datalayout = \"" + row.DataLayout + "\"\n" + RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n" +
+                (row.FloatMarker is { } marker ? "@" + marker + " = global i32 0, align 4\n" : string.Empty);
+            this.Runtime = ExpandRuntime(RuntimeTemplate(this.Layer), this.Layer.Definitions, RuntimeAbi.RowConstants(row)) + "\n";
+            this.TestRuntime = this.Layer.Tests ? ReportTestAbort(ReportTestAbort(this.Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage) : null;
             this.Footer = FooterText(row);
         }
 
+        /// <summary>Gets the row's platform layer, whose start form the module's entry takes (ModuleCodegen's start).</summary>
+        internal RuntimeLayer Layer { get; }
+
         /// <summary>Gets the header: target information, shared Types, and exactly one strong definition of the row's float marker (SPEC
-        /// 21.4.7).</summary>
+        /// 21.4.7), where the row has one.</summary>
         internal string Header { get; }
 
         /// <summary>Gets the runtime: the row's platform layer, the common part and the allocator, one text expanded in one scan with the
         /// layer's definitions and the row's constants.</summary>
         internal string Runtime { get; }
 
-        /// <summary>Gets a test build's runtime: each Abort definition first reports the aborted test to the test runtime.</summary>
-        internal string TestRuntime { get; }
+        /// <summary>Gets a test build's runtime: each Abort definition first reports the aborted test to the test runtime; null for a layer
+        /// without test builds.</summary>
+        internal string? TestRuntime { get; }
 
         /// <summary>Gets the footer: every generated definition carries the row's profile attributes (SPEC 21.3.1) with its
         /// FunctionAttributes, #0; the memory part's definitions take #1, #0 plus "no-builtins", so no pass turns their loops into calls of
