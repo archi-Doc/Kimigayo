@@ -2,7 +2,10 @@
 
 using System.Diagnostics;
 using System.Reflection.PortableExecutable;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Xml.Linq;
 using Kimi;
@@ -813,15 +816,19 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
-    // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member;
-    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. The success
-    // record's members are exactly these (PLAN G1227: no toolchain-verification constants). On the installed toolchain.
+    // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member.
+    // A second build reuses both copies by their catalog hashes and writes nothing in the folder (LC3 S1): denied creating files there,
+    // it builds with the first build's rows and executable (the base failed creating its temporary copy). A third, after the staged
+    // kernel32 file was overwritten, replaces it and links the first build's executable. The success record's members are exactly these
+    // (PLAN G1227: no toolchain-verification constants). On the installed toolchain.
     [Fact]
+    [SupportedOSPlatform("windows")]
     public async Task ABuildLinksTheCompilersSuppliesAsStagedSnapshots()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var (project, paths, v1) = await this.BuildHello();
         var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        string libraries;
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
             Assert.Equal(
@@ -831,9 +838,24 @@ public sealed class NativeToolchainTest : IDisposable
                 staged.Select(x => x.Name + " " + NativeToolchain.Redact(x.Path, this.directory) + " " + x.Sha256),
                 record.RootElement.GetProperty("libraries").EnumerateArray().Select(static x =>
                     x.GetProperty("name").GetString() + " " + x.GetProperty("path").GetString() + " " + x.GetProperty("sha256").GetString()));
+            libraries = record.RootElement.GetProperty("libraries").GetRawText();
         }
 
         Assert.All(staged, static x => Assert.Equal(x.Sha256, ArtifactFiles.Hash(x.Path)));
+        var allow = DenyCreatingFiles(new DirectoryInfo(paths.Stem + ".native"));
+        try
+        {
+            Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+            using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+            Assert.Equal(libraries, record.RootElement.GetProperty("libraries").GetRawText());
+            Assert.Equal(v1, record.RootElement.GetProperty("executableSha256").GetString());
+            Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        }
+        finally
+        {
+            allow();
+        }
+
         File.WriteAllText(staged[0].Path, "overwritten");
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         Assert.Equal(staged[0].Sha256, ArtifactFiles.Hash(staged[0].Path));
@@ -1006,6 +1028,23 @@ public sealed class NativeToolchainTest : IDisposable
         }
 
         Assert.False(File.Exists(Path.Combine(this.directory, "out", "Hello.O2.exe")));
+    }
+
+    // Denies the current user creating files in the folder, by a rule its files do not inherit, and returns the action that removes the
+    // rule again (LC3 S1's row 3).
+    [SupportedOSPlatform("windows")]
+    private static Action DenyCreatingFiles(DirectoryInfo folder)
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var rule = new FileSystemAccessRule(identity.User!, FileSystemRights.CreateFiles, AccessControlType.Deny);
+        var security = folder.GetAccessControl();
+        security.AddAccessRule(rule);
+        folder.SetAccessControl(security);
+        return () =>
+        {
+            security.RemoveAccessRule(rule);
+            folder.SetAccessControl(security);
+        };
     }
 
     // The toolchain refuses the run before launch with this reason (IMPL 20.3, 20.3.2): exit 1, and the refusal, not another failure.
