@@ -263,10 +263,10 @@ public sealed partial class Binding
     // SPEC 10.5.1, 10.5.4, 14.9.2 (DECISIONS BU-43): a join its call classifies fits position by position, each position taking the parts
     // its sources hold there (PositionKind, ChildPositions), as its evidence does: a failed part fits every candidate (SPEC 23.1.2); a
     // waiting part (a Call, Case, Function or Reference that awaits its call) fits as an argument part (FitArgument: SPEC 10.5.1 classifies
-    // each source as that argument), at any position; an Aggregate position by each part's shape and then its child positions; a Typed
-    // one by each typed part's own Type (FitsTypedPart), ranked once; any other part by its late Type (LateFits), which applies no late
-    // write: the writes the
-    // late fits record are dropped per candidate, as no reader applies them (TryPropagate computes its own).
+    // each source as that argument), at any position; a typed part of a waiting position (typed parts with no common Type: U1.6g (a)) as
+    // a typed argument (FitTyped); an Aggregate position by each part's shape and then its child positions; a Typed one by each typed
+    // part's own Type (FitsTypedPart), ranked once; any other part by its late Type (LateFits), which applies no late write: the writes
+    // the late fits record are dropped per candidate, as no reader applies them (TryPropagate computes its own).
     private bool FitsJoin(Koto join, BoundType type)
     {
         var (writes, adaptations) = (this.lateWrites.Count, this.lateAdaptations.Count);
@@ -300,6 +300,10 @@ public sealed partial class Binding
             {
                 _ when this.PartFailed(part) => true, // SPEC 23.1.2: what only a failed part would cause is dependent.
                 _ when this.IsWaiting(part) => this.FitArgumentPart(part, type, this.ConstraintScope(part), part, out _) != CandidateApplicability.Inapplicable,
+                // SPEC 10.5.1, 10.2, 15.6.1 (design-af3 R2.1): a typed part of a waiting position (no common Type, U1.6g (a)) fits as a
+                // typed argument does (FitTyped), structurally, its erasure's Origin and Loan contracts judged after selection.
+                (PartKind.Call, _) when this.KindOf(part) == PartKind.Typed =>
+                    this.FitTyped(part, KotoHelper.UnwrapParentheses(part), type, this.ConstraintScope(part), part, out _) == CandidateApplicability.Applicable,
                 (PartKind.Aggregate, TupleLiteralKoto tuple) => this.ShapeFits(TupleShapeAt(tuple, type)),
                 (PartKind.Aggregate, ArrayLiteralKoto array) => this.ShapeFits(this.ArrayShapeAt(array, type)),
                 (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>
