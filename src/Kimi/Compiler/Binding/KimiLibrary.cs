@@ -96,7 +96,7 @@ public sealed partial class KimiLibrary
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
         this.Abort = this.CreateAbort();
-        this.DefaultAliases = [new("Kimi", Compilation.ParseConfiguredPath(this.Kotonoha, "compiler://configuration", "Kimi")!)];
+        this.DefaultAliases = Array.ConvertAll(Compilation.RequiredAliases, path => new Compilation.DefaultAlias(path, Compilation.ParseConfiguredPath(this.Kotonoha, "compiler://configuration", path)!));
         this.Restore();
     }
 
@@ -311,8 +311,9 @@ public sealed partial class KimiLibrary
     // A compiler-only call identity, never entered into Kimi or source name lookup.
     internal BindingSymbol Abort { get; }
 
-    // The library's own default alias (the required "Kimi", SPEC 18.2.3), its row made with the library, so it is evaluated inside the
-    // library's pass before its table freezes (F's ruling N1-7 (5)) and no later Compilation parses or writes in the shared library.
+    // The required default aliases' rows (Compilation.RequiredAliases, the required "Kimi", SPEC 18.2.3), one per path, made with the
+    // library, so each is evaluated inside the library's pass before its table freezes (F's ruling N1-7 (5)) and no later Compilation
+    // parses or writes in the shared library. Every module reads them for its required paths (Compilation.DefaultAliases; O-511 (a)).
     internal Compilation.DefaultAlias[] DefaultAliases { get; }
 
     internal ReadOnlySpan<BindingSymbol> RegisteredSymbols => CollectionsMarshal.AsSpan(this.registeredSymbols);

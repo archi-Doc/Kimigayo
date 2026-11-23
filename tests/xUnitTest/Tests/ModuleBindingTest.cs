@@ -283,6 +283,29 @@ public partial class ModuleBindingTest
         Assert.Equal((BindingState.Resolved, "Kimi"), (HirTables.State(row.Alias), HirTables.Symbol(row.Alias)?.Name));
     }
 
+    // SPEC 18.2.3 (the owner's O-511 (a), PLAN G1320): a module's required alias is the library's row, made and evaluated in the
+    // library's pass before its table freezes, whether the module adds no path or adds its own, so no module parses or evaluates `Kimi`
+    // again and its lookups read the library's frozen target.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AModulesRequiredAliasIsTheLibrarysRow(bool configured)
+    {
+        var compilation = Create("public func main() => Console.writeLine(\"root\")", "public group Api\n    public func value() => Console.writeLine(\"library\")", configure: configured ? Configure : null);
+        Assert.True(compilation.Bind().IsComplete);
+        var library = Assert.Single(compilation.DefaultAliases(compilation.Library.Kotonoha));
+        foreach (var module in compilation.SourceModules)
+        {
+            Assert.Same(library.Alias, Assert.Single(compilation.DefaultAliases(module), static x => x.Path == "Kimi").Alias);
+        }
+
+        static void Configure(ProjectFile root, ProjectFile library)
+        {
+            root.Alias = ["Lib.Api"];
+            library.Alias = ["Kimi.Console"];
+        }
+    }
+
     [Fact]
     public void LibraryDefaultsDoNotLeakToTheCaller()
     {

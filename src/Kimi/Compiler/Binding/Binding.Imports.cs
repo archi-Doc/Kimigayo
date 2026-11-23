@@ -26,7 +26,8 @@ public sealed partial class Binding
     // SPEC 18.2.3, 18.2.1, 23.1.2 (F's rulings N1-4, N1-7 (5), N1-13 B2): a configured default alias is the opening alias its configuration
     // declares (Compilation.ParseConfiguredPath), an alias of its module: indexed with its module's trees (IndexConfiguredPaths) and
     // evaluated where every alias is (PrepareAliases, AliasTarget), so its records, its rest and its import (its environment included)
-    // are a source alias's; the module root is not failed. A use's miss rests on a failed one (ImportMiss).
+    // are a source alias's; the module root is not failed. A use's miss rests on a failed one (ImportMiss). A required path's row is the
+    // library's (Compilation.DefaultAliases; the owner's O-511 (a)), evaluated in the library's pass, so AliasTarget reads its frozen target.
     private (BindingScope? Target, AliasImport Import) DefaultAliasTarget(Compilation.DefaultAlias row) => this.EvaluateAlias(row.Alias);
 
     // SPEC 9.5.1: function groups from several sources of one stage gather into one group (an ImportGroup step); any other kind beside a
