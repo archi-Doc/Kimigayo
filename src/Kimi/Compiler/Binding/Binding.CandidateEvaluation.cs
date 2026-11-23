@@ -308,11 +308,11 @@ public sealed partial class Binding
         return this.RecordSelection(call, failure);
     }
 
-    // The selection's one recorder (SPEC 10.1, 10.4, 23.1.2): the parties CandidateFacts built since the last record, recorded at a call
+    // The selection's one recorder (SPEC 10.1, 10.4, 23.1.2): the facts its caller built since the last record, recorded at a call
     // without a failure; a call that already failed keeps its first failure and drops them (the slot's drop). The scratch is cleared
     // either way, its capacity kept. Its callers' B1 statement (R7-E3 E3b delta 2.4): every check before each verdict that fails the call
     // returns, so the one input that can hold an earlier failure is the call's own, which Calls' NoneApplicable arm read before.
-    [Transitional("R7", Reason = "Records only at a call without a failure, so the call keeps its first failure (d2: f<Missing>(1) records no fact-less NoApplicableOverload_Kd), until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
+    [Transitional("R7", Reason = "Records only at a call without a failure, so the call keeps its first failure (d2: f<Missing>(1) records no fact-less NoApplicableOverload_Kd; h57: an unbound slot at a call already NoApplicableOverload_Kd records none), until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
     private BoundType? RecordSelection(Koto use, BindingFailure failure)
     {
         if (this.RecordedFailure(use) == BindingFailure.None)

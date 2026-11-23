@@ -199,6 +199,7 @@ public sealed partial class Binding
     // leaves without a Type, rests on the call. Where every unsolved slot stands at a position with a part whose own
     // binding failed (RestSlots), the call rests on such a part instead (SPEC 23.1.2; DECISIONS U1.6h-1): its record is that part's.
     // Otherwise the record names the first slot that does not rest (`boundary`): a slot at a failed part's position is no independent fact.
+    // The record is the selection's (RecordSelection), so a call that already failed keeps its first failure.
     private BoundType? FailUnboundSlots(in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations)
     {
         var (call, selected, scope, self, declaringType) = (solution.Call, solution.Function, solution.Scope, solution.Self, solution.DeclaringType);
@@ -272,10 +273,13 @@ public sealed partial class Binding
                 this.activeRequirementContract = contract;
             }
 
-            var slot = this.FactSite(CallOwnSlots(selected)[first]);
-            return waiting is null
-                ? this.Record(call, BindingFailure.UnboundTypeArgument, [new(ProblemFactKind.Related, slot, 0)], unresolved: true)
-                : this.Record(call, BindingFailure.UnboundTypeArgument, [new(ProblemFactKind.Related, slot, 0), new(ProblemFactKind.Related, this.FactSite(waiting), 1)], unresolved: true);
+            this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(CallOwnSlots(selected)[first]), 0));
+            if (waiting is not null)
+            {
+                this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(waiting), 1));
+            }
+
+            return this.RecordSelection(call, BindingFailure.UnboundTypeArgument);
         }
         finally
         {
