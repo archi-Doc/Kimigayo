@@ -603,7 +603,9 @@ public partial class CallableOriginForwardingTest
     // inside a nested body (e-owsinx), and in x's own body a written `during x` reads as x's value (e-owsly valid; e-owply, `x = p`, the
     // Unknown's record), also as a Closure's fixed signature Origin (e-owsig, 15.3.4: like any value whose Type names it). e-owsin, an
     // Owned judgment inside c of a capture whose Type names x through c's signature, is invalid: a region a signature names stays the
-    // region there, which c does not carry (SPEC 15.3.4, 15.6.5's Closure sentence; R7-O2 A1's CarriedRegion closes D-862).
+    // region there, which c does not carry (SPEC 15.3.4, 15.6.5's Closure sentence; R7-O2 A1's CarriedRegion closes D-862). Its
+    // relation form (C-488, the Front's O3 census): a_nf_lift_clo returns v, whose Type names r through lift's signature, as `during p`;
+    // lift carries nothing, so `r outlives p` has no premise there (R8-M56, O-443 (a)).
     [Theory]
     [InlineData("sel2", MkC + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
     [InlineData("sel1", "struct S {a, b, c}\n" + CB + "    public func p(self: ref/Self) -> i32\n        let r: Option<" + FnB + "> = self.mk(1)\n        return 0\n    public init() => ()\n    public func mk(self: ref/Self, x: i32) -> Option<" + FnC + "> => .None\n    public func mk<T>(self: ref/Self, x: T) -> Option<" + FnB + "> => .None\n", "AmbiguousBinding_Kd self.mk(1)")]
@@ -691,6 +693,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("e-owsig", RunOne + OwnStatic + "    let x = s\n    let c = func [] (v: ref/(ref/i32 during x)) -> i32 => 0\n    let g: (ref/(ref/i32 during static)) -> i32 = c@move\n    return 0\n", "")]
     [InlineData("e-owsinx", RunOne + OwnStatic + "    let x = s\n    let c = func [x] () -> i32\n        let d = func [x] () -> i32 => x@follow\n        let g: () -> i32 = d@move\n        return g()\n    return c()\n", "")]
     [InlineData("e-owsin", RunOne + OwnStatic + "    let x = s\n    let c = func [] (v: ref/i32 during x) -> i32\n        let d = func [v] () -> i32 => v@follow\n        let g: () -> i32 = d@move\n        return g()\n    return c(x)\n", "UnprovenConstraint_Kd d@move")] // R7-O2 A1 (Q13, a class-1 row of D-862): accepted before
+    [InlineData("a_nf_lift_clo", "func f(p: ref/i32) -> ref/i32 during p\n    let r = p\n    let lift = func (v: ref/i32 during r) -> ref/i32 during p => v\n    return lift(r)\n", "UnprovenOriginRelation_Kd v")] // R7-O2 A1 (Q13, a class-1 row of D-862): accepted before
     [InlineData("e-owe", RunPair + "func k(p: ref/i32, q: ref/i32) -> i32\n    let c = func [] (x: ref/i32 during p) -> i32 => 0\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")] // t_b5/t_b6's Closure form (shape from the 11-07 board, sources lost)
     [InlineData("e-rcv", RunPair + RcvK + RcvP + "    return run(q, c@move)\n", "")]
     [InlineData("e-rcv0", RunPair + RcvK + RcvQ + "    return run(q, c@move)\n", "")]
