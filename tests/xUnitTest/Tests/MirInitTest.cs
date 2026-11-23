@@ -1674,6 +1674,49 @@ public sealed class MirInitTest
     public void AnOpaqueSitesPartIsCheckedAtItsPlace(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Parts + source));
 
+    // PLAN G1184 (DECISIONS BU-<n>, R7-M88; SPEC 6.3.4, 11.7, 13.7.1, 15.1.2, 15.1.3, 23.1.2): a use of a stored Field whose own slot
+    // failed (HirFormsTest.FailedSlot's `w`, the Weak limit's Field), accessed directly over a receiver whose Type stores it, is its Field
+    // Place of no Type, so a write places it and a read names that Place, never its receiver whole: a read after the constructor's
+    // placement (q04), a read beside a moved sibling, also in a Consuming closure (q10, r01), report nothing (fail-before: a false
+    // UninitializedPlace_Kd or MovedPlace_Kd at the read), while a read before the placement (q05), of a wholly moved root (q11, r02) and
+    // a constructor placing it on one branch only (r21, the typed twin's record at the constructor; fail-before: none) keep their true
+    // records. Every other form reports nothing and builds without a fault: the constructor's placement (q01), through a custom `set`
+    // (r23) or beside a custom `get` (g1), whose read stays the getter's call (g2: its receiver read whole, the twin's record); a discard
+    // or a Move of it (d1, d2, q14), a write through a user index, an Array element, a held `uniq` reference, an exclusive parameter, a
+    // generic instance and a base layer (d5, d7, d8, d6, d11, d13), a shared borrow through a user index (d10); `storage` over a failed
+    // `self` (d3, d4: Binding's records alone) or a typed one (d4t); and a receiver of a Type parameter an identity premise makes the
+    // struct, which stores no Field (d14, d15: an Error, no Field Place; fail-before on the design's receiver-free predicate:
+    // InternalInvariant_Kd, "no published Type").
+    [Theory]
+    [InlineData(HirFormsTest.FailedSlot, "")] // q01
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        self.w = w@move\n        let k = self.w@ref\n        self.s = s@move\n", "")] // q04
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        let k = self.w@ref\n        self.w = w@move\n        self.s = s@move\n", "UninitializedPlace_Kd self.w@ref 1")] // q05
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let t = n.s@move\n    let k = n.w@ref\n", "")] // q10
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let t = n@move\n    let k = n.w@ref\n", "MovedPlace_Kd n.w@ref 1")] // q11
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let c = func [n@move] ()\n        let t = n.s@move\n        let k = n.w@ref\n", "")] // r01
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let c = func [n@move] ()\n        let t = n@move\n        let k = n.w@ref\n", "MovedPlace_Kd n.w@ref 1")] // r02
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public let v: i32\n    public init(c: bool, w: Weak<rc/N>, v: i32)\n        if c\n            self.w = w@move\n        self.v = v\n", "UninitializedPlace_Kd public init(c: bool, w: Weak<rc/N>, v: i32) 1")] // r21
+    [InlineData(HirFormsTest.CustomSet, "")] // r23
+    [InlineData(HirFormsTest.CustomGet, "")] // g1
+    [InlineData(HirFormsTest.CustomGet + "func f(n: N)\n    let t = n.s@move\n    let k = n.w\n", "MovedPlace_Kd n.w 1")] // g2
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    n.w@move\n", "")] // d1
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    n.w\n", "")] // d2
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let k = n.w@move\n", "")] // q14
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: uniq/Dictionary<i32, N>, w: Weak<rc/N>)\n    d[1].w = w@move\n", "")] // d5
+    [InlineData(HirFormsTest.FailedSlot + "func f(p: uniq/N, w: Weak<rc/N>)\n    p.w = w@move\n", "")] // d6
+    [InlineData(HirFormsTest.FailedSlot + "func f(a: uniq/Array<N>, w: Weak<rc/N>)\n    a[0].w = w@move\n", "")] // d7
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: uniq/Dictionary<i32, N>, w: Weak<rc/N>)\n    let r = d[1]@uniq\n    r.w = w@move\n", "")] // d8
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: ref/Dictionary<i32, N>)\n    let k = d[1].w@ref\n", "")] // d10
+    [InlineData(HirFormsTest.FailedSlot + "struct B<T>\n    public var w: Weak<rc/N>\n    public var t: T\n    public init(w: Weak<rc/N>, t: T)\n        self.w = w@move\n        self.t = t@move\nfunc f(b: uniq/B<i32>, w: Weak<rc/N>)\n    b.w = w@move\n", "")] // d11
+    [InlineData(HirFormsTest.FailedSlot + "open struct A\n    public var w: Weak<rc/N>\n    public init(w: Weak<rc/N>)\n        self.w = w@move\nstruct D : A\n    public var s: string\n    public init(w: Weak<rc/N>, s: string) : base(w@move)\n        self.s = s@move\nfunc f(d: uniq/D, w: Weak<rc/N>)\n    d.w = w@move\n", "")] // d13
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        set(self: uniq/Missing, value: Weak<rc/N>) -> ()\n            storage = value@move\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d3
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        get(self: ref/Missing) -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage@ref)\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d4
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        get() -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage@ref)\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d4t
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: uniq/T, w: Weak<rc/N>)\n    T is N\n    t.w = w@move\n", "")] // d14
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: ref/T)\n    T is N\n    let k = t.w@ref\n", "")] // d15
+    public void AFieldWhoseSlotFailedIsItsOwnPlace(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
+
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)
         => (body.Blocks.ToArray().Select((_, b) => flow.Head(b)).Max() + 1) * (long)MirInit.Lanes * ((moves.FlowCount + 63) / 64);

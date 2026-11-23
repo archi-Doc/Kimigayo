@@ -2,10 +2,11 @@
 
 // Owns the HIR contract between the publisher and the MIR builder: the Binding facts each published Op guarantees (DECISIONS R4-M61).
 // Input: a node, the Op its form calls for, Binding's plans and symbols. Output: whether the node has every fact its Op's building rule reads,
-// each slot it declares with its Type or its failed fact included (SlotsStated, PLAN G1073).
+// each slot it declares with its Type or its failed fact included (SlotsStated, PLAN G1073), and a Field Place over its Field's failed
+// slot (FailedField, PLAN G1184).
 // The publisher gives a node an Op only with its facts, so the builder trusts them; a fact the builder starts reading adds its row here.
-// Must not decide an Op, require a fact the builder does not read for it (a Type stands for Binding's resolution of the node), or leave
-// the builder a fallback for a missing fact.
+// Must not decide an Op, require a fact the builder does not read for it (a Type stands for Binding's resolution of the node; for a Field
+// Place over a failed slot, the slot's failed fact over a typed receiver does), or leave the builder a fallback for a missing fact.
 
 using Kimi.Compiler.Parsing;
 
@@ -15,9 +16,10 @@ public sealed partial class Binding
 {
     /// <summary>Gets whether an Op is an operation (SPEC 3.1, 4.7, 6.2.2, 12.3, 13.2-13.6): a literal's constant, a Field, a Deref, a
     /// built-in selection, a built-in operator, <c>and</c>/<c>or</c>, a borrow, a conversion or a runtime Type test, whose building forms the
-    /// node's value or Place from Binding's selection for the node, for which the node's Type stands (<see cref="HasFacts"/>); one Binding
-    /// left unresolved is an Error, which keeps the operands its form evaluates on every path (DECISIONS R4-M88, Z16). A new HirOp member
-    /// decides here whether it is one.</summary>
+    /// node's value or Place from Binding's selection for the node, for which the node's Type stands (<see cref="HasFacts"/>; for a Field
+    /// Place over its Field's failed slot, that slot's fact, <see cref="FailedField"/>); one Binding left unresolved otherwise is an Error,
+    /// which keeps the operands its form evaluates on every path (DECISIONS R4-M88, Z16). A new HirOp member decides here whether it is
+    /// one.</summary>
     /// <param name="op">The Op a node's form calls for.</param>
     /// <returns>Whether it is an operation.</returns>
     internal static bool Operation(HirOp op) => op is HirOp.Literal or HirOp.Field or HirOp.Deref or HirOp.Index or HirOp.PrimitiveOp or
@@ -38,7 +40,8 @@ public sealed partial class Binding
         (op != HirOp.Body && node is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var } property &&
         (property.InitializerKoto is not null || property.Parent is DeclarationContainerKoto { HasStaticMembersOnly: true }));
 
-    /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: an operation its Type (<see cref="Operation"/>),
+    /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: an operation its Type (<see cref="Operation"/>) or, a
+    /// Field Place over its Field's failed slot, that slot's fact (<see cref="FailedField"/>),
     /// every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
     /// symbol), and per Op: a sequence's metadata its form (<see cref="BuiltinForm"/>), a call its plan (an index's selected call; one
     /// no expansion supplies inputs to with its operations, omitted defaults and receiver covering its parameters; a
@@ -51,16 +54,16 @@ public sealed partial class Binding
     /// HirPublisher.Parts publishes, its definition and its slots stated, whatever the creation, DECISIONS R5-M63 (1) as amended); a
     /// conversion its binding (a case adaptation its plan); a Tuple literal its Type, an array literal a fixed-array Type or, without a
     /// fill, an Array Type, and an enum Case construction its plan; a declared local its symbol; a name its symbol and, but for a
-    /// function's name Binding resolved, whose value its consumer forms from the selection, its Type (DECISIONS Z16: a name of a binding
-    /// without a Type, or of a function Binding left unresolved, is an Error, which rests on that binding's failure or on its
-    /// signature's); and every slot a declared local, a definition's Body, a match, a try or a for loop declares stated
-    /// (<see cref="SlotsStated"/>, PLAN G1073).</summary>
+    /// function's name Binding resolved, whose value its consumer forms from the selection, and an accessor's <c>storage</c> of a Field
+    /// whose slot failed (<see cref="FailedField"/>), its Type (DECISIONS Z16: a name of another binding without a Type, or of a function
+    /// Binding left unresolved, is an Error, which rests on that binding's failure or on its signature's); and every slot a declared
+    /// local, a definition's Body, a match, a try or a for loop declares stated (<see cref="SlotsStated"/>, PLAN G1073).</summary>
     /// <param name="node">An evaluated node.</param>
     /// <param name="op">The Op its form calls for.</param>
     /// <returns>Whether the node has its facts.</returns>
     internal bool HasFacts(Koto node, HirOp op)
     {
-        if (Operation(op) && HirTables.Meaning(node) is null)
+        if (Operation(op) && HirTables.Meaning(node) is null && !this.FailedField(node))
         {
             return false;
         }
@@ -118,7 +121,8 @@ public sealed partial class Binding
                 return this.SlotsStated(node);
             case HirOp.Name:
                 return HirTables.Symbol(node) is { } symbol &&
-                    (HirTables.Meaning(node) is not null || (symbol.Kind == BindingSymbolKind.Function && node.BindingState == BindingState.Resolved)) &&
+                    (HirTables.Meaning(node) is not null || (symbol.Kind == BindingSymbolKind.Function && node.BindingState == BindingState.Resolved) ||
+                        this.FailedField(node)) &&
                     (symbol.Kind != BindingSymbolKind.Storage || (symbol.Declaration is { } property && HirTables.Symbol(property) is not null));
             default:
                 return true;
@@ -180,6 +184,43 @@ public sealed partial class Binding
 
             return first > 0 || (CallPlan.Of(this, node, format.Writes.Count) is { } status && Complete(status));
         }
+    }
+
+    /// <summary>Gets whether a node is a Field Place of no Type (PLAN G1184; BU-234's failed slot, for a Field; SPEC 23.1.2, 6.3.4, 11.7,
+    /// 13.7.1): a use Binding resolved to a Field whose own slot failed, with the slot's cause recorded at its TypeSource, which it
+    /// accesses directly (DirectAccess: a constructor's own Field or a standard accessor), over a receiver whose Type stores that Field:
+    /// the builder's Field step indexes its receiver's struct below every layer (AdtDef.FieldOwner, the one walk by Field), and the
+    /// stored Field's slot failed (<see cref="AdtDef.FieldSlotFailed"/>, the one test of it, MIR's projection rule's too). The receiver is
+    /// a member access's, or an accessor's <c>self</c> for its <c>storage</c>; one of no Type (a failed <c>self</c>) or of a Type that
+    /// stores no such Field (a Type parameter an identity premise makes the struct, PLAN G168b) gives none. The Field Op's storage fact,
+    /// not an Op decision (OpOf decides the Op): read by <see cref="HasFacts"/> (the operation test, the Name row) and by the publisher's
+    /// keep rule. A read through a custom getter is the getter's call, a computed Property has no storage, and a name of another failed
+    /// slot (a local, a parameter, a static) has no receiver: each stays an Error. So does an update's target (a compound assignment's,
+    /// an increment's or a decrement's, IsWriteTarget): its operation reads the Field's value at the failed Type (SPEC 13.7.2), so the
+    /// update is a derived write, as before (DECISIONS G1022, Z27).</summary>
+    /// <param name="node">An evaluated node.</param>
+    /// <returns>Whether it is a Field Place over its Field's failed slot.</returns>
+    internal bool FailedField(Koto node) => HirTables.Symbol(node) is { } symbol &&
+        (symbol.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration!) : symbol) is { Property: { } property } field &&
+        !(IsWriteTarget(node, out var write) && !write) && FieldReceiver(node, symbol) is { } receiver &&
+        AdtDef.FieldOwner(this.Types, receiver, field) is { } owner && AdtDef.FieldSlotFailed(owner.Layer, owner.Index) && this.Stated(field) &&
+        (symbol.Kind == BindingSymbolKind.Storage || DirectAccess(node, property));
+
+    // The Type a Field Place's step projects from (FailedField): its receiver's Place's below every layer, as the publisher counts a
+    // projected receiver's layers (HirPublisher.Layers) and the builder follows them: a member access's receiver, or an accessor's `self`
+    // for its `storage`; null for another node, and for a receiver Binding resolved on an identity premise's Type, whose Place keeps the
+    // Type parameter (DECISIONS BU-72, HirTables.IdentityPremise), which stores no Field.
+    private static BoundType? FieldReceiver(Koto node, BindingSymbol symbol)
+    {
+        var type = symbol.Kind == BindingSymbolKind.Storage
+            ? symbol.Scope.Owner is PropertyAccessorKoto accessor ? Accessor(accessor).SelfSymbol?.Type : null
+            : node is MemberAccessKoto member && HirTables.IdentityPremise(member) is null ? member.Left.BoundType : null;
+        while (TyCtxt.Layer(type, out var below, out _) != HirPlaceKind.Value)
+        {
+            type = below;
+        }
+
+        return type;
     }
 
     // The facts a Closure's parts are published with (HirPublisher.Parts; DECISIONS R5-M63 (1) as amended by PLAN G1110): the definition

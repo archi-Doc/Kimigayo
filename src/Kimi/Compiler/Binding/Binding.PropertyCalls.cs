@@ -64,7 +64,8 @@ public sealed partial class Binding
     private static bool StorageAccess(Koto node, BoundAccessor accessor) => (IsSpecialField(node, out var special) && special.IsConstructor) || accessor.IsStandard;
 
     // Whether Binding accesses a stored Property's storage directly at a node it did not refuse: the operation's accessor (an update's
-    // `get`), and an update's `set`, are the storage there (StorageAccess); otherwise the access binding binds their calls.
+    // `get`), and an update's `set`, are the storage there (StorageAccess); otherwise the access binding binds their calls. Read by the
+    // access binding and by FailedField, for which it is the Field Op's storage fact, not an Op decision.
     private static bool DirectAccess(Koto node, BoundProperty property)
     {
         var update = IsWriteTarget(node, out var write) && !write;
