@@ -392,6 +392,7 @@ public sealed partial class Binding
             row.IndependentRejection = false;
             row.ConstraintFailure = null;
             row.PremiseUnknown = false;
+            row.Deferred = false;
             if (!argumentMap.InputsValid || (function.IsConstructor && declaringType is null))
             {
                 return CandidateApplicability.Inapplicable;
@@ -637,7 +638,9 @@ public sealed partial class Binding
                                 // a leading-dot Case at a bare atom), as at a closed position: a part that does not check there makes the
                                 // candidate inapplicable, and CheckedClass is its one class source at both positions. Its waiting part is
                                 // completed after selection, never at an atom. Under the argument probe a candidate whose result holds a
-                                // slot no evidence binds queries none (ProbedResultOpen).
+                                // slot no evidence binds queries none (ProbedResultOpen): the part has no class, and the candidate defers
+                                // the call unranked (Deferred; ArgFlow ruling 171 C2), so its operation's adaptation is never compared.
+                                row.Deferred |= openType is null && this.AwaitedKind(argument) is PartKind.Call or PartKind.Case;
                                 var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure
                                     : this.KindOf(argument) is PartKind.Aggregate or PartKind.Join
                                     ? ExpectedTypeClass(this.Materialization(argument, pattern, scope)) : ArgumentAdaptation.Exact;
@@ -1008,8 +1011,9 @@ public sealed partial class Binding
 
     // SPEC 10.5.1 bullet 1 (ArgFlow ruling 160 C3; design v3-A 11.8.7): under the argument probe (no expected result), whether the
     // candidate's result holds a slot that no evidence binds, which only a checked part or a literal's default would reach: the call is
-    // then not independently typable whatever its checked parts give there (SolveSelected defers it by the same reading), so its trial
-    // queries none of them at an open position; each is checked at every outer candidate's expected Type, once per distinct Type.
+    // then not independently typable whatever its checked parts give there, so its trial queries none of them at an open position and
+    // the candidate, applicable, defers the call unranked (EvaluatedCandidate.Deferred); each part is checked at every outer
+    // candidate's expected Type, once per distinct Type.
     private bool ProbedResultOpen(BoundType? expected, InvocationKoto call, FunctionKoto function, SlotSet unbound)
         => expected is null && this.UnderArgumentProbe(call) &&
             (function.IsConstructor || (function.BoundSymbol?.Type is { } result && MentionsSlots(result, CallSlotOwner(function), unbound)));

@@ -377,6 +377,11 @@ public sealed partial class Binding
 
         // SPEC 10.5.1: an inapplicable candidate's failed check of a part against its expected Type (TakeTrialChecked).
         internal CheckedPartFailure? CheckedFailure { get; set; }
+
+        // SPEC 10.5.1 bullet 1 (ArgFlow rulings 160 C3, 171 C2): the trial left a checked part unqueried under the argument probe
+        // (ProbedResultOpen), which gives the part no class: applicable, the candidate makes the call not independently typable
+        // whatever the others give, so the call defers unranked (ClassifySelection, SolveSelected).
+        internal bool Deferred { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.

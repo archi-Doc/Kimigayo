@@ -578,7 +578,8 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds or that holds a waiting part, or of a
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
-    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the parts' own Types
+    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved); a candidate that left a checked
+    // part unqueried there reaches it unranked (ClassifySelection's DeferredCandidate) and waits so. Otherwise the parts' own Types
     // apply to the selected candidate step by step (OwnTypeSteps), its checks running once more after each; a failure reports that
     // candidate, never another (its Constraints are the selected call's obligation, CheckDefaulted), and a slot still unbound is the
     // inference boundary, a failed argument part included (rule W). False when the call is complete: waiting or failed.

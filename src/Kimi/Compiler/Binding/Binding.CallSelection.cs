@@ -105,6 +105,21 @@ public sealed partial class Binding
         return applied;
     }
 
+    // SPEC 10.5.1 bullet 1 (ArgFlow rulings 160 C3, 171 C2): the first applicable candidate whose trial left a checked part unqueried
+    // under the argument probe (EvaluatedCandidate.Deferred), else -1: the call is then not independently typable, decided unranked.
+    private static int DeferredCandidate(ReadOnlySpan<EvaluatedCandidate> candidates)
+    {
+        for (var i = 0; i < candidates.Length; i++)
+        {
+            if (candidates[i] is { Deferred: true, State: CandidateApplicability.Applicable or CandidateApplicability.Waiting })
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     // SPEC 15.1.5: the absent spelling a NoneApplicable selection names: the Acquisition of the last candidate, in evaluation order,
     // whose trial a bare Place alone kept from applying (TryCandidate), else none.
     private static AcquisitionFailure? LastAcquisition(in CallEvaluation evaluation)
@@ -492,7 +507,8 @@ public sealed partial class Binding
     // The selection the evaluated candidates determine. A failed candidate declaration or signature leaves the selection resting on
     // that failure (SPEC 23.1.2); an Unknown premise defers it only when it can affect it (SPEC 8.3.3). A candidate unproven through an
     // unformed split (DECISIONS BU-240, temporary, PLAN G886: never premise-only, unrankable) makes the selection UnformedSplit: the call is
-    // one located Unsupported_Kd, however many are pending (FailUnformedCall).
+    // one located Unsupported_Kd, however many are pending (FailUnformedCall). An applicable candidate that leaves the call not
+    // independently typable under the argument probe (DeferredCandidate) is never ranked, nor premised: SolveSelected defers the call.
     private (CallSelection Kind, int Winner) ClassifySelection(ref CallEvaluation evaluation)
     {
         var candidates = evaluation.Evaluated.AsSpan(0, evaluation.Count);
@@ -502,7 +518,7 @@ public sealed partial class Binding
         }
 
         if (evaluation.Pending && (evaluation.FailedPendingSignature is not null || !evaluation.PremisesOnly || evaluation.Applicable == 0 ||
-            !this.PremisesCannotAffect(evaluation.Call, candidates, evaluation.Operations, evaluation.OperationStride)))
+            (DeferredCandidate(candidates) < 0 && !this.PremisesCannotAffect(evaluation.Call, candidates, evaluation.Operations, evaluation.OperationStride))))
         {
             return (evaluation.FailedPendingSignature is not null ? CallSelection.FailedSignature
                 : evaluation.Unformed ? CallSelection.UnformedSplit : CallSelection.Unproven, -1);
@@ -521,6 +537,11 @@ public sealed partial class Binding
         if (evaluation.Applicable == 1)
         {
             return (CallSelection.Selected, evaluation.Winner);
+        }
+
+        if (DeferredCandidate(candidates) is var deferred and >= 0)
+        {
+            return (CallSelection.Selected, deferred); // SPEC 10.5.1 (ArgFlow ruling 171 C2): unranked; SolveSelected defers the call.
         }
 
         var comparable = true;
