@@ -733,6 +733,153 @@ public sealed partial class MirBorrowsTest
                     kk = 2
                     usep(h.0)
             """,
+        ["cloVarPtrU8Bad"] = """
+            func cloVarPtrU8Bad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let m: raw/u8 = null
+                var c = func [var m] (v: raw/u8)
+                    m = v
+                c(spare)
+                kk = 2
+            """,
+        ["cloVarPtrU8CellBad"] = """
+            func cloVarPtrU8CellBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: u8 = 0
+                let m: raw/u8 = cell@raw
+                var c = func [var m] (v: raw/u8)
+                    m = v
+                c(spare)
+                kk = 2
+            """,
+        ["cloVarPtrU8NullWriteBad"] = """
+            func cloVarPtrU8NullWriteBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let m: raw/u8 = null
+                var c = func [var m] (v: raw/u8)
+                    m = null
+                c(spare)
+                kk = 2
+            """,
+        ["cloVarPtrU8OtherVarBad"] = """
+            func cloVarPtrU8OtherVarBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let m: raw/u8 = null
+                var n: i32 = 0
+                var c = func [var m, var n] (v: raw/u8)
+                    n += 1
+                c(spare)
+                kk = 2
+            """,
+        ["cloVarPtrU8SharedOk"] = """
+            func usep(p: raw/u8) => ()
+            func cloVarPtrU8SharedOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let m: raw/u8 = null
+                var c = func [var m] (v: raw/u8)
+                    usep(m)
+                c(spare)
+                kk = 2
+            """,
+        ["cloVarI32Ok"] = """
+            func cloVarI32Ok()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var n: i32 = 0
+                var c = func [var n] (v: raw/u8)
+                    n += 1
+                c(spare)
+                kk = 2
+            """,
+        ["cloVarPtrU8NullArgOk"] = """
+            func cloVarPtrU8NullArgOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let m: raw/u8 = null
+                var c = func [var m] (v: raw/u8)
+                    m = v
+                c(null)
+                kk = 2
+            """,
+        ["cloVarTupPtrU8Bad"] = """
+            func cloVarTupPtrU8Bad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let m: (raw/u8, i32) = (null, 0)
+                var c = func [var m] (v: raw/u8)
+                    m = (v, 1)
+                c(spare)
+                kk = 2
+            """,
+        ["tupParamPtrU8Ok"] = """
+            func viaTup(t: uniq/((raw/u8, i32)), v: raw/u8) => ()
+
+            func tupParamPtrU8Ok()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var t: (raw/u8, i32) = (null, 0)
+                viaTup(t@uniq, spare)
+                kk = 2
+            """,
+        ["enumPayloadPtrU8Bad"] = """
+            enum Slot
+                Has(raw/u8)
+                Empty
+
+            func viaSlot(s: uniq/Slot, v: raw/u8) => ()
+
+            func enumPayloadPtrU8Bad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s: Slot = .Has(null)
+                viaSlot(s@uniq, spare)
+                kk = 2
+            """,
+        ["enumPayloadPtrU8Ok"] = """
+            func viaRaw(s: uniq/(raw/u8), v: raw/u8) => ()
+
+            func enumPayloadPtrU8Ok()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s: raw/u8 = null
+                viaRaw(s@uniq, spare)
+                kk = 2
+            """,
+        ["r4MixHopBad"] = """
+            func keep2m(slot: raw/((raw/(raw/u8), raw/u8 during static)), value: raw/u8) => ()
+
+            func mixHop(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: (raw/(raw/u8), raw/u8 during static) = (cell@raw, null)
+                keep2m(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["r4MixHopOk"] = """
+            func keep1m(slot: raw/((raw/u8, raw/u8 during static)), value: raw/u8) => ()
+
+            func mixHopOne(y: uniq/i32)
+                let w = y@follow@ref
+                var hop: (raw/u8, raw/u8 during static) = (null, null)
+                keep1m(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+            """,
     };
 
     // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4; its implementation review's rows). Not rows
@@ -793,6 +940,19 @@ public sealed partial class MirBorrowsTest
     [InlineData("zUniqPastEnumHOk", "")] // V: through a borrow layer a non-punnable referent designates nothing at h
     [InlineData("zUniqPastRefHOk", "")] // V, the same
     [InlineData("zUniqPastTupBad", "zUniqPastTupBad: kk = 2")] // I: a punnable referent is read punned over h.0's bytes
+    [InlineData("cloVarPtrU8Bad", "cloVarPtrU8Bad: kk = 2")] // I, PLAN G841 rule 4 (4): the Exclusive call may write its own pointer at var m, a raw layer without an Origin of its environment, and store spare through it in storage the body does not own (5.7 Calls, 15.6.4, 15.8.2; O-373 (a)); c is not used after kk = 2
+    [InlineData("cloVarPtrU8CellBad", "cloVarPtrU8CellBad: kk = 2")] // I, the same with m addressing a local
+    [InlineData("cloVarPtrU8NullWriteBad", "cloVarPtrU8NullWriteBad: kk = 2")] // I, the same: the contract, not the body, decides (15.6.4)
+    [InlineData("cloVarPtrU8OtherVarBad", "cloVarPtrU8OtherVarBad: kk = 2")] // I, the same through another var binding: the call may write var m (15.8.2)
+    [InlineData("cloVarTupPtrU8Bad", "cloVarTupPtrU8Bad: kk = 2")] // I, the same at a Tuple binding's raw element
+    [InlineData("cloVarPtrU8SharedOk", "")] // V, a Shared call writes nothing past ref/Self
+    [InlineData("cloVarI32Ok", "")] // V, an environment with no raw layer
+    [InlineData("cloVarPtrU8NullArgOk", "")] // V, nothing carries r's Loan into the call
+    [InlineData("tupParamPtrU8Ok", "")] // V, a parameter's own Tuple layer: past it only a u8 (15.6.4 oneLayer; Binding's entry is the bound)
+    [InlineData("enumPayloadPtrU8Bad", "enumPayloadPtrU8Bad: kk = 2")] // I, rule 4 (4) at a Case payload's layer a declaration states (5.7 Calls; O-373 (a))
+    [InlineData("enumPayloadPtrU8Ok", "")] // V, a parameter's own layer (15.6.4 oneLayer)
+    [InlineData("r4MixHopBad", "mixHop: y@follow = 5")] // I, rule 4 (4) at a key that keeps the declared step: hop.0, a layer without an Origin beside a stated one (5.7 Calls decides per layer)
+    [InlineData("r4MixHopOk", "")] // V, its twin: past hop.0 only a u8
     public void TheReadingKeyPastAHolderReadsEveryLayer(string form, string expected)
     {
         var c = MirBuildTest.Compile(PastHolderForms[form] + "\npublic func main() => ()\n");
