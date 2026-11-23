@@ -443,7 +443,7 @@ public sealed partial class MirBorrowsTest
         var block = body.AddBlock();
         body.Push(block, MirStatement.Assign(x, MirRvalue.Use(Constant(2)), At(1)));
         body.Push(block, MirStatement.Assign(r, MirRvalue.Ref(MirRefKind.Shared, x, reference), At(2)));
-        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(null, body.AddOpaque(new(0, 3), [], 0)), At(3)));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(null, body.AddOpaque(new(0, 3), [], 0, 0)), At(3)));
         var operands = body.AddOperand(MirOperand.Move(unknown));
         _ = Constant(1);
         body.Push(block, MirStatement.Assign(value, MirRvalue.Binary(Enum.Parse<MirBinaryOp>(op), operands, proven: true), At(4)));

@@ -37,19 +37,35 @@ internal sealed partial class MirBuilder
     // syntax's roots, so a moved operand is not used again there; so does a part built already where it is located (Located: an
     // expansion's operand, a derived write's right side, DerivedWrite, or a failed jump's operand, Transfer). An Error node located already
     // had its kept operands evaluated there, once, so a consumer's own derived value of it takes only the located part (DECISIONS R4-M109),
-    // the Error's derived value, a Temporary, which is no use (Part, Z17).
-    // DECISIONS Z17c (SPEC 12.2, 15.6.7): the kept operands are evaluated as the call builder evaluates its operands, the last that builds
-    // code as the Error's form takes it (Builds over KeptAdjust) found first; each is formed as an invocation's reserved input where the
-    // form takes it as one (Reserved over KeptInput: a written exclusive borrow is two-phase; a Case payload's, an aggregate element's or a
-    // built-in operator's operand stays a live Loan); each the form reads whole that is a Place, no temp, of a Copy Type is secured, its
-    // read, at its node where it or a later kept operand builds code, else at the site's node: the decided twin's location in both. The
-    // site names each Place first, its kept uses, which it activates as a Call does its inputs (MirBorrows.Activations).
+    // the Error's derived value, a Temporary, which is no use (Part, Z17). The site names each kept operand's Place first, its kept uses,
+    // which it activates as a Call does its inputs (DECISIONS Z17c, MirBorrows.Activations).
     private void SiteUses(Koto node)
     {
-        var start = this.kept.Count;
-        if (HirTables.Op(node) == HirOp.Error && this.Located(node) is null)
+        var start = this.KeptParts(node, node);
+        this.ClearUses();
+        for (var i = start; i < this.kept.Count; i++)
         {
-            node.VisitChildren(this.keptOperands ??= new(this));
+            this.SiteUse(this.kept[i].Place);
+        }
+
+        this.keptUses = this.uses.Count;
+        this.kept.RemoveRange(start, this.kept.Count - start);
+        (this.collector ??= new(this)).Collect(node);
+    }
+
+    // The kept operands of an Error node not located already, evaluated before the site at a node, their Places in the kept list from the
+    // returned start (SPEC 23.1.2; DECISIONS R5-M63, R4-M109). DECISIONS Z17c (SPEC 12.2, 15.6.7): they are evaluated as the call builder
+    // evaluates its operands, the last that builds code as the Error's form takes it (Builds over KeptAdjust) found first; each is formed
+    // as an invocation's reserved input where the form takes it as one (Reserved over KeptInput: a written exclusive borrow is two-phase; a
+    // Case payload's, an aggregate element's or a built-in operator's operand stays a live Loan); each the form reads whole that is a
+    // Place, no temp, of a Copy Type is secured, its read, at its node where it or a later kept operand builds code, else at the site's
+    // node: the decided twin's location in both.
+    private int KeptParts(Koto site, Koto error)
+    {
+        var start = this.kept.Count;
+        if (HirTables.Op(error) == HirOp.Error && this.Located(error) is null)
+        {
+            error.VisitChildren(this.keptOperands ??= new(this));
         }
 
         var (count, last) = (this.kept.Count, start - 1);
@@ -63,18 +79,10 @@ internal sealed partial class MirBuilder
         {
             var part = this.kept[i].Node;
             var place = this.Place(part, Reserved(HirTables.KeptInput(part), part, HirTables.KeptAdjust(part), expected: null));
-            this.kept[i] = (part, this.Secures(part, place) ? this.Secure(MirOperand.Copy(place), i <= last ? part : node).Place : place);
+            this.kept[i] = (part, this.Secures(part, place) ? this.Secure(MirOperand.Copy(place), i <= last ? part : site).Place : place);
         }
 
-        this.ClearUses();
-        for (var i = start; i < count; i++)
-        {
-            this.SiteUse(this.kept[i].Place);
-        }
-
-        this.keptUses = this.uses.Count;
-        this.kept.RemoveRange(start, count - start);
-        (this.collector ??= new(this)).Collect(node);
+        return start;
     }
 
     // The use of an Opaque site derived from a part built already, which the builder's own failed step goes below: that part's Place, a

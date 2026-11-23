@@ -135,5 +135,5 @@ internal sealed partial class MirBuilder
     }
 
     // The site of an Opaque value at its syntax, naming the uses collected.
-    private int AddSite(SourceRef source) => this.body.AddOpaque(source, CollectionsMarshal.AsSpan(this.uses), this.keptUses);
+    private int AddSite(SourceRef source) => this.body.AddOpaque(source, CollectionsMarshal.AsSpan(this.uses), this.keptUses, 0);
 }
