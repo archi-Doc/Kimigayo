@@ -12,7 +12,7 @@
 // declaration names being a fixed Origin of it (SPEC 15.3.4; DECISIONS BU-89, until PLAN G230 (A)'s declaring body). The view's row 5
 // (OwnCallAtom), B's own call receiver and call result, is another such shared rule.
 // - Inputs: an Origin as the caller has it at its use, and the body that formed the relation (an obligation's Body, or the forming body
-//   while binding; no body after binding); the formation context (BoundOrigin.Body, BoundClosure.EvaluatingBody, Binding.ExecutableBodies.cs)
+//   while binding; no body after binding); the formation context (BoundOrigin.Body, BindingSymbol.DeclaringBody, Binding.ExecutableBodies.cs)
 //   and whether a Closure is classified (BoundClosure.Classified).
 // - Outputs: the class, read by the judge (Binding.OriginProof.cs, Binding.LocalRegions.cs), the records (Binding.OriginFits.cs,
 //   Binding.OriginClauses.cs, Binding.CallRelations.cs) and the view (Binding.OriginRows.Atoms.cs, ClassifyAtom).
@@ -152,7 +152,7 @@ public sealed partial class Binding
     {
         value = null;
         if (!SlotRegion(region) || function is not Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan } ||
-            !(this.formingBody.IsBody ? plan.Carried.Contains(region) && this.AdmittedEntry(plan, region) : this.CarriedWalk(function).Contains(region)))
+            !(this.formingBody.IsBody ? plan.Carried.Contains(region) && this.AdmittedEntry(this.symbols[function].DeclaringBody, region) : this.CarriedWalk(function).Contains(region)))
         {
             return false;
         }
@@ -173,7 +173,7 @@ public sealed partial class Binding
 
         if (plan.WalkVersion != this.regionVersion)
         {
-            this.CarriedRegions(plan, plan.Walk);
+            this.CarriedRegions(plan, this.symbols[function].DeclaringBody, plan.Walk);
             plan.WalkVersion = this.regionVersion;
             this.OriginProofMetrics?.CarriedWalk();
         }
@@ -220,25 +220,25 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.5 (the binding captured in the region's own body or in a Closure body that carries the region in turn): whether the walk
-    // admits `region`, a region an own entry of `plan`'s Closure names: its body is the Closure's evaluating body, or the evaluating
-    // body's Closure carries it (CarriedRegion of that Closure: while a body is bound its own admission, at Final its walk). The walk's
-    // answer is a superset of the while-bound one, so a while-bound "carried" is never withdrawn at Final.
-    private bool AdmittedEntry(BoundClosure plan, BoundOrigin region)
+    // admits `region`, a region an own entry of a Closure names whose evaluating body is `evaluating`: its body is the evaluating body, or
+    // the evaluating body's Closure carries it (CarriedRegion of that Closure: while a body is bound its own admission, at Final its walk).
+    // The walk's answer is a superset of the while-bound one, so a while-bound "carried" is never withdrawn at Final.
+    private bool AdmittedEntry(ExecutableBody evaluating, BoundOrigin region)
     {
         this.OriginProofMetrics?.CarriedAdmission();
-        return region.Body == plan.EvaluatingBody || this.CarriedRegion(region, plan.EvaluatingBody.Definition?.Declaration, out _);
+        return region.Body == evaluating || this.CarriedRegion(region, evaluating.Definition?.Declaration, out _);
     }
 
     // CarriedRegion's walk, into `carried` (cleared first), read only once no body is being bound (CarriedWalk): each region its Closure's
     // own entries name (BoundClosure.Carried, the capture formation's fact) that the walk admits (AdmittedEntry), at read time, when every
     // candidate it reads is complete; then, in turn, each region slot named by the value of one (RegionValue), unless that value names a
     // call's open region (NamesOpenRegion); each region once.
-    private void CarriedRegions(BoundClosure plan, List<BoundOrigin> carried)
+    private void CarriedRegions(BoundClosure plan, ExecutableBody evaluating, List<BoundOrigin> carried)
     {
         carried.Clear();
         for (var i = 0; i < plan.Carried.Count; i++)
         {
-            if (this.AdmittedEntry(plan, plan.Carried[i]))
+            if (this.AdmittedEntry(evaluating, plan.Carried[i]))
             {
                 carried.Add(plan.Carried[i]);
             }

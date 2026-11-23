@@ -5,7 +5,8 @@
 // - Inputs: the entries that start binding a body or a declaration (BindHeader, BindFunction, BindConcreteClosure, BindAccessorBody, a
 //   Property's initializer, ValidateOriginRelations), each through EnterBody.
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
-//   OriginDeclaration.Body (BeginOriginDeclaration), BoundClosure.EvaluatingBody (ClosureHeaderScope), and ParameterVisible's answer.
+//   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (a Closure's, ClosureHeaderScope), and
+//   ParameterVisible's answer.
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
 //   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
 //   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed or stamped in it, and it
@@ -49,9 +50,9 @@ public sealed partial class Binding
     internal static bool IsStatic(BindingSymbol? property)
         => property is { Kind: BindingSymbolKind.Property, Scope.Owner: DeclarationContainerKoto { HasStaticMembersOnly: true } };
 
-    // A Closure's evaluating body (SPEC 15.3.4), recorded on its plan when it is bound; no body for any other.
-    private static ExecutableBody EvaluatingBody(ExecutableBody body)
-        => body.Definition?.Declaration is FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan } ? plan.EvaluatingBody : default;
+    // The body that declares `body`'s definition (SPEC 15.3.4), the one recorded fact BindingSymbol.DeclaringBody: a Closure's evaluating
+    // body, recorded on its symbol when its header is bound; no body for any other.
+    private static ExecutableBody EvaluatingBody(ExecutableBody body) => body.Definition is { } definition ? definition.DeclaringBody : default;
 
     // A function's own body; a module's top-level statements have no symbol and are named by the module's ordinal.
     private static ExecutableBody FunctionBody(FunctionKoto function, BindingSymbol? symbol)

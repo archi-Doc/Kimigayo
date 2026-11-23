@@ -137,7 +137,7 @@ public sealed partial class Binding
     {
         var scope = this.scopes[literal];
         var plan = literal.ClosureStorage ??= new();
-        plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
+        this.symbols[literal].DeclaringBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (R4-M101 E1).
         foreach (var capture in literal.Captures ?? [])
         {
             if (this.Lookup(capture.Name, scope.Parent!, literal) is not { Type: { } type } source)
