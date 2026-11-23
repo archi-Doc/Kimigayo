@@ -622,6 +622,26 @@ public class PatternBindingTest
         Assert.Equal(0, binding.ImplicitFollows);
     }
 
+    // SPEC 15.1.6, 3.5.2 (F's C8 ruling 27, C-520 C3): the one binding still asking Copy, a whole-Subject binding of a Subject borrowed in
+    // place or of a reference-typed temporary, has a reference layer's Type, whose Copy its Semantics decides: a bare Place `o`, a type
+    // parameter's `t`, an object view and a raw pointer are read through `ref/` or are Copy (Copy); a stored `uniq/` is reborrowed and a
+    // temporary `uniq/` moved (Move). All valid; the rows pin the domain ruling 27 leaves (behaviour unchanged: no fail-first).
+    [Theory]
+    [InlineData("func f(o: Option<i32>) -> ()\n    match o\n        let w => ()\n", PatternAcquisition.Copy)]
+    [InlineData("func f(u: uniq/Option<i32>) -> ()\n    match u\n        let x => ()\n", PatternAcquisition.Move)]
+    [InlineData("func f<T>(t: T) -> ()\n    match t\n        let w => ()\n", PatternAcquisition.Copy)]
+    [InlineData("struct Node\n    var v: i32\nfunc f(n: objref/Node) -> ()\n    match n\n        let w => ()\n", PatternAcquisition.Copy)]
+    [InlineData("func f(p: raw/i32) -> ()\n    match p\n        let w => ()\n", PatternAcquisition.Copy)]
+    [InlineData("struct S\n    var v: i32\nfunc pick(a: uniq/S) -> uniq/S => a\nfunc f(s: uniq/S) -> ()\n    match pick(s)\n        let x => ()\n", PatternAcquisition.Move)]
+    public void AWholeSubjectBindingOfABorrowedSubjectFollowsItsReferenceLayer(string source, PatternAcquisition acquisition)
+    {
+        var c = Parse(source);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var binding = Assert.Single(Plan(c).Positions, p => p.Kind == BoundPatternKind.Binding);
+        Assert.Equal((PatternAccessMode.Owned, false), (binding.AccessMode, binding.OwnedPart));
+        Assert.Equal(acquisition, binding.Acquisition);
+    }
+
     // SPEC 15.1.6, 8.14, 8.15.2 (G642, as F's C8 ruling 24 amends it for a transferred Subject): an owned part is bound by its complete
     // stored Type in each Semantics case; `value`, `(s/T, i32)`, a part of the temporary Subject, is transferred with its responsibility,
     // so it Moves in every case (owner or ref; owner or uniq) and asks no Copy (it Copied where every case Copies, else CopyOrMove). Both

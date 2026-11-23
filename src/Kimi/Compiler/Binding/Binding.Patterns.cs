@@ -658,18 +658,22 @@ public sealed partial class Binding
     // CompleteIterationAcquisitions): a binding reached through a reference layer borrows its Place; a part of an owned Subject or
     // iteration item (OwnedPart: `match o@move`, a temporary Subject, every loop item) is transferred with its responsibility ("Payload
     // Copy capability changes no binding Type"), so it Moves and no Copy is asked (R7-C6 a, F's C8 ruling 9 D2: a query is asked only
-    // where a judgment needs its answer); an owned part of a Place Subject, which stays, is copied or transferred by its complete stored
-    // Type, and one whose Copy proof is Error, neither assumed Copy nor Non-Copy, is Deferred (HIR Failed). Its plan stays buildable and
-    // its coverage stays the Patterns' (Invalid means a located Pattern or guard failure; SPEC 14.8.4, 23.1.2; DECISIONS R4-M179). A
-    // binding has no Copy requirement of its own, so it records no failure: the proof reads the declaration's failed Constraint, whose
-    // record is reported (SPEC 23.1.2; DECISIONS BU-110).
+    // where a judgment needs its answer). The one binding left with Owned access, a whole-Subject binding of a Subject borrowed in place
+    // or of a reference-typed temporary, has a reference layer's Type, whose Copy its Semantics decides (SPEC 3.5.2): Copied for `ref/`,
+    // `objref/` and raw, Moved (the Reborrow) for `uniq/` and `objuniq/`; its Pattern Type passed ValidatePatternType's recheck, so any
+    // other verdict there is a broken contract (F's C8 ruling 27, amending R4-M179). Its plan stays buildable and its coverage stays the
+    // Patterns' (Invalid means a located Pattern or guard failure; SPEC 14.8.4, 23.1.2).
     private void AcquireBinding(BoundMatch plan, int index)
     {
         var position = plan.PositionStorage[index];
-        var proof = position is { AccessMode: PatternAccessMode.Owned, OwnedPart: false } ? this.ProveCopy(position.MatchedType!, position.Source) : ConstraintProof.Refuted;
         var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-            : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
-            : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
+            : position.OwnedPart ? PatternAcquisition.Move
+            : this.ProveCopy(position.MatchedType!, position.Source) switch
+            {
+                ConstraintProof.Proven => PatternAcquisition.Copy,
+                ConstraintProof.Refuted => PatternAcquisition.Move,
+                var other => throw new InvalidOperationException($"A whole-Subject binding's reference layer has a {other} Copy proof (F's C8 ruling 27)."),
+            };
         plan.PositionStorage[index] = position with { Acquisition = acquisition };
     }
 
