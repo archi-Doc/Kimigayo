@@ -17,7 +17,8 @@ namespace Kimi.Compiler;
 // Its readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type),
 // RegionalAt through it. RegionValue is the one reading of any local region's SPEC 15.3.6 value: a `let` region's as published, a `var`
 // region's its row's candidate over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so
-// (the view's row 6, the body's oracle, StaticOrigin through ValueIn).
+// (the view's row 6, the body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its
+// completion once Final proved it, and before as a reading with no answer yet (the deferral fact).
 // Invariants: a value holds no region of its own body (it is read once, when published); values and bounds are reset each pass
 // (ResetLocalRegions); a `var` region publishes no value: a use in its own body reads the region, and only RegionValue (where a body
 // carries it, or its own body's oracle) reads its candidate over its recorded bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
@@ -372,7 +373,14 @@ public sealed partial class Binding
                 return this.ValueIn(candidate, function);
             }
 
-            this.readsUnboundedRegion |= IsLocalRegion(origin) && !this.RegionBounded(origin);
+            // R7-O2 O2-F: a deferred slot's atom reads as its completion once Final proved it (CompletedOrigin); before, it has no answer
+            // yet (DeferredIn), as a local region with no bound.
+            if (this.CompletedOrigin(origin) is var completed && !ReferenceEquals(completed, origin))
+            {
+                return this.ValueIn(completed, function);
+            }
+
+            this.readsUnboundedRegion |= this.DeferredIn(origin) is not null || (IsLocalRegion(origin) && !this.RegionBounded(origin));
             return origin;
         }
 

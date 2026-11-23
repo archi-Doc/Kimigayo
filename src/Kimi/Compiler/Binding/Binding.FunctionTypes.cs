@@ -156,7 +156,8 @@ public sealed partial class Binding
             : shape && !fits ? ErasurePart.Shape
             : this.ProveErasedOwned(actual, node, this.formingBody, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
             : ErasurePart.Condition;
-        var deferred = part == ErasurePart.Owned && this.readsUnboundedRegion && this.formingBody.IsBody;
+        // R7-O2 O2-F: a target Type naming a deferred slot's atom is a reading with no answer yet, as the deferral fact.
+        var deferred = part == ErasurePart.Owned && (this.readsUnboundedRegion || this.DeferredAtomIn(expected) is not null) && this.formingBody.IsBody;
         this.readsUnboundedRegion = held;
         if (part == ErasurePart.Condition || deferred)
         {

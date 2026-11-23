@@ -92,7 +92,7 @@ public sealed partial class Binding
     // applied, innermost first, and no receiver resolution: a Borrow's own atom, which a classified Closure's receiver resolution alone
     // turns into ρ. A record's Supplier is this, at its use. A `let` region, written or a declaration's replacement, reads as its value in
     // its own body (RegionValueAtUse; PLAN G492-a (ii)).
-    internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use) => this.RegionValueAtUse(this.DeclaredAtUse(origin, use), use);
+    internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use) => this.CompletedOrigin(this.RegionValueAtUse(this.DeclaredAtUse(origin, use), use));
 
     // O-400 (b) (PLAN G492-a (ii) Revision 5): a failed condition of a Callable comparison is the located limit where a direction its
     // ends' values do not prove has a `let` region of the use's body at its shorter end: the comparison reads that end as the region
@@ -208,8 +208,8 @@ public sealed partial class Binding
     }
 
     // The one resolution of an Origin at its use (2a0-D D4), which every judgment, record, the old reporter and the C1-F4 view read: the
-    // atom that supplies it there (SuppliedAtUse), then the receiver of each classified Closure that encloses the use (ResolveReceiver),
-    // innermost first.
+    // atom that supplies it there (SuppliedAtUse; a deferred result slot's atom Final proved first read as its completion, R7-O2 O2-F),
+    // then the receiver of each classified Closure that encloses the use (ResolveReceiver), innermost first.
     private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use) => this.ReceiverAtUse(this.SuppliedAtUse(origin, use), use);
 
     // SPEC 15.3.7, 15.4.4 under the owner's O-363 (a): an end of a relation of the Callable comparison `comparison` (InComparison) at its
@@ -237,6 +237,7 @@ public sealed partial class Binding
     // The Origin declarations and local initializers that enclose the use applied, innermost first.
     private BoundOrigin DeclaredAtUse(BoundOrigin origin, Koto use)
     {
+        origin = this.CompletedOrigin(origin);
         for (var node = use; node is not null; node = node.Parent)
         {
             if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Resolves)
@@ -405,7 +406,10 @@ public sealed partial class Binding
     // declaration's atom (the view's row 9, ForeignDeclarationAtom) keeps the comparison's own record (SPEC 15.6.1, premises alone) where
     // the comparison decides it by SPEC: a Function Item's universal or an anonymous function's per-call Origin, both of which it solves
     // (SPEC 15.3.7, DefinitionContractFits; board D-822), or an enclosing comparison's required per-call Origin, which is rigid (a30:
-    // g's result compared under the outer required j0). A required per-call Origin of this comparison is the L1 lift's. The ends arrive
+    // g's result compared under the outer required j0). A required per-call Origin of this comparison is the L1 lift's. A condition
+    // naming a deferred result slot's atom not yet completed, at either end (DeferredIn, R7-O2 O2-F), is one row before that guard: its
+    // premises cannot decide it before Final (SPEC 15.4.4), so A5 judges it with the atom completed or reads a refuted atom's Dependent
+    // end, and where A5 cannot class the other end its located limit stands, never a record judged without the fact. The ends arrive
     // as written; the comparison instantiates them here.
     private bool LeavesBodyRows(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition, Koto? clause)
     {
@@ -416,6 +420,12 @@ public sealed partial class Binding
 
         longer = this.OriginAtUse(comparison.Instantiate(longer), use, comparison);
         shorter = this.OriginAtUse(comparison.Instantiate(shorter), use, comparison);
+        if (this.formingBody.IsBody && (this.DeferredIn(longer) is not null || this.DeferredIn(shorter) is not null))
+        {
+            rows.Add(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, longer, shorter, Clause: clause, Condition: condition) { Compared = true });
+            return true;
+        }
+
         if (!(this.formingBody.IsBody && HasLocalRegion(longer)) ||
             (this.ForeignDeclarationAtom(shorter, this.formingBody) && !comparison.IsRequiredSlot(shorter)))
         {

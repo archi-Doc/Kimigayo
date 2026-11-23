@@ -967,7 +967,7 @@ public sealed partial class HirFormsTest
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var rows = Reachable(c.Kotonoha)
             .Where(x => IsWithin(x, f) && x is not (FunctionKoto or DiscardKoto) && x.Parent is CodeBlockKoto or ParenthesizedKoto or DiscardKoto)
-            .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(HirTables.PlanOf(x).DiscardedType is { } type ? Binding.HoverTypeName(type) : "-")}");
+            .Select(x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(HirTables.PlanOf(x).DiscardedType is { } type ? c.Binding.HoverTypeName(type) : "-")}");
         const string Name = "uniq/i32 during (s and a)";
         Assert.Equal(
             [$"h.link {Name}", $"h.link {Name}", $"(h.link) {Name}", "h.link -", $"(h.link) {Name}", "h.link -", "n i32", "n i32", "id(n) -"],
@@ -1123,7 +1123,7 @@ public sealed partial class HirFormsTest
         {
             var plan = ExpansionPlan.Of(c.Binding, index)!.Value;
             var decider = HirTables.IndexCaseDecider(index);
-            return $"{index} {plan.Second!.Target.Name} {plan.Shared?.Target.Name ?? "-"} {(decider is null ? "-" : Binding.HoverTypeName(decider))}";
+            return $"{index} {plan.Second!.Target.Name} {plan.Shared?.Target.Name ?? "-"} {(decider is null ? "-" : c.Binding.HoverTypeName(decider))}";
         }
     }
 
@@ -1143,7 +1143,7 @@ public sealed partial class HirFormsTest
         var g = functions.Single(static x => x.Name == "g");
         var donor = functions.Single(static x => x.Name == "donor");
         var statement = g.Body!.Items[1];
-        Assert.Equal("i32", Binding.HoverTypeName(HirTables.PlanOf(statement).DiscardedType!));
+        Assert.Equal("i32", c.Binding.HoverTypeName(HirTables.PlanOf(statement).DiscardedType!));
         var replaced = g.Body.Items[0];
         Assert.True(KotoHelper.Replace(replaced.Parent!, replaced, ParseTestHelper.Detach(donor.Body!.Items[0], new CodeBlockKoto(donor.CodeContext))));
         c.Bind();

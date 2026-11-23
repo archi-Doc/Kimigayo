@@ -394,6 +394,21 @@ public sealed class HoverImprovementsTest
         Assert.False(new HoverAgreement().Equal(new(default, info), new(default, changed)));
     }
 
+    // SPEC 15.4.3 rule 3, 15.4.4 (R7-O2 O2-F, design §10.7's C1): a Closure header's result default judged under Finality is `static`;
+    // Hover prints the complete Type, so a local holding the literal (h3v over a `let` r, f4v over a `var` r) names `static` in its
+    // signature's result, never the slot's provisional atom; a local bound from its call (f7v's b) names its own region.
+    [Theory]
+    [InlineData("    let r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    return 0\n", "c = func", ") -> Box{a = static}")]
+    [InlineData("    var r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    r = p\n    return 0\n", "c = func", ") -> Box{a = static}")]
+    [InlineData("    var r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    r = p\n    let b = c(.None)\n    return 0\n", "b = c", "b: Box{a = <inference origin at 10:5>}")]
+    public void AClosuresDeferredHeaderDefaultIsHoveredAsItsCompletion(string body, string local, string ending)
+    {
+        var source = "struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n" + body;
+        var header = At(Project(source), source.IndexOf(local, StringComparison.Ordinal)).Info.Variable!.Declaration.Header;
+        Assert.DoesNotContain("unbound origin", header);
+        Assert.EndsWith(ending, header);
+    }
+
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void RepeatedVariableAndOperationRequestsReuseCurrentAndHistoricalAnswers()

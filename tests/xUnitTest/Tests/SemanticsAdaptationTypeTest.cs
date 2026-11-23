@@ -32,7 +32,7 @@ public class SemanticsAdaptationTypeTest
         Assert.Same(c.Binding.CaseType(pair.WholeType!, references), reference.Components[0]);
         Assert.NotEqual(ConstraintProof.Proven, c.Binding.ProveCopy(type, function));
         Assert.NotEqual(ConstraintProof.Proven, c.Binding.ProveOwned(type, function));
-        Assert.Contains("case s", Binding.HoverTypeName(type), StringComparison.Ordinal);
+        Assert.Contains("case s", c.Binding.HoverTypeName(type), StringComparison.Ordinal);
     }
 
     [Fact]

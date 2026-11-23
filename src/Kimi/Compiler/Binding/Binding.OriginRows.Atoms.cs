@@ -125,6 +125,7 @@ public sealed partial class Binding
     // checked before the atom is stored.
     private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte unit)
     {
+        atom = this.CompletedOrigin(atom); // R7-O2 O2-F: a deferred slot's atom Final proved enters the view as its completion.
         IOriginRowSetBuilder builder = slice;
         if (!builder.Index.TryGetValue(atom, out var index))
         {

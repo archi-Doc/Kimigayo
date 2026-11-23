@@ -43,6 +43,29 @@ public sealed partial class MirBorrowsTest
 
     private const string TakeG = "func takeG<T>(g: (Option<ref/i32 during static>) -> T) -> i32 => 0\n";
 
+    // The same header over a `var` region r with candidate `static` so far, or over a `let` r bound to a body local's Borrow, and a body
+    // that returns r in a Box (the rows of AClosuresHeaderDefaultIsJudgedOnceItsBodyIsBound and its invalid twins, R7-O2 O2-F).
+    private const string HeaderVar = Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n";
+
+    private const string HeaderBorrow = Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    let r = n@ref\n";
+
+    private const string HeaderInit = "(k: Option<ref/i32 during r>) -> Box => Box.init(r)";
+
+    private const string TakeG2 = "func takeG2<T>(g: (Option<ref/i32 during static>) -> T, x: i32) -> i32 => 0\n";
+
+    // f with a caller's borrow s, and a body-local annotation's Function Type over the `var` r (the rows fsh*, bod2*, fty*; R7-O2 O2-F).
+    private const string HeaderS = Main + "func f(p: ref/i32 during static, s: ref/i32) -> i32\n";
+
+    private const string AnnotatedG = "    let g: (Option<ref/i32 during r>) -> Box = ";
+
+    // A Function Item whose input's result names its universal o (SPEC 15.3.4), and a header with a conditional direct-borrow input y
+    // (SPEC 15.4.3, 8.1.2): the rows fda2v/fda2n/fda3v and pm2v/pm2n/pm3v (R7-O2 O2-F, design §10.7's C3).
+    private const string TakeO = "func take(h: (Option<ref/i32 during static>) -> Box during o, x: ref/i32 during o) -> i32 => 0\n";
+
+    private const string PairG = Main + "func g<s/T>(p: ref/i32 during static, x: s/T) -> i32\n    s is owner or ref\n    T is Owned\n    let n: i32 = 1\n    var r = p\n";
+
+    private const string PairOf = "(y: s/T during r, k: Option<ref/i32 during r>) -> Box => $abort(\"no\")";
+
     // SPEC 15.8.2's table, an exclusive capture: "Reborrow of a captured exclusive reference ... in a Shared or Exclusive call, depends on
     // the call receiver", so while a result is live a second Exclusive call (7.7.3, 15.6.2), or a Move of the Closure, conflicts: an arrow
     // and a block body, only the first result used, a local's borrow, an elided Origin, a second capture, a Closure held in a Field, one
@@ -462,16 +485,105 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.6.5's last clause, 15.3.4 (D-862; R7-O2 O2-H): a region a Closure's header names but the Closure does not carry is a fixed
     // Origin with no premise, so the header result's default has no proof: the entry names another binding (h0n; at a generic argument,
-    // hxg1n, whose call has no applicable candidate beside it), a chain broken by an inner list (h2n), an omitted list whose body uses
-    // nothing (lc7v). A carried region whose value is a body-local Borrow (h1n) is read as it, which does not outlive `static`.
+    // hxg1n, whose lone candidate applies, the default judged once f's body is bound: R7-O2 O2-F), a chain broken by an inner list (h2n),
+    // an omitted list whose body uses nothing (lc7v). A carried region whose value is a body-local Borrow (h1n) is read as it, which does
+    // not outlive `static`.
     [Theory]
     [InlineData("h0n", HeaderBox + HeaderLet + "    let q: i32 = 1\n    let c = func [q] " + HeaderOf + "\n    return 0\n", "MissingOriginBinding_Kd: let c = func [q] " + HeaderOf)]
-    [InlineData("hxg1n", HeaderBox + TakeG + HeaderLet + "    let q: i32 = 1\n    return takeG(func [q] " + HeaderOf + ")\n", "NoApplicableOverload_Kd: return takeG(func [q] " + HeaderOf + ") | MissingOriginBinding_Kd: return takeG(func [q] " + HeaderOf + ")")]
+    [InlineData("hxg1n", HeaderBox + TakeG + HeaderLet + "    let q: i32 = 1\n    return takeG(func [q] " + HeaderOf + ")\n", "MissingOriginBinding_Kd: return takeG(func [q] " + HeaderOf + ")")]
     [InlineData("h2n", HeaderBox + HeaderLet + "    let c = func [r] () -> i32\n        let q: i32 = 1\n        let d = func [q] " + HeaderOf + "\n        return 1\n    return c()\n", "MissingOriginBinding_Kd: let d = func [q] " + HeaderOf)]
     [InlineData("lc7v", HeaderBox + HeaderLet + "    let c = func " + HeaderOf + "\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderOf)]
     [InlineData("h1n", HeaderBox + Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    let r = n@ref\n    let c = func [r] () -> i32\n        let d = func [r] () -> i32\n            let e = func [r] " + HeaderOf + "\n            return 1\n        return d()\n    return c()\n", "MissingOriginBinding_Kd: let e = func [r] " + HeaderOf)]
     public void AClosuresHeaderOverARegionItDoesNotCarryIsAFixedOrigin(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 15.4.3 rule 3, 15.4.4, 8.3.3 (R7-O2 O2-F): a header result's default needs its inputs provably Owned; where that proof reads
+    // a fact complete only once the body is bound, the default is judged under Finality, the slot naming its own atom until then. An
+    // omitted list's own capture of r (h3v; with an erasure of c, f6v; over a `var` r, f4v), a `var` r's candidate `static` (ann1v; a body
+    // returning r, f2v; forwarded by an enclosing omitted list, h5vv) and a body-local annotation's Function Type over a `var` r (fty1v)
+    // are valid; each was rejected with MissingOriginBinding_Kd at the slot before (fty1v also UnresolvedBinding_Kd at the literal). So
+    // are the readers of the atom, which take its completion `static`: a call of c (f7v), its result where `T is Owned` is checked
+    // (own1v), at a `during static` parameter (take1v), returned (ret1v), held by a `var` (vb1v), in a nested body (nst1v), a call of g
+    // (fty3v), an erasure to g whose written result is p's (fsh1v, fsh2v), a body returning a carried value (bod2v), a second default over
+    // a value read from c's result (def3v), a condition with take's universal at its shorter end (fda3v) and the meet of a conditional
+    // direct-borrow input's borrow case (pm3v).
+    [Theory]
+    [InlineData("h3v", HeaderBox + HeaderLet + "    let c = func " + HeaderInit + "\n    return 0\n")]
+    [InlineData("f6v", HeaderBox + HeaderLet + "    let c = func " + HeaderInit + "\n    let g: (Option<ref/i32 during r>) -> Box = c@move\n    return 0\n")]
+    [InlineData("f4v", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    return 0\n")]
+    [InlineData("ann1v", HeaderBox + HeaderVar + "    let c = func [r] " + HeaderOf + "\n    r = p\n    return 0\n")]
+    [InlineData("f2v", HeaderBox + HeaderVar + "    let c = func [r] " + HeaderInit + "\n    r = p\n    return 0\n")]
+    [InlineData("h5vv", HeaderBox + HeaderVar + "    let c = func () -> i32\n        let d = func [r] " + HeaderOf + "\n        return 1\n    return c()\n")]
+    [InlineData("fty1v", HeaderBox + HeaderVar + AnnotatedG + "func [r] (k) -> Box => $abort(\"no\")\n    r = p\n    return 0\n")]
+    [InlineData("f7v", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    let b = c(.None)\n    return 0\n")]
+    [InlineData("own1v", HeaderBox + "func need<T>(x: T) -> i32\n    T is Owned\n    return 1\n" + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    return need(c(.None))\n")]
+    [InlineData("take1v", HeaderBox + "func take(b: Box during static) -> i32 => 0\n" + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    return take(c(.None))\n")]
+    [InlineData("ret1v", HeaderBox + Main + "func f(p: ref/i32 during static) -> Box\n    var r = p\n    let c = func " + HeaderInit + "\n    r = p\n    return c(.None)\n")]
+    [InlineData("vb1v", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    var b = c(.None)\n    b = Box.init(p)\n    return 0\n")]
+    [InlineData("nst1v", HeaderBox + HeaderVar + "    let c = func [r] () -> i32\n        let d = func " + HeaderInit + "\n        let b = d(.None)\n        return 1\n    r = p\n    return c()\n")]
+    [InlineData("fty3v", HeaderBox + HeaderVar + AnnotatedG + "func [r] (k) -> Box => $abort(\"no\")\n    r = p\n    let b = g(.None)\n    return 0\n")]
+    [InlineData("fsh1v", HeaderBox + HeaderS + "    var r = p\n" + AnnotatedG + "func [p] (k) -> Box during p => Box.init(p)\n    r = p\n    return 0\n")]
+    [InlineData("fsh2v", HeaderBox + HeaderS + "    var r = p\n" + AnnotatedG + "func (k) -> Box during p => $abort(\"no\")\n    r = p\n    return 0\n")]
+    [InlineData("bod2v", HeaderBox + HeaderS + "    var r = p\n    let c = func [r, p] (k: Option<ref/i32 during r>) -> Box => Box.init(p)\n    r = p\n    return 0\n")]
+    [InlineData("def3v", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    let v = c(.None).v\n    let e = func [v] (q: Option<ref/i32 during v>) -> Box => Box.init(v)\n    return 0\n")]
+    [InlineData("fda3v", HeaderBox + TakeO + HeaderVar + "    let t = take(func [r] " + HeaderOf + ", p)\n    r = p\n    return t\n")]
+    [InlineData("pm3v", HeaderBox + PairG + "    let c = func [r] " + PairOf + "\n    r = p\n    return 0\n")]
+    public void AClosuresHeaderDefaultIsJudgedOnceItsBodyIsBound(string form, string program)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, string.Empty);
+
+    // SPEC 15.4.4, 23.1.2 (R7-O2 O2-F): a deferred default refuted at Final is the slot's MissingOriginBinding_Kd; its atom stays Unbound
+    // resting on the failed slot, so the records naming it (the body's `Box.init(r)`, a call of c) rest on it: ann1n, f1n, f3n, f5n, f7n,
+    // f8n. A literal a candidate trial reads and nothing commits keeps that trial's default, judged at Final beside the call's record
+    // (hxg3n; hxg2n over a region it does not carry). An annotation's slot and the literal's own slot fail apart, and the erasure to the
+    // annotated Type naming the failed atom rests, as does a call of g (fty1n, fty3n: two records on one line). The slot's owner is its
+    // declaration, never an enclosing Closure: c's use keeps its record (fty2n). A body's record independent of the slot stays (fz1n),
+    // and a deferred slot proven at Final records nothing (fz3n; MissingOriginBinding_Kd before). A literal whose omitted list carries no
+    // region keeps r a fixed Origin (lc7v's class), at a call argument whose result condition then rests (fda2n, fda2v: the call's
+    // NoApplicableOverload_Kd beside it before) and with a conditional direct-borrow input (pm2n, pm2v).
+    [Theory]
+    [InlineData("ann1n", HeaderBox + HeaderVar + "    let c = func [r] " + HeaderOf + "\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let c = func [r] " + HeaderOf)]
+    [InlineData("f1n", HeaderBox + HeaderBorrow + "    let c = func " + HeaderInit + "\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderInit)]
+    [InlineData("f3n", HeaderBox + HeaderVar + "    let c = func [r] " + HeaderInit + "\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let c = func [r] " + HeaderInit)]
+    [InlineData("f5n", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderInit)]
+    [InlineData("f7n", HeaderBox + HeaderBorrow + "    let c = func " + HeaderInit + "\n    let b = c(.None)\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderInit)]
+    [InlineData("f8n", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = n@ref\n    let b = c(.None)\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderInit)]
+    [InlineData("hxg3n", HeaderBox + TakeG2 + HeaderBorrow + "    return takeG2(func " + HeaderInit + ", true)\n", "NoApplicableOverload_Kd: return takeG2(func " + HeaderInit + ", true) | MissingOriginBinding_Kd: return takeG2(func " + HeaderInit + ", true)")]
+    [InlineData("hxg2n", HeaderBox + TakeG2 + HeaderLet + "    let q: i32 = 1\n    return takeG2(func [q] " + HeaderOf + ", true)\n", "NoApplicableOverload_Kd: return takeG2(func [q] " + HeaderOf + ", true) | MissingOriginBinding_Kd: return takeG2(func [q] " + HeaderOf + ", true)")]
+    [InlineData("fty1n", HeaderBox + HeaderVar + AnnotatedG + "func [r] (k) -> Box => $abort(\"no\")\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let g: (Option<ref/i32 during r>) -> Box = func [r] (k) -> Box => $abort(\"no\")")]
+    [InlineData("fty3n", HeaderBox + HeaderVar + AnnotatedG + "func [r] (k) -> Box => $abort(\"no\")\n    r = n@ref\n    let b = g(.None)\n    return 0\n", "MissingOriginBinding_Kd: let g: (Option<ref/i32 during r>) -> Box = func [r] (k) -> Box => $abort(\"no\")")]
+    [InlineData("fty2n", HeaderBox + HeaderVar + "    let c = func [r] () -> i32\n        let g: (Option<ref/i32 during r>) -> Box = $abort(\"no\")\n        return 1\n    let x: bool = c()\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let g: (Option<ref/i32 during r>) -> Box = $abort(\"no\") | TypeMismatch_Kd: let x: bool = c()")]
+    [InlineData("fz1n", HeaderBox + HeaderBorrow + "    let c = func (k: Option<ref/i32 during r>) -> Box\n        let z: bool = 1\n        return Box.init(r)\n    return 0\n", "MissingOriginBinding_Kd: let c = func (k: Option<ref/i32 during r>) -> Box | TypeMismatch_Kd: let z: bool = 1")]
+    [InlineData("fz3n", HeaderBox + HeaderVar + "    let c = func (k: Option<ref/i32 during r>) -> Box\n        let z: bool = 1\n        return Box.init(r)\n    r = p\n    return 0\n", "TypeMismatch_Kd: let z: bool = 1")]
+    [InlineData("fda2n", HeaderBox + TakeO + HeaderVar + "    let t = take(func " + HeaderOf + ", p)\n    r = n@ref\n    return t\n", "MissingOriginBinding_Kd: let t = take(func " + HeaderOf + ", p)")]
+    [InlineData("fda2v", HeaderBox + TakeO + HeaderVar + "    let t = take(func " + HeaderOf + ", p)\n    r = p\n    return t\n", "MissingOriginBinding_Kd: let t = take(func " + HeaderOf + ", p)")]
+    [InlineData("pm2n", HeaderBox + PairG + "    let c = func " + PairOf + "\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + PairOf)]
+    [InlineData("pm2v", HeaderBox + PairG + "    let c = func " + PairOf + "\n    r = p\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + PairOf)]
+    public void AClosuresDeferredHeaderDefaultRefutedAtFinalIsTheSlotsRecord(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 15.4.4, 15.3.7, 7.7.4 (R7-O2 O2-F): a deferred default proven at Final is `static`, and the conditions that named its atom are
+    // judged against it then: an erasure of a literal whose written result is a caller's borrow s to g's annotated Type over the `var` r
+    // needs `s outlives static`, beside the environment's Owned where the literal captures s (fsh1n) and alone where it captures nothing
+    // (fsh2n; A5's row, where an undeferred target gives the comparison's UnprovenOriginContract_Kd: PLAN's open issue on one condition's
+    // two kinds); and a literal whose slot is proven `static` cannot return s (bod2n).
+    [Theory]
+    [InlineData("fsh1n", HeaderBox + HeaderS + "    let n: i32 = 1\n    var r = p\n" + AnnotatedG + "func [s] (k) -> Box during s => Box.init(s)\n    r = p\n    return 0\n", "UnprovenConstraint_Kd: let g: (Option<ref/i32 during r>) -> Box = func [s] (k) -> Box during s => Box.init(s) | UnprovenOriginRelation_Kd: let g: (Option<ref/i32 during r>) -> Box = func [s] (k) -> Box during s => Box.init(s)")]
+    [InlineData("fsh2n", HeaderBox + HeaderS + "    let n: i32 = 1\n    var r = p\n" + AnnotatedG + "func (k) -> Box during s => $abort(\"no\")\n    r = p\n    return 0\n", "UnprovenOriginRelation_Kd: let g: (Option<ref/i32 during r>) -> Box = func (k) -> Box during s => $abort(\"no\")")]
+    [InlineData("bod2n", HeaderBox + HeaderS + "    var r = p\n    let c = func [r, s] (k: Option<ref/i32 during r>) -> Box => Box.init(s)\n    r = p\n    return 0\n", "UnprovenOriginRelation_Kd: let c = func [r, s] (k: Option<ref/i32 during r>) -> Box => Box.init(s)")]
+    public void AClosuresDeferredHeaderDefaultProvenAtFinalJudgesItsReaders(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // R7-O2 O2-F (design §10.6): the result default reads the slot's row once per resolution and writes it only where a proof defers, so
+    // a warm rebind of a header proven at its resolution (ann1l) allocates nothing.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void AWarmRebindOfAProvenHeaderDefaultAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(HeaderBox + HeaderLet + "    let c = func [r] " + HeaderOf + "\n    return 0\n");
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
+    }
 
     // SPEC 15.3.6, 15.6.5, 15.8.2 (DECISIONS: G570): an inferred result names an enclosing region itself, as an annotated one does, so what
     // the region takes after the literal stays in it. A later call's argument to a `during r` parameter, captured or not: the Loan (u1, u1a)

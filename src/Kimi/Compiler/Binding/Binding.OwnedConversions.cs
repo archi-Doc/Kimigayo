@@ -117,7 +117,9 @@ public sealed partial class Binding
     // obligation whose Type is not that subject (a trial's, or a use that erased nothing at last) records nothing. A function erasure's record
     // facts are judged in the obligation's body (RefutedStatic) and its failure recorded at the converted value as at the literal
     // (FailOwnedConversion); an object view's failure is its Constraint record at the use, as at the literal, its evidence withdrawn. A value
-    // failed since keeps its failure. No region bound is recorded after it at Final (ProduceFailures).
+    // failed since keeps its failure. A function erasure whose target names a deferred result slot's atom refuted at Final (R7-O2 O2-F,
+    // DeferredAtomIn) read that failed slot: it rests on it with no record (FailDerived). No region bound is recorded after it at Final
+    // (ProduceFailures).
     private void JudgeErasedOwned(in BindingObligation obligation)
     {
         var (node, actual) = (obligation.Use, obligation.Type!);
@@ -136,6 +138,14 @@ public sealed partial class Binding
                 this.RequireConstraint(node, unowned, this.capabilityMode);
             }
 
+            return;
+        }
+
+        if (node.ErasedFunctionType is { } target && this.DeferredAtomIn(target) is { Binder: { BindingFailure: not BindingFailure.None } slot })
+        {
+            // R7-O2 O2-F: the conversion's target Type names a slot refuted at Final, so the check read a failed part: a derived
+            // failure with no record (BU-75), the value's Type kept for MIR's published inputs.
+            this.FailDerived(node, slot);
             return;
         }
 

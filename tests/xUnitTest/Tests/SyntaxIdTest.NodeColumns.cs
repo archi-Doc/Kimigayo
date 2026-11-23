@@ -211,7 +211,8 @@ public partial class SyntaxIdTest
     // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;
     // B2b-2's ResolvedSlices, a slice selected by a range value; R7-N5 E's Prerequisites, the consultation range of `s == missing`,
     // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute; PrerequisiteVisits, the walk of a
-    // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`).
+    // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`; R7-O2 O2-F's
+    // DeferredDefaults, a Closure header's result default over an omitted list's own capture, judged at Final).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -260,6 +261,7 @@ public partial class SyntaxIdTest
     [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("EarlyReads", BaseInputFormationBindingTest.J4)]
     [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
+    [InlineData("DeferredDefaults", "struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    return 0\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
