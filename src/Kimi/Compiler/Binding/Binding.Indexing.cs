@@ -39,6 +39,11 @@ public sealed partial class Binding
 {
     private readonly IndexStack indexStack = new();
 
+    // The executable body the walk is in (SPEC 15.3.4; Binding.ExecutableBodies.cs): a function's own body or a default template's
+    // (f, i), none in a Type's declaration or a module's top-level statements; entered where a body begins (EnterIndexBody) and
+    // restored by a Body step after its subtree. DeclareFunction records it as a named function's declaring body.
+    private ExecutableBody indexBody;
+
     // An entry of the walk: a context, in which a node's row runs (Index; Pattern, a match arm's Pattern and its subtree: pattern
     // nodes and their locals; ExcludedTest, an excluded test's subtree; ResetOnly, rows reset and nothing indexed), or a step a row
     // places after a subtree (Declare, a loop binding's declaration; Self, a Self context's Self; Candidates, an arm's guard
@@ -53,6 +58,7 @@ public sealed partial class Binding
         Self,
         Candidates,
         Arms,
+        Body,
     }
 
     // The walk's one reset step: a node's row is reset before the first write to it in the pass. An entry resets its node and the
@@ -137,6 +143,20 @@ public sealed partial class Binding
         }
     }
 
+    // Index of `value` among `function`'s parameter defaults, or -1.
+    private static int DefaultIndex(FunctionKoto function, Koto value)
+    {
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (ReferenceEquals(function.Parameters[i].DefaultValue, value))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     // The indexer resets every semantic field of the pass's modules before any header or expression is evaluated: its source trees and
     // their module references, then, when it binds the library, the library's.
     private void Index()
@@ -208,6 +228,7 @@ public sealed partial class Binding
 
         try
         {
+            this.indexBody = default;
             stack.Push(first);
             while (stack.Count != 0)
             {
@@ -226,6 +247,9 @@ public sealed partial class Binding
                         break;
                     case IndexEntryKind.Arms:
                         this.PushArms((MatchKoto)entry.Node, entry.Scope);
+                        break;
+                    case IndexEntryKind.Body:
+                        this.indexBody = entry.Body;
                         break;
                     default:
                         ResetEntry(entry.Node);
@@ -278,6 +302,11 @@ public sealed partial class Binding
         }
 
         this.nodes.Add(node);
+        if (node.Parent is FunctionKoto { IsGenerated: false } template && DefaultIndex(template, node) is >= 0 and var index)
+        {
+            this.EnterIndexBody(node, scope, new(this.symbols.GetValueOrDefault(template), index));
+        }
+
         if (context == IndexEntryKind.Pattern)
         {
             this.indexedPatterns.AddPattern(node);
@@ -346,6 +375,7 @@ public sealed partial class Binding
                 scope.ConformancePath = null;
                 break;
             case DeclarationContainerKoto container:
+                this.EnterIndexBody(node, scope, default); // A member of a Type declared in a body is no nested function of it.
                 if (!container.IsRoot)
                 {
                     var kind = container is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type;
@@ -383,6 +413,8 @@ public sealed partial class Binding
                 {
                     this.DeclareFunction(function, scope);
                 }
+
+                this.EnterIndexBody(node, scope, function.IsGenerated ? default : FunctionBody(function, this.symbols.GetValueOrDefault(function)));
 
                 scope = this.GetScope(node, scope);
                 for (var i = 0; i < function.Parameters.Count; i++)
@@ -666,6 +698,7 @@ public sealed partial class Binding
 
         var symbol = this.Declare(function, function.Name, BindingSymbolKind.Function, function, memberScope);
         symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
+        symbol.DeclaringBody = this.indexBody; // SPEC 15.3.4: a named nested function's declaring body; none for any other.
         // The members of the fixed array and the integer Position witness are receiver functions of internal
         // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
         if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || this.Library.IsBuiltinMemberGroup(memberScope.Owner))
@@ -685,7 +718,14 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct IndexEntry(Koto Node, BindingScope Scope, IndexEntryKind Kind, int Arm = 0);
+    // Enters `body` for `node`'s subtree: a Body step pushed below its children restores the body the walk was in.
+    private void EnterIndexBody(Koto node, BindingScope scope, ExecutableBody body)
+    {
+        this.indexStack.Push(new(node, scope, IndexEntryKind.Body, Body: this.indexBody));
+        this.indexBody = body;
+    }
+
+    private readonly record struct IndexEntry(Koto Node, BindingScope Scope, IndexEntryKind Kind, int Arm = 0, ExecutableBody Body = default);
 
     // The walk's pending entries: one array, grown by doubling and kept across passes, so a warm Bind allocates nothing. As a visitor
     // it pushes the children Koto.VisitChildren walks, which PushChildren gives their scope and context and reverses, so they pop in

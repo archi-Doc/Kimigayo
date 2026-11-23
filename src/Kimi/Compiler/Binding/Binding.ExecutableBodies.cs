@@ -51,7 +51,8 @@ public sealed partial class Binding
         => property is { Kind: BindingSymbolKind.Property, Scope.Owner: DeclarationContainerKoto { HasStaticMembersOnly: true } };
 
     // The body that declares `body`'s definition (SPEC 15.3.4), the one recorded fact BindingSymbol.DeclaringBody: a Closure's evaluating
-    // body, recorded on its symbol when its header is bound; no body for any other.
+    // body, recorded on its symbol when its header is bound, and a named nested function's declaring body, recorded by the index walk
+    // (PLAN G230 (A)); no body for any other.
     private static ExecutableBody EvaluatingBody(ExecutableBody body) => body.Definition is { } definition ? definition.DeclaringBody : default;
 
     // A function's own body; a module's top-level statements have no symbol and are named by the module's ordinal.
