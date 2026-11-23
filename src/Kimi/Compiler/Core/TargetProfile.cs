@@ -1,14 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the target table (IMPL 21.4, SPEC 22; Tatara r3 §4; DECISIONS R5-M174): one row per executable target profile, today windows-x64
-// (Windows), which Binding's native resolution, the Backend's module frame and runtime ABI, target selection (Project, Solution, LSP),
-// project configuration and the native build read.
+// Owns the target table (IMPL 21.4, 21.5, SPEC 22; Tatara r3 §4; DECISIONS R5-M174): one row per executable target profile, windows-x64
+// (Windows) and linux-x64 (Linux, the Tatara plan's B7b2a: static, without a C library, its layer over system calls), which Binding's
+// native resolution, the Backend's module frame and runtime ABI, target selection (Project, Solution, LSP), project configuration and
+// the native build read.
 // Input: none. Output: the rows (Rows), the row of a triple (Find), and each row's columns: the triple, the profile name, data layout,
-// CPU, features and code generation settings, the module frame's extra function attributes (FunctionAttributes), the entry and
-// subsystem, the reserved runtime name, the platform layer (Layer: its template's resource name), the reserved supplies (Supplies: each
-// one's name, kind and symbol set; Supply(name)) and the reserved external names (ReservedSymbols, IMPL 21.2), the runtime's import
-// declarations, and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines
-// (MemorySymbols).
+// CPU, features and code generation settings, the module frame's extra function attributes (FunctionAttributes), the entry and a COFF
+// row's subsystem and float marker (null on a row without them), the platform layer (Layer: its template's resource name), the
+// reserved supplies (Supplies: each one's name, kind and symbol set; Supply(name)) and the reserved external names (ReservedSymbols,
+// IMPL 21.2), the runtime's import declarations, and the bound below which the system maps no address; table-wide, the C memory
+// functions every runtime defines (MemorySymbols).
 // Invariants: constants and arrays only; triples distinct; each row's Layer names exactly one of the Backend's RuntimeLayer records
 // (Core names no Backend type, so CoreModelTest pins it); each row's supplies distinct, in Ordinal name order (publication interleaves
 // a program's supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2); a row's reserved
@@ -86,8 +87,32 @@ internal sealed class TargetProfile
         ReservedSymbols = [WindowsFloatMarker, .. WindowsBackendSymbols],
     };
 
+    /// <summary>Gets the linux-x64 row, the static Linux execution profile without a C library (IMPL 21.5; the Tatara plan's decision
+    /// 21): its platform layer calls the kernel directly, so it has no runtime declarations, float marker or subsystem; its reserved
+    /// supplies are none until a program's C library (the Tatara plan's B7b2b).</summary>
+    internal static TargetProfile Linux { get; } = new()
+    {
+        Target = "x86_64-unknown-linux-musl",
+        Name = "linux-x64-v1",
+        DataLayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+        Cpu = "x86-64",
+        Features = "+sse2",
+        RelocationModel = "static",
+        CodeModel = "small",
+        UnwindTables = "async",
+        FunctionAttributes = ["\"probe-stack\"=\"inline-asm\""],
+        EntrySymbol = "__kimi_start",
+        Subsystem = null,
+        FloatMarker = null,
+        Layer = "LinuxPlatform.ll.in",
+        UnmappedBound = 65536,
+        RuntimeDeclarations = [],
+        Supplies = [],
+        ReservedSymbols = [],
+    };
+
     /// <summary>Gets the table's rows: one per executable target profile (SPEC 22), in the order the table states them.</summary>
-    internal static TargetProfile[] Rows { get; } = [Windows];
+    internal static TargetProfile[] Rows { get; } = [Windows, Linux];
 
     /// <summary>Gets the target triple, the row's key (the manifest's target).</summary>
     internal required string Target { get; init; }
@@ -110,15 +135,16 @@ internal sealed class TargetProfile
     internal required string UnwindTables { get; init; }
 
     /// <summary>Gets the LLVM function attributes the module frame adds to the profile attributes of every generated definition (#0),
-    /// each attribute's text; Windows has none.</summary>
+    /// each attribute's text; Windows has none, Linux probes the stack inline (no __chkstk without a backend archive).</summary>
     internal required string[] FunctionAttributes { get; init; }
 
-    // Application entry (SPEC 22.4.3) and reserved runtime name (IMPL 21.2) identities.
+    // Application entry (SPEC 22.4.3) and reserved runtime name (IMPL 21.2) identities; a COFF row's subsystem and float marker, null on
+    // a row without them (every reader takes null as none).
     internal required string EntrySymbol { get; init; }
 
-    internal required string Subsystem { get; init; }
+    internal required string? Subsystem { get; init; }
 
-    internal required string FloatMarker { get; init; }
+    internal required string? FloatMarker { get; init; }
 
     /// <summary>Gets the resource name of the row's platform layer template, which names the row's RuntimeLayer record in the Backend's
     /// RuntimeAbi (the layer's OS-error prefix and runtime definitions).</summary>
