@@ -12214,7 +12214,7 @@ resumed by R4-M86 (2026-10-20).
     `ProjectionQualifier` (superseded by BU-160: it reads only a parenthesized right, no member by name) and the
     unavailable-qualifier explanation; it replaces `QualifiedTypeMember`. Four readers do not go through it yet: the default alias's
     segment walk (`DefaultAliasTarget`, `Imports.cs:70`, a raw read: `Alias={"Box.T"}` is accepted), which R7-N1e3 moves onto the
-    path walk (done: BU-249); and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
+    path walk; and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
     which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected:
     a filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
 
@@ -12906,8 +12906,6 @@ resumed by R4-M86 (2026-10-20).
     row is untouched.
   - Amended by BU-151 (R7-N1e2-2a): the rows are SPEC 9.2's roles, chosen by `UseRow` alone; the published column is the lookup's
     end (`PathEnd[]`).
-  - Amended by BU-249 (R7-N1 e3): the two-environment clause (`t25`) is superseded: the conflict stays `AmbiguousBinding_Kd`, the
-    limit records the located `Unsupported_Kd` at the use (PLAN G633's remainder); the exception goes with `SelectQualifier`.
 - **BU-132 `TypeMemo<TKey, T>`: a per-query table keys an entry by what its walk's visit depends on, the part or the pair (part, beside),
   compared by the key's own equality** (2026-11-08; R7-C8 U0, Major, behavior-preserving; design review 2 ACCEPT; supersedes in part
   BU-19 and R4-M164 U1e; amends R4-M161) SPEC 3.8.
@@ -17620,77 +17618,6 @@ resumed by R4-M86 (2026-10-20).
     false))`) was read, probed only by the po rows and the `o()` rows; TakeRecord's preceding field is observed by no test (the
     review's mutant M3t survives: the Exclusive `Last` decides the classification, as R1.1 says).
   - **Rejected:** a mode or bool on the acquisition; try-then-fallback; deriving the Shared acquisition from the Exclusive one.
-- **BU-249 Alias targets on the path walk: a configured default alias is an alias in a configuration document, and a failed walk
-  publishes its failing step** (2026-11-23; Front, Binding; Major; R7-N1 e3, Q-706, D-1166; F's rulings N1-4, N1-5, N1-7, N1-9,
-  N1-13, N1-14, N1-15) SPEC 9.5, 9.5.1, 8.6.4, 18.2.1; IMPL 20.2. Amends BU-131 (its two-environment clause; its exception goes),
-  BU-122's R7-N1e1 line (the default alias's segment walk) and R7-M62's E2-4b.
-  - **Import stage** (e3-3; N1-13 B4; amends BU-131). BU-131's clause "Two opened environments for one value name (`t25`) stay
-    `AmbiguousBinding_Kd`" is superseded: the import stage keeps the conflict (`ValueImports.Ambiguous`, SPEC 9.5.1's same-name
-    ambiguity, a Language error) apart from the two-environment limit (`ValueImports.Limited`), which refuses the Name with the walk's
-    `Unsupported` name step: the located `Unsupported_Kd` at the use, as BU-117 records a qualifier of both namespaces (AGENTS
-    Diagnostics: a valid form an implementation limit refuses is never a Language error). Only the conflict ends an import stage; the
-    limit accumulates across its sources and is read after the conflict. Reason no longer holding: none was given for keeping a
-    Language error; the clause recorded the limit. Remains open: one environment per gathered candidate (PLAN G633).
-  - **BU-131's exception** ("a default alias's ambiguous segment is reported by `SelectQualifier` during the evaluation") is removed
-    with `SelectQualifier`: a configured path is evaluated once per pass by the path walk, nothing published, its failure recorded
-    where the walk fails, in the configured path's own node (N1-9 (1)).
-  - **Configured default alias** (N1-4, N1-7 (5), N1-9 (1), (4); e3-2; N1-13 B2, C2; N1-15 C5). A configured default alias's path is
-    a configuration-owned node in a configuration document, evaluated as a source alias's target is. The Compilation (`DefaultAliases`,
-    the configuration owner) parses each effective path once with `Parser.ParseType` in a configuration document of its module
-    (`ParseConfiguredPath`, as `KimiLibrary.CreateAbort` forms its built-in syntax): a synthetic SourceDocument named by its
-    configuration file and entry (`<project file>#Alias[<path>]`) whose text is the path, registered like any SourceDocument, so a
-    record in it prints a `-->` line in the CLI's `check` and has a JSON source index. A path that does not read whole (a recovery, or
-    a token left on the line) is reported by that parse, the parser's own record in the configuration document, and gets no row
-    (Binding never evaluates it; IMPL 20.2 unchanged: "an ill-typed value is an error" covers it, and the loader keeps its non-empty
-    check and text). A row is `Compilation.DefaultAlias(Path, Alias)`, the AliasKoto `ParseConfiguredPath` declares (its TargetSyntax
-    the path's node); no reader casts the path's parent. The library's own "Kimi" row is made with the library
-    (`KimiLibrary.DefaultAliases`, document `compiler://configuration#Alias[Kimi]`), so it is evaluated inside the library's pass
-    before its table freezes.
-  - **Evaluation** (N1-13 B2, C2). The configured alias is an alias of its module: the node lives for the Compilation and Indexing's
-    `IndexConfiguredPaths` walks its AliasKoto with the module's trees, so the one reset step resets it each pass, its records are the
-    pass's and it is one of the pass's aliases. `PrepareAliases` evaluates it by `AliasTarget` (`EvaluateAlias`, shared with source
-    aliases: the target and the AliasImport its readers take, environment included), by the source alias's selection and formation
-    (`SelectAliasTarget`, `BindContainerQualifier`; stages 5-6 off); the library's in the library pass. A failure is recorded where
-    the walk fails, at the failing component of the path's node, with the walk's code; the module root is not failed; a use whose
-    import stages selected nothing rests on that node (`ImportMiss`, N1-2 C2). Deleted: `DefaultAliasTarget`'s copy of `AliasTarget`,
-    `PrepareDefaultAliases`, the `defaultAliasTargets` cache. Not done (C5's optional half): the stage-6 reader forms the configured
-    alias's import at each read (`EvaluateAlias`), where a source alias's is formed once into `aliasesByDocument`; F decides whether
-    that is a PLAN item.
-  - **An alias target's failure is where the walk failed** (N1-5 (4), N1-7 (2), N1-9 (3)). A source or configured target the walk
-    selects nothing for is bound as every Type use is (BindNamedType's miss, `UnselectedTypeSite`: a missing last component at the
-    path, a failing qualifier at that qualifier), and a source alias rests on that record (rule W); a target whose formation failed is
-    the alias's record by the same rule, and a group reached through a qualifier whose formation failed rests on the qualifier's
-    record (`BindContainerReference`); a target naming no Container (or no group for a named alias) keeps the alias's
-    `InvalidTypeFormation_Kd`. The records do not depend on when the target is first read (checked with the first read moved after
-    conformance registration).
-  - **Failing steps** (N1-13 B1; N1-14 (4), N1-15 C4). A use's published lookup is its end (`HirTables.Lookups`), its selection
-    (Symbols) and, for an Unresolved end whose walk stopped at another node than the use (a qualifier, a generic name's identifier, an
-    Unsupported component), that node: the pass family `NodeColumns.FailingSteps`, a new representation (`StampedColumn<Koto?,
-    PassCounter>` with its Grow, Freeze and Renumbered rows beside its siblings), written by PublishUse (the one writer; a path's left
-    carries its own step in its Qualifier step, `NameStep.Failed`) and read back by NamePath's read (PublishedStep). The library pass
-    writes it (a valid program's failed Type reading of a value chain publishes its step) and the library's freeze freezes it; a
-    program pass never writes a library node's row. Every reader of a failed walk (the site rule below, the node an alias rests on)
-    reads the one fact. Removes the re-read's use-as-step (C-405's C1 cause). Cost (A the head without the write, B the head, one
-    folder, 5 alternated rounds): the library freeze +12,784 bytes allocated (+0.09%) and +10,680 retained (+0.11%; 136 library
-    slots), time within noise; cold Binds of Hello, Milestone26 and NamedAliases unchanged (no row); 256 value chains `m.i.v` +35,272
-    bytes allocated (+2.6%) and +18,760 retained, no slowdown. Rejected: deriving the step at read time from the qualifiers' published
-    ends (C-405's candidate); a Koto-keyed table (the ratchet); `SelectAliasTarget` taking BindType's walk (the alias alone).
-  - **One site rule** (merge b58b50841, b1b25ac42; PLAN G1298). e3's `FailingStep` and Q-674's `UnselectedTypeSite` were one rule;
-    the merge kept `UnselectedTypeSite`, which reads only the use's published lookup (UseNode, `HirTables.LookupOf`, PublishedStep):
-    an Unresolved walk at its failing step when that step is a qualifier of the path, else a generic at its Name, else the use. Its
-    readers: BindNamedType, BindConstructedType, BuildContract's parent and `SelectAliasTarget` (the node an alias rests on). This
-    supersedes R7-M62's E2-4b statement that a generic's site reads no walk (BindConstructedType's `default`); the walk argument is
-    gone, so the arm order no longer decides.
-  - **A requirement is reached through its subject Type** (N1-7 (1), N1-13 B3; SPEC 8.6.4). `LacksRequirementSubject`
-    (`Binding.ContractCalls.cs`) is read on the selected candidate (the call binder's winner, a function reference's and an explicit
-    item's selection, BindReference's group of one), never on a gathered group's head; a Name that selected an opened Contract's
-    requirement without one records `UnresolvedBinding_Kd` (the record `Empty.empty()` gets). Rejected: dropping a Contract's values
-    from stage 5 (18.2.1); a 9.5 stop row (its repair would offer the invalid `P.make()`).
-  - **Rejected** (the configured alias): a string-segment entry beside the walk; Binding parsing the configuration (a second owner of
-    its syntax); a loader diagnostic for a walk failure (the loader owns only the configuration's syntax); evaluating every row before
-    `BindSchemas` (the formation reads `Schema`, which BindSchemas assigns); the record at the module root (N1-3 (a), superseded by
-    N1-9 (1): the root has no location, and its Invalid state failed base clauses beside it); a span into the project file's JSON (a
-    new location form); a ProblemFact kind naming the configured string (N1-9 (5): the location is the path itself).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -25390,9 +25317,6 @@ R8-M* and R9-M* by the stage of the recording unit.
       keeps it fact-less); QualificationRequired's facts in the record beside the stop's store (two stores for one stop); keeping the
       member-access arm (a reader stating a false relation); a refused Type selection in the resolver for G1207 (a new N1
       representation).
-    - **Amended by BU-249** (R7-N1 e3; PLAN G1298 closed): `UnselectedTypeSite` reads only the use's published lookup (UseNode,
-      `HirTables.LookupOf`, PublishedStep), with `SelectAliasTarget` a fourth reader; this supersedes the statement that a generic's
-      site reads no walk (BindConstructedType's `default`): the walk argument is gone. `SelectQualifier` is deleted.
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
