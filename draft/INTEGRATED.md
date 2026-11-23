@@ -1813,7 +1813,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   states LC3's outcome in place of revisions 17-18's text: the whole link 15.4 ms warm (54% of Hello O0's warm line), 24.8 ms
   cold; S1 and D1 (`/lldignoreenv /winsysroot:<stem>.native`, the fix of PLAN G1334) adopted; W-c, write and close otherwise,
   and W2 (until a measured `kimi.exe` row) stopped. Decision 42 names the interrupt run under QEMU OSF3c, not OSF3b (a wording
-  correction: B10 Revision 1 split the evidence unit, and §7's B10 row already says OSF3c). No other decision changes. No SPEC or
+  correction: B10 Revision 1 split the evidence unit, and §7's B10 row already says OSF3c), and its "the interrupt entries (OSF3a)" reads "the interrupt declarations (OSF3a)
+  and entries (OSF3b)" as B10 Revision 1's split and §7's row state (T's D-1203 cell (3)). No other decision changes. No SPEC or
   IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
