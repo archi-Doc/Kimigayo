@@ -592,9 +592,12 @@ public sealed partial class Binding
                 // Origin and Loan contract judged there alone (SPEC 15.6.1), is the record the join rests on; one that does not fit
                 // structurally is converted here for its record. A resting join's bound parts keep their records (DecideWaiting's
                 // contract, rule W: DECISIONS BU-79, G368 (1)); a Conflict join's own record stands for its sources.
-                // R7-O1: a part whose only misfit is Origin positions fits, its positions rows of the body that A5 judges at the join, as
+                // R7-O1: a part whose only misfit is Origin positions fits, its positions rows of the body that A5 judges once: at a
+                // Target Result Type that step 1 fixed (context.Expected: a declared or the parameter's Type) at the source's value, by
+                // step 4's check of every source (DecideResult), so here by its structure alone; at step 2's common Type at the join, as
                 // the join's own fit forms them (CheckTypeUse at `node`: one row per relation).
-                fits = this.TryPropagate(source, type!, node, out var failedConversion) || (!awaits && this.CheckTypeUse(context.Sources[i]!, type!, node, out fit));
+                fits = this.TryPropagate(source, type!, node, out var failedConversion) || (!awaits && (context.Expected is not null
+                    ? this.FitsStructurallyAt(context.Sources[i]!, type!, node) : this.CheckTypeUse(context.Sources[i]!, type!, node, out fit)));
                 if (failedConversion is not null)
                 {
                     context.RestOn(failedConversion);

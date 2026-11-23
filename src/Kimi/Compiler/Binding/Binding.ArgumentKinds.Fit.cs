@@ -401,7 +401,8 @@ public sealed partial class Binding
             type,
             temporary is not null ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
             ExpectedTypeClass(temporary),
-            Positions: first..this.positionOperations.Count);
+            Positions: first..this.positionOperations.Count,
+            AdaptedType: temporary is null ? null : this.TemporaryBorrow(node, temporary));
         return result;
     }
 
@@ -410,8 +411,7 @@ public sealed partial class Binding
         if (this.Materialization(node, type, scope) is { } target && this.FitsLiteralPart(node, target, scope))
         {
             // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed.
-            var literalBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [target], origin: this.PlaceOrigin(node));
-            operation = new(part, target, type, ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow, AdaptedType: literalBorrow);
+            operation = new(part, target, type, ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow, AdaptedType: this.TemporaryBorrow(node, target));
             return CandidateApplicability.Applicable;
         }
 
