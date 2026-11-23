@@ -12,11 +12,6 @@ public sealed partial class Binding
 
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
 
-    // The rows of every failed selection's rejectedCandidates range, cleared by ResetPrerequisites with their capacity kept, as the
-    // prerequisite and parameter-shape stores are, so a warm rebind of a rejected call allocates nothing. A range is contiguous: a
-    // check appends its rows with no other append to this list between its first row and RecordRejected.
-    private readonly List<RejectedCandidate> rejectedRows = [];
-
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
 
     private FailedSignaturePartVisitor? failedSignaturePartVisitor;
@@ -38,14 +33,9 @@ public sealed partial class Binding
     // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
     private Dictionary<Koto, Koto>? writeTargets;
 
-    // The candidates a failed overload selection considered, recorded only when it fails: the use's range of rejectedRows.
-    private Dictionary<Koto, (int Start, int Count)>? rejectedCandidates;
-
     // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
-
-    private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false, int ReceiverParameter = -1, bool ErasureIncomparable = false, ReferenceConstraintFailure? ConstraintFailure = null);
 
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
     // slot would hold (as bits) and that signature.
@@ -610,33 +600,24 @@ public sealed partial class Binding
             related: [("property", property.NameKoto, $"{property.NameKoto.IdentifierName} is read through ref/Self and written through uniq/Self")]);
     }
 
-    // Publishes the rejected-candidate rows a failed selection appended from `start` on as its fact at `use`.
-    private void RecordRejected(Koto use, int start)
-        => (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = (start, this.rejectedRows.Count - start);
-
     private void ResetPrerequisites()
     {
         this.invalidations = 0;
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();
-        this.qualificationStops?.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
         this.pendingJudgments?.Clear();
-        this.arithmeticSelectionFailures?.Clear();
-        this.arithmeticDirectionFailures?.Clear();
         this.writeTargets?.Clear();
         this.takeLayers?.Clear();
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.captureRepeatRows.Clear();
         this.pairCaseRows.Clear();
-        this.rejectedCandidates?.Clear();
-        this.rejectedRows.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
         this.duplicateOrder.Clear();
@@ -716,7 +697,7 @@ public sealed partial class Binding
             return null;
         }
 
-        this.Fail(member, BindingFailure.Access);
+        this.RecordAccess(member, first!, null); // SPEC 9.4: every candidate is inaccessible; the first the walk met is related.
         return member;
     }
 

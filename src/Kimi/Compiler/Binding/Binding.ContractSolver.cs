@@ -532,7 +532,7 @@ public sealed partial class Binding
                 if (states || refutes || (subject is not null && ((reading.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(reading.Subject, subject)) || DecidesPairLayer(reading, subject))))
                 {
                     (positive, negative) = (positive | states | !refutes, negative | refutes | !states);
-                    failure ??= environment.FailedPremise;
+                    failure ??= environment.CauseOf(fact);
                 }
             }
         }
@@ -967,7 +967,7 @@ public sealed partial class Binding
 
         if (environment.IsFailed(fact))
         {
-            this.ScopeReads.Limit ??= environment.FailedPremise;
+            this.ScopeReads.Limit ??= environment.CauseOf(fact);
             return false;
         }
 

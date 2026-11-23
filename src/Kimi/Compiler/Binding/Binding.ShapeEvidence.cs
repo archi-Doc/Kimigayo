@@ -510,7 +510,7 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        this.FailExplained(CallInferenceFailureRows.Family, call, BindingFailure.UnprovenAcquisitionCorrelation, new CallInferenceFailure(contract.Pair.Left, function, null, ConstructionCheck.AcquisitionCorrelation, slot, types[a], types[b]), true);
+                        this.RecordCorrelation(call, contract.Pair.Left, function, slot, types[a], types[b]);
                         return false;
                     }
                 }

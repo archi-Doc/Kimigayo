@@ -177,12 +177,14 @@ public partial class PropertyBindingTest
 
     // The owner's O-44, SPEC 11.9.1: a Property requirement forms no signature either, and one read keeps a failed declaration out of the evidence
     // (SPEC 8.3.1). DECISIONS Q13: c3b's accessor stops at its failed Property, as one that is no witness does; a setter `has get` does not need is
-    // no evidence of the getter.
+    // no evidence of the getter. DECISIONS Z27 (PLAN G1058; SPEC 6.3.4, 13.7.1, 15.1.2): `self.b = Box<S>.init()` over the failed Field Type
+    // locates the constructing `self` (an enclosing use, its own bit set), so the write gives no UninitializedPlace_Kd (fail-before: one at
+    // the write); the constructor's exit keeps its own (`b` stays unplaced, PLAN G1184).
     [Theory]
     [InlineData(StoredWitnessNamesItsConformance, "clean")]
     [InlineData(ComputedWitnessNamesItsConformance, "clean")]
-    [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 5*InvalidConstraint_Kd 2*UninitializedPlace_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UninitializedPlace_Kd 8*UnsatisfiedConstraint_Kd")]
+    [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 5*InvalidConstraint_Kd 1*UninitializedPlace_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 1*UninitializedPlace_Kd 8*UnsatisfiedConstraint_Kd")]
     [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the user of the failed witness rests
     [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
     public void APropertyWitnessFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
@@ -853,6 +855,17 @@ public partial class PropertyBindingTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(0, allocated);
     }
+
+    // SPEC 9.4, 11.3.2, 23.3 (R7-E2 E2-4b): an absent or inaccessible accessor at a use is located at the use and relates the Property
+    // (RecordAccess): a member access writing a getter-only Property (u4, the one related line dev's member-access arm gave) and an
+    // IdentifierName writing an opened Property's private setter (u5a: dev related nothing). The twin has the setter. Each row lists the
+    // Access records alone (a group's Property is Unsupported_Kd on its own, a boundary outside this rule).
+    [Theory]
+    [InlineData("struct S\n    public computed x: i32\n        get(self: ref/Self) -> i32 => 0\n    public init() => ()\nfunc f(s: uniq/S)\n    s.x = 1\n", "InaccessibleBinding_Kd 6:5 s.x, inaccessible declaration 'x'")] // u4
+    [InlineData("struct S\n    public computed x: i32\n        get(self: ref/Self) -> i32 => 0\n        set(self: uniq/Self, value: i32) -> () => ()\n    public init() => ()\nfunc f(s: uniq/S)\n    s.x = 1\n", "")] // u4t
+    [InlineData("alias G\ngroup G\n    public var x: i32 = 0\n        private set\nfunc f()\n    x = 1\n", "InaccessibleBinding_Kd 6:5 x, inaccessible declaration 'x'")] // u5a
+    public void AnAccessorAtAUseRelatesItsProperty(string source, string records)
+        => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n").Where(static x => x.StartsWith("InaccessibleBinding_Kd", StringComparison.Ordinal))));
 
     [Fact]
     public void RefinementsRetainPropertyOperationsByRequirementIdentity()

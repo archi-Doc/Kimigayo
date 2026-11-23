@@ -586,7 +586,7 @@ public sealed partial class Binding
             // R7-C3 gate 2: a clause that failed, or holds a recovery, adds its Error fact; the environment writer fails that premise
             // alone (ValidateConstraintEnvironments, FailPremise), so nothing else in the environment reads it.
             var environment = scope.Constraints ??= new();
-            this.AddConstraintFact(environment, requirement);
+            this.AddConstraintFact(environment, requirement, origin: requirement.Kind == ConstraintKind.Error ? clause : null); // its origin (R7-E5 c1)
 
             if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
             {

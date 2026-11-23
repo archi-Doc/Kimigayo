@@ -96,7 +96,9 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 23.1.1, 23.1.2 (R4-M153's revision 2, implementation review 2's B2): where an unsupported part and a part past the bound meet at
     // one call's verdict, it gets one record, MirOutcome.Join's answer, the located Unsupported_Kd: putTwo's W reaches h, a Limit holder
-    // (R4-M147's stored raw layer a Type argument supplies), and dd, a Deep holder whose step would reach m (dd holds m.1@uniq). Its
+    // (a stored raw layer a Type argument supplies, whose address was taken past the shared c: Z6's named limit R6.1; the layer over r's
+    // own address is decided since PLAN G148 (1), AStoreThroughARawLayerReadsItsOriginsBorrows' flat), and dd, a Deep holder whose step
+    // would reach m (dd holds m.1@uniq). Its
     // twins: each alone (the depth limit at putAny), and at depth 10 the Limit alone. dd's own depth limit, at its declaration, is another
     // verdict's: z's write conflicts with the Loan the store put in dd only through dd's Drop past the bound. A shared Loan names no holder
     // the step writes (SPEC 15.6.4 item 1, DECISIONS R4-M177): dd holding k@ref (deepRef) leaves putAny decided.
@@ -110,8 +112,8 @@ public sealed partial class MirBorrowsTest
     {
         const string Wrap = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n    public func put<U>(self: uniq/Self, v: U) => ()\n" +
             "func putAny<U, V>(t: uniq/U, v: V) => ()\nfunc putTwo<U, V, T>(a: uniq/U, b: uniq/V, v: T) => ()\n";
-        const string Lead = "    var x = 1\n    var y = 2\n    var z = 3\n    var w: ref/i32 = x@ref\n    var r = w@uniq\n" +
-            "    var h = Wrap.init(r@follow@raw@raw/u8)\n    var k: ref/i32 = y@ref\n    var m = (k, 5)\n";
+        const string Lead = "    var x = 1\n    var y = 2\n    var z = 3\n    var w: ref/i32 = x@ref\n    var r = w@uniq\n    let c = r@ref\n" +
+            "    var h = Wrap.init(c@follow@follow@raw@raw/u8)\n    var k: ref/i32 = y@ref\n    var m = (k, 5)\n";
         var shared = form.EndsWith("Ref", StringComparison.Ordinal);
         var dd = $"var dd = {Nested(shared ? "k@ref" : "m.1@uniq", depth)}";
         var call = (shared ? form[..^3] : form) switch
@@ -181,18 +183,19 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 23.1.2 (R4-M153's revision 3, implementation review 3's N1): a limit record is one failure's, so independent checks at one
     // subject keep their own records: `replace` destroys s's old value in place, whose destruction passes the bound (err(destroy): the depth
-    // limit), and its W store reaches s, whose guard a stored raw layer a Type argument supplies leaves undecided (the located
-    // Unsupported_Kd); s's own depth limit, at its declaration, is a third verdict's (the drop tier). At depth 10 the store's alone.
+    // limit), and its W store reaches s, whose guard a stored raw layer a Type argument supplies leaves undecided (its address taken past
+    // the shared c: Z6's named limit R6.1, the located Unsupported_Kd); s's own depth limit, at its declaration, is a third verdict's (the
+    // drop tier). At depth 10 the store's alone.
     [Theory]
     [InlineData(40, "{call} Unsupported_Kd|{call} OwnershipDepthLimit_Kd|{s} OwnershipDepthLimit_Kd")]
     [InlineData(10, "{call} Unsupported_Kd")]
     public void IndependentChecksAtOneSubjectKeepTheirOwnRecords(int depth, string expected)
     {
         const string Wrap = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n";
-        var value = $"(Wrap.init(r@follow@raw@raw/u8), {Nested("z@ref", depth)})";
+        var value = $"(Wrap.init(c@follow@follow@raw@raw/u8), {Nested("z@ref", depth)})";
         var (s, call) = ($"var s = {value}", $"Kimi.Intrinsics.replace(s@uniq, with: {value})");
         var c = CompileDepthForm(Prelude + Wrap + "func f()\n    var x = 1\n    var z = 3\n    var w: ref/i32 = x@ref\n    var r = w@uniq\n" +
-            $"    {s}\n    {call}\n    inspect(w)\n");
+            $"    let c = r@ref\n    {s}\n    {call}\n    inspect(w)\n");
         Assert.Equal(
             Rows(expected.Replace("{call}", call, StringComparison.Ordinal).Replace("{s}", s, StringComparison.Ordinal)),
             DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}"));
