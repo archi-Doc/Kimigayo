@@ -30293,6 +30293,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     files through `kernel32.ps1`'s `Get-KimiKernel32` and `toolchain.ps1`'s `Get-KimiBackendArchive` (each the one place naming its
     file), `check-toolchain.ps1` reads no `windows_x64`, and `ToolchainIdentity.BackendFile` is deleted; existing roots keep the
     folder, which nothing reads (PLAN G1210 closed).
+  - Amended by T-M34 (unit B7b5, 2026-11-23): the reserved names are every row's supplies (`kernel32`, `kimi_backend` and
+    linux-x64's `c`), each an error as a `NativeLibraries` or `NativeRequirements` entry under every target key
+    (`NativeConfiguration.Reserved` reads `TargetProfile.ReservedSupply`; change W1).
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -30478,6 +30481,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     lookup `Supply(name)` (a loop: no delegate, no allocation per call). `Supplies` and `ReservedSymbols` are static properties after
     the private `BackendSymbols` field (StyleCop orders internal fields before private ones, and static initializers run in text
     order).
+    - Superseded in part by T-M34 (B7b5, 2026-11-23): the row's `ReservedSymbols` is gone; the reserved external names are the
+      table-level `TargetProfile.ReservedSymbols` (every row's float marker and `kimi_backend` symbols, `MemorySymbols`,
+      `MainSymbol`), and a reserved supply is any row's (`TargetProfile.ReservedSupply`).
   - **Its readers:** Binding's two branches are one rule read from the row: the fixed kind, the symbol check
     (`UnavailableReservedImport_Kd`), the runtime-declaration join (membership: the reserved supply whose symbols contain the
     declaration's symbol, IMPL 21.2's providing library), the dependency edge (`reserved is null`: every reserved supply is exempt,
@@ -31186,3 +31192,55 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     valid); (c) Revision 2.4's D3 (an import whose C meaning differs from the prototype undefined behaviour: a new SPEC sentence, and
     the right call's result would depend on another declaration's order); the extension on the declaration (it reaches every call).
   - **Not verified here:** the C path's and row 44's Linux runs wait for musl (B7b4) and the ELF link (B7b7 under WSL, B7b9 on CI).
+- **T-M34 Reserved supplies and names across rows: the table's reserved names and supply reads, `Kinds`, and the selected row's
+  Unsupported** (Tatara, 2026-11-23; the plan's unit B7b5, Q-716, D-1190; Major; design Revision 2.5.1 §2, §3.9, §4, §16; the
+  owner's decision 21: Q3a (a), Q3b (a); T's R1, R2, R5; T's rulings G1 (i) and G2 of 11-23 00:5x, 6 and 8 of 11-23 03:5x;
+  implementation review C-501, the Middle's ACCEPT and the Front's ACCEPT WITH CONDITIONS with its consent on the Binding hunk, C1
+  (a) met below, C1 (b) and C2 PLAN G1326). Lands in window W4 with T-M32 and T-M33 (all or none). Amends T-M8 and T-M13.
+  - **Reserved supplies (R2, IMPL 20.4):** a reserved supply is any target row's supply of the name (`kernel32`, `kimi_backend`:
+    windows-x64; `c`: linux-x64), its name reserved under every target key: `NativeConfiguration.Reserved` reads the table, so a
+    `NativeLibraries` or `NativeRequirements` entry named `c` fails the load with the one text under every key (**change W1**; rows 12,
+    39; G1211's rule extended). Binding: an import of a symbol no row's supply of that name provides is
+    `UnavailableReservedImport_Kd` on every target; one that only another row's supply provides is the located `Unsupported_Kd` at the
+    import on the selected row (row 11: `c write` for windows-x64, `kernel32 GetLastError` for linux-x64); the kind is the supply's
+    (one kind per supply name in the table, IMPL 20.4); a dependency module's import of any reserved supply is linked (BU-92's
+    reading, `c` included; row 38).
+  - **`Kinds` (a new row column, `required string[]`, Ordinal order):** the library kinds the row links; Windows `import`, `static`;
+    Linux `static` (Q3a (a)). An import whose kind is outside the selected row's `Kinds` is the located `Unsupported_Kd` (row 13); the
+    project file still accepts the record. Invariant (`CoreModelTest`): each supply's kind is among its row's `Kinds`.
+  - **Reserved external names (IMPL 21.2, R1, R5):** one table-level array, `TargetProfile.ReservedSymbols`, built once after `Rows`:
+    for each row its `FloatMarker` (where it has one) and its `kimi_backend` supply's symbols, then `MemorySymbols`, then `MainSymbol`,
+    each name once; value `_fltused, __chkstk, memcmp, memcpy, memmove, memset, main`, the same before and after B7r5. The row column
+    `ReservedSymbols` (B7a1/B7a2) is gone. Binding's reserved-name check (first, before any set) reads only this array, so `main` is
+    reserved on every target (**change W4**: `#LibraryImport("codec", "main")`, base accepted on Windows, now
+    `InvalidLibraryImport_Kd`; row 32) and `c memcpy` stays `InvalidLibraryImport_Kd` on both rows (row 31).
+  - **Table-level reads (G5), one Core component:** `TargetProfile.ReservedSupply(name)` (any row's supply of a name; read by Binding
+    and `NativeConfiguration`), `TargetProfile.Provides(name, symbol)` (whether any row's supply of that name provides a symbol) and
+    `TargetProfile.TryGetRuntimeDeclaration(symbol, out signature, out provider)` (a row's runtime declaration of a symbol with the
+    name of that row's supply providing it); each a loop over `Rows`, no array built per call. Invariant (`CoreModelTest`): rows
+    declaring one runtime symbol declare it alike (one physical signature, provided by a supply of one name), so any row's is every
+    row's.
+  - **Runtime declarations (G1 (i)):** `ConflictingRuntimeSymbol_Kd` is judged against every row's runtime declarations, an import
+    joining one only through the declaring row's supply providing the symbol with an equal physical Type: target-independent (SPEC
+    22 ¶1, Reading 2, O-79 (a)); a target without a row reports it too (row 45; on `x86_64-unknown-linux-gnu` beside
+    `MissingNativeRequirement_Kd`, T's ruling 8). Revision 2.4's "the compilation's row" is corrected.
+  - **The selected row (Reading 2):** `TargetProfile.Find(TargetTriple)` once per `ValidateLibraryImports`; it decides only the
+    located `Unsupported_Kd` (another row's supply or symbol; a kind outside its `Kinds`), placed with BU-92's after the import's own
+    checks, so an error stays the import's record. **A target without a row (G2)** reports none of these: `c write` for
+    `x86_64-unknown-linux-gnu` moves from `MissingNativeRequirement_Kd` to accepted, as on linux-x64 (row 46); building it stays
+    Unsupported (B7b8).
+  - **Readings 2-9** as design §4 (2: the row decides Unsupported only, errors are target-independent; 5: `c`'s set is the C
+    functions the platform layer stands for).
+  - **Temporary structure:** `ReservedNames`' skip of a name already listed (until B7r5 Windows' `kimi_backend` supply still lists
+    the four `mem*`); removal B7r5, whose commit deletes the skip and pins the parts disjoint in `CoreModelTest` (C-445 n4).
+  - **Record moves (Windows):** row 10 `#LibraryImport("c", "getpid")`: `MissingNativeRequirement_Kd` →
+    `UnavailableReservedImport_Kd`; row 11 `#LibraryImport("c", "write")` without an entry: `MissingNativeRequirement_Kd` → the
+    located `Unsupported_Kd`. Uses in the repository: none (design fact 20).
+  - **A consequence of an open issue (the Front's C-501 C1 (a)):** pl-L (two `#LibraryImport`s of one symbol from two libraries of
+    one Kind, e.g. `c write` and `codec write` on linux-x64) is newly accepted because IMPL 21.2's providing-library rule is not
+    checked (`Binding.Attributes.cs` keys the table by signature and Kind); the Windows twin pl-W is accepted on the base too; PLAN
+    G1326 (the Front's, D-1181) carries both; no wrong code ships before B7b7/B7b8 (a Linux build stays Unsupported until then).
+  - Rejected: G1 (ii) (the selected row's declarations: validity would depend on the target, against SPEC 22 ¶1); a union array per
+    lookup; a clause keyed on a triple or a supply's name; a `Supports*` gate; a fallback to Windows' row for a target without one; a
+    row-level `ReservedSymbols` kept beside the table's (C# cannot keep a static and an instance member of one name, and two lists
+    would drift).
