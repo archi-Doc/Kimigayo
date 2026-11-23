@@ -30496,3 +30496,42 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `.ll`, `irSha256` and the records' kernel32 identity (`definitionSha256`, `sha256`) change.
   - **The audit:** the native allocation audit's whitelist loses the three; B7r1's process-heap row becomes a declaration row there
     (a module declaring `HeapAlloc` fails before any run).
+- **T-M29 The module frame per row over the `RuntimeLayer` records** (Tatara, 2026-11-23; the plan's unit B7b2a1, Q-704, D-1162;
+  Major, behaviour-preserving: Windows' IR and products byte-equal; design `artifacts\handoff\tatara\units\B7\design-b7b.md`
+  Revision 2.5.1 §3.7, §15 D2, §16; design review C-445; implementation review C-492, the Middle's and the Back's ACCEPT; T's
+  rulings 1 and 7 of 11-23 03:5x).
+  - **The layer record (a new representation, D2):** `RuntimeAbi` holds one `RuntimeLayer` record per platform layer
+    (`RuntimeAbi.Layers`, `Backend/RuntimeAbi.cs`): its template's resource name, its OS-error prefix and its definition list (the
+    layer's routines, the allocator's, then the common part's compiler-facing ones; `ExpandRuntime` throws for a listed marker the
+    templates lack, so the list is the layer's). Windows' record: `WindowsPlatform.ll.in`, ` (win32=` and the former
+    `RuntimeAbi.RuntimeDefinitions`, which moved into it (one list per layer, no second copy). The constant `RuntimeAbi.OsErrorPrefix`
+    is gone: the prefix is the layer's. A row names its record by Core's `Layer` column (C-445 C3: not `Platform`, which is B9's
+    `ProgramPlatform` word); `RuntimeAbi.Layer(row)` finds it, and a row naming none is a broken contract (it throws), which
+    `CoreModelTest.EveryRowNamesOneRuntimeLayer` keeps unreachable (Core names no Backend type). `PlatformRoutines` and `Start` are
+    unchanged.
+  - **The frame per row:** `LlvmModuleText.Frame(row)` returns the row's `ModuleFrame`: `Header` (the profile name, triple, data
+    layout and the float marker's definition), `Runtime` (the layer's template, `Runtime.ll.in` and `HeapRuntime.ll.in`, expanded in
+    one scan with the layer's definition list and the row's constants), `TestRuntime` (the runtime's test variant) and `Footer`. Each
+    row's frame is built once, on the row's first use (a `Lazy` per row of `TargetProfile.Rows`, thread-safe), so a process that
+    generates only Windows modules builds no other row's text, and a warm write allocates nothing. A row outside `TargetProfile.Rows`
+    is a broken contract (it throws). The static `Header`, `Footer`, `Runtime` and `TestRuntimeBase` are gone; `WriteHeader`,
+    `WriteRuntime` and `WriteExternals` take the frame. The target-free parts (the memory part, `TryAllocate`, `TransferBytes`, the
+    erased writer, the formatting parts, `TestRuntime.ll`) are unchanged.
+  - **The row's constants are the scan's data (C-445 N2):** `RuntimeAbi.RowConstants(row)` gives `{{unmapped_bound}}` (the row's
+    `UnmappedBound`), `{{os_prefix}}` and `{{os_prefix_length}}` (the layer's prefix), which `ExpandRuntime` takes as a span beside the
+    definitions span and passes to `RuntimeAbi.Expand` with the target-free constants; every target-free caller passes none, so a
+    target-free template naming a row marker stays an unexpanded-marker failure (`Kernel32ImportsTest.BrokenRuntimeTemplateFails`'s
+    row). Rejected: a nullable or optional layer steering `ExpandRuntime` (a mode parameter).
+  - **The footer:** `#0` is the row's profile attributes (`UnwindTables`, `Cpu`, `Features`, the denormal mode) followed by the row's
+    new `FunctionAttributes` column (each an LLVM attribute's text; Windows none); `#1` is `#0` plus `"no-builtins"`; the `PIC Level`
+    module flag follows `RelocationModel`: `pic` writes `!llvm.module.flags` and `!0`, `static` writes neither (as clang's non-PIC
+    output), any other value throws (C-445 N3: never a silent default).
+  - **`Find` and the row as a `ModuleCodegen` constructor input (Revision 2.5.1, T's ruling 1):** `TargetProfile.Find(triple)` is a
+    loop over `Rows` (null for no row). `Compilation.Generate` finds the compilation's row before it makes the generator and passes it
+    as `ModuleCodegen`'s sixth constructor parameter (CR-R2's limit), kept in a readonly field beside the `Layout`; `Write` is
+    unchanged and `Assemble` writes the header, runtime, externals and footer through `LlvmModuleText.Frame(row)`. A target without a
+    row reaching generation is `InternalInvariant_Kd` at the project (no path reaches it: artifact production is windows-x64 only
+    until B7b8). The reason: the generator is made after the Binding, and `Prepare` refuses after parsing and after the Binding (B4),
+    so one generator sees one triple, as its `Layout` is already the target's; C-445 C2 is met by the existing B4 guards
+    (`CompilationSpecificationTest`, `IntrinsicCapabilityTest`). Rejected: (a) the row per `Write` (a per-`Write` variation no
+    compilation exercises); a second definition list.
