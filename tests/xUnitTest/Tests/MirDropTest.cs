@@ -45,9 +45,10 @@ public sealed partial class MirDropTest
     // SPEC 12.2, 16.2.1 (DECISIONS R5-M129): an Array literal's elements, each one before the last that builds code secured where it is
     // evaluated (_3, _4), are moved by its one aggregate (Elide after it); a transfer out of a later element (`try`'s Err) destroys those
     // secured so far in reverse acquisition order (_4, then _3) and not the unbuilt Array, whose flag the aggregate sets. The Drop after
-    // the return, which only the checks reach, destroys the whole Array (PLAN G641 kind 4). SPEC 15.1.6, 17.3 (F's C8 rulings 24 and 28;
-    // C-520 C1): the try's failure binding takes the Err payload out of its by-value operand (a Move, it was a Copy of the i32), so on the
-    // Err path the operand `_6` is opened by case with the moved payload elided, not kept whole (no destruction lost: an i32 has none).
+    // the return, which only the checks reach, destroys the whole Array (PLAN G641 kind 4). SPEC 15.1.6, 17.3, 16.2.1 (F's C8 rulings 24
+    // and 28; C-520 C1): the try's operand `_6` is a by-value Subject whose bindings Move its payload, so its drop elides exactly the moved
+    // parts: case 0's `.0` by the success binding (bb22), case 1 whole by the propagation on the Err path (bb18, where case 0 is kept); it
+    // was kept whole there while the failure binding Copied the i32 (no destruction lost or added: an i32 has none).
     [Fact]
     public void AnInterruptedArrayLiteralDestroysItsSecuredElementsInReverse()
     {
@@ -55,7 +56,7 @@ public sealed partial class MirDropTest
             [
                 "flags 1", "StorageLive(_2) [clear f0]", "drop _6 -> bb22 [open ((_ as case 1) elide, (_ as case 0) open (.0 elide))]",
                 "drop _8 -> bb7 [elide]", "drop _2 -> bb13 [flag f0] [clear f0]", "StorageDead(_2) [clear f0]", "drop _4 -> bb15 [keep]",
-                "drop _3 -> bb16 [keep]", "drop _6 -> bb18 [open ((_ as case 1) elide, (_ as case 0) open (.0 elide))]", "_2 = Array(move _3, move _4, move _5): Array<Resource> [set f0]",
+                "drop _3 -> bb16 [keep]", "drop _6 -> bb18 [open ((_ as case 1) elide, (_ as case 0) keep)]", "_2 = Array(move _3, move _4, move _5): Array<Resource> [set f0]",
                 "drop _5 -> bb23 [elide]", "drop _4 -> bb24 [elide]", "drop _3 -> bb25 [elide]", "drop _2 -> bb29 [keep]",
             ],
             Lines(
