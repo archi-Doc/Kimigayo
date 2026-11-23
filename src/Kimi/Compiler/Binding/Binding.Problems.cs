@@ -308,6 +308,10 @@ public sealed partial class Binding
             case BindingFailure.UnboundTypeArgument when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: the unbound slot's Type parameter, 1: the waiting argument.
                 this.ReportUnboundTypeArgument(node, store, index, problem);
                 break;
+            case BindingFailure.ConstructorSelectionChanged or BindingFailure.UnprovenAcquisitionCorrelation when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                // Role 0: the tentative selection or group contract, 1: the constructor the check found or the corresponding declaration.
+                this.ReportConstructionCheck(node, store, index, problem);
+                break;
             case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportDisagreement(node, store, index, problem);
                 break;

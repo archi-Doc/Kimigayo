@@ -8,8 +8,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly CallInferenceFailureRows callInferenceFailures;
-
     // Test/measurement switch for the full reference path. It never changes language behavior.
     internal bool UseConstructorReferenceCheck { get; set; }
 
@@ -59,6 +57,7 @@ public sealed partial class Binding
         return true;
     }
 
+    // A constructor check's closed reason, the low byte of its record's Reason (RecordCorrelation, ValidateFixedConstruction's Reject).
     internal enum ConstructionCheck : byte
     {
         ChangedSelection,
@@ -66,8 +65,6 @@ public sealed partial class Binding
         UnprovenCandidate,
         AcquisitionCorrelation,
     }
-
-    internal readonly record struct CallInferenceFailure(FunctionKoto Selected, FunctionKoto? Other, BoundType? Construction, ConstructionCheck Check, int Slot = -1, BoundType? LeftBinding = null, BoundType? RightBinding = null);
 
     private static bool ContainsUnspellableType(BoundType type)
     {
@@ -254,42 +251,70 @@ public sealed partial class Binding
             this.candidateScratch.Return(checkedCandidates, clearArray: true);
         }
 
+        // SPEC 10.8: the check (Reason), the tentative selection (role 0) with the construction it was selected for (its Instance, a
+        // construction's constructed Type), and the constructor the check found instead (role 1), when it is another.
         bool Reject(FunctionKoto? other, ConstructionCheck check)
         {
-            this.FailExplained(CallInferenceFailureRows.Family, call, BindingFailure.ConstructorSelectionChanged, new CallInferenceFailure(selectedFunction, other, construction, check), true);
+            var site = this.FactSite(selectedFunction);
+            this.candidateFacts.Add(new(ProblemFactKind.Reason, SourceRef.Of(call), (long)check));
+            this.candidateFacts.Add(new(ProblemFactKind.Related, site, 0));
+            this.candidateFacts.Add(new(ProblemFactKind.Instance, site, this.report.Keep(construction)));
+            if (other is not null && !ReferenceEquals(other, selectedFunction))
+            {
+                this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(other), 1));
+            }
+
+            this.RecordSelection(call, BindingFailure.ConstructorSelectionChanged);
             return false;
         }
     }
 
-    private void ReportCallInferenceFailure(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code, CallInferenceFailure fact)
+    // SPEC 7.4: a group contract's correlation at a slot that the call's inputs and fixed bindings do not establish (CheckCallShapeContracts):
+    // the check with the slot's ordinal above it (Reason), the group contract (role 0), the corresponding declaration (role 1), when it is
+    // another, and, where both are known, the slot's two bindings at its Type parameter: the group contract's required (Expected), the
+    // corresponding declaration's found (Actual).
+    private void RecordCorrelation(InvocationKoto call, FunctionKoto group, FunctionKoto corresponding, int slot, BoundType? left, BoundType? right)
     {
-        var correlation = fact.Check == ConstructionCheck.AcquisitionCorrelation;
-        (string Role, Koto At, string? Label)[] related = fact.Other is { } other && !ReferenceEquals(fact.Selected, other)
-            ? [("declaration", fact.Selected, correlation ? "Group contract" : "Tentative selection"), ("declaration", other, correlation ? "Corresponding declaration" : "Fixed-binding check")]
-            : [("declaration", fact.Selected, "Tentative selection")];
-        var note = fact.Check switch
+        this.candidateFacts.Add(new(ProblemFactKind.Reason, SourceRef.Of(call), (long)ConstructionCheck.AcquisitionCorrelation | ((long)slot << 8)));
+        this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(group), 0));
+        if (!ReferenceEquals(corresponding, group))
+        {
+            this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(corresponding), 1));
+        }
+
+        if (left is not null && right is not null)
+        {
+            var parameter = this.FactSite(CallOwnSlots(group)[slot]);
+            this.candidateFacts.Add(new(ProblemFactKind.Expected, parameter, this.report.Keep(left)));
+            this.candidateFacts.Add(new(ProblemFactKind.Actual, parameter, this.report.Keep(right)));
+        }
+
+        this.RecordSelection(call, BindingFailure.UnprovenAcquisitionCorrelation);
+    }
+
+    // SPEC 7.4, 10.8, 23.3: a constructor check's record from its facts, read by position (Reject, RecordCorrelation): the check and a
+    // correlation's slot, the two declarations labelled by the check, the Note by the check, and as evidence the construction or the slot
+    // with its two bindings.
+    private void ReportConstructionCheck(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var check = (ConstructionCheck)(byte)facts[0].Value;
+        var selected = (FunctionKoto)this.compilation.SyntaxOf(facts[1].Site);
+        var correlation = check == ConstructionCheck.AcquisitionCorrelation;
+        (string Role, Koto At, string? Label)[] related = facts[(correlation ? 2 : 3)..] is [{ Kind: ProblemFactKind.Related } other, ..]
+            ? [("declaration", selected, correlation ? "Group contract" : "Tentative selection"), ("declaration", this.compilation.SyntaxOf(other.Site), correlation ? "Corresponding declaration" : "Fixed-binding check")]
+            : [("declaration", selected, "Tentative selection")];
+        var note = check switch
         {
             ConstructionCheck.WaitingContext => "The fixed-binding check needs a different or additional waiting-argument context; the argument is never analyzed again to select another constructor (SPEC 10.8)",
             ConstructionCheck.UnprovenCandidate => "The original constructor group cannot be fully judged with the inferred construction Type fixed (SPEC 10.8)",
             ConstructionCheck.AcquisitionCorrelation => "The group contract is checked before applicability filtering; independent inputs and fixed bindings do not establish the required shared acquisition (SPEC 7.4)",
             _ => "The original constructor group, including inference-rejected candidates, no longer has the same unique Best Candidate when the construction Type is fixed (SPEC 10.8)",
         };
-        object[] evidence = correlation
-            ? fact.LeftBinding is { } left && fact.RightBinding is { } right
-                ? [CallOwnSlots(fact.Selected)[fact.Slot].Identifier, DiagnosticTypeName(left), DiagnosticTypeName(right)]
-                : [CallOwnSlots(fact.Selected)[fact.Slot].Identifier]
-            : [DiagnosticTypeName(fact.Construction!)];
-        node.ReportIn(store, requirement, code, evidence: evidence, related: related, note: note);
-    }
-
-    /// <summary>The `callInferenceFailures` family's one accessor (DECISIONS BU-220): a pass family, the selection a fixed construction's
-    /// or shape contract's later check rejected, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a
-    /// present row always has its Selected function). Its members keep the names its readers use.</summary>
-    private readonly struct CallInferenceFailureRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<CallInferenceFailure, PassCounter> Family(ref NodeColumns columns) => ref columns.CallInferenceFailures;
-
-        internal bool TryGetValue(Koto call, out CallInferenceFailure failure) => (failure = binding.RecordedFact(call, Family)).Selected is not null;
+        object[] evidence = !correlation ? [DiagnosticTypeName(this.report.Value(facts[2]))]
+            : facts[^1] is { Kind: ProblemFactKind.Actual } right
+                ? [CallOwnSlots(selected)[(int)(facts[0].Value >> 8)].Identifier, DiagnosticTypeName(this.report.Value(facts[^2])), DiagnosticTypeName(this.report.Value(right))]
+                : [CallOwnSlots(selected)[(int)(facts[0].Value >> 8)].Identifier];
+        node.ReportIn(store, problem.Requirement, problem.Code, evidence: evidence, related: related, note: note, condition: problem.Condition);
     }
 }

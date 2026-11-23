@@ -187,10 +187,6 @@ public sealed partial class Binding
                 issue.Code,
                 note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
         }
-        else if (this.callInferenceFailures.TryGetValue(issue.Node, out var callInference))
-        {
-            this.ReportCallInferenceFailure(issue.Node, store, requirement, issue.Code, callInference);
-        }
         else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
         {
             // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
