@@ -552,7 +552,7 @@ public sealed partial class Binding
                 if (!this.FitsStructurallyAt(result, expected, use))
                 {
                     return !this.FitsTypeAt(result, expected, use, out var contract, null) && contract.IsCondition
-                        ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
+                        ? this.RecordMismatch(use, use, result, expected, contract) : this.RecordTypeMismatch(use, use, result, expected);
                 }
 
                 if (!this.FitsValueAt(result, expected, use, use, out var failure))

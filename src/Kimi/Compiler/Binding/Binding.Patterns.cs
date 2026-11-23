@@ -226,7 +226,7 @@ public sealed partial class Binding
                 pendingBody |= guardType is null;
                 if (guardType is not null && !this.FitsType(guardType, BoundType.Boolean))
                 {
-                    this.Fail(guard, BindingFailure.TypeMismatch);
+                    this.RecordTypeMismatch(guard, guard, guardType, BoundType.Boolean); // SPEC 14.8.3: a guard is one bool expression.
                     plan.Invalid = true;
                 }
             }
