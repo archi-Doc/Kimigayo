@@ -185,8 +185,10 @@ public sealed partial class Binding
             if (symbol is not null)
             {
                 var structural = this.ResultStructure();
+                // SPEC 15.3.4, 15.6.5 (R7-O3 O3-A): the result fit is at the value, inside the body, as a `return`'s is at its node: every
+                // reading at the use (RegionValueAtUse, DeclaredAtUse) resolves in this function's own body, never in the declaring one.
                 if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
-                    symbol.Type is { } expected && result is not null && !this.FitsValueAt(result, expected, function, expression, out var failure))
+                    symbol.Type is { } expected && result is not null && !this.FitsValueAt(result, expected, expression, expression, out var failure))
                 {
                     this.FailMismatch(expression, expression, result, expected, failure);
                 }
