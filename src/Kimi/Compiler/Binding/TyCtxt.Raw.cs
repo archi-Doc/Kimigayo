@@ -162,11 +162,10 @@ internal sealed partial class TyCtxt
     // `self`, `static` and an unstated layer have none. Each member is the referent its borrow admits (a slot keeper's under the Type
     // binding the slot) and whether it may keep an exclusive Loan; its Input is no index a reader reads. Total: false when the members are
     // unanswered (a keeper cycle that changes its Type arguments, a keeper Binding's storage instantiation does not complete, an Origin kind
-    // without a row, a raw layer's region slot) and at the named limits of the Origin's limit marks (Binding.LimitMarks): at either arm, a
-    // value of another Origin fitted into the layer or a claim with an exclusive member; at the binder arm also an address taken past a
-    // shared path with an exclusive member. False appends no member. The key is the caller's: a `layer` that is no raw layer answers true
-    // with no members, where StoredStep's path query throws; Holdings publishes a Members entry only at a raw layer, so its reader cannot
-    // pass one.
+    // without a row, a raw layer's region slot) and at the named limits of the Origin's limit marks (Binding.LimitMarks), by the one rule
+    // of each arm (Binding.LimitsDeclared, Binding.LimitsBinder). False appends no member. The key is the caller's: a `layer` that is no
+    // raw layer answers true with no members, where StoredStep's path query throws; Holdings publishes a Members entry only at a raw
+    // layer, so its reader cannot pass one.
     internal bool RawMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
         => binding.StoredMembers(layer, written, holder, members);
 

@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 //   and for any atom, its limit marks (LimitMarks, one value per named limit): Claimed where a published claim's Type states it (5.7 Fits
 //   and claims), SharedAddress where a published address whose authority is shared does (5.2.1 condition 3, 5.4), FittedIntoHolder
 //   where a raw fit's target does, or at an invariant position its value (5.7 under O-498 Q1 (i)), and FittedExclusive where a value
-//   that may write is fitted into a layer stating the atom, also through a local region's finite sources (5.7 Authority, Z6 Revision 8).
+//   that may write is fitted into a layer stating the atom, also through a region graph row's finite sources (5.7 Authority, Z6 Revision 8).
 // - Inputs: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each formed once by its writer, outside
 //   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36, 37): the node's own facts at BindNode's end
 //   (OwnBorrows: its written Borrow, Slice view or object view, its receiver operation, its calls' operations);
@@ -26,7 +26,7 @@ namespace Kimi.Compiler;
 //   (MarkLimits: a claim's Origin, ClaimedOrigin; an address's, where its Place's path, folded once by PlaceAuthority's PathFold, is
 //   reached through shared, SPEC 15.6.2's shared layer anywhere on the path (a Deref through a `ref` or `objref` borrow, a pair layer in
 //   a shared case and a Slice element among them), or passes a conformance selection, SPEC 5.4 and 4.7.1 (a user index, an Array or
-//   Dictionary element: PathPrefix.Conformance)); and the pass's raw fits (Binding.ValueFits.cs' rawFits) and local regions' finite
+//   Dictionary element: PathPrefix.Conformance)); and the pass's raw fits (Binding.ValueFits.cs' rawFits) and the region graph rows' finite
 //   sources (LocalRegionSources), which the publication's start reads for FittedIntoHolder and FittedExclusive (BeginBorrowPublication).
 // - Outputs: Borrows(atom, members), the atom's entries; AtomMarks(atom), its limit marks (None without a row), the one row read of Z6's
 //   one Marks reader; and RetentionState, the key field of TyCtxt's retention memo: the region and borrow versions until the pass's
@@ -62,10 +62,11 @@ namespace Kimi.Compiler;
 //   complete when the publication reads them (every placing fit runs while the pass binds, before the publication), so the row is
 //   safe without a version by the order above; Z6's route (a) removes it. FittedExclusive (SPEC 5.7 Authority, a value judged where its
 //   Origin is bound) is the least fixed point over those fits (a target takes it where the value may write, MayWrite, and at an
-//   invariant position the value where the target may) and the local regions (a region takes it where a finite source has it: it
-//   restates the Origin of a holder moved or initialized into the local), formed after FittedIntoHolder, when the rows and the region
-//   graph are complete too; it ends since marks only grow over the pass's atoms. A declared layer whose slot keeps only `ref` Loans
-//   stays capped by its declaration (DeclaredStep; 5.2.1 condition 3's declared-layer sentence, the owner's O-507 (B)).
+//   invariant position the value where the target may) and each row of the region graph (a row takes it where a finite source has it:
+//   a local's region restates the Origin of a holder moved or initialized into the local; any other bounded row only over-marks, toward
+//   the located Unsupported_Kd), formed after FittedIntoHolder, when the rows and the region graph are complete too; it ends since marks
+//   only grow over the pass's atoms. A declared layer whose slot keeps only `ref` Loans stays capped by its declaration (DeclaredStep;
+//   5.2.1 condition 3's declared-layer sentence, the owner's O-507 (B)).
 // - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry, no
 //   second list of borrow facts; no mark outside the publication, no second flag beside LimitMarks (a new named limit is a value of it,
 //   with its removal condition); RegionVersion is not moved; no reader but Z6's (the entries by the binder reading; the marks by A5's
@@ -123,10 +124,10 @@ public sealed partial class Binding
         FittedIntoHolder = 4,
 
         // SPEC 5.7 Authority, 5.2.1 condition 3 under O-498 Q1 (i) and O-507 (B) (Z6 Revision 8): a value that may carry write authority
-        // is fitted into a raw layer stating the atom, through the pass's raw fits and its local regions' finite sources (a region
-        // restates the Origin of the holder moved or initialized into its local), which the atom's own fit mark does not reach. It
-        // bounds both arms as FittedIntoHolder does; a declared layer whose slot keeps only `ref` Loans is capped by its declaration
-        // before any mark is read. Removal: Z6's route (a), with FittedIntoHolder.
+        // is fitted into a raw layer stating the atom, through the pass's raw fits and the finite sources of each row of its region graph
+        // (a local's region restates the Origin of the holder moved or initialized into the local), which the atom's own fit mark does
+        // not reach. It bounds both arms as FittedIntoHolder does; a declared layer whose slot keeps only `ref` Loans is capped by its
+        // declaration before any mark is read. Removal: Z6's route (a), with FittedIntoHolder.
         FittedExclusive = 8,
     }
 
@@ -516,7 +517,7 @@ public sealed partial class Binding
         return sources.Length == 0;
     }
 
-    // Whether a finite source of a local region (LocalRegionSources) is marked FittedExclusive.
+    // Whether a finite source of a region graph row (LocalRegionSources) is marked FittedExclusive.
     private bool SourceMarked(BoundOrigin region)
     {
         foreach (var source in this.LocalRegionSources(region))
@@ -533,7 +534,7 @@ public sealed partial class Binding
     // The publication's start (PublishPass): its publication side emptied and the running part's marks cleared, so a republication
     // reads none of an earlier one; then the FittedIntoHolder row, formed from the pass's raw fits once, every fit being decided
     // before the publication: each atom a raw fit's target states and, at an invariant position, each its value states; then
-    // FittedExclusive's least fixed point over the raw fits and the local regions (each round marks an atom or is the last).
+    // FittedExclusive's least fixed point over the raw fits and the region graph's rows (each round marks an atom or is the last).
     private void BeginBorrowPublication()
     {
         this.publishedFailure = false;
@@ -565,6 +566,7 @@ public sealed partial class Binding
                 changed |= fit.Equality && this.MayWrite(fit.Target) && this.Mark(fit.Value, LimitMarks.FittedExclusive);
             }
 
+            // Each row of the region graph: a local's region and every bounded target (a Projection, an Anchor, a meet).
             foreach (var region in this.localRegions.Keys)
             {
                 changed |= (this.AtomMarks(region) & LimitMarks.FittedExclusive) == 0 && this.SourceMarked(region) &&

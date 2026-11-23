@@ -165,14 +165,14 @@ public sealed partial class Binding
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
 
     // The named limits' rule at a declared layer (Z6's C1a, R7.1.2), the members read there given: a fit from another Origin, or a
-    // value that may write fitted through a local region (the fit's source may carry more authority than the slot's keepers admit, SPEC
+    // value that may write fitted through a region graph row (the fit's source may carry more authority than the slot's keepers admit, SPEC
     // 5.7 Fits and claims under O-498 Q1 (i); Revision 8), or a claim with an exclusive member (R2.3). An address past a shared path is
     // no limit here: it writes less than the keepers admit (C2).
     private static bool LimitsDeclared(LimitMarks marks, ReadOnlySpan<RawMember> members)
         => (marks & (LimitMarks.FittedIntoHolder | LimitMarks.FittedExclusive)) != 0 || ((marks & LimitMarks.Claimed) != 0 && AnyExclusive(members));
 
     // The named limits' rule at the binder arm (Z6's C1a, R7.1, R6.8), the members read there given: a fit from another Origin or a
-    // value that may write fitted through a local region (O-498 Q2 (b): the layer is read by its stated Origin only where nothing else
+    // value that may write fitted through a region graph row (O-498 Q2 (b): the layer is read by its stated Origin only where nothing else
     // is fitted into it; Revision 8), or a claim or an address past a shared path with an exclusive member.
     private static bool LimitsBinder(LimitMarks marks, ReadOnlySpan<RawMember> members)
         => (marks & (LimitMarks.FittedIntoHolder | LimitMarks.FittedExclusive)) != 0 ||

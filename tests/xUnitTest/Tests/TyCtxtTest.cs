@@ -103,8 +103,7 @@ public sealed partial class TyCtxtTest
 
     // Z6-F2's rows (AFitFromAnotherOriginMarksTheHoldersAtoms): the holders, t6's setup and tail around a row's holder and fit (h's layer
     // states the atom `s@follow@raw` states, w's projection: SharedAddress by the address, FittedIntoHolder by the fit and, r's address
-    // being exclusive, FittedExclusive), d04's holder in
-    // parts, and t9's Cell.
+    // being exclusive, FittedExclusive), d04's holder in parts, and t9's Cell.
     private const string FitsPrelude = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
         "    public func put<U>(self: uniq/Self, v: U) => ()\nstruct Box<E>\n    public var value: E\n    public init(value: E) => self.value = value@move\n" +
         "    public func put<U>(self: uniq/Self, v: U) => ()\n    public func set(self: uniq/Self, v: E) => self.value = v@move\n";
@@ -2393,7 +2392,6 @@ public sealed partial class TyCtxtTest
         void Count(string key) => kinds[key] = kinds.TryGetValue(key, out var count) ? count + 1 : 1;
     }
 
-    // The program part's rows with an entry or a mark: the atom's binder (its first line) and kind, then each entry's referent and mode.
     // The rows of a program in FitsPrelude's frame (Z6-F2's and Revision 8's) that carry `mark`.
     private static string[] FitRows(string declarations, string body, Binding.LimitMarks mark)
     {
@@ -2403,6 +2401,7 @@ public sealed partial class TyCtxtTest
         return [.. BorrowRows(c).Where(x => x.Contains(mark.ToString(), StringComparison.Ordinal))];
     }
 
+    // The program part's rows with an entry or a mark: the atom's binder (its first line) and kind, then each entry's referent and mode.
     private static string[] BorrowRows(Compilation c) => [.. c.Binding.ProgramBorrows
         .Where(static x => x.Value.Count > 0 || x.Value.Marks != default)
         .Select(static x => $"{x.Key.Binder?.ToString()?.Split('\n')[0].Trim()} {x.Key.Kind} {x.Key.Slot}: " +

@@ -2366,8 +2366,13 @@ public sealed partial class MirBorrowsTest
     // region): a declared layer whose slot keeps only `ref` Loans gives no write authority whatever was fitted (slotRefKept, valid, as on
     // dev), nor does a layer an abstract callee's Type does not show (slotAbstract, valid, SPEC 15.6.4); a `uniq`-kept slot's layer holding
     // r's exclusive address keeps it (slotUniqKept, invalid: `put` may store z's borrow in v), its shared twin not (slotUniqShared, valid),
-    // and so does a pointer copied out of it into a Type argument's layer (slotUniqCopied, invalid); the same copy out of a `ref`-kept
-    // layer (slotCopied, valid: SPEC 5.2.1 condition 3's declared-layer sentence) is the whitelist's cost (O-498 Q2 (b)), a Q13 move.
+    // and so does a pointer copied out of it into a Type argument's layer (slotUniqCopied, invalid), or into a second `uniq`-kept holder
+    // (slotUniqChained, invalid). The whitelist's cost (O-498 Q2 (b); valid, the located Unsupported_Kd, Q13 moves named on Q-702): the
+    // same copy out of a `ref`-kept layer (slotCopied, SPEC 5.2.1 condition 3's declared-layer sentence; dev limits it too), and into a
+    // `uniq`-kept slot's layer, which dev accepts (slotUniqFromRefKept); a pointer read from a `uniq`-kept holder's layer fitted into a
+    // second one, its source past a shared path (slotUniqChainedShared, SPEC 5.2.1 condition 3's first limit) or `null`
+    // (slotUniqChainedNull: the holder's region may write by its `uniq` keeper, judged where it is bound); and any value of another
+    // Origin fitted straight into a `uniq`-kept slot's layer by FittedIntoHolder, a shared address too (slotUniqSet, Z6's M3a).
     [Fact]
     public void ANamedLimitKeepsTheLocatedUnsupportedWhereTheStatedOriginDoesNotBoundTheLayer()
     {
@@ -2401,6 +2406,7 @@ public sealed partial class MirBorrowsTest
                     self.p = q
                     self.k = k
                 public func put<U>(self: uniq/Self, v: U) => ()
+                public func setp(self: uniq/Self, q: raw/u8 during s) => self.p = q
             struct HP {s}
                 public var p: raw/u8 during s
                 var k: ref/i32 during s
@@ -2641,6 +2647,64 @@ public sealed partial class MirBorrowsTest
                 w.put(z@ref)
                 z = 5
                 inspect(v)
+            func slotUniqFromRefKept()
+                var x = 1
+                var y = 2
+                var z = 3
+                var n = 4
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var hf = HP.init(x@ref, r@follow@raw@raw/u8)
+                var hu = HU.init(n@uniq, hf.p)
+                hu.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqSet()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                let sv = v@ref
+                var h = HU.init(x@uniq, null)
+                h.setp(sv@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqChained()
+                var x1 = 1
+                var x2 = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h1 = HU.init(x1@uniq, r@follow@raw@raw/u8)
+                var h2 = HU.init(x2@uniq, h1.p)
+                h2.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqChainedShared()
+                var x1 = 1
+                var x2 = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                let sv = v@ref
+                var h1 = HU.init(x1@uniq, sv@follow@raw@raw/u8)
+                var h2 = HU.init(x2@uniq, h1.p)
+                h2.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqChainedNull()
+                var x1 = 1
+                var x2 = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var h1 = HU.init(x1@uniq, null)
+                var h2 = HU.init(x2@uniq, h1.p)
+                h2.put(z@ref)
+                z = 5
+                inspect(v)
             """);
         Assert.Equal(
             [
@@ -2650,7 +2714,10 @@ public sealed partial class MirBorrowsTest
                 "sharedFollowTyped: inspect(w)", "sharedImplicit: h.put(z@ref) Unsupported_Kd", "sharedProjection: h.put(z@ref) Unsupported_Kd",
                 "nestedExclusive: z = 5", "nestedExclusive: inspect(w)", "nestedExclusive: var w: ref/i32 = x@ref", "nestedExclusive: var x = 1",
                 "anchored: z = 5", "slotUniqKept: h.put(z@ref) Unsupported_Kd", "slotUniqCopied: w.put(z@ref) Unsupported_Kd",
-                "slotCopied: w.put(z@ref) Unsupported_Kd",
+                "slotCopied: w.put(z@ref) Unsupported_Kd", "slotUniqFromRefKept: hu.put(z@ref) Unsupported_Kd",
+                "slotUniqSet: h.setp(sv@follow@raw@raw/u8) Unsupported_Kd", "slotUniqSet: h.put(z@ref) Unsupported_Kd",
+                "slotUniqChained: h2.put(z@ref) Unsupported_Kd", "slotUniqChainedShared: h2.put(z@ref) Unsupported_Kd",
+                "slotUniqChainedNull: h2.put(z@ref) Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
