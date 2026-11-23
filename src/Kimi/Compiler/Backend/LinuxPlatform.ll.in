@@ -1,0 +1,117 @@
+; linux-x64-v1 platform layer over x86-64 Linux system calls, without a C library (the Tatara plan's decision 21): the routines through
+; which the common runtime (Runtime.ll.in) writes and exits and its allocator (HeapRuntime.ll.in) maps and releases pages, the
+; process's setup before the start, the monotonic clock, and the Abort report's OS-error prefix. Every system call of the runtime lies
+; in these definitions, each the `syscall` instruction (number in rax; arguments in rdi, rsi, rdx, r10, r8, r9; the result in rax, a
+; failure as -errno in [-4095, -1]; rcx and r11 clobbered). Every call exists since Linux 2.6.
+
+@__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
+
+; Compiler-facing definitions are expanded from RuntimeAbi FunctionAbi records.
+; exit_group (231) ends every thread of the process with the code.
+{{__kimi_exit}}
+entry:
+  %status = sext i32 %code to i64
+  %ignored = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},~{rcx},~{r11},~{memory}"(i64 231, i64 %status)
+  unreachable
+}
+
+; write (1) to file descriptor 1 or 2, the stream itself; a partial write continues after the bytes written and an interrupted one
+; (EINTR, -4) is retried. The common part's checks hold: a nonempty range of at most isize's bytes whose last address is
+; representable. -1 = written; {{no_os_error}} = failure without an OS error (no progress); otherwise the errno.
+{{__kimi_write}}
+entry:
+  %descriptor = zext i32 %stream to i64
+  br label %loop
+loop:
+  %cursor = phi ptr [ %data, %entry ], [ %cursor, %error ], [ %next, %advance ]
+  %remaining = phi i64 [ %length, %entry ], [ %remaining, %error ], [ %rest, %advance ]
+  %result = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"(i64 1, i64 %descriptor, ptr %cursor, i64 %remaining)
+  %failed = icmp slt i64 %result, 0
+  br i1 %failed, label %error, label %progress
+error:
+  %interrupted = icmp eq i64 %result, -4
+  br i1 %interrupted, label %loop, label %os_failure
+os_failure:
+  %errno = sub i64 0, %result
+  ret i64 %errno
+progress:
+  %zero = icmp eq i64 %result, 0
+  %excess = icmp ugt i64 %result, %remaining
+  %bad_progress = or i1 %zero, %excess
+  br i1 %bad_progress, label %failure, label %completed
+completed:
+  %rest = sub i64 %remaining, %result
+  %done = icmp eq i64 %rest, 0
+  br i1 %done, label %success, label %advance
+advance:
+  ; The checked last address bounds every advance; do not compute a pointer after completion.
+  %next = getelementptr i8, ptr %cursor, i64 %result
+  br label %loop
+failure:
+  ret i64 {{no_os_error}}
+success:
+  ret i64 -1
+}
+
+; mmap (9) of private anonymous read-write pages (PROT_READ | PROT_WRITE 3; MAP_PRIVATE | MAP_ANONYMOUS 34; descriptor -1, offset 0):
+; a page-aligned run of at least the byte count; null on failure (a result in [2^64 - 4095, 2^64)), without an OS error. A run below
+; the unmapped bound (a kernel whose mmap_min_addr is lower) is unmapped and refused, so no heap block lies below the bound.
+{{__kimi_pages}}
+entry:
+  %result = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}"(i64 9, i64 0, i64 %bytes, i64 3, i64 34, i64 -1, i64 0)
+  %failed = icmp ugt i64 %result, -4096
+  br i1 %failed, label %none, label %mapped
+mapped:
+  %low = icmp ult i64 %result, {{unmapped_bound}}
+  br i1 %low, label %refuse, label %done
+refuse:
+  %unmapped = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},~{rcx},~{r11},~{memory}"(i64 11, i64 %result, i64 %bytes)
+  br label %none
+done:
+  %pages = inttoptr i64 %result to ptr
+  ret ptr %pages
+none:
+  ret ptr null
+}
+
+; munmap (11) of a run the pages routine returned, by its start and byte count; -1 = released, otherwise the errno.
+{{__kimi_release_pages}}
+entry:
+  %result = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},~{rcx},~{r11},~{memory}"(i64 11, ptr %pages, i64 %bytes)
+  %failed = icmp slt i64 %result, 0
+  br i1 %failed, label %failure, label %done
+failure:
+  %errno = sub i64 0, %result
+  ret i64 %errno
+done:
+  ret i64 -1
+}
+
+; The process's setup before the start: rt_sigaction (13) of SIGPIPE (13) to SIG_IGN (1), the kernel's struct sigaction { handler,
+; flags, restorer, mask } with an 8-byte mask, so a write to a closed pipe fails with EPIPE instead of ending the process. A failure
+; leaves the default action.
+{{__kimi_platform_start}}
+entry:
+  %action = alloca [4 x i64], align 8
+  store [4 x i64] [i64 1, i64 0, i64 0, i64 0], ptr %action, align 8
+  %result = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},{r10},~{rcx},~{r11},~{memory}"(i64 13, i64 13, ptr %action, ptr null, i64 8)
+  ret void
+}
+
+; clock_gettime (228) of CLOCK_MONOTONIC (1): the struct timespec { seconds, nanoseconds } as nanoseconds; -1 on failure.
+{{__kimi_clock}}
+entry:
+  %time = alloca [2 x i64], align 8
+  %result = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},~{rcx},~{r11},~{memory}"(i64 228, i64 1, ptr %time)
+  %failed = icmp ne i64 %result, 0
+  br i1 %failed, label %failure, label %read
+read:
+  %seconds = load i64, ptr %time, align 8
+  %fraction_slot = getelementptr i8, ptr %time, i64 8
+  %fraction = load i64, ptr %fraction_slot, align 8
+  %scaled = mul i64 %seconds, 1000000000
+  %nanoseconds = add i64 %scaled, %fraction
+  ret i64 %nanoseconds
+failure:
+  ret i64 -1
+}

@@ -168,10 +168,14 @@ public class RuntimeTypeTest
         var test = Test(c);
         var original = test.RuntimeTestOf()!.Value.TargetType;
         var alias = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<AliasKoto>().Single();
-        alias.QualifiedName[0] = "B";
+        var targetA = alias.TargetSyntax;
+        var donor = CompilationTestHelper.ParseSuccess(Source.Replace("alias A", "alias B", StringComparison.Ordinal));
+        var targetB = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<AliasKoto>().Single().TargetSyntax;
+        ParseTestHelper.Detach(targetB, new CodeBlockKoto(targetB.CodeContext));
+        Assert.True(KotoHelper.Replace(alias, targetA, targetB));
         AssertBound(c);
         Assert.NotSame(original, test.RuntimeTestOf()!.Value.TargetType);
-        alias.QualifiedName[0] = "A";
+        Assert.True(KotoHelper.Replace(alias, targetB, targetA));
         AssertBound(c);
         Assert.Same(original, test.RuntimeTestOf()!.Value.TargetType);
 

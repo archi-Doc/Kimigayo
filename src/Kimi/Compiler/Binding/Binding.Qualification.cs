@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly QualificationFailureRows qualificationFailures;
-    private Dictionary<(Koto Use, bool Type), QualificationFact>? qualificationStops;
+    private readonly QualificationStopRows qualificationStops;
 
     internal enum QualificationCause : byte
     {
@@ -124,17 +124,17 @@ public sealed partial class Binding
     }
 
     private void RecordQualificationStop(Koto use, QualificationFact fact)
-        => (this.qualificationStops ??= new())[(use, fact.Type)] = fact with { At = use };
+        => this.qualificationStops[(use, fact.Type)] = fact with { At = use };
 
     // Namespace exploration is provisional: report only if the actual binding fails, not when another path succeeds.
     private QualificationFact? QualificationStop(Koto node)
     {
-        if (this.qualificationStops?.TryGetValue((node, false), out var value) == true)
+        if (this.qualificationStops.TryGetValue((node, false), out var value))
         {
             return value;
         }
 
-        if (this.qualificationStops?.TryGetValue((node, true), out var type) == true)
+        if (this.qualificationStops.TryGetValue((node, true), out var type))
         {
             return type;
         }
@@ -194,7 +194,7 @@ public sealed partial class Binding
             var names = InValueNamespace(role) ? members.Values : members.Types;
             for (var candidate = names.GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
-                if (!IsGenericParameter(candidate) && HasLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
+                if (HasLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
                 {
                     return candidate;
                 }
@@ -292,9 +292,9 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.compilation.DefaultAliases(fact.At.CodeContext.Kotonoha))
+        foreach (var row in this.compilation.DefaultAliases(fact.At.CodeContext.Kotonoha))
         {
-            AddScope(this.DefaultAliasTarget(fact.At, path));
+            AddScope(this.DefaultAliasTarget(row).Target);
         }
 
         var at = fact.At!;
@@ -319,7 +319,7 @@ public sealed partial class Binding
 
             for (var member = (fact.Type ? scope.Types : scope.Values).GetValueOrDefault(fact.Name); member is not null; member = member.Next)
             {
-                if (!IsInstanceMember(member) && !IsGenericParameter(member) && HasLookupRole(member, fact.Role) && this.Accessible(member, fact.Scope))
+                if (!IsInstanceMember(member) && HasLookupRole(member, fact.Role) && this.Accessible(member, fact.Scope))
                 {
                     Add(path, member);
                     break;
@@ -372,6 +372,40 @@ public sealed partial class Binding
         {
             get => binding.RecordedFact(node, Family) is { Container: not null } fact ? fact : throw new KeyNotFoundException($"`{node}` has no qualification failure in this pass.");
             set => binding.SetRecordedFact(node, Family, value);
+        }
+    }
+
+    /// <summary>The `qualificationStops` family's one accessor (DECISIONS BU-220): a working-state family, the provisional stop of a
+    /// use's lookup in each namespace (RecordQualificationStop), which the resolver's miss reads (QualificationStop) and a published
+    /// head drops (PublishPath); a row of two slots, Value and Type, in the use's module's NodeColumns at its SyntaxId, a slot without
+    /// its Container absent. A row of an earlier pass reads none, and the library's rows are released at its freeze
+    /// (NodeColumns.Freeze). Its writer refuses a frozen library use (HirTables.Of): a program pass resolves no library use, and
+    /// WriteSymbol refuses that use's Selected publication alike. Its members keep the names its readers use.</summary>
+    private readonly struct QualificationStopRows(Binding binding)
+    {
+        internal QualificationFact this[(Koto Use, bool Type) key]
+        {
+            set
+            {
+                ref var row = ref HirTables.Of(key.Use).Families.QualificationStops.Ref(key.Use.SyntaxId, binding);
+                (key.Type ? ref row.Type : ref row.Value) = value;
+            }
+        }
+
+        internal bool TryGetValue((Koto Use, bool Type) key, out QualificationFact fact)
+        {
+            var row = key.Use.SyntaxOwner is { } table ? table.Hir.Families.QualificationStops.Get(key.Use.SyntaxId, binding) : default;
+            fact = key.Type ? row.Type : row.Value;
+            return fact.Container is not null;
+        }
+
+        // A use without the stop is not written, so a head's publication carves no page.
+        internal void Remove((Koto Use, bool Type) key)
+        {
+            if (this.TryGetValue(key, out _))
+            {
+                this[key] = default;
+            }
         }
     }
 }

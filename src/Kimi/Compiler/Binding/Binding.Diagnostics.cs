@@ -620,15 +620,12 @@ public sealed partial class Binding
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();
-        this.qualificationStops?.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
         this.pendingJudgments?.Clear();
-        this.arithmeticSelectionFailures?.Clear();
-        this.arithmeticDirectionFailures?.Clear();
         this.writeTargets?.Clear();
         this.takeLayers?.Clear();
         this.captureFailures?.Clear();

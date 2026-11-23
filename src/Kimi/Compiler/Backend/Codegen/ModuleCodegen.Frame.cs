@@ -72,13 +72,14 @@ internal sealed partial class ModuleCodegen
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
 
-    // The complete module around the buffered definitions, an Application's entry calling its startup root.
+    // The complete module around the buffered definitions, in the row's frame, an Application's entry calling its startup root.
     private void Assemble(TextWriter output, FunctionAbi? start)
     {
+        var frame = LlvmModuleText.Frame(this.row);
         var testRuntime = this.IsTestBuild ? Testing.TestRuntime.Text : null; // A test build's routines.
-        LlvmModuleText.WriteHeader(output, this.constants);
-        LlvmModuleText.WriteRuntime(output, testRuntime);
-        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), testRuntime);
+        LlvmModuleText.WriteHeader(output, frame, this.constants);
+        LlvmModuleText.WriteRuntime(output, frame, testRuntime);
+        LlvmModuleText.WriteExternals(output, frame, CollectionsMarshal.AsSpan(this.externals), testRuntime);
         if ((this.needs & Needs.ZeroSized) != 0)
         {
             output.Write(ZeroSizedDefinition);
@@ -121,7 +122,7 @@ internal sealed partial class ModuleCodegen
         output.Write(this.functions.GetStringBuilder());
         if (start is not null)
         {
-            this.WriteStart(output, start);
+            this.WriteStart(output, frame.Layer, start);
         }
         else if (this.IsTestBuild)
         {
@@ -133,14 +134,26 @@ internal sealed partial class ModuleCodegen
             ObjectRuntime.WriteRuntime(output);
         }
 
-        output.Write(LlvmModuleText.Footer);
+        output.Write(frame.Footer);
     }
 
-    // __kimi_start (IMPL 21.4.2): the startup body, which takes no parameter (Binding's startup check), then a normal exit with 0.
-    private void WriteStart(TextWriter output, FunctionAbi startup)
+    // The row's layer's start form (IMPL 21.4.2, 21.5.3): its module asm defining the entry, if any, then its start routine (the entry
+    // itself, exported, or the body the asm calls, internal), which calls the layer's routines before the startup body, the startup body,
+    // which takes no parameter (Binding's startup check), then a normal exit with 0.
+    private void WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
     {
-        output.Write(RuntimeAbi.Start.GetDefinition(exported: true));
+        output.Write(layer.StartAssembly);
+        output.Write(layer.Start.GetDefinition(exported: layer.Start.Name == this.row.EntrySymbol));
         output.Write("entry:\n");
+        foreach (var call in layer.StartCalls)
+        {
+            output.Write("  call ");
+            output.Write(call.Result);
+            output.Write(" @");
+            output.Write(call.Name);
+            output.Write("()\n");
+        }
+
         this.bodies.WriteEntryCall(output, startup);
         output.Write("  call void @");
         output.Write(RuntimeAbi.Exit.Name);

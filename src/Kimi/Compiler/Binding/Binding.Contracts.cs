@@ -155,7 +155,6 @@ public sealed partial class Binding
         this.associatedApplications.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
-        this.memberSides.Clear();
         this.requirementCursor = 0;
     }
 
@@ -282,7 +281,7 @@ public sealed partial class Binding
                 this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
                 if (parent is null)
                 {
-                    var site = UnselectedTypeSite(name, parentPath);
+                    var site = this.UnselectedTypeSite(name);
                     this.FailMissing(site, this.scopes[contract], BindingFailure.MissingType);
                     if (!ReferenceEquals(name, site))
                     {

@@ -14,7 +14,7 @@ fn init @9
   _2: () temp @10
   bb0:
       StorageLive(_1) @10
-    * _0.base1 = init() -> bb1 @223
+    * _0.base1 = init() -> bb1 @225
   bb1:
       StorageLive(_2) @10
     * _2 = const () @10
