@@ -60,10 +60,10 @@ internal sealed partial class MirBuilder
 
     // DECISIONS Z27 (SPEC 13.7.1 step 2, 13.7.2 step 2, 15.1.2, 23.1.2): the uses of a derived write's site (DerivedWrite), its target
     // Error's kept operands evaluated at the write as an Error node's are (KeptParts). The target is located in place: it takes the values
-    // it reads, the receivers of the getters or subscripts that locate it and the receiver of the `set` call that writes it (KeptAdjust's
-    // Reads, KeptInput; SPEC 11.3.1: `uniq/Self`), its kept uses, and of every other operand only a Place strictly within it, an enclosing
-    // use (a value operand whose take failed has KeptAdjust's default too, so it is enclosing); then the names of the target's unkept
-    // children (SyntaxUses), read.
+    // it reads, the receivers of the getters or subscripts that locate it and the receiver of the accessor calls its write makes, a `set`
+    // and an update's `get` (KeptAdjust's Reads, KeptInput; SPEC 11.3.1, 13.7.2), its kept uses, and of every other operand only a Place
+    // strictly within it, an enclosing use (a value operand whose take failed has KeptAdjust's default too, so it is enclosing); then the
+    // names of the target's unkept children (SyntaxUses), read.
     private void TargetUses(Koto node, Koto target)
     {
         var start = this.KeptParts(node, target);

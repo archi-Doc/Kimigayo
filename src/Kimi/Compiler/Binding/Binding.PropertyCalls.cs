@@ -23,13 +23,6 @@ public sealed partial class Binding
         return assignment || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
     }
 
-    // SPEC 11.3.1, 11.7, 13.7.1: whether a node, a write's or an update's target (IsWriteTarget), is written through its Property's `set`
-    // call, which acquires its receiver as `uniq/Self`, not through the storage: a custom, computed or required `set`, outside the
-    // synthesized direct storage and a constructor's own Field (its first placement writes the storage).
-    internal static bool SetsByCall(Koto node) => KotoHelper.UnwrapParentheses(node) is var place && place is not MemberAccessKoto { IsDirectStorage: true } &&
-        place.BoundSymbol?.Property is { Setter: { IsPresent: true, IsStandard: false } } && !(IsSpecialField(place, out var special) && special.IsConstructor) &&
-        IsWriteTarget(place, out _);
-
     // SPEC 11.3: the function a custom accessor executes. A library accessor's is made once, by the library steps
     // (MakeLibraryAccessorFunctions) or an earlier use after its header, and read from then on without a write (census §8 item 1): what
     // it writes is the library's syntax and its header's interned Types, the same in every pass. A program accessor's is refreshed at each use.
@@ -53,18 +46,33 @@ public sealed partial class Binding
     internal InvocationKoto? PropertyCall(Koto node, PropertyAccessorKind kind)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        if (node.BindingState != BindingState.Resolved || node.BoundSymbol?.Property is not { } property ||
-            (IsSpecialField(node, out var special) && special.IsConstructor))
+        if (node.BindingState != BindingState.Resolved || node.BoundSymbol?.Property is not { } property)
         {
             return null;
         }
 
-        return !(kind == PropertyAccessorKind.Get ? property.Getter : property.Setter).IsStandard &&
+        return !StorageAccess(node, kind == PropertyAccessorKind.Get ? property.Getter : property.Setter) &&
             this.propertyCalls.GetValueOrDefault((node, kind)) is { BindingState: BindingState.Resolved } call ? call : null;
     }
 
     internal MemberAccessKoto? StorageProjection(Koto node)
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
+
+    // SPEC 6.3.4, 11.2, 11.7: whether an accessor is the storage at a node, no call: a constructor's own Field (its first placement writes
+    // the storage, a custom setter included) or a standard accessor. Read per accessor by PropertyCall (its guard) and DirectAccess.
+    private static bool StorageAccess(Koto node, BoundAccessor accessor) => (IsSpecialField(node, out var special) && special.IsConstructor) || accessor.IsStandard;
+
+    // Whether a use of a Property at a node accesses its storage directly: the operation's accessor, and an update's setter, are the
+    // storage there (StorageAccess; a write calls no `get`, SPEC 13.7.1 step 2).
+    private static bool DirectAccess(Koto node, BoundProperty property)
+    {
+        var update = IsWriteTarget(node, out var write) && !write;
+        return StorageAccess(node, write ? property.Setter : property.Getter) && (!update || StorageAccess(node, property.Setter));
+    }
+
+    // SPEC 11.3.1, 13.7.1, 13.7.2: whether a write's or an update's target, of a Property with a `set`, calls an accessor (its `set`, and
+    // an update's `get`, step 2) rather than accessing its storage (DirectAccess); each call takes its receiver whole.
+    private static bool CallsAccessor(Koto node, BoundProperty property) => IsWriteTarget(node, out _) && property.Setter.IsPresent && !DirectAccess(node, property);
 
     // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
     // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`

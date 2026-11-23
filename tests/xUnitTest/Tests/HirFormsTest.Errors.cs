@@ -460,9 +460,10 @@ public sealed partial class HirFormsTest
     // inputs (its conflict at `g(y)` rests on the member's failure either way); so is an application of a construction's value
     // (`Option.Some(1)(y@uniq, g(y))`, the code review's C1: not callable, and its arguments are no payloads, Some's being `1`;
     // fail-before: read as payloads by the callee's Case symbol alone); an aggregate's elements (c-tuple-later's `(y@uniq, g(y), missing)`: no reservation passes through aggregate storage), an operator's operands, a Subject, an
-    // Iterable or a conversion's operand. DECISIONS Z27 (SPEC 11.3.1, 13.7.1): a write's target through a `set` call Binding did not plan
-    // (z27ir's v1: an inherited custom `set`, beside its limit) gives the call its receiver, `uniq/Self`, as an input; a target written
-    // through the storage gives none (`x.a = 3`, a `let` Field). Only a kept operand carries either fact. Each row lists the kept operands that carry one: the
+    // Iterable or a conversion's operand. DECISIONS Z27 (SPEC 11.3.1, 13.7.1, 13.7.2): a write's or an update's target whose accessor
+    // calls Binding did not plan gives them its receiver as an input: z27ir's v1 (an inherited custom `set`, beside its limit) and C-498's
+    // g8 (an update through a custom `get`, a `let` receiver; fail-before on commit 3: none); a target written through the storage gives
+    // none (`x.a = 3`, a `let` Field). Only a kept operand carries either fact. Each row lists the kept operands that carry one: the
     // take, then "input" or "-". Fail-before: no kept operand carried a take (D-986's rows) or was an input (the facts unpublished).
     [Theory]
     [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "k2(x, missing)", "x Copy/None input; missing Temporary/None input")]
@@ -507,6 +508,7 @@ public sealed partial class HirFormsTest
     [InlineData("func mk() -> [3 of i32] => [1, 2, 3]\nfunc f() -> i32\n    return mk()[missing]\n", "mk()[missing]", "missing Temporary/None -")]
     [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing\n", "p.missing", "")]
     [InlineData(SetLevel + "struct Lamp : Device\n    public init(name: string, level: i32) : base(name@move, level) => ()\nfunc g()\n    var owner = Lamp.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level = 30\n", "owner.level", "owner Unset/None input")]
+    [InlineData("struct Device\n    public var name: string\n    public var level: i32\n        get() -> i32 => storage\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    let owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level += 1\n", "owner.level", "owner Unset/None input")]
     [InlineData("struct R\n    public let a: i32\n    public var b: i32\n    public init(a: i32, b: i32)\n        self.a = a\n        self.b = b\nfunc f() -> i32\n    var x = R.init(1, 2)\n    x.a = 3\n    return x.b\n", "x.a", "")]
     public void AKeptOperandCarriesItsErrorsFormsTakeAndInput(string source, string text, string facts)
     {
