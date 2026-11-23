@@ -593,7 +593,10 @@ public sealed partial class Binding
 
             if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
             {
-                this.Fail(plan.Syntax, BindingFailure.NonExhaustiveMatch);
+                // SPEC 14.8.4: the reason a match lacks as a Reason, its Case's declaration index plus one packed above its byte (0 for
+                // none; R7-E3 E3c-2). B1 none: this runs once, after the positions' checks, which fail positions, never the match.
+                var coverage = plan.Coverage;
+                this.Record(plan.Syntax, BindingFailure.NonExhaustiveMatch, [new(ProblemFactKind.Reason, SourceRef.Of(plan.Syntax), (long)coverage.Requirement | ((long)(coverage.CaseIndex + 1) << 8))]);
             }
 
             // Publish coverage warnings only after all Pattern Type checks have completed.

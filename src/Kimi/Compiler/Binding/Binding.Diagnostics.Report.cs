@@ -169,10 +169,6 @@ public sealed partial class Binding
         {
             this.ReportQualification(issue.Node, store, requirement);
         }
-        else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
-        {
-            this.ReportMatchCoverage((MatchKoto)issue.Node, store, requirement);
-        }
         else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
         {
             // SPEC 13.5.4: a direct literal is converted at compile time, so its range failure is explained at the literal.

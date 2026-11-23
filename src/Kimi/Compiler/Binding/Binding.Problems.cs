@@ -276,6 +276,9 @@ public sealed partial class Binding
             case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
                 ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
                 break;
+            case BindingFailure.NonExhaustiveMatch when this.FactOf(index, ProblemFactKind.Reason) is { } coverage:
+                ReportMatchCoverage(node, store, problem, coverage.Value);
+                break;
             case BindingFailure.BaseCall when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
                 ReportBaseCallFailure(node, store, problem, (BaseCallCause)cause.Value);
                 break;
