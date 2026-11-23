@@ -323,8 +323,9 @@ public sealed partial class MirBorrowsTest
     // too (tests/milestones/Milestone41.kimi's `self.selfWeak = selfWeak@move`, Milestone43.kimi's `owner.level = 30`), and keep the
     // records they had before it: Binding's limits and no construction record; (w2) the construction receiver `self`, the target's kept
     // operand, is an enclosing use whose own bit the constructor sets, so `v` uninitialized gives no record (PLAN G1058's first form,
-    // D-983, closed by DECISIONS Z27; fail-before: a false UninitializedPlace_Kd at the write). Each row: the program, Binding's codes,
-    // the problems.
+    // D-983, closed by DECISIONS Z27; fail-before: a false UninitializedPlace_Kd at the write). Since PLAN G1184 (Z28) w2's and Milestone
+    // 41's write into the failed Weak Field is that Field's Place, no derived write, with the same records (MirInitTest
+    // AFieldWhoseSlotFailedIsItsOwnPlace). Each row: the program, Binding's codes, the problems.
     [Theory]
     [InlineData("struct Node\n    public let w: Weak<rc/Node>\n    public let v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n        self.w = w@move\n        self.v = v\n", "Unsupported_Kd Unsupported_Kd", "")]
     [InlineData("open struct Device\n    public var level: i32\n        set(value: i32) -> ()\n            storage = value\n    protected init(level: i32)\n        self.level = level\nstruct Lamp : Device\n    public init(level: i32) : base(level) => ()\nfunc g()\n    var owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init(40))\n    owner.level = 30\n", "Unsupported_Kd", "")]
@@ -342,8 +343,8 @@ public sealed partial class MirBorrowsTest
     // PLAN G1058, G1186 (DECISIONS Z27; SPEC 13.7.1 steps 1-2, 15.1.2, 15.1.3, 6.3.4, 23.1.2): a derived write takes its right side at its
     // own node (step 1), then evaluates its target's kept operands (step 2), and its site names the in-place ones as enclosing uses, which
     // A1 checks for construction only, their own bits and their ancestors'. A target over a partly moved root, a constructing receiver or
-    // a placed Field gives no record (p03, p04 at 10:5, p19, p22, t05 at 10:9, t06, t08, t16, Milestone 41 at 11:9; fail-before: a false
-    // MovedPlace_Kd or UninitializedPlace_Kd at the write); one whose root is moved whole, never constructed or a moved reference keeps it
+    // a placed Field gives no record (p03, p04 at 10:5, p19, p22, t05 at 10:9, t06, t08, t16, Milestone 41 at 11:9, since PLAN G1184 a
+    // Field Place's write; fail-before: a false MovedPlace_Kd or UninitializedPlace_Kd at the write); one whose root is moved whole, never constructed or a moved reference keeps it
     // (p07, p08, p09), as a runtime index reads its array whole (t09) and the valid twin has none (p10). Step 2's operands are checked at
     // their own nodes (p11's uninitialized index at 4:7 and t11's second move at 3:16, fail-before: at the write; p12's MovedPlace_Kd at
     // 6:9 and p21's conflict, fail-before: none), after step 1 (t12, u1: the right side is read, or its failed take is a site at its node,
