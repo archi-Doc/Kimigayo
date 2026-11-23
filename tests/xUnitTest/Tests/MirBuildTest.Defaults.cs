@@ -306,10 +306,10 @@ public sealed partial class MirBuildTest
     }
 
     // IMPL A.4, 21.3.2 (PLAN G396 (3), G651): the copy forms its temp Option<W^k<W^8000<i32>>> after Binding's run. Within IMPL A.4's
-    // height (copy191) it is built with its written twin's record codes (Layout's limit); past it (copy192) the formation fails outside
-    // the collector's frame, so the copy keeps the located Unsupported_Kd at the omitting call beside G651's site-less record, where the
-    // written twin gets TypeHeightLimit_Kd at none(p40) in Binding's frame: the one arm left, until G651 U2c (the Back's; U2b gives the
-    // copy a formation owning its refusal). In a generic caller (outer192) the copy is built open and the collector's formation at the
+    // height (copy191) it is built with its written twin's record codes (Layout's limit); past it (copy192) the copy's formation
+    // (TyCtxt.Answered) owns the refusal and the builder's read of it marks the omitting call's node site: exactly TypeHeightLimit_Kd
+    // there, no Unsupported_Kd and no site-less record (PLAN G651 U2b, K1; the written twin gets it at none(p40) in Binding's frame).
+    // In a generic caller (outer192) the copy is built open and the collector's formation at the
     // instance passing the height records TypeHeightLimit_Kd at the copy's operation, as at the written twin's expression (the Back's
     // review N3). The built rows compare distinct codes: the copy and its twin form their Types at different sites, so their least-use
     // records (DECISIONS R5-M171, one per instance and declaration) differ in count (copy191: two GenerationResourceLimit_Kd, its
@@ -317,7 +317,7 @@ public sealed partial class MirBuildTest
     // holds on both.
     [Theory]
     [InlineData("copy191", "takeh(p40)", "takeh(p40, count(none(p40)))", null)]
-    [InlineData("copy192", "takeh(p40)", "takeh(p40, count(none(p40)))", "Unsupported_Kd@takeh(p40) InternalInvariant_Kd@-")]
+    [InlineData("copy192", "takeh(p40)", "takeh(p40, count(none(p40)))", "TypeHeightLimit_Kd@takeh(p40)")]
     [InlineData("outer192", "outer(p40)", "outerw(p40)", null)]
     public void ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft(string shape, string omitted, string written, string? records)
     {

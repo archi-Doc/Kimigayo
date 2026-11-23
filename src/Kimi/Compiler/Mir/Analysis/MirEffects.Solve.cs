@@ -98,7 +98,7 @@ internal sealed partial class MirEffects
             var node = this.queue[head];
             (head, length) = (head + 1 == count ? 0 : head + 1, length - 1);
             this.queued[node >> 6] &= ~(1UL << node);
-            for (var d = this.Evaluate(node) ? this.dependentHeads[node] : -1; d >= 0; d = this.dependents[d].Next)
+            for (var d = this.Sited(node) ? this.dependentHeads[node] : -1; d >= 0; d = this.dependents[d].Next)
             {
                 var dependent = this.dependents[d].Node;
                 if ((this.queued[dependent >> 6] & (1UL << dependent)) == 0)
@@ -145,6 +145,26 @@ internal sealed partial class MirEffects
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
             this.report.Add(MirProblem.WithoutBody(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject));
         }
+    }
+
+    // Evaluate in the node's owner body's site (PLAN G651 U2b R5, OP2 (a)): a refused read in the round marks the body's declaration.
+    private bool Sited(int node)
+    {
+        var body = this.program.Body(this.Of(node)[node].Owner);
+        var site = types.OpenBodySite(body.Source);
+        bool grew;
+        ReadOnlySpan<SiteMark> marks;
+        try
+        {
+            grew = this.Evaluate(node);
+        }
+        finally
+        {
+            marks = types.CloseBodySite(site);
+        }
+
+        this.report.Uses(types, marks, body.Key);
+        return grew;
     }
 
     // A node's summary from its local facts and its callees' current summaries: whether it grew.

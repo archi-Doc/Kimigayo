@@ -75,8 +75,10 @@ internal sealed partial class MirBorrows
         {
             for (var i = 0; i <= this.body.Blocks[block].Count; i++)
             {
+                var site = this.OpenAt(this.Location(block, i));
                 visitor.At(this.Location(block, i));
                 MirUses.ForEach(cases, new(block, i), ref visitor);
+                types.CloseSite(site);
             }
         }
 

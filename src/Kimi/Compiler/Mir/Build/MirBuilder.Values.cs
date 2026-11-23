@@ -48,7 +48,7 @@ internal sealed partial class MirBuilder
     // The value a node's own form produces, into the destination; as a call's input that reserves (input), a written exclusive borrow,
     // also inside parentheses, is two-phase (SPEC 15.6.7), and a selection's or a do's bodies give their values as Result places them.
     [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
-    private void Into(MirPlace destination, Koto node, bool input = false)
+    private void IntoAt(MirPlace destination, Koto node, bool input)
     {
         switch (HirTables.Op(node))
         {
@@ -184,7 +184,7 @@ internal sealed partial class MirBuilder
     // a call's input as the call's (input, Reserved), a value the acquisition forms in the place given (into) where it has that Type. An
     // input the call takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves, MirCases.Reserves) and has no
     // preparation path (A3 E13 (4)).
-    private MirOperand Operand(Koto node, HirAdjust adjust, BoundType? expected, bool input = false, MirPlace? into = null)
+    private MirOperand OperandAt(Koto node, HirAdjust adjust, BoundType? expected, bool input, MirPlace? into)
     {
         var reserves = input && MirCases.Reserves(this.body, expected ?? KnownType(node));
         input = Reserved(input, node, adjust, expected);

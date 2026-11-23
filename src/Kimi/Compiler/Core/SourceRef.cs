@@ -18,6 +18,13 @@ internal readonly record struct SourceRef(ushort Module, int Id)
     /// <summary>Gets a value indicating whether the node is the Kimi library's (<see cref="SyntaxTable.LibraryModule"/>).</summary>
     internal bool IsLibrary => this.Module == SyntaxTable.LibraryModule;
 
+    /// <summary>Orders two subjects (DIAGNOSTICS rule 6; DECISIONS R5-M171): by module, then by id, the syntax table's pre-order of parsed
+    /// nodes, after which nodes outside the tree (Binding's synthesized ones) follow in creation order.</summary>
+    /// <param name="x">The first subject.</param>
+    /// <param name="y">The second subject.</param>
+    /// <returns>Their order.</returns>
+    internal static int Order(SourceRef x, SourceRef y) => x.Module != y.Module ? x.Module - y.Module : x.Id.CompareTo(y.Id);
+
     /// <summary>Gets the reference of a node without numbering it, as a table's read does: no semantic write reached a node without an id, so
     /// no table has it.</summary>
     /// <param name="node">The node.</param>

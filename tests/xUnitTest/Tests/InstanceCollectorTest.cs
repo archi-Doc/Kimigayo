@@ -971,13 +971,13 @@ public sealed partial class InstanceCollectorTest
         Assert.All(records, static x => Assert.StartsWith("let ", x.Text, StringComparison.Ordinal));
     }
 
-    // R7-T1 (N1; PLAN G651): only the collector's run answers a requesting site's height refusal after Binding's run (TyCtxt.Answered),
-    // to the formation owning it (an instance's stored Types are answered in every frame after the run, PLAN G651 U2a:
-    // AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame). On chain20, f19's call composed with f19's instance
-    // (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing. In the collector's answer frame,
-    // TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the
-    // frame records Binding's site-less broken contract at its close; outside the frame Answered owns nothing either
-    // (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
+    // R7-T1 (N1; PLAN G651 U2b R1-R3): after Binding's run a requesting site's height refusal is answered to the formation owning it
+    // (TyCtxt.Answered) under the innermost after-run owner, which the read of it answers to. On chain20, f19's call composed with f19's
+    // instance (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing. In a body site, Answered
+    // gives HeightLimit and marks the site once at its subject as a fallback, with no record. In the collector's answer frame, Answered
+    // gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the frame records
+    // Binding's site-less broken contract at its close (U2b commit (3): R7-T1's throw); outside every owner Answered's formation still owns
+    // the refusal (HeightLimit) and its read is that broken contract (commit (3): a throw): never a silent null.
     [Fact]
     public void OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal()
     {
@@ -990,6 +990,12 @@ public sealed partial class InstanceCollectorTest
         var f19 = set.Items.ToArray().Single(x => x.BodyOrdinal >= 0 && program.Body(x.BodyOrdinal).Key.Decl?.Name == "f19");
         var call = program.Body(f19.BodyOrdinal).Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x is { Kind: MirTerminatorKind.Call, Callee.Subst: not null });
         Assert.Empty(TestDiagnostics.Of(c));
+        var subject = program.Body(f19.BodyOrdinal).Source;
+        var site = c.Types.OpenBodySite(subject);
+        var sited = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
+        Assert.Equal(new[] { new SiteMark(null, subject, true) }, c.Types.CloseBodySite(site).ToArray());
+        Assert.Equal(((Subst?)null, TyCtxt.Formation.HeightLimit), (sited.Subst, sited.Cause));
+        Assert.Empty(TestDiagnostics.Of(c));
         var frame = c.Types.OpenAnswer();
         var answered = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
         Assert.Equal(((Subst?)null, TyCtxt.Formation.HeightLimit), (answered.Subst, answered.Cause));
@@ -999,25 +1005,25 @@ public sealed partial class InstanceCollectorTest
         c.Types.CloseAnswer(frame);
         Assert.Equal([nameof(DiagnosticCode.InternalInvariant_Kd)], TestDiagnostics.Of(c).Select(static x => x.Code));
         var outside = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
-        Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (outside.Subst, outside.Cause));
+        Assert.Equal(((Subst?)null, TyCtxt.Formation.HeightLimit), (outside.Subst, outside.Cause));
     }
 
-    // PLAN G651 U2a (IMPL A.4, 21.3.2; R7-T1): an instance whose stored Type passes IMPL A.4's height, first formed after Binding's run
-    // outside the collector's answer frame (main's MIR reads D<W^8000<i32>>, main's p40 lifted 40 times, its Field W^250<T> forming
-    // 8,250), publishes the refusal as its HeightLimit in every frame, so Layout records TypeHeightLimit_Kd at each least use (count's
+    // PLAN G651 U2a, U2b (IMPL A.4, 21.3.2; R7-T1): an instance whose stored Type passes IMPL A.4's height, first formed after Binding's
+    // run outside the collector's answer frame (main's MIR reads D<W^8000<i32>>, main's p40 lifted 40 times, its Field W^250<T> forming
+    // 8,250), publishes the refusal as its HeightLimit under every owner, so Layout records TypeHeightLimit_Kd at each least use (count's
     // parameter, noneD's result, the call forming the instance), never Rejected's located InternalInvariant_Kd; its Field behind raw
-    // (raw192: raw/W^192<T>, 8,193) the same; at exactly H (raw191: 8,192) the instance forms and the program is accepted. G651's
-    // site-less InternalInvariant_Kd at the project stays beside it until U2b gives the after-run readers a site. The default's copy
+    // (raw192: raw/W^192<T>, 8,193) the same; at exactly H (raw191: 8,192) the instance forms and the program is accepted. The MIR
+    // readers' reads mark their sites (U2b), whose uses merge with Layout's in each declaration: no site-less record. The default's copy
     // (copy250, f-stored), built since PLAN G396 (3)'s B3, records the same at its least uses, the copy's `.None` at its operation in the
     // template (before B3 it was B3's Unsupported_Kd at the omitting call). In a Closure literal's body (clo250) the same records (beside
     // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1).
     // Fail-before: dev gives InternalInvariant_Kd at each use.
     [Theory]
-    [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
-    [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40)")]
     [InlineData("raw191", "")]
-    [InlineData("copy250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>>.None InternalInvariant_Kd@-")]
-    [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("copy250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>>.None")]
+    [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40)")]
     public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
     {
         var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);

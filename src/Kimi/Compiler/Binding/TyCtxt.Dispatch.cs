@@ -93,6 +93,11 @@ internal sealed partial class TyCtxt
             this.witnesses.Add((requirement, contract, subst), target);
         }
 
+        if (target.Cause == Formation.HeightLimit)
+        {
+            binding.AnswerSite(null); // PLAN G651 U2b R3.3: fresh or memoized; its callers all run after Binding's run (R13.1 P2).
+        }
+
         return target;
     }
 

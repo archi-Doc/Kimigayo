@@ -392,9 +392,17 @@ public sealed partial class Binding
     {
         var walk = this.lintWalk ??= new(this);
         walk.Begin();
-        foreach (var module in this.compilation.SourceModules)
+        var site = this.OpenBodySite(default); // PLAN G651 U2b R5: the lint walk's after-run site, its marks dropped (lints precede MIR).
+        try
         {
-            walk.Visit(module.RootKoto);
+            foreach (var module in this.compilation.SourceModules)
+            {
+                walk.Visit(module.RootKoto);
+            }
+        }
+        finally
+        {
+            _ = this.CloseBodySite(site);
         }
     }
 

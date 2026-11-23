@@ -20,10 +20,11 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirReport
 {
     // The committed least use of each key and the open round's (Limit), each subject the least so far.
-    private readonly Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), SourceRef> limits = new();
-    private readonly Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), SourceRef> roundLimits = new();
+    private readonly Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), (bool Fallback, SourceRef Subject)> limits = new();
+    private readonly Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), (bool Fallback, SourceRef Subject)> roundLimits = new();
     private readonly List<(SourceRef Subject, DiagnosticCode Code)> flushing = []; // FlushLimits' scratch.
     private bool unflushed; // Whether a committed least changed since the last flush (Merged flushes it).
+    private bool flushed; // Whether the table flushed in this version: a body site's use after it is a broken contract.
 
     /// <summary>Adds the instance collector's use over a limit in a declaration to its run's round (IMPL 21.3.2; DECISIONS R5-M171): keyed
     /// by the limit's record and an erased Type (a Layout limit, its code the collector's; the type-driven height cap) or, where no Type
@@ -42,7 +43,30 @@ internal sealed partial class MirReport
             throw new InvalidOperationException("A limit use outside the collector's round (InternalInvariant).");
         }
 
-        _ = Least(this.roundLimits, (code, erased, forming, declaration), subject);
+        _ = Least(this.roundLimits, (code, erased, forming, declaration), (false, subject));
+    }
+
+    /// <summary>Adds the uses a MIR body site's marks make (PLAN G651 U2b R2, R6; Binding.CloseBodySite) at once, in every round, a lazily
+    /// built body's included: each a TypeHeightLimit_Kd use in the body's declaration, a refused instance's keyed by its erased Type (as
+    /// Layout's limit), a refused substitution's by its subject as its forming site (as the collector's Formed), a body site's own subject a
+    /// fallback after every use subject. A use after the table flushed outside a Collection round, or from a library body, is a broken
+    /// contract.</summary>
+    /// <param name="types">The compilation's TyCtxt, which erases a refused instance.</param>
+    /// <param name="marks">The body site's marks.</param>
+    /// <param name="declaration">The body's declaration.</param>
+    internal void Uses(TyCtxt types, ReadOnlySpan<SiteMark> marks, MirDefKey declaration)
+    {
+        foreach (var mark in marks)
+        {
+            if (mark.Subject.IsLibrary || (this.flushed && this.round != (int)MirRecordClass.Collection))
+            {
+                throw new InvalidOperationException($"A height use at {mark.Subject} from a library body or after the limit table flushed (InternalInvariant).");
+            }
+
+            var key = mark.Refused is { } refused ? (DiagnosticCode.TypeHeightLimit_Kd, types.Erase(refused), default(SourceRef), declaration)
+                : (DiagnosticCode.TypeHeightLimit_Kd, (BoundType?)null, mark.Subject, declaration);
+            this.unflushed |= Least(this.limits, key, (mark.Fallback, mark.Subject));
+        }
     }
 
     /// <summary>Flushes the table at the clean collector run's end, before its round's <see cref="Commit"/>: merges the round's least uses
@@ -58,23 +82,23 @@ internal sealed partial class MirReport
         this.Flush();
     }
 
-    // DIAGNOSTICS rule 6 (DECISIONS R5-M171): the order of two subjects, by module and then by id, the syntax table's pre-order of parsed
-    // nodes, after which nodes outside the tree (Binding's synthesized ones) follow in creation order.
-    private static int Order(SourceRef x, SourceRef y) => x.Module != y.Module ? x.Module - y.Module : x.Id.CompareTo(y.Id);
+    // The order of two uses (PLAN G651 U2b R6): a body site's fallback subject after every use subject, then SourceRef.Order.
+    private static int Order((bool Fallback, SourceRef Subject) x, (bool Fallback, SourceRef Subject) y)
+        => x.Fallback != y.Fallback ? (x.Fallback ? 1 : -1) : SourceRef.Order(x.Subject, y.Subject);
 
-    // Keeps a use's subject as its key's least; whether it changed the table.
+    // Keeps a use as its key's least; whether it changed the table.
     private static bool Least(
-        Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), SourceRef> table,
+        Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), (bool Fallback, SourceRef Subject)> table,
         (DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration) key,
-        SourceRef subject)
+        (bool Fallback, SourceRef Subject) use)
     {
         ref var least = ref CollectionsMarshal.GetValueRefOrAddDefault(table, key, out var found);
-        if (found && Order(subject, least) >= 0)
+        if (found && Order(use, least) >= 0)
         {
             return false;
         }
 
-        least = subject;
+        least = use;
         return true;
     }
 
@@ -82,19 +106,19 @@ internal sealed partial class MirReport
     // limit (IMPL A.4; R7-T1), each through Add, so a key's row written again merges into itself.
     private void Flush()
     {
-        this.unflushed = false;
+        (this.unflushed, this.flushed) = (false, true);
         if (this.limits.Count == 0)
         {
             return;
         }
 
         this.flushing.Clear();
-        foreach (var (key, subject) in this.limits)
+        foreach (var (key, least) in this.limits)
         {
-            this.flushing.Add((subject, key.Code));
+            this.flushing.Add((least.Subject, key.Code));
         }
 
-        this.flushing.Sort(static (x, y) => Order(x.Subject, y.Subject) is var order && order != 0 ? order : x.Code.CompareTo(y.Code));
+        this.flushing.Sort(static (x, y) => SourceRef.Order(x.Subject, y.Subject) is var order && order != 0 ? order : x.Code.CompareTo(y.Code));
         foreach (var (subject, code) in this.flushing)
         {
             var record = new MirProblem(code, DiagnosticRequirement.ControlFlow, subject, (int)MirRecordClass.Collection, MirProblem.NoBodyViews);

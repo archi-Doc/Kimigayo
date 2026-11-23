@@ -11,14 +11,13 @@
 // an instance's storage reads (ReadableInstance: Instance, then Binding.Readable's guard; R4-M139).
 // Formation, this file's representation: whether a substitution formed its instance, the cause travelling with a null one (Apply's
 // Type, Compose's Subst): Formed (and only then an instance), Incomplete (a step that does not complete), HeightLimit (Binding.TypeHeight's
-// refusal answered inside the instance collector's answer frame, which only the collector's run opens, OpenAnswer, to the formation
-// that owns it, Answered, the collector's query, or Witness, a requirement call's resolution, as its target's Cause, recorded by the
-// query's reader at its requesting site). Apply and Compose read no storage, so their cause is the substitution's alone; an instance's
-// stored Types are formed by Binding.Instance, which publishes its own cause beside them (AdtDef.InstanceStorage.HeightLimit), never
-// Apply's or Compose's (Instance's verdict walk may form them). Apply, Instance and Compose own no refusal, so one inside the frame outside
-// Answered, Witness and an instance is the frame's, recorded at its close as PLAN G651's site-less record, and one after the run outside
-// the frame stays that record (R7-T1, N1).
-// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
+// refusal answered after Binding's run, under the innermost after-run owner (the instance collector's answer frame, OpenAnswer, or a
+// site, OpenBodySite and OpenSite; PLAN G651 U2b), to the formation that owns it, Answered, or Witness, a requirement call's resolution,
+// as its target's Cause; the read is answered to that owner: the collector's reader records it at its requesting site, a site is
+// marked). Apply and Compose read no storage, so their cause is the substitution's alone; an instance's stored Types are formed by
+// Binding.Instance, which publishes its own cause beside them (AdtDef.InstanceStorage.HeightLimit), never Apply's or Compose's
+// (Instance's verdict walk may form them). Apply, Instance and Compose own no refusal, so one outside Answered, Witness and an instance
+// is the innermost after-run owner's: the frame's, recorded at its close as PLAN G651's site-less record (R7-T1, N1), or a site's mark.// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
 // compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
 // grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
@@ -50,13 +49,13 @@ internal sealed partial class TyCtxt
         Formed,
 
         /// <summary>A step does not complete (BU-36's contract substitution that does not complete), or Binding.TypeHeight refused a
-        /// Type no formation of this query owns, recording it itself (the consultation's node, else PLAN G651's site-less record, at once
-        /// outside the collector's answer frame or at its close inside it).</summary>
+        /// Type no formation of this query owns, recording it itself (the consultation's node during the run; after it, the innermost
+        /// after-run owner's: a site's mark, else PLAN G651's site-less record, at once with no owner or at the collector frame's close).</summary>
         Incomplete,
 
-        /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered it to this formation in
-        /// the collector's answer frame instead of recording it (PLAN G651's after-run site kind "the caller records": Answered, the
-        /// instance collector's query, or a requirement call's resolution, Witness's target's Cause, whose reader records it).</summary>
+        /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered it to this formation
+        /// after Binding's run instead of recording it (Answered, or a requirement call's resolution, Witness's target's Cause); the read
+        /// is answered to the innermost after-run owner (PLAN G651 U2b R3): the collector's reader records it, a site is marked.</summary>
         HeightLimit,
     }
 
@@ -192,10 +191,22 @@ internal sealed partial class TyCtxt
 
     // R7-T1 (PLAN G651's after-run site kind "the caller records"): the instance collector's answer frame, opened by its run alone
     // (InstanceCollector.Run, in a finally), so every substitution the run causes is inside it and none outside (Binding.TypeHeight).
-    internal (bool Open, bool Answered) OpenAnswer() => binding.OpenAnswer();
+    internal OwnerState OpenAnswer() => binding.OpenAnswer();
 
     // Closes the collector's answer frame; a refusal no formation owned is recorded there as PLAN G651's site-less broken contract.
-    internal void CloseAnswer((bool Open, bool Answered) frame) => binding.CloseAnswer(frame);
+    internal void CloseAnswer(OwnerState frame) => binding.CloseAnswer(frame);
+
+    // PLAN G651 U2b R2, R5 (DECISIONS: COMPILER_ARCHITECTURE's MIR builder and analyses rows): the after-run sites MIR's drivers open, a
+    // body site per element every path of it passes through and a node site at each node it visits, the only non-pure TyCtxt members MIR
+    // calls with Answered; a read of a published height refusal inside one marks it, and the body site's close hands its marks to the
+    // driver, which adds them to MirReport's limit table (MirReport.Uses).
+    internal OwnerState OpenBodySite(SourceRef subject) => binding.OpenBodySite(subject);
+
+    internal ReadOnlySpan<SiteMark> CloseBodySite(OwnerState site) => binding.CloseBodySite(site);
+
+    internal OwnerState OpenSite(SourceRef subject) => binding.OpenSite(subject);
+
+    internal void CloseSite(OwnerState site) => binding.CloseSite(site);
 
     // R7-T1: Apply as a formation owning its refusals in the collector's answer frame, the collector's query, whose one reader of a cause
     // (InstanceCollector.Formed) records it at its requesting site: a refusal of a Type above the height limit is answered as HeightLimit,
@@ -204,7 +215,13 @@ internal sealed partial class TyCtxt
     {
         var formation = binding.OpenFormation();
         var (instance, cause) = this.Apply(type, subst);
-        return binding.CloseAnswer(formation) ? (null, Formation.HeightLimit) : (instance, cause);
+        if (!binding.CloseAnswer(formation))
+        {
+            return (instance, cause);
+        }
+
+        binding.AnswerSite(null); // PLAN G651 U2b R3.2: the reader's site, else the collector's frame (its reader records).
+        return (null, Formation.HeightLimit);
     }
 
     // R7-T1: Compose as such a formation, the collector's query for a call's edge (as Answered for a Type): a refused height is HeightLimit
@@ -213,7 +230,13 @@ internal sealed partial class TyCtxt
     {
         var formation = binding.OpenFormation();
         var composed = this.Compose(inner, outer);
-        return binding.CloseAnswer(formation) ? (null, Formation.HeightLimit) : composed;
+        if (!binding.CloseAnswer(formation))
+        {
+            return composed;
+        }
+
+        binding.AnswerSite(null); // PLAN G651 U2b R3.2.
+        return (null, Formation.HeightLimit);
     }
 
     // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36): Apply, then the instance's

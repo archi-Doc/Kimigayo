@@ -182,11 +182,17 @@ internal sealed partial class MirValidator
             {
                 for (var i = 0; i < block.Count; i++)
                 {
-                    walked &= this.Statement(new(index, i), body.Statements[block.Start + i]);
+                    ref readonly var statement = ref body.Statements[block.Start + i];
+                    var site = types.OpenSite(statement.Source.Syntax); // PLAN G651 U2b R5 (D-C4): the checked location's node site.
+                    walked &= this.Statement(new(index, i), statement);
+                    types.CloseSite(site);
                 }
             }
 
-            return this.Terminator(new(index, block.Count), block.Terminator) && walked;
+            var end = types.OpenSite(block.Terminator.Source.Syntax);
+            walked = this.Terminator(new(index, block.Count), block.Terminator) && walked;
+            types.CloseSite(end);
+            return walked;
         }
 
         // Whether an rvalue may write a Temp of Type Never (DECISIONS R5-M38): an unadapted Copy or Move of a Place of Type Never, or an

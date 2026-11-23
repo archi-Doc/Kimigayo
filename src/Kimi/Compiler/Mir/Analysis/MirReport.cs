@@ -123,7 +123,7 @@ internal sealed partial class MirReport
     /// <summary>Removes every problem and least use, keeping the storage.</summary>
     internal void Clear()
     {
-        (this.isMerged, this.round, this.unflushed) = (false, null, false);
+        (this.isMerged, this.round, this.unflushed, this.flushed) = (false, null, false, false);
         this.held.Clear(0);
         this.limits.Clear();
         this.roundLimits.Clear();
