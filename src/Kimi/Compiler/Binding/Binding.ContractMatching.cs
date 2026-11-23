@@ -88,8 +88,11 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _))
+                if (environment.IsFailed(fact))
                 {
+                    // A state read (R7-E5 c1, Rev 2 R2.2 (2), R2.3 (S)): the consult's limit set here without the consult, as the
+                    // environment's origin-less cause, so no state read rests on a failed fact's origin.
+                    this.ScopeReads.Limit ??= environment.FailedPremise;
                     failed ??= environment.FailedPremise;
                 }
             }
