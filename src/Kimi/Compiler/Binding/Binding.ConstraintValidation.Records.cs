@@ -169,11 +169,19 @@ public sealed partial class Binding
     }
 
     // A caller's proposition record (RequireConstraint's `proposition`: the erasure's `S is Owned`, SPEC 15.2.3), from its one Constraint
-    // fact: an Unknown one shows its subject and Contract; its Note went by code (R7-E3 E3b-2, M3).
+    // fact: the Note names the proposition and its outcome, as a clause record's does (ReportClauseConstraint), and an Unknown one shows
+    // its subject and Contract as evidence (R7-E3 E3b-2: the erasure's own Note went, M3; B's ruling 12).
     private void ReportProposition(Koto use, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
         var proposition = this.report.Constraint(this.report.Facts(index)[0]);
         var unknown = (BindingFailure)problem.Requirement.Kind == BindingFailure.UnprovenConstraint;
-        use.ReportIn(store, problem.Requirement, problem.Code, evidence: unknown ? [DiagnosticTypeName(proposition.Subject!), proposition.Contract!.Name] : null, condition: problem.Condition);
+        var (subject, contract) = (DiagnosticTypeName(proposition.Subject!), proposition.Contract!.Name);
+        use.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            evidence: unknown ? [subject, contract] : null,
+            note: $"The use requires {subject} is {contract}; this condition {(unknown ? "cannot be proven" : "is refuted")}",
+            condition: problem.Condition);
     }
 }
