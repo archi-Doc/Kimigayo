@@ -1029,7 +1029,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
 - **R4-M25** (owner, 2026-10-12) Area caps rebalanced within the R4 stage ceiling: superseded by Q5 (2026-10-16); full text:
   c4b48f11c.
-- **R4-M22** (2026-10-12; U6; superseded in part by R4-M153: a part past the depth bound is the class Deep; amended 2026-11-03, H3b
+- **R4-M22** (2026-10-12; U6; superseded in part by R4-M153: a part past the depth bound is the class Deep; superseded in part by
+  R7-M84 (Z3, 2026-11-23): an abstract Callable input is read through the signature its call selected; amended 2026-11-03, H3b
   T32b, unit U-B2, by the planning session with BU's consent C-11) A4, `MirEffects`, decides `confined` (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4). Per body view a
   union summary: the classes Environment, Unknown, Limit and Derived and atoms Drop(T) and Call(T, receiver) over the definition's
   abstract Types. Local facts come from `MirUses` (a mutable static's access, an environment effect, an integer made a pointer and a
@@ -22348,6 +22349,11 @@ structure is recorded here by the unit that first implements it.
     `Kernel32Library`, `BackendLibrary`, `Kernel32Symbols` and `ProvidedSymbols` are deleted. The split stands.
   - Amended by T-M18 (B7a2): `WindowsProfile` is `TargetProfile.Windows`, the first row of Core's target table `TargetProfile.Rows`
     (`Core/TargetProfile.cs`); the split stands.
+  - Amended by T-M27 (B7r2): `VirtualAlloc` and `VirtualFree` are runtime declarations, so the kernel32 supply's symbols are the
+    runtime declarations' symbols, then `VirtualProtect`, `QueryPerformanceCounter` and `QueryPerformanceFrequency`, each once
+    (`VirtualFree` now precedes `VirtualProtect`; no reader reads the order).
+  - Amended by T-M28 (B7r3): the runtime declarations and the kernel32 set lose `GetProcessHeap`, `HeapAlloc` and `HeapFree` (11
+    symbols).
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -24567,7 +24573,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     in the frame that no formation owns is the frame's: `CloseAnswer` records G651's site-less `InternalInvariant_Kd` at the frame's
     close, never silent. `Apply` reads no storage: Binding's closing step (`ClosePartCore`) reads the closure result's formation, not
     its storage verdict, so a storage bound no longer makes a substitution Incomplete (the Front's B1) and a height refusal no longer
-    makes a storage verdict Rejected (B2). Row: `InstanceCollectorTest.OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal`. Outside
+    makes a storage verdict Rejected (B2). Row: `InstanceCollectorTest.OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal`. Outside
     both formations until c4 (behind the Dispatch gate, B's ruling 17 O1): `Agrees`' `Signature(requirement, subst)` and
     `TyCtxt.Dispatch.Resolve`'s `InstanceContract` and `ResolveRequirementWitness`, where a refusal would be the frame's record;
     superseded by the c4 part.
@@ -24706,6 +24712,19 @@ R8-M* and R9-M* by the stage of the recording unit.
       vocabulary beside `TyCtxt.Formation`; B's ruling 2); a refused `NamesReference` candidate read as "does not name" (a silent
       default over a refusal); a two-pass `NamesReference` inside c4 (the Front's C1c: naming by 8.9.1's head unification before
       forming is PLAN G1269, not c4's).
+  - Amended by G651 U2a (Back, 2026-11-23; Q-689, D-1137; C-485 B1, agreed by F, M and B): the instance's stored-Types formation
+    (`Binding.Instance`), one of the three formation owners, owns a refusal past IMPL A.4's height after Binding's run (`producing`
+    over) in every frame, not only inside the collector's answer frame (`Binding.OpenStorageFormation`), unless a consultation frame
+    open after the run fails its node first (G881b N6; U2c): the refusal is published as the instance's `HeightLimit`, never a null
+    part with `HeightLimit` false that Layout read as Rejected. So `answer.Open` is also set outside the collector's run,
+    transiently, by this opener, which `Binding.Instance` closes in a `finally` (the Front's C-489 C1), where the answer frame's
+    bullet has `InstanceCollector.Run` alone open it. Outside the collector's frame the formation closes to no frame and G651's
+    site-less record is still made beside it until every after-run former outside the frame records at its own site (G651 U2b). The
+    Temporary bullet's answer frame carries this formation too: a1's site kind covers it, else it goes with U2b. Row:
+    `InstanceCollectorTest.AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame`. Rejected: (A) dropping that
+    record now, since an uninstantiated generic body's open instance past H would be accepted (IMPL A.4: never acceptance); a
+    reader-side rule in Layout, since the cause is the producer's published fact (one owner); making `OpenFormation` own after the
+    run for all three owners, since `Answered`'s and `Witness`'s callers outside the frame record nothing yet (U2b).
 - **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
   D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
   CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
@@ -25797,6 +25816,45 @@ R8-M* and R9-M* by the stage of the recording unit.
   Unsupported records (a second rule over every check, deriving independent failures too), resting the use on the conformance as a
   part (it would also derive the use of a conformance with its own record, beyond the ruled forms) and a cause type naming a
   specification (a new representation for an input the conformance publishes).
+- **R7-M83 An instantiated premise keeps its Statements (Z3-B1)** (Middle, 2026-11-23; stream Z's Z3, PLAN G396 (3), Q-691, D-1139;
+  Major, an acceptance mover; designs `middle\notes\z3-design.md` Revision 1 and Z3-B1, O-502's split; the Front's repeated read on
+  C-475, C5 and C6) SPEC 6.4.2 step 3, 8.11.4.
+  - **Rule.** A writer that holds another declaration's premise under a substitution records its Statement (the declaration and the
+    premise as written there); a fact's Statements are its in-place one (the scope's owner writing the fact itself) and every recorded
+    one, a set (`ConstraintEnvironment.AddStatement`, cleared by `Reset`, no Version change; `States(fact, scopeOwner, owner,
+    written)`). The two writers are `InheritVirtualConstraints` (an override's inherited premises, SPEC 6.4.2 step 3) and
+    `CompatibleRequirement` (a requirement's premises at Self), pinned by ArchitectureRulesTest's "Writers of a premise's Statements".
+    The 8.11.4 evidence of a leaf row is the union of the bounds of the clauses of its fact's Statements, and names the clause's
+    declaration and written premise; Hover prints a public guarantee only for the slot's own evidence (no premise, no clause). The
+    header view (`PrepareVirtualHeaderPremises`) records none: no bound is read there, and a bound reader added there is a located
+    `Unsupported_Kd`.
+  - **Rejected.** (a) A clause in `AvailableCallableEffects` for overrides (a second rule for one form); (b) bounds on interned facts
+    (EffectDeclarations' prohibition); (c) inherited premises as derived facts (`DerivedFacts` changes availability and `Declares`);
+    (d) re-substituting the slot's clauses at the reader (a second statement of the substitution); (e) one Statement per fact, the
+    first recorded (order-dependent: the Front's B-1, ovr-alias-r); (f) a header Statement.
+  - **Pins.** Both owner tests of `States` (the Front's C5 mutants M1, M2:
+    `CallableEffectBoundTest.ABoundAnotherDeclarationWritesIsNotInherited`).
+- **R7-M84 A call through an abstract Callable input uses the bounds of the signature its call selected** (Middle, 2026-11-23; stream
+  Z's Z3-E5, PLAN G396 (3) E5, Q-691, D-1139; Major, an acceptance mover; design `middle\notes\z3-design.md` Revision 1, the Middle's
+  repeated review C1-C4; the implementation review `z3-impl-review.md`, C2 applied) SPEC 8.10, 8.11.4.
+  - **Rule.** A4's call atom carries the signature its call selected: a value call's `CallPlan.DeclaredSignature` (Binding's
+    selection, SPEC 8.10), which the MIR builder carries as the Value callee's TypeToken (R4-M41), or a published row's Callable
+    input's one signature (`Binding.OneCallable` through `TyCtxt.CallsSignature`, which `CheckCallsRows` guarantees); `Compose`
+    instantiates it through the call's substitution with the atom's Type (in the premises' terms: no case Type);
+    `TyCtxt.CallableBounds(definition, input, signature, receiver)` reads `AvailableCallableEffects` over the definition's premises
+    and never selects again. A call through an abstract Type without a signature is a broken contract (the solve's throw form, BU-102;
+    Derived in an incomplete compilation).
+  - **Supersedes in part** R4-M22's abstract-input clause, "an abstract input is nothing where its one Callable signature's premises
+    declare confined (`TyCtxt.CallableBounds`), a Limit where it has several signatures (Binding chose among them by the call's
+    arguments, which MIR does not keep)": A4 now reads the selected signature's premises. That producer of A4's Limit class (E5) is
+    gone; the class stays for E7 (R7-P5; E3 and E4 left it with Z25, R4-M237, and E6 with Q-688, R7-M57).
+  - **Rejected.** (a) A new Binding column (DeclaredSignature already is the choice); (b) re-running the selection in MIR (a second
+    owner of SPEC 8.10's choice); (c) the case Type of the signature (the premises are not case-instantiated); (d) a located
+    `Unsupported_Kd` for the override path alone (a clause for one form; Z3-B1, R7-M83, fixes its cause).
+  - **Note.** A concrete Type can satisfy several Callable signatures (SPEC 10.7: a Closure `(i32) -> Never` satisfies `(i32) -> i32`
+    and `(i32) -> bool`), so a body with several signatures can have an instance; A4 reads a concrete callee's body, never the
+    signature (Z3-E5's repeated review C4). Measurement open (R1.5 N1): `CallsSignature` runs one `TryCallable` per published-row
+    call; if the window's RP8 shows a cost, the published row carries the signature as a column (never a side cache).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -30152,3 +30210,114 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     XML text of the rows (C-482 C2: a split row, a property or an imported row would stop the scan silently); `test-cli.ps1
     -NativeCompiler` in the job (it needs the managed `Kimi.dll` and a toolchain root; O4, not now); `--version` and `check` rows
     (verify starts the image; `build` runs every check `check` runs).
+- **T-M26 The runtime over the platform layer** (Tatara, 2026-11-22; the plan's unit B7r1, decisions 22 and 23, Q-695, D-1146; Major;
+  design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.2 §3.2, §7.3; implementation review C-468, the Middle's ACCEPT
+  WITH CONDITIONS and the Back's CONSENT WITH CONDITIONS). Lands in window W3 with T-M27 and T-M28 (all or none).
+  - **The templates:** the windows-x64 runtime template, which called kernel32 inside each routine, is two templates that
+    `LlvmModuleText` reads as one text and expands in one scan (one builder, one marker check): the platform layer
+    `WindowsPlatform.ll.in` (kernel32's declarations and every kernel32 call) and the common part `Runtime.ll.in`
+    (`__kimi_write_bytes`'s checks, `__kimi_try_stderr`, `__kimi_abort`, `__kimi_abort_message`, `__kimi_stdout`, `__kimi_alloc`,
+    `__kimi_raw_allocate`, `__kimi_free`, `__kimi_destroy_string`).
+  - **The layer's routines** are `RuntimeAbi.PlatformRoutines`, each one `FunctionAbi` spliced at its marker (R5-M15): `__kimi_exit`
+    `void (i32) noreturn`; `__kimi_write` `i64 (i32 stream, ptr, i64)` (stream 1 standard output, 2 standard error; -1 written, else
+    the OS error or `no_os_error`; Windows maps the stream to `GetStdHandle`'s -11/-12); the temporary `__kimi_heap_allocate` `ptr
+    (i64)` (null on failure; the process heap, a zero-byte request taking one byte), `__kimi_heap_release` `i64 (ptr)` (-1, else the
+    OS error) and `__kimi_check_process_heap` `void (ptr location, i64 location_length)` (`KIMI_E_PROCESS_HEAP` at the location on a
+    null process heap, the base's check moved). `__kimi_alloc` and `__kimi_free` call the check with their location, then the block
+    routine; `__kimi_try_allocate` and the test runtime's two buffers call `__kimi_heap_allocate` (null on a null heap, as the base;
+    the test runtime now exits 125 where it passed a null heap to `HeapAlloc`).
+  - **The OS-error prefix:** the Abort report's prefix is `RuntimeAbi.OsErrorPrefix` (` (win32=`): the layer defines
+    `@__kimi_os_prefix` from it at `{{os_prefix}}`/`{{os_prefix_length}}` and the common part writes its length at
+    `{{os_prefix_length}}` (revision 2.2: no constant 8 in the common part; a row's prefix of another length changes only the prefix
+    its layer is given, never the common part).
+  - **Class:** a generated-code change with equal observable results (not VERIFICATION's behaviour-preserving restructuring): every
+    program's output, exit code, Abort report (the adapter suite's every mode, 16 and 19 reporting `KIMI_E_PROCESS_HEAP` as on the
+    base) and audit counts equal to the base; IR and executables differ (calls between the common part and the layer), and with them
+    the build record's `irSha256`, `executableSha256` and `objectUndefinedSymbols` (where `__chkstk` was needed only by the write's old
+    slot; the record's other fields were not compared), measured in window W3 (R7).
+  - **The call-site rule** (§5 row 43): `NativeAllocationAudit.AssertOsCallsInLayer` replaces `AssertExitsThroughHook`: in an audited
+    module every mention of a runtime kernel32 function (`TargetProfile.Windows.RuntimeDeclarations`) but its one declaration lies
+    inside a layer routine's definition, `ExitProcess`'s inside `__kimi_exit`'s; it failed on the base (`__kimi_alloc`, `__kimi_free`,
+    `__kimi_write_bytes`, `__kimi_try_allocate`). The audits and failure tests interpose `__kimi_heap_allocate`/`__kimi_heap_release`
+    instead of `HeapAlloc`/`HeapFree` with every bound unchanged.
+  - **Temporary:** `__kimi_heap_allocate`'s and `__kimi_heap_release`'s process-heap bodies and `__kimi_check_process_heap` (removal:
+    B7r2, T-M27, in window W3 with B7r1, so they never reach dev and the ledger carries no line).
+  - Rejected: a `{{platform}}` include marker (a second composition rule); Revision 0's `PlatformRuntime.ll.in` copy (a second copy of
+    each common rule); location parameters on the block routines (the nullable form would Abort, or need a mode); the null-heap check
+    in the common part (a kernel32 call outside the layer); the prefix's length restated beside a literal text in the layer (two
+    copies of one fact); Windows' handle codes (-11/-12) as the common part's stream argument (an OS constant outside the layer).
+  - Observed: the layer's write keeps its slot alloca in the entry block (the base's in a later block, a dynamic alloca at O0), so
+    Hello's O0 object no longer calls the archive's `__chkstk` (TataraExecutorTest's undefined-symbol link now omits kernel32
+    instead).
+- **T-M27 Kimi's allocator, the minimal form** (Tatara, 2026-11-22; the plan's unit B7r2, decisions 23 and 27, Q-696, D-1146; Major;
+  design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.3 §3.3, §7.1-§7.3; implementation review C-478, ACCEPT: the
+  Middle, the Back after B1's fix 9942a889f, the Front on the Binding test hunks; decision 27 is the owner's O-478 (iii) (a)). Lands in
+  window W3 with T-M26 and T-M28 (all or none). Amends SPEC 22.5.2 (the `KIMI_E_PROCESS_HEAP` row), IMPL 21.4.3 and 21.4.7, and
+  R5-M174's order sentence.
+  - **The allocator:** every heap block of every row comes from one allocator in the common runtime, `HeapRuntime.ll.in`
+    (`RuntimeAbi.HeapAllocate`/`HeapRelease`, `__kimi_heap_allocate` `ptr (i64)` and `__kimi_heap_release` `i64 (ptr)`, the routines
+    B7r1 made the only callers of the OS for blocks), over the platform layer's pages (`RuntimeAbi.Pages`/`ReleasePages`:
+    `__kimi_pages` `ptr (i64 bytes)`, null or a page-aligned readable and writable run of at least `bytes` at or above
+    `UnmappedBound`; `__kimi_release_pages` `i64 (ptr, i64 bytes)`, -1 or the OS error; windows-x64 over `VirtualAlloc(null, bytes,
+    MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)` and `VirtualFree(p, 0, MEM_RELEASE)` with `GetLastError`).
+  - **Algorithm:** single-threaded; three internal globals (14 list heads, the current region's next and end); a 16-byte header (word
+    0 the class k or a large run's byte length, word 1 the free-list link) before the payload; `size = n + 16`; size ≤ 262,144: blocks
+    of 2^k bytes, k = max(5, 64 − ctlz(size − 1)), 5..18 (32 B .. 256 KiB), popped LIFO from the class's list, else carved by bump
+    from the current 1 MiB region, a new region mapped when the rest is too small (the rest abandoned); release pushes on the class's
+    list; never split, merged or returned. size > 262,144: its own run of size rounded up to 4,096, the run's length in word 0 (> 18,
+    never a class), released at release. Regions and runs are page-aligned and every class size a multiple of 32, so every payload is
+    16-aligned. Zero bytes take the smallest block (a fresh start). Failures keep their texts: no pages is `KIMI_E_ALLOC` without an
+    OS error, a refused release `KIMI_E_FREE` with the OS error, `__kimi_try_allocate` null where `__kimi_alloc` Aborts.
+  - **Why IR, not Kimigayo:** its state would be static slots, which SPEC 22.4.3 makes Finished during shutdown while shutdown's
+    destructors still release memory (SPEC 17.4.3), and Kimigayo has no form for the layer's calls.
+  - **Why this form:** one rule over decision 23's whole small range (16-byte steps would need 16,384 classes to 256 KiB, or a second
+    rule); 14 classes by `llvm.ctlz`; no boundary tags, coalescing, splitting or trimming; up to 2× internal fragmentation, freed small
+    memory kept per class and a 1 MiB commit for the first small block are measured costs (RP8 and decision 28's memory gate in window
+    W3), each improvement a later candidate (PLAN G1306).
+  - **Decision 27 (O-478 (iii) (a)):** `KIMI_E_PROCESS_HEAP` goes in the same commit: B7r1's `__kimi_check_process_heap` and its two
+    calls, `AbortReasons`' `ProcessHeap` row (every later reason's index one lower: `Allocation` 2 ... `Clock` 17; 18 reasons), the
+    adapter suite's modes 16 and 19 with the `GetProcessHeap` fake, and SPEC 22.5.2's row.
+  - **Change W3b (decision 23):** `VirtualAlloc` "pp844" and `VirtualFree` "4p84" join `TargetProfile.Windows.RuntimeDeclarations`
+    after `SetHandleInformation`, so an import of either with another physical signature is `ConflictingRuntimeSymbol_Kd` (accepted
+    before); the agreeing import shares the runtime's declaration. R5-M174's order sentence restated: the `kernel32` supply's symbols
+    are the runtime declarations' symbols, then the rest (`VirtualProtect`, `QueryPerformanceCounter`, `QueryPerformanceFrequency`),
+    each once; `VirtualFree` now precedes `VirtualProtect`, the members unchanged (no reader reads the order; `kernel32.def` and
+    `kernel32.lib` unchanged until B7r3).
+  - **The audit (C-468's N2):** `NativeAllocationAudit.AssertOsCallsInLayer` pins each layer routine's kernel32 calls (`__kimi_exit`:
+    `ExitProcess`; `__kimi_write`: `GetStdHandle`, `WriteFile`, `GetLastError`; `__kimi_pages`: `VirtualAlloc`;
+    `__kimi_release_pages`: `VirtualFree`, `GetLastError`); a runtime declaration no routine names (the process heap's three until
+    B7r3) may be called nowhere; the counts stay the allocator's block requests (B7r1's anchors). Each audit owns its OS-call rule: the
+    allocation audit only the layer routines (C-478 B1: any other definition mentioning a runtime kernel32 function fails it, a
+    program's own import included, as §3.3 states), the string lifetime audit the exit hook (`ExitProcess` only in `__kimi_exit`, so
+    ForeignEmissionTest's raw-pointer programs, which call their own `VirtualAlloc`/`VirtualFree` imports, stay its subjects). A
+    runtime template's `llvm.*` declaration and a program part declaring the same intrinsic would be a duplicate declaration, which
+    LLVM rejects ("invalid redefinition of function"); today no program part declares `llvm.ctlz.i64` or `llvm.cttz.i64`.
+  - **Temporary:** the unused `GetProcessHeap`/`HeapAlloc`/`HeapFree` declarations and their `RuntimeDeclarations` rows (removal:
+    B7r3, T-M28, in W3, so they never reach dev and the ledger carries no line). B7r1's three temporary routines are removed.
+  - **Class:** a behaviour change, measured in W3 (RP8 and the memory gate).
+  - Rejected: Revision 0's 16-byte classes (above); location parameters or a null-heap check (the reason is gone); the allocator in
+    Kimigayo (above); a second copy of the adapter's heap fakes (N11: the fakes move in the commit that first calls `VirtualAlloc`).
+- **T-M28 kernel32's set loses the process heap's three** (Tatara, 2026-11-22; the plan's unit B7r3, decision 23, Q-697, D-1146;
+  Major; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.3 §3.4, §7.1-§7.3; implementation review C-490, the
+  Middle's ACCEPT WITH CONDITIONS with C1 met in 27b19808a, the Back's ACCEPT, the Front's read of the Binding test hunks). Lands in
+  window W3 with T-M26 and T-M27 (all or none). Amends R5-M174's kernel32 set.
+  - **The catalog:** after B7r2 no runtime routine calls `GetProcessHeap`, `HeapAlloc` or `HeapFree`, so the windows-x64 layer
+    template's three declarations and their `TargetProfile.Windows.RuntimeDeclarations` rows go, and the catalog follows:
+    `kernel32.def` loses the three lines (11 symbols left), the pinned `llvm-dlltool` regenerates the committed `kernel32.lib` (old
+    SHA-256 `7ff5239191780386a2dabcddd3703d04d526adfdc6458b8cc6493589fc5374c3`, new
+    `1659d7ee924948faee51de6931404d58d6087ed03f499ff172134169fe829441`), and `profile.json` pins the new library and definition hashes
+    (definition `0494d8c5...f197` -> `b4057369c7072b3705334019a1f7815ae7fb1f6da609dd7eda8d43992b18b71d`; T-M8's rule: the binary and
+    its hashes in one commit).
+  - **Change W3a (an acceptance change through Core's data, no Binding code):** an import of any of the three, accepted with the
+    runtime's signature on the base, is `UnavailableReservedImport_Kd` at native resolution, as any kernel32 function outside the set
+    (IMPL 20.4, unchanged).
+  - **W3a's other side (IMPL 21.2; C-490 C1):** with no runtime declaration carrying the three, another library's import of them no
+    longer conflicts: `#LibraryImport("codec", "HeapAlloc")` with a `codec` requirement goes from `ConflictingRuntimeSymbol_Kd` to
+    accepted (pinned in `RuntimeDeclarationsAreSharedOnlyByAgreeingImports`), a kernel32 import of them under another signature from
+    `ConflictingRuntimeSymbol_Kd` to `UnavailableReservedImport_Kd`, and the `ConflictingRuntimeSymbol_Kd` beside
+    `MissingNativeRequirement_Kd` (a `codec` import without a requirement) or `UnavailableReservedImport_Kd` (`kimi_backend`) leaves.
+  - **Products:** the executables and objects are byte-equal (no module references the three after B7r2; W3's comparison: every
+    `docs/examples` project and milestone at O0 and O2, 142 executables); every module's IR text loses the three declarations, so each
+    `.ll`, `irSha256` and the records' kernel32 identity (`definitionSha256`, `sha256`) change.
+  - **The audit:** the native allocation audit's whitelist loses the three; B7r1's process-heap row becomes a declaration row there
+    (a module declaring `HeapAlloc` fails before any run).

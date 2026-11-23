@@ -36,6 +36,7 @@ public sealed class VirtualHoverTest
             Assert.Contains("Public slot: A.read", rendered);
             Assert.Contains("Available bound: confined", rendered);
             Assert.Contains("Declared by: A.read", rendered);
+            Assert.Contains("Public guarantee: A.read effect confined", rendered);
             Assert.Contains(markdown ? "Public contract\\." : "Public contract.", rendered);
             Assert.DoesNotContain("B implementation.", rendered);
         }
@@ -154,6 +155,39 @@ public sealed class VirtualHoverTest
         var offset = Source.IndexOf("self.read", StringComparison.Ordinal) + 5;
         Assert.Contains("Available bound: confined", At(old, offset).Effects);
         Assert.Contains("Available bound: none", At(current, offset).Effects);
+    }
+
+    // SPEC 6.4.2 step 3, 8.11.4 (Z3-B1, the Front's C-475 C1): a call through an inherited Callable premise names the slot's clause, the
+    // Statement's declaration and written premise, as the original's own call does; a premise in a virtual function is no public guarantee.
+    // Derived<G> : Base<G, G> makes H's unbounded premise and F's bounded one one proposition, whichever is written first.
+    [Theory]
+    [InlineData("        H is Callable<() -> i32>\n        F is Callable<() -> i32>\n            effect confined\n")]
+    [InlineData("        F is Callable<() -> i32>\n            effect confined\n        H is Callable<() -> i32>\n")]
+    public void AnInheritedCallablePremisesEvidenceNamesTheSlotsClause(string premises)
+    {
+        var source = "open struct Base<F, H>\n    public init() => ()\n    public virtual func run(self: objref/Self, f: ref/F, h: ref/H) -> i32\n" + premises +
+            "        effect confined\n        return f()\nstruct Derived<G> : Base<G, G>\n    override func run(self: objref/Self, f: ref/G, h: ref/G) -> i32\n" +
+            "        return f()\n";
+        var snapshot = HoverBuilder.Create(Create(source));
+        string[] expected = ["Available bound: confined", "Declared by: Base.run", "Premise: F is Callable<() -> i32> effect confined (in Base.run)"];
+        foreach (var call in new[] { source.IndexOf("f()", StringComparison.Ordinal), source.LastIndexOf("f()", StringComparison.Ordinal) })
+        {
+            Assert.Equal(expected, At(snapshot, call).Effects!.Split('\n').Select(static x => x.Trim()).Where(static x => x.StartsWith("Available bound:", StringComparison.Ordinal) ||
+                x.StartsWith("Declared by:", StringComparison.Ordinal) || x.StartsWith("Premise:", StringComparison.Ordinal) || x.StartsWith("Public guarantee:", StringComparison.Ordinal)));
+        }
+    }
+
+    // SPEC 8.11.4 (Z3-B1, the Front's C-475 C6): the same rule for a Contract premise of a virtual function: the call's evidence is the
+    // premise in that function, never its public guarantee (dev 47a26bf9e printed "Public guarantee: Base.run").
+    [Fact]
+    public void AVirtualFunctionsContractPremiseIsNoPublicGuarantee()
+    {
+        const string source = "contract Reader\n    func read(self: ref/Self) -> i32\n        effect confined\nopen struct Base<T>\n    public init() => ()\n" +
+            "    public virtual func run(self: objref/Self, x: ref/T) -> i32\n        T is Reader\n        effect confined\n        return x.read()\n";
+        var effects = At(HoverBuilder.Create(Create(source)), source.LastIndexOf("read()", StringComparison.Ordinal)).Effects;
+        Assert.Contains("Available bound: confined", effects);
+        Assert.Contains("Premise: T is Reader effect confined (in Base.run)", effects);
+        Assert.DoesNotContain("Public guarantee:", effects);
     }
 
     [Fact]

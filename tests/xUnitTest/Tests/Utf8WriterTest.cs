@@ -71,9 +71,9 @@ public class Utf8WriterTest
     public void AFailedAllocationInsideABuiltinWriteReportsTheWrite(string name, string value)
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var buffer = Text.heap(0)\nvar writer = Text.writer(buffer@uniq)\n_ = writer.write(" + value + ")"));
-        Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal);
-        ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @fail_allocate(", StringComparison.Ordinal);
-        ir += "\ndefine internal ptr @fail_allocate(ptr %heap, i32 %flags, i64 %size) { ret ptr null }\n";
+        Assert.Contains("call ptr @__kimi_heap_allocate(", ir, StringComparison.Ordinal);
+        ir = ir.Replace("call ptr @__kimi_heap_allocate(", "call ptr @fail_allocate(", StringComparison.Ordinal);
+        ir += "\ndefine internal ptr @fail_allocate(i64 %size) { ret ptr null }\n";
         ScalarEmissionTest.WriteFixture("Utf8WriterBuiltinWriteFailure" + name, ir, string.Empty, 1, "Hello.kimi:3:5: abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 }
