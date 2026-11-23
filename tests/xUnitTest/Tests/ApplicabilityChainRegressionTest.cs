@@ -158,7 +158,7 @@ public partial class ApplicabilityChainRegressionTest
         if (code == nameof(DiagnosticCode.UnboundTypeArgument_Kd))
         {
             Assert.Equal("Generic parameter 'T' is not bound", error.Label);
-            Assert.Contains("No explicit Type argument or evidence binds T", error.Note, StringComparison.Ordinal);
+            Assert.Null(error.Note); // R7-E3 E3b-1 (Q13 M3): the record relates the slot (its Type parameter) and composes no Note.
         }
     }
 
@@ -651,6 +651,8 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let g = f\n", "AmbiguousBinding_Kd")]
     [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let g: (bool) -> i32 = f\n", "NoApplicableOverload_Kd")]
     [InlineData("func f(a: i32, b: i32) -> i32 => a\npublic func main()\n    var y = f(1,, 2)\n", null)]
+    // R7-E3 E3b-1 (the Front's R4): a refuted clause over a retained implementation runs the conformance search at the failure (SPEC 8.6.2).
+    [InlineData("contract C\n    func same(self: ref/Self, other: ref/Self) -> bool\nopen struct Base\n    Self is C\n    public init() => ()\n    public func same(self: ref/Self, other: ref/Self) -> bool => true\nstruct Derived: Base\n    public init() : base() => ()\nfunc use<T>(value: ref/T)\n    T is C\n    ()\nlet value = Derived.init()\nuse(value)", "NoApplicableOverload_Kd")]
     public void WarmRejectedSelectionsReuseTheirCandidateFacts(string source, string? code)
     {
         var c = MinimalEmissionTest.Analyze(source);

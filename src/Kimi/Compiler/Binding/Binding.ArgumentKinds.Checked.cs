@@ -136,7 +136,7 @@ public sealed partial class Binding
         CallSelection? Failure, ArgumentAdaptation Class, BoundType? Owner = null, CallSelection Selection = CallSelection.Selected, ComponentPath Misfit = default);
 
     // SPEC 10.5.1 (design-af3 R1.5): the part checked against its expected Type that made a candidate inapplicable, that Type and its own
-    // resolution's outcome there (NoneApplicable or Ambiguous), diagnostic payload only (RejectedCandidate.CheckedPart).
+    // resolution's outcome there (NoneApplicable or Ambiguous), diagnostic payload only (the record's Checked fact, CheckedFact).
     private readonly record struct CheckedPartFailure(Koto Part, BoundType Expected, CallSelection Outcome)
     {
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).

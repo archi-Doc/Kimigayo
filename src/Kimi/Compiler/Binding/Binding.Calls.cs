@@ -80,6 +80,7 @@ public sealed partial class Binding
         return true;
     }
 
+    [Transitional("R7", Reason = "Two Fail sites record no problem (R7-E3 E3b-1, ruling 8 (2)): the receiver's InvalidAssignment, whose input is the receiver node's own failure, and the MissingType after JudgeSelected, whose input is the call's clause records; a Record there may duplicate a problem, until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
     private BoundType? BindCallCore(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         var callee = call.Method;
@@ -144,7 +145,7 @@ public sealed partial class Binding
         {
             return ConstructsCase(call, group) // Then the callee is the call's Method: it is no generic name.
                 ? this.BindEnumConstruction(call, callee, this.PublishedTarget(callee, group, expected), call, scope, expected)
-                : this.Fail(call, BindingFailure.NotCallable);
+                : this.Record(call, BindingFailure.NotCallable, []);
         }
 
         if (callee is InvocationKoto || group?.Kind != BindingSymbolKind.Function)
@@ -197,7 +198,7 @@ public sealed partial class Binding
 
         if (group.Kind != BindingSymbolKind.Function)
         {
-            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
+            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Record(call, BindingFailure.NotCallable, []);
         }
 
         var requirementGroup = candidates.Requirements;
@@ -205,7 +206,8 @@ public sealed partial class Binding
 
         // SPEC 6.3.4, 7.3.2-7.3.3: a group with a receiver shape acquires the call's Receiver Expression whole, a use that a special
         // receiver's row without Whole never permits (BindReference rejects its other uses). The record is at the receiver, and the
-        // call's own judgments continue: its adaptations and verdict read the failed receiver (RefusedReceiver).
+        // call's own judgments continue: its adaptations and verdict read the failed receiver (RefusedReceiver). Fail, not Record: the
+        // method's Transitional (R7-E5).
         if (shape.Receiver && this.CallReceiver(callee) is { } callReceiver && Receiver(callReceiver) is { Whole: false })
         {
             this.Fail(callReceiver, BindingFailure.InvalidAssignment);
@@ -254,7 +256,7 @@ public sealed partial class Binding
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
                 // associated specification or limited by OCC-X, so the selection rests on that failure (SPEC 23.1.2).
                 return (evaluation.InvalidDeclaration ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(call, cause)
-                    : this.Fail(call, BindingFailure.InvalidConstraint);
+                    : this.Record(call, BindingFailure.InvalidConstraint, []);
             }
 
             if (!this.CheckCallShapeContracts(in evaluation, shape.Generics))
@@ -308,62 +310,7 @@ public sealed partial class Binding
 
             if (selection == CallSelection.NoneApplicable)
             {
-                // SPEC 15.1.5: name the missing spelling when a bare Place was the only obstacle.
-                var acquisition = LastAcquisition(in evaluation);
-                var failure = acquisition?.Kind ?? BindingFailure.NoApplicableCandidate;
-                if (failure == BindingFailure.NoApplicableCandidate && call.BindingFailure == BindingFailure.None)
-                {
-                    // The candidates that were considered explain the failed selection; recorded only when it fails.
-                    var start = this.rejectedRows.Count;
-                    for (var i = 0; i < count; i++)
-                    {
-                        var rejected = new RejectedCandidate((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ConstraintFailure: evaluated[i].ConstraintFailure, CheckedPart: evaluated[i].CheckedFailure);
-                        var rejectedOperations = evaluation.OperationsOf(i);
-                        var rejectedReceiver = rejectedOperations[argumentCount];
-                        if (rejectedReceiver.SourceType is { } receiverActual && rejectedReceiver.ParameterType is { } receiverExpected && SharedObjectAuthorityMismatch(receiverActual, receiverExpected))
-                        {
-                            rejected = rejected with { Actual = receiverActual, Expected = receiverExpected, SharedReceiver = true };
-                        }
-
-                        if (evaluated[i].Symbol!.LibraryDeclaration == KimiDeclarationId.Clone && call.ArgumentNodes is [var cloneInput] &&
-                            cloneInput.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [{ Semantics: SemanticsKind.Obj }] })
-                        {
-                            rejected = rejected with { ObjectClone = true };
-                        }
-
-                        if (evaluated[i].ClosureReceiver is { } receivers)
-                        {
-                            rejected = rejected with { ActualReceiver = receivers.Actual, RequiredReceiver = receivers.Required, ReceiverParameter = receivers.Parameter };
-                        }
-
-                        for (var a = 0; a < argumentCount; a++)
-                        {
-                            var operation = rejectedOperations[a];
-                            if (operation.SourceType is { } actual && operation.ParameterType is { } parameter && DifferentRangeShapes(actual, parameter))
-                            {
-                                rejected = rejected with { Actual = actual, Expected = parameter };
-                                break;
-                            }
-
-                            // Signature-refusal facts have no selected parameter operation.
-                            if (operation.ParameterIndex == -1 && operation.SourceType is { Kind: BoundTypeKind.Function } signature && operation.ParameterType is { Kind: BoundTypeKind.Function } required)
-                            {
-                                rejected = rejected with { Actual = signature, Expected = required, CallableSignature = true };
-                                break;
-                            }
-                        }
-
-                        this.rejectedRows.Add(rejected);
-                    }
-
-                    this.RecordRejected(call, start);
-                }
-                else if (acquisition is { } absent)
-                {
-                    return this.FailAcquisition(call, failure, absent.Place, absent.Object, true);
-                }
-
-                return this.FailWaitingSelection(call, failure);
+                return this.RecordNoneApplicable(in evaluation);
             }
 
             if (selection == CallSelection.Ambiguous)
@@ -420,21 +367,26 @@ public sealed partial class Binding
                 var state = trial.State;
                 if (AsSelected(state, trial.ConstraintFailure, CandidateApplicability.Applicable) != CandidateApplicability.Applicable)
                 {
-                    var rejected = new RejectedCandidate(selected, null, null, Selected: true);
+                    // SPEC 10.5: the selected candidate's argument constraints failed; a Pending outcome records no candidate (R7-M62).
+                    if (state == CandidateApplicability.Pending)
+                    {
+                        return this.RecordSelection(call, BindingFailure.UnprovenConstraint);
+                    }
+
+                    (SemanticsKind, SemanticsKind, int)? receivers = null;
                     for (var i = 0; i < argumentCount; i++)
                     {
                         if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { ClosureDefinition: { } closure } &&
                             this.TryCallable(selected.Parameters[selectedMapping[i]].Type.BoundType!, this.ConstraintScope(selected), out _, out var required) &&
                             !CallableReceiverFits(closure.Receiver, CallableReceiverMask(required)))
                         {
-                            rejected = rejected with { ActualReceiver = closure.Receiver, RequiredReceiver = required };
+                            receivers = (closure.Receiver, required, -1);
                             break;
                         }
                     }
 
-                    this.rejectedRows.Add(rejected);
-                    this.RecordRejected(call, this.rejectedRows.Count - 1);
-                    return this.Fail(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate, true);
+                    this.CandidateFacts(selected, null, CandidateFlags.Selected, receivers: receivers);
+                    return this.RecordSelection(call, BindingFailure.NoApplicableCandidate);
                 }
             }
 
@@ -442,7 +394,7 @@ public sealed partial class Binding
             {
                 if (CallOwnSlots(selected)[i] is LengthParameterKoto ? solveFrame.Lengths[i] is null : solveFrame.Types[i] is null)
                 {
-                    return this.Fail(call, BindingFailure.MissingType, true);
+                    return this.Record(call, BindingFailure.MissingType, [], unresolved: true);
                 }
             }
 
@@ -469,7 +421,7 @@ public sealed partial class Binding
                 ? (instantiated.HasAbstractPart ? this.CallableContractType(instantiated, scope) : instantiated) : null;
             if (result is null)
             {
-                return this.Fail(call, BindingFailure.MissingType, true);
+                return this.Record(call, BindingFailure.MissingType, [], unresolved: true);
             }
 
             var selectedOperations = evaluation.OperationsOf(winnerIndex);
@@ -511,7 +463,7 @@ public sealed partial class Binding
 
             if (!formed)
             {
-                return this.Fail(call, BindingFailure.MissingType, true);
+                return this.Fail(call, BindingFailure.MissingType, true); // Fail, not Record: the method's Transitional (R7-E5).
             }
 
             this.RequireResultPremises(selected, result, call); // SPEC 15.3.7: the callee's result premises.
@@ -588,22 +540,69 @@ public sealed partial class Binding
         return this.FailAmbiguous(in evaluation, AppliedCandidates(in evaluation));
     }
 
-    // SPEC 10.4, 23.1.2: a call ambiguous between the candidates `applied` names (bits of their indices in the evaluation), each a row
-    // that explains the record (RecordRejected); a split check's call gives its canonical run's (FailUnformedCall, G812 ruling 141).
+    // SPEC 10.4, 23.1.2: a call ambiguous between the candidates `applied` names (bits of their indices in the evaluation), each a party
+    // of the record (CandidateFacts); a split check's call gives its canonical run's (FailUnformedCall, G812 ruling 141).
     private BoundType? FailAmbiguous(in CallEvaluation evaluation, ulong applied)
     {
-        var (call, evaluated, start) = (evaluation.Call, evaluation.Evaluated, this.rejectedRows.Count);
-        var erasure = ErasureIncomparable(in evaluation);
+        var (call, evaluated) = (evaluation.Call, evaluation.Evaluated);
+        var flags = ErasureIncomparable(in evaluation) ? CandidateFlags.ErasureIncomparable : CandidateFlags.None;
         for (var i = 0; i < Math.Min(evaluation.Count, 64); i++)
         {
             if ((applied & (1UL << i)) != 0)
             {
-                this.rejectedRows.Add(new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure));
+                this.CandidateFacts((FunctionKoto)evaluated[i].Symbol!.Declaration, null, flags);
             }
         }
 
-        this.RecordRejected(call, start);
         return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
+    }
+
+    // SPEC 10.1, 15.1.5 (R7-P2 commit 4, folded into R7-E3 E3b-1): the NoneApplicable outcome. A bare Place that was the only obstacle names
+    // its missing spelling; otherwise each candidate the selection considered is a party of the record, with the facts its row and columns
+    // hold: one pair (the first argument's range shape or refused call signature, else the receiver's authority: the precedence dev's
+    // rows showed), the closure receivers, the checked part (SPEC 10.5.1) and the refuted clause. It reads rows, columns and
+    // LastAcquisition, and runs no fit, inference or proof.
+    private BoundType? RecordNoneApplicable(in CallEvaluation evaluation)
+    {
+        var (call, evaluated) = (evaluation.Call, evaluation.Evaluated);
+        var acquisition = LastAcquisition(in evaluation);
+        var failure = acquisition?.Kind ?? BindingFailure.NoApplicableCandidate;
+        if (failure != BindingFailure.NoApplicableCandidate && acquisition is { } absent)
+        {
+            return this.FailAcquisition(call, failure, absent.Place, absent.Object, true);
+        }
+
+        var argumentCount = call.ArgumentNodes.Count;
+        for (var i = 0; i < evaluation.Count; i++)
+        {
+            var operations = evaluation.OperationsOf(i);
+            var receiver = operations[argumentCount];
+            (Koto, BoundType, BoundType?)? pair = null;
+            var flags = CandidateFlags.None;
+            for (var a = 0; pair is null && a < argumentCount; a++)
+            {
+                // A range argument's shape, or a refused call signature (a signature-refusal fact has no selected parameter operation).
+                var operation = operations[a];
+                if (operation.SourceType is { } actual && operation.ParameterType is { } parameter && DifferentRangeShapes(actual, parameter))
+                {
+                    pair = (call.ArgumentNodes[a], actual, parameter);
+                }
+                else if (operation.ParameterIndex == -1 && operation.SourceType is { Kind: BoundTypeKind.Function } signature && operation.ParameterType is { Kind: BoundTypeKind.Function } required)
+                {
+                    (pair, flags) = ((call.ArgumentNodes[a], signature, required), CandidateFlags.CallableSignature);
+                }
+            }
+
+            if (pair is null && receiver.SourceType is { } receiverActual && receiver.ParameterType is { } receiverExpected && SharedObjectAuthorityMismatch(receiverActual, receiverExpected))
+            {
+                (pair, flags) = ((call, receiverActual, receiverExpected), CandidateFlags.SharedReceiver);
+            }
+
+            var receivers = evaluated[i].ClosureReceiver is { } closure ? (closure.Actual, closure.Required, closure.Parameter) : ((SemanticsKind, SemanticsKind, int)?)null;
+            this.CandidateFacts((FunctionKoto)evaluated[i].Symbol!.Declaration, evaluated[i].ConstraintFailure, flags, pair, receivers, evaluated[i].CheckedFailure);
+        }
+
+        return this.FailWaitingSelection(call, failure);
     }
 
     // SPEC 15.6.1, 15.6.4 step 3, 23.1.2 (DECISIONS BU-51, BU-96): the selected candidate's Origin relations, never part of its

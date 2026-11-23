@@ -286,7 +286,7 @@ public class ArchitectureRulesTest
         "Binding.InPlaceReads.cs:StringThroughLayers=2 kind",
         "Binding.Indexers.cs:TryBindIndexer=1 unchanged",
         "Binding.InferCtxt.cs:BindsDistinctTypes=1 formed",
-        "Binding.InheritedConformances.cs:InheritedSelfMismatchNote=1 record",
+        "Binding.InheritedConformances.cs:RetainedImplementation=1 record",
         "Binding.InlineLayouts.cs:AddInlinePart=1 key",
         "Binding.InlineLayouts.cs:WithComponent=1 unchanged",
         "Binding.Interpolation.cs:BindTryWrite=1 kind",
@@ -505,11 +505,11 @@ public class ArchitectureRulesTest
     // binding a declaration query; the header's use of it went to Binding.DeclQuery. A property pattern reads it too.
     [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
-    // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
+    // diagnostics adapter. None is left: R7-E3 E3b-1 records the unbound slot as a related location (UnboundSlotFact.Note went).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 13)]
-    [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 12)]
+    [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 0)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
     // R7-N1a (RP6): ResolvePath is the one evaluation of a Type name and PublishPath its one writer, so these entries stay gone.
