@@ -1,0 +1,30 @@
+{
+  "profile": "linux-x64-v1",
+  "library": "c",
+  "musl": {
+    "version": "1.2.6",
+    "source": "https://musl.libc.org/releases/musl-1.2.6.tar.gz",
+    "sourceSha256": "d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a",
+    "copyrightSha256": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+    "signingKey": "836489290BB6B70F99FFDA0556BCDB593020450F"
+  },
+  "providedSymbols": [
+    "write",
+    "_exit",
+    "exit",
+    "mmap",
+    "munmap",
+    "clock_gettime"
+  ],
+  "compilerRuntimeSymbols": [
+    "__muldc3",
+    "__mulsc3",
+    "__mulxc3"
+  ],
+  "files": [
+    { "name": "crt1.o", "sha256": "e4461fb98dafb729ab59c934fcbf2cf1a5373071163e8ce115fafa463b39f571" },
+    { "name": "crti.o", "sha256": "d139d7bb84b5c6ca330e0449267211204714c0df175b658d0d0dff1cdb3184f6" },
+    { "name": "crtn.o", "sha256": "3a186a7d302d8dcc2ada69820b33c4b3a5bf17075af2b341086ad21314e59746" },
+    { "name": "libc.a", "sha256": "73b4509b6fd23195535d6ea77c6c1130cc28a001b0a3a3f53a36bbe324d50339" }
+  ]
+}

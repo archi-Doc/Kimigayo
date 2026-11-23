@@ -56,9 +56,11 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
-    // IMPL 20.4 (Tatara B6a): the compiler carries its supplies' bytes. The rows are the two reserved names in Ordinal order, each row's
-    // SHA-256 the catalog's, and each embedded resource has that SHA-256 and is the file committed beside the catalog, so a build
-    // stages the adopted bytes.
+    // IMPL 20.4 (Tatara B6a, B7b4): the compiler carries every row's supplies' bytes. windows-x64's rows are the two reserved names in
+    // Ordinal order; linux-x64's c is musl's startup files and C library, keyed by (row, supply) in the Linux catalog's order. Each row's
+    // SHA-256 is its catalog's, and each embedded resource has that SHA-256 and is the file committed beside the catalog, so a build
+    // stages the adopted bytes. musl's notice, which the compiler carries as Kimi.Linux.COPYRIGHT, is the tarball's COPYRIGHT: the
+    // catalog's copyrightSha256, which build-musl.ps1 checks in the extracted tarball.
     [Fact]
     public void EachCompilerSupplyIsTheCatalogsCommittedFile()
     {
@@ -72,11 +74,37 @@ public sealed class NativeToolchainTest : IDisposable
             ToolchainIdentity.Supplies.Select(static x => x.Supply.Name + " " + x.Sha256));
         foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", "kimi_backend_windows_x64_v1.lib" }))
         {
-            using var stream = supply.Open();
+            AssertCommitted(supply.Open(), supply.Sha256, Path.Combine(directory, file));
+        }
+
+        var linux = Path.Combine(directory, "../linux-x64");
+        using var musl = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(linux, "profile.json")));
+        Assert.Equal(
+            ["crt1.o", "crti.o", "crtn.o", "libc.a"],
+            musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => x.GetProperty("name").GetString()));
+        Assert.Equal(
+            musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"{TargetProfile.Linux.Name} c {x.GetProperty("name").GetString()} {x.GetProperty("sha256").GetString()}"),
+            ToolchainIdentity.Musl.Select(static x => $"{x.Row} {x.Supply} {x.Name} {x.Sha256}"));
+        foreach (var file in ToolchainIdentity.Musl)
+        {
+            AssertCommitted(file.Open(), file.Sha256, Path.Combine(linux, file.Name));
+        }
+
+        AssertCommitted(
+            typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.Linux.COPYRIGHT")!,
+            musl.RootElement.GetProperty("musl").GetProperty("copyrightSha256").GetString()!,
+            Path.Combine(linux, "COPYRIGHT"));
+
+        static void AssertCommitted(Stream stream, string sha256, string file)
+        {
             using var bytes = new MemoryStream();
-            stream.CopyTo(bytes);
-            Assert.Equal(supply.Sha256, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())));
-            Assert.Equal(File.ReadAllBytes(Path.Combine(directory, file)), bytes.ToArray());
+            using (stream)
+            {
+                stream.CopyTo(bytes);
+            }
+
+            Assert.Equal(sha256, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())));
+            Assert.Equal(File.ReadAllBytes(file), bytes.ToArray());
         }
     }
 
@@ -101,14 +129,16 @@ public sealed class NativeToolchainTest : IDisposable
 
     // R9-B1 part 2 (form J, PLAN G983's manifest share): a manifest field that is missing, of another JSON kind or, for an Int32 row,
     // another number fails at its read with InvalidDataException naming the field, before Tatara is loaded and with the record left
-    // incomplete; a fixed field with another value is not this compiler's, and a removed member (Tatara B6b5: the toolchain, whatever its
-    // content) asks to re-emit. Each row edits one field of an emitted Application's manifest (a JSON value, or null to remove it). The
-    // libraries are read after Tatara is loaded, so their rows need a toolchain.
+    // incomplete; a fixed field with another value is not this compiler's (an ABI 2 manifest, emitted before Tatara B7r5, among them),
+    // and a removed member (Tatara B6b5: the toolchain, whatever its content) asks to re-emit. Each row edits one field of an emitted
+    // Application's manifest (a JSON value, or null to remove it). The libraries are read after Tatara is loaded, so their rows need a
+    // toolchain.
     [Theory]
     [InlineData("toolchain", "{\"llvmBin\": \"../tools\"}", "The link manifest's 'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest.")]
     [InlineData("schemaVersion", "3.5", "'schemaVersion' is not this compiler's")]
     [InlineData("schemaVersion", "\"4\"", "'schemaVersion' is missing or not a JSON Number")]
     [InlineData("backendSupport.abiVersion", "2.5", "'backendSupport.abiVersion' is not this compiler's")]
+    [InlineData("backendSupport.abiVersion", "2", "'backendSupport.abiVersion' is not this compiler's")]
     [InlineData("codegen.cpu", "\"native\"", "'codegen.cpu' is not this compiler's")]
     [InlineData("codegen.features", "\"+sse2\"", "'codegen.features' is missing or not a JSON Array")]
     [InlineData("codegen", null, "'codegen' is missing or not a JSON Object")]
@@ -165,8 +195,9 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // toolchain verify (Tatara B6b3; decision 20 Q3 (a)): a self-check of what the compiler carries. It takes no toolchain directory: it
-    // reports the loaded Tatara and each supply's hash, the catalog's, as Information lines, and its report is the self-check's record
-    // (passed; Tatara's build, ABI and LLVM version; each supply's hash against its row's). That it reads no root and runs no tool is
+    // reports the loaded Tatara and each supply's hash, the catalog's, as Information lines (windows-x64's supplies, then each file of
+    // linux-x64's c, B7b4), and its report is the self-check's record (passed; Tatara's build, ABI and LLVM version; each supply's or
+    // file's hash against its row's). That it reads no root and runs no tool is
     // test-cli's row (a copy of the compiler outside any checkout, PATH clean).
     [Fact]
     public void VerificationIsASelfCheckOfWhatTheCompilerCarries()
@@ -177,7 +208,11 @@ public sealed class NativeToolchainTest : IDisposable
         NativeToolchain.Verify(report, (severity, line) => lines.Add($"{severity}: {line}"), TestContext.Current.CancellationToken);
         var build = Tatara.Instance.Build;
         string[] expected =
-            [$"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}", .. ToolchainIdentity.Supplies.Select(static x => $"Information: {x.Supply.Name}: {x.Sha256} (the catalog's)")];
+            [
+                $"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}",
+                .. ToolchainIdentity.Supplies.Select(static x => $"Information: {x.Supply.Name}: {x.Sha256} (the catalog's)"),
+                .. ToolchainIdentity.Musl.Select(static x => $"Information: {x.Row} {x.Supply} {x.Name}: {x.Sha256} (the catalog's)"),
+            ];
         Assert.Equal(expected, lines);
         using var record = JsonDocument.Parse(File.ReadAllText(report));
         var root = record.RootElement;
@@ -191,9 +226,11 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(Tatara.ExpectedAbi, tatara.GetProperty("abi").GetString());
         Assert.Equal(ToolchainIdentity.LlvmVersion, tatara.GetProperty("llvmVersion").GetString());
         Assert.Equal(
-            ToolchainIdentity.Supplies.Select(static x => $"{x.Supply.Name} {x.Sha256} {x.Sha256} True"),
-            root.GetProperty("supplies").EnumerateArray().Select(static x =>
-                $"{x.GetProperty("name").GetString()} {x.GetProperty("sha256").GetString()} {x.GetProperty("expectedSha256").GetString()} {x.GetProperty("hashMatched").GetBoolean()}"));
+            [
+                .. ToolchainIdentity.Supplies.Select(static x => $"name={x.Supply.Name} sha256={x.Sha256} expectedSha256={x.Sha256} hashMatched=True"),
+                .. ToolchainIdentity.Musl.Select(static x => $"name={x.Supply} row={x.Row} file={x.Name} sha256={x.Sha256} expectedSha256={x.Sha256} hashMatched=True"),
+            ],
+            root.GetProperty("supplies").EnumerateArray().Select(static x => string.Join(' ', x.EnumerateObject().Select(static y => $"{y.Name}={y.Value}"))));
     }
 
     // A supply whose embedded bytes are not its row's SHA-256 (only a defective build of Kimi carries one) is the toolchain's failure,
@@ -208,6 +245,10 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(NativeToolchain.IsToolchainFailure(error));
         Assert.Equal(ToolchainIdentity.BackendSha256, supplies[0]!["sha256"]!.GetValue<string>());
         Assert.False(supplies[0]!["hashMatched"]!.GetValue<bool>());
+        var file = ToolchainIdentity.Musl[3] with { Sha256 = new string('0', 64) };
+        error = Assert.Throws<InvalidDataException>(() => NativeToolchain.VerifySupply(file, supplies));
+        Assert.Equal("The compiler's linux-x64-v1 c libc.a does not match its catalog SHA-256.", error.Message);
+        Assert.Equal($"c linux-x64-v1 libc.a {ToolchainIdentity.Musl[3].Sha256} false", $"{supplies[1]!["name"]} {supplies[1]!["row"]} {supplies[1]!["file"]} {supplies[1]!["sha256"]} {supplies[1]!["hashMatched"]}");
     }
 
     [Fact]
