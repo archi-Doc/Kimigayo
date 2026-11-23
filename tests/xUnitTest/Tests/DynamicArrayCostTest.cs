@@ -31,9 +31,9 @@ public class DynamicArrayCostTest
     public void RepeatingAllocationFailureReportsTheConstruction()
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("let values = Array<i32>.init(repeating: 1, count: 2)"));
-        Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal);
-        ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @fail_allocate(", StringComparison.Ordinal);
-        ir += "\ndefine internal ptr @fail_allocate(ptr %heap, i32 %flags, i64 %size) { ret ptr null }\n";
+        Assert.Contains("call ptr @__kimi_heap_allocate(", ir, StringComparison.Ordinal);
+        ir = ir.Replace("call ptr @__kimi_heap_allocate(", "call ptr @fail_allocate(", StringComparison.Ordinal);
+        ir += "\ndefine internal ptr @fail_allocate(i64 %size) { ret ptr null }\n";
         ScalarEmissionTest.WriteFixture("DynamicArrayCostRepeatingFailure", ir, string.Empty, 1, "Hello.kimi:1:14: abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 

@@ -26,8 +26,8 @@ public sealed partial class Binding
     private ulong storageVersion;
 
     /// <summary>Storage preparation's verdict on a Type (DECISIONS BU-12, BU-36); a limit takes precedence, and the verdict depends on the
-    /// Type alone. The order is the precedence, so the verdict of several parts is the greatest (TyCtxt.Compose, BU-38). Layout's Rejected
-    /// (R5-M37) names the same fact over the parts it places.</summary>
+    /// Type alone. The order is the precedence, so the verdict of several parts in PrepareTypeStorage's own walk is the greatest (BU-38).
+    /// Layout's Rejected (R5-M37) names the same fact over the parts it places.</summary>
     internal enum StorageOutcome : byte
     {
         /// <summary>Every part the storage reaches substitutes, within PLAN G128's limits.</summary>
@@ -307,10 +307,9 @@ public sealed partial class Binding
         receiver.Type = scope.Parent?.Owner.BoundSymbol?.Type;
         if (!scope.Values.TryAdd("self", receiver))
         {
-            // Transitional, R7-E5 (R7-E2 E2-4's B1 (a)): the written `self` repeats the implicit receiver (SPEC 9.3) and keeps the slot's
-            // failure: the function may also be the first or a later of a Signature group, which RecordDuplicateGroups records after Index
-            // under the same key with its own facts, until R7-E5's per-problem inputs place this record beside the group's.
-            this.Fail(function, BindingFailure.Duplicate);
+            // SPEC 9.3: the written `self` repeats the implicit receiver, which declares at the function itself (no first node). Numbered:
+            // the function may also be a Signature group's first or later, whose record RecordDuplicateGroups numbers beside this one.
+            this.RecordNumbered(function, BindingFailure.Duplicate, []);
         }
     }
 

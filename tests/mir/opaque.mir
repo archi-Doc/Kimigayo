@@ -1,200 +1,209 @@
-defaulttemplate pick#1 @17
-  _0: i32 return @13
-  _1: ref/i32 arg a (PreparedInput) @15
+fn init @7
+  _0: Pair return (Receiver) @7
+  _1: () temp @8
+  _2: () temp @8
   bb0:
-    * _0 = zero<T>() -> bb1 @17
-  bb1:
-      return @17
-fn top-level#0 @7
-  _0: () return @7
-  s1: lexical in s0 @8
-  bb0:
-      _0 = const () @8 s1
+      StorageLive(_1) @8
+    * _0.0 = const 1_i32 @6
+      StorageLive(_2) @8
+    * _2 = const () @8
+      StorageDead(_2) @8
+      _1 = const () @8
+      FakeRead(_0) @7
+      StorageDead(_1) @8
       return @8
-fn zero @9
-  _0: i32 return @11
+fn top-level#0 @9
+  _0: () return @9
+  s1: lexical in s0 @10
   bb0:
-    * _0 = const 0_i32 @12
-      return @12
-fn pick @13
-  _0: i32 return @21
-  _1: i32 arg a @15
-  _2: i32 arg k @16
+      _0 = const () @10 s1
+      return @10
+fn same @11
+  _0: i32 return @20
+  _1: ref/T arg s @18
+  _2: Pair temp @24 s1
+  _3: i32 temp @23 s1
+  _4: i32 temp (Result) @11
+  s1: lexical in s0 @21
+  opaque 0 @24: (*_1)
   bb0:
-    * _0 = Add(copy _1, copy _2) @22
-      return @22
-fn same @25
-  _0: i32 return @27
-  _1: i32 arg a @26
-  _2: i32 temp (PendingSlot) @227
-  _3: i32 temp k (PendingSlot) @28
-  opaque 0 @28: _2
-  bb0:
-      StorageLive(_2) @227
-    * _2 = copy _1 @227
-      StorageLive(_3) @28
-      _3 = opaque 0: i32 @28
-      _0 = pick<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<Bx<i32>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>(move _2, move _3) -> bb1 @28
+      StorageLive(_2) @24 s1
+    * _2 = opaque 0: Pair @24 s1
+      StorageLive(_3) @23 s1
+      _3 = copy _2.0 @23 s1
+      goto bb4 check bb5 @22 s1
   bb1:
-      StorageDead(_3) @28
-      StorageDead(_2) @227
-      return @28
-fn fail @228
-  _0: i32 return @229
-  opaque 0 @230:
-  bb0:
-    * _0 = opaque 0: i32 @230
-      return @230
-fn take @231
-  _0: i32 return @234
-  _1: string arg a @232
-  _2: string arg b @233
-  bb0:
-    * _0 = const 1_i32 @235
-      drop _2 -> bb1 [keep] @233
-  bb1:
-      drop _1 -> bb2 [keep] @232
+      return @11
   bb2:
-      return @235
-fn kept @236
-  _0: i32 return @239
-  _1: i32 arg n @237
-  _2: string arg s @238
-  _3: ? temp @242 s1
-  _4: i32 temp @244 s1
-  _5: string temp @246 s1
-  _6: string temp @249 s1
-  _7: i32 temp @253 s1
-  _8: i32 temp @254 s1
-  _9: string temp @256 s1
-  _10: string temp @259 s1
-  _11: i32 temp (Result) @236
-  s1: lexical in s0 @240
-  opaque 0 @242 kept 2: _1 _4
-  opaque 1 @253 kept 1: _8
-  bb0:
-      StorageLive(_3) @242 s1
-      StorageLive(_4) @244 s1
-      StorageLive(_5) @246 s1
-    * _5 = move _2 @247 s1
-      StorageLive(_6) @249 s1
-      _6 = move _2 @250 s1
-      _4 = take(move _5, move _6) -> bb1 @244 s1
-  bb1:
-      _3 = opaque 0: ? @242 s1
-      drop _6 -> bb2 [elide] @249 s1
-  bb2:
-      StorageDead(_6) @249 s1
-      drop _5 -> bb3 [elide] @246 s1
+      _0 = move _4 @11
+      goto bb1 @11
   bb3:
-      StorageDead(_5) @246 s1
-      StorageDead(_4) @244 s1
-      StorageDead(_3) @242 s1
-      StorageLive(_7) @253 s1
-      StorageLive(_8) @254 s1
-      StorageLive(_9) @256 s1
-    * _9 = move _2 @257 s1
-      StorageLive(_10) @259 s1
-      _10 = move _2 @260 s1
-      _8 = take(move _9, move _10) -> bb4 @254 s1
+      StorageDead(_3) @23 s1
+      StorageDead(_2) @24 s1
+      goto bb2 @11
   bb4:
-      _7 = opaque 1: i32 @253 s1
-      goto bb12 check bb13 @252 s1
+      _4 = move _3 @22 s1
+      goto bb3 @22 s1
   bb5:
-      return @236
+      StorageDead(_3) @23 s1
+      StorageDead(_2) @24 s1
+      unreachable @21
+fn fail @28
+  _0: i32 return @29
+  opaque 0 @30:
+  bb0:
+    * _0 = opaque 0: i32 @30
+      return @30
+fn take @31
+  _0: i32 return @34
+  _1: string arg a @32
+  _2: string arg b @33
+  bb0:
+    * _0 = const 1_i32 @35
+      drop _2 -> bb1 [keep] @33
+  bb1:
+      drop _1 -> bb2 [keep] @32
+  bb2:
+      return @35
+fn kept @36
+  _0: i32 return @39
+  _1: i32 arg n @37
+  _2: string arg s @38
+  _3: ? temp @42 s1
+  _4: i32 temp @44 s1
+  _5: string temp @46 s1
+  _6: string temp @49 s1
+  _7: i32 temp @53 s1
+  _8: i32 temp @54 s1
+  _9: string temp @56 s1
+  _10: string temp @59 s1
+  _11: i32 temp (Result) @36
+  s1: lexical in s0 @40
+  opaque 0 @42 kept 2: _1 _4
+  opaque 1 @53 kept 1: _8
+  bb0:
+      StorageLive(_3) @42 s1
+      StorageLive(_4) @44 s1
+      StorageLive(_5) @46 s1
+    * _5 = move _2 @47 s1
+      StorageLive(_6) @49 s1
+      _6 = move _2 @50 s1
+      _4 = take(move _5, move _6) -> bb1 @44 s1
+  bb1:
+      _3 = opaque 0: ? @42 s1
+      drop _6 -> bb2 [elide] @49 s1
+  bb2:
+      StorageDead(_6) @49 s1
+      drop _5 -> bb3 [elide] @46 s1
+  bb3:
+      StorageDead(_5) @46 s1
+      StorageDead(_4) @44 s1
+      StorageDead(_3) @42 s1
+      StorageLive(_7) @53 s1
+      StorageLive(_8) @54 s1
+      StorageLive(_9) @56 s1
+    * _9 = move _2 @57 s1
+      StorageLive(_10) @59 s1
+      _10 = move _2 @60 s1
+      _8 = take(move _9, move _10) -> bb4 @54 s1
+  bb4:
+      _7 = opaque 1: i32 @53 s1
+      goto bb12 check bb13 @52 s1
+  bb5:
+      return @36
   bb6:
-      _0 = move _11 @236
-      goto bb5 @236
+      _0 = move _11 @36
+      goto bb5 @36
   bb7:
-      drop _2 -> bb8 [elide] @238
+      drop _2 -> bb8 [elide] @38
   bb8:
-      goto bb6 @236
+      goto bb6 @36
   bb9:
-      drop _10 -> bb10 [elide] @259 s1
+      drop _10 -> bb10 [elide] @59 s1
   bb10:
-      StorageDead(_10) @259 s1
-      drop _9 -> bb11 [elide] @256 s1
+      StorageDead(_10) @59 s1
+      drop _9 -> bb11 [elide] @56 s1
   bb11:
-      StorageDead(_9) @256 s1
-      StorageDead(_8) @254 s1
-      StorageDead(_7) @253 s1
-      goto bb7 @236
+      StorageDead(_9) @56 s1
+      StorageDead(_8) @54 s1
+      StorageDead(_7) @53 s1
+      goto bb7 @36
   bb12:
-      _11 = move _7 @252 s1
-      goto bb9 @252 s1
+      _11 = move _7 @52 s1
+      goto bb9 @52 s1
   bb13:
-      drop _10 -> bb14 [elide] @259 s1
+      drop _10 -> bb14 [elide] @59 s1
   bb14:
-      StorageDead(_10) @259 s1
-      drop _9 -> bb15 [elide] @256 s1
+      StorageDead(_10) @59 s1
+      drop _9 -> bb15 [elide] @56 s1
   bb15:
-      StorageDead(_9) @256 s1
-      StorageDead(_8) @254 s1
-      StorageDead(_7) @253 s1
-      drop _2 -> bb16 [elide] @238
+      StorageDead(_9) @56 s1
+      StorageDead(_8) @54 s1
+      StorageDead(_7) @53 s1
+      drop _2 -> bb16 [elide] @38
   bb16:
-      unreachable @240
-fn definition @263
-  _0: () return @263
-  _1: closure (i32) -> i32 temp @266 s1
-  s1: lexical in s0 @264
+      unreachable @40
+fn definition @63
+  _0: () return @63
+  _1: closure (i32) -> i32 temp @66 s1
+  s1: lexical in s0 @64
   bb0:
-      StorageLive(_1) @266 s1
-    * _1 = Closure(): closure (i32) -> i32 @266 s1
-      StorageDead(_1) @266 s1
-      _0 = const () @264 s1
-      return @264
-closure @266
-  _0: i32 return @266
-  _1: ref/closure (i32) -> i32 arg @266
-  _2: i32 arg n @267
-  _3: string var t @269 s1
-  _4: i32 temp @273 s1
-  _5: string temp @275 s1
-  _6: string temp @278 s1
-  _7: i32 temp @282 s1
-  _8: i32 temp (Result) @266
-  s1: lexical in s0 @268
+      StorageLive(_1) @66 s1
+    * _1 = Closure(): closure (i32) -> i32 @66 s1
+      StorageDead(_1) @66 s1
+      _0 = const () @64 s1
+      return @64
+closure @66
+  _0: i32 return @66
+  _1: ref/closure (i32) -> i32 arg @66
+  _2: i32 arg n @67
+  _3: string var t @69 s1
+  _4: i32 temp @73 s1
+  _5: string temp @75 s1
+  _6: string temp @78 s1
+  _7: i32 temp @82 s1
+  _8: i32 temp (Result) @66
+  s1: lexical in s0 @68
   bb0:
-      StorageLive(_3) @269 s1
-    * _3 = const "x" @271 s1
-      StorageLive(_4) @273 s1
-      StorageLive(_5) @275 s1
-    * _5 = move _3 @276 s1
-      StorageLive(_6) @278 s1
-      _6 = move _3 @279 s1
-      _4 = take(move _5, move _6) -> bb1 @273 s1
+      StorageLive(_3) @69 s1
+    * _3 = const "x" @71 s1
+      StorageLive(_4) @73 s1
+      StorageLive(_5) @75 s1
+    * _5 = move _3 @76 s1
+      StorageLive(_6) @78 s1
+      _6 = move _3 @79 s1
+      _4 = take(move _5, move _6) -> bb1 @73 s1
   bb1:
-      drop _6 -> bb2 [elide] @278 s1
+      drop _6 -> bb2 [elide] @78 s1
   bb2:
-      StorageDead(_6) @278 s1
-      drop _5 -> bb3 [elide] @275 s1
+      StorageDead(_6) @78 s1
+      drop _5 -> bb3 [elide] @75 s1
   bb3:
-      StorageDead(_5) @275 s1
-      StorageDead(_4) @273 s1
-      StorageLive(_7) @282 s1
-    * _7 = copy _2 @282 s1
-      goto bb9 check bb10 @281 s1
+      StorageDead(_5) @75 s1
+      StorageDead(_4) @73 s1
+      StorageLive(_7) @82 s1
+    * _7 = copy _2 @82 s1
+      goto bb9 check bb10 @81 s1
   bb4:
-      return @266
+      return @66
   bb5:
-      _0 = move _8 @266
-      goto bb4 @266
+      _0 = move _8 @66
+      goto bb4 @66
   bb6:
-      drop _3 -> bb7 [elide] @269 s1
+      drop _3 -> bb7 [elide] @69 s1
   bb7:
-      StorageDead(_3) @269 s1
-      goto bb5 @266
+      StorageDead(_3) @69 s1
+      goto bb5 @66
   bb8:
-      StorageDead(_7) @282 s1
-      goto bb6 @266
+      StorageDead(_7) @82 s1
+      goto bb6 @66
   bb9:
-      _8 = move _7 @281 s1
-      goto bb8 @281 s1
+      _8 = move _7 @81 s1
+      goto bb8 @81 s1
   bb10:
-      StorageDead(_7) @282 s1
-      drop _3 -> bb11 [elide] @269 s1
+      StorageDead(_7) @82 s1
+      drop _3 -> bb11 [elide] @69 s1
   bb11:
-      StorageDead(_3) @269 s1
-      unreachable @268
-unsupported @28
+      StorageDead(_3) @69 s1
+      unreachable @68
+unsupported @24

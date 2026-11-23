@@ -163,7 +163,7 @@ public sealed partial class Binding
         // SPEC 10.2, 10.8.1: the expected enum of a contextual Case at `ref/U` is U's.
         if (this.CaseAt(reference, scope, this.ExpectedTypeOf(expected), out var missing) is not { } member)
         {
-            this.Fail(reference, missing, missing == BindingFailure.MissingType);
+            this.Record(reference, missing, [], unresolved: missing == BindingFailure.MissingType);
             return null;
         }
 
@@ -295,7 +295,7 @@ public sealed partial class Binding
                         this.MarkWaitingHeaders(call);
                     }
 
-                    return this.Fail(use, BindingFailure.MissingType, true);
+                    return this.Record(use, BindingFailure.MissingType, [], unresolved: true);
                 }
             }
 

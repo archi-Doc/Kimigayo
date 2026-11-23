@@ -126,9 +126,11 @@ public sealed partial class Binding
             var nested = structure.NestedContainers[i];
 
             // Any inherited Type member reserves the name (Qualifier: every Type member but a pair binder, which no struct declares).
-            if (this.LookupMember(baseType, nested.Name, scope, LookupRole.Qualifier).Member is not null)
+            // SPEC 6.1, 9.6: the later is the nested Container, related to the inherited declaration; the struct keeps the slot's failure,
+            // an owner over its member's record (Transitional, R7-E5's per-problem inputs).
+            if (this.LookupMember(baseType, nested.Name, scope, LookupRole.Qualifier).Member is { } inherited)
             {
-                this.Fail(nested, BindingFailure.Duplicate);
+                this.RecordNumbered(nested, BindingFailure.Duplicate, [new(ProblemFactKind.Related, this.FactSite(inherited.Declaration), 0)]);
                 this.Fail(structure, BindingFailure.Duplicate);
                 return false;
             }
@@ -149,8 +151,10 @@ public sealed partial class Binding
 
             // Names reserve the declaration layer regardless of signatures or conditions.
             // The original derived receiver supplies protected access, including Properties.
-            if (this.LookupMember(baseType, entry.Key, scope, LookupRole.Value, this.SelfType(structure.BoundSymbol!)).Member is not null)
+            // SPEC 6.2.2: the later is the member, related to the inherited one; the struct's failure as above.
+            if (this.LookupMember(baseType, entry.Key, scope, LookupRole.Value, this.SelfType(structure.BoundSymbol!)).Member is { } inherited)
             {
+                this.RecordNumbered(member.Declaration, BindingFailure.Duplicate, [new(ProblemFactKind.Related, this.FactSite(inherited.Declaration), 0)]);
                 this.Fail(structure, BindingFailure.Duplicate);
                 return false;
             }
@@ -190,7 +194,7 @@ public sealed partial class Binding
                 this.Fail(member, BindingFailure.Unsupported);
                 return null;
             case LeftReading.Ambiguous:
-                this.Fail(member, BindingFailure.Ambiguous, true);
+                this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // ReadLeft keeps the reading, not both members.
                 return null;
             case LeftReading.ValueFailure:
                 return null;
@@ -342,7 +346,7 @@ public sealed partial class Binding
         var valueMember = valueSide.Member;
         if (typeSide.Selection.Ambiguous || valueSide.Selection.Ambiguous)
         {
-            this.Fail(member, BindingFailure.Ambiguous, true);
+            this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // A side's selection keeps a flag, not the candidates.
             return null;
         }
 
@@ -387,6 +391,11 @@ public sealed partial class Binding
             // SPEC 9.6 (F's N1c rulings 38, 41, 44): an instance member a Type path reaches has no receiver: QualificationRequired_Kd at the
             // access with its own cause, TypePath, its Container the Type declaring the member, with no qualifying repair (the use is qualified).
             this.qualificationFailures[member] = new(selected.Scope, scope, selected, selected.Name, LookupRole.Value, 0, member, Cause: QualificationCause.TypePath);
+        }
+        else if (failure == BindingFailure.Access)
+        {
+            this.RecordAccess(member, selected, null); // SPEC 9.4: the use located, the selected member related.
+            return null;
         }
 
         if (failure != BindingFailure.None)

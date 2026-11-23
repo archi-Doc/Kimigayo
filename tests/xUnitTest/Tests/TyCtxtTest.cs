@@ -1652,8 +1652,8 @@ public sealed partial class TyCtxtTest
     // DECISIONS R5-M61, R7-M54 (R7-T1 c4): Witness reads no storage verdict, so a Self whose storage nests past Binding's depth bound has
     // what its conformance gives, here none: Wrap^80<i32> is no Shape, so area's target is None, the whole target default (Cause Formed,
     // so no refused resolution), not an exception (fail-before: the Limit target, before any conformance was read); a conforming deep Self has its witness's Body (ARejectedSelfRunsItsWitness's deep rows). A
-    // caller's instance that makes a requirement call's Self nest past it composes the substitution, its Self formed, with the Limit
-    // verdict, so no substitution without its Self reaches Witness (PLAN G157 (4)).
+    // caller's instance that makes a requirement call's Self nest past it composes the substitution, its Self formed (Compose reads no
+    // storage, PLAN G396 (3)), so no substitution without its Self reaches Witness (PLAN G157 (4)).
     [Fact]
     public void ADeepSelfHasNoLimitTarget()
     {
@@ -1672,7 +1672,7 @@ public sealed partial class TyCtxtTest
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
 
         // Option^40<i32> (storage height 80) is past the bound whatever Witness prepared before it (Wrap^80, whose Type argument no Field
-        // stores, is refused too; DECISIONS BU-11, BU-12): the caller's instance composes the substitution with the Limit verdict.
+        // stores, is refused too; DECISIONS BU-11, BU-12): the caller's instance composes the substitution, its Self formed.
         var option = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Symbol.Name: "Option" })!;
         var nested = BoundType.I32;
         for (var i = 0; i < 40; i++)
@@ -1683,8 +1683,7 @@ public sealed partial class TyCtxtTest
         var instance = new CallPlan();
         instance.Set(c.Binding, outer.Target, outer.ReturnType, null, [], [nested]);
         var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!);
-        Assert.Equal((TyCtxt.Formation.Formed, Binding.StorageOutcome.Limit), (composed.Cause, composed.Storage));
-        Assert.Same(nested, composed.Part);
+        Assert.Equal(TyCtxt.Formation.Formed, composed.Cause);
         Assert.Same(nested, composed.Subst!.Self);
     }
 
@@ -1761,9 +1760,9 @@ public sealed partial class TyCtxtTest
         Assert.Throws<InvalidOperationException>(() => complete.Types.ReadableInstance(parameter, complete.Types.SubstOf(call)!));
     }
 
-    // DECISIONS BU-36, R4-M139: a reader of an instance may read Prepared and Rejected storage, not a Limit (Readable, which retention,
-    // the MIR builder, A4 and MirCases read); Rejected rests on a Binding failure, so in a complete compilation it is a broken contract
-    // (the guard, as the collector's Derived): an incomplete compilation reads it, a complete one throws.
+    // DECISIONS BU-36, R4-M139: a reader of an instance's storage may read Prepared and Rejected storage, not a Limit (Binding.Readable,
+    // which retention, A4 and MirCases read through TyCtxt.ReadableInstance); Rejected rests on a Binding failure, so in a complete
+    // compilation it is a broken contract (the guard, as the collector's Derived): an incomplete compilation reads it, a complete one throws.
     [Fact]
     public void ARejectedVerdictIsReadableOnlyBesideABindingFailure()
     {
@@ -1771,9 +1770,9 @@ public sealed partial class TyCtxtTest
         var complete = MirBuildTest.Compile("struct Good\n    public var m: i32\nfunc f(b: ref/Good) => ()\n");
         Assert.False(failed.Binding.Result.IsComplete);
         Assert.True(complete.Binding.Result.IsComplete);
-        Assert.Equal([true, true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit }.Select(x => failed.Types.Readable(BoundType.I32, x)));
-        Assert.Equal([true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Limit }.Select(x => complete.Types.Readable(BoundType.I32, x)));
-        Assert.Throws<InvalidOperationException>(() => complete.Types.Readable(BoundType.I32, Binding.StorageOutcome.Rejected));
+        Assert.Equal([true, true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit }.Select(x => failed.Binding.Readable(BoundType.I32, x)));
+        Assert.Equal([true, false], new[] { Binding.StorageOutcome.Prepared, Binding.StorageOutcome.Limit }.Select(x => complete.Binding.Readable(BoundType.I32, x)));
+        Assert.Throws<InvalidOperationException>(() => complete.Binding.Readable(BoundType.I32, Binding.StorageOutcome.Rejected));
     }
 
     // SPEC 23.1.2 (DECISIONS BU-38, R7-M54 (R7-T1 c4)): what a requirement call runs does not depend on its Self's storage, so a conforming
@@ -1793,28 +1792,24 @@ public sealed partial class TyCtxtTest
         Assert.Equal(expected, c.Types.Witness(requirement, zero, c.Types.Synthesized(requirement, bad, zero.Type!)).Kind.ToString());
     }
 
-    // DECISIONS BU-38: Compose carries the worst verdict of its parts' storage in the outer instance. inner's call in outer's instance at
-    // Bad<i32>, whose Field m did not bind, is Rejected with its composed substitution; beside a Type argument nested past the bound it is a
-    // Limit in either order, its substitution formed and kept: a null Subst is only a part that does not form, with its cause (Formation).
-    // The verdict's deciding part (R4-M139) is the first part reaching it, none when Prepared: Bad<i32> when Rejected, also before
-    // Bad<i64>, and the nested Type beside it in either order; a Rejected composition always has one.
+    // DECISIONS R7-M54 (PLAN G396 (3)): Compose forms a substitution by the substitution alone, whatever its parts' storage in the outer
+    // instance: inner's call in outer's instance at Bad<i32>, whose Field m did not bind, beside Bad<i64> or a Type argument nested past
+    // Binding's storage bound, in either order, is Formed with the outer instance's Types: a null Subst is only a part that does not form,
+    // with its cause (Formation).
     [Theory]
-    [InlineData("i32", "i32", "Prepared", -1)]
-    [InlineData("Bad<i32>", "i32", "Rejected", 0)]
-    [InlineData("Bad<i32>", "Bad<i64>", "Rejected", 0)]
-    [InlineData("Bad<i32>", RetentionTest.Box65, "Limit", 1)]
-    [InlineData(RetentionTest.Box65, "Bad<i32>", "Limit", 0)]
-    public void ComposeHasTheWorstVerdictOfItsParts(string first, string second, string expected, int part)
+    [InlineData("i32", "i32")]
+    [InlineData("Bad<i32>", "i32")]
+    [InlineData("Bad<i32>", "Bad<i64>")]
+    [InlineData("Bad<i32>", RetentionTest.Box65)]
+    [InlineData(RetentionTest.Box65, "Bad<i32>")]
+    public void ComposeFormsWhateverItsPartsStorage(string first, string second)
     {
         var c = MirBuildTest.Compile(RetentionTest.Box + "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc inner<A, B>(a: uniq/A, b: uniq/B) => ()\n" +
             $"func outer<A, B>(a: uniq/A, b: uniq/B) => inner(a, b)\nfunc g(x: uniq/{first}, y: uniq/{second}) => outer(x, y)\n");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).ToDictionary(static x => x.Target.Name);
-        var (subst, cause, storage, decided) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
-        Assert.Equal(expected, storage.ToString());
-        Assert.Same(part < 0 ? null : c.Types.SubstOf(calls["outer"])!.Types[part], decided);
-        Assert.True(storage != Binding.StorageOutcome.Rejected || decided is not null);
+        var (subst, cause) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
         Assert.Equal(TyCtxt.Formation.Formed, cause);
-        Assert.NotNull(subst);
+        Assert.Equal(c.Types.SubstOf(calls["outer"])!.Types.ToArray(), subst!.Types.ToArray());
     }
 
     // SPEC 8.6.1 (DECISIONS R5-M126; PLAN G157 (16)): the Contract that declares a requirement, also of the built-in target a requirement
