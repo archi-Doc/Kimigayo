@@ -880,6 +880,79 @@ public sealed partial class MirBorrowsTest
                 keep1m(hop@raw, w@raw@raw/u8)
                 y@follow = 5
             """,
+        ["xMixDeclBad"] = """
+            enum Slot
+                Has(raw/u8)
+                Empty
+
+            func viaMixD(t: uniq/((raw/u8, Slot)), v: raw/u8) => ()
+
+            func xMixDeclBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var t: (raw/u8, Slot) = (null, .Has(null))
+                viaMixD(t@uniq, spare)
+                kk = 2
+            """,
+        ["xMixDeclOtherOk"] = """
+            enum Slot
+                Has(raw/u8)
+                Empty
+
+            func viaMixD(t: uniq/((raw/u8, Slot)), v: raw/u8) => ()
+
+            func xMixDeclOtherOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var other: u8 = 3
+                let o: raw/u8 = other@raw
+                var t: (raw/u8, Slot) = (null, .Has(null))
+                viaMixD(t@uniq, o)
+                kk = 2
+            """,
+        ["xMixRawOk"] = """
+            func viaMixR(t: uniq/((raw/u8, raw/u8)), v: raw/u8) => ()
+
+            func xMixRawOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var t: (raw/u8, raw/u8) = (null, null)
+                viaMixR(t@uniq, spare)
+                kk = 2
+            """,
+        ["xRawDeclBad"] = """
+            enum Slot
+                Has(raw/u8)
+                Empty
+
+            func viaSlotP(s: raw/Slot, v: raw/u8) => ()
+
+            func xRawDeclBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s: Slot = .Has(null)
+                viaSlotP(s@raw, spare)
+                kk = 2
+            """,
+        ["xSharedDeclOk"] = """
+            enum Slot
+                Has(raw/u8)
+                Empty
+
+            func viaSlotR(s: ref/Slot, v: raw/u8) => ()
+
+            func xSharedDeclOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s: Slot = .Has(null)
+                viaSlotR(s@ref, spare)
+                kk = 2
+            """,
     };
 
     // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4; its implementation review's rows). Not rows
@@ -953,6 +1026,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("enumPayloadPtrU8Ok", "")] // V, a parameter's own layer (15.6.4 oneLayer)
     [InlineData("r4MixHopBad", "mixHop: y@follow = 5")] // I, rule 4 (4) at a key that keeps the declared step: hop.0, a layer without an Origin beside a stated one (5.7 Calls decides per layer)
     [InlineData("r4MixHopOk", "")] // V, its twin: past hop.0 only a u8
+    [InlineData("xMixDeclBad", "xMixDeclBad: kk = 2")] // I, rule 4 (4) at a mixed key: t.0 a layer the parameter's Type expression writes, t.1's payload one Slot states; through the payload the call may write its own pointer and store spare (5.7 Calls; R-G841-5; O-373 (a))
+    [InlineData("xMixDeclOtherOk", "")] // V, its control: the argument addresses `other`
+    [InlineData("xMixRawOk", "")] // V, the key of one kind: both layers the parameter's own, pointees u8 (oneLayer)
+    [InlineData("xRawDeclBad", "xRawDeclBad: kk = 2")] // I, rule 4 (4) at a layer Slot states past a raw parameter layer (5.7 Calls; O-373 (a))
+    [InlineData("xSharedDeclOk", "")] // V, the same past a shared borrow: no write authority past ref (5.2.1 condition 3)
     public void TheReadingKeyPastAHolderReadsEveryLayer(string form, string expected)
     {
         var c = MirBuildTest.Compile(PastHolderForms[form] + "\npublic func main() => ()\n");
