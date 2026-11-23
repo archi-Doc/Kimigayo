@@ -227,7 +227,7 @@ public sealed class MirInitTest
             Problems("struct S\n    var value: i32\n    public init(flag: bool)\n        if flag => return\n        self.value = 1\n"));
     }
 
-    // SPEC 6.3.5, 23.1.2 (PLAN G105, G522): a Field Binding formed no stored Type for, its initializer failed in the parser or in
+    // SPEC 6.3.5, 23.1.2 (DECISIONS Q13): a Field Binding formed no stored Type for, its initializer failed in the parser or in
     // Binding or its Type annotation unresolved, is a part of a rejected declaration that its constructor places nothing into
     // (MirBuilder.Stored), so no exit requires it: the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit
     // one, also one that never sets the annotated Field, a generic and a nested struct's report only the Field's own failure; another Field
@@ -1585,7 +1585,7 @@ public sealed class MirInitTest
     public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
-    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS R5-M195; PLAN G105, G791): a write Binding rejected for its value's fit after admitting its
+    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS R5-M195): a write Binding rejected for its value's fit after admitting its
     // destination still places a value derived from that failure, as one whose value Binding left unresolved does: a second placement of
     // a let local or Field is reported, and a first placement, the target's later use, a constructor's end and a later write to a replaced
     // reference's old referent are not; its target's operands are evaluated (SPEC 13.7.1 step 2), so a move there is a later use's
@@ -1605,7 +1605,7 @@ public sealed class MirInitTest
     public void ARejectedWriteKeepsItsWrite(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
-    // SPEC 15.1.3, 15.1.4, 23.1.2 (DECISIONS Z17; PLAN G105 (2), G1058's second form): an Opaque site's kept or located part is checked at
+    // SPEC 15.1.3, 15.1.4, 23.1.2 (DECISIONS Z17, R4-M232): an Opaque site's kept or located part is checked at
     // its own Place, so a part of a partly moved root is no use of the moved part: a derived write's located right side (`missing = p.n`),
     // a failed call's kept argument (`g(p.n, missing)`, also r2-oq's last form) and a failed call's only one (`missing(p.n)`) report
     // nothing beside Binding's record (fail-before: MovedPlace_Kd at the site, the root read whole), while the moved part itself and an
