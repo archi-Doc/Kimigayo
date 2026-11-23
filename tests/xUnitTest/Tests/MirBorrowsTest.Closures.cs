@@ -995,13 +995,18 @@ public sealed partial class MirBorrowsTest
                 let w = x@follow
             """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
 
-    // R4-M147's Limit through a Closure (DECISIONS R4-M148): a Closure holds its environment's parts, so one whose only Loan-capable part is a
-    // stored raw layer stepping Exclusive with unpublished members (Wrap2c3<raw/u8>) leaves a call's store past it undecided, the located
-    // Unsupported_Kd at the call, as its Tuple twin does; the dev MIR's opaque Closure wrote past it and erred at `inspect(w)`.
+    // SPEC 5.7 Calls, 15.8.2 (DECISIONS R4-M148; PLAN G148 (1), R7 plan Z6): a Closure holds its environment's parts, so a stored raw layer
+    // over w's exclusive borrow (Wrap2c3<raw/u8 during O>, O's member `ref/i32`, exclusive) lets a call writing the Closure store z's
+    // borrow into w, as its Tuple twin does (limitTuple and limitClosure: `z = 5`, `inspect(w)`; R5.2's referents in the caller's terms
+    // give limitClosure's `z = 5`, Revision 0's F2). Over a shared borrow the call stores nothing (sharedClosure, valid). FAIL-FIRST: each
+    // was the located Unsupported_Kd at the call. Labels: Z6's design (p06, p06b).
     [Fact]
-    public void AStoreTheGuardLeavesUndecidedPastAClosureIsUnsupported()
+    public void AStoreThroughARawLayerPastAClosureReadsItsOriginsBorrows()
         => Assert.Equal(
-            ["limitClosure: putAny2c3(c@uniq, z@ref) Unsupported_Kd views 1", "limitTuple: putAny2c3(t@uniq, z@ref) Unsupported_Kd views 1"],
+            [
+                "limitClosure: inspect(w) ComparisonLoanConflict_Kd", "limitClosure: z = 5 ComparisonLoanConflict_Kd",
+                "limitTuple: inspect(w) ComparisonLoanConflict_Kd", "limitTuple: z = 5 ComparisonLoanConflict_Kd",
+            ],
             ViewProblems("""
                 struct Wrap2c3<E>
                     var value: E
@@ -1026,7 +1031,17 @@ public sealed partial class MirBorrowsTest
                     putAny2c3(t@uniq, z@ref)
                     z = 5
                     inspect(w)
-                """));
+                func sharedClosure()
+                    var x = 1
+                    var z = 3
+                    var w: ref/i32 = x@ref
+                    let s = w@ref
+                    var h = Wrap2c3.init(s@follow@raw@raw/u8)
+                    var c = func [h@move] () => ()
+                    putAny2c3(c@uniq, z@ref)
+                    z = 5
+                    inspect(w)
+                """).Select(static x => x[..x.LastIndexOf(" views ", StringComparison.Ordinal)]));
 
     // SPEC 23.1.2: a Closure Binding rejected before its environment holds nothing, so a rejected program keeps its independent Loan
     // problems, at a call of it too.
