@@ -227,6 +227,8 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   next change after three consecutive units. Rejected: expanding inline lifecycle/evidence logic, a generic process framework,
   new mode arguments or a build component without a new responsibility. The following G138 unit replaces wall-time
   divergence observation and publishes incomplete verification through these existing owners.
+  - Amended by T-M31 (NV1): compilation is test-scalars.ps1's (the pairs and the `kimi tatara` sessions); test-scalar-fixture.ps1
+    reads each level's record and keeps level aggregation.
 
 - **G138-2 Observed execution and incomplete native verification** (2026-10-24). A nonterminating fixture requires a finite
   process CPU observation budget, not a short wall-time
@@ -370,6 +372,10 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     fixture; identical inputs give the identical outcome, and the daily re-execution bounds machine drift the keys do not see.
   - Rejected: selecting native families by changed files (a Binding change reaches generated code without touching Backend files);
     reusing by `.ll` hash alone (the oracle files, toolchain and runner change outcomes too); no re-execution period (drift).
+  - Amended by T-M31 (NV1): the environment key is the compiler's `tatara.dll`, the backend archive, the kernel32 library, the
+    native build's code (`src/Kimi/Build/**/*.cs`, `src/Kimi/Unit/Command/TataraCommand.cs` and `BuildCommand.cs`,
+    `src/Kimi/Compiler/Core/*Profile.cs`), the eight runner files and the deadline; the LLVM tools and the allowed symbols leave (the
+    runner starts no tool).
 - **Q17 Open issues: one row per cause and a closing lane in each area** (2026-11-08, owner; [WORKFLOW](WORKFLOW.md) "Open issues";
   the Coordinator's proposal).
   - The owner (verbatim): 「PLANのOpen issuesは、1，2，3の対策で進めてください。」, to the Coordinator's three measures.
@@ -30822,3 +30828,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     -S -emit-llvm` of an empty C file), and each row's module emitted by Tatara for its triple checks that the pair agrees.
   - **B7b2a's limit (C-445 N6):** until B7b2b a Linux module with a program library is written libc-free with the library in
     `Libraries`; nothing reads it before B7b7 and B7b8. (Today every Linux module lists the Kimi library's `kernel32` until B7b6.)
+- **T-M31 The native check builds through `kimi tatara`** (Tatara, 2026-11-23; Q-709, D-1175; Major; design
+  `artifacts\handoff\tatara\units\NV1\design.md`; implementation review C-484, the Middle's and the Back's ACCEPT WITH CONDITIONS,
+  every condition met; amends Q16 and G138-1). NV1 (the owner's 11-22 13:5x order, relayed by K): the native check builds every
+  fixture with `build --Manifest` in `kimi tatara` sessions (pairs whose manifest is one `kimi emit`'s, `externalDeclarations` every
+  kernel32 import), not by starting opt, llc, llvm-nm and lld-link; its dependency rule is the compiler's (the bare kernel32 form
+  leaves; `_fltused` and default-library checks join; no unwind check, T-M21). Rejected: a tool switch, test-written manifests, a new
+  CLI form, output parsing.
