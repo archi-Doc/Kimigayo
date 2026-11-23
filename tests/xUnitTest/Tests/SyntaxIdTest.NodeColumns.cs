@@ -196,7 +196,7 @@ public partial class SyntaxIdTest
     // override's call through its receiver's erased view, VirtualEntryErasureTest's program; InheritedOriginTypes: Milestone11's omitted
     // inherited Origins; DeferredConstraints: Milestone10's clause decisions; Matches: Milestone10's match plans; Adaptations: Milestone10's
     // implicit adaptations; VirtualOverrides: that program's override; AliasTargets and ImportedContainers: an unnamed alias of a
-    // generic container's group whose struct a parameter names; QualificationFailures: a member read without its `self.`, a failure
+    // generic container's group whose struct a parameter names; FailingSteps: a path whose qualifier is missing (N1-13 B1); QualificationFailures: a member read without its `self.`, a failure
     // family's program, which reports its failure at each Bind; R7-N5's: PerCallOrigins, a call only an argument's own per-call Origin
     // would satisfy; PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
@@ -235,6 +235,7 @@ public partial class SyntaxIdTest
     [InlineData("VirtualEffectBounds", "milestone:Milestone44")]
     [InlineData("AliasTargets", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
     [InlineData("ImportedContainers", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
+    [InlineData("FailingSteps", "func f(x: Missing.Inner) => ()\n", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("QualificationFailures", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
     [InlineData("PerCallOrigins", "func pick(n: ref/i32) -> ref/i32 => n\nfunc make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(pick)\n", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("PairFollows", "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc view<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is value or valueborrow\n    return box.item@follow@ref\n")]

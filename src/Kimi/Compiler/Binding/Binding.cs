@@ -264,7 +264,6 @@ public sealed partial class Binding
         // Source guards are all indexed now; a removed guard may have become an arm body.
         // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
         this.PruneCandidateScopes();
-        this.ValidateDefaultAliases();
         this.PrepareOriginDeclarations();
         this.BindSchemas();
         this.PrepareAssociatedOrigins();
