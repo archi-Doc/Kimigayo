@@ -4454,6 +4454,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `PlanRow.Adjust`; Discard Context a bare acquisition position) and R5's three requirements on them). Supersedes R4-M128's interim
   by-value list and its Discard Context net. Requirement 2's unset-row sentences are superseded by BU-103. Its by-value list for the by-case mark is superseded by R7-M12 (`Take`'s ByCase).
   Its net row (a null take, the net's `Unsupported_Kd`) is superseded by R7-M58 (X3: a broken contract).
+  Its plan-row trigger is amended by BU-248 (an earlier take of the input by its consumer's calls, also the same call's preceding input).
   - Representation: `ClosureEffects.ConsumedByValue(place)` (`Binding.ClosureReceivers`), computed once per use (C7), reads the Adjust
     rule (R4-M142) instead of a list: the place's groups taken through (`Binding.Grouped` over `IsGroup`: parentheses and a label,
     which wraps only a control-flow construct, never a Place; `HirOp.Group` is wider, an identity or transfer conversion acquiring its
@@ -13394,6 +13395,9 @@ resumed by R4-M86 (2026-10-20).
     needed).
   - Open: the struct side (PLAN G701's remaining item); one record kind for every arity mismatch would need a `PathEnd` entry (owner
     approval), not taken: `Self<...>` reports `UnresolvedBinding_Kd` (the planning session's record selection, Q13).
+  - Superseded in part by BU-247 (R7-N1 f, Q-700, 2026-11-22): the "no candidate" clause; `Self<...>` records 9.7's
+    `InvalidTypeFormation_Kd` through the symbol's own arity. In a struct or enum a written `Self` selects the declaration's Self
+    symbol (`SelfOf` the declaration), not the declaration.
 - **BU-151 A Type-name use's row is SPEC 9.2's role of its position: `UseRow`, the one table** (2026-11-10; R7-N1e2-2a; Major;
   design reviews 1 REVISE, 2 ACCEPT) SPEC 9.2 (with D-174's Contract Reference row), 9.5, 9.6, 8.2.1, 8.5.2, 8.8, 8.11.1, 8.12; the
   owner's O-101 (1)(a), O-122 (a), O-128 (a).
@@ -14471,6 +14475,9 @@ resumed by R4-M86 (2026-10-20).
     `BaseMember` and `ConstructorMember`; read (`MemberSideOf`) by `CallReceiver`, `BindEnumConstruction` (a Case named on the Type
     side) and `BindRequirementItem`. A read of a member access without a published side breaks the formers' contract (an internal
     error; `MemberSideOf` throws). The table is cleared each pass and sized library-only (`KimiLibrarySize.Stated.MemberSides`).
+    - Amended by R7-N5 B1b-2: the side is the Side slot of the Work pass family `MemberSelections`' row, beside the access's lookup
+      selection (still its own fact: a constructor access has a side and no selection), stale at the next run and released at the
+      freeze; the library-only sizing went with G949 Stage 2 U6 (ddb64d46e).
   - Moves: valid construction through a projection qualifier newly accepted (b1, n01, k24, r01-r06g, r14v); invalid programs newly
     rejected `AmbiguousBinding_Kd` (r14, r14b, x06, x07, y01, y02, y03, y07, y14, y16, z03-z07) or G621's `Unsupported_Kd` (x01,
     x02, y08); a Type function, a Case or a requirement member through a projection qualifier `Unsupported_Kd` (b2, n02, r01b, r11,
@@ -16120,6 +16127,29 @@ resumed by R4-M86 (2026-10-20).
     `resolvingTypes` kept, and a counter beside the column for DirectBase's `Count != 0` shortcut. Readings: SPEC 6.2.2 and 9.5 (a
     base clause in progress), 9.5.1 (alias-stage groups), 10.1 and 23.1.2 (a synthesized call's verdict at its consumer; no record
     moves), 14.8 (patterns and guards); the B2a-2, B5a and E lines above. Ratchet ("Node-keyed table members in Binding"): 24 -> 19.
+  - **R7-N5 B1b-2** (the Back's batch, Q-701, D-1156; design `b1b2-design.md`, B's rulings 1-4; the Front's review
+    `review-n5-b1b2.md`, C1, C2, N1-N4): `memberSelections` and `memberSides` (a member access's lookup selection and published
+    side: one key, one writer, one reset) become one Work pass family `MemberSelections` with a `(MemberSide? Side, MemberSelection?
+    Selection)` row (rule 3; a constructor access has a side and no selection; the nullable slots carry presence, since a selection
+    can be all-default); its one writer `Publish` carries PublishPath's side check and runs after the left's qualifier, so ids keep
+    dev's order. `inferredConstructionTargets` becomes the Work family `InferredConstructionTargets`, and `qualificationStops` (the
+    resolver's provisional stop, FailUnselected's input) the Work family `QualificationStops` with a `(Value, Type)` row, a slot
+    without its Container absent; its writer refuses a frozen library use, as WriteSymbol refuses that use's Selected publication.
+    All three are released at the freeze: BeginRun advances the counter once per run, so the freeze compilation's library and
+    program passes share a value, and dev's program pass cleared the library pass's rows (B2a-2's line). QualificationRequired's
+    record, `qualificationFailures` and the TypePath Note stay until R7-E5 (E2-4b's ruling 3, C-405 12:17). Rejected: two member
+    families, a Pass (Freeze) column for any of the three, named presence bools, and `qualificationStops` left to R7-E5. Readings:
+    SPEC 9.5, 9.5.1, 9.6 (qualification), 9.6 and 10.2 (member access sides), 9.7, 9.7.1, 10.8.1 (construction targets), 23.1.2 (no
+    record moves). Ratchet ("Node-keyed table members in Binding"): 19 -> 15. With B's ruling 4 (O2; `b1b2-bytes\proposal.md` §5):
+    MemberSelections' slot is its row's index plus 1 into the accessor's per-pass row list (BU-220's "a keyed collection whose
+    values index a per-pass list keeps that list in its own part"; the list cleared in ResetContracts with its capacity kept, as
+    duplicateOrder and synthesizedOrder): member accesses sit about one per 8-id page and the row is 56 B, so a page per access cost
+    +18% cold Bind on Milestone26 (O1, which fails AGENTS' allocation rule); the list form is within +0.4% of dev's dictionaries on
+    Milestone26/31/10, +1.5% on Milestone23, -9.2% on a member-dense program. Rejected: O1 (the row column), O3 (a 40-byte row with
+    two store-only fields in MemberSelection), dev's two dictionaries (ratchet 17, not 15). The form's invariant: every ResetPass
+    comes with a stamp advance or the release of the columns its pass wrote (a refused library's StartPass pair excepted: nothing
+    binds after it). The Front's C-403 N1: synthesizedOrder's listing is written by `SynthesizedCallRows.Add(call, consumer)`, the
+    one site for the row and its listing.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
@@ -16790,8 +16820,9 @@ resumed by R4-M86 (2026-10-20).
   - **Mode.** `SelectionMode` (replacing `SelectsUniq` and its bool): 0 `index` (a shared use, or no `indexUniq`: a by-case use is
     then the uniq case's Language error), 1 `indexUniq` (exclusive), 2 by case (ByCase with `indexUniq` bound). The decider goes in the
     index's plan-row `Plan` slot, which no other writer uses on an IndexKoto (`Second` is TypeIdentity's identity premise; the
-    arithmetic, adaptation and constraint setters of `Plan` are other kinds). Read only through `HirTables.IndexCaseDecider` (the
-    review's C2); `ExpansionPlan.Of` reads it for its new member `Shared` (index's call under Mode 2; `Second` stays indexUniq's).
+    arithmetic, adaptation and constraint setters of `Plan` are other kinds). Read only through `HirTables.CaseDecider` (BU-248,
+    replacing `IndexCaseDecider`; the review's C2); `ExpansionPlan.Of` reads it for its new member `Shared` (index's call under
+    Mode 2; `Second` stays indexUniq's).
   - **Inputs.** Under Mode 2 `AdjustChildren` uses both calls' inputs in `CallPlan.Of`'s order, the existing two-row record of
     R4-M145 / R4-M109: a receiver's column is indexUniq's take, its plan row index's where they differ; a key's two takes are equal,
     its plan row default.
@@ -17487,6 +17518,106 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** the prototype's stand-ins (`KindOp(parent) == Call`; a thread-static map); the take in `PlanRow.Adjust`, `Flag` or
     `Mode` (R7-M67); a two-byte take without `ExclusiveMode` to keep 56 bytes (a second representation of a take); Input only for
     read operands; the Case read at the callee by the Adjust rule (a second copy of KindOp's classification).
+- **BU-247 A scope's formal parameters are its own table; `Self` is a scope symbol** (2026-11-22; Front, Binding; Major; R7-N1 f,
+  Q-700, D-1153; design `front\notes\N1d\design-n1def.md` §2.2, §3, §4, design review ACCEPT WITH CONDITIONS
+  (C3, C5, C6, C7); implementation review `N1d\review-f-impl.md` ACCEPT WITH CONDITIONS; F's rulings N1-2, N1-6, N1-8, N1-10,
+  N1-12) SPEC 6.1.5, 8.1, 9.1, 9.5, 9.6, 9.7, 9.7.3, 18.2.1. Supersedes in part BU-150.
+  - **Parameters.** `BindingScope.Parameters` holds the Type-namespace formal parameters a scope's declaration declares (Type
+    parameters, pair targets and their binders; after f-2 also each Self context's `Self`), allocated when the scope declares one.
+    `DeclareKept` routes those kinds there and applies 9.1/9.7.3's one conflict rule across the scope's two Type tables; `TypeStage`
+    reads a scope's members, then its parameters, as one stage (SPEC 9.5: "found at their declaring positions"); no member reader (a
+    path's later component, an opening alias, inherited lookup, the qualification repair) reads `Parameters`, so none filters by
+    kind.
+  - Reason: with the parameters in the member table every outside reader filtered them by kind (four filters,
+    `IsGenericParameter`), and the two raw alias segment loops did not (d02i reached a formal parameter: R7-N1 e3).
+  - **By namespace** (f-1b, F's ruling N1-6 (1)). `Parameters` is keyed by namespace as the members are (`ScopeParameters.Types`,
+    `.Values`): a function's length slots (SPEC 4.4.1, the Value namespace) are in `Parameters.Values`, allocated only with a length
+    slot (f-1c, N1-8 C6), read by `ValueStage` after the scope's members and by the library witness rows; `IsLengthSlot` and its
+    three member-reader skips are gone. (f-1a, N1-6) The root path (`::A`, 9.6) reads its root scope through `TypeStage`:
+    ResolvePath's Type-namespace reads stay TypeStage's two.
+  - **Self** (f-2). A struct's and an enum's scope declares a Self symbol (Kind `Type`, `Declaration` the declaration, `SelfOf` the
+    declaration's symbol, `Type` the declaration applied to its own parameters, set with the schema in BindSchemas); a Contract's
+    scope declares its Self Type parameter (BU-150's symbol). One field holds a declaration's Self (`BindingSymbol.SelfSymbol`,
+    replacing `ContractSelf`), made once. The indexing walk declares Self after the declaration's subtree (an entry below its
+    children), so the parameters' provisional slots (`Parameters.Types.Count - 1`, which PairOuterOrigin reads at indexing) do not
+    count it. `EnclosingSelf` and the spelling tests (`EvaluatePath`, `ResolveAdaptationTarget`, BindNamedType's `isSelf`,
+    `EnumQualifierType`, `ConstructorQualifierType`) are deleted: the stage walk finds `Self` as any name, and the readers take
+    `SelfOf`. A written `Self`'s Symbols column is the Self symbol (`s=Type:Self`; HIR and MIR unchanged; N1-10 (1)).
+  - **`Self<...>`.** Supersedes BU-150's Self-arity clause ("written with Type arguments it has no candidate",
+    `UnresolvedBinding_Kd`): F.5 parses `Self<i32>`, 9.2 finds `Self`, 9.7 filters by the number of explicit Type arguments and none
+    remains, "a mismatch": `InvalidTypeFormation_Kd`, the code of `T<i32>`, for a Contract's Self (a Type parameter) as for a
+    struct's or enum's. A struct's or enum's carries 9.7's arity evidence (declared 0, written 1) and the named declaration as its
+    related site (`RecordArity`); a Type parameter's `T<i32>` and a Contract's `Self<X>` carry neither (N1-12 C2: a formation that
+    has a declaration to point at names it). A Constraint subject `U is Self<X>` keeps the function's `InvalidConstraint_Kd`; the
+    requirement's own `InvalidConstraint_Kd` over its failed name is no longer recorded (a dependent removal); `Self.(Self<X>).E`
+    keeps `UnresolvedBinding_Kd` (the Contract Reference role).
+  - **Arity.** BU-150's record was a choice of record, which the symbol's own arity removes: `BindingSymbol.GenericArity` (a Type
+    declaration's generic parameter count, length slots included; 0 for a Self and every other symbol) is read by AddTypeCandidates
+    and BindConstructedType (N1-6 (2)); `SelfType` returns a Self symbol's own Type (N1-6 (3)). Supersedes G701's option-C rejection
+    ("symbol identity is compared at many sites"): the census `front\notes\N1d\f\census-f2.md` answers each site. BU-150's rejected
+    "a Self parameter with another `Declaration`" stays rejected for the Contract side; the struct side keeps `Declaration` = the
+    declaration.
+  - **Readings** (corrected, N1-8). A struct's or enum's Self symbol is **not** its declaration's symbol in `Type` (the
+    declaration's applied Self Type `S<T...>`, against the declaration symbol's raw `S`) or `Schema` (none). The readers that ask a
+    selection for its declaration's facts read one published accessor, `BindingSymbol.Named` ("the declaration this selection
+    names": `SelfOf` for a struct's or enum's Self, the symbol itself otherwise, a Contract's Self and a binder among them):
+    QualifierSelection's requirement Type, TypeSideMember's Origin-qualifier Schema, ResolveMember's `associable` Type,
+    ResolvePatternCase's identity with the expected enum (`Self.Case` patterns) and the associated-inference clause subject's
+    identity. Rejected: five copies of `SelfOf ?? x` (N1-8 (a)); reading the formed Type's Symbol there (N1-8 (c): it changes the
+    raw `S` to `S<T...>` at five readers without a SPEC reason).
+  - **Rejected:** `Self` and the parameters in `Types` (a filter case in every outside reader); reading `Parameters` before `Types`
+    (moves the first candidate of a duplicate program); chaining a member and a parameter of one name across the two tables; a symbol
+    Kind of its own for struct Self (vocabulary).
+- **BU-248 A by-case value call's decider and Shared receiver acquisition: `CallPlan.CaseDecider` and `CallPlan.SharedReceiver`**
+  (2026-11-23; Front, Binding; PLAN G13 (a), Z4-F, Q-705, D-1165; design `middle\notes\z4f-design.md` §0, §2 and Revision 1 (R1.1,
+  R1.2, R1.4; Middle), the Front's review on C-487 (REVISE, then the delta read ACCEPT WITH CONDITIONS D1, D2); F's rulings Z4F-1 and
+  Z4F-3; Major, behaviour-preserving until Z4-M reads it) SPEC 7.7.3 ("each case has its own requirement"), 7.3.3, 15.1.5 ("An owned
+  Closure Place is borrowed shared for a Shared call and exclusively for an Exclusive call"), 8.15.2, 15.6.2. Amends BU-233 and
+  R4-M145.
+  - **Representation.** `CallPlan.CaseDecider` (`BoundType?`): the callee's Closure Type whose `Receiver` gave the call's mode
+    (`CallableClosure(CalledThrough(..))`, TryCallable's read), set exactly for a Value call in mode Uniq whose Closure's
+    `CaseFreeReceiver` is Ref; null means not by case (the presence). `CallPlan.SharedReceiver` (`BoundArgumentOperation`): how the
+    callee as a Shared call acquires it: default for an owned callee, a Reborrow at `ref/C` of a reference callee's `ReferentOrigin`, a
+    `PayloadProjection` at `ref` of a payload callee; default where `CaseDecider` is null. One writer: `BindValueCall` through
+    `SetCaseReceiver` right after `SetValue` (6 parameters, the limit); `SetValue`, `Set` and `Clear` reset both (storage reused on a
+    rebind). `ReceiverOperation` and `ReceiverKind` stay the Exclusive acquisition.
+  - **Accessor.** `HirTables.CaseDecider(binding, node)` replaces `IndexCaseDecider`: an `IndexKoto`'s plan row `{ Mode: 2, Plan:
+    decider }` (BU-233), or an `InvocationKoto`'s call read through the one path, `CallPlan.Of(binding, node)`, and its `CaseDecider`
+    (F's ruling Z4F-1 C1: no plan-row read beside it, which R5-M9's removal of `CallStorage` would not find); null otherwise. No
+    invocation Mode is written. Consumers read either decider through it; the HIR publisher (which writes the index's row and walks the
+    calls) and HasFacts read the stored members.
+  - **Formation and judgment.** `FormValueCallee` (and `FormPayloadReceiver`) form the callee acquisition in a receiver mode and record
+    nothing, returning a `CalleeOutcome` (Formed, LendsCallee, LendsHandle; Write, ObjectAuthority, TransferRequired, Located);
+    `AcquireValueCallee` records the failure once and judges the lent Place's static root once in the call's mode (`FailStaticBorrow`).
+    A by-case `BindValueCall` also forms in Ref; a failure there is a broken contract (throws, BU-102): a shared lending holds wherever an
+    exclusive one does (SPEC 15.6.2). `CalleeOutcome` is a private enum inside Binding's value-call owner (no vocabulary entry).
+  - **D1.** `BindValueCall` reads the call's Closure once, `CallableClosure(CalledThrough(..))`, for the decider and the declared
+    signature (R4-M159's `DeclaredSignature`; before: `CallableClosure(callee Type)` without `CalledThrough`).
+  - **Takes** (amends R4-M145). `AdjustChildren` takes a by-case callee twice under `Call(0)`, Shared then Exclusive, through one local
+    receiver rule (an owned callee borrowed by the mode, `ReceiverKind`'s mapping kept; any other by its operation): the plan row holds
+    the Shared take, the column the Exclusive one. R4-M145's trigger is "an earlier take of the input by its consumer's calls": at an
+    earlier call (`call > 0`, R4-M109) or as the same call's preceding input (only the by-case receiver takes one node as two
+    consecutive inputs). The rule lives once, in `EarlierAdjust(call, child, preceding, earlier, later)`; RowUses and TakeRecord each
+    keep the call's preceding input, reset by `Call`, and pass it, so operand takes before `Call(0)` never trigger it (Z4F-1 B1: no copy
+    of the trigger in a record). `Claimed`, `UseOf` and ClosureEffects' classification are unchanged (the Exclusive take decides).
+  - **D2.** FormReads keeps no such field on its own ground (it writes no plan row and keeps whichever take of a node reads its Place; a
+    resolved invocation published as an Error keeps its plan). `PlanRow.Adjust`'s contract names the row and, by F's ruling Z4F-3, says
+    why `Call`'s reset stays though no program observes it today (the review's mutant M5: a logging copy over 39 of the unit's classes
+    and ten targeted programs met no event): each operand that a node's first call also takes as its first input (an index's key, an
+    object creation's operand, a `for`'s Subject) is taken by the same Adjust both times, and the reset keeps the row a call's take, as
+    `Claimed`, `UseOf` and the MIR builder's `Taken` read it, without resting on that coincidence.
+  - **Census.** The formation side reads `SharedReceiver` beside each call's `ReceiverOperation`; it joins the Exclusive entry (same
+    outer Origin and referent), so no row, mode or `borrowVersion` moves.
+  - **HasFacts.** A Call plan with a `CaseDecider` is a Value plan in Uniq whose decider's Closure is `CaseFreeReceiver` Ref and
+    `Receiver` Uniq, with `SharedReceiver.Source` and `AdaptedType.Origin` the Exclusive one's (C4: the result's `ReceiverImage`); a plan
+    without one has a default `SharedReceiver`.
+  - **Readers.** Z4-M (the MIR builder's Closure-call frame, `MirCases`' Closure row through `ClosureReceiverIn`, validator row (4);
+    PD13 deleted there). Until then no reader reads the new members; the semantic printer prints a by-case call's decider.
+  - **Remainder** (PLAN G13 (c)). R4-M128's limits and a call of a captured by-case Closure (cc1) stay Exclusive in every case.
+  - **Unverified** (Z4F-1 N1). The payload callee's shared lending where the exclusive one holds (`LendsHandle(LendFold(handle, scope,
+    false))`) was read, probed only by the po rows and the `o()` rows; TakeRecord's preceding field is observed by no test (the
+    review's mutant M3t survives: the Exclusive `Last` decides the classification, as R1.1 says).
+  - **Rejected:** a mode or bool on the acquisition; try-then-fallback; deriving the Shared acquisition from the Exclusive one.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
