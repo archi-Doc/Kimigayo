@@ -588,12 +588,21 @@ public sealed partial class Binding
                 // U1.6g (b), SPEC 7.7.4, 23.1.2: a bound part that does not fit takes the Type through its late adaptation (an Item by
                 // erasure); one that cannot is its own record, at the part, on which the join rests, as a waited part's misfit is. A
                 // Closure or Function Item converts to a Function Type only by its erasure, whose outcome is that record's fact
-                // (ErasePart, R4-M161). A resting join's bound parts keep their records (DecideWaiting's contract, rule W: DECISIONS
-                // BU-79, G368 (1)); a Conflict join's own record stands for its sources.
-                // R7-O1: a part whose only misfit is Origin positions fits, its positions rows of the body that A5 judges at the join, as
+                // (ErasePart, R4-M161): a late Type that fits applies its conversions (TryPropagate), and the first that fails, its
+                // Origin and Loan contract judged there alone (SPEC 15.6.1), is the record the join rests on; one that does not fit
+                // structurally is converted here for its record. A resting join's bound parts keep their records (DecideWaiting's
+                // contract, rule W: DECISIONS BU-79, G368 (1)); a Conflict join's own record stands for its sources.
+                // R7-O1: a part whose only misfit is Origin positions fits, its positions rows of the body that A5 judges once: at a
+                // Target Result Type that step 1 fixed (context.Expected: a declared or the parameter's Type) at the source's value, by
+                // step 4's check of every source (DecideResult), so here by its structure alone; at step 2's common Type at the join, as
                 // the join's own fit forms them (CheckTypeUse at `node`: one row per relation).
-                fits = this.TryPropagate(source, type!, node) || (!awaits && this.CheckTypeUse(context.Sources[i]!, type!, node, out fit));
-                if (!fits && !awaits && context.Outcome != JoinOutcome.Conflict)
+                fits = this.TryPropagate(source, type!, node, out var failedConversion) || (!awaits && (context.Expected is not null
+                    ? this.FitsStructurallyAt(context.Sources[i]!, type!, node) : this.CheckTypeUse(context.Sources[i]!, type!, node, out fit)));
+                if (failedConversion is not null)
+                {
+                    context.RestOn(failedConversion);
+                }
+                else if (!fits && !awaits && context.Outcome != JoinOutcome.Conflict)
                 {
                     if (context.Sources[i]!.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type!.Kind == BoundTypeKind.Function)
                     {
@@ -702,10 +711,13 @@ public sealed partial class Binding
         return late;
     }
 
-    // SPEC 14.9.2 step 3: an expression that awaits its position takes `target` when its late Type fits it at `use`. A part's failed
-    // check there (FitChecked) is its misfit, not a candidate's reason: dropped at exit.
-    private bool TryPropagate(Koto node, BoundType target, Koto use)
+    // SPEC 14.9.2 step 3: an expression that awaits its position takes `target` when its late Type fits it at `use`: its writes and
+    // its adaptations are applied, each Closure or Function Item converted (AdaptAtPosition); `failedConversion` is the first part
+    // whose conversion failed, its own record (SPEC 7.7.4, 15.6.1, 23.1.2). A part's failed check there (FitChecked) is its misfit,
+    // not a candidate's reason: dropped at exit.
+    private bool TryPropagate(Koto node, BoundType target, Koto use, out Koto? failedConversion)
     {
+        failedConversion = null;
         var (writes, adaptations) = (this.lateWrites.Count, this.lateAdaptations.Count);
         var checkedPart = this.trialChecked;
         try
@@ -723,7 +735,10 @@ public sealed partial class Binding
             for (var i = adaptations; i < this.lateAdaptations.Count; i++)
             {
                 var (part, type) = this.lateAdaptations[i];
-                this.AdaptAtPosition(part, part.BoundType!, type);
+                if (!this.AdaptAtPosition(part, part.BoundType!, type))
+                {
+                    failedConversion ??= part;
+                }
             }
 
             return true;
@@ -744,16 +759,20 @@ public sealed partial class Binding
 
     // SPEC 10.2, 7.7.4: a bound part takes the Type at its position as a Tuple argument's part does: a Closure or Function Item by its
     // erasure, decided once, now, as at a selected call (ErasePart), any other part by its one implicit operation (ExpectedAdaptation).
-    private void AdaptAtPosition(Koto part, BoundType actual, BoundType type)
+    // False when the erasure failed: the part's own record.
+    private bool AdaptAtPosition(Koto part, BoundType actual, BoundType type)
     {
         if (actual.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type.Kind == BoundTypeKind.Function)
         {
-            this.ErasePart(part, actual, type);
+            return this.ErasePart(part, actual, type);
         }
-        else if (this.ExpectedAdaptation(part, actual, type) is { } adaptation)
+
+        if (this.ExpectedAdaptation(part, actual, type) is { } adaptation)
         {
             this.adaptations[part] = adaptation;
         }
+
+        return true;
     }
 
     // A bound part that awaits its position takes `type` when it fits it, before its consumer checks it; its Type, null when unbound.
@@ -761,7 +780,7 @@ public sealed partial class Binding
     {
         if (type is not null && part.BoundType is not null && this.AwaitsPosition(part))
         {
-            this.TryPropagate(part, type, part);
+            this.TryPropagate(part, type, part, out _);
         }
 
         return part.BoundType;
@@ -826,9 +845,9 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 step 3, 10.2 (DECISIONS BU-43): a bound part that does not await keeps its own Type where that fits the target, and
-    // otherwise takes the target as a Tuple argument's part does, by its erasure's receiver and signature under the use's premises (the
-    // part of ErasesToFunction's decision that ErasureFits shares, PLAN G504) or its one implicit operation, written when the whole fits
-    // (AdaptAtPosition).
+    // otherwise takes the target as a Tuple argument's part does, by its erasure's structural part (ErasureSignatureFits, every
+    // pre-selection fit's, read the same before selection and after it: SPEC 15.6.1, ArgFlow ruling 184) or its one implicit
+    // operation, written when the whole fits (AdaptAtPosition), where the erasure's conversion judges its Origin and Loan contract.
     private BoundType? LateAdaptation(Koto node, BoundType target)
     {
         if (this.SuppliedType(node) is not { } actual || node.ErasedFunctionType is not null || this.adaptations.ContainsKey(node) ||
@@ -837,7 +856,7 @@ public sealed partial class Binding
             return this.SuppliedType(node);
         }
 
-        var adapted = this.ErasureFits(actual, target, node, null, out _) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
+        var adapted = this.ErasureSignatureFits(actual, target, node) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
         if (adapted is null)
         {
             return actual;
