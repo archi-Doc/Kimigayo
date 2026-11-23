@@ -31,6 +31,10 @@ internal enum OriginPremiseRule : byte
 
     /// <summary>R5: the stored Origins of a borrowed complete local Place outlive that Place, in the body that declares the local.</summary>
     LocalPlace,
+
+    /// <summary>SPEC 15.3.6, 15.6.5: a local region equals its value in a body's oracle that reads it so, its own or one carrying it
+    /// (Binding.UniversalRelations; R7-O2 A1).</summary>
+    Value,
 }
 
 /// <summary>

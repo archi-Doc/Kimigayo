@@ -64,13 +64,17 @@ public sealed partial class Binding
         }
     }
 
-    // Every failure the pass decides at its end, in the order the nodes were bound.
+    // Every failure the pass decides at its end, in the order the nodes were bound. At Final the erasures' Owned obligations are judged in
+    // the prologue (JudgeObligations' Owned kind, JudgeErasedOwned), which reads every region's candidate as complete: a region bound
+    // recorded after it is a broken contract (R7-O2 A1+A2, the Front's D4).
     private void ProduceFailures(BindingMode mode)
     {
+        var judged = -1;
         if (mode == BindingMode.Final)
         {
             this.formationCauses.Empty();
             this.JudgeObligations();
+            judged = this.regionVersion;
 
             this.SettleSpecificationLinks();
             this.PublishNeededLimits();
@@ -127,6 +131,10 @@ public sealed partial class Binding
 
         this.SettleSynthesizedCalls();
         this.FailNeededSites(); // The sites the loop's checks needed (BU-76).
+        if (judged >= 0 && this.regionVersion != judged)
+        {
+            throw new InvalidOperationException("A region bound was recorded at Final after the erasures' Owned obligations were judged (InternalInvariant; R7-O2 A1+A2).");
+        }
     }
 
     // SPEC 10.1, 23.1.2 (DECISIONS: G572 U2a): a call Binding synthesizes for a consumer (an iteration's entry and step, an

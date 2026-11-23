@@ -3636,8 +3636,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the `if` it leaves, is witnessed by its
     // declaration, the value retaining the Loan: a chain between body Origins (OriginRelationDiagnosticTest) and a fixed input's capture
     // (InputDependentValueCallTest), its slot written `during r`: unwritten, a captured `let` local's slot is its own region (PLAN G492-a
-    // (ii)), a fixed Origin of the Closure body no premise relates to r's, so the body's store is Unknown and no Loan is followed
-    // (InputDependentValueCallTest.AFixedInputIsNoPerCallInput's row; the owner's O-261 Q1 (a)).
+    // (ii)), carried at its candidate, r's published value (the owner's O-385 (a)), while the Closure's signature only names r's region,
+    // which gives no premise there (SPEC 15.6.5's last clause; R7-O2 A1), so the body's store is Unknown and no Loan is followed
+    // (InputDependentValueCallTest.AFixedInputIsNoPerCallInput's hp1 row; whether a `let` bound reads as published is D-993's).
     [Theory]
     [InlineData(
         "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +

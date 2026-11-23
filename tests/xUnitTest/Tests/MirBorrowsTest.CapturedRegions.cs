@@ -28,6 +28,44 @@ public sealed partial class MirBorrowsTest
 
     private const string ClauseEnd = "        return w\n    r = q@ref\n    let n = c()\n    see(n@ref)\n" + Main;
 
+    // A call's and a constructor's Function Type parameter, the destinations of a named Closure value (the rows ag2v, ag7v).
+    private const string TakeFn = "func takeFn(g: () -> i32) -> i32 => g()\n";
+
+    private const string HoldFn = "struct H\n    public var f: () -> i32\n    public init(f: () -> i32)\n        self.f = f@move\n";
+
+    // A Closure header over an enclosing `let` region r (the rows of AClosuresHeaderReadsARegionItCarriesAsItsValue): Box's slot takes the
+    // header result's default, which reads r's region as its value exactly where the Closure carries it.
+    private const string HeaderBox = "struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\n";
+
+    private const string HeaderLet = Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    let r = p\n";
+
+    private const string HeaderOf = "(k: Option<ref/i32 during r>) -> Box => $abort(\"no\")";
+
+    private const string TakeG = "func takeG<T>(g: (Option<ref/i32 during static>) -> T) -> i32 => 0\n";
+
+    // The same header over a `var` region r with candidate `static` so far, or over a `let` r bound to a body local's Borrow, and a body
+    // that returns r in a Box (the rows of AClosuresHeaderDefaultIsJudgedOnceItsBodyIsBound and its invalid twins, R7-O2 O2-F).
+    private const string HeaderVar = Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n";
+
+    private const string HeaderBorrow = Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    let r = n@ref\n";
+
+    private const string HeaderInit = "(k: Option<ref/i32 during r>) -> Box => Box.init(r)";
+
+    private const string TakeG2 = "func takeG2<T>(g: (Option<ref/i32 during static>) -> T, x: i32) -> i32 => 0\n";
+
+    // f with a caller's borrow s, and a body-local annotation's Function Type over the `var` r (the rows fsh*, bod2*, fty*; R7-O2 O2-F).
+    private const string HeaderS = Main + "func f(p: ref/i32 during static, s: ref/i32) -> i32\n";
+
+    private const string AnnotatedG = "    let g: (Option<ref/i32 during r>) -> Box = ";
+
+    // A Function Item whose input's result names its universal o (SPEC 15.3.4), and a header with a conditional direct-borrow input y
+    // (SPEC 15.4.3, 8.1.2): the rows fda2v/fda2n/fda3v and pm2v/pm2n/pm3v (R7-O2 O2-F, design §10.7's C3).
+    private const string TakeO = "func take(h: (Option<ref/i32 during static>) -> Box during o, x: ref/i32 during o) -> i32 => 0\n";
+
+    private const string PairG = Main + "func g<s/T>(p: ref/i32 during static, x: s/T) -> i32\n    s is owner or ref\n    T is Owned\n    let n: i32 = 1\n    var r = p\n";
+
+    private const string PairOf = "(y: s/T during r, k: Option<ref/i32 during r>) -> Box => $abort(\"no\")";
+
     // SPEC 15.8.2's table, an exclusive capture: "Reborrow of a captured exclusive reference ... in a Shared or Exclusive call, depends on
     // the call receiver", so while a result is live a second Exclusive call (7.7.3, 15.6.2), or a Move of the Closure, conflicts: an arrow
     // and a block body, only the first result used, a local's borrow, an elided Origin, a second capture, a Closure held in a Field, one
@@ -206,23 +244,27 @@ public sealed partial class MirBorrowsTest
         => MirTargetSide.Check(source, (code, MirTargetSide.At(context, subject)));
 
     // SPEC 10.7, 7.7.4, 15.6.1 (the owner's O-61, verbatim 「O-61 a」; DECISIONS: G570): a comparison with a Function Type is judged by the
-    // contract alone, so a `var`'s region over a `static` source is no `static` there. Invalid, accepted by dev, rejected now: an erasure
-    // (s2h), a call's argument (s2c), a Callable bound (c12). An acceptance hole closed, no limit. The same rule, each invalid under O-61 (a)
-    // and rejected on dev too (G572 U3): a held Closure over a `static`-only region erased at a stated `let` (e6v), at a call's argument
-    // (e6c), at a Field of Function Type (s9), and in a nested body (c11). G572 U1's f3v (an erasure whose input needs `p outlives R`, R's
-    // one bound p) is valid under the owner's O-264 Q5 (a) (J1): MirBorrowsTest.Comparisons.cs. At a call's or a constructor's
-    // argument (s2c, s9, e6c) the record is at the argument since PLAN G379 (a), as at the erasure s2h: applicability reads the erasure's
-    // structural part alone and its Origin part is judged after selection (SPEC 15.6.1, 10.8; DECISIONS R4-M155's t1d_n precedent). There
-    // the region's Owned is decided only once the body is bound, so the erasure is the located Unsupported_Kd at the argument (the owner's
-    // O-406 (a), G379 (a) R4-R5: a part not decidable before finality at applicability; O-57's recorded limit stays at s2h's initialization).
+    // contract alone: a Callable bound over a `var`'s region (c12) keeps its record. The conversion's Owned condition reads a local `var`
+    // region as its candidate once its body is bound (the owner's O-481 (b), verbatim 「O-481 は (b) でよいです」; R7-O2 A1+A2), so its
+    // erasures at a stated `let` (e6v, s2h) are valid (AnErasuresOwnedReadsAVarRegionsCandidateOnceItsBodyIsBound). At a call's or a
+    // constructor's argument (s2c, e6c, s9) the record is at the argument since PLAN G379 (a): applicability reads
+    // the erasure's structural part alone and its Origin part is judged after selection (SPEC 15.6.1, 10.8; DECISIONS R4-M155's t1d_n
+    // precedent). There the region's Owned is decided only once the body is bound, so the erasure is the located Unsupported_Kd at the
+    // argument (the owner's O-406 (a), G379 (a) R4-R5: a part not decidable before finality at applicability), also for a named value in
+    // a nested body over a carried `var` region, which reads as its candidate and has no answer while the body is bound: at a call's
+    // argument (ag2v) and a constructor's (ag7v), valid, and their invalid twins (ag2n, ag7n; R7-O2 A1+A2 moved all four from
+    // UnprovenConstraint_Kd, Q13: dev read no carried `var` region). G572 U1's f3v (an erasure
+    // whose input needs `p outlives R`, R's one bound p) is invalid: R is only named by the nested signature, which gives no premise
+    // (SPEC 15.6.5's last clause; R7-O2 A1's ruling 2): MirBorrowsTest.Comparisons.cs.
     [Theory]
-    [InlineData(See + "func t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    let f: () -> ref/i32 during static = c@move\n    see(f())\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "c@move", null)]
     [InlineData(See + "func two(f: () -> ref/i32 during static)\n    see(f())\nfunc t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    two(c@move)\n" + Main, DiagnosticCode.Unsupported_Kd, "c@move", null)] // O-406 (a): the located limit at the argument (G379 (a) R4-R5)
     [InlineData(See + "struct H\n    public var f: () -> ref/i32 during static\n    public init(f: () -> ref/i32 during static)\n        self.f = f@move\nfunc g(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let h = H.init(c@move)\n    see(h.f())\n" + Main, DiagnosticCode.Unsupported_Kd, "c@move", null)] // O-406 (a): the located limit at the argument (G379 (a) R4-R5)
-    [InlineData(See + "func f(p: ref/i32 during static)\n    var r = p\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        let g: () -> ref/i32 during static = inner@move\n        see(g())\n    outer()\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "inner@move", null)]
-    [InlineData(See + "func f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    let g = func [y] () => y\n    var h: () -> ref/i32 during static = g@move\n    see(h())\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "g@move", null)]
     [InlineData(See + "func two(f: () -> ref/i32 during static)\n    see(f())\nfunc k(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    let g = func [y] () => y\n    two(g@move)\n" + Main, DiagnosticCode.Unsupported_Kd, "g@move", null)] // O-406 (a): the located limit at the argument (G379 (a) R4-R5)
     [InlineData(See + "func apply<F>(g: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    let w = g()\n    return w@follow\nfunc f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let n = apply(c@ref)\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "apply(c@ref)", null)]
+    [InlineData(TakeFn + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> i32\n        let g = func [r] () -> i32 => r@follow\n        return takeFn(g@move)\n    r = p\n    return c()\n" + Main, DiagnosticCode.Unsupported_Kd, "g@move", null)]
+    [InlineData(TakeFn + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> i32\n        let g = func [r] () -> i32 => r@follow\n        return takeFn(g@move)\n    r = n@ref\n    return c()\n" + Main, DiagnosticCode.Unsupported_Kd, "g@move", null)]
+    [InlineData(HoldFn + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> i32\n        let g = func [r] () -> i32 => r@follow\n        let h = H.init(g@move)\n        return 1\n    r = p\n    return c()\n" + Main, DiagnosticCode.Unsupported_Kd, "g@move", null)]
+    [InlineData(HoldFn + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> i32\n        let g = func [r] () -> i32 => r@follow\n        let h = H.init(g@move)\n        return 1\n    r = n@ref\n    return c()\n" + Main, DiagnosticCode.Unsupported_Kd, "g@move", null)]
     public void AComparisonWithAFunctionTypeReadsTheContractAlone(string source, DiagnosticCode code, string context, string? subject)
         => MirTargetSide.Check(source, (code, MirTargetSide.At(context, subject)));
 
@@ -289,13 +331,35 @@ public sealed partial class MirBorrowsTest
     // Closure (n1), a capture and a result over one region (n2, a `var` one n3, one Closure level deeper n4); n2ok's use comes first.
     [Theory]
     [InlineData("f4bv", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    var s = b@ref\n    var r = s\n    let c = func [r] () -> ref/i32 during s => r\n    let v = c()\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
-    [InlineData("f5holdv", "func use() -> i32\n    let x: i32 = 4\n    var r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n", "UnprovenOriginRelation_Kd: start = n | ComparisonLoanConflict_Kd: let y: i32 = 5")]
+    [InlineData("f5holdv", "func use() -> i32\n    let x: i32 = 4\n    var r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: let y: i32 = 5")] // R7-O2 A1 (O-466 (b)): start's carried candidate is r's region, so `start = n` holds; the conflict stays
     [InlineData("n1", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    let s = b@ref\n    var r = s\n    let v = r\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
     [InlineData("n2", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    let s = b@ref\n    let c = func [s] () -> ref/i32 during s => s\n    let v = c()\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
     [InlineData("n3", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    var s = b@ref\n    let c = func [s] () -> ref/i32 during s => s\n    let v = c()\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
     [InlineData("n4", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    let s = b@ref\n    let c = func [s] () -> ref/i32 during s\n        let d = func [s] () -> ref/i32 during s => s\n        return d()\n    let v = c()\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
     [InlineData("n2ok", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    let s = b@ref\n    let c = func [s] () -> ref/i32 during s => s\n    let v = c()\n    see(v)\n    b = 3\npublic func main() => ()\n", "")]
     public void AClosuresRetentionReadsARegionAsItsValue(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 15.6.5's Closure sentence, 15.3.6 (R7-O2 A1; the owner's O-443 (a)): a Closure body that receives an enclosing local's region
+    // through a capture entry reads it as its value at either end of a relation and at an inner chain node: a `let` region's published value
+    // (p2v `r == p`, p8v `r == (p and q)`, p9v `p outlives r`, eq_let, lv_let, e1l `p outlives r outlives` the receiver), a contravariant
+    // `let` slot's (p5v), a retention through it (p10v, ret_v2) and a `var` region's candidate by its row (lv_var, eq_var, p10v_var, a `var`
+    // Pattern binding pc_eq_var). Each was rejected with BU-127's shorter-end limit (Q-542's nine, O-443 (a); the `var` rows G572 (ii)).
+    [Theory]
+    [InlineData("p2v", "func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    let r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == p\n        return w\n    let n = c()\n    see(n@ref)\npublic func main() => ()\n", "")]
+    [InlineData("p5v", "struct C {s}\n    public let call: (ref/i32 during s) -> i32\n    public init(call: (ref/i32 during s) -> i32) => self.call = call@move\nfunc f(a: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h = C.init(g@move)\n    let k = func [h@move, a] () -> i32 => (h.call)(a)\n    return k@move()\npublic func main() => ()\n", "")]
+    [InlineData("p8v", "func see(p: ref/i32) => ()\nfunc f(p: ref/i32, q: ref/i32, k: bool)\n    let r = if k => p else => q\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == (p and q)\n        return w\n    let n = c()\n    see(n@ref)\npublic func main() => ()\n", "")]
+    [InlineData("p9v", "func f(p: ref/i32, q: ref/i32) -> ref/i32 during q\n    origin p outlives q\n    let r = p\n    let c = func [r] (x: ref/i32 during q) -> ref/i32 during q\n        let w: i32 = 1\n            origin p outlives r\n        return x\n    return c(q)\npublic func main() => ()\n", "")]
+    [InlineData("p10v", "func f(z: uniq/i32, x: ref/i32)\n    origin z outlives x\n    let first = x\n    var remember = func [var first] (value: ref/i32 during x) => first = value\n    remember(z@follow@ref)\n    remember(x)\npublic func main() => ()\n", "")]
+    [InlineData("ret_v2", "public func main() => ()\nfunc f(z: uniq/i32, x: ref/i32)\n    origin z outlives x\n    let first = x\n    let second = first\n    var remember = func [var second] (value: ref/i32 during x) => second = value\n    remember(z@follow@ref)\n    remember(x)\n", "")]
+    [InlineData("eq_let", "public func main() => ()\nfunc same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o)) => ()\nfunc f(p: ref/i32, h: uniq/(ref/i32 during p))\n    let r = p\n    var c = func [var r, h] ()\n        same(h, r@uniq)\n    c()\n", "")]
+    [InlineData("lv_let", "public func main() => ()\nfunc see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    let r = p\n    var c = func [var r, p] ()\n        r = p\n        see(r)\n    c()\n", "")]
+    [InlineData("e1l", "public func main() => ()\nfunc same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o)) => ()\nfunc f(p: ref/i32, q: ref/i32)\n    let r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(h, r@uniq)\n    outer(s@uniq)\n", "")]
+    [InlineData("lv_var", "public func main() => ()\nfunc see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    var r = p\n    var c = func [var r, p] ()\n        r = p\n        see(r)\n    c()\n", "")]
+    [InlineData("eq_var", "public func main() => ()\nfunc same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o)) => ()\nfunc f(p: ref/i32, h: uniq/(ref/i32 during p))\n    var r = p\n    var c = func [var r, h] ()\n        same(h, r@uniq)\n    c()\n", "")]
+    [InlineData("p10v_var", "public func main() => ()\nfunc f(z: uniq/i32, x: ref/i32)\n    origin z outlives x\n    var first = x\n    var remember = func [var first] (value: ref/i32 during x) => first = value\n    remember(z@follow@ref)\n    remember(x)\n", "")]
+    [InlineData("pc_eq_var", "public func main() => ()\nfunc f(p: ref/i32, o: Option<ref/i32 during p>) -> i32\n    match o@move\n        .Some(var r)\n            let c = func [r] () -> i32\n                let w: i32 = 1\n                    origin r == p\n                return w\n            return c()\n        .None => return 0\n", "")]
+    public void ACarriedRegionReadsAsItsValueAtEitherEnd(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 
     // SPEC 15.6.1 (DECISIONS: G572 U1): a body's clause is an obligation, so one over an enclosing region is A5's row, judged at the clause: a
@@ -308,25 +372,22 @@ public sealed partial class MirBorrowsTest
     public void AClauseOverAnEnclosingRegionIsARow(string source, string clause)
         => MirTargetSide.Check(source, (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At(clause, null)));
 
-    // A recorded limit, each row a valid program still rejected: a region at the shorter end of a direction of a relation the body checks (of
-    // `==` or `outlives`); a comparison with a Function Type reads the contract alone (O-61 (a)) and is no member. R reads as its solved value,
-    // the meet of its bounds (15.3.6), so R's one bound p makes R outlive p and p outlive R, but the A5 oracle reads that value at a longer end
-    // only (G572's named limit, beside r18's; lifted by the unit that reads the shorter end). Each row asserts today's records so a change is
-    // seen: a stated local through `uniq` (i1, its fit at the initializer `u`, R7-O1 H's D5), a call's equal Origins in either order (e1,
-    // also q5; i3: one record each, the partners', since the premise of `b`'s layer over the failed `o` rests on it, G1128 R1.3 (i)'s
-    // rule W), a clause `r == p` (c5i, also a4v) and `s == r` (v3), the laws `r == (r and p)` (l2v) and `(r and p) outlives r` (l4v), and
-    // the Closure writing p into its `[var r]` (z3v).
+    // SPEC 15.6.5's Closure sentence, 15.3.6 (R7-O2 A1; was G572's recorded limit, BU-127): a region at the shorter end of a direction of a
+    // relation the body checks (of `==` or `outlives`) reads as its value where the body carries it. R's one bound p makes R outlive p and
+    // p outlive R: a stated local through `uniq` (i1), a call's equal Origins in either order (e1, also q5; i3), a clause `r == p` (c5i,
+    // also a4v) and `s == r` (v3), the laws `r == (r and p)` (l2v) and `(r and p) outlives r` (l4v), and the Closure writing p into its
+    // `[var r]` (z3v). Each was rejected with UnprovenOriginRelation_Kd before.
     [Theory]
-    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "= u\n        see(h", "u", "uniq/(ref/i32 during p)")]
-    [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(h, r@uniq)\n    outer(s@uniq)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "r@uniq", null, null)]
-    [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(r@uniq, h)\n    outer(s@uniq)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "same(r@uniq, h)", "h", null)]
-    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == p\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin r == p", null, null)]
-    [InlineData(See + "func f(s: ref/i32)\n    var r = s\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin s == r\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin s == r", null, null)]
-    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == (r and p)\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin r == (r and p)", null, null)]
-    [InlineData(See + "func f(p: ref/i32)\n    var a: i32 = 3\n    var r = p\n    r = a@ref\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin (r and p) outlives r\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin (r and p) outlives r", null, null)]
-    [InlineData("func put(h: uniq/(ref/i32 during o), v: ref/i32 during o)\n    h@follow = v\nfunc f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    var c = func [var r, p] () -> ref/i32 during p\n        put(r@uniq, p)\n        return r\n    return c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "r@uniq, p)", "p", null)]
-    public void ARegionAtTheShorterEndIsARecordedLimit(string source, DiagnosticCode code, string context, string? subject, string? second)
-        => MirTargetSide.Check(source, second is null ? [(code, MirTargetSide.At(context, subject))] : [(code, MirTargetSide.At(context, subject)), (code, MirTargetSide.At(second))]);
+    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n" + Main)]
+    [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(h, r@uniq)\n    outer(s@uniq)\n" + Main)]
+    [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(r@uniq, h)\n    outer(s@uniq)\n" + Main)]
+    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == p\n        return w\n    let n = c()\n    see(n@ref)\n" + Main)]
+    [InlineData(See + "func f(s: ref/i32)\n    var r = s\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin s == r\n        return w\n    let n = c()\n    see(n@ref)\n" + Main)]
+    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == (r and p)\n        return w\n    let n = c()\n    see(n@ref)\n" + Main)]
+    [InlineData(See + "func f(p: ref/i32)\n    var a: i32 = 3\n    var r = p\n    r = a@ref\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin (r and p) outlives r\n        return w\n    let n = c()\n    see(n@ref)\n" + Main)]
+    [InlineData("func put(h: uniq/(ref/i32 during o), v: ref/i32 during o)\n    h@follow = v\nfunc f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    var c = func [var r, p] () -> ref/i32 during p\n        put(r@uniq, p)\n        return r\n    return c()\n" + Main)]
+    public void ARegionAtTheShorterEndReadsAsItsValue(string source)
+        => MirTargetSide.Check(source);
 
     // SPEC 15.6.5 ("`a == b` is edges both ways"; DECISIONS: G572 U1): with the region second of `==`, the backward direction has it at the
     // longer end, so it is a row too and Binding's judge never takes it as holding. R's bound p: a clause `static == r` (q1), an explicit Type
@@ -353,12 +414,176 @@ public sealed partial class MirBorrowsTest
     public void AClauseAnEnclosingRegionMeetsHolds()
         => MirTargetSide.Check(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r outlives p\n        return w\n    let n = c()\n    see(n@ref)\n" + Main);
 
-    // s2 of the same limit (O-57, G565): the erasure's Owned record; the body's fit reads the region's value (G572 U1).
+    // SPEC 15.2.3, 15.3.6, 7.7.4 (the owner's O-481 (b), verbatim 「O-481 は (b) でよいです」; O-471 (a); R7-O2 A1+A2): an erasure's Owned
+    // condition reads a local `var` region as its candidate once its body is bound, its own body's region (A2's half) or one the body
+    // carries (O-443 (a), O-466 (b)), in turn: an Owned proof that reads a region with no answer yet while a body is bound is the erasure's
+    // obligation, judged in Binding's Final prologue (JudgeErasedOwned). Valid, each `static` through R's one bound: the erasure in the
+    // region's own body of a literal (s2: through y's `let`; eo0v, eol0v: a later `r = p`, `b = p`) or of a named Closure value (e6v, s2h,
+    // rv1v: its result during R itself; dev's O-61 (a) reading superseded for the Owned condition); in a nested body that carries R (c11,
+    // c11own0, s2own0), at a `return` (rt1v) and at a call's argument (ag1v: a Closure literal bound at its destination, judged at the
+    // literal, not by the applicability row that judges a named value's erasure, s2c). An object view's payload erasure reads the same
+    // (obj1v, SPEC 15.8.1: RequireObjectErasure takes the same obligation). Each was rejected with UnprovenConstraint_Kd before.
+    [Theory]
+    [InlineData("s2", See + "func f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> ref/i32 during static = func [y] () => y\n    see(g())\n" + Main)]
+    [InlineData("e6v", See + "func t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    let f: () -> ref/i32 during static = c@move\n    see(f())\n" + Main)]
+    [InlineData("s2h", See + "func f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    let g = func [y] () => y\n    var h: () -> ref/i32 during static = g@move\n    see(h())\n" + Main)]
+    [InlineData("eo0v", "func keepStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc needOwned<T>(x: T) -> i32\n    T is Owned\n    return 0\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let g: () -> i32 = func [r] () -> i32 => r@follow\n    r = p\n    return g()\n")]
+    [InlineData("eol0v", "func keepStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc needOwned<T>(x: T) -> i32\n    T is Owned\n    return 0\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var b = p\n    let r = b\n    let g: () -> i32 = func [r] () -> i32 => r@follow\n    b = p\n    return g()\n")]
+    [InlineData("ag1v", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> i32\n        return takeFn(func [r] () -> i32 => r@follow)\n    r = p\n    return c()\n")]
+    [InlineData("obj1v", "open struct Base\n    protected init() => ()\nstruct Leaf<T>: Base\n    public init(): base() => ()\npublic func main() => ()\nfunc f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let h = Kimi.Intrinsics.makeObj(Leaf<ref/i32 during r>.init())\n    let v = h@objref/Base\n    r = s\n    return 0\n")]
+    [InlineData("rt1v", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> () -> i32\n        return func [r] () -> i32 => r@follow\n    r = p\n    return c()()\n")]
+    [InlineData("c11", See + "func f(p: ref/i32 during static)\n    var r = p\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        let g: () -> ref/i32 during static = inner@move\n        see(g())\n    outer()\n" + Main)]
+    [InlineData("c11own0", "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let outer = func [r] () -> i32\n        let inner = func [r] () -> i32 => r@follow\n        let g: () -> i32 = inner@move\n        return g()\n    return outer()\n" + Main)]
+    [InlineData("s2own0", "func f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> i32 = func [y] () => y@follow\n    return g()\n" + Main)]
+    [InlineData("rv1v", "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> ref/i32 during r => r\n    let g: () -> ref/i32 during r = c@move\n    r = p\n    return g()@follow\n" + Main)]
+    public void AnErasuresOwnedReadsAVarRegionsCandidateOnceItsBodyIsBound(string form, string program)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, string.Empty);
+
+    // SPEC 15.3.6 (a candidate over all of the variable's bounds), 15.2.3, 15.6.5 (R7-O2 A1+A2; the owner's O-471 (a), O-481 (b)): a `var`
+    // region's candidate has an answer only once its body is bound (RegionValue's gate, RegionBounded), so an erasure's Owned proof that
+    // reads it while a body is bound is judged at Final (JudgeErasedOwned). A bound recorded after the literal (`r = n@ref`; through
+    // `var r = b` in c11b; `b = n@ref` through `let r = b` in eol0n) is in the candidate: rejected. In the region's own body, where `n@ref` is a
+    // Borrow local to the body, the chain to `static` is Refuted (SPEC 15.6.5): UnsatisfiedConstraint_Kd (s2own, s2late, eo0n, eol0n, rv1n;
+    // dev's Unknown was judged before the bound existed, a record-kind move under Q13); in a nested body (c11own, c11late, c11b, rt1n)
+    // `n@ref` is an enclosing Borrow, fixed there: Unknown, UnprovenConstraint_Kd. A relation's record stays beside it (c11late, s2late,
+    // c11b). Their valid twins: AnErasuresOwnedReadsAVarRegionsCandidateOnceItsBodyIsBound.
+    [Theory]
+    [InlineData("c11own", "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let outer = func [r] () -> i32\n        let inner = func [r] () -> i32 => r@follow\n        let g: () -> i32 = inner@move\n        return g()\n    r = n@ref\n    return outer()\n" + Main, "UnprovenConstraint_Kd: let g: () -> i32 = inner@move")]
+    [InlineData("s2own", "func f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> i32 = func [y] () => y@follow\n    r = n@ref\n    return g()\n" + Main, "UnsatisfiedConstraint_Kd: var g: () -> i32 = func [y] () => y@follow")]
+    [InlineData("c11late", See + "func f(p: ref/i32 during static)\n    let n: i32 = 1\n    var r = p\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        let g: () -> ref/i32 during static = inner@move\n        see(g())\n    r = n@ref\n    outer()\n" + Main, "UnprovenConstraint_Kd: let g: () -> ref/i32 during static = inner@move | UnprovenOriginRelation_Kd: let g: () -> ref/i32 during static = inner@move")]
+    [InlineData("s2late", See + "func f(s: ref/i32 during static)\n    let n: i32 = 1\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> ref/i32 during static = func [y] () => y\n    r = n@ref\n    see(g())\n" + Main, "UnsatisfiedConstraint_Kd: var g: () -> ref/i32 during static = func [y] () => y | UnprovenOriginRelation_Kd: var g: () -> ref/i32 during static = func [y] () => y")]
+    [InlineData("c11b", See + "func f(p: ref/i32 during static)\n    let n: i32 = 1\n    var b = p\n    var r = b\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        let g: () -> ref/i32 during static = inner@move\n        see(g())\n    b = n@ref\n    outer()\n" + Main, "UnprovenConstraint_Kd: let g: () -> ref/i32 during static = inner@move | UnprovenOriginRelation_Kd: let g: () -> ref/i32 during static = inner@move")]
+    [InlineData("eo0n", "func keepStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc needOwned<T>(x: T) -> i32\n    T is Owned\n    return 0\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let g: () -> i32 = func [r] () -> i32 => r@follow\n    r = n@ref\n    return g()\n", "UnsatisfiedConstraint_Kd: let g: () -> i32 = func [r] () -> i32 => r@follow")]
+    [InlineData("eol0n", "func keepStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc needOwned<T>(x: T) -> i32\n    T is Owned\n    return 0\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var b = p\n    let r = b\n    let g: () -> i32 = func [r] () -> i32 => r@follow\n    b = n@ref\n    return g()\n", "UnsatisfiedConstraint_Kd: let g: () -> i32 = func [r] () -> i32 => r@follow")]
+    [InlineData("ag1n", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> i32\n        return takeFn(func [r] () -> i32 => r@follow)\n    r = n@ref\n    return c()\n", "UnprovenConstraint_Kd: return takeFn(func [r] () -> i32 => r@follow)")]
+    [InlineData("obj1n", "open struct Base\n    protected init() => ()\nstruct Leaf<T>: Base\n    public init(): base() => ()\npublic func main() => ()\nfunc f(s: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = s\n    let h = Kimi.Intrinsics.makeObj(Leaf<ref/i32 during r>.init())\n    let v = h@objref/Base\n    r = n@ref\n    return 0\n", "UnprovenConstraint_Kd: let v = h@objref/Base")]
+    [InlineData("rt1n", "func takeFn(g: () -> i32) -> i32 => g()\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> () -> i32\n        return func [r] () -> i32 => r@follow\n    r = n@ref\n    return c()()\n", "UnprovenConstraint_Kd: return func [r] () -> i32 => r@follow")]
+    [InlineData("rv1n", "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    var r = p\n    let c = func [r] () -> ref/i32 during r => r\n    let g: () -> ref/i32 during r = c@move\n    r = n@ref\n    return g()@follow\n" + Main, "UnsatisfiedConstraint_Kd: let g: () -> ref/i32 during r = c@move")]
+    public void ACarriedVarRegionsCandidateIsReadOnceItsBodyIsBound(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 15.4.3 rule 3, 15.6.5, 7.7.2 (R7-O2 O2-H; the owner's O-443 (a), O-487 (a)): a Closure's header reads an enclosing body's region
+    // as its value exactly when the Closure carries it, as its body does. A written list's entries name their regions before any binding
+    // of the header (Binding.ClosureHeaderScope): at the commitment (ann1l, lc6v with a later `let`; hx1v through `[r@ref]`), the header
+    // probe (h6v) and the call-signature evidence (hxg1v); and while a body is bound a region is carried in turn through the enclosing
+    // Closures' own entries, reading no candidate (AdmittedEntry: lc5v, h1v; forwarded by an enclosing omitted list, h5v; one whose body
+    // captured r first, hw1v). Each `let` region's value is `static`. Each was rejected with MissingOriginBinding_Kd at the header before
+    // (the header bound before the entries recorded their regions); dev accepted them. Their invalid twins:
+    // AClosuresHeaderOverARegionItDoesNotCarryIsAFixedOrigin.
+    [Theory]
+    [InlineData("ann1l", HeaderBox + HeaderLet + "    let c = func [r] " + HeaderOf + "\n    return 0\n")]
+    [InlineData("lc6v", HeaderBox + HeaderLet + "    let c = func [r] " + HeaderOf + "\n    let q = 1\n    return q\n")]
+    [InlineData("hx1v", HeaderBox + HeaderLet + "    let c = func [r@ref] " + HeaderOf + "\n    return 0\n")]
+    [InlineData("h6v", HeaderBox + HeaderLet + "    let c: (Option<ref/i32 during r>) -> Box = func [r] (k) -> Box => $abort(\"no\")\n    return 0\n")]
+    [InlineData("hxg1v", HeaderBox + TakeG + HeaderLet + "    return takeG(func [r] " + HeaderOf + ")\n")]
+    [InlineData("lc5v", HeaderBox + HeaderLet + "    let c = func [r] () -> i32\n        let d = func [r] " + HeaderOf + "\n        return 1\n    return c()\n")]
+    [InlineData("h1v", HeaderBox + HeaderLet + "    let c = func [r] () -> i32\n        let d = func [r] () -> i32\n            let e = func [r] " + HeaderOf + "\n            return 1\n        return d()\n    return c()\n")]
+    [InlineData("h5v", HeaderBox + HeaderLet + "    let c = func () -> i32\n        let d = func [r] " + HeaderOf + "\n        return 1\n    return c()\n")]
+    [InlineData("hw1v", HeaderBox + HeaderLet + "    let c = func () -> i32\n        let z = r\n        let d = func [r] " + HeaderOf + "\n        return 1\n    return c()\n")]
+    public void AClosuresHeaderReadsARegionItCarriesAsItsValue(string form, string program)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, string.Empty);
+
+    // SPEC 15.6.5's last clause, 15.3.4 (D-862; R7-O2 O2-H): a region a Closure's header names but the Closure does not carry is a fixed
+    // Origin with no premise, so the header result's default has no proof: the entry names another binding (h0n; at a generic argument,
+    // hxg1n, whose lone candidate applies, the default judged once f's body is bound: R7-O2 O2-F), a chain broken by an inner list (h2n),
+    // an omitted list whose body uses nothing (lc7v). A carried region whose value is a body-local Borrow (h1n) is read as it, which does
+    // not outlive `static`.
+    [Theory]
+    [InlineData("h0n", HeaderBox + HeaderLet + "    let q: i32 = 1\n    let c = func [q] " + HeaderOf + "\n    return 0\n", "MissingOriginBinding_Kd: let c = func [q] " + HeaderOf)]
+    [InlineData("hxg1n", HeaderBox + TakeG + HeaderLet + "    let q: i32 = 1\n    return takeG(func [q] " + HeaderOf + ")\n", "MissingOriginBinding_Kd: return takeG(func [q] " + HeaderOf + ")")]
+    [InlineData("h2n", HeaderBox + HeaderLet + "    let c = func [r] () -> i32\n        let q: i32 = 1\n        let d = func [q] " + HeaderOf + "\n        return 1\n    return c()\n", "MissingOriginBinding_Kd: let d = func [q] " + HeaderOf)]
+    [InlineData("lc7v", HeaderBox + HeaderLet + "    let c = func " + HeaderOf + "\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderOf)]
+    [InlineData("h1n", HeaderBox + Main + "func f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n    let r = n@ref\n    let c = func [r] () -> i32\n        let d = func [r] () -> i32\n            let e = func [r] " + HeaderOf + "\n            return 1\n        return d()\n    return c()\n", "MissingOriginBinding_Kd: let e = func [r] " + HeaderOf)]
+    public void AClosuresHeaderOverARegionItDoesNotCarryIsAFixedOrigin(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 15.4.3 rule 3, 15.4.4, 8.3.3 (R7-O2 O2-F): a header result's default needs its inputs provably Owned; where that proof reads
+    // a fact complete only once the body is bound, the default is judged under Finality, the slot naming its own atom until then. An
+    // omitted list's own capture of r (h3v; with an erasure of c, f6v; over a `var` r, f4v), a `var` r's candidate `static` (ann1v; a body
+    // returning r, f2v; forwarded by an enclosing omitted list, h5vv) and a body-local annotation's Function Type over a `var` r (fty1v)
+    // are valid; each was rejected with MissingOriginBinding_Kd at the slot before (fty1v also UnresolvedBinding_Kd at the literal). So
+    // are the readers of the atom, which take its completion `static`: a call of c (f7v), its result where `T is Owned` is checked
+    // (own1v), at a `during static` parameter (take1v), returned (ret1v), held by a `var` (vb1v), in a nested body (nst1v), a call of g
+    // (fty3v), an erasure to g whose written result is p's (fsh1v, fsh2v), a body returning a carried value (bod2v), a second default over
+    // a value read from c's result (def3v), a condition with take's universal at its shorter end (fda3v) and the meet of a conditional
+    // direct-borrow input's borrow case (pm3v).
+    [Theory]
+    [InlineData("h3v", HeaderBox + HeaderLet + "    let c = func " + HeaderInit + "\n    return 0\n")]
+    [InlineData("f6v", HeaderBox + HeaderLet + "    let c = func " + HeaderInit + "\n    let g: (Option<ref/i32 during r>) -> Box = c@move\n    return 0\n")]
+    [InlineData("f4v", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    return 0\n")]
+    [InlineData("ann1v", HeaderBox + HeaderVar + "    let c = func [r] " + HeaderOf + "\n    r = p\n    return 0\n")]
+    [InlineData("f2v", HeaderBox + HeaderVar + "    let c = func [r] " + HeaderInit + "\n    r = p\n    return 0\n")]
+    [InlineData("h5vv", HeaderBox + HeaderVar + "    let c = func () -> i32\n        let d = func [r] " + HeaderOf + "\n        return 1\n    return c()\n")]
+    [InlineData("fty1v", HeaderBox + HeaderVar + AnnotatedG + "func [r] (k) -> Box => $abort(\"no\")\n    r = p\n    return 0\n")]
+    [InlineData("f7v", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    let b = c(.None)\n    return 0\n")]
+    [InlineData("own1v", HeaderBox + "func need<T>(x: T) -> i32\n    T is Owned\n    return 1\n" + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    return need(c(.None))\n")]
+    [InlineData("take1v", HeaderBox + "func take(b: Box during static) -> i32 => 0\n" + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    return take(c(.None))\n")]
+    [InlineData("ret1v", HeaderBox + Main + "func f(p: ref/i32 during static) -> Box\n    var r = p\n    let c = func " + HeaderInit + "\n    r = p\n    return c(.None)\n")]
+    [InlineData("vb1v", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    var b = c(.None)\n    b = Box.init(p)\n    return 0\n")]
+    [InlineData("nst1v", HeaderBox + HeaderVar + "    let c = func [r] () -> i32\n        let d = func " + HeaderInit + "\n        let b = d(.None)\n        return 1\n    r = p\n    return c()\n")]
+    [InlineData("fty3v", HeaderBox + HeaderVar + AnnotatedG + "func [r] (k) -> Box => $abort(\"no\")\n    r = p\n    let b = g(.None)\n    return 0\n")]
+    [InlineData("fsh1v", HeaderBox + HeaderS + "    var r = p\n" + AnnotatedG + "func [p] (k) -> Box during p => Box.init(p)\n    r = p\n    return 0\n")]
+    [InlineData("fsh2v", HeaderBox + HeaderS + "    var r = p\n" + AnnotatedG + "func (k) -> Box during p => $abort(\"no\")\n    r = p\n    return 0\n")]
+    [InlineData("bod2v", HeaderBox + HeaderS + "    var r = p\n    let c = func [r, p] (k: Option<ref/i32 during r>) -> Box => Box.init(p)\n    r = p\n    return 0\n")]
+    [InlineData("def3v", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = p\n    let v = c(.None).v\n    let e = func [v] (q: Option<ref/i32 during v>) -> Box => Box.init(v)\n    return 0\n")]
+    [InlineData("fda3v", HeaderBox + TakeO + HeaderVar + "    let t = take(func [r] " + HeaderOf + ", p)\n    r = p\n    return t\n")]
+    [InlineData("pm3v", HeaderBox + PairG + "    let c = func [r] " + PairOf + "\n    r = p\n    return 0\n")]
+    public void AClosuresHeaderDefaultIsJudgedOnceItsBodyIsBound(string form, string program)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, string.Empty);
+
+    // SPEC 15.4.4, 23.1.2 (R7-O2 O2-F): a deferred default refuted at Final is the slot's MissingOriginBinding_Kd; its atom stays Unbound
+    // resting on the failed slot, so the records naming it (the body's `Box.init(r)`, a call of c) rest on it: ann1n, f1n, f3n, f5n, f7n,
+    // f8n. A literal a candidate trial reads and nothing commits keeps that trial's default, judged at Final beside the call's record
+    // (hxg3n; hxg2n over a region it does not carry). An annotation's slot and the literal's own slot fail apart, and the erasure to the
+    // annotated Type naming the failed atom rests, as does a call of g (fty1n, fty3n: two records on one line). The slot's owner is its
+    // declaration, never an enclosing Closure: c's use keeps its record (fty2n). A body's record independent of the slot stays (fz1n),
+    // and a deferred slot proven at Final records nothing (fz3n; MissingOriginBinding_Kd before). A literal whose omitted list carries no
+    // region keeps r a fixed Origin (lc7v's class), at a call argument whose result condition then rests (fda2n, fda2v: the call's
+    // NoApplicableOverload_Kd beside it before) and with a conditional direct-borrow input (pm2n, pm2v).
+    [Theory]
+    [InlineData("ann1n", HeaderBox + HeaderVar + "    let c = func [r] " + HeaderOf + "\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let c = func [r] " + HeaderOf)]
+    [InlineData("f1n", HeaderBox + HeaderBorrow + "    let c = func " + HeaderInit + "\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderInit)]
+    [InlineData("f3n", HeaderBox + HeaderVar + "    let c = func [r] " + HeaderInit + "\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let c = func [r] " + HeaderInit)]
+    [InlineData("f5n", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderInit)]
+    [InlineData("f7n", HeaderBox + HeaderBorrow + "    let c = func " + HeaderInit + "\n    let b = c(.None)\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderInit)]
+    [InlineData("f8n", HeaderBox + HeaderVar + "    let c = func " + HeaderInit + "\n    r = n@ref\n    let b = c(.None)\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + HeaderInit)]
+    [InlineData("hxg3n", HeaderBox + TakeG2 + HeaderBorrow + "    return takeG2(func " + HeaderInit + ", true)\n", "NoApplicableOverload_Kd: return takeG2(func " + HeaderInit + ", true) | MissingOriginBinding_Kd: return takeG2(func " + HeaderInit + ", true)")]
+    [InlineData("hxg2n", HeaderBox + TakeG2 + HeaderLet + "    let q: i32 = 1\n    return takeG2(func [q] " + HeaderOf + ", true)\n", "NoApplicableOverload_Kd: return takeG2(func [q] " + HeaderOf + ", true) | MissingOriginBinding_Kd: return takeG2(func [q] " + HeaderOf + ", true)")]
+    [InlineData("fty1n", HeaderBox + HeaderVar + AnnotatedG + "func [r] (k) -> Box => $abort(\"no\")\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let g: (Option<ref/i32 during r>) -> Box = func [r] (k) -> Box => $abort(\"no\")")]
+    [InlineData("fty3n", HeaderBox + HeaderVar + AnnotatedG + "func [r] (k) -> Box => $abort(\"no\")\n    r = n@ref\n    let b = g(.None)\n    return 0\n", "MissingOriginBinding_Kd: let g: (Option<ref/i32 during r>) -> Box = func [r] (k) -> Box => $abort(\"no\")")]
+    [InlineData("fty2n", HeaderBox + HeaderVar + "    let c = func [r] () -> i32\n        let g: (Option<ref/i32 during r>) -> Box = $abort(\"no\")\n        return 1\n    let x: bool = c()\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let g: (Option<ref/i32 during r>) -> Box = $abort(\"no\") | TypeMismatch_Kd: let x: bool = c()")]
+    [InlineData("fz1n", HeaderBox + HeaderBorrow + "    let c = func (k: Option<ref/i32 during r>) -> Box\n        let z: bool = 1\n        return Box.init(r)\n    return 0\n", "MissingOriginBinding_Kd: let c = func (k: Option<ref/i32 during r>) -> Box | TypeMismatch_Kd: let z: bool = 1")]
+    [InlineData("fz3n", HeaderBox + HeaderVar + "    let c = func (k: Option<ref/i32 during r>) -> Box\n        let z: bool = 1\n        return Box.init(r)\n    r = p\n    return 0\n", "TypeMismatch_Kd: let z: bool = 1")]
+    [InlineData("fda2n", HeaderBox + TakeO + HeaderVar + "    let t = take(func " + HeaderOf + ", p)\n    r = n@ref\n    return t\n", "MissingOriginBinding_Kd: let t = take(func " + HeaderOf + ", p)")]
+    [InlineData("fda2v", HeaderBox + TakeO + HeaderVar + "    let t = take(func " + HeaderOf + ", p)\n    r = p\n    return t\n", "MissingOriginBinding_Kd: let t = take(func " + HeaderOf + ", p)")]
+    [InlineData("pm2n", HeaderBox + PairG + "    let c = func " + PairOf + "\n    r = n@ref\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + PairOf)]
+    [InlineData("pm2v", HeaderBox + PairG + "    let c = func " + PairOf + "\n    r = p\n    return 0\n", "MissingOriginBinding_Kd: let c = func " + PairOf)]
+    public void AClosuresDeferredHeaderDefaultRefutedAtFinalIsTheSlotsRecord(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 15.4.4, 15.3.7, 7.7.4 (R7-O2 O2-F): a deferred default proven at Final is `static`, and the conditions that named its atom are
+    // judged against it then: an erasure of a literal whose written result is a caller's borrow s to g's annotated Type over the `var` r
+    // needs `s outlives static`, beside the environment's Owned where the literal captures s (fsh1n) and alone where it captures nothing
+    // (fsh2n; A5's row, where an undeferred target gives the comparison's UnprovenOriginContract_Kd: PLAN's open issue on one condition's
+    // two kinds); and a literal whose slot is proven `static` cannot return s (bod2n).
+    [Theory]
+    [InlineData("fsh1n", HeaderBox + HeaderS + "    let n: i32 = 1\n    var r = p\n" + AnnotatedG + "func [s] (k) -> Box during s => Box.init(s)\n    r = p\n    return 0\n", "UnprovenConstraint_Kd: let g: (Option<ref/i32 during r>) -> Box = func [s] (k) -> Box during s => Box.init(s) | UnprovenOriginRelation_Kd: let g: (Option<ref/i32 during r>) -> Box = func [s] (k) -> Box during s => Box.init(s)")]
+    [InlineData("fsh2n", HeaderBox + HeaderS + "    let n: i32 = 1\n    var r = p\n" + AnnotatedG + "func (k) -> Box during s => $abort(\"no\")\n    r = p\n    return 0\n", "UnprovenOriginRelation_Kd: let g: (Option<ref/i32 during r>) -> Box = func (k) -> Box during s => $abort(\"no\")")]
+    [InlineData("bod2n", HeaderBox + HeaderS + "    var r = p\n    let c = func [r, s] (k: Option<ref/i32 during r>) -> Box => Box.init(s)\n    r = p\n    return 0\n", "UnprovenOriginRelation_Kd: let c = func [r, s] (k: Option<ref/i32 during r>) -> Box => Box.init(s)")]
+    public void AClosuresDeferredHeaderDefaultProvenAtFinalJudgesItsReaders(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // R7-O2 O2-F (design §10.6): the result default reads the slot's row once per resolution and writes it only where a proof defers, so
+    // a warm rebind of a header proven at its resolution (ann1l) allocates nothing.
     [Fact]
-    public void AnErasedCaptureOverAStaticRegionIsARecordedLimit()
-        => MirTargetSide.Check(
-            See + "func f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let y = c()\n    var g: () -> ref/i32 during static = func [y] () => y\n    see(g())\n" + Main,
-            (DiagnosticCode.UnprovenConstraint_Kd, MirTargetSide.At("func [y] () => y", null)));
+    [Trait("Purpose", "Allocation")]
+    public void AWarmRebindOfAProvenHeaderDefaultAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(HeaderBox + HeaderLet + "    let c = func [r] " + HeaderOf + "\n    return 0\n");
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
+    }
 
     // SPEC 15.3.6, 15.6.5, 15.8.2 (DECISIONS: G570): an inferred result names an enclosing region itself, as an annotated one does, so what
     // the region takes after the literal stays in it. A later call's argument to a `during r` parameter, captured or not: the Loan (u1, u1a)

@@ -216,7 +216,8 @@ public partial class SyntaxIdTest
     // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute; PrerequisiteVisits, the walk of a
     // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`; B1b-1's ResolvingTypes,
     // a written Type's BindType, whose rows are reset as it returns, so the column holds carved pages, not rows; SynthesizedCalls,
-    // Milestone23's range calls).
+    // Milestone23's range calls; R7-O2 O2-F's DeferredDefaults, a Closure header's result default over an omitted list's own capture,
+    // judged at Final).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -266,6 +267,7 @@ public partial class SyntaxIdTest
     [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
     [InlineData("ResolvingTypes", "let x: i32 = 1\n")]
     [InlineData("SynthesizedCalls", "milestone:Milestone23")]
+    [InlineData("DeferredDefaults", "struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    return 0\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
