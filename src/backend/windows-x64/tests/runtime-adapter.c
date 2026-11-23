@@ -1,12 +1,14 @@
 // Copyright (c) All contributors. MIT license.
-// Fault injection only. Production modules continue to import the seven specified Windows APIs.
+// Fault injection only: test builds replace the runtime's kernel32 calls with these fakes; production modules import the real ones.
 typedef unsigned long long u64;
 typedef unsigned int u32;
 __declspec(dllimport) void ExitProcess(u32);
 int test_mode;
-static u32 stdout_count, stderr_count, writes, handles, heap_calls, allocs, frees, errors;
+static u32 stdout_count, stderr_count, writes, handles, allocs, frees, errors;
 static char stdout_bytes[64], stderr_bytes[1024];
-static __declspec(align(16)) char heap_bytes[32] = "Hello, world!";
+// The pages the fake VirtualAlloc gives: one 1 MiB region for the allocator's small blocks and mode 17's large run (300,000 bytes and
+// the 16-byte header, rounded up to 74 pages).
+static __declspec(align(4096)) char region_bytes[1 << 20], large_bytes[303104];
 static int contains(const char* bytes, u32 count, const char* text) {
     for (u32 i = 0; i < count; i++) {
         u32 j = 0;
@@ -15,7 +17,6 @@ static int contains(const char* bytes, u32 count, const char* text) {
     }
     return 0;
 }
-void* test_memory(void) { return heap_bytes; }
 static void require(int value) { if (!value) ExitProcess(111); }
 struct string_layout { void* data; u64 length; unsigned char release; };
 _Static_assert(sizeof(struct string_layout) == 24 && _Alignof(struct string_layout) == 8, "string layout");
@@ -24,18 +25,14 @@ void test_layout(u64 size, u64 alignment, u64 length_offset, u64 release_offset)
     require(length_offset == __builtin_offsetof(struct string_layout, length));
     require(release_offset == __builtin_offsetof(struct string_layout, release));
 }
-void* test_GetProcessHeap(void) {
-    heap_calls++;
-    return test_mode == 16 || test_mode == 19 ? (void*)0 : (void*)123;
-}
-void* test_HeapAlloc(void* heap, u32 flags, u64 size) {
-    require(heap == (void*)123 && flags == 0);
-    require(size == ((test_mode == 14 || test_mode == 24) ? 1 : 13));
+void* test_VirtualAlloc(void* address, u64 size, u32 type, u32 protect) {
+    require(address == 0 && type == 12288 && protect == 4);
+    require((size == sizeof(region_bytes) && allocs == 0) || (size == sizeof(large_bytes) && test_mode == 17));
     allocs++;
-    return test_mode == 15 ? (void*)0 : heap_bytes;
+    return test_mode == 15 ? (void*)0 : size == sizeof(large_bytes) ? large_bytes : region_bytes;
 }
-int test_HeapFree(void* heap, u32 flags, void* memory) {
-    require(heap == (void*)123 && flags == 0 && memory == heap_bytes);
+int test_VirtualFree(void* address, u64 size, u32 type) {
+    require(address == large_bytes && size == 0 && type == 32768);
     frees++;
     return test_mode != 17;
 }
@@ -78,7 +75,7 @@ int test_WriteFile(void* handle, const char* bytes, u32 count, u32* written, voi
 }
 __declspec(noreturn) void test_ExitProcess(u32 code) {
     if (test_mode == 29 || test_mode == 30) {
-        require(code == 1 && stdout_count == 0 && stderr_count == 0 && handles == 0 && heap_calls == 0);
+        require(code == 1 && stdout_count == 0 && stderr_count == 0 && handles == 0 && allocs == 0);
         ExitProcess(0);
         __builtin_unreachable();
     }
@@ -94,7 +91,7 @@ __declspec(noreturn) void test_ExitProcess(u32 code) {
         if (test_mode == 17) require(contains(stderr_bytes, stderr_count, "win32=87"));
         if (test_mode == 27) require(contains(stderr_bytes, stderr_count, "win32=4294967295"));
         if (test_mode == 28) require(contains(stderr_bytes, stderr_count, "win32=0"));
-        if (test_mode == 15 || test_mode == 16 || test_mode == 20) require(errors == 0);
+        if (test_mode == 15 || test_mode == 20) require(errors == 0);
     } else require(stderr_count == 0);
     if (test_mode == 0 || test_mode == 1 || test_mode == 22) {
         require(stdout_count == 14 && contains(stdout_bytes, stdout_count, "Hello, world!\n"));
@@ -102,9 +99,10 @@ __declspec(noreturn) void test_ExitProcess(u32 code) {
     if (test_mode == 14 || test_mode == 21 || test_mode == 24) require(stdout_count == 1 && stdout_bytes[0] == '\n');
     if (test_mode >= 8 && test_mode <= 11) require(handles == 0);
     if (test_mode == 12) require(writes == 2);
-    if (test_mode == 13 || test_mode == 20) require(heap_calls == 0);
-    if (test_mode == 0 || test_mode == 1 || test_mode == 21) require(allocs == 0 && frees == 0);
-    if (test_mode == 14 || test_mode == 22 || test_mode == 24) require(allocs == 1 && frees == 1);
+    if (test_mode == 0 || test_mode == 1 || test_mode == 13 || test_mode == 20 || test_mode == 21) require(allocs == 0 && frees == 0);
+    // A small block's release keeps it on its class's list: one region, no page released.
+    if (test_mode == 14 || test_mode == 22 || test_mode == 24) require(allocs == 1 && frees == 0);
+    if (test_mode == 17) require(allocs == 1 && frees == 1);
     if (test_mode == 26) require(stdout_count == 13 && allocs == 1 && frees == 0);
     ExitProcess(0);
     __builtin_unreachable();

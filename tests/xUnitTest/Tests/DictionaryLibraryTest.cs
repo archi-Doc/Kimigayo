@@ -194,8 +194,8 @@ public class DictionaryLibraryTest
     [InlineData("Generic", "func put<K, V>(target: uniq/Dictionary<K, V>, key: K, value: V)\n    K is Equatable\n    _ = target.tryInsert(key@move, value@move)\nvar entries: Dictionary<i32, i32> = [:]\nput(entries@uniq, 1, 2)", "Hello.kimi:3:9")]
     public void CapacityAllocationFailuresReportTheCallerLocation(string name, string source, string location)
     {
-        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)).Replace("call ptr @HeapAlloc(", "call ptr @fail_dictionary_alloc(", StringComparison.Ordinal) +
-            "\ndefine internal ptr @fail_dictionary_alloc(ptr %heap, i32 %flags, i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)).Replace("call ptr @__kimi_heap_allocate(", "call ptr @fail_dictionary_alloc(", StringComparison.Ordinal) +
+            "\ndefine internal ptr @fail_dictionary_alloc(i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
         ScalarEmissionTest.WriteFixture("DictionaryLibraryAllocation" + name, ir, string.Empty, 1, location + ": abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 
@@ -204,10 +204,8 @@ public class DictionaryLibraryTest
     public void ShrinkReleaseFailureReportsTheCallerLocation()
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)\nentries.shrinkToFit()"))
-            .Replace("call i32 @HeapFree(", "call i32 @fail_dictionary_free(", StringComparison.Ordinal)
-            .Replace("call i32 @GetLastError()", "call i32 @fail_dictionary_error()", StringComparison.Ordinal) +
-            "\ndefine internal i32 @fail_dictionary_free(ptr %heap, i32 %flags, ptr %memory) {\nentry:\n  ret i32 0\n}\n" +
-            "define internal i32 @fail_dictionary_error() {\nentry:\n  ret i32 5\n}\n";
+            .Replace("call i64 @__kimi_heap_release(", "call i64 @fail_dictionary_free(", StringComparison.Ordinal) +
+            "\ndefine internal i64 @fail_dictionary_free(ptr %block) {\nentry:\n  ret i64 5\n}\n";
         ScalarEmissionTest.WriteFixture("DictionaryLibraryReleaseFailure", ir, string.Empty, 1, "Hello.kimi:4:1: abort KIMI_E_FREE: Failed to free memory (win32=5)\n");
     }
 

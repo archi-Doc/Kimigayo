@@ -1,0 +1,94 @@
+; Kimi's allocator, common to every target (IMPL 21.4.3; the Tatara plan's decision 23, its minimal form): heap blocks over the
+; platform layer's pages, for one thread. A block is a 16-byte header (word 0: its class k, or a large run's byte length; word 1: the
+; free-list link) and its payload, which the routines return and take. A block of at most 256 KiB, its header included, is 2^k bytes
+; (k = 5 to 18), popped from its class's list or carved from the current 1 MiB region, whose rest is abandoned when a new region is
+; mapped; its release pushes it on its class's list, and it is never split, merged or returned. A larger block is a run of whole
+; pages of its own, mapped at its allocation and released at its release. Regions and runs are page-aligned and every class size is
+; a multiple of 32, so every payload is 16-aligned. No OS call: every page comes from the layer.
+@__kimi_heap_lists = internal global [14 x ptr] zeroinitializer, align 16
+@__kimi_heap_next = internal global ptr null, align 8
+@__kimi_heap_end = internal global ptr null, align 8
+declare i64 @llvm.ctlz.i64(i64, i1 immarg)
+
+; A payload of at least the byte count, which is at most isize's maximum (the callers' check); null when the layer has no pages.
+; Zero bytes take the smallest block, so every result is a fresh start.
+{{__kimi_heap_allocate}}
+entry:
+  %size = add i64 %bytes, 16
+  %small = icmp ule i64 %size, 262144
+  br i1 %small, label %class, label %large
+class:
+  %last = sub i64 %size, 1
+  %zeros = call i64 @llvm.ctlz.i64(i64 %last, i1 true)
+  %bits = sub i64 64, %zeros
+  %above = icmp ugt i64 %bits, 5
+  %k = select i1 %above, i64 %bits, i64 5
+  %index = sub i64 %k, 5
+  %head = getelementptr [14 x ptr], ptr @__kimi_heap_lists, i64 0, i64 %index
+  %free = load ptr, ptr %head, align 8
+  %empty = icmp eq ptr %free, null
+  br i1 %empty, label %carve, label %pop
+pop:
+  %free_link = getelementptr i8, ptr %free, i64 8
+  %rest = load ptr, ptr %free_link, align 8
+  store ptr %rest, ptr %head, align 8
+  br label %done
+carve:
+  %block_size = shl i64 1, %k
+  %next = load ptr, ptr @__kimi_heap_next, align 8
+  %end = load ptr, ptr @__kimi_heap_end, align 8
+  %next_address = ptrtoint ptr %next to i64
+  %end_address = ptrtoint ptr %end to i64
+  %room = sub i64 %end_address, %next_address
+  %fits = icmp ule i64 %block_size, %room
+  br i1 %fits, label %bump, label %region
+region:
+  %fresh = call ptr @__kimi_pages(i64 1048576)
+  %no_region = icmp eq ptr %fresh, null
+  br i1 %no_region, label %failed, label %adopt
+adopt:
+  %fresh_end = getelementptr i8, ptr %fresh, i64 1048576
+  store ptr %fresh_end, ptr @__kimi_heap_end, align 8
+  br label %bump
+bump:
+  %block = phi ptr [ %next, %carve ], [ %fresh, %adopt ]
+  %after = getelementptr i8, ptr %block, i64 %block_size
+  store ptr %after, ptr @__kimi_heap_next, align 8
+  store i64 %k, ptr %block, align 16
+  br label %done
+large:
+  %rounded = add i64 %size, 4095
+  %run = and i64 %rounded, -4096
+  %pages = call ptr @__kimi_pages(i64 %run)
+  %no_pages = icmp eq ptr %pages, null
+  br i1 %no_pages, label %failed, label %own
+own:
+  store i64 %run, ptr %pages, align 16
+  br label %done
+done:
+  %start = phi ptr [ %free, %pop ], [ %block, %bump ], [ %pages, %own ]
+  %payload = getelementptr i8, ptr %start, i64 16
+  ret ptr %payload
+failed:
+  ret ptr null
+}
+
+; A payload the allocation returned: a block back on its class's list (-1), or a large run back to the layer (-1, else its OS error).
+{{__kimi_heap_release}}
+entry:
+  %start = getelementptr i8, ptr %block, i64 -16
+  %word = load i64, ptr %start, align 16
+  %small = icmp ule i64 %word, 18
+  br i1 %small, label %class, label %large
+class:
+  %index = sub i64 %word, 5
+  %head = getelementptr [14 x ptr], ptr @__kimi_heap_lists, i64 0, i64 %index
+  %first = load ptr, ptr %head, align 8
+  %link = getelementptr i8, ptr %start, i64 8
+  store ptr %first, ptr %link, align 8
+  store ptr %start, ptr %head, align 8
+  ret i64 -1
+large:
+  %error = call i64 @__kimi_release_pages(ptr %start, i64 %word)
+  ret i64 %error
+}

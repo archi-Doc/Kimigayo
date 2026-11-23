@@ -135,10 +135,13 @@ public partial class SyntaxIdTest
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
     // its container's list; OverrideEntries: a Type's implementations by original; SpecializationStorage: Milestone11's specialization
     // entries, reused by every Bind; KnownBases: j4's known base, which the Binds after its first start from; Refusals: the refusal a
-    // losing candidate's request past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by
+    // losing candidate's request past the round bound holds, unsettled, in a valid program, G881b's xovm; GatheredGroups: a call's
+    // group gathered from two aliases' groups, the same list refilled at each Bind, R7-N5 B1b-1). The column is read by
     // reflection, since the families' rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each
     // Final check's start empties them, so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
-    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`.
+    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`. IndexedPatterns (R7-N5
+    // B1b-1) has none either: this theory compares a row by reference, and its row is a `(bool, bool)` value; d7 covers its moves, and
+    // SyntaxEditInvalidationTest.AnEditedRoleLeavesNoStalePatternRow fails without ResetMatches' `Empty()`.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]
@@ -164,6 +167,7 @@ public partial class SyntaxIdTest
     [InlineData("ResolvedKeys", "milestone:Milestone27")]
     [InlineData("MatchPlans", "milestone:Milestone10")]
     [InlineData("Refusals", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\npublic func main() => ()\n")]
+    [InlineData("GatheredGroups", "alias A\nalias B\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet n = pick(7)\n")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source
@@ -210,7 +214,9 @@ public partial class SyntaxIdTest
     // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;
     // B2b-2's ResolvedSlices, a slice selected by a range value; R7-N5 E's Prerequisites, the consultation range of `s == missing`,
     // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute; PrerequisiteVisits, the walk of a
-    // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`).
+    // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`; B1b-1's ResolvingTypes,
+    // a written Type's BindType, whose rows are reset as it returns, so the column holds carved pages, not rows; SynthesizedCalls,
+    // Milestone23's range calls).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -258,6 +264,8 @@ public partial class SyntaxIdTest
     [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("EarlyReads", BaseInputFormationBindingTest.J4)]
     [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
+    [InlineData("ResolvingTypes", "let x: i32 = 1\n")]
+    [InlineData("SynthesizedCalls", "milestone:Milestone23")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

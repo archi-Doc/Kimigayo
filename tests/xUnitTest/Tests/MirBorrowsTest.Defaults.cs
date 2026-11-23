@@ -947,9 +947,9 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(moved[0].Place, inspection.Rvalue.Place);
     }
 
-    // SPEC 23.1.2 (DECISIONS R4-M127, R4-M139): a default the call's substitution does not instantiate is an Opaque value at the call
-    // (MirBuildTest's ACopyTheCallDoesNotInstantiateIsAnOpaqueValue), and one over storage Binding rejected a copy (its
-    // ACopyOverRejectedStorageIsBuilt), so no validator finding hides the caller's independent records: `v = 2` stays, over storage Binding
+    // SPEC 23.1.2 (DECISIONS R4-M127, R4-M139; PLAN G396 (3)): a default over an instance past Binding's storage bound is a copy
+    // (MirBuildTest's ACopyOverAnInstancePastBindingsBoundIsBuilt; an Opaque value at the call before), and so is one over storage Binding
+    // rejected (its ACopyOverRejectedStorageIsBuilt), so no validator finding hides the caller's independent records: `v = 2` stays, over storage Binding
     // rejected and in a complete program past the storage depth, as in the twins. The depth limit at lim's and lim64's calls (the owner's
     // 「G272: (1)」, R4-M153) is A5's own, their retention past the depth bound (CallRetention.Limit, a genuine limit); a call over storage Binding rejected
     // keeps its other rows instead (DECISIONS BU-36, SPEC 23.1.2). Before, the copies' Type findings left both programs unanalyzed.

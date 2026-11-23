@@ -313,6 +313,9 @@ public sealed partial class Binding
 
         if ((established ?? literalDefault) is not { } element)
         {
+            // Transitional, R7-E5 (FailUnselected's reason): an empty literal at a place decided later may already hold its located
+            // Unsupported_Kd (TypedByPlaceRule; NeverContinuationTest's failed part), so the miss keeps the slot's Fail; a Record would
+            // publish a dependent miss beside it.
             return this.Fail(literal, BindingFailure.MissingType, true);
         }
 

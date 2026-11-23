@@ -24,8 +24,7 @@ entry:
   %missing = icmp eq ptr %source, null
   br i1 %missing, label %invalid, label %allocate
 allocate:
-  %heap = call ptr @GetProcessHeap()
-  %buffer = call ptr @HeapAlloc(ptr %heap, i32 0, i64 %length)
+  %buffer = call ptr @__kimi_heap_allocate(i64 %length)
   %null = icmp eq ptr %buffer, null
   br i1 %null, label %invalid, label %copy
 copy:
@@ -49,8 +48,7 @@ size:
   br i1 %valid, label %allocate, label %invalid
 allocate:
   %bytes = zext i32 %required to i64
-  %heap = call ptr @GetProcessHeap()
-  %buffer = call ptr @HeapAlloc(ptr %heap, i32 0, i64 %bytes)
+  %buffer = call ptr @__kimi_heap_allocate(i64 %bytes)
   %null = icmp eq ptr %buffer, null
   br i1 %null, label %invalid, label %read
 read:

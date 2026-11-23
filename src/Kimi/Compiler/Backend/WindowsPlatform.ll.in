@@ -1,0 +1,88 @@
+; windows-x64-v1 platform layer over kernel32: the routines through which the common runtime (Runtime.ll.in) writes and exits and
+; its allocator (HeapRuntime.ll.in) maps and releases pages, and the Abort report's OS-error prefix. Every kernel32 call of the runtime
+; in a program module lies in these definitions; the test runtime's calls and a program's own kernel32 imports are outside the layer.
+declare dllimport ptr @GetStdHandle(i32)
+declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
+declare dllimport i32 @GetLastError()
+declare dllimport void @ExitProcess(i32) noreturn
+declare dllimport ptr @VirtualAlloc(ptr, i64, i32, i32)
+declare dllimport i32 @VirtualFree(ptr, i64, i32)
+
+@__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
+
+; Compiler-facing definitions are expanded from RuntimeAbi FunctionAbi records.
+{{__kimi_exit}}
+entry:
+  call void @ExitProcess(i32 %code)
+  unreachable
+}
+
+; Stream 1 or 2 is GetStdHandle's -11 or -12. The common part's checks hold: a nonempty range of at most isize's bytes whose last
+; address is representable. -1 = written; {{no_os_error}} = failure without an OS error; otherwise a zero-extended DWORD error.
+{{__kimi_write}}
+entry:
+  %written_slot = alloca i32, align 4
+  %which = sub i32 -10, %stream
+  %out = call ptr @GetStdHandle(i32 %which)
+  %null_handle = icmp eq ptr %out, null
+  %invalid_handle = icmp eq ptr %out, inttoptr (i64 -1 to ptr)
+  %bad_handle = or i1 %null_handle, %invalid_handle
+  br i1 %bad_handle, label %failure, label %loop
+loop:
+  %cursor = phi ptr [ %data, %entry ], [ %next, %advance ]
+  %remaining = phi i64 [ %length, %entry ], [ %rest, %advance ]
+  %large = icmp ugt i64 %remaining, 4294967295
+  %chunk64 = select i1 %large, i64 4294967295, i64 %remaining
+  %chunk = trunc i64 %chunk64 to i32
+  store i32 0, ptr %written_slot, align 4
+  %ok = call i32 @WriteFile(ptr %out, ptr %cursor, i32 %chunk, ptr %written_slot, ptr null)
+  %failed = icmp eq i32 %ok, 0
+  br i1 %failed, label %os_failure, label %progress
+progress:
+  %written = load i32, ptr %written_slot, align 4
+  %zero = icmp eq i32 %written, 0
+  %excess = icmp ugt i32 %written, %chunk
+  %bad_progress = or i1 %zero, %excess
+  br i1 %bad_progress, label %failure, label %completed
+completed:
+  %count = zext i32 %written to i64
+  %rest = sub i64 %remaining, %count
+  %done = icmp eq i64 %rest, 0
+  br i1 %done, label %success, label %advance
+advance:
+  ; The checked last address bounds every advance; do not compute a pointer after completion.
+  %next = getelementptr i8, ptr %cursor, i64 %count
+  br label %loop
+os_failure:
+  %error = call i32 @GetLastError()
+  %error64 = zext i32 %error to i64
+  ret i64 %error64
+failure:
+  ret i64 {{no_os_error}}
+success:
+  ret i64 -1
+}
+
+; Committed read-write pages, MEM_COMMIT | MEM_RESERVE (12288) and PAGE_READWRITE (4): a page-aligned run of at least the byte count,
+; which Windows places in 64 KiB granules at or above the unmapped bound (so a 1 MiB region is 16 granules); null on failure, without
+; an OS error.
+{{__kimi_pages}}
+entry:
+  %pages = call ptr @VirtualAlloc(ptr null, i64 %bytes, i32 12288, i32 4)
+  ret ptr %pages
+}
+
+; A run the pages routine returned, released whole (MEM_RELEASE, 32768, takes no size); -1 = released, otherwise a zero-extended DWORD
+; error.
+{{__kimi_release_pages}}
+entry:
+  %released = call i32 @VirtualFree(ptr %pages, i64 0, i32 32768)
+  %failed = icmp eq i32 %released, 0
+  br i1 %failed, label %failure, label %done
+failure:
+  %error = call i32 @GetLastError()
+  %error64 = zext i32 %error to i64
+  ret i64 %error64
+done:
+  ret i64 -1
+}
