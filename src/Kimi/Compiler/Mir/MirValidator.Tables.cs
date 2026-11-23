@@ -5,10 +5,10 @@ namespace Kimi.Compiler.Mir;
 // A body's tables and the Places that index them (plan 5.4).
 // - Responsibility: the locals (local 0 the Return local, the Arg locals directly after it, each of a known kind and typed, a Result
 //   local a Temp of local 0's Type; of no Type only Binding's failed slot: _0 and an Arg exactly where the signature's slot is, a Var or
-//   Temp by the builder's contract, each accessed only whole as Bounded allows, PLAN G1073), the MustNotComplete rows, the scopes, the
-//   Opaque sites and the projection table, each in range and
-//   each projection step admitted by the Type of the step it extends, a constant index only on an Index of a fixed array (Tables,
-//   Admits); each Place a location names (Names): in range
+//   Temp by the builder's contract, each accessed only whole as Bounded allows, PLAN G1073; a Field step of no Type, a stored Field whose
+//   slot failed, only written, PLAN G1184), the MustNotComplete rows, the scopes, the Opaque sites and the projection table, each in
+//   range and each projection step admitted by the Type of the step it extends (MirBody.Selects), a constant index only on an Index of a
+//   fixed array (Tables, Admits); each Place a location names (Names): in range
 //   (IsValid) and its first step admitted by its root's Type, each Place MirUses reports (Place) and a diverging Call's destination,
 //   which it does not (MirValidator.Calls); and a Result local read only by the whole Move that delivers it into _0 (DECISIONS R4-M132).
 // - Inputs: the body's tables; each location's Places with their access, and a diverging Call's destination without one. Outputs:
@@ -33,10 +33,9 @@ internal sealed partial class MirValidator
 
             place = MirDescriptors.Judged(place, access);
             this.Accessed(place, access);
-            if (place.Projection == 0 && (place.Root >= 0 ? body.Locals[place.Root].Type : body.Statics[~place.Root].Type) is null &&
-                !this.Bounded(place, access))
+            if (body.TypeOf(place) is null && (place.Projection == 0 || this.Admitted(place)) && !this.Bounded(place, access))
             {
-                this.Report(MirViolation.Local); // PLAN G1073: a slot of no Type is accessed only where no reader judges its Type.
+                this.Report(MirViolation.Local); // PLAN G1073, G1184: a Place of no Type is accessed only where no reader judges its Type.
             }
 
             if (place.Root >= 0 && body.Locals[place.Root].Role == MirLocalRole.Result &&
@@ -170,16 +169,25 @@ internal sealed partial class MirValidator
             return true;
         }
 
-        // PLAN G1073 (SPEC 23.1.2, rule W): the accesses of a whole slot of no Type (Binding's failed slot, MirLocal) that judge nothing of
-        // its Type: a write and its Kills (its storage's beginning or end, an EndBorrow), the Return's Move of _0, the delivery into _0 (a
-        // Result local's included, R4-M132), an Opaque site's undecided use (MirDescriptors.IsUndecided) and a read of a temp the Unknown
-        // mask names by an rvalue that takes its Type from its operands (Propagates, the mask's rule); a read, borrow, drop or case-dependent
-        // access other than these, which a case reader would judge (MirCases.TypeOf), is not one. MirCases.KnownType names the case readers
-        // of each access admitted here.
+        // PLAN G1073, G1184 (SPEC 23.1.2, rule W): the accesses of an admitted Place of no Type that judge nothing of its Type: a write and
+        // its Kills (its storage's beginning or end, an EndBorrow); and of a whole slot of no Type (Binding's failed slot, MirLocal) also the
+        // Return's Move of _0, the delivery into _0 (a Result local's included, R4-M132), the placing of a write's value in transit
+        // (MirLocalRole.Assigned) into a destination of no Type (placing), an Opaque site's undecided use (MirDescriptors.IsUndecided) and a
+        // read of a temp the Unknown mask names by an rvalue that takes its Type from its operands (Propagates, the mask's rule); a read,
+        // borrow, drop or case-dependent access other than these, which a case reader would judge (MirCases.TypeOf), is not one, so a Field
+        // step of no Type (a stored Field whose slot failed, Admitted) is only written. MirCases.KnownType names the case readers of each
+        // access admitted here.
         private readonly bool Bounded(MirPlace place, MirAccess access)
             => (access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse | MirAccess.CaseDependent)) == 0 ||
-                MirDescriptors.IsUndecided(access) || (access == MirAccess.Moves && ((this.returning && place.Root == 0) || this.delivering)) ||
-                (this.propagating && (access & ~(MirAccess.Reads | MirAccess.Moves)) == 0 && place.Root >= 0 && unknown[place.Root]);
+                (place.Projection == 0 && (MirDescriptors.IsUndecided(access) || (access == MirAccess.Moves && ((this.returning && place.Root == 0) ||
+                this.delivering || (this.placing && place.Root >= 0 && body.Locals[place.Root].Role == MirLocalRole.Assigned))) ||
+                (this.propagating && (access & ~(MirAccess.Reads | MirAccess.Moves)) == 0 && place.Root >= 0 && unknown[place.Root])));
+
+        // PLAN G1184 (the Z28 review's D1): whether a projected Place's last step is admitted by the Type of the Place it extends, its root's
+        // for a first step (as Names checks it), so that a last step of no Type is a stored Field whose slot failed (MirBody.Selects); a
+        // step that is not admitted is a Projection finding alone.
+        private readonly bool Admitted(MirPlace place)
+            => this.Admits(body.TypeOf(place with { Projection = body.Projections[place.Projection].Prefix }), body.Projections[place.Projection]);
 
         // The first Arg local a parameter is: past a receiver no signature slot names (a Closure's environment, a destructor's self), the
         // Arg locals beyond the signature's parameters (types.Signature); a default template's p_i are its parameters from local 1.

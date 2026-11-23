@@ -27,7 +27,8 @@ internal enum MirViolation : byte
     Local, // Local 0 is not the Return local, an Arg local does not directly follow it, a local has a Type stating Unstated (a kept part's
     // mark only, DECISIONS BU-46), or a Result local is no Temp of local 0's Type or is read other than by the whole Move into _0 that
     // delivers it (R4-M132); _0 or an Arg of no Type other than exactly where Binding failed its signature slot, a receiver of no Type,
-    // or a slot of no Type accessed other than whole as no reader judges its Type (PLAN G1073).
+    // a slot of no Type accessed other than whole as no reader judges its Type (PLAN G1073), or a Field step of no Type other than
+    // written (PLAN G1184).
     Scope, // A scope that its outer scope does not precede, or a source outside the scopes.
     StorageLocal, // StorageLive or StorageDead of a Place other than a Var or Temp local.
     EndBorrowLocal, // EndBorrow of a Place other than a reference local.
@@ -193,6 +194,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
         private bool calling; // Whether they are a Call's, whose constant records it checks itself (ConstantRecords).
         private bool delivering; // Whether they are a Move's into _0's whole Place, a Result local's one read (MirValidator.Tables).
+        private bool placing; // Whether they are a Use's into a destination of no Type, a write's value in transit placed (MirValidator.Tables' Bounded).
         private bool returning; // Whether they are a Return's, _0's one Move (MirValidator.Tables' Bounded).
         private bool propagating; // Whether they are an rvalue's that takes its Type from them (Propagates; MirValidator.Tables' Bounded).
         private bool byCase; // Whether they are a case site's, which its views acquire (Views), the Copy rule's one exemption (BU-88).
