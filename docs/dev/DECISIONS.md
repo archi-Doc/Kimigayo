@@ -26396,9 +26396,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     shared Loan names, and BU-243 publishes a body atom's borrows, so a supplied layer's members can be read where its Origin is
     bound.
   - **Rows (against dev):** d05 (a `uniq`-kept slot's layer holding r's exclusive address) and the other `uniq`-kept forms (chainU: a
-    pointer read from such a layer into a second `uniq`-kept holder) get the located `Unsupported_Kd` (invalid, accepted on dev); d04x,
-    d04xn and d04xu keep dev's located `Unsupported_Kd` (no move); d04xs and d04xus are accepted (gains: dev limits them); putg stays
-    accepted (15.6.4).
+    pointer read from such a layer into a second `uniq`-kept holder) get the located `Unsupported_Kd` (valid under the owner's
+    O-512, accepted on dev: the whitelist's cost, O-498 Q2 (b)); d04x, d04xn and d04xu keep dev's located `Unsupported_Kd` (no
+    move); d04xs and d04xus are accepted (gains: dev limits them); putg stays accepted (15.6.4).
   - **The whitelist's cost (O-498 Q2 (b); valid programs dev accepts, now the located `Unsupported_Kd`; Q13 moves):** (1) a pointer
     read from a holder's raw layer and fitted into a `uniq`-kept slot's layer: from a `ref`-kept declared layer (x-fu) by that holder's
     region's FittedExclusive, from a `uniq`-kept holder's layer (chainUs: its source past a shared path; chainUk: `null`) by the
@@ -26410,8 +26410,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     the callee's body (SPEC 15.6.1). A caller proves `p > r` only for a Fixed p (its own input Origin with a clause), whose stored
     content is its own caller's storage, so no caller body observes the conjunct; and no contract shows it: g's declared contract is
     the same with `origin p outlives r` alone and with `origin a outlives r` added (z6fx's probe, `notes\z6\z6fx\tests1.txt`).
-  - **Open:** d05o/d05r, a callee's fit into a `uniq`-kept holder (invalid under both readings, accepted): D-1154's PLAN issue
-    (G1312). For the planning session (the z6r8 review's N1, not run): under (B) a fit whose target layer its declaration or signature
+  - **O-512** (the owner, 2026-11-23, verbatim 「O-512 R1」; SPEC 5.7 Calls): a raw layer admits what the borrows its Origin belongs
+    to admit, judged where it is bound (the callee's signature or the Type declaration), never at the caller's substituted Origin.
+    d05o, d05r and their twins (d05c, d05g, d05p, d05q) are valid and accepted; O-507 (b)'s record of d05o/d05r as invalid under
+    both readings is withdrawn; PLAN G1312 closed with no code; d05 and the `uniq`-kept forms above stay at the located
+    `Unsupported_Kd` as the whitelist's cost. For the planning session (the z6r8 review's N1, not run): under (B) a fit whose target layer its declaration or signature
     caps need not form FittedExclusive (would accept x-fu, d04x, d04xn), and the Limits predicates could read FittedExclusive alone
     in place of FittedIntoHolder (would return t4s, t6wn, u-sp, u-lps, x-fw); each needs its own design and run.
   - **Removal:** Z6's route (a) (each fit's source Origins published and read) removes `FittedIntoHolder` and `FittedExclusive`.
