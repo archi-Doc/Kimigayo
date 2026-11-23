@@ -132,8 +132,6 @@ public partial class ResultPremiseTest
 
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedConstraint_Kd) + "|";
 
-    private const string Unsupported = nameof(DiagnosticCode.Unsupported_Kd) + "|";
-
     // SPEC 15.6.5: pickRelated is valid and runs; the call's result keeps the Loans of both borrows, so writing either referent while
     // it lives is a Loan conflict.
     [Fact]
@@ -317,14 +315,11 @@ public partial class ResultPremiseTest
             "func use() -> i32\n    let g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static) = f\n    return 0\n" + Main;
         // The owner's (a) (2026-10-27): the conversion assumes the target's own well-formedness and adds no record (it was
         // UnprovenOriginContract_Kd at f); the target relates its per-call Origin to static beyond its input, which is the annotation's
-        // record where it is written (SPEC 15.3.4, DECISIONS R4-M162). F-a (H3b; the owner's O-2, 「一覧に加える」: H5's (e) list, PLAN
-        // G216 (b)): Binding records nothing, so A5's located Unsupported_Kd there keeps the program rejected where dev's
-        // UnprovenOriginRelation_Kd was ("requires the omitted Origin of ref/i32 outlives static"); U-O3 (BU's R7-O3) moves it to Binding.
+        // record where it is written (SPEC 15.3.4, DECISIONS R4-M162): Binding's, the nested signature's declaration row (R7-O3 U-O3; A5's
+        // located Unsupported_Kd there until then, F-a of H5's (e) list).
         var result = Assert.Single(DiagnosticCorpus.Check(premise).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), DiagnosticCategory.Unsupported, "ref/(ref/i32) during static"), (result.Code, result.Category, Text(premise, result.Span)));
-        Assert.Null(result.Label);
-        Assert.Null(result.Reason);
-        Assert.Null(result.Related);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), DiagnosticCategory.Proof, "ref/(ref/i32) during static"), (result.Code, result.Category, Text(premise, result.Span)));
+        Assert.Equal("requires the omitted Origin of ref/i32 outlives static, which is not proven", result.Label);
         Assert.True(DiagnosticCorpus.Check(premise.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
 
         // A Callable argument proves the clause too: an Item whose clause the requirement cannot prove fails the Callable proof in its
@@ -542,8 +537,8 @@ public partial class ResultPremiseTest
     [InlineData("func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> i32\n    return 1\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven")] // z1n
     [InlineData("func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> i32\n    return 0\n\nfunc mover() -> i32\n    var s = [1, 2]\n    let t = s@move\n    let u = s@move\n    return 0\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven", nameof(DiagnosticCode.MovedPlace_Kd) + "|s|")] // z1nmv: dev's MovedPlace_Kd at the second `s@move`, lost beside this Binding-level record until H5, is the MIR's record published directly (R5-M184, H3b T51; DECISIONS R4-M162, BU-45)
     [InlineData("func g(q: ref/i32, cb: (ref/i32) -> Option<ref/(ref/i32 during q)>) -> i32 => 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives the omitted Origin of ref/i32, which is not proven")] // r3
-    [InlineData("func host(q: ref/i32) -> i32\n    let g = func [q] (p: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    return 0\n\n", Unsupported + "ref/(ref/i32 during q)|")] // G216 (b), a Closure's written result; F-a (the owner's O-2, 「一覧に加える」): Binding records nothing and A5's located Unsupported_Kd keeps it rejected; U-O3 / R7-O3 restores dev's UnprovenOriginRelation_Kd here ("requires q outlives p")
-    [InlineData("func host(q: ref/i32) -> i32\n    var f: (ref/i32) -> Option<ref/(ref/i32 during q)> = func [] (p: ref/i32) => Option.None\n    return 0\n\n", Unsupported + "ref/(ref/i32 during q)|")] // G216 (b), a local annotation; F-a (the owner's O-2, 「一覧に加える」): Binding records nothing and A5's located Unsupported_Kd keeps it rejected; U-O3 / R7-O3 restores dev's UnprovenOriginRelation_Kd here
+    [InlineData("func host(q: ref/i32) -> i32\n    let g = func [q] (p: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    return 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives p, which is not proven")] // G216 (b), a Closure's written result: the nested signature's declaration row (R7-O3 U-O3; A5's located Unsupported_Kd before, F-a)
+    [InlineData("func host(q: ref/i32) -> i32\n    var f: (ref/i32) -> Option<ref/(ref/i32 during q)> = func [] (p: ref/i32) => Option.None\n    return 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives the omitted Origin of ref/i32, which is not proven")] // G216 (b), a local annotation: the nested signature's declaration row (R7-O3 U-O3; A5's located Unsupported_Kd before, F-a)
     [InlineData("func use(g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static), s: ref/i32 during static) -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\n\n", Unproven + "ref/(ref/i32) during static|requires the omitted Origin of ref/i32 outlives static, which is not proven")] // lpok
     [InlineData("func k(q: ref/i32, r: ref/i32, fs: Array<() -> Option<ref/(ref/i32 during q) during r>>) -> i32\n    return 0\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven")] // arr
     [InlineData(ClauseType + ClauseResult, Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7
@@ -576,15 +571,14 @@ public partial class ResultPremiseTest
 
     // The local annotations that dev already judged at their occurrence keep their records (ann2, loc), and a Field's Function Type result
     // keeps the Field's formation record beside its own (the formation check also enters Function Types; a dependent record, DECISIONS Q13).
-    // F-a (H3b; the owner's O-2, 「一覧に加える」: H5's (e) list, PLAN G216 (b)): on ann2 Binding records nothing, so A5's located
-    // Unsupported_Kd at each written nested relation keeps it rejected where dev's UnprovenOriginRelation_Kd was ("requires the omitted
-    // Origin of ref/i32 outlives static", "requires x outlives static"); U-O3 (BU's R7-O3) moves the Language records to Binding there.
+    // ann2's two per-call relations are their nested signatures' declaration rows, Binding's records (R7-O3 U-O3; A5's located
+    // Unsupported_Kd at each until then, F-a of H5's (e) list).
     [Fact]
     public void WrittenFunctionTypeResultsKeepTheirOtherRecords()
     {
         var ann2 = "func k() -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during static> = func [] (x: ref/i32) -> Option<ref/(ref/i32 during x) during static> => .None\n    return 0\n\n" + Main;
         Assert.Equal(
-            [Unsupported + "ref/(ref/i32) during static|", Unsupported + "ref/(ref/i32 during x) during static|"],
+            [Unproven + "ref/(ref/i32) during static|requires the omitted Origin of ref/i32 outlives static, which is not proven", Unproven + "ref/(ref/i32 during x) during static|requires x outlives static, which is not proven"],
             DiagnosticCorpus.Check(ann2).Diagnostics.Select(x => $"{x.Code}|{Text(ann2, x.Span)}|{x.Label}"));
         var loc = "func k(q: ref/i32, r: ref/i32) -> i32\n    let g: () -> Option<ref/(ref/i32 during q) during r> = func [] () -> Option<ref/(ref/i32 during q) during r> => .None\n    return 0\n\n" + Main;
         Assert.Equal(

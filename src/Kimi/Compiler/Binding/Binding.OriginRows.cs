@@ -8,7 +8,8 @@
 // with rows, in formation order).
 // Invariants: a slice is read-only for consumers and filled only through IOriginRowSetBuilder; a row formed with no body is in no slice
 // (DECISIONS BU-26); storage is kept across passes. The view is its own validator (DECISIONS BU-102). Its contract: no row with no body
-// is left (the declaration judge consumes every one whose ends are declaration atoms, and a header names no other, R4-M101 E1, BU-89);
+// is left (the declaration judge consumes every one whose ends are declaration atoms, and a header or a nested signature's per-call row
+// formed in a body names no other, R4-M101 E1, BU-89, R7-O3 U-O3);
 // a case binder is its body's (only a declaration declares a pair binder, so the binders at a use are its body root's); every atom has a
 // class and none is Dependent (a body stamps each non-declaration atom it forms, E1; only a Binding failure leaves an Unbound or pending
 // atom, R4-M118); a unit names a non-Fixed atom of its own part or of none (an atom's part is its forming unit's, E4, and one body forms

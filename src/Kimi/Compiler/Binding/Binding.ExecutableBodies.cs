@@ -8,8 +8,9 @@
 //   OriginDeclaration.Body (BeginOriginDeclaration), BoundClosure.EvaluatingBody (BindConcreteClosure), and ParameterVisible's answer.
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
 //   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
-//   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed or stamped in it, and it
-//   is never a MIR key.
+//   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed in it, only AddObligation
+//   stamps it, on a relation formed in a body with a nested signature's per-call end (that signature's declaration row, R7-O3 U-O3), and
+//   it is never a MIR key.
 // - Prohibitions: no body derived from a scope chain, Use.Parent or syntax.
 
 using Kimi.Compiler.Parsing;
