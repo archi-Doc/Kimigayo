@@ -201,12 +201,11 @@ public partial class SyntaxIdTest
     // would satisfy; PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
     // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
-    // under a holed annotation;
-    // BaseCallFailures, a `base` reference that calls nothing;
+    // under a holed annotation; BaseCallFailures, a `base` reference that calls nothing;
     // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
     // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
-    // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UnboundSlots, a call whose slot
-    // nothing binds, and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
+    // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UniqIndexing, a Dictionary's
+    // user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
     // B1b-2's MemberSelections, a stored Field read and a method call, InferredConstructionTargets, a generic struct's construction
     // without its Type arguments, and QualificationStops, an instance member named without `self`; D-986's FormReads, the kept operands
     // `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query memos written in a Bind: the
