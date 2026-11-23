@@ -505,7 +505,7 @@ public sealed partial class Binding
             case NumberLiteralKoto number:
                 if (this.TakesGenericLiterals(expected, scope))
                 {
-                    return !number.IsInteger ? this.Fail(node, BindingFailure.TypeMismatch) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Fail(node, BindingFailure.InvalidLiteral);
+                    return !number.IsInteger ? this.Fail(node, BindingFailure.TypeMismatch) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Record(node, BindingFailure.InvalidLiteral, []);
                 }
 
                 var numberType = DefaultLiteralType(number, expected);
@@ -516,7 +516,7 @@ public sealed partial class Binding
                     return this.RecordMismatch(node, node, new(null, found), numberType, ComparisonFailure.Shape);
                 }
 
-                return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
+                return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Record(node, BindingFailure.InvalidLiteral, []);
             case NullLiteralKoto:
                 return expected is { IsPointer: true } ? Complete(node, expected) : this.Record(node, BindingFailure.MissingType, [], unresolved: true);
             case BaseReferenceKoto baseReference:

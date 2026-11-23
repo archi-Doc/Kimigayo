@@ -154,18 +154,18 @@ public class NumericConversionEmissionTest
     }
 
     [Theory]
-    [InlineData("256.0@u8", "its truncated value is outside the range of u8")]
-    [InlineData("1e10@i32", "its truncated value is outside the range of i32")]
-    [InlineData("-0.5e1@u8", "its truncated value is outside the range of u8")]
-    [InlineData("(-129.0)@i8", "its truncated value is outside the range of i8")]
-    [InlineData("9.3e18@i64", "its truncated value is outside the range of i64")]
-    [InlineData("1e39@u128", "its truncated value is outside the range of u128")]
-    [InlineData("340282366920938463463374607431768211456.0@u128", "its truncated value is outside the range of u128")]
-    [InlineData("1e99999999999999999999@i32", "its truncated value is outside the range of i32")]
-    [InlineData("256@u8", "its value is outside the range of u8")]
-    [InlineData("((-129))@i8", "its value is outside the range of i8")]
-    [InlineData("-1@Wrapping<u32>", "its value is outside the range of Wrapping<u32>")]
-    public void DirectLiteralsOutsideTheRangeAreStaticAndExplained(string source, string note)
+    [InlineData("256.0@u8")]
+    [InlineData("1e10@i32")]
+    [InlineData("-0.5e1@u8")]
+    [InlineData("(-129.0)@i8")]
+    [InlineData("9.3e18@i64")]
+    [InlineData("1e39@u128")]
+    [InlineData("340282366920938463463374607431768211456.0@u128")]
+    [InlineData("1e99999999999999999999@i32")]
+    [InlineData("256@u8")]
+    [InlineData("((-129))@i8")]
+    [InlineData("-1@Wrapping<u32>")]
+    public void DirectLiteralsOutsideTheRangeAreStatic(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
@@ -173,7 +173,7 @@ public class NumericConversionEmissionTest
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal("InvalidNumericLiteral_Kd", error.Code);
-        Assert.Contains(note, error.Note);
+        Assert.Null(error.Note); // R7-E3 E3c-2: the record is fact-less, its literal Note gone by code (M3, O4 (a)).
         Assert.False(c.Generate(TextWriter.Null));
     }
 

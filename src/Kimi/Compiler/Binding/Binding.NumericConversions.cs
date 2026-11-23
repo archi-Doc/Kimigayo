@@ -151,7 +151,7 @@ public sealed partial class Binding
         {
             if (!number.TryGetIntegerMagnitude(out var magnitude))
             {
-                return this.Fail(conversion, BindingFailure.InvalidLiteral);
+                return this.Record(conversion, BindingFailure.InvalidLiteral, []);
             }
 
             // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant; a U whose instance decides
@@ -196,7 +196,7 @@ public sealed partial class Binding
                 // The integer literal is wrapped to the unsigned Type of the target's width, and those bits are read as the float.
                 if (!number.TryGetIntegerMagnitude(out var magnitude))
                 {
-                    return this.Fail(conversion, BindingFailure.InvalidLiteral);
+                    return this.Record(conversion, BindingFailure.InvalidLiteral, []);
                 }
 
                 var width = ReferenceEquals(target, BoundType.F32) ? 32 : 64;
@@ -208,7 +208,7 @@ public sealed partial class Binding
                 // The floating literal is rounded once to the floating-point Type of the target's width, and its bits are read as U.
                 if (!TryFloatLiteral(number.SourceSpelling, width == 32 ? BoundType.F32 : BoundType.F64, negative, out var bits))
                 {
-                    return this.Fail(conversion, BindingFailure.InvalidLiteral);
+                    return this.Record(conversion, BindingFailure.InvalidLiteral, []);
                 }
 
                 folded = TyCtxt.Normalize(bits, width);
@@ -262,7 +262,7 @@ public sealed partial class Binding
         if (!number.TryGetTruncatedMagnitude(out var magnitude) ||
             !TryLiteral(target, magnitude, negative, out var bits))
         {
-            this.Fail(operand, BindingFailure.InvalidLiteral);
+            this.Record(operand, BindingFailure.InvalidLiteral, []);
             for (var node = conversion.Left; !ReferenceEquals(node, operand); node = ((UnaryKoto)node).Operand)
             {
                 Complete(node, null);

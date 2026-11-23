@@ -41,23 +41,6 @@ public sealed partial class Binding
         }
     }
 
-    // The target of the plain numeric conversion whose direct literal operand failed to fit, if the node is such a literal.
-    private static BoundType? LiteralConversionTarget(Koto node)
-    {
-        if (KotoHelper.SignedNumber(node, out _) is null)
-        {
-            return null;
-        }
-
-        var parent = node.Parent;
-        while (parent is ParenthesizedKoto)
-        {
-            parent = parent.Parent;
-        }
-
-        return parent is ConversionKoto { Right: not TypeSemanticsKoto { ConversionOperation: not null } } conversion ? conversion.Right.BoundType : null;
-    }
-
     // SPEC 7.7.3: the call a closure's minimum receiver needs, and the calls a Callable receiver permits.
     private static string CallReceiverText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "a Shared call", SemanticsKind.Uniq => "an Exclusive call", _ => "a Consuming call" };
@@ -168,12 +151,6 @@ public sealed partial class Binding
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {
             this.ReportQualification(issue.Node, store, requirement);
-        }
-        else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
-        {
-            // SPEC 13.5.4: a direct literal is converted at compile time, so its range failure is explained at the literal.
-            var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
-            issue.Node.ReportIn(store, requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4)");
         }
         else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
         {

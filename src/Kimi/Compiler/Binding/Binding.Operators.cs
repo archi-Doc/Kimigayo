@@ -81,7 +81,7 @@ public sealed partial class Binding
 
                 if (!FitsGenericInteger(number, unary.Akind == KotoKind.PrefixMinus))
                 {
-                    return this.Fail(unary, BindingFailure.InvalidLiteral);
+                    return this.Record(unary, BindingFailure.InvalidLiteral, []);
                 }
 
                 Complete(number, expected);
@@ -97,7 +97,7 @@ public sealed partial class Binding
 
             if (!FitsLiteral(number, type, unary.Akind == KotoKind.PrefixMinus))
             {
-                return this.Fail(unary, BindingFailure.InvalidLiteral);
+                return this.Record(unary, BindingFailure.InvalidLiteral, []);
             }
 
             Complete(number, type);
