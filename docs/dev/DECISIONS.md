@@ -6937,10 +6937,6 @@ and migration obligations remain in force; no numeric cap changes are authorized
     not decide it: an Origin fact made the candidate inapplicable).
   - Open, G379 (b), R7-P4 T2: the Item arm (`ItemContractFits`), `FunctionReferenceApplicability` (census row 14) and the Callable
     proof's per-call fallback (`PerCallCallables`); boundary rows itsel, frsel, frselctl1n and G514's t4q, u2, u2g Explicit until T2.
-  - Amended by BU-251 (2026-11-24; AF-3b, Q-731): the Item arm is now. A Function Item's erasure decides applicability by its
-    structural part, as a Closure's, and its contract is judged by the conversion (`ItemSignatureFits`, named `ItemContractFits`
-    above); itsel, frsel, frselctl1n and t4q are normal rows. The Open line keeps `FunctionReferenceApplicability`,
-    `PerCallCallables`, u2 and u2g.
 - **R4-M214 A7 (commit 04857b18f, N29c) is superseded** (2026-11-19; Back, Binding's selection; PLAN G379 (a)) by G379 (a)
   (Revision 3, commit 76846f209, and Revisions 4-5, commit 780e4d16a): 'an erasure's Shared receiver, Owned environment and
   receiver-free result are judged after selection' had one basis, SPEC 10.7's sentence 'a receiver, Copy, Owned or Loan failure
@@ -12751,12 +12747,6 @@ resumed by R4-M86 (2026-10-20).
     at vfb_bad and r23_fb_cl_bad stays ... a dependence analysis beyond the failed input" and its p03 sentence ("one such record where
     the base had none"). All three now keep only the failed name's `UnresolvedBinding_Kd`; the reason (the erasure would need to know
     that q's only evidence failed) no longer holds, since the comparison holds with q's call region (R4-M224).
-  - Superseded in part by BU-251 (AF-3b's B1, 5780efddc, 2026-11-24): the G504 amendment's sentence "A join source's erasure is
-    decided once, under the use's premises: its late Type reads `ErasureFits` ... the premise-free `ErasureSignatureFits` stays
-    applicability's". The late Type now reads `ErasureSignatureFits`, and `AdaptAtPosition`'s conversion judges the contract, its
-    failure the record the join rests on. The reason no longer holds: `ErasureSignatureFits` was a premise-free Origin judge that
-    rejected Closures the caller's clause admits (y02c, y02cn crashed); since R4-M213 and BU-251 it is the structural part, which
-    admits every erasure the contract admits (y02c, y02cn, z01 pass).
 
 - **BU-116 A Closure whose result retains its receiver is not erased** (2026-11-07; PLAN G516, O-28, BU #56 by Middle's unit
   r4-oi-o28; Major, no design review required (RI30 B-1)) SPEC 7.7.4, 15.6.4, 5.7 Calls. The owner's O-28 (a), verbatim 「O-28は、(a)：規則 A の保持も「呼び出し元への依存」と数える、で決定します」:
@@ -17900,70 +17890,6 @@ resumed by R4-M86 (2026-10-20).
     setter would stay derived while MIR checks every Field); a Field Place over a receiver of no Type (d3, d4: a failed `self`); a
     Binding term for the identity premise's receiver (`HirTables.IdentityPremise`: BU-72 publishes no fact for a nested parameter, so
     x1, x2, x3, x5 faulted; the builder's `Field` owns the limit, one rule); a receiver-free predicate over the Field's own struct.
-- **BU-251 An erasure's Origin and Loan contract is the conversion's alone, a Function Item's as a Closure's; before selection a
-  waiting join position's part is fitted by the structural part (PLAN G924 AF-3b, G379 (b)'s Item arm)** (Front, 2026-11-24;
-  Binding's argument fit and selection; Q-731, D-1213; Major, an acceptance mover; R7-P4 T2's first part; designs
-  `front\notes\ArgFlow\af3\design-v3-A-causeB.md` and `af3\design-v3-A-B1.md` §1-§11; F's ArgFlow rulings 179, 181, 183-185; the Back's
-  answer on C-507; the implementation review `af3\review-impl-ag.md` and its delta read; commits 8bff6d6e2, 99234eb64, 5780efddc)
-  SPEC 15.6.1, 10.2, 10.4, 10.5.3, 10.8, 7.7.4. Extends R4-M213 to Function Items and amends it ("Open, G379 (b), R7-P4 T2: the Item
-  arm": the Item arm is now); supersedes in part BU-115's G504 amendment (below).
-  - Cause: `ErasureSignatureFits`' Item arm proved a Function Item's whole contract before selection (`ItemSignatureFits`), so a
-    candidate trial, a checked part's query (a Case payload at E, faa7fa3dd) and `FitPerCall` decided applicability by an Origin
-    relation; and `CompletePayloads` converted a payload only where a fit's operation said Erasure, which a settled payload has none
-    of (8eabb18e9).
-  - Rule: every fit before selection reads the erasure's structural part (`FitsStructuralPartAt` over the callable's signature), a
-    Function Item's as a Closure's. Its Origin and Loan contract is judged once, by the conversion at the instantiated Type after
-    selection (`ErasesToFunction` -> `ErasureFits` -> `ItemSignatureFits`), a failure being the part's `UnprovenOriginContract_Kd`,
-    which never reselects. A construction converts a typed callable payload by the Types it completes (a Closure or Function Item at a
-    Function Type, as `CompleteValueCallPart`). BU-240's split fallback stays on the structural arm (`RestsOnSplitCases` over it);
-    `UnformedItemFails` reads the structural arm.
-  - **B1 (5780efddc; rulings 184, 185): one rule at three sites, no new component, field or vocabulary entry.** Before selection a
-    waiting join position's part is fitted by the structural part only: a late Type's erasure by `ErasureSignatureFits`
-    (`LateAdaptation`; `ErasureFits` has one reader, `ErasesToFunction`), a Tuple or array literal part by its own parts at every
-    position kind (rule A's `FitsWholeAt` row, no longer `PartKind.Typed` only; the default row `LateFits` is a typed or Dictionary
-    part's). After selection the conversion's failure is the record the join rests on (`TryPropagate`'s failed conversion,
-    `BindWaitedSources`). Cause A's row a2 (aebf5be78: a typed part of a waiting position fits by `FitTyped`) is deleted, subsumed.
-  - Supersedes in part BU-115's G504 amendment sentence "its late Type reads `ErasureFits` ... the premise-free
-    `ErasureSignatureFits` stays applicability's": its reason (a premise-free signature fit rejected Closures the caller's clause
-    admits) no longer holds, since `ErasureSignatureFits` is the structural part (BU-115's line).
-  - Moves (Q13; named in 8bff6d6e2, 99234eb64 and 5780efddc). Class 1 (an invalid program now rejected): kdd_bad accepted ->
-    `UnprovenOriginContract_Kd` at `h3`; itsel, frsel, s2_runpair (t_b5's Function Item form), ja1, ja5 and jo1 accepted ->
-    `AmbiguousBinding_Kd`. Class 4 (the record to the converted value, 15.6.1): dd_bad/t4q, kt_bad, itselctl1n, frselctl1n, e1a_n,
-    ruling 183's class rows (TypeBindingTest a0i, a2i, g3i, t08i, x0i, t09i, t10i; CallableSignatureInferenceTest's two;
-    CallOriginRelationTest's Item row; FunctionItemTest's `apply(pk, other)`), ja1n, ja2n, ja4n, ja7n and jd1n:
-    `NoApplicableOverload_Kd` at the call -> `UnprovenOriginContract_Kd` at the Item or value. jo1n, jo4n return to dev's located
-    `Unsupported_Kd` (BU-156, PLAN G443). Class 2 (a valid program accepted): jd1v (7.7.4, 12.4.3) and the head's jo2n (10.8). A
-    Dictionary literal part at a waiting position no longer makes every candidate inapplicable: d_jd2 (candidates differing only in
-    Origins) `NoApplicableOverload_Kd` -> `AmbiguousBinding_Kd` (10.1, 10.8).
-  - Rejected: a structural reading inside `FitConstructionAt` only (a second copy of `FitTyped`'s erasure row); unprepared Item
-    payloads (the query would read an unprepared part); completing every payload by `FitArgument` again (the Case's
-    `TypeMismatch_Kd`); reverting 8eabb18e9 (Formatting.kimi's HIR difference); S1 alone (kd_bad accepted, ruling 178). For B1: the
-    review's one line alone (ja3n's dependent `TypeMismatch_Kd`); site 3 alone (`LateAdaptation` a second judge of the contract:
-    jd1n `NoApplicableOverload_Kd`); keeping a2 (jd1v rejected); a phase flag on `LateType`; dropping the late Type's nested fits.
-  - Open: PLAN G379 (b)'s rest (R7-P4 T2), G514's u2 and u2g, G886 (8) (the Item arm and `ItemSignatureFits` each run BU-240's split
-    protocol), G1343 (ja6v).
-- **BU-252 A borrowed owner temporary's operation carries its borrow Type, `TemporaryBorrow`; a step-1 join judges each source once,
-  at its value (PLAN G924 AF-3b, jo2s)** (Front, 2026-11-24; Binding's argument temporaries; Q-731, D-1213; Major; design
-  `front\notes\ArgFlow\af3\design-v3-A-B1.md` (jo2s's step); F's ArgFlow rulings 185, 186; the implementation review's delta read;
-  commit f9b968bb1) SPEC 10.2 row 2 and "Temporaries", 3.6, 14.9.2 steps 3-4.
-  - Cause: (F1; pre-existing on dev, exposed by AF-3b's completion of a waiting source at the step-1 Type, which removed BU-156's
-    located `Unsupported_Kd` that hid jo2s) at `ref/U` an aggregate or a value join is one owner temporary borrowed once, but
-    `FitComposite` built that Borrow without its adapted Type, so the selected call's fit never related the temporary's borrow to the
-    parameter's Origin; `FitLiteral`'s literal temporary carried it. (F2; jo5s) `DecideWaiting` ran `BindWaitedSources` at the
-    position's Type before `DecideResult`, so a bound source misfitting at Origin positions only was judged at the join
-    (`CheckTypeUse`) and again at its value by step 4's loop: two records for one relation.
-  - Rule: a borrowed owner temporary's operation carries its borrow Type, `TemporaryBorrow(part, U)` (`Binding.Materialization.cs`,
-    the owner of the owner temporary a value at `ref/U` is: `ref` of U at the part's own Place Origin), for a literal (`FitLiteral`),
-    an aggregate and a value join (`FitComposite`) alike, so the selected call's fit (`JudgeCallFit`) relates the temporary's borrow
-    to the parameter. At a Target Result Type step 1 fixed (`context.Expected`), a join's bound sources are checked by structure in
-    `BindWaitedSources` (a structural misfit keeps its record at the source) and judged once, at their values, by step 4's loop
-    (`DecideResult`); at step 2's common Type the join's own `CheckTypeUse` stays the judge (R7-O1).
-  - Moves (Q13): class 1 jo2s, jo2sv (dev `Unsupported_Kd`, 99234eb64 accepted), jt2, jt6-jt9 (accepted on dev and 99234eb64) ->
-    `UnsatisfiedOriginRelation_Kd` at the argument (a borrowed owner temporary never outlives `static`); jo5s one
-    `UnprovenOriginRelation_Kd` at `o` (99234eb64: two; dev: one at the join).
-  - Rejected: the borrow relation formed at the join's binding (a second owner of the borrow beside the call's operation);
-    suppressing the loop's record after the pre-pass's (a duplicate suppressed afterwards); dropping `DecideWaiting`'s pre-pass (a
-    Closure source must be converted before the loop reads it: ja3v).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -25673,16 +25599,6 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Amended by BU-249** (R7-N1 e3; PLAN G1298 closed): `UnselectedTypeSite` reads only the use's published lookup (UseNode,
       `HirTables.LookupOf`, PublishedStep), with `SelectAliasTarget` a fourth reader; this supersedes the statement that a generic's
       site reads no walk (BindConstructedType's `default`): the walk argument is gone. `SelectQualifier` is deleted.
-  - **`Checked`, a sixth Binding kind (AF-3b, PLAN G924, Q-731; F's ArgFlow ruling 179; the Back's consent on C-504 with C1, C2).**
-    At a candidate party (a named call's rejected candidate, role 3; a Callable value call's premise candidate, role 5), after its
-    `Reason`: the argument part checked against its expected Type whose own resolution there failed (SPEC 10.5.1). Its site is the
-    part; its Value is that Type's kept side index times two, plus one where the resolution is ambiguous (else none applies), packed
-    and unpacked by `BindingReport` only (`KeepChecked`, `Checked`; `EqualValue` compares it by its Type and outcome, as `Instance` by
-    its Type). `CandidateFacts` and `FailCallableCandidates` write it (`CheckedFact`); only `CheckedPartText` reads it, which both
-    adapters call to rebuild the candidate's label. Codes, locations and related counts are unchanged. It replaces AF-3b's prototype
-    `RejectedCandidate.CheckedPart` and the old `CallableCandidate`'s, which Q-703 (R7-M75's E3b-1) removed. Rejected: an `Expected`
-    fact plus two `CandidateFlags` bits (two meanings of one kind in one party; a premise candidate's `Reason` is its receiver); a new
-    `Related` role (a related entry no row names); the text in a `Reason` (R4-M132).
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
