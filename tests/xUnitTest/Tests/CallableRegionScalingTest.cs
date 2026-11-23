@@ -109,6 +109,29 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         Assert.All(measured, x => Assert.Equal(measured[0].Environments, x.Environments));
     }
 
+    // PLAN G1082 (C-519 IC1; SPEC 15.3.7): an input of Function Type is compared in a nested comparison, whose requests also assume the
+    // enclosing required signature's well-formedness; nested comparisons at one use with the same required signature and the same
+    // enclosing ones level by level share one environment, so on n inputs alternating `ref/U` and a Function Type (nested once, or twice)
+    // the premise work grows linearly at n = 8, 16, 32 (within 2.25x per doubling) with the environments built constant, where each
+    // nested comparison rebuilt the enclosing signature's n/2 premises.
+    [Theory]
+    [InlineData("(ref/(ref/i64 during p) during z) -> i32")]
+    [InlineData("((ref/(ref/i64 during p) during z) -> i32) -> i32")]
+    public void NestedComparisonsOverManyInputsScale(string function)
+    {
+        var measured = new[] { 8, 16, 32 }.Select(n =>
+        {
+            var inputs = string.Join(", ", Enumerable.Repeat($"ref/U, {function}", n / 2));
+            var named = string.Join(", ", Enumerable.Range(1, n / 2).Select(i => $"y{i}: ref/U, f{i}: {function}"));
+            var metrics = Metrics("struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\n" +
+                $"func k(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let c: ({inputs}) -> i32 = func [] ({named}) -> i32 => 0\n    return 0\npublic func main() => ()\n");
+            return (Work: metrics.WrittenEdges + metrics.Insertions + metrics.Activations, metrics.Environments);
+        }).ToArray();
+        output.WriteLine($"premise work {string.Join(", ", measured)}");
+        Assert.True(measured[1].Work <= 2.25 * measured[0].Work && measured[2].Work <= 2.25 * measured[1].Work, $"premise work {string.Join(", ", measured)}");
+        Assert.All(measured, x => Assert.Equal(measured[0].Environments, x.Environments));
+    }
+
     // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
     // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
     internal static void WorkScales(ITestOutputHelper output, string[] sources, double factor)

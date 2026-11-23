@@ -769,9 +769,9 @@ public sealed partial class Binding
     // rebuilt when the Origin state changed; no opener's request writes the other premise inputs (scopes, bound input Types, a Closure's
     // classification). The environments are the session's own scratch (PLAN G949 S1-e's call-scratch rule; F's ruling 187): each found by
     // its key, the anchor (a comparison request's use), the excluded result premise and the comparison's required signature, enclosing
-    // comparisons and scope (identity keys, scanned from the latest; a nested comparison's enclosing premises are its own object, so each
-    // nested comparison keys its own), taken from Pool in order and emptied at Close, which ends the session; Pool holds at most the
-    // distinct keys one session met. No Binding table holds them, in a program's module or the library's.
+    // comparisons' required signatures and scope (identity keys, the enclosing ones level by level, scanned from the latest), taken from
+    // Pool in order and emptied at Close, which ends the session; Pool holds at most the distinct keys one session met. No Binding table
+    // holds them, in a program's module or the library's.
     private sealed class OriginPremiseSession
     {
         // The key of each environment the session took from Pool, in Pool's order.
@@ -791,7 +791,7 @@ public sealed partial class Binding
             for (var i = this.keys.Count - 1; i >= 0; i--)
             {
                 if (ReferenceEquals(this.keys[i].Anchor, anchor) && ReferenceEquals(this.keys[i].Excluded, excluded) &&
-                    ReferenceEquals(this.keys[i].Expected, comparison.Expected) && ReferenceEquals(this.keys[i].Outer, comparison.Outer) &&
+                    ReferenceEquals(this.keys[i].Expected, comparison.Expected) && SameRequired(this.keys[i].Outer, comparison.Outer) &&
                     ReferenceEquals(this.keys[i].Scope, comparison.Scope))
                 {
                     return this.Pool[i];
@@ -805,6 +805,21 @@ public sealed partial class Binding
 
             this.keys.Add((anchor, excluded, comparison.Expected, comparison.Outer, comparison.Scope));
             return this.Pool[this.keys.Count - 1];
+
+            // Two enclosing chains are one key when their required signatures are, level by level: ExtractOriginPremises reads a chain
+            // only through each level's Required, and each nested comparison builds its own chain (CallableInstance.Enclosing).
+            static bool SameRequired(ComparisonPremises? a, ComparisonPremises? b)
+            {
+                for (; !ReferenceEquals(a, b); (a, b) = (a.Outer, b.Outer))
+                {
+                    if (a is null || b is null || !ReferenceEquals(a.Required, b.Required))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
         }
 
         internal void Close()
