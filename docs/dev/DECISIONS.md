@@ -26315,6 +26315,53 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** Revision 8's `DeclaredStep` conjunct (reading A: the cap yields to the mark) by O-507 Q1 (B); a call-site Limit and
     O-503's condition (R8.2); (b1) a marked atom read as shared (unsound where the holder also stores an exclusive-path address of
     the atom); Q2 (a) and (c) (the owner's O-498); the address mark at the declared arm (C2: it writes less than the keepers admit).
+- **R7-M87 A failed fact's origin and the limit half (R7-E5 c1, narrowed)** (Front, 2026-11-23; R7-E5 c1, the R7 plan's E5 row "c:
+  the consultation frames and IsDerived", narrowed by the owner's O-509 (a), verbatim 「O-509 a、O-510 a」; Q-711, D-1182; SPEC 23.1.2,
+  23.1.1, 8.3.3 Limits; AGENTS Diagnostics rule W.) It does **not** supersede R7-M61's "over the inputs recorded at the node": every
+  problem still reads its node's rows (IsDerived reads `PushPrerequisites(node)` and the node's part).
+  - **A failed fact's origin (commits 2 and 2b, behaviour unchanged).** `ConstraintEnvironment` publishes a failed direct fact's
+    origin, the clause whose own check failed it, written only by `Add(fact, null, origin)` for an Error fact at its clause's binding
+    (BindConstraint, BindAssociatedSpecification). `FailPremise` states no origin (F's ruling 351 C1, the Rev 2 review's C2 by ruling
+    344): its owner judgments (JudgeFacts, FailFacts, ContractAgreement, ArithmeticDiagnostics, VirtualOverrides) name no clause, and
+    the part writers FailInput and the formation writer fail clauses that stay Resolved (Rev 3's review: chain3's `:401` link clauses,
+    22 of 28 Resolved, the Invalid ones already holding Add's origin), so nothing could name them; the parameter went with them. Keyed
+    by the fact in its environment. **A limit of the base:** an interned Error is one fact per environment (`Facts` is a reference
+    set), so two failed clauses of one environment share one origin entry, the first (the Rev 2 review's C6 observation; its fix
+    concerned commit 3's walk, not landed): E5 c's later design must not read an Error fact's origin as "the clause this check read".
+    `PremiseFailure.Origin`; one accessor `CauseOf(fact)` replaces the reads of `FailedPremise` that have a fact in hand
+    (FailedClauseRead, SpokenVerdict, AvailableConstraintFact): the environment's cause, or that origin's cause with the same `Use`,
+    made once per origin and kept across passes (warm Bind allocates nothing, BU-64). `ConsultsFailedPremise` is a state read: it sets
+    the consult's limit itself as the origin-less cause. **No reader of `Origin` exists outside `CauseOf`'s own per-origin lookup**:
+    `Use` is unchanged everywhere. `EnumeratesWalkCallsNoJudgment` lists `CauseOf` (a judgment-free read; 2b).
+  - **The limit half (ba6928d3c, behaviour unchanged on dev; F's ruling 339, the review's B1).** `RestsOnRecoveryOrLimit(node, code)`:
+    the own test is the problem's code category (a Resource problem is never derived from a limit; a Language problem beside a limit
+    at one node is judged by its own inputs; for the slot's issue the code is `CodeOf(node, RecordedFailure(node))`, today's
+    `ResourceFailed(node)`); the input test is `HoldsLimit(cause)`, the one accessor: the input's slot failure is Resource
+    (`ResourceFailed`: every Binding limit on dev is recorded through `Fail` alone, CaseLimit, TypeHeightLimit, PremiseClosureLimit)
+    or one of its problems is, in any order of its records. `IsResource(code)` is the one category test; `IsDerived(node, failure,
+    code)` passes the problem's code from CollectProblem. **Guard rows of the slot arm** (F's ruling 351 C5; the implementation
+    review's mutant m1, `HoldsLimit` without its slot arm, fails exactly these and the head passes them): TypeHeightLimitTest's
+    `AChainPastTheLimitGivesOnlyHeightRecords` (n 15-17), `AnInvalidTwinPastTheLimitKeepsOnlyItsIndependentRecord` (n 15, 16),
+    `AConformanceWhoseMemberPassesTheLimitGivesOnlyHeightRecords` (both parameters) and
+    `AnIndependentFailureBesideAMemberPastTheLimitIsKept` (TypeHeightLimitTest belongs in every run of this rule). **The problem arm
+    and the per-code own test have no observing row on dev:** every Binding limit is recorded through `Fail` alone until R7-C4 phase
+    12; their fail-first rows are R7-C4's std9-z1/z2, lim-dup, lim-dup-r1 and lim-layout on its merged head; C4 phase 12 merges
+    ba6928d3c, adds its one limit write site and the layout frame (C4 rulings 19-20).
+  - **The frame's end (commit 1, behaviour unchanged).** `ChecksOwnSite` is the one test of a frame's own node, read by Fail and
+    Consulted too (review C1); `EndConsultation` ends with `DropConsultation`, the frame's one end (dev's body; F's ruling 351 C3).
+  - **Temporary, with its removal condition (ruling 348).** The per-fact origin (`origins`, `originCauses`, `PremiseFailure.Origin`,
+    each `[Transitional("R7", ...)]`) is the base E5 c's later design starts from (PLAN's open issue for E5 c's later parts, G1323,
+    ruling 348's D row; C3d reads it too); **if that design does not use it, it is removed then**, in its unit.
+  - **Rejected.** Writing the limit record first so that order decides (C4 ruling 20); `HoldsLimit` over problems only (B1: a check
+    resting on a `Fail`-only limit would publish its own record, against 8.3.3); a flag choosing the node's or the problem's category;
+    an origin inside the interned `BoundConstraint` (shared across clauses, R2.7); the origin as an optional parameter (each writer
+    states it); keeping `:401`/`:569` as origin writers under a waiver (ruling 351 C1 (b)). Not landed (O-509 (a)): commit 3's
+    per-problem input rows and the primitive (`proto/f-e5c1r3-c3wip`), the Guard's frame, the removal of dev's three dependence
+    statements (Constraints.cs:575, ConditionalConformances.cs:307, Properties.cs:410); commit 1's store for those rows
+    (`problemInputs`, `framedProblems`, `consultationPart`, the frame tuple's `Problems`/`Part`, `PushInputs`, `PartOf`) had no writer
+    without commit 3 and was removed in the unit (ruling 349 (1)), with `CloseConsultation` (ruling 351 C3).
+  - **Moves (Q13).** None: diagnostic snapshot 0 and semantic HIR+MIR 0 against shared-base/f227e33ce on the head f72940d32 (merged
+    with dev f227e33ce).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
