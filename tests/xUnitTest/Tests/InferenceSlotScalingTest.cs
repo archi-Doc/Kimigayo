@@ -313,8 +313,9 @@ public class InferenceSlotScalingTest
     // receives. Under k outer candidates (sc-k-d) an `idf` chain of depth d, one candidate per level, starts k * d queries, the selected
     // candidate's completion reading the memo. Two wrapping overloads per level (sg2v: `g(x: Box<T>)`, `g(x: Opt<T>)` over `mkb` levels)
     // give their part 2^(j-1) distinct Types at depth j, so the queries grow as 2^d: 3 * 2^d - 3 (the g levels 2^d - 1, the mkb levels,
-    // checked only below a Box, 2^(d+1) - 2); past 4,096, at d = 11, the resolution is refused (ResolutionWorkLimit_Kd, the owner's O-351
-    // (a)).
+    // checked only below a Box, 2^(d+1) - 2), plus d(d-1)/2 checks at open positions (one per level for each outer level: the check SPEC
+    // 10.5.1 asks at each remaining candidate's expected Type; the owner's O-510 (a)); past 4,096, at d = 11, the resolution is refused
+    // (ResolutionWorkLimit_Kd, the owner's O-351 (a)).
     [Theory]
     [InlineData(2)]
     [InlineData(4)]
@@ -332,7 +333,7 @@ public class InferenceSlotScalingTest
     public void WrappingOverloadsGiveTheirPartsDistinctTypesUpToTheLimit()
     {
         long[] queries = [.. Enumerable.Range(1, 10).Select(d => Bound(WrappedChain(d)).Binding.InferenceMetrics.Queries)];
-        Assert.Equal(Enumerable.Range(1, 10).Select(d => (3L << d) - 3), queries);
+        Assert.Equal(Enumerable.Range(1, 10).Select(d => (3L << d) - 3 + (d * (d - 1) / 2)), queries);
         var refused = MinimalEmissionTest.Analyze(WrappedChain(11));
         Assert.Contains(refused.Binding.Issues, x => x.Failure == BindingFailure.ResolutionWorkLimit);
     }
