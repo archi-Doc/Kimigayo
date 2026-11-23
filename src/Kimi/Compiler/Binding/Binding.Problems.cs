@@ -305,6 +305,9 @@ public sealed partial class Binding
                 // Role 5, "premise candidate": a Callable premise a value call considered (FailCallableCandidates).
                 this.ReportCallableCandidates(node, store, index, problem);
                 break;
+            case BindingFailure.UnboundTypeArgument when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: the unbound slot's Type parameter, 1: the waiting argument.
+                this.ReportUnboundTypeArgument(node, store, index, problem);
+                break;
             case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
                 this.ReportDisagreement(node, store, index, problem);
                 break;

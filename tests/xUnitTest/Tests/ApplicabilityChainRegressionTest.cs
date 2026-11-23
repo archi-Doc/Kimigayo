@@ -158,7 +158,7 @@ public partial class ApplicabilityChainRegressionTest
         if (code == nameof(DiagnosticCode.UnboundTypeArgument_Kd))
         {
             Assert.Equal("Generic parameter 'T' is not bound", error.Label);
-            Assert.Contains("No explicit Type argument or evidence binds T", error.Note, StringComparison.Ordinal);
+            Assert.Null(error.Note); // R7-E3 E3b-1 (Q13 M3): the record relates the slot (its Type parameter) and composes no Note.
         }
     }
 

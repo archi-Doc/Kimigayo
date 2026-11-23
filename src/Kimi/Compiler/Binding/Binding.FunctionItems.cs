@@ -283,6 +283,7 @@ public sealed partial class Binding
         var declaring = this.ReferenceDeclaringType(use);
         var group = this.GroupOf(use, symbol);
         var count = 0;
+        FunctionKoto? only = null;
         foreach (var candidate in group)
         {
             this.BindHeader(candidate);
@@ -296,12 +297,15 @@ public sealed partial class Binding
                 return this.Fail(use, BindingFailure.Unsupported, true);
             }
 
-            count++;
+            (only, count) = (function, count + 1);
         }
 
         if (count == 1)
         {
-            return this.Fail(use, BindingFailure.UnboundTypeArgument);
+            // SPEC 10.5: its first Type parameter is the slot nothing binds (role 0), as at a call (FailUnboundSlots).
+            return only!.GenericArguments.Count != 0
+                ? this.Record(use, BindingFailure.UnboundTypeArgument, [new(ProblemFactKind.Related, this.FactSite(only.GenericArguments[0]), 0)])
+                : this.Record(use, BindingFailure.UnboundTypeArgument, []);
         }
 
         // A reference use, no call: each earlier failure returns, so the record is always written (R7-E3 E3b delta 2.4).

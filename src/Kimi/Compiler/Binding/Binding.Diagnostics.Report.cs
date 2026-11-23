@@ -191,18 +191,6 @@ public sealed partial class Binding
         {
             this.ReportCallInferenceFailure(issue.Node, store, requirement, issue.Code, callInference);
         }
-        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots.TryGetValue(issue.Node, out var unboundSlot))
-        {
-            // SPEC 10.6, 10.8: the selected call's slot that no evidence binds, with the waiting argument whose signature holds it.
-            ReportUnboundSlots(issue.Node, unboundSlot, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && KotoHelper.UnwrapParentheses(issue.Node).BoundSymbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
-        {
-            // SPEC 10.5: the generic parameter that no expected call signature or explicit argument binds.
-            var lengths = ItemTypeArgumentCount(generic) != generic.GenericArguments.Count;
-            var note = lengths ? "A function reference without a fixed expected call signature binds its Type and length parameters only from a complete explicit argument list (SPEC 10.5)" : UnboundReferenceNote;
-            issue.Node.ReportIn(store, requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: note);
-        }
         else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
         {
             // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
