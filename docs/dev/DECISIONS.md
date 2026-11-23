@@ -7799,6 +7799,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     site, a second conflict at r-loc-index's site); a decided use with its own source node (A5's subject rule for one rvalue kind); a
     new statement kind for the read (`FakeRead` has the meaning); a per-site "has parts" bit for the landing fact (a side table for one
     reader); telling a kept part's position from syntax, or building a rejected target from syntax.
+  - Amended by R4-M239 (Z27, Q-707): a derived write's right side is taken at its own node (a site of its own where its take is
+    undecided) before its target's step-2 MIR, so it is no located part read right before the write's site; the write's site names its
+    target's kept operands (the in-place ones enclosing, A1 checks their construction), not its target's syntax roots.
 - **R4-M233 A1 and A2 omit a copy's Language problems; one path for a problem no body describes** (Middle, 2026-11-22; Major; R7 plan
   Z20, 2g-6, PLAN G126; Q-636; design `middle\notes\z20-design.md` Revision 1 and its two reviews) Supersedes R4-M97's "Two ownership
   forms until 2g-6" (D15 staged) and R4-M69's Inlined fact for A1 and A2; amends R4-M10's Inlined sentence and R4-M102 (the mark's
@@ -7919,6 +7922,46 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: the entry added at the read by a Type test (a second copy of the row rule); the mark kept for Moves (a Move's value is
     its Copy's); per-element values (R4-M160, R4-M191, O-230 Q1 (a)); narrowing the prefix rows (option (e)) alone (the Copy's own row
     keeps the cause); a clause for Tuple roots (one form's case).
+- **R4-M239 A derived write's site takes its right side at its own node and evaluates its target's kept operands, enclosing the
+  in-place ones; A1 checks an enclosing use's construction** (Middle, 2026-11-23; R7 plan stream Z, Z27 (PLAN G1058, G105 (2)'s
+  remainder, G1186), Q-707; Major; design `middle\notes\z27-design.md` Revisions 0, 1 and 1.1 and its review (three reads, the last
+  ACCEPT)) SPEC 6.3.4, 13.7.1, 13.7.2, 15.1.2, 15.1.3, 23.1.2.
+  - **Rule.** An Opaque site's use is enclosing where its published consumer designates a Place strictly within it and takes nothing
+    of it: a derived write's target's kept operand that the target's form neither reads (`KeptAdjust.Reads`) nor takes as an
+    invocation input (`KeptInput`). A value operand whose take failed has `KeptAdjust`'s default and is enclosing too (PLAN G1317).
+    Every other use is read.
+  - **Order.** `DerivedWrite` forms its site from its parts in SPEC 13.7.1's (13.7.2's) order: step 1, its right side evaluated and
+    taken at its own node by Z17's take (`Part`: a FakeRead, nothing for a Temporary's value, else a site of its own at its node naming
+    its Place, the gate's `Derived` for a part built already; a Place whose bare Move rests on an Error Copy proof is published
+    `HirAcquire.Failed` without an Error node, `BareOf`; z27r2 u1), so no right side is a use of the write's site; step 2, its target
+    Error's kept operands, evaluated by `SiteUses`' loop (`KeptParts`, shared by `SiteUses` and `TargetUses`); the target's syntax
+    roots are no longer named (its unkept children's names are, read). A Place both enclosing and read in one site is named once,
+    read.
+  - **Representation.** `MirOpaque.Enclosing` counts the enclosing uses after the kept ones (`Kept + Enclosing <= Count`, the
+    validator's Opaque rule); `MirBody.SiteOf` is the one lookup of the site an Assign names (A1, A5's activations); MirDump prints
+    `enclosing e`. No vocabulary entry.
+  - **A1.** An enclosing use on a Direct path is checked as a definition's prefix (`MirInit.Constructed`, Define's ancestor loop
+    factored): its own bit and its ancestors' (a temp's own bit is no construction fact); through a Deref or an Index its prefix is
+    read whole, as every use's.
+  - **Moves** (Q13; records only, no acceptance or generated-code move): the false `UninitializedPlace_Kd` beside the Weak limit
+    (e.w2 5:9, Milestone 41 11:9, whose ownership analysis now passes) and in a constructor's nested target (t16), and the false
+    `MovedPlace_Kd` at a target over a partly moved root (z-derived-moved, z-refused-let 10:5, p19, p22, t05 10:9, t06, t08) go; step
+    2's independent records appear (G1186: r-target-index-move's `MovedPlace_Kd` 6:9, r-target-index-conf's
+    `ComparisonLoanConflict_Kd` at `k(y)`); a target operand's record moves to its node (p11 4:5 to 4:7, t11 3:5 to 3:16); the
+    snapshots move by Milestone 41's record (diagnostic, 1) and the enclosing count in Milestone 41's and 43's dumps (semantic, 3).
+  - **Amends** R4-M232: its "A located part (a derived write's right side, an expansion's operand, a failed jump's operand) is read
+    right before its consumer's site" (a derived write's right side is taken at its own node, before step 2's MIR, and is no located
+    part) and its derived write's target named by its syntax's roots, undecided (its target's kept operands are evaluated, the
+    in-place ones enclosing). The gate's producer row for `DerivedWrite` reads "Derived over its target's parts, and its right side's
+    undecided take, a site at its node" (`ArchitectureRulesTest`'s gate callers: `MirBuilder.Opaque.cs` 5 -> 6).
+  - **Rejected:** a `MirAccess` member (a vocabulary entry, R4-M121's G191 U-B); `Defines` at a derived target (R4-M232; Z28's
+    question); enclosing kept operands of every Error (`KeptAdjust`'s default includes exclusive borrows and failed acquisitions; PLAN
+    G1317); naming the target's root enclosing without evaluating it (`p.q@move` then `p.q.nofield = 1` would lose its independent
+    `MovedPlace_Kd`); a failed right side's take turned into a FakeRead (R4-M232: failed takes stay undecided); a contract that a
+    derived write's right side is published read or Temporary, enforced as `InternalInvariant_Kd` or by `MirValidator` (false:
+    `BareOf`'s Failed Place, z27r2 u2; MIR carries no HIR Adjust); the word "located" for this class (Z17's located part).
+  - **Not done (no row):** the builder's own failed member step enclosing (t13's record is an Error member's kept receiver, PLAN
+    G1317); a name at its binding's Place (p17 has no false record).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
