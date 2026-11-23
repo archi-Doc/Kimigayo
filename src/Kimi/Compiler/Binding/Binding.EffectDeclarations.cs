@@ -105,10 +105,11 @@ public sealed partial class Binding
     /// <param name="requirement">The Requirement Identity.</param>
     /// <param name="conforming">The conforming Type of the call.</param>
     /// <param name="scope">The scope whose premises hold at the call.</param>
+    /// <param name="site">Where its proofs are asked from (QuerySite; PLAN G651 a1).</param>
     /// <param name="evidence">Optional complete provenance for an editor projection; ordinary proofs allocate none.</param>
     /// <param name="reference">The requirement's exact declaring Contract reference; virtual functions have none.</param>
     /// <returns>Whether confined is available.</returns>
-    internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope, List<EffectEvidence>? evidence = null, BindingSymbol? reference = null)
+    internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope, QuerySite site, List<EffectEvidence>? evidence = null, BindingSymbol? reference = null)
     {
         if (requirement.IsVirtual)
         {
@@ -176,7 +177,7 @@ public sealed partial class Binding
                 for (var p = 0; p < this.impls.PathsOf(conformance).Count; p++)
                 {
                     var path = this.impls.PathsOf(conformance)[p];
-                    if (path.IsVerified && this.ProveConformanceConditions(path, conforming, scope) == ConstraintProof.Proven)
+                    if (path.IsVerified && this.ProveConformanceConditions(path, conforming, scope, site) == ConstraintProof.Proven)
                     {
                         Add(this.SubstituteRequirementContract(conformance.Contract, conforming).Contract!, type.Declaration, null, path.Declaration);
                     }
@@ -221,7 +222,7 @@ public sealed partial class Binding
     /// <param name="at">The call.</param>
     /// <returns>Whether confined is available.</returns>
     internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, Koto at)
-        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), reference: at is InvocationKoto invocation ? this.CallOf(invocation)?.RequirementContract : null);
+        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), at, reference: at is InvocationKoto invocation ? this.CallOf(invocation)?.RequirementContract : null);
 
     private static EffectBoundKoto? OwnEffectBound(BoundContract shape, BoundRequirement requirement)
     {
@@ -473,7 +474,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
             var candidate = shape.Ancestors[i];
-            if (ReferenceEquals(candidate, reference) || (IsBoundContractReference(candidate) && IsBoundContractReference(reference) && this.SameConformanceType(candidate.Type, reference.Type, scope)))
+            if (ReferenceEquals(candidate, reference) || (IsBoundContractReference(candidate) && IsBoundContractReference(reference) && this.SameConformanceType(candidate.Type, reference.Type, scope, effect)))
             {
                 ancestor = candidate;
                 matches++;

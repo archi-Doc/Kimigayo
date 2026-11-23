@@ -442,7 +442,7 @@ public sealed partial class Binding
                 if (mode is { } bindingMode)
                 {
                     // The normalized base may no longer contain its projection qualifier.
-                    this.RequireConstraint(node, this.CheckTypeConstraints(use.Type, this.scopes[structure]), bindingMode);
+                    this.RequireConstraint(node, this.CheckTypeConstraints(use.Type, this.scopes[structure], node), bindingMode);
                 }
                 else if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, structure.BoundSymbol!) is { } inaccessible)
                 {
@@ -468,7 +468,7 @@ public sealed partial class Binding
             {
                 if (mode is { } bindingMode)
                 {
-                    var proof = this.CheckTypeConstraints(use.Type, this.scopes[enumeration]);
+                    var proof = this.CheckTypeConstraints(use.Type, this.scopes[enumeration], node);
                     this.RequireConstraint(node, proof, bindingMode);
                     this.RequireConstraint(enumeration, proof, bindingMode);
                 }
@@ -568,7 +568,7 @@ public sealed partial class Binding
                 this.RecordAccess(function, inaccessible, use.Use);
             }
 
-            this.RequireConstraint(function, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
+            this.RequireConstraint(function, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use), function), mode);
         }
 
         this.ValidateEnumProjections(mode);

@@ -47,7 +47,7 @@ public sealed partial class Binding
         }
 
         this.BindHeader(implementation.Symbol);
-        var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope);
+        var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope, conformance.Use);
         if (proof != ConstraintProof.Proven)
         {
             return proof;
@@ -99,7 +99,7 @@ public sealed partial class Binding
             Array.Clear(origins);
             originBindings = origins;
             Array.Clear(inputOrigins);
-            proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
+            proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, conformance.Use, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
         }
         else
         {
@@ -126,7 +126,7 @@ public sealed partial class Binding
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
             {
                 kind = PropertyWitnessKind.StorageCopy;
-                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
+                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope, conformance.Use) : ConstraintProof.Refuted;
             }
             else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && ReferenceEquals(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {

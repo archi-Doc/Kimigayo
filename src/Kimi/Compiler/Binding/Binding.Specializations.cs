@@ -332,7 +332,7 @@ public sealed partial class Binding
             }
 
             // SPEC 8.13.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
-            var constraints = this.CheckConstraints(definition.TypeConstraints, new CallSubstitution(definition, arguments, lengths), scope);
+            var constraints = this.CheckConstraints(definition.TypeConstraints, new CallSubstitution(definition, arguments, lengths), scope, function);
             if (constraints == ConstraintProof.Unknown && NamesHeaderOrigin(arguments, function))
             {
                 // SPEC 8.13.2 (PLAN G863): the original admits only the bindings its Constraints allow, so an undecided Constraint over

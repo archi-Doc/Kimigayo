@@ -220,7 +220,7 @@ public sealed partial class Binding
                 return this.Record(conversion, BindingFailure.InvalidAssignment, []);
             }
 
-            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
+            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
             {
                 return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }
