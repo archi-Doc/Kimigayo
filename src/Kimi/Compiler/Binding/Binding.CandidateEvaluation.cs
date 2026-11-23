@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -323,16 +324,20 @@ public sealed partial class Binding
         return this.RecordSelection(call, BindingFailure.UnprovenConstraint);
     }
 
-    // The pending judgment's record from its facts (FailPendingJudgment): the argument and the slot's Type parameter related; its Note
-    // went by code (R7-E3 E3b-2, M3).
+    // The pending judgment's record from its facts (FailPendingJudgment), read by role: the argument (role 6) and the slot's Type parameter
+    // (role 7) related, any other shape a broken contract; its Note went by code (R7-E3 E3b-2, M3).
     private void ReportPendingJudgment(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        var facts = this.report.Facts(index);
+        if (this.report.Facts(index) is not [.., { Kind: ProblemFactKind.Related, Value: 6 } argument, { Kind: ProblemFactKind.Related, Value: 7 } slot])
+        {
+            throw new UnreachableException();
+        }
+
         node.ReportIn(
             store,
             problem.Requirement,
             problem.Code,
-            related: [("argument", this.compilation.SyntaxOf(facts[0].Site), null), ("declaration", this.compilation.SyntaxOf(facts[1].Site), null)],
+            related: [("argument", this.compilation.SyntaxOf(argument.Site), null), ("declaration", this.compilation.SyntaxOf(slot.Site), null)],
             condition: problem.Condition);
     }
 

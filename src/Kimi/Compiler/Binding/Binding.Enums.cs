@@ -722,7 +722,7 @@ public sealed partial class Binding
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
-                this.Fail(use, formation == ConstraintProof.Error ? BindingFailure.InvalidConstraint : formation == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, formation == ConstraintProof.Unknown);
+                this.Fail(use, ConstraintFailureOf(formation), formation == ConstraintProof.Unknown);
                 continue;
             }
 
