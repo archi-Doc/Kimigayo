@@ -286,23 +286,25 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 10.4 step 2: the structural parts must be identical (Origin bindings never rank, even inside Function Types), or the
-            // candidates are incomparable; open slots are never identical, and a Type holding an atom is identical only to itself, at a
-            // waiting position too (Binding.OpenSlots: a pair whose walk met an atom is incomparable; a reference-equal pair is skipped
-            // above; SPEC 10.8 Unbound slots, ArgFlow ruling 166). Only a side holding an atom can meet one, so a waiting position whose
-            // sides hold none is not walked.
-            var waiting = a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
-                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source && this.IsWaiting(source);
+            // SPEC 10.4 step 2: for each source argument the substituted parameter Types' structural parts must be identical (Origin
+            // bindings never rank, even inside Function Types), or the candidates are incomparable; open slots are never identical, and a
+            // Type holding an atom is identical only to itself (Binding.OpenSlots: a pair whose walk met an atom is incomparable; a
+            // reference-equal pair is skipped above; SPEC 10.8 Unbound slots, ArgFlow ruling 166). A waiting checked part (a Call or Case,
+            // checked at each candidate's Type, 10.5.1) is compared like any source argument (ArgFlow ruling 173). Only a waiting
+            // callable's signature, which 10.5.4 checks after selection, never ranks: its position is walked only when a side holds an
+            // atom, the only thing it can meet there.
+            var callable = a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
+                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source && this.IsWaitingCallable(source);
             var metOpenSlot = false;
-            var fits = x is not null && y is not null && (!waiting || x.ContainsOpenSlot || y.ContainsOpenSlot) && this.FitsStructuralPart(x, y, out metOpenSlot);
+            var fits = x is not null && y is not null && (!callable || x.ContainsOpenSlot || y.ContainsOpenSlot) && this.FitsStructuralPart(x, y, out metOpenSlot);
             if (metOpenSlot)
             {
                 return false;
             }
 
-            if (waiting)
+            if (callable)
             {
-                continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
+                continue;
             }
 
             if (!fits)
