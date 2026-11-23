@@ -95,6 +95,14 @@ public sealed class FailedDeclarationUseTest
     public void AFieldsRecoveryLeavesItsStructsHeaderDuplicate()
         => Assert.Equal([nameof(DiagnosticCode.DuplicateBinding_Kd), nameof(DiagnosticCode.ExpectedSyntax_Kd)], Codes("struct Holder {h, h}\n    let v: [2 i32]\n"));
 
+    // SPEC 23.1.2, DIAGNOSTICS 4.3 (G651 a2-1): an heir's base rule fails reading its base A, whose own failure rests on A's clause, a
+    // syntax recovery, so the heir's clause and struct derive from the syntax record and record nothing (brec1-I, brec2-I).
+    [Theory]
+    [InlineData("L0<i32 i32>", nameof(DiagnosticCode.ExpectedSyntax_Kd))]
+    [InlineData("L0<i32", nameof(DiagnosticCode.MissingSyntax_Kd))]
+    public void AnHeirOfABaseWithARecoveredClauseRestsOnItsSyntaxRecord(string clause, string code)
+        => Assert.Equal([code], Codes("contract U\nopen struct L0<X>\n    Self is U\nopen struct A<X> : " + clause + "\nopen struct B<X> : A<X>\n"));
+
     // SPEC 15.3.3, 23.1.2 (H11b-0 B1): a failed Origin clause fails itself, not its owner or the declaration's other clauses, so a
     // program's records are its twin's (the clause repaired or removed) beside the clause's own: each check of the owner, its members and
     // its uses that rested on the owner's failure is reported (PLAN G611, G612, G613), and a slot only the clause names rests on it.

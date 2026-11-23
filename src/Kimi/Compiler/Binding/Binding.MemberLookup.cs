@@ -68,7 +68,7 @@ public sealed partial class Binding
                 (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !this.TypeAccessCovers(type, symbol, symbol) ||
                 !this.ValidateBaseDeclaration(parent))
             {
-                this.Fail(syntax, BindingFailure.InvalidTypeFormation);
+                this.FailBaseRule(syntax, type?.Symbol?.Declaration as StructKoto);
                 valid = false;
             }
             else if (structure.BindingState != BindingState.Invalid && !this.ValidateInheritedNames(structure, type, scope))
@@ -82,10 +82,23 @@ public sealed partial class Binding
         this.inheritanceStates[symbol] = available ? (byte)2 : (byte)3;
         if (!valid)
         {
-            this.Fail(structure, BindingFailure.InvalidTypeFormation);
+            this.FailBaseRule(structure, structure.BaseClause);
         }
 
         return available;
+    }
+
+    // SPEC 23.1.2, DIAGNOSTICS 4.3 (G651 a2-1): a base rule's failure this check writes records the part it read (a clause its base
+    // declaration, a struct its base clause), so publication derives it from that part's recovery or limit record (RestsOnRecoveryOrLimit).
+    // A node an earlier check failed keeps that check's record and gains no part: its failure did not read this one.
+    private void FailBaseRule(Koto node, Koto? read)
+    {
+        if (read is not null && this.RecordedFailure(node) == BindingFailure.None)
+        {
+            this.AddPrerequisite(node, read);
+        }
+
+        this.Fail(node, BindingFailure.InvalidTypeFormation);
     }
 
     // SPEC 9.5 (PLAN G602): a projection T.(C).X in a struct's base clause is an unresolvable dependency cycle when T is the struct or
