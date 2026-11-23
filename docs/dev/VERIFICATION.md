@@ -203,9 +203,10 @@ evidence directory and the date. Reuse an existing base for the same commit; pro
 against the base of the commit it starts from; pass `-DiagnosticBaseline` an absolute Windows path (`C:/...` or `C:\...`),
 since `verify.ps1` does not resolve a Git Bash path such as `/c/...`.
 
-`test-scalars.ps1` writes `native-results.json` beside `results.json`: an environment key (hashes of the LLVM tools, backend
-archive, kernel32 library, runner scripts and `profile.json`, the allowed symbols and the deadline) and, per fixture, a key over
-its `.ll`, `.stdout`, `.stderr`, `.exit` and `.observation` files, its status and when it last executed. `verify.ps1 -NativeReuse
+`test-scalars.ps1` writes `native-results.json` beside `results.json`: an environment key (hashes of the compiler's `tatara.dll`,
+the backend archive, kernel32, the native build's code under `src/Kimi/Build`, the `tatara` and `build` commands and the target
+profile, the runner scripts, `kernel32.def` and `profile.json`, and the deadline) and, per fixture, a key over its `.ll`,
+`.stdout`, `.stderr`, `.exit` and `.observation` files, its status and when it last executed. `verify.ps1 -NativeReuse
 <base>/native-results.json` (the runner's `-ReuseResults`) skips a fixture whose entry has both keys equal, status `passed` and an
 execution within `-ReuseHours` (24); every other fixture executes, so each fixture runs at least daily and at once when an input
 changes. The success line reports the split (`N fixtures run, M reused`); a base without the file means a full native run. The keys
@@ -285,7 +286,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 
 ## Native fixtures
 
-`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four workers; 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit-code and dependency oracles are checked at each level.
+`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four; 1 runs serially. The runner (`test-scalars.ps1 -Configuration`) writes each fixture's two IR/manifest pairs (the manifest `kimi emit` writes for this compiler, once per run) and builds them in up to that many `kimi tatara` sessions of the configuration's `Kimi.dll` (`build --Manifest`, through Tatara: the input IR verified, O2 optimized and verified again, each object inspected as `kimi build` does), then runs O0 and O2. stdout, stderr, exit-code and dependency oracles are checked at each level. A build whose record is not linked is a failure, whatever stopped it. Use a fresh output folder: every pending pair is rewritten and its earlier record removed before the first session.
 
 Each fixture owns its output names and log. Workers publish status (passed, failed or incomplete), completed optimization levels and per-level execution measurements; the parent waits for every worker, preserves failure logs and fails the step if any fixture fails, is incomplete or has no result. Verify stores per-fixture logs and `results.json` under its evidence directory, with generated binaries under `temp/`. Fixture patterns are still processed in order, and parallelism is bounded within each pattern.
 
@@ -301,4 +302,4 @@ comparison accepts old ok records; it rejects incomplete results.
 Native selection and its input hashes include only `.ll` files, even with a broad pattern such as `*`.
 Sidecar expectation files never become compiler inputs; a pattern matching only sidecars fails as an empty selection.
 
-After changes to native verification, run `./tests/scripts/NativeFixtureRunnerTest.ps1` with the installed toolchain. It checks serial/parallel equivalence, UTF-8 stdout/stderr, nonzero expected exits, mixed independent failures, CPU observation, delayed execution, insufficient observation, expected-completion deadlines, lost executable launches, invalid UTF-8, evidence failure and empty selections. Native recovery uses one fixed 5-second grace separate from the execution deadline; unavailable launch/CPU/recovery/capture is incomplete, while captured invalid UTF-8 is a failure. Logs, including intentional failure cases, remain in `artifacts/verify/`.
+After changes to native verification, run `./tests/scripts/NativeFixtureRunnerTest.ps1 [-Configuration]` with the built compiler and the installed toolchain. It checks serial/parallel equivalence, UTF-8 stdout/stderr, nonzero expected exits, mixed independent failures, CPU observation, delayed execution, insufficient observation, expected-completion deadlines, lost executable launches, a forbidden dependency, an unattempted and a lost build, a non-ASCII output path under a non-UTF-8 input code page, a session ended by its build (the next round builds the rest), invalid UTF-8, evidence failure and empty selections. Native recovery uses one fixed 5-second grace separate from the execution deadline; unavailable launch/CPU/recovery/capture is incomplete, while captured invalid UTF-8 is a failure. Logs, including intentional failure cases, remain in `artifacts/verify/`.

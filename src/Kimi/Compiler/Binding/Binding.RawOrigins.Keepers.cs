@@ -5,14 +5,16 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 /// <summary>A borrow a raw Origin belongs to (SPEC 5.7 Origins, Calls; DECISIONS BU-24): <see cref="Referent"/>, what it admits (a borrow
-/// input's referent, a slot keeper's under the Type that binds the slot), found at scope Type <see cref="Input"/>, and whether it may keep an
+/// input's referent, a slot keeper's under the Type that binds the slot), found at scope Type <see cref="Input"/> (for one found by its
+/// Origin's kind, Binding.AtomMembers, -1 or an index of the binder's inputs, which no reader reads), and whether it may keep an
 /// exclusive Loan (a `uniq` or `objuniq` borrow, a pair admitting one, a slot whose Loan requirement is `uniq` in some case the Type
 /// binding it selects).</summary>
 internal readonly record struct RawMember(int Input, BoundType Referent, bool Exclusive);
 
 // Raw Origins, member borrows and slot keepers (SPEC 5.7 Origins, Calls, 15.3.5; D15; DECISIONS BU-24; contract in Binding.RawOrigins.cs):
-// the borrows a raw Origin belongs to within a scope (RawMembers), which retention, InvalidRawOrigin, StoredMembers and LayerMembers read, and the
-// borrows keeping a declared slot, collected by the requirement fixed point (Keep, Keepers).
+// the borrows a stated raw layer's Origin belongs to, at one arm by the layer's position: within a scope (RawMembers), which retention,
+// StoredMembers, InvalidRawOrigin and LayerMembers read, or by the Origin's binder (AtomMembers), which retention's binder reading and
+// StoredMembers read; and the borrows keeping a declared slot, collected by the requirement fixed point (Keep, Keepers).
 public sealed partial class Binding
 {
     // SPEC 5.7 (D15): the borrows keeping each declared Origin slot, per declaration and pass (Keepers); the (slot, owner Type, input,
@@ -83,6 +85,85 @@ public sealed partial class Binding
 
             list.Add(new(kept, via, binders));
         }
+    }
+
+    // An Origin's own members where it is bound, one row per kind (Z6's binder arm, R5.1). It reads no mark: the marks are the one Marks
+    // reader's (R6.2). A member found here is read by its Referent and mode only: its Input (-1, or an index of the binder's inputs) is no
+    // index of the reader's scope.
+    // - a Projection or Anchor atom: the Borrows Binding publishes with it as their outer Origin (Borrows); false where it has none (a
+    //   call result, a Place only addressed);
+    // - an Input or Parameter Origin: RawMembers over the declared inputs where it is bound (BinderMembers: a function's signature, a
+    //   declaration's own slot's Self), whose declaration decides the mode (SPEC 5.7 Authority); false for any other binder;
+    // - a local region, `let` or `var`: the borrow layer of its owner's declared Type that it is the outer Origin of, else the keepers of
+    //   the slot it is the argument of there (RegionMembers);
+    // - a meet: its operands' members, false where any operand's is (SPEC 5.7 Origins);
+    // - an Origin whose step is not Exclusive (StepOf: none, `self`, `static`): none, since no reader reads its members;
+    // - any other (an Inference atom that is no local region, a ConstraintSet): false.
+    private bool AtomMembers(BoundOrigin origin, List<RawMember> members)
+    {
+        if (origin.Kind == OriginKind.Intersection)
+        {
+            var complete = true;
+            for (var i = 0; i < origin.Operands.Count && complete; i++)
+            {
+                complete = this.AtomMembers(origin.Operands[i], members);
+            }
+
+            return complete;
+        }
+
+        var published = this.Borrows(origin, members);
+        return origin.Kind switch
+        {
+            OriginKind.Projection or OriginKind.Anchor => published,
+            OriginKind.Input or OriginKind.Parameter => this.BinderMembers(origin, members),
+            OriginKind.Inference when IsLocalRegion(origin) => this.RegionMembers(origin, members),
+            _ => StepOf(origin) != HoldStep.Exclusive,
+        };
+    }
+
+    // Ruling (a) of Z6 (SPEC 15.4.4, 15.6.5, 5.7 Origins): a local region's members, `let` and `var` alike: BorrowReferent of the layer of
+    // its owner's declared Type that it is the outer Origin of, formed at the declaration and complete for every assignment, since every
+    // value the local holds has that Type; where no borrow layer, pair layer admitting only borrows or Slice has it as its outer Origin,
+    // the keepers of the slot of a nominal Type there that it is the argument of (`WriterS<ρ_x>`: Z6's R5.3). False where neither states
+    // it (a raw layer's region slot: a named limit, R7 plan Z6b).
+    private bool RegionMembers(BoundOrigin region, List<RawMember> members)
+    {
+        if (!(region.Binder is { } binder && this.symbols.TryGetValue(binder, out var owner) && owner.Type is { } type))
+        {
+            return false;
+        }
+
+        if (this.RegionLayer(type, region, members))
+        {
+            return true;
+        }
+
+        var first = members.Count;
+        this.keeperVisits.Clear();
+        return this.SlotMembers(-1, type, region, members) && members.Count > first;
+    }
+
+    // The first part of `type` (a Function's or Function Item's excepted: a contract keeps its own Origins) whose outer Origin is `region`,
+    // as RegionMembers reads it. Invariant (R6.3): a local's declared Type states each of its region slots once, so the first such part
+    // is the only one; the region's slot-argument keepers are read only where none exists.
+    private bool RegionLayer(BoundType type, BoundOrigin region, List<RawMember> members)
+    {
+        if (this.BorrowReferent(type, out var outer, out var exclusive) is { } referent && ReferenceEquals(outer, region))
+        {
+            members.Add(new(-1, referent, exclusive));
+            return true;
+        }
+
+        for (var i = 0; type.Kind is not (BoundTypeKind.Function or BoundTypeKind.FunctionItem) && i < type.Components.Count; i++)
+        {
+            if (this.RegionLayer(type.Components[i], region, members))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The keepers of a declared slot (Keep): a borrow's referent, or a nested Type with the nested slot keeping it. The slot's row is
