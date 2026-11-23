@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -548,6 +549,90 @@ public class LibraryImportTargetBindingTest
         Assert.Equal([code], c.Binding.Issues.Select(x => x.Code));
     }
 
+    // The Tatara plan's B7b5 (IMPL 20.4, 21.2; SPEC 22 ¶1, Reading 2; design §5 rows 9-11, 31-33, 46): a reserved supply is any target row's
+    // supply of the name and the reserved external names are the table's, so an import of a symbol no row's supply of that name provides is
+    // unavailable, and one of a reserved name (a memory function, main) invalid, on every target; the selected row decides only the located
+    // Unsupported_Kd at the import, for another row's supply or symbol (the Windows import of c's write, the Linux one of kernel32's
+    // GetLastError, which joins Windows' runtime declaration with no conflict); a target without a row (x86_64-unknown-linux-gnu) reports
+    // none (G2). Each expected code is a record at the import, in every pass.
+    [Theory]
+    [InlineData("c", "write", null, "x86_64-unknown-linux-musl", "")]
+    [InlineData("c", "write", null, "x86_64-unknown-linux-gnu", "")]
+    [InlineData("c", "write", null, "x86_64-pc-windows-msvc", "Unsupported_Kd")]
+    [InlineData("kernel32", "GetLastError", null, "x86_64-unknown-linux-musl", "Unsupported_Kd")]
+    [InlineData("kernel32", "GetLastError", null, "x86_64-unknown-linux-gnu", "")]
+    [InlineData("c", "getpid", null, "x86_64-pc-windows-msvc", "UnavailableReservedImport_Kd")]
+    [InlineData("c", "getpid", null, "x86_64-unknown-linux-musl", "UnavailableReservedImport_Kd")]
+    [InlineData("kimi_backend", "kimi_monotonic_clock", null, "x86_64-unknown-linux-musl", "UnavailableReservedImport_Kd")]
+    [InlineData("c", "memcpy", null, "x86_64-pc-windows-msvc", "InvalidLibraryImport_Kd")]
+    [InlineData("c", "memcpy", null, "x86_64-unknown-linux-musl", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "memset", "codec", "x86_64-pc-windows-msvc", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "memset", "codec", "x86_64-unknown-linux-musl", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "main", "codec", "x86_64-pc-windows-msvc", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "main", "codec", "x86_64-unknown-linux-musl", "InvalidLibraryImport_Kd")]
+    public void ReservedSuppliesAndNamesAreTheTablesOnEveryTarget(string library, string symbol, string? requirement, string target, string code)
+    {
+        var import = "#LibraryImport(\"" + library + "\", \"" + symbol + "\")";
+        var c = AnalyzeImport("group Native\n    " + import + "\n    public unsafe func imported() -> i32", requirement, target: target);
+        AssertRecordsAtImports(c, code, [import]);
+    }
+
+    // The Tatara plan's B7b5 (IMPL 20.4, Q3a (a); design §5 row 13): the project file accepts an import Kind under the Linux key, and each
+    // import of that library is the located Unsupported_Kd on the static-only linux-x64 row; windows-x64 links it.
+    [Theory]
+    [InlineData("x86_64-unknown-linux-musl", "Unsupported_Kd")]
+    [InlineData("x86_64-pc-windows-msvc", "")]
+    public void AKindOutsideTheRowsKindsIsUnsupported(string target, string code)
+    {
+        var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeRequirements={\"x86_64-unknown-linux-musl\"={codec={Kind=\"import\"}}}"))!;
+        Assert.Equal("import", file.NativeRequirements[TargetProfile.Linux.Target]["codec"].Kind);
+        string[] imports = ["#LibraryImport(\"codec\", \"first\")", "#LibraryImport(\"codec\", \"second\")"];
+        var c = AnalyzeImport(string.Concat(imports.Select(static (x, i) => $"group G{i}\n    {x}\n    public unsafe func imported() -> i32\n")), "codec", target: target);
+        AssertRecordsAtImports(c, code, imports);
+    }
+
+    // The Tatara plan's G1 (i) (SPEC 22 ¶1, IMPL 21.2; design §5 row 45): a runtime declaration's conflict is judged against every row's
+    // declarations, so codec's GetLastError conflicts with Windows' on every target, a target without a row included, where the missing
+    // requirement is its own record (SPEC 23.1.2).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "ConflictingRuntimeSymbol_Kd")]
+    [InlineData("x86_64-unknown-linux-musl", "ConflictingRuntimeSymbol_Kd")]
+    [InlineData("x86_64-unknown-linux-gnu", "ConflictingRuntimeSymbol_Kd MissingNativeRequirement_Kd")]
+    public void ARuntimeDeclarationsConflictIsTargetIndependent(string target, string codes)
+    {
+        var c = Compilation.CreateForTest();
+        foreach (var row in TargetProfile.Rows)
+        {
+            c.Project.ProjectFile.NativeRequirements[row.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        }
+
+        Assert.True(c.Prepare(target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "group Native\n    #LibraryImport(\"codec\", \"GetLastError\")\n    public func lastError() -> i32"));
+        c.Bind();
+        Assert.Equal(codes.Split(' ').Order(StringComparer.Ordinal), CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
+    }
+
+    // The Tatara plan's B7b5 (IMPL 20.4, 21.5.2, R1; DECISIONS BU-92; design §5 rows 9 and 38): c's write on linux-x64 is linked, imported by
+    // the root or by a dependency module (the compiler links every reserved supply for every module), and the module takes the C path:
+    // it requires c alone and defines main (B7b2b's frame).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheLinuxRowLinksItsCSupplyForEveryModule(bool dependency)
+    {
+        const string Write = "group Native\n    #LibraryImport(\"c\", \"write\")\n    public unsafe func write(fd: i32, data: raw/u8, count: u64) -> i64";
+        var c = dependency
+            ? ModuleBindingTest.Create("public func main() => ()", Write, row: TargetProfile.Linux)
+            : AnalyzeImport(Write + "\npublic func main() => ()", null, target: TargetProfile.Linux.Target);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(dependency, Assert.Single(c.Binding.LibraryImports, x => x.Library == "c").Decl.Declaration.CodeContext.Kotonoha != c.Kotonoha);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Equal([("c", "static")], c.Generated.Libraries);
+        Assert.Contains("define i32 @main() #0 {\n", ir, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("value: i32", false)]
     [InlineData("! value: i32", false)]
@@ -562,25 +647,38 @@ public class LibraryImportTargetBindingTest
         Assert.Equal(invalid, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd));
     }
 
-    private static Compilation AnalyzeImport(string source, string? requirement, bool combinedSupply = false)
+    // A program bound for a target triple (windows-x64 unless one is given), the requirement, if any, under its key.
+    private static Compilation AnalyzeImport(string source, string? requirement, bool combinedSupply = false, string? target = null)
     {
         var c = Compilation.CreateForTest();
+        target ??= TargetProfile.Windows.Target;
         if (requirement is not null)
         {
             if (combinedSupply)
             {
-                c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
+                c.Project.ProjectFile.NativeLibraries[target] = new() { [requirement] = new() { Kind = "static", Input = requirement + ".lib" } };
             }
             else
             {
-                c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "import" } };
+                c.Project.ProjectFile.NativeRequirements[target] = new(StringComparer.Ordinal) { [requirement] = new() { Kind = "import" } };
             }
         }
 
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        Assert.True(c.Prepare(target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         return c;
+    }
+
+    // Each import's record of one code (none: "") at the #LibraryImport, and the verdict, in this pass and after a rebind.
+    private static void AssertRecordsAtImports(Compilation c, string code, string[] imports)
+    {
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.Equal(code.Length == 0 ? [] : imports.Select(x => $"{code} {x}"), CompilationTestHelper.BindingErrors(c).Select(static x => $"{x.Code} {x.Text}"));
+            Assert.Equal(code.Length == 0, c.Binding.Result.IsComplete);
+            c.Bind();
+        }
     }
 
     // The import's one record and its location, an error at the import and Unsupported at its Type, in this pass and after a rebind.
