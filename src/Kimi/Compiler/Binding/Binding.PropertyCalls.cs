@@ -59,8 +59,17 @@ public sealed partial class Binding
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
 
     // SPEC 6.3.4, 11.2, 11.7: whether an accessor is the storage at a node, no call: a constructor's own Field (its first placement writes
-    // the storage, a custom setter included) or a standard accessor. Read per accessor by PropertyCall (its guard) and CallsAccessor.
+    // the storage, a custom setter included) or a standard accessor. Read per accessor by PropertyCall (its guard), the access binding
+    // (Binding.Names), BindPropertyUpdate's two sides, CallsAccessor and DirectAccess.
     private static bool StorageAccess(Koto node, BoundAccessor accessor) => (IsSpecialField(node, out var special) && special.IsConstructor) || accessor.IsStandard;
+
+    // Whether Binding accesses a stored Property's storage directly at a node it did not refuse: the operation's accessor (an update's
+    // `get`), and an update's `set`, are the storage there (StorageAccess); otherwise the access binding binds their calls.
+    private static bool DirectAccess(Koto node, BoundProperty property)
+    {
+        var update = IsWriteTarget(node, out var write) && !write;
+        return StorageAccess(node, write ? property.Setter : property.Getter) && (!update || StorageAccess(node, property.Setter));
+    }
 
     // SPEC 11.3.1, 13.7.1, 13.7.2: whether a write's or an update's target calls an accessor of its Property, each present one its
     // operation uses that is no storage access (StorageAccess): the `set` of a write or an update, and an update's `get` (step 2; a write
@@ -138,8 +147,8 @@ public sealed partial class Binding
     {
         var property = target.BoundSymbol!.Property!;
         var stored = this.MemberRead(target, property.Symbol, scope);
-        var result = property.Getter.IsStandard ? stored : this.AccessorUseType(target, property.Getter);
-        var destination = property.Setter.IsStandard ? stored : this.AccessorUseType(target, property.Setter);
+        var result = StorageAccess(target, property.Getter) ? stored : this.AccessorUseType(target, property.Getter);
+        var destination = StorageAccess(target, property.Setter) ? stored : this.AccessorUseType(target, property.Setter);
         if (result is null || destination is null)
         {
             return Complete(target, null);
