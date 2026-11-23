@@ -74,7 +74,7 @@ public sealed partial class Binding
 
         if (this.BoundMethodReference(use, symbol))
         {
-            return this.Fail(use, BindingFailure.BoundMethodValue);
+            return this.FailBoundMethodValue(use, symbol.Declaration);
         }
 
         var unbound = this.UnboundMemberReference(use);

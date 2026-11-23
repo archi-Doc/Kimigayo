@@ -233,6 +233,12 @@ public sealed partial class Binding
     private bool BoundMethodReference(Koto use, BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 && ReferenceName(use) is MemberAccessKoto member && this.CallReceiver(member) is not null;
 
+    // SPEC 7.3.4: the family's one record (R7-E3 E3c-2), the method the value names as Related role 0, whose declaration shows the receiver
+    // it would need; fact-less when no method is at hand. B1 none at each site: each returns at once, and BoundMethodReference fails nothing.
+    private BoundType? FailBoundMethodValue(Koto use, Koto? method)
+        => method is FunctionKoto declaration ? this.Record(use, BindingFailure.BoundMethodValue, [new(ProblemFactKind.Related, this.FactSite(declaration), 0)])
+            : this.Record(use, BindingFailure.BoundMethodValue, []);
+
     // SPEC 10.5.3: the one closed declaration of a group whose reference needs no S, or none.
     private BindingSymbol? IndependentFunctionItem(Koto use, BindingSymbol? head)
     {
@@ -250,7 +256,7 @@ public sealed partial class Binding
 
         if (this.BoundMethodReference(use, symbol))
         {
-            return this.Fail(use, BindingFailure.BoundMethodValue);
+            return this.FailBoundMethodValue(use, symbol.Declaration);
         }
 
         if (KotoHelper.UnwrapParentheses(use) is GenericsKoto explicitReference)
