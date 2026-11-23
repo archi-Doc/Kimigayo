@@ -82,15 +82,16 @@ public class CoreModelTest
         Assert.False(compilation.Variables.TryGetValue("pointerWidth", out _));
     }
 
-    // The target table (IMPL 21.4): one row today, windows-x64, whose triple is the literal the [InlineData] rows name. Each row's reserved
-    // supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's supplies by name), pairwise disjoint
-    // symbol sets (IMPL 21.2: an external symbol has one providing library). The Windows row: kernel32 providing every runtime
-    // declaration (IMPL 21.4.7), and IMPL 21.2's reserved external names.
+    // The target table (IMPL 21.4, 21.5): two rows, windows-x64, whose triple is the literal the [InlineData] rows name, and linux-x64 (the
+    // Tatara plan's B7b2a). Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
+    // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library). The Windows row: kernel32
+    // providing every runtime declaration (IMPL 21.4.7), and IMPL 21.2's reserved external names; the Linux row: none until B7b2b.
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
-        Assert.Same(TargetProfile.Windows, Assert.Single(TargetProfile.Rows));
+        Assert.Equal([TargetProfile.Windows, TargetProfile.Linux], TargetProfile.Rows);
         Assert.Equal("x86_64-pc-windows-msvc", TargetProfile.Windows.Target);
+        Assert.Equal("x86_64-unknown-linux-musl", TargetProfile.Linux.Target);
         foreach (var row in TargetProfile.Rows)
         {
             var supplies = row.Supplies;
@@ -118,7 +119,17 @@ public class CoreModelTest
         var kernel32 = windows.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
         Assert.Subset(kernel32, windows.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
         Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], windows.ReservedSymbols);
+        Assert.Empty(TargetProfile.Linux.Supplies);
     }
+
+    // Each row's data layout is the one the pinned clang writes for its triple (`clang --target=<triple> -S -emit-llvm` of an empty C
+    // file, the Tatara plan's B7b2a probe; design §5 row 42), and each row's module emitted by Tatara for its triple checks that the pair
+    // agrees (TataraExecutorTest).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
+    [InlineData("x86_64-unknown-linux-musl", "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
+    public void TheProfileLayoutIsItsTriplesLayout(string triple, string layout)
+        => Assert.Equal(layout, Assert.Single(TargetProfile.Rows, row => row.Target == triple).DataLayout);
 
     // The Tatara plan's B7b2a (N2): each row's Layer names exactly one of the Backend's RuntimeLayer records, which Core cannot name, so a
     // row's frame always has its layer.
