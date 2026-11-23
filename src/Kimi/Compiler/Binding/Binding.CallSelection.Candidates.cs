@@ -190,7 +190,7 @@ public sealed partial class Binding
         => this.LeafDisagrees(ref solution, type, part) || !this.FitsOpenLayer(ref solution, type, part);
 
     // SPEC 7.7.4, 10.5 (C-359 C1): whether a Function Item part whose own signature forms no Type (DECISIONS BU-240) fits no case of its
-    // split at the Function Type the frame completes (ItemSignatureFits); one that some case fits, or whose parameter is still open,
+    // split at the Function Type the frame completes (ErasureSignatureFits); one that some case fits, or whose parameter is still open,
     // rests on the split. Read once every part's evidence is in (TryCandidateCore), so the argument order decides nothing.
     private bool UnformedItemFails(ref SlotSolution solution, BoundType type, Koto part)
     {
@@ -208,10 +208,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var rows = this.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
-        var fits = this.ItemSignatureFits(item, required, part, this.comparisonRows, out _);
-        this.DropComparisonRows(rows);
-        return !fits;
+        return !this.ErasureSignatureFits(item, required, part); // SPEC 15.6.1: before selection, the structural part alone.
     }
 
     // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its parameter with the split layer open: the common

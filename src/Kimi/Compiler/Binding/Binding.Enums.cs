@@ -801,12 +801,13 @@ public sealed partial class Binding
     }
 
     // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
-    // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
-    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Place without a plan names its required
-    // spelling (SPEC 6.5.2) beside the fit's record (SPEC 23.1.2); a payload's own failure while bound (PartFailed, as at a call
-    // argument; an erasure's Owned failure is its value's, DECISIONS BU-107) is its record, on which the construction rests. False at
-    // the first failing payload: the payloads after it are not completed (PLAN G262 F2, R7-E1) and keep no operation, those before it keep
-    // theirs, and no slot is filled.
+    // it instead), is completed at it (ErasePart where a Closure or Function Item completes at a Function Type: the conversion, by the
+    // Types it completes, as CompleteValueCallPart's, never by a fit's operation; ArgFlow ruling 181) and adapted to it. The
+    // construction judges the fit once: a misfit is its Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1),
+    // and a bare Place without a plan names its required spelling (SPEC 6.5.2) beside the fit's record (SPEC 23.1.2); a payload's own
+    // failure while bound (PartFailed, as at a call argument; an erasure's Owned failure is its value's, DECISIONS BU-107) is its record,
+    // on which the construction rests. False at the first failing payload: the payloads after it are not completed (PLAN G262 F2, R7-E1)
+    // and keep no operation, those before it keep theirs, and no slot is filled.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
@@ -826,9 +827,8 @@ public sealed partial class Binding
             // A payload whose fit fails at a part checked against its Type (a failed check: the part's own resolution there has no
             // applicable candidate or is ambiguous) is bound at it, where that failure is its own record, on which the construction
             // rests (SPEC 23.1.2, rule W; ArgFlow ruling 152 C3); any other misfit is the construction's Type mismatch.
-            var fitted = default(BoundArgumentOperation);
             var fit = settled.Contains(i) && this.AwaitedKind(source) is not (PartKind.Call or PartKind.Case) ? CandidateApplicability.Applicable
-                : this.FitArgument(source, type, scope, source, out fitted);
+                : this.FitArgument(source, type, scope, source, out _);
             if (this.TakeTrialChecked(use) is not null && fit == CandidateApplicability.Inapplicable)
             {
                 fit = CandidateApplicability.Applicable;
@@ -852,7 +852,7 @@ public sealed partial class Binding
             }
 
             if (completed is null || this.PartFailed(source) ||
-                (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
+                (type.Kind == BoundTypeKind.Function && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
                 !this.ErasePart(source, completed, type)))
             {
                 Complete(use, null); // The payload's own failure, on which the construction rests.

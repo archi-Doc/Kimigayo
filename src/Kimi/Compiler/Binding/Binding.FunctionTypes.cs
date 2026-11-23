@@ -282,7 +282,7 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4, 10.7, 15.3.7 (PLAN G504): the receiver and signature part of an erasure as its decision reads it, under the premises
-    // of `use`: a Closure's Shared receiver and its contract (DefinitionContractFits), a Function Item's contract (ErasureSignatureFits).
+    // of `use`: a Closure's Shared receiver and its contract (DefinitionContractFits), a Function Item's contract (ItemSignatureFits).
     // ErasesToFunction's, and a join source's late Type (LateAdaptation), so a join decides no erasure apart from it. `rows` takes the
     // comparison's region conjuncts (CallableInstance.Rows).
     private bool ErasureFits(BoundType actual, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
@@ -291,7 +291,8 @@ public sealed partial class Binding
         return actual.Kind == BoundTypeKind.Closure
             ? expected.Kind == BoundTypeKind.Function && SharedReceiver(actual) &&
                 this.ClosureSignature(actual) is not null && this.DefinitionContractFits(actual, expected, use, rows, out failure)
-            : this.ErasureSignatureFits(actual, expected, use, rows, out failure);
+            : expected.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.FunctionItem &&
+                this.ItemSignatureFits(actual, expected, use, rows, out failure);
     }
 
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
@@ -330,26 +331,39 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 7.7.4, 10.5, 10.7, 10.8, 15.6.1: the signature part of an erasure, which a call's applicability uses. A Closure's is the
-    // structural part of its signature's compatibility (FitsStructuralPartAt, every pre-selection fit's one entry, DECISIONS R4-M155)
-    // with its Shared receiver (SharedReceiver, a fact of its bound body); its Owned environment is a Constraint of the candidate
-    // (ErasedArgumentsEnvironment), and its Origin part is judged after selection, at the argument (ErasesToFunction), where a failure never
-    // selects another candidate. A Function Item's Origin conditions still belong to its signature, proven from the required contract at
-    // `use` (SPEC 15.3.7; PLAN G379's Item half). `rows` takes the contract's region conjuncts (CallableInstance.Rows).
-    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
+    // SPEC 7.7.4, 10.5, 10.5.3, 10.7, 10.8, 15.6.1 (DECISIONS R4-M155, R4-M213; ArgFlow ruling 181): the signature part of an erasure,
+    // which every fit before selection reads (a candidate trial, a checked part's query, FitPerCall): the structural part of the
+    // callable's signature's compatibility (FitsStructuralPartAt, every pre-selection fit's one entry), a Closure's with its Shared
+    // receiver (SharedReceiver, a fact of its bound body), a Function Item's alike. Its Origin and Loan contract is the conversion's
+    // alone (ErasesToFunction, ErasureFits), judged after selection at the argument, where a failure never selects another candidate; a
+    // Closure's Owned environment is a Constraint of the candidate (ErasedArgumentsEnvironment). An Item whose signature formed a Type no
+    // binding represents rests on its split as ItemSignatureFits does (DECISIONS BU-240, temporary, PLAN G886).
+    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
     {
-        failure = default;
-        return expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.ItemSignatureFits(actual, expected, use, rows, out failure)) ||
-            (actual.Kind == BoundTypeKind.Closure && SharedReceiver(actual) && this.ClosureSignature(actual) is { } closureSignature &&
-            this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use)));
+        if (expected.Kind != BoundTypeKind.Function || actual.Kind != BoundTypeKind.FunctionItem)
+        {
+            return expected.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure && SharedReceiver(actual) &&
+                this.ClosureSignature(actual) is { } closureSignature &&
+                this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use);
+        }
+
+        var mark = this.unformedWrites;
+        this.CarrySplitPart(this.splitPartStamp); // In a split search: what the enclosing part read before (the required Type) is handed on.
+        if (this.FunctionItemSignature(actual) is { } itemSignature)
+        {
+            this.EnterSplitPart(); // The signature's inputs and result are parts of their own, each forming its own Type again.
+            return this.FitsStructuralPartAt(itemSignature, this.CompatibleSignature(itemSignature, expected), use);
+        }
+
+        return this.UnformedSince(mark) && this.RestsOnSplitCases(
+            mark, (actual, expected, use), static (binding, check) => !binding.ErasureSignatureFits(check.actual, check.expected, check.use));
     }
 
     // SPEC 7.7.4, 10.7: whether a Function Item's signature fits the required contract. DECISIONS BU-240 with rule W (BU-79; C-359 C1, C2;
     // temporary, PLAN G886): an Item whose signature formed a Type no binding represents has its binder fixed before any evidence, so
     // the same check is judged in each combination of split cases (RestsOnSplitCases). One that no combination fits fails by itself;
-    // one that some combination fits rests on the split: it fits here, and its writes stay, so its reader rests on it too (a
-    // candidate trial's verdict, TryCandidate; the conversion's decision, ErasesToFunction). `rows` takes the contract's region
+    // one that some combination fits rests on the split: it fits here, and its writes stay, so its reader rests on it too (the
+    // conversion's decision, ErasesToFunction; a join source's late Type, LateAdaptation). `rows` takes the contract's region
     // conjuncts in every combination (CallableInstance.Rows), which its reader forms or drops.
     private bool ItemSignatureFits(BoundType item, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {

@@ -441,14 +441,11 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
-        var rows = this.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
-        var erases = this.ErasureSignatureFits(actual, type, node, this.comparisonRows, out _);
-        this.DropComparisonRows(rows);
-        if (erases)
+        if (this.ErasureSignatureFits(actual, type, node))
         {
-            // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an initialization; its Owned
-            // environment is a Constraint of the candidate (ErasedArgumentsEnvironment, SPEC 10.1 step 5), its rest judged once the call is
-            // selected (SPEC 10.5).
+            // SPEC 7.7.4: a concrete Closure value or a Function Item converts to the parameter's common Function Type, as at an
+            // initialization; a Closure's Owned environment is a Constraint of the candidate (ErasedArgumentsEnvironment, SPEC 10.1 step 5),
+            // the rest of either judged once the call is selected (SPEC 10.5, 15.6.1: ErasesToFunction).
             operation = new(part, actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
             return CandidateApplicability.Applicable;
         }
