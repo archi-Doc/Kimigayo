@@ -1496,7 +1496,7 @@ public sealed partial class FunctionCodegenTest
         const string Source = "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n" +
             "public func main()\n    var t: f64 = 0.0\n    unsafe => t = Native.mix(-1, t)\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests, TargetProfile.Windows);
         var before = Signature(c, module);
         var original = Mix(c.Kotonoha.RootKoto);
         var donor = ParseTestHelper.ParseSuccess(Source.Replace("mix(a: i8", "mix(x: i8", StringComparison.Ordinal));
@@ -1736,7 +1736,7 @@ public sealed partial class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var (start, unused) = (Of(set, null), Of(set, "unused"));
         set.Mark([start]);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests, TargetProfile.Windows);
         Assert.True(module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null));
         new FunctionCodegen(module, c.Types).Write(program, collector, unused, TextWriter.Null);
         Assert.Equal([new(DiagnosticCode.InternalInvariant_Kd, set.Items[unused].Site)], module.Records);
@@ -2052,7 +2052,7 @@ public sealed partial class FunctionCodegenTest
     // A program's module written with every body item an output root (ItemTexts), whatever records it makes: its MIR, collector, module and
     // body items, whose items a test then writes directly.
     private static (MirProgram Program, InstanceCollector Collector, ModuleCodegen Module, int[] Bodies) WrittenModule(Compilation c)
-        => WrittenModule(c, new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests), out _);
+        => WrittenModule(c, new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports, c.Tests, TargetProfile.Windows), out _);
 
     // The same, written by the module given (a module kept across edits), with whether its Write wrote the module.
     private static (MirProgram Program, InstanceCollector Collector, ModuleCodegen Module, int[] Bodies) WrittenModule(

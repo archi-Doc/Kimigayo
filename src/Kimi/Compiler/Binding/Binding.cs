@@ -106,11 +106,13 @@ public sealed partial class Binding
         this.baseCallFailures = new(this);
         this.objectErasureFailures = new(this);
         this.resultContexts = new(this);
-        this.arithmeticConformanceFailures = new(this);
         this.callableConstraints = new(this);
         this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);
+        this.memberSelections = new(this);
+        this.inferredConstructionTargets = new(this);
+        this.qualificationStops = new(this);
         this.formationCauses = new(this);
         this.knownBases = new(this);
         this.earlyReads = new(this);

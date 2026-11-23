@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Target;
 using Xunit;
 
@@ -117,5 +118,20 @@ public class CoreModelTest
         var kernel32 = windows.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
         Assert.Subset(kernel32, windows.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
         Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], windows.ReservedSymbols);
+    }
+
+    // The Tatara plan's B7b2a (N2): each row's Layer names exactly one of the Backend's RuntimeLayer records, which Core cannot name, so a
+    // row's frame always has its layer.
+    [Fact]
+    public void EveryRowNamesOneRuntimeLayer()
+        => Assert.All(TargetProfile.Rows, static row => Assert.Single(RuntimeAbi.Layers, x => x.Template == row.Layer));
+
+    // The Tatara plan's B7b2a: Find gives each row for its triple, and none for a triple without a row.
+    [Fact]
+    public void FindGivesTheRowOfATriple()
+    {
+        Assert.All(TargetProfile.Rows, static row => Assert.Same(row, TargetProfile.Find(row.Target)));
+        Assert.Null(TargetProfile.Find(string.Empty));
+        Assert.Null(TargetProfile.Find("x86_64-unknown-linux-gnu"));
     }
 }

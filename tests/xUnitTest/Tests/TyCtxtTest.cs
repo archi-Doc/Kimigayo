@@ -342,7 +342,7 @@ public sealed partial class TyCtxtTest
             var own = new List<BoundType?>();
             foreach (var symbol in c.Binding.Semantics.Declarations)
             {
-                own.AddRange([symbol.WholeType, symbol.Type, symbol.ContractSelf]);
+                own.AddRange([symbol.WholeType, symbol.Type, symbol.SelfSymbol?.Type]);
             }
 
             int[] ids = [.. interned.Concat(own.OfType<BoundType>()).Where(static x => x.Id > BoundType.StaticCount).Distinct().Select(static x => x.Id).Order()];

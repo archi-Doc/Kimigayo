@@ -537,9 +537,10 @@ public class UseLookupTest
 
     // PLAN G701 (SPEC 6.1.5, 8.4, 9.1, 9.2, 9.7): what a written `Self` selects is decided where names resolve. A Contract's `Self` is
     // its Self Type parameter, the conforming-Type binder, so it is no Contract reference at a projection's Contract, a parent or a
-    // requirement; a struct's or enum's is the declared Type with all its bindings; and `Self` has no Type parameters, so none remains
-    // for a `Self` written with Type arguments (the declaration's own included). It is no generic parameter either: a function
-    // requirement's clauses take subjects rooted in its generic parameters (8.4.2). Each invalid row has a valid counterpart.
+    // requirement; a struct's or enum's is the declared Type with all its bindings; and `Self` has no Type parameters, so 9.7's filter
+    // leaves none for a `Self` written with Type arguments (the declaration's own included): the mismatch record of `T<i32>`,
+    // InvalidTypeFormation_Kd (R7-N1 f-2, F's ruling N1-2: BU-150's Unresolved record superseded). It is no generic parameter either: a
+    // function requirement's clauses take subjects rooted in its generic parameters (8.4.2). Each invalid row has a valid counterpart.
     [Theory]
     [InlineData("contract C\n    associate E\n    func get(self: ref/Self) -> Self.(Self).E", "UnresolvedBinding_Kd")]
     [InlineData("contract C\n    associate E\n    func get(self: ref/Self) -> Self.(C).E", "")]
@@ -549,28 +550,32 @@ public class UseLookupTest
     [InlineData("struct S\n    contract C\n        associate E\n        func get(self: ref/Self) -> Self.(C).E", "")]
     [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(Self).E is i32", "UnresolvedBinding_Kd")] // G507: the clause rests on its failed subject (SPEC 23.1.2)
     [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(C).E is i32", "")]
-    [InlineData("contract C: Self\n    func get(self: ref/Self) -> i32", "InvalidConstraint_Kd")]
+    [InlineData("contract C: Self\n    func get(self: ref/Self) -> i32", "InvalidConstraint_Kd UnresolvedBinding_Kd")] // The parent's Contract Reference role selects no `Self` (SPEC 9.2, 9.5): the resolver's miss at `Self` (PLAN G1207), the Contract's own record at `contract`
     [InlineData("contract B\ncontract A\n    func f(self: ref/Self)\n        Self is B", "InvalidConstraint_Kd")]
     [InlineData("contract A\n    func f(self: ref/Self)\n        Self is Copy", "InvalidConstraint_Kd")]
     [InlineData("contract A\n    func f(self: ref/Self)\n        Self is Self", "InvalidConstraint_Kd")]
     [InlineData("contract A\n    associate E\n    func f<U>(self: ref/Self, u: U)\n        U is Self.E", "")]
     [InlineData("contract A\n    Self is Copy\nstruct S\n    Self is Copy\n    Self is A\n    public var n: i32 = 0", "")]
-    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<i32>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
-    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<X>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<i32>", "InvalidConstraint_Kd InvalidTypeFormation_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<X>", "InvalidConstraint_Kd InvalidTypeFormation_Kd")]
     [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self", "")]
     [InlineData("contract K<X>\n    associate E\n    func get(self: ref/Self) -> Self.(Self<X>).E", "UnresolvedBinding_Kd")]
     [InlineData("contract K<X>\n    associate E\n    func get(self: ref/Self) -> Self.(K<X>).E", "")]
-    [InlineData("contract K<X>\n    func take(self: ref/Self, v: Self<X>)", "UnresolvedBinding_Kd")]
+    [InlineData("contract K<X>\n    func take(self: ref/Self, v: Self<X>)", "InvalidTypeFormation_Kd")]
     [InlineData("contract K<X>\n    func take(self: ref/Self, v: Self)", "")]
-    [InlineData("struct S\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
-    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
-    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<T>) => ()", "UnresolvedBinding_Kd")]
-    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Option<Self<i32>>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("struct S\n    public func take(self: ref/Self, v: Self<i32>) => ()", "InvalidTypeFormation_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<i32>) => ()", "InvalidTypeFormation_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<T>) => ()", "InvalidTypeFormation_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Option<Self<i32>>) => ()", "InvalidTypeFormation_Kd")]
     [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Option<Self>) => ()", "")]
-    [InlineData("struct Box<T>\n    public func take<U>(self: ref/Self, u: U)\n        U is Self<i32>\n        return", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("struct Box<T>\n    public func take<U>(self: ref/Self, u: U)\n        U is Self<i32>\n        return", "InvalidConstraint_Kd InvalidTypeFormation_Kd")]
     [InlineData("struct Box<T>\n    public func take<U>(self: ref/Self, u: U)\n        U is Self\n        return", "")]
-    [InlineData("enum E<T>\n    A(T)\n    B\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("enum E<T>\n    A(T)\n    B\n    public func take(self: ref/Self, v: Self<i32>) => ()", "InvalidTypeFormation_Kd")]
     [InlineData("enum E<T>\n    A(T)\n    B\n    public func take(self: ref/Self, v: Self) => ()", "")]
+    // R7-N1 f-2 (F's ruling N1-8): a Case reference qualified by Self names the enum's Case, as `E.A` does (SPEC 6.1.5, 6.5.2, 9.1);
+    // the Pattern form `Self.A(let n)` (F.10.3) does not parse yet (the parser's CaseReference reads a Name first: an open issue).
+    [InlineData("enum E\n    A(i32)\n    B\n    public func make() -> Self => Self.A(1)", "")]
+    [InlineData("enum E<T>\n    A(T)\n    B\n    public func make(t: T) -> Self => Self.A(t@move)", "")]
     public void SelfSelectsItsContextsType(string source, string codes)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
