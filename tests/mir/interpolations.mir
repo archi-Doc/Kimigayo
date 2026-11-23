@@ -5,12 +5,12 @@ fn format @9
   _3: Result<(), BufferFull> temp @21 s1
   _4: uniq/Utf8Writer temp @24 s1
   _5: Result<(), BufferFull> temp @21 s1
-  _6: uniq/Utf8Writer temp @122 s1
+  _6: uniq/Utf8Writer temp @123 s1
   _7: string temp @26 s1
   _8: ref/string temp @26 s1
   _9: isize temp @21 s1
   _10: Result<(), BufferFull> temp @21 s1
-  _11: uniq/Utf8Writer temp @122 s1
+  _11: uniq/Utf8Writer temp @123 s1
   _12: string temp @27 s1
   _13: HeapBuffer temp @27 s1
   _14: Utf8Writer temp @27 s1
@@ -31,11 +31,11 @@ fn format @9
   _29: ref/string temp @27 s1
   _30: isize temp @21 s1
   _31: Result<(), BufferFull> temp @21 s1
-  _32: uniq/Utf8Writer temp @122 s1
+  _32: uniq/Utf8Writer temp @123 s1
   _33: string temp @33 s1
   _34: ref/string temp @33 s1
   _35: isize temp @21 s1
-  _36: ref/Utf8Writer temp @122 s1
+  _36: ref/Utf8Writer temp @123 s1
   _37: Result<(), BufferFull> temp (Result) @9
   s1: lexical in s0 @19
   flags 2
@@ -44,16 +44,16 @@ fn format @9
       StorageLive(_4) @24 s1
     * _4 = &uniq (*_2): uniq/Utf8Writer @24 s1
       StorageLive(_5) @21 s1
-      StorageLive(_6) @122 s1
-      _6 = &uniq two-phase (*_4): uniq/Utf8Writer @122 s1
+      StorageLive(_6) @123 s1
+      _6 = &uniq two-phase (*_4): uniq/Utf8Writer @123 s1
       StorageLive(_7) @26 s1
       _7 = const "(" @26 s1
       StorageLive(_8) @26 s1
       _8 = &_7: ref/string @26 s1
       _5 = write<string>(move _6, move _8) -> bb2 @21 s1
   bb1:
-      StorageLive(_36) @122 s1
-      _36 = &(*_4): ref/Utf8Writer @122 s1
+      StorageLive(_36) @123 s1
+      _36 = &(*_4): ref/Utf8Writer @123 s1
       _3 = status(move _36) -> bb20 @21 s1
   bb2:
       StorageLive(_9) @21 s1
@@ -61,8 +61,8 @@ fn format @9
       switch copy _9 [0: bb3, otherwise: bb1] @21 s1
   bb3:
       StorageLive(_10) @21 s1
-      StorageLive(_11) @122 s1
-      _11 = &uniq two-phase (*_4): uniq/Utf8Writer @122 s1
+      StorageLive(_11) @123 s1
+      _11 = &uniq two-phase (*_4): uniq/Utf8Writer @123 s1
       StorageLive(_12) [clear f0] @27 s1
       StorageLive(_13) @27 s1
       _13 = heap(const 0_isize) -> bb4 @27 s1
@@ -129,8 +129,8 @@ fn format @9
       switch copy _30 [0: bb17, otherwise: bb1] @21 s1
   bb17:
       StorageLive(_31) @21 s1
-      StorageLive(_32) @122 s1
-      _32 = &uniq two-phase (*_4): uniq/Utf8Writer @122 s1
+      StorageLive(_32) @123 s1
+      _32 = &uniq two-phase (*_4): uniq/Utf8Writer @123 s1
       StorageLive(_33) [clear f1] @33 s1
       _33 = const ")" [set f1] @33 s1
       StorageLive(_34) @33 s1
@@ -150,13 +150,13 @@ fn format @9
       _0 = move _37 @9
       goto bb21 @9
   bb23:
-      StorageDead(_36) @122 s1
+      StorageDead(_36) @123 s1
       StorageDead(_35) @21 s1
       StorageDead(_34) @33 s1
       drop _33 -> bb24 [flag f1] [clear f1] @33 s1
   bb24:
       StorageDead(_33) [clear f1] @33 s1
-      StorageDead(_32) @122 s1
+      StorageDead(_32) @123 s1
       StorageDead(_31) @21 s1
       StorageDead(_30) @21 s1
       StorageDead(_29) @27 s1
@@ -175,14 +175,14 @@ fn format @9
   bb26:
       StorageDead(_13) @27 s1
       StorageDead(_12) [clear f0] @27 s1
-      StorageDead(_11) @122 s1
+      StorageDead(_11) @123 s1
       StorageDead(_10) @21 s1
       StorageDead(_9) @21 s1
       StorageDead(_8) @26 s1
       drop _7 -> bb27 [keep] @26 s1
   bb27:
       StorageDead(_7) @26 s1
-      StorageDead(_6) @122 s1
+      StorageDead(_6) @123 s1
       StorageDead(_5) @21 s1
       StorageDead(_4) @24 s1
       StorageDead(_3) @21 s1
@@ -191,13 +191,13 @@ fn format @9
       _37 = move _3 @20 s1
       goto bb23 @20 s1
   bb29:
-      StorageDead(_36) @122 s1
+      StorageDead(_36) @123 s1
       StorageDead(_35) @21 s1
       StorageDead(_34) @33 s1
       drop _33 -> bb30 [keep] @33 s1
   bb30:
       StorageDead(_33) @33 s1
-      StorageDead(_32) @122 s1
+      StorageDead(_32) @123 s1
       StorageDead(_31) @21 s1
       StorageDead(_30) @21 s1
       StorageDead(_29) @27 s1
@@ -216,14 +216,14 @@ fn format @9
   bb32:
       StorageDead(_13) @27 s1
       StorageDead(_12) @27 s1
-      StorageDead(_11) @122 s1
+      StorageDead(_11) @123 s1
       StorageDead(_10) @21 s1
       StorageDead(_9) @21 s1
       StorageDead(_8) @26 s1
       drop _7 -> bb33 [keep] @26 s1
   bb33:
       StorageDead(_7) @26 s1
-      StorageDead(_6) @122 s1
+      StorageDead(_6) @123 s1
       StorageDead(_5) @21 s1
       StorageDead(_4) @24 s1
       StorageDead(_3) @21 s1
