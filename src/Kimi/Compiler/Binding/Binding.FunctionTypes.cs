@@ -400,161 +400,170 @@ public sealed partial class Binding
         BoundOrigin[] origins,
         BoundOrigin[] inputs)
     {
-        var required = comparison.Expected!;
-        var parameters = required.Components[0];
-        var generic = function.GenericArguments.Count;
-        var inputCount = InputOriginCount(function);
-        var closure = item is { Kind: BoundTypeKind.Closure } ? this.ClosureSignature(item) : null;
-
-        // DECISIONS BU-240 (G812 ruling 103 D1): in a split search each input and the result is a part of the check; a part's structural
-        // misfit is blamed on the bindings its own Type reads, with those the required signature read before (CarrySplitPart), and
-        // any other failure (an Origin, a premise, a clause) on the whole run: the solve joins every part.
-        this.CarrySplitPart(this.splitPartStamp);
-        var inference = this.BeginOriginInference(use, function);
-        inference.Comparison = comparison;
-        this.contractFailure = default;
-        for (var i = 0; i < function.Parameters.Count; i++)
+        // PLAN G1082: the comparison's proof requests share one premise environment of its use and comparison (Binding.OriginPremises.cs).
+        var session = this.OpenPremiseSession();
+        try
         {
-            if (Read(Declared(i)) is not { } parameter)
+            var required = comparison.Expected!;
+            var parameters = required.Components[0];
+            var generic = function.GenericArguments.Count;
+            var inputCount = InputOriginCount(function);
+            var closure = item is { Kind: BoundTypeKind.Closure } ? this.ClosureSignature(item) : null;
+
+            // DECISIONS BU-240 (G812 ruling 103 D1): in a split search each input and the result is a part of the check; a part's structural
+            // misfit is blamed on the bindings its own Type reads, with those the required signature read before (CarrySplitPart), and
+            // any other failure (an Origin, a premise, a clause) on the whole run: the solve joins every part.
+            this.CarrySplitPart(this.splitPartStamp);
+            var inference = this.BeginOriginInference(use, function);
+            inference.Comparison = comparison;
+            this.contractFailure = default;
+            for (var i = 0; i < function.Parameters.Count; i++)
             {
+                if (Read(Declared(i)) is not { } parameter)
+                {
+                    return false;
+                }
+
+                // Only the implementation's per-call binders are inferred; the
+                // required signature's quantifiers and fixed Origins remain rigid.
+                this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
+                inference.Source = ((byte)(i + 1), null, false);
+                this.CollectOriginInference(parameter, parameters.Components[i], inference, use);
+            }
+
+            if (Read(Declared(function.Parameters.Count)) is { } produced)
+            {
+                inference.Source = (ComparisonFailure.ResultStep, null, false);
+                this.CollectOriginInference(produced, required.Components[1], inference, use, result: true);
+            }
+
+            // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.
+            inference.Source = default;
+            if (!this.SolveCallOriginInference(inference, origins, inputs, [], null))
+            {
+                this.contractFailure = inference.Failure;
                 return false;
             }
 
-            // Only the implementation's per-call binders are inferred; the
-            // required signature's quantifiers and fixed Origins remain rigid.
-            this.MatchInputOrigins(parameter, parameters.Components[i], function, origins, inputs);
-            inference.Source = ((byte)(i + 1), null, false);
-            this.CollectOriginInference(parameter, parameters.Components[i], inference, use);
-        }
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                this.EnterSplitPart();
+                if (Read(Declared(i)) is not { } written || Substitute(written) is not { } parameter)
+                {
+                    return false;
+                }
 
-        if (Read(Declared(function.Parameters.Count)) is { } produced)
-        {
-            inference.Source = (ComparisonFailure.ResultStep, null, false);
-            this.CollectOriginInference(produced, required.Components[1], inference, use, result: true);
-        }
+                var walk = new RelationWalk(this, this, use, OriginPart.Contract);
+                if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
+                {
+                    this.contractFailure = walk.Failure.Within((byte)(i + 1));
+                    BlameMisfit(Declared(i), walk.Failure);
+                    return false;
+                }
 
-        // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.
-        inference.Source = default;
-        if (!this.SolveCallOriginInference(inference, origins, inputs, [], null))
-        {
-            this.contractFailure = inference.Failure;
-            return false;
-        }
+                this.EnterJointSplitPart();
 
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
+                this.failedResultPremise = null;
+                if (!this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
+                {
+                    this.contractFailure = this.PremiseFailure(ComparisonFailureKind.WellFormedness, comparison) with { Part = i };
+                    return false;
+                }
+
+                if (!operations.IsEmpty)
+                {
+                    // Compare the same substituted contract that established applicability. In particular,
+                    // independently named per-call Origins are fixed to the required signature before ranking.
+                    // References insert no adaptations and use no defaults; results never rank candidates.
+                    operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
+                }
+            }
+
+            this.failedCallClause = null;
+            if (!this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison))
+            {
+                this.contractFailure = this.failedCallClause is { } clause
+                    ? new ComparisonFailure(
+                        this.ComparedRegionLimit(clause.Longer, clause.Shorter, clause.Equality, use) ? ComparisonFailureKind.Limit : ComparisonFailureKind.Clause,
+                        clause.Longer,
+                        clause.Shorter,
+                        clause.Equality,
+                        comparison) { Clause = clause.Syntax }
+                    : default;
+                return false;
+            }
+
             this.EnterSplitPart();
-            if (Read(Declared(i)) is not { } written || Substitute(written) is not { } parameter)
+            if (Read(Declared(function.Parameters.Count)) is not { } boundResult || Substitute(boundResult) is not { } result)
             {
                 return false;
             }
 
-            var walk = new RelationWalk(this, this, use, OriginPart.Contract);
-            if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
+            var resultWalk = new RelationWalk(this, this, use, OriginPart.Contract);
+            if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
             {
-                this.contractFailure = walk.Failure.Within((byte)(i + 1));
-                BlameMisfit(Declared(i), walk.Failure);
+                this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
+                BlameMisfit(Declared(function.Parameters.Count), resultWalk.Failure);
                 return false;
             }
 
             this.EnterJointSplitPart();
 
             this.failedResultPremise = null;
-            if (!this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
+            if (!this.ProvesResultPremises(function, result, use, comparison))
             {
-                this.contractFailure = this.PremiseFailure(ComparisonFailureKind.WellFormedness, comparison) with { Part = i };
+                this.contractFailure = this.PremiseFailure(ComparisonFailureKind.ResultPremise, comparison);
                 return false;
             }
 
-            if (!operations.IsEmpty)
+            return true;
+
+            // DECISIONS BU-240 (G812 rulings 103 D1, 105; temporary, removed with (R)): in a split search, what a failed part of the contract is
+            // blamed on. Any failure but a structural one joins every part (an Origin, a premise, a clause: the solve). A structural
+            // misfit belongs to the layer that misfits: where the walk's failure names a member inside the part's nested Callable
+            // signatures (FailedMember), that member is the failing part, formed again on its own (Read), so the run blames the bindings
+            // its layer reads and not those of its siblings; otherwise the whole part, as formed.
+            void BlameMisfit(BoundType? declared, in ComparisonFailure failure)
             {
-                // Compare the same substituted contract that established applicability. In particular,
-                // independently named per-call Origins are fixed to the required signature before ranking.
-                // References insert no adaptations and use no defaults; results never rank candidates.
-                operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
+                if (failure.Kind != ComparisonFailureKind.Shape)
+                {
+                    this.EnterJointSplitPart();
+                }
+                else if (this.splitOpen && declared is not null && FailedMember(declared, failure) is { } member)
+                {
+                    this.EnterSplitPart();
+                    _ = Read(member) is { } layer ? Substitute(layer) : null;
+                }
             }
-        }
 
-        this.failedCallClause = null;
-        if (!this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison))
-        {
-            this.contractFailure = this.failedCallClause is { } clause
-                ? new ComparisonFailure(
-                    this.ComparedRegionLimit(clause.Longer, clause.Shorter, clause.Equality, use) ? ComparisonFailureKind.Limit : ComparisonFailureKind.Clause,
-                    clause.Longer,
-                    clause.Shorter,
-                    clause.Equality,
-                    comparison) { Clause = clause.Syntax }
-                : default;
-            return false;
-        }
+            // The implementation's input `i`, or its result at i = the parameter count, as the definition declares it: a Closure's from its
+            // signature, any other's written Type.
+            BoundType? Declared(int i)
+                => i < function.Parameters.Count
+                    ? (closure is not null ? closure.Components[0].Components[i] : function.Parameters[i].Type.BoundType)
+                    : closure is not null ? closure.Components[1] : symbol.Type;
 
-        this.EnterSplitPart();
-        if (Read(Declared(function.Parameters.Count)) is not { } boundResult || Substitute(boundResult) is not { } result)
-        {
-            return false;
-        }
+            // A declared part (or a member of one) as the compared value reads it: a Closure's in the use's scope, any other's through the
+            // definition's item, container or frame (Bound).
+            BoundType? Read(BoundType? declared)
+                => declared is null ? null : closure is not null ? this.ContractType(declared, this.ConstraintScope(use)) : Bound(declared);
 
-        var resultWalk = new RelationWalk(this, this, use, OriginPart.Contract);
-        if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
-        {
-            this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
-            BlameMisfit(Declared(function.Parameters.Count), resultWalk.Failure);
-            return false;
-        }
-
-        this.EnterJointSplitPart();
-
-        this.failedResultPremise = null;
-        if (!this.ProvesResultPremises(function, result, use, comparison))
-        {
-            this.contractFailure = this.PremiseFailure(ComparisonFailureKind.ResultPremise, comparison);
-            return false;
-        }
-
-        return true;
-
-        // DECISIONS BU-240 (G812 rulings 103 D1, 105; temporary, removed with (R)): in a split search, what a failed part of the contract is
-        // blamed on. Any failure but a structural one joins every part (an Origin, a premise, a clause: the solve). A structural
-        // misfit belongs to the layer that misfits: where the walk's failure names a member inside the part's nested Callable
-        // signatures (FailedMember), that member is the failing part, formed again on its own (Read), so the run blames the bindings
-        // its layer reads and not those of its siblings; otherwise the whole part, as formed.
-        void BlameMisfit(BoundType? declared, in ComparisonFailure failure)
-        {
-            if (failure.Kind != ComparisonFailureKind.Shape)
+            BoundType? Bound(BoundType type)
             {
-                this.EnterJointSplitPart();
+                var bound = item is not null ? this.ItemType(type, item, function)
+                    : frame is not { } slots ? this.MemberType(type, container) : this.Substitute(type, SubstitutionOf(function, container, slots.Types[..generic], slots.Lengths[..generic]));
+                return bound is null ? null : this.ContractType(bound, this.ConstraintScope(use));
             }
-            else if (this.splitOpen && declared is not null && FailedMember(declared, failure) is { } member)
-            {
-                this.EnterSplitPart();
-                _ = Read(member) is { } layer ? Substitute(layer) : null;
-            }
+
+            // The solution's images; null where an atom of the function has none (LacksImage).
+            BoundType? Substitute(BoundType type)
+                => this.LacksImage(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount))
+                    ? null : this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
         }
-
-        // The implementation's input `i`, or its result at i = the parameter count, as the definition declares it: a Closure's from its
-        // signature, any other's written Type.
-        BoundType? Declared(int i)
-            => i < function.Parameters.Count
-                ? (closure is not null ? closure.Components[0].Components[i] : function.Parameters[i].Type.BoundType)
-                : closure is not null ? closure.Components[1] : symbol.Type;
-
-        // A declared part (or a member of one) as the compared value reads it: a Closure's in the use's scope, any other's through the
-        // definition's item, container or frame (Bound).
-        BoundType? Read(BoundType? declared)
-            => declared is null ? null : closure is not null ? this.ContractType(declared, this.ConstraintScope(use)) : Bound(declared);
-
-        BoundType? Bound(BoundType type)
+        finally
         {
-            var bound = item is not null ? this.ItemType(type, item, function)
-                : frame is not { } slots ? this.MemberType(type, container) : this.Substitute(type, SubstitutionOf(function, container, slots.Types[..generic], slots.Lengths[..generic]));
-            return bound is null ? null : this.ContractType(bound, this.ConstraintScope(use));
+            session?.Close();
         }
-
-        // The solution's images; null where an atom of the function has none (LacksImage).
-        BoundType? Substitute(BoundType type)
-            => this.LacksImage(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount))
-                ? null : this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
     }
 
     // SPEC 15.3.3, 15.3.4, 15.6.1 (DECISIONS R4-M162; the owner's O-397 (A), PLAN G962): a nested signature's written result, a Function

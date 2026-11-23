@@ -88,6 +88,27 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         Assert.True(work[1] <= 12 * work[0] && work[2] <= 12 * work[0] && work[3] <= 96 * work[0], $"premise work {string.Join(", ", work)}");
     }
 
+    // PLAN G1082 (R7-O1 e; SPEC 15.3.7, 15.6.1): an anonymous function compared with a required signature of n inputs `ref/U` proves
+    // each input well formed from that signature's own well-formedness; the comparison's requests share one premise environment of its
+    // use and comparison, built once, so the premise work done (edges written, closure insertions and activations) grows linearly in n
+    // at n = 32, 64, 128 (within 2.25x per doubling) with one environment, where each request rebuilt all 2n premises (4,224, 16,640,
+    // 66,048). OriginProofMetrics' Nodes and Edges sum each closure's whole graph, so they are not this measure.
+    [Fact]
+    public void ALiteralsComparisonOverManyInputsScales()
+    {
+        var measured = new[] { 32, 64, 128 }.Select(static n =>
+        {
+            var inputs = string.Join(", ", Enumerable.Repeat("ref/U", n));
+            var named = string.Join(", ", Enumerable.Range(1, n).Select(static i => $"y{i}: ref/U"));
+            var metrics = Metrics("struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n" +
+                $"    let c: ({inputs}) -> i32 = func [] ({named}) -> i32 => 0\n    return 0\npublic func main() => ()\n");
+            return (Work: metrics.WrittenEdges + metrics.Insertions + metrics.Activations, metrics.Environments);
+        }).ToArray();
+        output.WriteLine($"premise work {string.Join(", ", measured)}");
+        Assert.True(measured[1].Work <= 2.25 * measured[0].Work && measured[2].Work <= 2.25 * measured[1].Work, $"premise work {string.Join(", ", measured)}");
+        Assert.All(measured, x => Assert.Equal(measured[0].Environments, x.Environments));
+    }
+
     // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
     // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
     internal static void WorkScales(ITestOutputHelper output, string[] sources, double factor)
@@ -127,6 +148,13 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     // The premise closures' nodes, edges and worklist insertions of one binding of a valid source.
     private static long PremiseWork(string source)
     {
+        var metrics = Metrics(source);
+        return metrics.Nodes + metrics.Edges + metrics.Insertions;
+    }
+
+    // The Origin proof counters of one binding of a valid source.
+    private static OriginProofMetrics Metrics(string source)
+    {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
@@ -134,7 +162,7 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         c.Binding.OriginProofMetrics = metrics;
         c.Bind();
         Assert.Empty(c.Binding.Issues);
-        return metrics.Nodes + metrics.Edges + metrics.Insertions;
+        return metrics;
     }
 
     [Collection<AllocationIsolationCollection>]

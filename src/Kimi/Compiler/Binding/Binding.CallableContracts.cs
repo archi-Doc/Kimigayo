@@ -17,6 +17,7 @@ public sealed partial class Binding
         var demanded = this.RentTypes(requirement.InputCount);
         var written = this.RentTypes(requirement.InputCount);
         var count = 0;
+        var session = this.OpenPremiseSession(); // PLAN G1082: the comparison's proof requests share its premise environment.
         try
         {
             for (var i = 0; i < requirement.InputCount; i++)
@@ -125,6 +126,7 @@ public sealed partial class Binding
         }
         finally
         {
+            session?.Close();
             this.typeScratch.Return(written, clearArray: true);
             this.typeScratch.Return(demanded, clearArray: true);
         }
