@@ -226,9 +226,9 @@ internal sealed partial class MirValidator
             => (place.Root >= 0 ? place.Root < body.Locals.Length : ~place.Root < body.Statics.Length) &&
                 (uint)place.Projection < (uint)body.Projections.Length;
 
-        private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(
-            row.Type,
-            body.ProjectedType(types, type, row.Kind, row.Arg)) &&
-            (row.Position == -1 || (row.Position >= 0 && row.Kind == MirProjectionKind.Index && type?.Kind == BoundTypeKind.FixedArray));
+        // A step admitted by the Type of the Place it extends with the Type it selects (MirBody.Selects, the one projection rule).
+        private readonly bool Admits(BoundType? type, in MirProjection row)
+            => body.Selects(types, type, row.Kind, row.Arg, out var part) && ReferenceEquals(row.Type, part) &&
+                (row.Position == -1 || (row.Position >= 0 && row.Kind == MirProjectionKind.Index && type?.Kind == BoundTypeKind.FixedArray));
     }
 }

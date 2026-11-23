@@ -2,11 +2,11 @@
 
 // Owns the indexed storage of one MIR body and its projection chains.
 // Input: the forms the builder appends (MirForms.cs) to a body it began (Reset), or a built body stored (Store); a projection's
-// reader's TyCtxt, which a part's Type reads (Project, ProjectedType), never kept. Output: reusable arrays
+// reader's TyCtxt, which a part's Type reads (Project, Selects), never kept. Output: reusable arrays
 // of locals, blocks, statements and associated records, a stored body's grown only to exactly the rows stored in it; the validator's
 // verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and whether a
 // construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
-// References use body-local indices; projection chains are interned while a body is built and ProjectedType owns their Type rule.
+// References use body-local indices; projection chains are interned while a body is built and Selects owns their rule.
 // Must not resolve syntax or introduce a parallel representation for the same body; a stored body is read, never appended to.
 
 using System.Runtime.InteropServices;
@@ -107,39 +107,44 @@ internal sealed class MirBody
     /// record) marks none.</summary>
     internal bool HasConstructionRecord { get; set; }
 
-    /// <summary>Gets the Type a move-path step selects from a value of a Type, the arms of <see cref="ProjectedType"/> that read no fact
-    /// of a body: a Field, a base, a fixed array's element at a constant position and a Case's payload (the direct parts a level of
-    /// <see cref="MirDropTable"/>'s walk names).</summary>
+    /// <summary>Gets whether a move-path step selects a part of a value of a Type, and the part's Type: the arms of <see cref="Selects"/>
+    /// that read no fact of a body: a Field, a base, a fixed array's element at a constant position and a Case's payload (the direct parts
+    /// a level of <see cref="MirDropTable"/>'s walk names).</summary>
     /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type of the value.</param>
     /// <param name="kind">The step.</param>
     /// <param name="arg">Its argument.</param>
-    /// <returns>The part's Type, or null when the Type does not have the part.</returns>
-    internal static BoundType? PartType(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg)
+    /// <param name="part">The part's Type: null when the Type does not have the part, or for a stored Field whose slot failed (Binding's
+    /// failed slot, BU-234: <see cref="AdtDef.FieldType"/> is null at an index in range), a part it has, of no Type.</param>
+    /// <returns>Whether the Type has the part.</returns>
+    internal static bool SelectsPart(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg, out BoundType? part)
     {
+        part = null;
         switch (kind)
         {
-            case MirProjectionKind.Field:
-                if (type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
-                {
-                    return (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
-                }
-
-                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(types, type!, arg) : null;
+            case MirProjectionKind.Field when type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure:
+                part = (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
+                break;
+            case MirProjectionKind.Field when AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!):
+                part = AdtDef.FieldType(types, type!, arg);
+                return true;
             case MirProjectionKind.Base:
                 for (var depth = arg; depth > 0 && type is not null; depth--)
                 {
                     type = AdtDef.Base(types, type);
                 }
 
-                return arg > 0 ? type : null;
+                part = arg > 0 ? type : null;
+                break;
             case MirProjectionKind.ConstIndex:
-                return type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
+                part = type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
+                break;
             case MirProjectionKind.Downcast:
-                return type is not null && AdtDef.CaseTypes(types, type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
-            default:
-                return null;
+                part = type is not null && AdtDef.CaseTypes(types, type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
+                break;
         }
+
+        return part is not null;
     }
 
     /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
@@ -231,14 +236,16 @@ internal sealed class MirBody
         return place.Root >= 0 ? this.locals[place.Root].Type : this.statics[~place.Root].Type;
     }
 
-    /// <summary>Gets the Type a projection selects from a Place of a Type (plan 5.4), the one rule the builder interns projections by and the
-    /// validator checks them against.</summary>
+    /// <summary>Gets whether a Place of a Type admits a projection, and the Type it selects (plan 5.4): the one projection rule, which the
+    /// builder interns projections by (<see cref="Project"/>, through <see cref="ProjectedType"/>) and the validator checks them against.</summary>
     /// <param name="types">The reader's Type context, whose instances' stored Types a part's Type reads.</param>
     /// <param name="type">The Type of the Place projected.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
-    /// <returns>The selected Type, or null when the Type does not admit the projection.</returns>
-    internal BoundType? ProjectedType(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg)
+    /// <param name="part">The selected Type: null when the Type does not admit the projection, or for a stored Field whose slot failed
+    /// (<see cref="SelectsPart"/>), a step it admits, of no Type.</param>
+    /// <returns>Whether the Type admits the projection.</returns>
+    internal bool Selects(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg, out BoundType? part)
     {
         switch (kind)
         {
@@ -248,22 +255,34 @@ internal sealed class MirBody
                 var layer = TyCtxt.Layer(type, out var below, out _);
                 if (kind == MirProjectionKind.PairLayer)
                 {
-                    return layer == HirPlaceKind.PairLayer && this.Binds(arg, TyCtxt.PairBinder(type)) ? below : null;
+                    part = layer == HirPlaceKind.PairLayer && this.Binds(arg, TyCtxt.PairBinder(type)) ? below : null;
                 }
-
-                if (layer == HirPlaceKind.Deref)
+                else
                 {
-                    return below;
+                    part = layer == HirPlaceKind.Deref ? below : type is { IsPointer: true, Components: [var pointee] } ? pointee : null;
                 }
 
-                return type is { IsPointer: true, Components: [var pointee] } ? pointee : null;
+                break;
             case MirProjectionKind.Index:
-                return type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
+                part = type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
                     ReferenceEquals(this.locals[arg].Type, BoundType.ISize) ? type.Components[0] : null;
+                break;
             default:
-                return PartType(types, type, kind, arg);
+                return SelectsPart(types, type, kind, arg, out part);
         }
+
+        return part is not null;
     }
+
+    /// <summary>Gets the Type a projection selects from a Place of a Type, <see cref="Selects"/>' answer for a reader that takes none as
+    /// no part (no part to drop, a Type that agrees with any).</summary>
+    /// <param name="types">The reader's Type context, whose instances' stored Types a part's Type reads.</param>
+    /// <param name="type">The Type of the Place projected.</param>
+    /// <param name="kind">The projection.</param>
+    /// <param name="arg">Its argument.</param>
+    /// <returns>The selected Type, or null when the Type does not admit the projection or selects a part of no Type.</returns>
+    internal BoundType? ProjectedType(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg)
+        => this.Selects(types, type, kind, arg, out var part) ? part : null;
 
     /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.PairBinder"/>).</summary>
     /// <param name="binder">The index in <see cref="Binders"/>.</param>
