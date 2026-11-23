@@ -29958,6 +29958,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     (G983's remainder, not the manifest).
   - Amends R9-M6 (the dependency rule; the Temporary clause ends), R5-M181 (the foreign supplies follow generation) and R9-M10 (its
     known limit narrows: no manifest read raises a listed contract type).
+  - Amended by T-M33 (B7b2b, 2026-11-23): on a row with a `CRuntime`, a module that requires any library also requires that supply,
+    once, with the row supply's Kind (`ModuleCodegen.Require`, before `Assemble`); the C path is published through `Libraries`.
 - **R9-M12 The command's own result: an exception no result owns is the command's fault (PLAN G984)** (Middle, 2026-11-18; Major;
   under SPEC 23.2.3, DIAGNOSTICS rule 9, R5-M169 and R9-M10; design review REVISE then ACCEPT WITH NOTES)
   - Rule: `CommandExecution.Execute` (every command but `test` and `lsp`) decides no fault by exception type: it catches
@@ -31134,3 +31136,53 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     excluding directive (SPEC 19.4) in every reading compilation
     (`KimiLibraryShapeTest.ARefusedLibrarysExcludedRecordNamesItsDirective`). Rejected: deleting the tripwire without carrying the
     ranges.
+- **T-M33 The Linux row's imports: the C path published through `Libraries`, and System V argument extension per call** (Tatara,
+  2026-11-23; the plan's unit B7b2b, Q-715, D-1190; Major; design Revision 2.5.1 §2, §3.7, §16; design review C-445 (C1, B1) and its
+  fourth read's N1; implementation review C-499, the Back's ACCEPT and the Middle's ACCEPT WITH CONDITIONS, its C1 met by B7b5
+  (T-M34); the owner's O-504 Q1 (a), 「質問の回答は、全て推奨通り」; T's rulings 4, 5 and 6 of 11-23 03:5x; the row is T-M30). Lands
+  in window W4 with T-M32 and T-M34 (all or none). Amends R9-M11's library rule.
+  - **Two columns (Core's `TargetProfile`):** `CRuntime` (`string?`): the supply a program's C library starts through; Windows null,
+    Linux `"c"`. `ArgumentExtension` (`string?`, T's ruling 4): the name of IMPL 21.2's argument-extension convention of the row's
+    imports; Windows null (none), Linux `"SystemV"`. Both `required`, so every row states them. Invariant (a `CoreModelTest` row): a
+    row's `CRuntime` names one of its supplies. Linux's supplies: `c` (static) providing `write`, `_exit`, `exit`, `mmap`, `munmap`,
+    `clock_gettime` (design §3.9's set; until B7b5 its only reader is `Require`'s kind; Binding still reads Windows' supplies only).
+  - **`main`'s one spelling (T's ruling 6):** the table-level constant `TargetProfile.MainSymbol` (`"main"`, beside `MemorySymbols`),
+    which `RuntimeAbi.Main` (`i32 ()`) names, as `RuntimeAbi.Start` reads `TargetProfile.Windows.EntrySymbol`; B7b5's reserved-name
+    table reads the same constant (its G4 has nothing left).
+  - **R9-M11's library rule amended:** `Libraries` is "the Library and Kind of every validated `#LibraryImport`, called or not, one
+    per library; and on a row with a `CRuntime`, a module that requires any library also requires that supply, once, with the row
+    supply's Kind (none twice when the program names it)": `c` is added by `Require` on a row with a `CRuntime` for a module that
+    requires any library. `Require` runs before `Assemble` (behaviour-preserving: it reads only the imports), and `Libraries` stays
+    published only after a Write that returned true.
+  - **The C path's owner and form (decision 21, Q1 (d); IMPL 21.5.2):** the start path is published through `Libraries` and decided
+    by `ModuleCodegen.Require`; the frame reads it: the row's `CRuntime` supply among the module's `Libraries` gives the C path,
+    `define i32 @main()` (exported) calling the row's layer's start calls (Linux `__kimi_platform_start`), the startup root, then
+    `ret i32 0` (musl's `crt1.o` initializes the C library first and its `exit` runs `atexit` handlers and flushes stdio); otherwise
+    the row's layer's start form (T-M30). One writer (`ModuleCodegen.WriteStart`). An Abort ends through `__kimi_exit(1)` on both
+    paths. Windows' start is unchanged (no `CRuntime`). `main` takes no parameters (Reading 3). The manifest's `entry` and the ELF
+    link of the C path are B7b7's.
+  - **The System V extension's representation (C-445 C1; T's ruling 5; review N1):** the convention value `Abi.Convention.SystemV`
+    ("the System V x86-64 C convention of a `#LibraryImport` declaration, IMPL 21.2: C's rules, with 8- and 16-bit integer
+    parameters and results extended by signedness") beside `Convention.C` (Windows x64's). `ModuleCodegen.Imports` maps the row's
+    `ArgumentExtension` once, at construction (one Backend read of a Core column): null → `C`, `"SystemV"` → `SystemV`, any other
+    value throws (N3's form). `Abi`'s C-convention rules (`Kind`, `HasSlot`, `Result`) read one predicate, `Abi.IsC` ("a C
+    convention"), never `is C or SystemV` copies. The extension is a field of `AbiParameter` (`Extension`, ` signext`, ` zeroext` or
+    empty; in its record equality, so `Matches`' `Logical` compares it; `Attributes` writes it) and a property of `FunctionAbi`
+    (`ResultExtension`, which `Named` keeps); `Abi.Of` gives it under `SystemV` from each Type's `BoundType.IsSigned` and `Width`
+    (`i8`, `i16` ` signext`; `u8`, `u16` ` zeroext`; every other Type none), and `Abi.Matches` compares both, so `ImportSignature`'s
+    reuse "while it still matches" compares the convention and the extension. Rejected: a seventh `Matches` parameter, a bool or a
+    mode (CR-R2 and C1); new `AbiParameterKind` members (a case at every `Kind == Value` site, an open family; ruling 5).
+  - **Each call its own import's (O-504 Q1 (a); Reading 4):** each import has its own `FunctionAbi` (the loop that gave a later
+    import of a symbol the first import's signature is gone); `Import` de-duplicates `Externals` by the import's external symbol, so
+    the first called import's signature gives the one declaration's Types (Binding admits imports of one symbol only with an equal
+    physical code, and codes `i16` and `u16` alike); the declaration writes Types only, and the one call writer writes each call's
+    own import's parameter attributes and its result attribute (`call signext i8 @f(...)`). Reason: LLVM lowers a call by its call
+    site's and its callee declaration's attributes together (`CallBase::paramHasAttr`), so an extension on the shared declaration
+    would reach every call. AbiRecords' invariant restated for externals: the declaration and every call use equal parameter Types,
+    and each call's attributes are its own import's. Reading 4: SPEC 22.6's promise and table are per declaration, so a call passes
+    and reads the C meanings of its own import's Types; two imports of one symbol differing only in an 8- or 16-bit Type's
+    signedness are physically equal, share one declaration and each pass and read their own. Rejected (§16): (b) one C prototype per
+    symbol (such imports `ConflictingImportSignature_Kd` on every target: a Windows acceptance change for a program SPEC 22.6 leaves
+    valid); (c) Revision 2.4's D3 (an import whose C meaning differs from the prototype undefined behaviour: a new SPEC sentence, and
+    the right call's result would depend on another declaration's order); the extension on the declaration (it reaches every call).
+  - **Not verified here:** the C path's and row 44's Linux runs wait for musl (B7b4) and the ELF link (B7b7 under WSL, B7b9 on CI).
