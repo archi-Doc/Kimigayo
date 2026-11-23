@@ -353,12 +353,13 @@ public sealed partial class HirFormsTest
         Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(limited), HirTables.AdjustOf(limited), HirTables.PlanOf(limited).Adjust));
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-103, BU-110): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param
-    // whose Move rests on an Error Copy proof, a group of a typeless alias, and a binding whose Copy proof is Error (Deferred), a match arm's
-    // or a for loop's item, also a Tuple item's slot; an Error node's folds to its derived value (Temporary, None; R4-M109), a name of a
+    // SPEC 23.1.2 (DECISIONS BU-103, BU-110): a consumed Place whose acquisition failed is published Failed: a Param whose Move rests on
+    // an Error Copy proof, a group of a typeless alias; an Error node's folds to its derived value (Temporary, None; R4-M109), a name of a
     // typeless local among them, which is an Error since Z16 (HasFacts' Name row: a name needs its Type), discarded or not. Fail-before:
-    // each was the column's default (Unset, None), and a for item whose Copy proof is Error was (Move, None). A valid Copy item stays
-    // Copied and a Non-Copy one Moved.
+    // each was the column's default (Unset, None). SPEC 15.1.6 (F's C8 ruling 24, superseding BU-110's Error rule for a transferred
+    // Subject or item): a part of an owned Subject or iteration item is transferred with its responsibility, so it Moves and no Copy is
+    // asked, whatever its Copy proof: a match arm's binding of a temporary Subject (`let v`) and a for loop's item or Tuple item's slot
+    // over a moved Array (`e`, `p`, `j`, `o`, `u`), Copy or not (they were Failed where the proof is Error, Copied where it is Proven).
     [Fact]
     public void AFailedAcquisitionIsPublishedFailed()
     {
@@ -379,13 +380,12 @@ public sealed partial class HirFormsTest
             .Select(static x => $"{x} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire} {HirTables.PlanOf(x).Adjust.Acquire}");
         string[] expected =
         [
-            "b Name Failed Unset", "t.5 Error Temporary Unset", "(z) Group Failed Unset", "let v Syntax Failed Unset", "e Syntax Failed Unset",
-            "p Syntax Failed Unset",
+            "b Name Failed Unset", "t.5 Error Temporary Unset", "(z) Group Failed Unset",
         ];
         Assert.Equal(expected, rows);
         var items = Reachable(c.Kotonoha).Where(static x => x.ToString() is "j" or "o" or "u" && HirTables.Op(x) == HirOp.Syntax)
             .Select(static x => $"{x} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["j Copy", "o Copy", "u Move"], items);
+        Assert.Equal(["j Move", "o Move", "u Move"], items);
     }
 
     // SPEC 12, 13.4, 14, 23.1.2 (DECISIONS Z16, the one Keeps rule; Z15 2g-D's B5 rows): a node Binding rejected or left unresolved keeps,
