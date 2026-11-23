@@ -619,12 +619,15 @@ public sealed partial class HirFormsTest
     // (q10, r-weak-sibling's `n.w`; SPEC 15.1.3: its own Move Path), also under its Error Move (q14: the `@move` Binding cannot bind
     // without the Type rests on the Field's TypeSource); a discarded one taken Failed in its plan row (d2, SPEC 14.2.2), resting on the
     // same TypeSource; a user index below a write target selecting indexUniq as its typed twin (d5, SPEC 4.7.1: the target's exclusive
-    // need reaches its receiver). Stay Errors: a read through a custom `get` (g2, the getter's call), a computed Property (no storage),
-    // a `storage` whose accessor's `self` failed (d3: no receiver of a Type), a name of a failed local (q16, R7-M65's Name row), a member Binding resolved on an identity premise's Type (d14: its Place
-    // keeps the Type parameter, BU-72, which stores no Field) and an update's target (`h.x += 1`: its operation reads the Field at the
-    // failed Type, SPEC 13.7.2, so the update stays a derived write). Each row: the node, then its Op, Type, Place kind, Adjust, plan
-    // row's Adjust and selection. Fail-before: each Field Place an Error, its parts replaced or kept under it; d14's and the update's
-    // rows a Field Place the builder faulted on. No row leaves a Broken node.
+    // need reaches its receiver); a member Binding resolved on an identity premise's Type, nested (x1 `a[0].w`; SPEC 8.2.3), whose
+    // receiver Place the builder cannot index (its located limit, as for the typed twin). Stay Errors: a read through a custom `get`
+    // (g2, the getter's call), a computed Property (no storage), a `storage` whose accessor's `self` failed (d3: no receiver of a Type),
+    // a name of a failed local (q16, R7-M65's Name row), a member resolved on a direct premise (d14, Binding's identity-premise term)
+    // and, for now, an update's target (`h.x += 1`, a derived write as on dev: a temporary limit of MirBuilder.Update, removed when it
+    // builds an update over a Field Place of no Type). Each row: the node, then its Op, Type, Place kind, Adjust, plan row's Adjust and
+    // selection. Fail-before: each Field Place an Error, its parts
+    // replaced or kept under it; the update's row passes on F1 by construction (it guards the intermediate predicate, under which the
+    // builder faulted). No row leaves a Broken node.
     [Theory]
     [InlineData(FailedSlot, "self.w", "Field - Field None Unset")]
     [InlineData(FailedSlot + "func f(n: N)\n    let t = n.s@move\n    let k = n.w@ref\n", "n.w", "Field - Field None Unset")]
@@ -649,6 +652,7 @@ public sealed partial class HirFormsTest
         "Error - Value Temporary Unset")]
     [InlineData(FailedSlot + "func f(n: N)\n    var w2: Weak<rc/N>\n    w2 = n.w@move\n    let y = w2@move\n", "w2", "Error - Value None Unset")]
     [InlineData(FailedSlot + "func f<T>(t: uniq/T, w: Weak<rc/N>)\n    T is N\n    t.w = w@move\n", "t.w", "Error - Value Temporary Unset")]
+    [InlineData(FailedSlot + "func f<T>(a: uniq/[2 of T], w: Weak<rc/N>)\n    T is N\n    a[0].w = w@move\n", "a[0].w", "Field - Field None Unset")]
     [InlineData("struct HU<S>\n    public var x: Missing<S>\nfunc f(h: uniq/HU<i32>) -> ()\n    h.x += 1\n", "h.x", "Error - Value Temporary Unset")]
     public void AUseOfAFieldWhoseSlotFailedIsItsFieldPlace(string source, string text, string facts)
     {
