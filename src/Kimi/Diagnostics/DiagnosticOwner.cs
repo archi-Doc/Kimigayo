@@ -306,14 +306,7 @@ public sealed partial class DiagnosticOwner
     {
         if (this.documentSources.TryGetValue(document, out var index))
         {
-            this.excludedRanges ??= [];
-            if (!this.excludedRanges.TryGetValue(index, out var ranges))
-            {
-                ranges = [];
-                this.excludedRanges.Add(index, ranges);
-            }
-
-            ranges.Add(new(range.Start, range.End, directive.Start, directive.Length));
+            this.AddExcludedRange(index, new(range.Start, range.End, directive.Start, directive.Length));
         }
     }
 
@@ -444,7 +437,8 @@ public sealed partial class DiagnosticOwner
     /// carries its own syntax list, which its freeze compilation's owner no longer holds (moved, never copied). Each record is about one
     /// document, its own (<see cref="DiagnosticFact.IsAboutOneDocument"/>; PLAN G949 Stage 2 U3), checked here as the internal-invariant
     /// form, and keeps that document, so a later owner moves every source index it holds by the fact's one renumbering
-    /// (<see cref="DiagnosticFact.WithSource"/>) with the document's index there; its indices here are this owner's.</summary>
+    /// (<see cref="DiagnosticFact.WithSource"/>) with the document's index there; its indices here are this owner's. The excluded ranges of
+    /// those documents go with them (SPEC 19.4; B's U3 ruling 25), taken before the invalidation drops them.</summary>
     /// <param name="module">The module.</param>
     /// <returns>The module's syntax records.</returns>
     /// <exception cref="InvalidOperationException">A record names a document other than its own (InternalInvariant).</exception>
@@ -467,7 +461,16 @@ public sealed partial class DiagnosticOwner
             documents[i] = facts[i].Source >= 0 ? this.sources[facts[i].Source].Document : null;
         }
 
-        var taken = new DetachedSyntax([.. facts], documents);
+        var excluded = new List<(int Source, ExcludedRange Range)>();
+        foreach (var (source, ranges) in this.excludedRanges ?? [])
+        {
+            if (facts.Exists(x => x.Source == source))
+            {
+                excluded.AddRange(ranges.Select(x => (source, x)));
+            }
+        }
+
+        var taken = new DetachedSyntax([.. facts], documents, [.. excluded]);
         this.InvalidateSyntax(index);
         return taken;
     }
@@ -476,9 +479,9 @@ public sealed partial class DiagnosticOwner
     /// its documents first, in the order of their indices in the freeze owner (the freeze's consumption order of the library's documents,
     /// so the source table keeps the order of a compilation that parsed the library), then each record moved into this owner's source
     /// table by the fact's one renumbering (<see cref="DiagnosticFact.WithSource"/>) and recorded as any module's, so the counts,
-    /// <see cref="HasSyntaxErrors(SourceDocument)"/> and Finalize read it; no later record or invalidation reaches the list. The list carries no excluded
-    /// range: no library file holds a compile-time directive (KimiLibraryShapeTest's tripwire; a library that gains one makes this
-    /// registration carry the freeze owner's ranges). Its one caller is <see cref="Compiler.Compilation.ReadLibrary"/>.</summary>
+    /// <see cref="HasSyntaxErrors(SourceDocument)"/> and Finalize read it; no later record or invalidation reaches the list. The excluded
+    /// ranges of its documents are registered under the same indices, so a record in excluded syntax names its excluding directive here as
+    /// in the freeze owner (SPEC 19.4; B's U3 ruling 25). Its one caller is <see cref="Compiler.Compilation.ReadLibrary"/>.</summary>
     /// <param name="module">The frozen library's module.</param>
     /// <param name="detached">Its syntax list, taken by its freeze (<see cref="TakeSyntax"/>).</param>
     /// <exception cref="InvalidOperationException">A library is registered already (InternalInvariant).</exception>
@@ -506,6 +509,11 @@ public sealed partial class DiagnosticOwner
             foreach (var (freeze, document) in documents)
             {
                 sources.Add(freeze, this.DocumentSource(document, index));
+            }
+
+            foreach (var (source, range) in detached.Excluded)
+            {
+                this.AddExcludedRange(sources[source], range);
             }
 
             for (var i = 0; i < facts.Length; i++)
@@ -899,6 +907,19 @@ public sealed partial class DiagnosticOwner
         return new(line + 1, clipped, clippedStart, Math.Max(1, Math.Min(length, clipped.Length - clippedStart)));
     }
 
+    // A document's excluded range, by its source index here: a parse's (RecordExcludedRange) or a registered library's (AddLibrary).
+    private void AddExcludedRange(int source, ExcludedRange range)
+    {
+        this.excludedRanges ??= [];
+        if (!this.excludedRanges.TryGetValue(source, out var ranges))
+        {
+            ranges = [];
+            this.excludedRanges.Add(source, ranges);
+        }
+
+        ranges.Add(range);
+    }
+
     /// <summary>Adds the <c>excludedBy</c> location of a fact whose primary location lies in excluded syntax.</summary>
     /// <param name="fact">The fact.</param>
     /// <param name="related">Its related locations.</param>
@@ -1165,6 +1186,13 @@ public sealed partial class DiagnosticOwner
         };
     }
 
+    /// <summary>Excluded syntax of a document and its innermost excluding directive (SPEC 19.4).</summary>
+    /// <param name="Start">The excluded syntax's start.</param>
+    /// <param name="End">The excluded syntax's end.</param>
+    /// <param name="DirectiveStart">The directive's start.</param>
+    /// <param name="DirectiveLength">The directive's length.</param>
+    internal readonly record struct ExcludedRange(int Start, int End, int DirectiveStart, int DirectiveLength);
+
     private sealed class FactList
     {
         public List<DiagnosticFact> Facts { get; } = [];
@@ -1193,6 +1221,4 @@ public sealed partial class DiagnosticOwner
 
         public int SyntaxErrors { get; set; }
     }
-
-    private readonly record struct ExcludedRange(int Start, int End, int DirectiveStart, int DirectiveLength);
 }

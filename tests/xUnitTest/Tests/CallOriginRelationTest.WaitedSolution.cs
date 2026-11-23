@@ -266,7 +266,8 @@ public partial class CallOriginRelationTest
     // cap7d
     [InlineData("func use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let r = b\n    let g = func [r] (q: ref/i32) -> ref/i32 during q\n        return r\n    return 0\n", "UnprovenOriginRelation_Kd@r")]
     // cap15e
-    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let o: Option<ref/(ref/i32)> = .Some(a@ref)\n    let r = keep(o, b@ref)\n    let g = func [r] () -> ref/i32 during b\n        return r\n    return g()@follow\n", "UnprovenOriginRelation_Kd@r")]
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let o: Option<ref/(ref/i32)> = .Some(a@ref)\n    let r = keep(o, b@ref)\n    let g = func [r] () -> ref/i32 during b\n        return r\n    return g()@follow\n", "")] // cap15e, R7-O2 A1: valid (r's candidate (o's inner and b), each read in turn to p; O-466 (b))
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    let n: i32 = 1\n    a = n@ref\n    var b = p\n    let o: Option<ref/(ref/i32)> = .Some(a@ref)\n    let r = keep(o, b@ref)\n    let g = func [r] () -> ref/i32 during b\n        return r\n    return g()@follow\n", "UnprovenOriginRelation_Kd@r")] // cap15e's invalid twin: a's candidate (p and n@ref) read in turn, n@ref does not outlive p
     // cap12
     [InlineData("func keep0(x: Option<ref/(ref/i32 during k) during c>) -> ref/i32 during k => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    let r = keep0(.Some(a@ref))\n    let g = func [r] (q: ref/i32) -> ref/i32 during q\n        return r\n    return 0\n", "Unsupported_Kd@r")]
     // cap15
@@ -315,6 +316,14 @@ public partial class CallOriginRelationTest
     // limit), cap7's `var` twin (cap7var) and the cycles' invalid twins (s1i-s3i), each record naming the value's failing operand.
     // q4
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let r = keep(.Some(a@ref), b@ref)\n    let g = func [r] () -> i32\n        let s = r\n        let h = func [s] (q: ref/i32) -> ref/i32 during q\n            return s\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd@s|Unsupported_Kd@s")]
+    // q4 with `var s`, `var r` or both (R7-O2 A1): h carries S, whose candidate R it carries in turn, read where a reader asks
+    // (CarriedRegion's walk), so R's value names keep's waited region and J2's located limit stays beside the record.
+    // q4vs
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let r = keep(.Some(a@ref), b@ref)\n    let g = func [r] () -> i32\n        var s = r\n        let h = func [s] (q: ref/i32) -> ref/i32 during q\n            return s\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd@s|Unsupported_Kd@s")]
+    // q4vr
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var r = keep(.Some(a@ref), b@ref)\n    let g = func [r] () -> i32\n        let s = r\n        let h = func [s] (q: ref/i32) -> ref/i32 during q\n            return s\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd@s|Unsupported_Kd@s")]
+    // q4vv
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var r = keep(.Some(a@ref), b@ref)\n    let g = func [r] () -> i32\n        var s = r\n        let h = func [s] (q: ref/i32) -> ref/i32 during q\n            return s\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd@s|Unsupported_Kd@s")]
     // cap7var
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var r = keep(.Some(a@ref), b@ref)\n    let g = func [r] (q: ref/i32) -> ref/i32 during q\n        return r\n    return 0\n", "UnprovenOriginRelation_Kd@r|Unsupported_Kd@r")]
     // s1i

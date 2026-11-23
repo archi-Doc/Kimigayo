@@ -29,7 +29,7 @@ public sealed partial class Binding
         // Interim until R7-D2 d4 (Binding.DeclQuery): the variable binding and the header read each other's Running state.
         if (symbol.Resolving || this.QueryState(symbol, DeclQueryKind.Signature) == DeclState.Running)
         {
-            return this.Fail(variable, BindingFailure.Cycle, true);
+            return this.Record(variable, BindingFailure.Cycle, [], unresolved: true);
         }
 
         // SPEC 11.6, 23.1.2 (DECISIONS BU-105; G812 rulings 173, 174): a header whose query failed (Error, its re-entry's cycle) is final in
@@ -86,7 +86,7 @@ public sealed partial class Binding
                 // unresolved Origin with the stored reference's Origin would reject ref/ref/T
                 // initializers before the ordinary lifetime constraints can be inferred.
                 if (variable.InitializerKoto is { } value && !TyCtxt.StorageMatches(inferred, declared) &&
-                    this.ReadTypeReferent(inferred, scope) is { } referent && TyCtxt.StorageMatches(referent, declared))
+                    this.ReadTypeReferent(inferred, scope, variable) is { } referent && TyCtxt.StorageMatches(referent, declared))
                 {
                     this.adaptations[value] = new(ExpectedAdaptationKind.ReferentRead, referent);
                     inferred = referent;
@@ -151,7 +151,7 @@ public sealed partial class Binding
                 this.Consulted(written);
             }
 
-            this.Fail(variable, BindingFailure.MissingType, true);
+            this.Record(variable, BindingFailure.MissingType, [], unresolved: true);
         }
 
         return rests ? null : Complete(variable, symbol.Type);

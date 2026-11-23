@@ -69,10 +69,15 @@ internal sealed partial class TyCtxt
     internal bool? DispatchBounds(BindingSymbol? definition, BindingSymbol callee, BoundType? self, BindingSymbol? contract)
         => binding.DispatchBounds(definition, callee, self, contract);
 
-    // SPEC 8.11.4: whether confined is available to a call through an abstract Callable input, null where it has several signatures
+    // SPEC 8.11.4: whether confined is available to a call through an abstract Callable input with the signature the call selected
     // (Binding.CallableBounds).
-    internal bool? CallableBounds(BindingSymbol? definition, BoundType input, SemanticsKind receiver)
-        => binding.CallableBounds(definition, input, receiver);
+    internal bool CallableBounds(BindingSymbol? definition, BoundType input, BoundType signature, SemanticsKind receiver)
+        => binding.CallableBounds(definition, input, signature, receiver);
+
+    // SPEC 4.9.6, 8.10: the one signature a published row's Callable input declares in its operation's terms (Binding.OneCallable),
+    // which CheckCallsRows guarantees.
+    internal BoundType CallsSignature(BindingSymbol operation, int calls)
+        => binding.OneCallable(operation, this.Signature(operation, null, calls, out _)!)!.Value.Signature;
 
     // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
     internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item)?.RequirementContract;
@@ -98,7 +103,7 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.7.2, 16.3.3: whether a Type is proven Sealed, whose handle's destruction runs only its own destructor, under a definition's
     // premises.
-    internal bool Sealed(BindingSymbol? definition, BoundType type) => binding.ProveSealed(type, binding.EffectPremises(definition)) == ConstraintProof.Proven;
+    internal bool Sealed(BindingSymbol? definition, BoundType type) => binding.ProveSealed(type, binding.EffectPremises(definition), Binding.QuerySite.AfterPass) == ConstraintProof.Proven;
 
     // SPEC 8.13.3: a body a call of a function with a substitution may run, by index (Binding.Implementation); null past the last.
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index) => binding.Implementation(function, subst, index);
@@ -113,7 +118,7 @@ internal sealed partial class TyCtxt
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             if (entry.Row is { Calls: >= 0 and var calls } && library.GetSymbol(entry.Id) is { } operation &&
-                binding.CallableReceiver(operation, this.Signature(operation, null, calls, out _)!) != SemanticsKind.Ref)
+                binding.OneCallable(operation, this.Signature(operation, null, calls, out _)!) is not { Receiver: SemanticsKind.Ref })
             {
                 throw new InvalidOperationException($"{operation.Name}'s published Callable input is not called through `ref` (InternalInvariant).");
             }
@@ -134,7 +139,7 @@ internal sealed partial class TyCtxt
         {
             if (!this.proven.TryGetValue(type, out var copy))
             {
-                copy = binding.ProveCopy(type, premises) == ConstraintProof.Proven; // SPEC 8.14, 8.15.2: per Semantics case (G642).
+                copy = binding.ProveCopy(type, premises, Binding.QuerySite.AfterPass) == ConstraintProof.Proven; // SPEC 8.14, 8.15.2: per Semantics case (G642).
                 this.proven.Add(type, copy);
             }
 

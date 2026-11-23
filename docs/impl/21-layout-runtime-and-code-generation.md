@@ -2,7 +2,7 @@
 
 [Implementation specification index](../IMPL.md)
 
-This chapter defines the windows-x64 target profile: the layout and foreign-function guarantees that programs may rely on, the code generation policy and the observable runtime behavior. Everything else about generated code is implementation-defined.
+This chapter defines the windows-x64 target profile: the layout and foreign-function guarantees that programs may rely on, the code generation policy and the observable runtime behavior. [§21.5](#215-linux-x64-runtime) describes the runtime of linux-x64, which [§22](../spec/22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions) does not yet define as an executable target profile. Everything else about generated code is implementation-defined.
 
 ## 21.1. Storage layout
 
@@ -103,7 +103,9 @@ The allowed `#LibraryImport` signature Types and their C meanings are defined in
 
 At every call into and return from foreign code, the floating-point control state is the Windows x64 default: round to nearest even, denormals not flushed (DAZ and FTZ off), FP exceptions masked. Foreign code that changes it restores it before returning; the runtime never repairs it. Status flags left by Kimigayo code are unspecified. Generated code has no exception handlers (see [§22.6](../spec/22-core-execution-and-foreign-functions.md#226-foreign-function-imports) for the no-unwinding promise).
 
-The names `_fltused`, `__chkstk`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. When the program is built for windows-x64, a `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library ([§20.4](20-compilation-configuration.md#204-native-libraries)).
+On linux-x64 an import uses the System V x86-64 C calling convention (LLVM `ccc`) with no `inreg`, `byval` or `sret`; the borrow, `Option` and Unit rules above apply. An `i8` or `i16` parameter or result is sign-extended, and a `u8` or `u16` one zero-extended, to 32 bits (`signext`, `zeroext`), as C compilers for that ABI expect. Each call extends by the Types of the import it calls, so two imports of one symbol that differ only in an 8- or 16-bit Type's signedness share one external declaration and each extend by their own Types. The floating-point control state at every foreign call is the same as on windows-x64.
+
+The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library ([§20.4](20-compilation-configuration.md#204-native-libraries)). Signatures agree when their parameters and results agree in physical form: integer Types of one width count as equal, as do all pointers. On every target an import is also compared with each profile's runtime import of its symbol ([§21.4.7](#2147-native-imports-and-backend-support)): `#LibraryImport("codec", "GetLastError")` is an error for linux-x64 too.
 
 ```kimi
 group Native
@@ -192,7 +194,7 @@ let n = Counter.next(2147483647)
 
 ### 21.4.3. Memory
 
-Allocation uses the process heap (`HeapAlloc`, `HeapFree`). Every heap allocation, including every `Raw.allocate` result of nonzero size, is aligned to 16 bytes. The largest alignment `Raw.allocate` supports is 16 ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)). The maximum object size is 2^63 − 1 bytes. A zero-byte `Raw.allocate` does not allocate. Allocation, release and size failures Abort with the codes of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes).
+Allocation uses the runtime's allocator over memory pages that the platform maps (`VirtualAlloc` and `VirtualFree` on windows-x64). A block of up to 256 KiB, its 16-byte header included, is taken from 1 MiB regions in power-of-two sizes and kept for reuse after it is released; a larger block is mapped alone and unmapped when it is released. Every heap allocation, including every `Raw.allocate` result of nonzero size, is aligned to 16 bytes. The largest alignment `Raw.allocate` supports is 16 ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)). The maximum object size is 2^63 − 1 bytes. A zero-byte `Raw.allocate` does not allocate. Allocation, release and size failures Abort with the codes of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes).
 
 ```kimi
 let p = Raw.allocate<u64>(4)    // 32 bytes, 16-byte aligned on windows-x64.
@@ -221,6 +223,30 @@ In steady state, task calls, waits, timers, channel operations, `shield` and rep
 
 ### 21.4.7. Native imports and backend support
 
-The runtime imports `kernel32` functions such as `GetProcessHeap`, `HeapAlloc`, `HeapFree`, `GetStdHandle`, `WriteFile`, `GetLastError` and `ExitProcess`; the reserved `kernel32` supply is defined in [§20.4](20-compilation-configuration.md#204-native-libraries).
+The runtime imports `kernel32` functions such as `VirtualAlloc`, `VirtualFree`, `GetStdHandle`, `WriteFile`, `GetLastError` and `ExitProcess`; the reserved `kernel32` supply is defined in [§20.4](20-compilation-configuration.md#204-native-libraries).
 
 Every module defines `memcmp`, `memcpy`, `memmove` and `memset`, which generated code may call ([§21.2](#212-foreign-function-abi) reserves the names). A member of a supplied library that is linked into the program and gives a non-weak definition of one of them is an error at the link whatever the library's name ([§20.4](20-compilation-configuration.md#204-native-libraries): never resolved by link order); a weak definition there yields to the module's. The profile's backend support archive supplies `__chkstk`; its members for the four functions are linked into no program. Every module defines `_fltused`. Toolchain adoption verifies that generated code needs no unsupplied backend helper; a missing helper fails adoption, never the linking of an individual program.
+
+## 21.5. Linux x64 runtime
+
+linux-x64 (`x86_64-unknown-linux-musl`) is not yet an executable target profile ([§22](../spec/22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions)): no command builds, runs or tests a program for it. This section describes the runtime of the modules the compiler generates for it.
+
+### 21.5.1. Target
+
+The linux-x64 runtime targets `x86_64-unknown-linux-musl` with the baseline x86-64 CPU and SSE2; no other CPU feature is assumed. Code is generated for a static ELF executable without position-independent code or an interpreter. Generated functions carry unwind tables (`.eh_frame`) for stack walking; they implement no language exception or cleanup. Generated functions probe the stack inline ([§21.3.3](#2133-checked-operations)). The minimum kernel is Linux 5.10; no version is checked at run time.
+
+### 21.5.2. Process entry and exit
+
+The runtime calls no C function: its platform operations (process setup, memory pages, writing, the clock and exit) are Linux system calls. An Application whose modules declare no `#LibraryImport` ([§22.6](../spec/22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) defines the external entry `__kimi_start` and uses no C runtime startup. An Application whose modules declare any `#LibraryImport`, called or not, also requires the reserved supply `c` ([§20.4](20-compilation-configuration.md#204-native-libraries)) and defines `main` instead, which the C library's startup calls after initializing the C library. Either start ignores `SIGPIPE`, so a write to a closed pipe fails with `EPIPE`, then runs the program body ([§22.4](../spec/22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage)), completes shutdown and ends with exit status 0: `__kimi_start` calls `exit_group(0)`, and `main` returns 0 to the C library, whose `exit` runs `atexit` handlers. A Library defines no entry. An Abort writes the report of [§21.4.2](#2142-process-entry-and-exit) to standard error (file descriptor 2), with ` (errno=N)` in place of ` (win32=N)`, and calls `exit_group(1)` on either path, so no `atexit` handler runs.
+
+### 21.5.3. Memory
+
+Allocation follows [§21.4.3](#2143-memory) over anonymous private pages that `mmap` maps and `munmap` releases. A mapping that starts below 64 KiB is released and treated as a failed allocation.
+
+### 21.5.4. Console output
+
+`Console.writeLine` ([§22.7](../spec/22-core-execution-and-foreign-functions.md#227-console-output)) writes to file descriptor 1 with `write`, without a NUL terminator. A partial write continues after the bytes written, and an interrupted one (`EINTR`) is retried.
+
+### 21.5.5. Elapsed time
+
+`Time.Stopwatch` ([§22.8.2](../spec/22-core-execution-and-foreign-functions.md#2282-stopwatch)) reads the `clock_gettime` system call's `CLOCK_MONOTONIC` clock as a counter of nanoseconds, with frequency 10^9. A failed read or a negative value is a clock failure (`KIMI_E_CLOCK`, [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes)).

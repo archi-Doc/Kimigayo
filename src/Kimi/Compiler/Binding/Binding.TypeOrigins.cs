@@ -11,6 +11,12 @@ public sealed partial class Binding
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
+        // A Self symbol carries its Type (SPEC 9.1: `S<Slot(0), ...>` or the Contract's Self parameter); no Type is headed by it.
+        if (symbol.SelfOf is not null)
+        {
+            return symbol.Type!;
+        }
+
         var schema = symbol.Schema!;
         var types = this.RentTypes(schema.GenericSlots.Count);
         var origins = this.originScratch.Rent(schema.Origins.Count);
@@ -170,7 +176,7 @@ public sealed partial class Binding
             // an obligation of each call (RequireInputPremises), never a relation of the body it is written in (SPEC 15.3.4, 15.6.1).
             // A transparent wrapper returns its inner node's Type, whose well-formedness that node formed: it forms the relation only
             // when it supplies the outer Origin itself (SPEC 23.1.2: one requirement, one record).
-            if (origin is not null && type.Components.Count != 0 && (supplied || TransparentInner(use) is null) && !this.InactiveOuterOrigin(type, this, use, default) &&
+            if (origin is not null && type.Components.Count != 0 && (supplied || TransparentInner(use) is null) && !this.InactiveOuterOrigin(type, this, use, use, default) &&
                 context is not { Position: TypePosition.Parameter, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto })
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow

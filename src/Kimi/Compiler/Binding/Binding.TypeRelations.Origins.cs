@@ -13,7 +13,7 @@ public sealed partial class Binding
     // SPEC 14.9.2, 15.6.1: a search that fails gives its failure, the only record of a failed common Type: Shape for a structural difference,
     // else the first position whose Origins have no common Origin (a presence difference at a pair layer relates its slots, an invariant
     // position or Origin argument its Origins), whose relation the fit's record judges.
-    internal BoundType? CommonOriginType(BoundType left, BoundType right, out ComparisonFailure failure)
+    internal BoundType? CommonOriginType(BoundType left, BoundType right, QuerySite site, out ComparisonFailure failure)
     {
         failure = default;
         if (ReferenceEquals(left, right))
@@ -31,7 +31,7 @@ public sealed partial class Binding
 
         // SPEC 8.1.2: a pair layer's slot is its OuterOrigin, the original's implicit `o` included (PLAN G758).
         var (leftSlot, rightSlot) = (this.OuterOrigin(left), this.OuterOrigin(right));
-        if ((leftSlot is null) != (rightSlot is null) && !this.InactiveOuterOrigin(left, this, null, default))
+        if ((leftSlot is null) != (rightSlot is null) && !this.InactiveOuterOrigin(left, this, null, site, default))
         {
             failure = Unmet(rightSlot, leftSlot);
             return null;
@@ -50,7 +50,7 @@ public sealed partial class Binding
                 var part = ReferenceEquals(l, r) ? l : null;
                 if (covariant)
                 {
-                    part = this.CommonOriginType(l, r, out failure);
+                    part = this.CommonOriginType(l, r, site, out failure);
                 }
                 else if (part is null)
                 {
@@ -78,7 +78,7 @@ public sealed partial class Binding
 
             // SPEC 5.7 (Q-O6): differing raw Origins have the unstated common Type, never a meet.
             var origin = ReferenceEquals(left.RawOrigin, right.RawOrigin) ? left.RawOrigin : null;
-            if (!this.InactiveOuterOrigin(left, this, null, default) && leftSlot is { } a)
+            if (!this.InactiveOuterOrigin(left, this, null, site, default) && leftSlot is { } a)
             {
                 origin = this.Meet(a, rightSlot!);
             }
@@ -128,7 +128,7 @@ public sealed partial class Binding
     }
 
     // SPEC 8.1.2: a pair's conditional outer Origin participates only in admitted borrow cases. Internal Origins remain checked.
-    private bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use, in CallableInstance comparison)
+    private bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use, QuerySite site, in CallableInstance comparison)
     {
         if (!TryAdaptationSelector(type, out var whole) || whole.Symbol is not { } selector)
         {
@@ -138,56 +138,59 @@ public sealed partial class Binding
         binding ??= this;
         var scope = AdmittedScope(selector, binding.RelationScope(use, comparison));
         // An owner application preserves the target's borrow Origin, not the application's conditional slot.
-        var semantics = type.Kind == BoundTypeKind.SemanticsAdaptation ? binding.ResultSemantics(type, scope)
+        var semantics = type.Kind == BoundTypeKind.SemanticsAdaptation ? binding.ResultSemantics(type, scope, site)
             : binding.AdmittedSemantics(whole, scope);
         return (semantics & SemanticsMask.Borrow) == 0;
     }
 
-    // SPEC 8.1.2, 15.6.1: the outer Origins of a fit's two Types of one shape. Two written Origins relate. Two pair layers of one binder
-    // relate their slots, the implicit `o` of an original `s/T` included, so the original `W` fits `s/T during a` when `o` outlives `a`. A
-    // pair layer that stores no slot although a borrow case is admitted is unformed: its formation failure is recorded where it is
-    // declared, so the fit derives from that failure instead of adding a mismatch. Any other difference in presence is structural.
-    // A walk without a premises reader reads this Binding's, the binder's, so the decision is the same with or without one (PLAN G758).
+    // SPEC 8.1.2, 15.6.1: the outer Origins of a fit's two Types of one shape, and the two ends of its relation (`longer` outlives
+    // `shorter`; none unless Relation). Two written Origins relate. Two pair layers of one binder relate their slots, the implicit `o` of
+    // an original `s/T` included, so the original `W` fits `s/T during a` when `o` outlives `a`. A pair layer that stores no slot although
+    // a borrow case is admitted is unformed: its formation failure is recorded where it is declared, so the fit derives from that failure
+    // instead of adding a mismatch. Any other difference in presence is structural.
+    // It reads this Binding's premises, the binder's, whether or not the walk asking has a premises reader (PLAN G758).
     // RelationWalk, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision; each states the comparison
-    // its relation belongs to (InactiveOuterOrigin), `default` outside any comparison.
-    private OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter, in CallableInstance comparison)
+    // its relation belongs to (InactiveOuterOrigin), `default` outside any comparison. A placing fit's walk passes its raw-fit sink
+    // (`fits`, Binding.ValueFits.cs' rawFits; null where the fit places no value) and whether the position is invariant: at a raw layer,
+    // outside a Callable comparison, the decision appends the raw fit by its one entry rule (AddRawFit; G147 rulings 75, 76); it is
+    // otherwise pure.
+    private (OuterOriginFit Fit, BoundOrigin Longer, BoundOrigin Shorter) FitOuterOrigins(
+        BoundType actual, BoundType expected, Koto? use, QuerySite site, in CallableInstance comparison, List<RawFit>? fits, bool invariant)
     {
-        longer = shorter = null!;
         if (actual.IsPointer)
         {
             // SPEC 5.7: a raw layer's Origins relate by their regions; a missing one is Unstated, the one producer of that end (S4).
-            longer = actual.RawOrigin ?? BoundOrigin.Unstated;
-            shorter = expected.RawOrigin ?? BoundOrigin.Unstated;
-            return ReferenceEquals(actual.RawOrigin, expected.RawOrigin) ? OuterOriginFit.None : OuterOriginFit.Relation;
+            var (value, target) = (actual.RawOrigin, expected.RawOrigin);
+            if (ReferenceEquals(value, target))
+            {
+                return (OuterOriginFit.None, value ?? BoundOrigin.Unstated, target ?? BoundOrigin.Unstated);
+            }
+
+            if (fits is not null && comparison.Expected is null)
+            {
+                this.AddRawFit(fits, target, value, invariant);
+            }
+
+            return (OuterOriginFit.Relation, value ?? BoundOrigin.Unstated, target ?? BoundOrigin.Unstated);
         }
 
-        if (ReferenceEquals(actual.Origin, expected.Origin) || this.InactiveOuterOrigin(actual, binding, use, comparison))
+        if (ReferenceEquals(actual.Origin, expected.Origin) || this.InactiveOuterOrigin(actual, this, use, site, comparison))
         {
-            return OuterOriginFit.None;
+            return (OuterOriginFit.None, null!, null!);
         }
 
         if (actual.Origin is { } a && expected.Origin is { } b)
         {
-            longer = a;
-            shorter = b;
-            return OuterOriginFit.Relation;
+            return (OuterOriginFit.Relation, a, b);
         }
 
-        if (!TryPairLayer(actual, out var whole, out _) || whole.Symbol is not { } binder)
+        if (!TryPairLayer(actual, out var whole, out _) || whole.Symbol is null)
         {
-            return OuterOriginFit.Mismatch;
+            return (OuterOriginFit.Mismatch, null!, null!);
         }
 
         // As InactiveOuterOrigin: `o` is the binder's (PairOuterOrigin), interned when its binder was bound, so a walk after publication
         // reads the atom and adds none.
-        binding ??= this;
-        if (binding.OuterOrigin(actual) is not { } slot || binding.OuterOrigin(expected) is not { } other)
-        {
-            return OuterOriginFit.None;
-        }
-
-        longer = slot;
-        shorter = other;
-        return OuterOriginFit.Relation;
+        return this.OuterOrigin(actual) is { } slot && this.OuterOrigin(expected) is { } other ? (OuterOriginFit.Relation, slot, other) : (OuterOriginFit.None, null!, null!);
     }
 }

@@ -119,9 +119,11 @@ internal sealed partial class HoverBuilder
             previous = item;
             var declaring = (Koto?)query.DeclaringContract(item.Bound) ?? item.Context;
             text.Append("Declared by: ").AppendLine(this.Qualified(declaring));
-            if (item.Context is FunctionKoto { IsVirtual: true } evidenceSlot)
+            if (item is { Premise: null, Clause: null })
             {
-                text.Append("Public guarantee: ").Append(this.Qualified(evidenceSlot)).Append(" effect ").AppendLine(Constants.ConfinedKeyword);
+                // A virtual slot's public guarantee (AvailableEffectBounds), the one evidence without a premise or a clause: its Context
+                // is the slot. A premise's evidence names its declaration, which may be a virtual function too.
+                text.Append("Public guarantee: ").Append(this.Qualified(item.Context)).Append(" effect ").AppendLine(Constants.ConfinedKeyword);
             }
             else
             {

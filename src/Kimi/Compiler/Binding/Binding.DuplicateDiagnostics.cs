@@ -18,7 +18,7 @@ public sealed partial class Binding
     // RecordDuplicateGroups walks, so the records keep dev's order (its Dictionary enumerated its rows so) and a library declaration
     // whose row is the pass's foreign entry's is walked too. Precedent: PassPart.Nodes (the pass's nodes in binding order, which
     // CountStates walks while reading each node's columns) and PassPart.ForeignFailures (in first-failure order); its reset is the
-    // ResetPrerequisites lists' (prerequisiteStore, rejectedRows, captureRepeatRows).
+    // ResetPrerequisites lists' (prerequisiteStore, captureRepeatRows).
     // - Owner: DuplicateDiagnostics.
     // - Reset: ResetPrerequisites' Clear, its capacity kept, so a warm rebind allocates nothing; the rows read absent by the pass stamp,
     //   so both are empty at a pass's start.
@@ -99,7 +99,9 @@ public sealed partial class Binding
     // a try's deferred arms hold no written declaration), when each group is whole: one problem per later declaration, relating the group's
     // first (Related); the first rests on its earliest later (Cause), so it is derived from that record. Both declarations stay failed, as
     // the pairwise check left them. A pass reaches the step once: VerifyEarlyReads' rerun, asked before the step, is a new pass (RunPass)
-    // whose start empties the report, so a group is recorded once it is whole, never beside an earlier record of its key.
+    // whose start empties the report, so a group is recorded once it is whole. Numbered (RecordNumbered): a declaration's further
+    // Duplicate problem recorded before the step (an inherited name, a reserved or module name, a Semantics name, a written receiver)
+    // keeps its own key beside the group's (R7-E2 E2-4b's O-d (b), superseding E2-4's R2.1 B1 (a)).
     private void RecordDuplicateGroups()
     {
         foreach (var node in this.duplicateOrder)
@@ -107,11 +109,11 @@ public sealed partial class Binding
             var first = this.FirstDuplicateDeclaration(node);
             if (!ReferenceEquals(node, first))
             {
-                this.Record(node, BindingFailure.Duplicate, [new(ProblemFactKind.Related, this.FactSite(first), 0)]);
+                this.RecordNumbered(node, BindingFailure.Duplicate, [new(ProblemFactKind.Related, this.FactSite(first), 0)]);
             }
             else if (this.duplicateDeclarations[node].Next is { } later)
             {
-                this.Record(node, BindingFailure.Duplicate, [new(ProblemFactKind.Cause, this.FactSite(later), -1)]);
+                this.RecordNumbered(node, BindingFailure.Duplicate, [new(ProblemFactKind.Cause, this.FactSite(later), -1)]);
             }
         }
     }

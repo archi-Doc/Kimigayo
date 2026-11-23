@@ -33,7 +33,7 @@ public sealed partial class Binding
     /// <param name="path">A verified definition path only when the judgment is Proven; its Types retain declaration slots.</param>
     /// <returns>The four-valued use-site proof result.</returns>
     public ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, Koto context, out BoundConformancePath? path)
-        => this.ResolveConformance(type, contract, this.ConstraintScope(context), out path);
+        => this.ResolveConformance(type, contract, this.ConstraintScope(context), context, out path);
 
     private static bool IsRefinement(BindingSymbol child, BindingSymbol parent)
     {
@@ -78,44 +78,62 @@ public sealed partial class Binding
             _ => false,
         };
 
-    /// <summary>
-    /// SPEC 8.6, 8.6.1: the registered conformance of a Type declaration to a Contract, whether registered under the
-    /// Contract declaration itself or under one bound reference of it. Several bound references of one declaration are
-    /// distinct conformances, so a query by declaration alone is ambiguous there.
-    /// </summary>
-    private BoundConformance? ConformanceByDeclaration(BindingSymbol type, BindingSymbol contract, out bool ambiguous)
-    {
-        ambiguous = false;
-        if (this.ConformanceOf(type, contract) is { } direct)
-        {
-            return direct;
-        }
+    // A Contract symbol's selection (SelectConformance): its bound reference, or none for a declaration (a query by declaration).
+    private BoundConformance? SelectConformance(BoundType receiver, BindingSymbol contract, BindingScope scope, QuerySite site, out int candidates)
+        => this.SelectConformance(receiver, contract, IsBoundContractReference(contract) ? contract.Type : null, scope, site, out candidates);
 
-        if (IsBoundContractReference(contract) || this.ConformancesOf(type) is not { } identities)
+    /// <summary>
+    /// SPEC 8.6.1, 8.4.3, 8.9 (R7-C3 b, PLAN G302): the one selection of a Type's conformance by a Contract, the declaration of
+    /// `contract` with its bound reference `reference` (SPEC 8.6.1's pair) or with none (a query by declaration, which the compiler asks,
+    /// SPEC 8.4.3). Its candidates are the identities of `receiver`'s declaration that IsSelectionCandidate admits. Candidates naming one
+    /// bound reference are one conformance (SPEC 8.6.1: an explicit one and those implied by refinement; 8.9.2: merging paths, PLAN G798's
+    /// `Gx&lt;i32&gt;`), so any member represents it: their bindings and mappings must agree, and a disagreement is the declaration's error
+    /// (8.9.2). The selection returns the first member in declaration order (ConformancesOf's registration order), the set's
+    /// representative, not a preference among members.
+    /// Two declared directly are distinct conformances that collide (SPEC 8.9.1; the clause has its DuplicateBinding_Kd), and without a
+    /// reference several are distinct (SPEC 8.4.3): both are ambiguous, none is selected, and each reader says what an ambiguity is for
+    /// it. `candidates` counts the candidates read: 0 for none; with a selection, the members of the one conformance it represents (a
+    /// reader binding one member, a specification, reads it: BindAssociatedName); without one, more than one, an ambiguity. A query by
+    /// declaration reads declarations only and not `scope` (ContractSolver's unthreaded list); a bound reference's selection is a judgment.
+    /// </summary>
+    private BoundConformance? SelectConformance(BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site, out int candidates)
+    {
+        candidates = 0;
+        if (receiver.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
         {
             return null;
         }
 
         BoundConformance? found = null;
+        var direct = false;
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration))
+            if (!this.IsSelectionCandidate(identity.Contract, receiver, contract, reference, scope, site))
             {
                 continue;
             }
 
-            if (found is not null)
+            candidates++;
+            if ((found is not null && reference is null) || (direct && identity.DirectClause is not null))
             {
-                ambiguous = true;
                 return null;
             }
 
-            found = identity;
+            direct |= identity.DirectClause is not null;
+            found ??= identity;
         }
 
         return found;
     }
+
+    // SPEC 8.6.1: a conformance's Contract `candidate` is a candidate of the selection by `contract`'s declaration with `reference` (none: a
+    // query by declaration) when it is of that declaration and, for a bound reference, its reference is `reference` as written or,
+    // instantiated for `receiver`, identical with it in `scope` (NamesReference, the judge's). The selection's one admission test, which
+    // SpecifiesContract reads for a path's Contracts.
+    private bool IsSelectionCandidate(BindingSymbol candidate, BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site)
+        => ReferenceEquals(candidate.Declaration, contract.Declaration) && (reference is null || ReferenceEquals(candidate.Type, reference) ||
+            (candidate.Type is { } formal && this.NamesReference(formal, receiver, reference, scope, site)));
 
     private void ResetContracts()
     {
@@ -137,7 +155,6 @@ public sealed partial class Binding
         this.associatedApplications.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
-        this.memberSides.Clear();
         this.requirementCursor = 0;
     }
 
@@ -258,8 +275,29 @@ public sealed partial class Binding
             if (parent is not { IsContract: true } || parent.Contract is not { } inherited)
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
+                // One no lookup selects is the resolver's miss, which an inaccessible qualifier explains (FailMissing, SPEC 9.4, 9.5; PLAN
+                // G1207), at the site a Type use's miss takes (UnselectedTypeSite), on which the Name rests; a selected declaration that is
+                // no Contract is no parent (SPEC 8.4.3).
                 this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
-                this.Record(syntax, BindingFailure.InvalidConstraint, []);
+                if (parent is null)
+                {
+                    var site = this.UnselectedTypeSite(name);
+                    this.FailMissing(site, this.scopes[contract], BindingFailure.MissingType);
+                    if (!ReferenceEquals(name, site))
+                    {
+                        this.CompleteDependent(name, site);
+                    }
+
+                    if (!ReferenceEquals(syntax, name))
+                    {
+                        this.CompleteDependent(syntax, name); // A transparent wrapper rests on its Name.
+                    }
+                }
+                else
+                {
+                    this.Record(syntax, BindingFailure.InvalidConstraint, []);
+                }
+
                 valid = false;
                 continue;
             }
@@ -402,7 +440,7 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
+    private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site)
     {
         if (this.UnprovenInputRead(type, contract, scope) is { } failed)
         {
@@ -423,15 +461,15 @@ public sealed partial class Binding
         // SPEC 8.7.4: a proven PrimitiveInteger supplies PrimitiveIntegerSupplies; Wrapping<T> over it has the comparison
         // conformances of its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat
         // row, for an abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
-        var premise = contract.LibraryDeclaration is { } supplied && Array.IndexOf(PrimitiveIntegerSupplies, supplied) >= 0 && this.IsGenericInteger(type, scope);
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope);
+        var premise = contract.LibraryDeclaration is { } supplied && Array.IndexOf(PrimitiveIntegerSupplies, supplied) >= 0 && this.IsGenericInteger(type, scope, site);
+        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope, site);
 
         // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
         premise = premise || this.PremiseRefines(type, contract, scope);
 
         // Definition evidence is still resolved so that its errors are never hidden by an assumption (PremiseJoin, by polarity). The
         // closed world hides no Failed premise that speaks to the proposition (R7-C3, F's C2 ruling 278: the one rule at this exit too).
-        var verdict = PremiseJoin(premise, this.ResolveConformance(type, contract, scope, out _));
+        var verdict = PremiseJoin(premise, this.ResolveConformance(type, contract, scope, site, out _));
         return this.SpokenConformance(type, contract, scope, verdict);
     }
 
@@ -479,7 +517,7 @@ public sealed partial class Binding
             var conformance = this.impls.InPass.Paths[i];
             this.failedCause = null;
             var frame = this.BeginConsultation(conformance.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
-            var proof = this.VerifyConformance(conformance);
+            var proof = this.VerifyConformance(conformance, conformance.Use);
             if (final && conformance.InheritedFrom is null && !(conformance.Unsupported && mode == BindingMode.Final))
             {
                 this.RequireConstraintInFrame(conformance.Use, proof, mode, frame);
@@ -503,7 +541,7 @@ public sealed partial class Binding
                     this.failedCause = null;
                     this.conformanceChecks++;
                     var frame = this.BeginConsultation(this.impls.PathsOf(identity)[0].Use); // The agreement's judgment is at its first path's use.
-                    var agreement = this.VerifyConformanceAgreement(identity);
+                    var agreement = this.VerifyConformanceAgreement(identity, this.impls.PathsOf(identity)[0].Use);
                     this.conformanceChecks--;
                     var explicitPath = false;
                     foreach (var path in this.impls.PathsOf(identity))
@@ -528,7 +566,7 @@ public sealed partial class Binding
                 var use = this.projectionUses[i];
                 this.failedCause = null;
                 var frame = this.BeginConsultation(use.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
-                this.RequireConstraintInFrame(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode, frame);
+                this.RequireConstraintInFrame(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use), use.Use), mode, frame);
             }
         }
     }

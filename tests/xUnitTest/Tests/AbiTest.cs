@@ -8,7 +8,8 @@ using Xunit;
 namespace XunitTest;
 
 // Abi.Of and Abi.Matches (IMPL 21.3.1, SPEC 22.6; R5 P8, DECISIONS R5-M58): the internal convention's order, kinds, zero-sized
-// omission, result slot and flags; no gate; #LibraryImport's C convention.
+// omission, result slot and flags; no gate; #LibraryImport's C conventions, Windows x64's and System V x86-64's (IMPL 21.2: one set of
+// C rules, and System V's extension of 8- and 16-bit integers by signedness; the Tatara plan's B7b2b).
 public class AbiTest
 {
     private const string Probe = "func probe(a: i32, b: (), c: string, d: (i32, i64), e: ref/string) -> i32 => a\n";
@@ -73,10 +74,13 @@ public class AbiTest
         Assert.True(Abi.Matches(abi, layout, Abi.Convention.Internal, Abi.Flags.None, BoundType.Never, [BoundType.Never, i32]));
     }
 
-    [Fact]
-    public void TheCConventionPassesEveryParameterAsAValue()
+    [Theory]
+    [InlineData((int)Abi.Convention.C, "void (ptr a0 Value 0, ptr a1 Value 1, i8 a2 Value 2)")]
+    [InlineData((int)Abi.Convention.SystemV, "void (ptr a0 Value 0, ptr a1 Value 1, i8 zeroext a2 Value 2)")]
+    public void TheCConventionPassesEveryParameterAsAValue(int code, string expected)
     {
-        // SPEC 22.6: a raw pointer and a borrow pass an address, a scalar its value; nothing is a slot, and a Unit result is void.
+        // SPEC 22.6: a raw pointer and a borrow pass an address, a scalar its value; nothing is a slot, and a Unit result is void; under
+        // System V the u8 is zero-extended.
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         Assert.True(c.Prepare(TargetProfile.Windows.Target));
@@ -84,30 +88,76 @@ public class AbiTest
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         var import = Assert.Single(c.Binding.LibraryImports, x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha);
         var parameters = Parameters(c, "touch");
-        var abi = Abi.Of(c.Layout, Abi.Convention.C, Abi.Flags.None, import.Decl.Type!, parameters);
-        Assert.Equal("void (ptr a0 Value 0, ptr a1 Value 1, i8 a2 Value 2)", Describe(abi));
-        Assert.True(Abi.Matches(abi.Named("touch"), c.Layout, Abi.Convention.C, Abi.Flags.None, BoundType.Unit, parameters));
-        Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.C, Abi.Flags.None, BoundType.Primitives["i32"], parameters));
+        var convention = (Abi.Convention)code;
+        var abi = Abi.Of(c.Layout, convention, Abi.Flags.None, import.Decl.Type!, parameters);
+        Assert.Equal(expected, Describe(abi));
+        Assert.True(Abi.Matches(abi.Named("touch"), c.Layout, convention, Abi.Flags.None, BoundType.Unit, parameters));
+        Assert.False(Abi.Matches(abi, c.Layout, convention, Abi.Flags.None, BoundType.Primitives["i32"], parameters));
     }
 
     // SPEC 22.6: a C signature takes no flags and passes every parameter as a value, so a flag or a parameter without an argument value is a
-    // broken contract (Binding admits neither), never a silent omission.
-    [Fact]
-    public void TheCConventionRefusesFlagsAndOmissions()
+    // broken contract (Binding admits neither), never a silent omission; System V's convention is a C convention.
+    [Theory]
+    [InlineData((int)Abi.Convention.C)]
+    [InlineData((int)Abi.Convention.SystemV)]
+    public void TheCConventionRefusesFlagsAndOmissions(int code)
     {
+        var convention = (Abi.Convention)code;
         var layout = CompilationTestHelper.BindSuccess("()").Layout;
         var i32 = BoundType.Primitives["i32"];
-        Assert.Throws<InvalidOperationException>(() => Abi.Of(layout, Abi.Convention.C, Abi.Flags.CallerLocation, i32, [i32]));
-        Assert.Throws<InvalidOperationException>(() => Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, i32, [BoundType.Unit, i32]));
-        var abi = Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, i32, [i32]);
-        Assert.Throws<InvalidOperationException>(() => Abi.Matches(abi, layout, Abi.Convention.C, Abi.Flags.ResultSlot, i32, [i32]));
+        Assert.Throws<InvalidOperationException>(() => Abi.Of(layout, convention, Abi.Flags.CallerLocation, i32, [i32]));
+        Assert.Throws<InvalidOperationException>(() => Abi.Of(layout, convention, Abi.Flags.None, i32, [BoundType.Unit, i32]));
+        var abi = Abi.Of(layout, convention, Abi.Flags.None, i32, [i32]);
+        Assert.Throws<InvalidOperationException>(() => Abi.Matches(abi, layout, convention, Abi.Flags.ResultSlot, i32, [i32]));
+    }
+
+    // IMPL 21.2 (the Tatara plan's B7b2b): under System V an 8- or 16-bit integer parameter and result carry their extension by signedness
+    // and every other Type none; Windows x64's C writes none, so the two conventions' signatures match exactly where System V extends
+    // nothing.
+    [Theory]
+    [InlineData("i8", " signext")]
+    [InlineData("i16", " signext")]
+    [InlineData("u8", " zeroext")]
+    [InlineData("u16", " zeroext")]
+    [InlineData("i32", "")]
+    [InlineData("u64", "")]
+    [InlineData("f32", "")]
+    public void TheSystemVConventionExtendsNarrowIntegersBySignedness(string name, string extension)
+    {
+        var layout = CompilationTestHelper.BindSuccess("()").Layout;
+        var type = BoundType.Primitives[name];
+        var abi = Abi.Of(layout, Abi.Convention.SystemV, Abi.Flags.None, type, [type]);
+        Assert.Equal(extension, abi.ResultExtension);
+        Assert.Equal(extension, Assert.Single(abi.Parameters).Extension);
+        Assert.Equal(extension, abi.Named("f").ResultExtension);
+        Assert.True(Abi.Matches(abi.Named("f"), layout, Abi.Convention.SystemV, Abi.Flags.None, type, [type]));
+        var windows = Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, type, [type]);
+        Assert.Equal(abi.Result + " (" + abi.Parameters[0].Type + " a0 Value 0)", Describe(windows));
+        Assert.Equal(extension.Length == 0, Abi.Matches(windows, layout, Abi.Convention.SystemV, Abi.Flags.None, type, [type]));
+        Assert.Equal(extension.Length == 0, Abi.Matches(abi, layout, Abi.Convention.C, Abi.Flags.None, type, [type]));
+    }
+
+    // IMPL 21.2 (the owner's O-504 Q1 (a)): Matches compares the result's and each parameter's extension, so i16 and u16, which share
+    // their argument Type, give signatures that do not match under System V.
+    [Fact]
+    public void MatchesComparesTheExtensions()
+    {
+        var layout = CompilationTestHelper.BindSuccess("()").Layout;
+        var (i16, u16, i32) = (BoundType.Primitives["i16"], BoundType.Primitives["u16"], BoundType.Primitives["i32"]);
+        Assert.False(Abi.Matches(Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, u16, [i32]), layout, Abi.Convention.SystemV, Abi.Flags.None, u16, [i32]));
+        Assert.False(Abi.Matches(Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, i32, [u16]), layout, Abi.Convention.SystemV, Abi.Flags.None, i32, [u16]));
+        var signed = Abi.Of(layout, Abi.Convention.SystemV, Abi.Flags.None, i16, [i16]);
+        Assert.Equal("i16 signext (i16 signext a0 Value 0)", Describe(signed));
+        Assert.Equal("i16 zeroext (i16 zeroext a0 Value 0)", Describe(Abi.Of(layout, Abi.Convention.SystemV, Abi.Flags.None, u16, [u16])));
+        Assert.False(Abi.Matches(signed, layout, Abi.Convention.SystemV, Abi.Flags.None, u16, [i16]));
+        Assert.False(Abi.Matches(signed, layout, Abi.Convention.SystemV, Abi.Flags.None, i16, [u16]));
     }
 
     private static BoundType[] Parameters(Compilation c, string name)
         => [.. KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name).Parameters.Select(static x => x.Type.TypeOf()!)];
 
     private static string Describe(FunctionAbi abi)
-        => abi.Result + " (" + string.Join(", ", abi.Parameters.Select(static x => $"{x.Type} {x.Name} {x.Kind} {x.LogicalIndex}")) + ")" +
+        => abi.Result + abi.ResultExtension + " (" + string.Join(", ", abi.Parameters.Select(static x => $"{x.Type}{x.Extension} {x.Name} {x.Kind} {x.LogicalIndex}")) + ")" +
             (abi.ResultSlot ? " slot" : string.Empty) + (abi.CallerLocation ? " location" : string.Empty) + (abi.NoReturn ? " noreturn" : string.Empty) +
             (abi.OutOfLine ? " noinline" : string.Empty);
 }

@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Target;
 using Xunit;
 
@@ -81,15 +82,20 @@ public class CoreModelTest
         Assert.False(compilation.Variables.TryGetValue("pointerWidth", out _));
     }
 
-    // The target table (IMPL 21.4): one row today, windows-x64, whose triple is the literal the [InlineData] rows name. Each row's reserved
-    // supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's supplies by name), pairwise disjoint
-    // symbol sets (IMPL 21.2: an external symbol has one providing library). The Windows row: kernel32 providing every runtime
-    // declaration (IMPL 21.4.7), and IMPL 21.2's reserved external names.
+    // The target table (IMPL 21.4, 21.5): two rows, windows-x64, whose triple is the literal the [InlineData] rows name, and linux-x64 (the
+    // Tatara plan's B7b2a). Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
+    // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library), each one's kind among the
+    // row's Kinds and the table's supply of its name (B7b5), and a C runtime, if any, that names one of them; each runtime declaration is
+    // the table's for its symbol, provided by one of the row's supplies (G1 (i)). The Windows row: kernel32 providing every runtime
+    // declaration (IMPL 21.4.7), both kinds, no C runtime and no argument extension; the Linux row (B7b2b): c, a static library providing
+    // the C functions the layer stands for, its C runtime, the static kind (Q3a (a)), and System V's argument extension (IMPL 21.2). The
+    // table's reserved external names (IMPL 21.2, every target; B7b5) are built once.
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
-        Assert.Same(TargetProfile.Windows, Assert.Single(TargetProfile.Rows));
+        Assert.Equal([TargetProfile.Windows, TargetProfile.Linux], TargetProfile.Rows);
         Assert.Equal("x86_64-pc-windows-msvc", TargetProfile.Windows.Target);
+        Assert.Equal("x86_64-unknown-linux-musl", TargetProfile.Linux.Target);
         foreach (var row in TargetProfile.Rows)
         {
             var supplies = row.Supplies;
@@ -101,6 +107,8 @@ public class CoreModelTest
             for (var i = 0; i < supplies.Length; i++)
             {
                 Assert.Same(supplies[i], row.Supply(supplies[i].Name));
+                Assert.Contains(supplies[i].Kind, row.Kinds);
+                Assert.Equal(supplies[i].Kind, TargetProfile.ReservedSupply(supplies[i].Name)!.Kind);
                 for (var j = i + 1; j < supplies.Length; j++)
                 {
                     Assert.Empty(supplies[i].Symbols.Intersect(supplies[j].Symbols, StringComparer.Ordinal));
@@ -109,13 +117,54 @@ public class CoreModelTest
 
             Assert.Null(row.Supply("codec"));
             Assert.Null(row.Supply(null));
+            Assert.True(row.CRuntime is null || row.Supply(row.CRuntime) is not null);
+            foreach (var (symbol, signature) in row.RuntimeDeclarations)
+            {
+                Assert.True(TargetProfile.TryGetRuntimeDeclaration(symbol, out var declared, out var provider));
+                Assert.Equal((signature, Assert.Single(supplies, x => x.Symbols.Contains(symbol)).Name), (declared, provider));
+            }
         }
 
         var windows = TargetProfile.Windows;
         Assert.Equal(["kernel32", "kimi_backend"], windows.Supplies.Select(static x => x.Name));
         Assert.Equal(["import", "static"], windows.Supplies.Select(static x => x.Kind));
+        Assert.Equal(["import", "static"], windows.Kinds);
         var kernel32 = windows.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
         Assert.Subset(kernel32, windows.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
-        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], windows.ReservedSymbols);
+        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset", "main"], TargetProfile.ReservedSymbols);
+        Assert.Same(TargetProfile.ReservedSymbols, TargetProfile.ReservedSymbols);
+        Assert.Null(windows.CRuntime);
+        Assert.Null(windows.ArgumentExtension);
+        var linux = TargetProfile.Linux;
+        var c = Assert.Single(linux.Supplies);
+        Assert.Equal(("c", "static"), (c.Name, c.Kind));
+        Assert.Equal(["write", "_exit", "exit", "mmap", "munmap", "clock_gettime"], c.Symbols);
+        Assert.Equal(["static"], linux.Kinds);
+        Assert.Equal("c", linux.CRuntime);
+        Assert.Equal("SystemV", linux.ArgumentExtension);
+    }
+
+    // Each row's data layout is the one the pinned clang writes for its triple (`clang --target=<triple> -S -emit-llvm` of an empty C
+    // file, the Tatara plan's B7b2a probe; design §5 row 42), and each row's module emitted by Tatara for its triple checks that the pair
+    // agrees (TataraExecutorTest).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
+    [InlineData("x86_64-unknown-linux-musl", "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
+    public void TheProfileLayoutIsItsTriplesLayout(string triple, string layout)
+        => Assert.Equal(layout, Assert.Single(TargetProfile.Rows, row => row.Target == triple).DataLayout);
+
+    // The Tatara plan's B7b2a (N2): each row's Layer names exactly one of the Backend's RuntimeLayer records, which Core cannot name, so a
+    // row's frame always has its layer.
+    [Fact]
+    public void EveryRowNamesOneRuntimeLayer()
+        => Assert.All(TargetProfile.Rows, static row => Assert.Single(RuntimeAbi.Layers, x => x.Template == row.Layer));
+
+    // The Tatara plan's B7b2a: Find gives each row for its triple, and none for a triple without a row.
+    [Fact]
+    public void FindGivesTheRowOfATriple()
+    {
+        Assert.All(TargetProfile.Rows, static row => Assert.Same(row, TargetProfile.Find(row.Target)));
+        Assert.Null(TargetProfile.Find(string.Empty));
+        Assert.Null(TargetProfile.Find("x86_64-unknown-linux-gnu"));
     }
 }

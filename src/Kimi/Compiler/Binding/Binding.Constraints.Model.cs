@@ -100,15 +100,26 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 
 // A scope's premises. Its state (the three fact sets, the two flags they set and Failed) is written only by its own members (Add, Fail,
 // Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf); the mark of
-// the declaration's own supply (Declared) only by MarkDeclared and Reset. An Invalid
+// the declaration's own supply (Declared) only by MarkDeclared and Reset; the recorded Statements only by AddStatement and Reset, with
+// no Version change, AddStatement's callers being the two writers that hold another declaration's premise under a substitution
+// (ArchitectureRulesTest): InheritVirtualConstraints (an override's inherited premises) and CompatibleRequirement (a requirement's
+// premises at Self). The other copying writers need none: a Contract's supply and inherited conformance premises copy no bounded clause
+// (CallablePosition), and the agreement and collision scopes are read by no bound reader; an override's header view
+// (PrepareVirtualHeaderPremises) binds only its Types, so no bound is read there (a reader added there is a located Unsupported_Kd,
+// never a header Statement). An Invalid
 // environment is the node whose failure made it Invalid (Failed; PLAN G651 U1): each writer fails that node in the same step and names
 // it here; the first one is kept. Its failed premises' cause is what a proof that consults one rests on (PremiseFailure,
 // the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
 // otherwise.
 // R7-C3 (B1'): what a proof that reads a failed premise rests on: the declaration whose record the premise's failure is.
-internal sealed class PremiseFailure(Koto owner) : ICheckCause
+// R7-E5 c1 (design-inputs-read Rev 2 R2.2 (2), F's ruling 343): and the failed fact's origin, the clause whose own check failed it
+// (ConstraintEnvironment.CauseOf), none for a premise FailPremise failed.
+internal sealed class PremiseFailure(Koto owner, IsKoto? origin) : ICheckCause
 {
     public Koto Use { get; } = owner;
+
+    [Transitional("R7", Reason = "The per-fact origin E5 c's later design starts from; removed in its unit if that design does not use it (F's ruling 348).")]
+    public IsKoto? Origin { get; } = origin;
 
     public ICheckCause? Next => null;
 
@@ -122,6 +133,24 @@ internal sealed class PremiseFailure(Koto owner) : ICheckCause
 internal sealed class ConstraintEnvironment
 {
     private PremiseFailure? premiseFailure; // R7-C3 B1': FailedPremise's cause, made once
+
+    [Transitional("R7", Reason = "The per-fact origin E5 c's later design starts from; removed in its unit if that design does not use it (F's ruling 348).")]
+    private List<PremiseFailure>? originCauses; // R7-E5 c1: one cause per origin (CauseOf), made once and kept across passes
+
+    // R7-E5 c1 (Rev 2 R2.2 (1), F's ruling 343; review C6): a failed direct fact's origin, the clause whose own check failed it, written
+    // only by that writer: an Error fact at its clause's binding (Add); never by FailPremise (a premise's owner judgment, or a part's
+    // failure whose clause stays Resolved, so it names no record; F's ruling 351 C1). Keyed by the fact in this environment (Facts is
+    // a reference set, so an interned Error shared by two failed clauses is one entry: the first origin is kept, and every failed clause
+    // has its own record). Allocated at the first entry (rejected programs only); Reset clears it and keeps its capacity.
+    [Transitional("R7", Reason = "The per-fact origin E5 c's later design starts from; removed in its unit if that design does not use it (F's ruling 348).")]
+    private List<(BoundConstraint Fact, IsKoto Origin)>? origins;
+
+    // SPEC 6.4.2 step 3, 8.11.4: the Statements recorded for direct facts, a set: the declaration stating a premise this environment
+    // holds as Fact under a substitution, and the premise as written there (whose clauses carry its bound list, States). The premise a
+    // fact instantiates, as a derived fact's Origin is; they differ because an Origin is the one clause a derived fact's failure names
+    // (DerivedFailure), while one direct fact can instantiate several written premises (interning makes them one) and one premise can be
+    // written in several clauses. Allocated at the first Statement and kept across passes (warm Bind allocates nothing, BU-64).
+    private List<(BoundConstraint Fact, Koto Owner, BoundConstraint Written)>? statements;
 
     internal HashSet<BoundConstraint> Facts { get; } = new(ReferenceEqualityComparer.Instance);
 
@@ -159,13 +188,17 @@ internal sealed class ConstraintEnvironment
     internal int Version { get; private set; }
 
     // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise, the instance of its clause `origin`; an
-    // Error fact's writer names the failed node (Fail).
+    // Error fact's writer names the failed node (Fail), and a direct one's `origin` is the clause whose binding failed it (origins).
     internal void Add(BoundConstraint fact, BindingSymbol? source, IsKoto? origin)
     {
         var availability = source is null ? this.DirectFacts.Add(fact) : !this.DerivedFrom(fact, source);
         if (source is not null && availability)
         {
             this.DerivedFacts.Add((fact, source, origin));
+        }
+        else if (source is null && origin is not null)
+        {
+            this.NoteOrigin(fact, origin);
         }
 
         var added = this.Facts.Add(fact);
@@ -183,6 +216,29 @@ internal sealed class ConstraintEnvironment
 
     // The declaration's own supply ends here (ExpandScopeContractPremises' end). No Version change: no view-keyed table reads the mark.
     internal void MarkDeclared() => this.Declared = this.DerivedFacts.Count;
+
+    /// <summary>Records a Statement of a direct fact (SPEC 6.4.2 step 3): `owner` writes the premise this environment holds as `fact`.
+    /// Once: an equal Statement is already in the set. No Version change: no view-keyed table reads one, as with MarkDeclared.</summary>
+    /// <param name="fact">The fact as this environment holds it.</param>
+    /// <param name="owner">The declaration stating the premise.</param>
+    /// <param name="written">The premise as that declaration writes it.</param>
+    internal void AddStatement(BoundConstraint fact, Koto owner, BoundConstraint written)
+    {
+        if (!this.Recorded(fact, owner, written))
+        {
+            (this.statements ??= new()).Add((fact, owner, written));
+        }
+    }
+
+    /// <summary>Gets whether `owner`'s premise `written` is a Statement of `fact` here (SPEC 8.11.4: its clauses carry the fact's bound
+    /// list, the union over its Statements): the in-place one, the scope's owner writing the fact itself, or a recorded one.</summary>
+    /// <param name="fact">A fact of this environment.</param>
+    /// <param name="scopeOwner">The owner of the scope holding this environment.</param>
+    /// <param name="owner">A clause's declaration.</param>
+    /// <param name="written">The clause's premise as written.</param>
+    /// <returns>Whether the clause states the fact.</returns>
+    internal bool States(BoundConstraint fact, Koto scopeOwner, Koto owner, BoundConstraint written)
+        => (ReferenceEquals(owner, scopeOwner) && ReferenceEquals(written, fact)) || this.Recorded(fact, owner, written);
 
     // R7-C2c2 c2-4b (DECISIONS R4.13; SPEC 8.3.3 Limits, "the closure of a declaration's premises"): whether `fact` is a ground of
     // the declaration's closure, the one fact an extending request's table reads (ExtendedClassesOf): written, or derived by the
@@ -261,7 +317,32 @@ internal sealed class ConstraintEnvironment
     /// passes (warm Bind allocates nothing, BU-64); not state: no view-keyed table reads it.</summary>
     /// <param name="owner">The declaration whose record it is.</param>
     /// <returns>The environment's one cause.</returns>
-    internal PremiseFailure Cause(Koto owner) => this.premiseFailure ??= new(owner);
+    internal PremiseFailure Cause(Koto owner) => this.premiseFailure ??= new(owner, null);
+
+    /// <summary>The cause a proof that reads the failed premise `fact` rests on (R7-E5 c1, Rev 2 R2.2 (2)): the environment's cause
+    /// (FailedPremise), or, where the fact has an origin (origins), that origin's cause, with the same Use. Each origin's cause is made
+    /// at its first read and kept across passes (warm Bind allocates nothing, BU-64); not state: no view-keyed table reads it.</summary>
+    /// <param name="fact">A premise of this environment whose state is Failed.</param>
+    /// <returns>The cause, or null while nothing of this pass failed here (FailedPremise).</returns>
+    internal PremiseFailure? CauseOf(BoundConstraint fact)
+    {
+        if (this.FailedPremise is not { } failure || this.OriginOf(fact) is not { } origin)
+        {
+            return this.FailedPremise;
+        }
+
+        foreach (var cause in this.originCauses ??= new())
+        {
+            if (ReferenceEquals(cause.Origin, origin))
+            {
+                return cause;
+            }
+        }
+
+        var made = new PremiseFailure(failure.Use, origin);
+        this.originCauses.Add(made);
+        return made;
+    }
 
     /// <summary>Gets or sets a value indicating whether a fact is a Type-identity premise `X is U` of any subject (SPEC 8.2.3), a ground
     /// of the identity relation and the identity classes' input (Binding.TypeIdentity); G721's interim reads it until G170's identity
@@ -278,11 +359,50 @@ internal sealed class ConstraintEnvironment
         this.Facts.Clear();
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
+        this.statements?.Clear();
         this.Declared = 0;
         this.FailedPremises?.Clear();
         this.UnprovenInputs?.Clear();
+        this.origins?.Clear();
         this.HasAssociatedProjection = false;
         this.HasTypeIdentity = false;
+    }
+
+    private void NoteOrigin(BoundConstraint fact, IsKoto origin)
+    {
+        if (this.OriginOf(fact) is null)
+        {
+            (this.origins ??= new()).Add((fact, origin));
+        }
+    }
+
+    private IsKoto? OriginOf(BoundConstraint fact)
+    {
+        if (this.origins is { } noted)
+        {
+            foreach (var (written, origin) in noted)
+            {
+                if (ReferenceEquals(written, fact))
+                {
+                    return origin;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private bool Recorded(BoundConstraint fact, Koto owner, BoundConstraint written)
+    {
+        for (var i = 0; this.statements is { } list && i < list.Count; i++)
+        {
+            if (ReferenceEquals(list[i].Fact, fact) && ReferenceEquals(list[i].Owner, owner) && ReferenceEquals(list[i].Written, written))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool DerivedFrom(BoundConstraint fact, BindingSymbol source)

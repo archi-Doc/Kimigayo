@@ -9,7 +9,7 @@
 # -O2Metrics also writes o2-metrics.json (information only: the exit code stays the comparison's): instructions and
 # blocks per define of each natively run fixture's optimized IR, the first native step's <work>/native*/<stem>.O2.ll
 # (summary.json workDirectory), totalled over the whole module and, as information, over the runtime helpers (this
-# checkout's runtime template) and the generated bodies; fixtures with one in both runs ranked by candidate/baseline
+# checkout's runtime templates) and the generated bodies; fixtures with one in both runs ranked by candidate/baseline
 # whole-module instruction growth, then by the difference, then by name; the others listed as unpaired. The module is
 # the measure because at O2 the runtime helpers are not the same text in both runs: inlining and interprocedural
 # constant propagation move code between them and the bodies (G182; before 2026-10-31 growth was body growth, and an
@@ -132,10 +132,10 @@ if ($differingNative.Count -gt 0) {
     foreach ($item in $differingNative) { $text.Add("  $($item.fixture): $(if ($item.baseline) { $item.baseline } else { 'not run' }) -> $(if ($item.candidate) { $item.candidate } else { 'not run' })") }
 }
 if ($O2Metrics) {
-    # The runtime helpers are the functions LlvmModuleText.WriteRuntime writes: the runtime template's, each
-    # named on the line before its body's entry: label, by a define line or by the {{name}} marker ExpandRuntime replaces with
-    # that definition. Every other define is a generated body.
-    $template = [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../src/Kimi/Compiler/Backend/WindowsRuntime.ll.in'))
+    # The runtime helpers are the functions of this checkout's runtime templates (every src/Kimi/Compiler/Backend/*.ll.in, which
+    # LlvmModuleText embeds and writes), each named on the line before its body's entry: label, by a define line or by the {{name}}
+    # marker ExpandRuntime replaces with that definition. Every other define is a generated body.
+    $template = @(foreach ($part in @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '../src/Kimi/Compiler/Backend') -Filter '*.ll.in' | Sort-Object Name)) { [IO.File]::ReadAllLines($part.FullName) })
     $runtime = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     for ($i = 1; $i -lt $template.Count; $i++) {
         if ($template[$i] -ceq 'entry:') { $null = $runtime.Add(($template[$i - 1] -creplace '^\{\{(.+)\}\}$|^[^@]*@([^(]+)\(.*$', '$1$2')) }

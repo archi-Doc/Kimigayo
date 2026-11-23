@@ -88,6 +88,22 @@ public class AcquisitionCorrelationTest
         Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.UnprovenAcquisitionCorrelation);
     }
 
+    // SPEC 7.4.4, 23.3: where both candidates bind the slot, from typed sources along different structural paths (the Elements row
+    // above), the record shows the slot's two bindings, the group contract's then the corresponding declaration's, with the two
+    // declarations (R7-E3 E3b-1, ruling 9's C-3).
+    [Fact]
+    public void BothBindingsKnownShowTheSlotsPair()
+    {
+        var path = Path.GetFullPath("AcquisitionCorrelation.kimi");
+        var c = MinimalEmissionTest.Analyze(Elements + Body + "    let n: i32 = 42\n    let p: (i32, i32) = (1, 2)\n    let c = C.init(n, 0, (p, 1))", path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var record = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal("UnprovenAcquisitionCorrelation_Kd", record.Code);
+        Assert.Equal(["T", "i32", "i32"], record.Reason!.Select(static x => x.Value));
+        Assert.Equal(["Group contract", "Corresponding declaration"], record.Related!.Select(static x => x.Label));
+    }
+
     // SPEC 10.5.1, 10.8: a waiting part, whole, as a Tuple element or as a join's results, and a Never part are never evidence, so a
     // parameter that only they reach does not break the correlation, for a Literal or a typed source alike.
     [Theory]

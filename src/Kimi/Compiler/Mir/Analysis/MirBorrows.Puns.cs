@@ -75,10 +75,11 @@ internal sealed partial class MirBorrows
     }
 
     // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref, step `last` of the Place's `count` steps
-    // in the walk buffer, goes through (MirBorrows.Reach's WriteTargets).
+    // in the walk buffer, goes through (MirBorrows.Reach's WriteTargets). A written Place takes rule W (MirCases.KnownTypeOf, as Store's
+    // receiving part): one of no Type, a Field step whose slot failed (PLAN G1184), has no bytes to pun.
     private void Punning(int pointer, MirPlace place, int count, int last)
     {
-        if (this.Scalar(cases.TypeOf(place)) == Extent.None)
+        if (cases.KnownTypeOf(place) is not { } written || this.Scalar(written) == Extent.None)
         {
             return;
         }

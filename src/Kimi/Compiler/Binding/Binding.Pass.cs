@@ -41,7 +41,6 @@ public sealed partial class Binding
     // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
     private void ResetPass(BindingMode mode)
     {
-        this.inferredConstructionTargets.Clear();
         this.clausesBindable = false;
         this.verifiedClause = null;
         this.earlyObjectForms?.Clear();
@@ -52,7 +51,6 @@ public sealed partial class Binding
         this.foreignFailures.Clear();
         this.sitelessHeightRefusal = false;
         this.lints.Clear();
-        this.callableSelectionParties.Clear();
         this.importDeclarations.Clear();
         this.libraryImports.Clear();
         this.environmentsJudged = -1;
@@ -75,8 +73,10 @@ public sealed partial class Binding
         this.aliases.Clear();
         this.ResetAliases();
         this.obligations.Clear();
+        this.completedDefaults = 0;
         this.ResetLocalRegions();
         this.ResetBorrows();
+        this.rawFits.Clear();
         this.obligationSet.Clear();
         this.ResetCapabilities(mode);
         this.ResetContracts();

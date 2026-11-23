@@ -101,7 +101,7 @@ public sealed partial class Binding
                 for (var i = 0; i < count; i++)
                 {
                     // Judge against the derived declaration, before assuming any slot premise.
-                    if (this.ProveConstraint(facts[i], function.BoundSymbol.Scope) is ConstraintProof.Proven or ConstraintProof.Unknown)
+                    if (this.ProveConstraint(facts[i], function.BoundSymbol.Scope, function) is ConstraintProof.Proven or ConstraintProof.Unknown)
                     {
                         this.AddConstraintFact(header.Constraints!, facts[i]);
                     }
@@ -162,7 +162,7 @@ public sealed partial class Binding
     }
 
     // Closed descriptor bindings use the public premises, without assuming those premises from the body scope.
-    internal ConstraintProof VirtualApplicability(VirtualSlot slot)
+    internal ConstraintProof VirtualApplicability(VirtualSlot slot, QuerySite site)
     {
         if (slot.DeclaringType.ContainsParameter)
         {
@@ -172,8 +172,8 @@ public sealed partial class Binding
         var original = slot.Original;
         var scope = this.ModuleScope(original);
         return CombineProof(
-            this.CheckConstraints(original.TypeConstraints, SubstitutionOf(original, slot.DeclaringType, [], default), scope),
-            this.ProveMemberConditions(original.BoundSymbol!, slot.DeclaringType, scope),
+            this.CheckConstraints(original.TypeConstraints, SubstitutionOf(original, slot.DeclaringType, [], default), scope, site),
+            this.ProveMemberConditions(original.BoundSymbol!, slot.DeclaringType, scope, site),
             true);
     }
 
@@ -467,8 +467,9 @@ public sealed partial class Binding
             // stand (SPEC 23.1.2); a rejected definition publishes no body (DECISIONS R4-M18). R7-C3 (F's C2 rulings 313, 271 (1), 255):
             // the refuted premise is the override's failed premise, it and its conjuncts in the one Failed state (FailPremise), so a body
             // proof that reads it rests on the override's record and none of it is evidence.
-            var proof = this.ProveConstraint(bound, premises);
+            var proof = this.ProveConstraint(bound, premises, function);
             this.AddConstraintFact(premises.Constraints!, bound);
+            premises.Constraints!.AddStatement(bound, source.Owner, fact); // the slot's premise as written (SPEC 6.4.2 step 3, 8.11.4)
             if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
                 this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));
@@ -514,7 +515,7 @@ public sealed partial class Binding
                     break;
                 }
 
-                var proof = this.ProveConstraint(bound, premises);
+                var proof = this.ProveConstraint(bound, premises, function);
                 if (proof != ConstraintProof.Proven)
                 {
                     if (proof == ConstraintProof.Error)

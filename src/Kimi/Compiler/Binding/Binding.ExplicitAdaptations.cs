@@ -18,7 +18,7 @@ public sealed partial class Binding
     internal bool BorrowsExclusively(ConversionKoto conversion)
         => conversion.ConversionBinding == ConversionBinding.CaseAdaptation
             ? this.AdaptationOf(conversion) is { } plan &&
-                (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion)) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
+                (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion), conversion) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
             : conversion.BoundType is { } target && AdaptationBorrow(conversion.ConversionBinding, target) == true;
 
     // Inputs and acquisition were verified at definition. A context substitutes them and selects the canonical factory.
@@ -263,7 +263,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (operation == ConversionBinding.Identity && !this.CanSelectIdentity(source, scope, cases))
+        if (operation == ConversionBinding.Identity && !this.CanSelectIdentity(source, scope, conversion, cases))
         {
             this.Fail(conversion, BindingFailure.UnprovenConstraint);
             return false;
@@ -277,7 +277,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            var proof = this.RequestCapability(source, this.Library.ObjectPayload, scope);
+            var proof = this.RequestCapability(source, this.Library.ObjectPayload, scope, conversion);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(conversion, proof, this.capabilityMode);
@@ -310,7 +310,7 @@ public sealed partial class Binding
             }
         }
         else if (operation != ConversionBinding.ObjectUpcast && this.IsBarePlace(conversion.Left) &&
-            this.ProveCopy(source, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
+            this.ProveCopy(source, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
         {
             this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             return false;

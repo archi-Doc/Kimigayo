@@ -40,8 +40,9 @@ public sealed class TataraExecutorTest : IDisposable
     private static readonly TataraContext Context = new(
         (_, _) => { }, CancellationToken.None, Triple, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
 
-    // The Linux probe's target (Tatara B7b1, before B7b2's row): a static x86-64 ELF.
-    private static readonly TataraContext LinuxContext = Context with { Triple = "x86_64-unknown-linux-musl", RelocationModel = "static" };
+    // The Linux row's target (Tatara B7b2a): a static x86-64 ELF.
+    private static readonly TataraContext LinuxContext = new(
+        (_, _) => { }, CancellationToken.None, TargetProfile.Linux.Target, TargetProfile.Linux.Cpu, TargetProfile.Linux.Features, TargetProfile.Linux.RelocationModel, TargetProfile.Linux.CodeModel);
 
     // The tool control's two formats. The archive's ld.lld.exe and llvm-readelf.exe are the toolchain's lld-link.exe and llvm-readobj.exe
     // (equal SHA-256); -flavor gnu and --elf-output-style=GNU select what those names select.
@@ -163,6 +164,30 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Contains("not a COFF or ELF object", Assert.Throws<IOException>(() => tatara.Inspect(Context, macho)).Message, StringComparison.Ordinal);
     }
 
+    // The Tatara plan's B7b2a: the Linux row's libc-free modules (Hello, Hello ending in an Abort, design §5 row 14's allocator program and
+    // B7b6's Stopwatch over the layer's clock), each generated for the row, verified and emitted by Tatara at O0 and O2 with no undefined
+    // symbol, and linked by ld.lld at the row's entry into a static executable. Linux runs them under WSL (B7b2a's before its Ready, the
+    // Stopwatch at B7b7), not here (N7).
+    [Theory]
+    [InlineData("Hello", "::Kimi.Console.writeLine(\"Hello, world!\")")]
+    [InlineData("Abort", "::Kimi.Console.writeLine(\"Hello, world!\")\n$abort(\"x\")")]
+    [InlineData("Heap", HeapRuntimeTest.AllocatorProgram)]
+    [InlineData("Stopwatch", TimeLibraryTest.Measured)]
+    public void TheLinuxRowsModulesLinkStatically(string name, string source)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var ir = Path.Combine(this.directory, name + ".ll");
+        File.WriteAllText(ir, CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(TargetProfile.Linux, source, "Hello.kimi", OutputKind.Application)));
+        foreach (var level in Levels)
+        {
+            var (obj, exe) = (Path.Combine(this.directory, name + "." + level + ".o"), Path.Combine(this.directory, name + "." + level));
+            Tatara.Instance.Emit(LinuxContext, ir, obj, level[1] - '0');
+            Assert.Empty(Tatara.Instance.Inspect(LinuxContext, obj).Undefined);
+            Tatara.Instance.Link(LinuxContext, ["ld.lld", "-e", TargetProfile.Linux.EntrySymbol, .. ElfLinkArguments(obj, exe, [])]);
+            ElfFile.Read(exe).AssertStatic(TargetProfile.Linux.EntrySymbol);
+        }
+    }
+
     // Two emits and links of the probe in two folders give equal objects and executables (§6.1).
     [Fact]
     public void ElfBuildsInTwoFoldersAreEqual()
@@ -212,8 +237,8 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // A request that fails with return 1 is the toolchain's failure, and the next request succeeds: an invalid IR; an inline-asm
-    // constraint error, which llc reports after opening the object and which leaves no object, as llc's; then a link with an
-    // undefined symbol.
+    // constraint error, which llc reports after opening the object and which leaves no object, as llc's; then a link without
+    // kernel32's import library, whose imports are undefined symbols.
     [Fact]
     public async Task FailedRequestsLeaveTataraUsable()
     {
@@ -233,7 +258,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.False(File.Exists(Path.Combine(this.directory, "asmerror.obj")));
         var obj = Path.Combine(this.directory, "hello.obj");
         tatara.Emit(Context, ir, obj, 0);
-        var link = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld-link", obj, Kernel32, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
+        var link = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld-link", obj, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
         Assert.StartsWith("Tatara failed: link\n", link.Message, StringComparison.Ordinal);
         Assert.Contains("undefined symbol", link.Message, StringComparison.Ordinal);
         var flavor = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld", .. LinkArguments(obj, Path.Combine(this.directory, "c.exe"), CompilerLibraries)]));
@@ -256,7 +281,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Equal(string.Empty, await Tool("clang", work, [.. oracle, Path.Combine(tests, "native.c"), "-o", "native.obj"]));
         Assert.Equal(string.Empty, await Tool("clang", work, "--target=" + Triple, "-c", Path.Combine(tests, "probe.S"), "-o", "probe.obj"));
         var memory = Path.Combine(work, "memory.ll");
-        File.WriteAllText(memory, $"target triple = \"{Triple}\"\ntarget datalayout = \"{TargetProfile.Windows.DataLayout}\"\n{LlvmModuleText.MemoryRuntime}{LlvmModuleText.Footer}");
+        File.WriteAllText(memory, $"target triple = \"{Triple}\"\ntarget datalayout = \"{TargetProfile.Windows.DataLayout}\"\n{LlvmModuleText.MemoryRuntime}{LlvmModuleText.Frame(TargetProfile.Windows).Footer}");
         foreach (var level in Levels)
         {
             var ir = level == "O2" ? Path.Combine(work, "memory.O2.ll") : memory;
