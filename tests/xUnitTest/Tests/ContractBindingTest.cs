@@ -775,8 +775,8 @@ public class ContractBindingTest
     [InlineData("group G\n    public contract P<T>\ncontract A: G.P<i32>\n", "")] // g2t
     [InlineData("group G\n    public contract Q\nfunc f(x: ref/G.Missing.P<i32>) -> () => ()\n", "UnresolvedBinding_Kd 3:15 G.Missing")] // g1
     [InlineData("func f(x: ref/Missing.P<i32>) -> () => ()\n", "UnresolvedBinding_Kd 1:15 Missing")] // g3
-    [InlineData("group G\n    public contract Q\nstruct S<T>\n    T is G.Missing.P\n", "InvalidConstraint_Kd 3:1 struct, premise|UnresolvedBinding_Kd 4:10 G.Missing|InvalidConstraint_Kd 4:10 G.Missing.P")] // r1
-    [InlineData("group G\n    public contract Q\nstruct S<T>\n    T is G.Missing.P<i32>\n", "InvalidConstraint_Kd 3:1 struct, premise|UnresolvedBinding_Kd 4:10 G.Missing|InvalidConstraint_Kd 4:10 G.Missing.P<i32>")] // r1g
+    [InlineData("group G\n    public contract Q\nstruct S<T>\n    T is G.Missing.P\n", "InvalidConstraint_Kd 3:1 struct, the premise that linked the error|UnresolvedBinding_Kd 4:10 G.Missing|InvalidConstraint_Kd 4:10 G.Missing.P")] // r1
+    [InlineData("group G\n    public contract Q\nstruct S<T>\n    T is G.Missing.P<i32>\n", "InvalidConstraint_Kd 3:1 struct, the premise that linked the error|UnresolvedBinding_Kd 4:10 G.Missing|InvalidConstraint_Kd 4:10 G.Missing.P<i32>")] // r1g
     [InlineData("open struct B\n    public contract P\n    public init() => ()\nstruct D: B\n    contract A: P\n    public init(): base() => ()\n", "InvalidConstraint_Kd 5:5 contract|QualificationRequired_Kd 5:17 P, base clause of D, inherited declaration")] // x6
     [InlineData("open struct B\n    public contract P\n    public init() => ()\nstruct D: B\n    contract A: B.P\n    public init(): base() => ()\n", "")] // x6t
     [InlineData("alias G1\nalias G2\ngroup G1\n    public contract P\ngroup G2\n    public contract P\ncontract A: P\n", "InvalidConstraint_Kd 7:1 contract|AmbiguousBinding_Kd 7:13 P")] // x7
