@@ -89,6 +89,7 @@ public sealed partial class Binding
     private void ValidateLibraryImports()
     {
         string? target = null;
+        var row = TargetProfile.Find(this.compilation.TargetTriple.Value); // The selected row, or none (a target without a row).
         var symbols = this.importSymbols;
         symbols.Clear();
         var ordinal = 0;
@@ -108,15 +109,17 @@ public sealed partial class Binding
                 continue;
             }
 
-            // IMPL 20.4/21.4.7: a reserved supply has its fixed kind and provides only its symbol set; any other library's Kind is the
-            // defining module's requirement's, after self-targeted supply expansion (IMPL 20.4), and decides dllimport generation.
+            // IMPL 20.4/21.4.7: a reserved supply is any target row's supply of the name, with its fixed kind; an import of a symbol no
+            // row's supply of that name provides is an error on every target, and one only another row's supply provides is the selected
+            // row's Unsupported (below; SPEC 22 ¶1: validity is target-independent, an Unsupported report may depend on the target). Any
+            // other library's Kind is the defining module's requirement's, after self-targeted supply expansion (IMPL 20.4), and decides
+            // dllimport generation.
             string? kind = null;
-            var reserved = TargetProfile.Windows.Supply(name);
-            var provided = reserved is not null && Array.IndexOf(reserved.Symbols, symbol) >= 0;
+            var reserved = TargetProfile.ReservedSupply(name);
             if (reserved is not null)
             {
                 kind = reserved.Kind;
-                if (!provided)
+                if (!TargetProfile.Provides(name, symbol))
                 {
                     this.Record(attribute, BindingFailure.UnavailableReservedImport, []);
                 }
@@ -141,10 +144,11 @@ public sealed partial class Binding
             var signature = this.ImportAbi(attribute, function, ordinal++);
             if (signature is not null)
             {
-                // IMPL 21.2, 21.4.7: the runtime's own kernel32 declarations share the same final symbol table; an import joins
-                // one only through the reserved supply providing its symbol (its one providing library: the supplies' symbol sets are
-                // disjoint) with an equal physical Type, and never a declaration carrying an inexpressible ABI attribute.
-                if (IsRuntimeDeclaration(symbol, out var declared) && (!provided || declared != signature))
+                // IMPL 21.2, 21.4.7: a runtime's own import declarations share the same final symbol table; an import joins one only
+                // through the declaring row's supply providing its symbol (its one providing library: a row's supplies' symbol sets are
+                // disjoint) with an equal physical Type, and never a declaration carrying an inexpressible ABI attribute. Judged against
+                // every row's declarations, so the error is target-independent (SPEC 22 ¶1; the Tatara plan's G1 (i)).
+                if (TargetProfile.TryGetRuntimeDeclaration(symbol, out var declared, out var provider) && (provider != name || declared != signature))
                 {
                     this.Record(attribute, BindingFailure.ConflictingRuntimeSymbol, []);
                 }
@@ -165,9 +169,12 @@ public sealed partial class Binding
                 }
             }
 
-            // A dependency module's supplies are not linked yet, but the reserved ones, which the compiler links for every module (IMPL 20.4):
-            // the import's limit, the located Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92).
-            if (reserved is null && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha))
+            // The import's limits, the located Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92):
+            // a dependency module's supplies are not linked yet, but the reserved ones, which the compiler links for every module (IMPL
+            // 20.4); the selected row links neither another row's reserved supply or symbol nor a kind outside its Kinds (IMPL 20.4, 21.2;
+            // SPEC 22 ¶1). A target without a row is never built, so it reports neither.
+            if ((reserved is null && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha)) ||
+                (row is not null && !RowLinks(row, reserved, symbol, kind)))
             {
                 this.Fail(attribute, BindingFailure.Unsupported);
             }
@@ -226,27 +233,18 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 21.4.7 declarations generated beside the runtime; the signature is null when none can agree.
-        static bool IsRuntimeDeclaration(string symbol, out string? declared)
-        {
-            foreach (var declaration in TargetProfile.Windows.RuntimeDeclarations)
-            {
-                if (string.Equals(declaration.Symbol, symbol, StringComparison.Ordinal))
-                {
-                    declared = declaration.Signature;
-                    return true;
-                }
-            }
+        // Whether the selected row links an import: a reserved supply's symbol through the row's own supply of that name, and the
+        // import's kind among the row's Kinds (an unresolved kind has its own diagnostic).
+        static bool RowLinks(TargetProfile row, TargetSupply? reserved, string symbol, string? kind)
+            => (reserved is null || (row.Supply(reserved.Name) is { } own && Array.IndexOf(own.Symbols, symbol) >= 0)) &&
+                (kind is null || Array.IndexOf(row.Kinds, kind) >= 0);
 
-            declared = null;
-            return false;
-        }
-
-        // IMPL 21.2 reserves the compiler's and LLVM's external names and the profile's (its float marker and the backend supply's
-        // catalog, ReservedSymbols), so the profile's names and its supply cannot drift apart.
+        // IMPL 21.2 reserves the compiler's and LLVM's external names and the table's on every target (ReservedSymbols: every row's
+        // float marker and backend supply's catalog, the memory functions and the C entry), so the names and the supplies cannot drift
+        // apart and the error is target-independent (SPEC 22 ¶1).
         static bool IsReservedExternalName(string symbol)
             => symbol.StartsWith("__kimi_", StringComparison.Ordinal) || symbol.StartsWith("llvm.", StringComparison.Ordinal) ||
-                Array.IndexOf(TargetProfile.Windows.ReservedSymbols, symbol) >= 0;
+                Array.IndexOf(TargetProfile.ReservedSymbols, symbol) >= 0;
 
         static bool IsImportName(InvocationKoto call, int index, out string value)
         {
