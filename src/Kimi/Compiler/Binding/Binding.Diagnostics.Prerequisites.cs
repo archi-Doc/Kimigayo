@@ -166,6 +166,9 @@ public sealed partial class Binding
     [Transitional("R7", Reason = "The row stands for per-problem inputs (d4: a repeated let beside its initializer's syntax error; k2: a repeated Signature whose later header is a recovery), until R7-E5 states what each problem's check read.")]
     private static bool JudgedByDeclaredNames(BindingFailure failure) => failure == BindingFailure.Duplicate;
 
+    // A record of a reached implementation limit: its code's category is Resource (SPEC 23.1.1).
+    private static bool IsResource(DiagnosticCode code) => DiagnosticEntries.TryGet(code, out var entry) && entry.Category == DiagnosticCategory.Resource;
+
     // PLAN G1073, the failed-slot fact: a slot is stated when it has its Type or Binding recorded a cause at its TypeSource (its record
     // reported or resting on a reported one), so a published slot of no Type is the failed slot. The HIR publisher's slot rows read it
     // (HasFacts, SlotsStated); a node with a slot neither typed nor failed is Broken. One direction only: a Closure whose written result
@@ -538,10 +541,10 @@ public sealed partial class Binding
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
     // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
-    // requirement judged and `problem` its problem (CollectProblem: the slot's, -1 for a slot without one, or a further one); the first
-    // three rows read the problem's inputs (PushInputs, PartOf), the others its node's part.
-    private bool IsDerived(Koto node, BindingFailure failure, int problem)
-        => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node, problem))) ||
+    // requirement judged, `code` its record's code and `problem` its problem (CollectProblem: the slot's, -1 for a slot without one, or a
+    // further one); the first three rows read the problem's inputs (PushInputs, PartOf), the others its node's part.
+    private bool IsDerived(Koto node, BindingFailure failure, DiagnosticCode code, int problem)
+        => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node, code, problem))) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.RestsOnReported(node, problem)) ||
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.PartOf(node, problem) is { } part &&
@@ -556,11 +559,13 @@ public sealed partial class Binding
             this.KeepsPremiseErrorContext(premise));
 
     // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
-    // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any
-    // other, from that record and adds none; a refusal at its own site stays its own record. The one place of the rule; the walk
-    // reuses the prerequisite storage of PrerequisiteKeys; both run only at publication. The walk starts from the problem's inputs
-    // (PushInputs); an input's own rest is the input's (PushPrerequisites).
-    private bool RestsOnRecoveryOrLimit(Koto node, int problem)
+    // holding a reached implementation limit (HoldsLimit) derives every outcome, Unproven, Invalid or any other, from that record and
+    // adds none; a refusal at its own site stays its own record: a problem whose own code is Resource is never derived from a limit,
+    // and a Language problem beside a limit at one node is judged by its own inputs (the problem's code, not its node's first failure;
+    // for the slot's issue the two are one). The one place of the rule; the walk reuses the prerequisite storage of PrerequisiteKeys;
+    // both run only at publication. The walk starts from the problem's inputs (PushInputs); an input's own rest is the input's
+    // (PushPrerequisites).
+    private bool RestsOnRecoveryOrLimit(Koto node, DiagnosticCode code, int problem)
     {
         var pending = this.prerequisitePending;
         if (!this.PushInputs(node, problem, pending))
@@ -571,7 +576,7 @@ public sealed partial class Binding
         var visits = this.prerequisiteVisits;
         visits.Add(node);
         var found = false;
-        var limit = !this.ResourceFailed(node);
+        var limit = !IsResource(code);
         while (pending.TryPop(out var cause))
         {
             if (!visits.Add(cause))
@@ -579,7 +584,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (IsRecovery(cause, out _) || (limit && this.ResourceFailed(cause)))
+            if (IsRecovery(cause, out _) || (limit && this.HoldsLimit(cause)))
             {
                 found = true;
                 pending.Clear();
@@ -624,8 +629,29 @@ public sealed partial class Binding
 
     // A node whose failure is a reached implementation limit: its record's category is Resource (SPEC 23.1.1).
     private bool ResourceFailed(Koto node)
-        => this.RecordedFailure(node) is var failure && failure != BindingFailure.None && DiagnosticEntries.TryGet(this.CodeOf(node, failure), out var entry) &&
-            entry.Category == DiagnosticCategory.Resource;
+        => this.RecordedFailure(node) is var failure && failure != BindingFailure.None && IsResource(this.CodeOf(node, failure));
+
+    // SPEC 8.3.3 (Limits), 23.1.1: an input holds a reached implementation limit when its slot's failure is Resource (ResourceFailed: a
+    // Binding limit is recorded through Fail alone, CaseLimit, TypeHeightLimit and PremiseClosureLimit) or one of its problems is,
+    // whatever its first record (F's ruling 339, the review's B1). The limit half's one input test (RestsOnRecoveryOrLimit), read only
+    // at publication; a valid program has no problem and pays the slot's test alone.
+    private bool HoldsLimit(Koto node)
+    {
+        if (this.ResourceFailed(node))
+        {
+            return true;
+        }
+
+        for (var i = this.report.Count == 0 ? -1 : this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
+        {
+            if (IsResource(this.report.Problem(i).Code))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
     // operands still unresolved when Binding ends are prerequisites.
