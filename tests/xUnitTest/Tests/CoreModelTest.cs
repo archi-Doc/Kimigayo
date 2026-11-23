@@ -89,15 +89,19 @@ public class CoreModelTest
     // the table's for its symbol, provided by one of the row's supplies (G1 (i)). The Windows row: kernel32 providing every runtime
     // declaration (IMPL 21.4.7), both kinds, no C runtime and no argument extension; the Linux row (B7b2b): c, a static library providing
     // the C functions the layer stands for, its C runtime, the static kind (Q3a (a)), and System V's argument extension (IMPL 21.2). The
-    // table's reserved external names (IMPL 21.2, every target; B7b5) are built once.
+    // table's reserved external names (IMPL 21.2, every target; B7b5) are built once from pairwise disjoint parts: each row's float marker
+    // and kimi_backend symbols (Windows': __chkstk alone, B7r5), MemorySymbols and MainSymbol.
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
         Assert.Equal([TargetProfile.Windows, TargetProfile.Linux], TargetProfile.Rows);
         Assert.Equal("x86_64-pc-windows-msvc", TargetProfile.Windows.Target);
         Assert.Equal("x86_64-unknown-linux-musl", TargetProfile.Linux.Target);
+        List<string> reserved = [];
         foreach (var row in TargetProfile.Rows)
         {
+            reserved.AddRange(row.FloatMarker is { } marker ? [marker] : []);
+            reserved.AddRange(row.Supply("kimi_backend")?.Symbols ?? []);
             var supplies = row.Supplies;
             for (var i = 1; i < supplies.Length; i++)
             {
@@ -131,6 +135,9 @@ public class CoreModelTest
         Assert.Equal(["import", "static"], windows.Kinds);
         var kernel32 = windows.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
         Assert.Subset(kernel32, windows.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
+        Assert.Equal(["__chkstk"], windows.Supply("kimi_backend")!.Symbols);
+        reserved.AddRange([.. TargetProfile.MemorySymbols, TargetProfile.MainSymbol]);
+        Assert.Equal(reserved.Distinct(StringComparer.Ordinal), reserved);
         Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset", "main"], TargetProfile.ReservedSymbols);
         Assert.Same(TargetProfile.ReservedSymbols, TargetProfile.ReservedSymbols);
         Assert.Null(windows.CRuntime);

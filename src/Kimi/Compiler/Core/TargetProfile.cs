@@ -21,8 +21,8 @@
 // among its row's Kinds and one kind for every row's supply of its name (a reserved supply's kind is fixed, IMPL 20.4); a row's
 // CRuntime names one of its supplies; every row declaring a runtime symbol declares it alike (one physical signature, provided by a
 // supply of one name), so any row's declaration is every row's; ReservedSymbols are every row's float marker and backend supply's
-// symbols, MemorySymbols and MainSymbol, built once; the native build checks the embedded backend record against the backend supply
-// and keys its material by the supplies' names (ToolchainIdentity).
+// symbols, MemorySymbols and MainSymbol, pairwise disjoint parts, built once; the native build checks the embedded backend record
+// against the backend supply and keys its material by the supplies' names (ToolchainIdentity).
 // Must not read a file, a resource or the toolchain (the native build's material is ToolchainIdentity's), nor stand for the checked
 // triple (Compilation.TargetTriple and IrTarget: any triple a check selects).
 
@@ -61,9 +61,8 @@ internal sealed class TargetProfile
         ("VirtualFree", "4p84"),
     ];
 
-    // The backend supply's helper symbols in catalog order (IMPL 21.4.7), reserved external names through the supply (ReservedSymbols):
-    // the archive still holds members for the memory functions, which no link pulls since every module defines them.
-    private static readonly string[] WindowsBackendSymbols = ["__chkstk", .. MemorySymbols];
+    // The backend supply's helper symbols in catalog order (IMPL 21.4.7), reserved external names through the supply (ReservedSymbols).
+    private static readonly string[] WindowsBackendSymbols = ["__chkstk"];
 
     /// <summary>Gets the windows-x64 row, the pinned, module-local Windows execution profile (IMPL 21.4). Its reserved supplies (IMPL
     /// 20.4), in Ordinal name order: kernel32, the generated import library, whose symbol set is the runtime declarations' symbols, then
@@ -298,31 +297,21 @@ internal sealed class TargetProfile
         return null;
     }
 
-    // ReservedSymbols' one build, after Rows.
+    // ReservedSymbols' one build, after Rows: each part appended as it is (the parts are disjoint).
     private static string[] ReservedNames()
     {
         List<string> names = [];
         foreach (var row in Rows)
         {
-            Add(names, row.FloatMarker is { } marker ? [marker] : []);
-            Add(names, row.Supply(BackendSupply)?.Symbols ?? []);
-        }
-
-        Add(names, [.. MemorySymbols, MainSymbol]);
-        return [.. names];
-
-        // Temporary structure (the Tatara plan's C-445 n4; removal B7r5): a name already listed is skipped, since until B7r5 Windows'
-        // backend supply still lists the four memory functions; B7r5's commit deletes the skip and pins the parts disjoint.
-        static void Add(List<string> names, string[] parts)
-        {
-            foreach (var name in parts)
+            if (row.FloatMarker is { } marker)
             {
-                if (!names.Contains(name))
-                {
-                    names.Add(name);
-                }
+                names.Add(marker);
             }
+
+            names.AddRange(row.Supply(BackendSupply)?.Symbols ?? []);
         }
+
+        return [.. names, .. MemorySymbols, MainSymbol];
     }
 }
 

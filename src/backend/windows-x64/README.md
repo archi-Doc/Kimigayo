@@ -52,23 +52,20 @@ Saved native diagnostics, build/verification JSON reports, and LLVM source metad
 
 ## Implementation
 
-Each archive member defines exactly one strong external symbol: `memcmp`, `memcpy`, `memmove`, `memset`, or `__chkstk`. The memory functions use baseline x64 integer accesses in eight-byte chunks and byte tails, with no overread, heap allocation, calls, or nonvolatile register changes. The forward copy loop is shared in assembly source. Memmove selects direction from the actual overlap and returns immediately for identical addresses. Memcmp finds the first differing byte in each chunk and returns its unsigned-byte difference; zero count accesses neither pointer. String comparisons call the Kimi library witnesses (`StringWitness.equals` and `compare`), so no generated module declares memcmp; it stays a provided symbol that LLVM may call. These are baseline implementations; SIMD tuning requires separate measurements and acceptance tests.
+The archive's one member defines one strong external symbol, `__chkstk` (supply ABI 3). The C memory functions (`memcmp`, `memcpy`, `memmove`, `memset`) are not in the archive: every generated module defines them in its runtime's LLVM IR (IMPL 21.4.7; the Tatara plan's decision 24).
 
-The helpers are assembled directly to native COFF, so the user's LLVM optimization pipeline cannot turn their bodies into recursive libcalls. They contain no bitcode, CRT startup, TLS, default library directives, stack protector dependencies, or `_fltused`. Each has Windows unwind metadata. `__chkstk` takes and preserves RAX, preserves the other general registers, probes downward in 4096-byte steps, and leaves the caller to allocate its frame. It uses no ordinary C wrapper around the special probe ABI.
+The helper is assembled directly to native COFF. It contains no bitcode, CRT startup, TLS, default library directives, stack protector dependencies, or `_fltused`, and has Windows unwind metadata. `__chkstk` takes and preserves RAX, preserves the other general registers, probes downward in 4096-byte steps, and leaves the caller to allocate its frame. It uses no ordinary C wrapper around the special probe ABI.
 
 The sources are project-owned MIT-licensed implementations, not copied compiler-rt files. LLVM is used as the assembler and toolchain.
 
 ## Current checks
 
 - Enforce the version of tools that report it; llvm-lib exposes no version switch and is explicitly recorded as unversioned with its executable hash. Pin the versionless llvm-dlltool binary hash; retain source, build-script, normalized definition and generated kernel32 hashes, and reject source changes during verification.
-- Inspect every member for native COFF, unwind records, absent undefined symbols/default-library dependencies, and no calls. Check the archive's five exported symbols and absence of `_fltused`.
-- Test memory operations across byte/word boundaries, offsets 0–15, both overlap directions, self-move, exact return pointers, byte truncation and unchanged surrounding storage.
-- Test memcmp equality and unsigned order at every difference position through 65 bytes, both pointer alignments 0–15, and null pointers with zero count.
-- Test zero through 4096-byte buffers immediately adjacent to inaccessible pages, detecting overreads and overwrites.
+- Inspect the member for native COFF, unwind records, absent undefined symbols/default-library dependencies, and no calls. Check the archive's one exported symbol, `__chkstk`, and absence of `_fltused`.
 - Check probe sizes around page boundaries and across multiple pages, RAX/RCX/RDX preservation, and a compiler-generated 32 KiB stack frame.
 - Verify test LLVM IR, run O0 and `default<O2>`/llc O2, link with a custom entry and `/NODEFAULTLIB`, and require native process exit code zero.
 
-The test harness uses additional Windows memory-protection APIs solely for fault-detection tests. The production archive has no external dependencies. The test executable supplies its own `_fltused` marker and imports ExitProcess; it does not rely on CRT initialization.
+The production archive has no external dependencies. The memory functions' cases (`tests/memory.c`: byte/word boundaries, offsets 0–15, both overlap directions, self-move, exact return pointers, memcmp's order at every difference position, buffers adjacent to inaccessible pages) run on the runtime's memory part with no archive, in `TataraExecutorTest.TheMemoryPartPassesTheHelperSuite`. The test executable supplies its own `_fltused` marker and imports ExitProcess; it does not rely on CRT initialization.
 
 ## Adoption boundary
 

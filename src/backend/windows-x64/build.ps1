@@ -59,7 +59,7 @@ $unverified = -not $matched -or -not $toolIdentities['llvm-dlltool'].hashMatched
 $kernel = New-KimiKernel32Library $tools (Join-Path $outDir ([IO.Path]::GetFileName((Get-KimiKernel32))))
 $kernelPath = $kernel.path
 $objects = @()
-foreach ($name in @('memcmp', 'memcpy', 'memmove', 'memset', 'chkstk')) {
+foreach ($name in @('chkstk')) {
     $obj = Join-Path $workDir "$name.obj"
     Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', (Join-Path $PSScriptRoot "src/$name.S"), '-o', $obj)
     $objects += $obj
@@ -82,40 +82,36 @@ try {
 }
 finally { Pop-Location }
 $members = @(& $librarian /list $archive)
-if ($LASTEXITCODE -ne 0 -or (($members | Sort-Object) -join ',') -cne 'chkstk.obj,memcmp.obj,memcpy.obj,memmove.obj,memset.obj') {
+if ($LASTEXITCODE -ne 0 -or (($members | Sort-Object) -join ',') -cne 'chkstk.obj') {
     throw 'Archive members must use filenames without build directory paths'
 }
 $defined = & $tools['llvm-nm'] --defined-only --extern-only --format=posix $archive | Out-String
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect archive exports' }
 $symbols = @([regex]::Matches($defined, '(?m)^(\S+) T ') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -CaseSensitive)
-if (($symbols -join ',') -cne '__chkstk,memcmp,memcpy,memmove,memset' -or $defined -match '_fltused') { throw "Wrong archive exports: $defined" }
+if (($symbols -join ',') -cne '__chkstk' -or $defined -match '_fltused') { throw "Wrong archive exports: $defined" }
 
 $probe = Join-Path $workDir 'probe.obj'
 Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', (Join-Path $PSScriptRoot 'tests/probe.S'), '-o', $probe)
-# The helper suites and their own inputs: native.c the archive's (__chkstk, with probe.S), memory.c the memory functions'.
-foreach ($suite in @(@{ name = 'native'; inputs = @($probe) }, @{ name = 'memory'; inputs = @() })) {
-    $name = $suite.name
-    $inputIr = Join-Path $workDir "$name.ll"
-    Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-S', '-emit-llvm', '-O0', '-Xclang', '-disable-O0-optnone', '-ffreestanding', '-fno-builtin', '-fno-stack-protector', '-fno-lto', '-fasynchronous-unwind-tables', '-march=x86-64', '-mno-avx', (Join-Path $PSScriptRoot "tests/$name.c"), '-o', $inputIr)
-    Protect-KimiLlvmPaths $inputIr
-    foreach ($level in @('O0', 'O2')) {
-        $ir = $inputIr
+$inputIr = Join-Path $workDir 'native.ll'
+Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-S', '-emit-llvm', '-O0', '-Xclang', '-disable-O0-optnone', '-ffreestanding', '-fno-builtin', '-fno-stack-protector', '-fno-lto', '-fasynchronous-unwind-tables', '-march=x86-64', '-mno-avx', (Join-Path $PSScriptRoot 'tests/native.c'), '-o', $inputIr)
+Protect-KimiLlvmPaths $inputIr
+foreach ($level in @('O0', 'O2')) {
+    $ir = $inputIr
+    Run $tools.opt @('-passes=verify', '-disable-output', $ir)
+    if ($level -eq 'O2') {
+        $ir = Join-Path $workDir 'native.O2.ll'
+        Run $tools.opt @('-S', '-passes=default<O2>', $inputIr, '-o', $ir)
+        Protect-KimiLlvmPaths $ir
         Run $tools.opt @('-passes=verify', '-disable-output', $ir)
-        if ($level -eq 'O2') {
-            $ir = Join-Path $workDir "$name.O2.ll"
-            Run $tools.opt @('-S', '-passes=default<O2>', $inputIr, '-o', $ir)
-            Protect-KimiLlvmPaths $ir
-            Run $tools.opt @('-passes=verify', '-disable-output', $ir)
-        }
-        $obj = Join-Path $workDir "$name.$level.obj"
-        Invoke-KimiLlvmOutput $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $ir) $obj
-        $exe = Join-Path $workDir "$name.$level.exe"
-        Run $tools['lld-link'] (@($obj) + $suite.inputs + @($archive, $kernelPath, '/entry:test_entry', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$exe"))
-        # Bound a broken helper test; never leave a hung executable behind.
-        $process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru
-        if (-not $process.WaitForExit(30000)) { $process.Kill(); $process.WaitForExit(); throw "$level $name test timed out" }
-        if ($process.ExitCode -ne 0) { throw "$level $name tests failed: $($process.ExitCode)" }
     }
+    $obj = Join-Path $workDir "native.$level.obj"
+    Invoke-KimiLlvmOutput $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $ir) $obj
+    $exe = Join-Path $workDir "native.$level.exe"
+    Run $tools['lld-link'] @($obj, $probe, $archive, $kernelPath, '/entry:test_entry', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$exe")
+    # Bound a broken helper test; never leave a hung executable behind.
+    $process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru
+    if (-not $process.WaitForExit(30000)) { $process.Kill(); $process.WaitForExit(); throw "$level test timed out" }
+    if ($process.ExitCode -ne 0) { throw "$level native tests failed: $($process.ExitCode)" }
 }
 foreach ($file in $inputFiles) {
     $relative = [IO.Path]::GetRelativePath($PSScriptRoot, $file)

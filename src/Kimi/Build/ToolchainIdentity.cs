@@ -24,7 +24,7 @@ public static class ToolchainIdentity
 {
     // Backend supply identity (SPEC 21.4.7).
     internal const string BackendPackageId = "kimi-backend-windows-x64";
-    internal const int BackendAbiVersion = 2;
+    internal const int BackendAbiVersion = 3;
 
     public static string LlvmVersion { get; }
 
