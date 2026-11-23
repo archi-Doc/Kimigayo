@@ -258,7 +258,7 @@ public class RawStorageTest
 
     // SPEC 5.7: a constructor states the stored Origin; an unstated pointer needs the claim. The write Binding rejects for its value's
     // Origin fit still places a value derived from that failure (DECISIONS R5-M195), so A1 records nothing at it or at the constructor
-    // (Q13: the two dependent UninitializedPlace_Kd, PLAN G105's, went).
+    // (Q13: the two dependent UninitializedPlace_Kd went).
     [Fact]
     public void AConstructorFillsSelfStorageWithAClaim()
         => Assert.Equal(
