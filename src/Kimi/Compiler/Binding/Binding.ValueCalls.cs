@@ -580,15 +580,8 @@ public sealed partial class Binding
                     continue;
                 }
 
-                // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow); otherwise a
-                // Reborrow that no one Type carries is the bare Reborrow rule's (RecordBareReborrowLimit).
-                var staticBorrow = this.FailStaticBorrow(at, operations[i].Kind, parameter.Semantics);
-                if (!staticBorrow)
-                {
-                    this.RecordBareReborrowLimit(at, at.BoundType, operations[i].Kind);
-                }
-
-                if (!staticBorrow && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
+                // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
+                if (!this.FailStaticBorrow(at, operations[i].Kind, parameter.Semantics) && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
                 {
                     var erasure = instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function;
                     if (failure.Kind == ComparisonFailureKind.Shape && !erasure)

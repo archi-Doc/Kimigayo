@@ -230,10 +230,9 @@ public sealed partial class Binding
         => this.Substitute(origin, SubstitutionOf(selected.OriginBinder, declaringType, default, default, origins, inputs));
 
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
-    // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42; an
-    // argument's Reborrow that no one Type carries is the bare Reborrow rule's located limit (RecordBareReborrowLimit); and an implicit
-    // exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's Origin relation
-    // problem (JudgeHolderPlace; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
+    // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
+    // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
+    // Origin relation problem (JudgeHolderPlace; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];
@@ -242,11 +241,6 @@ public sealed partial class Binding
             if (this.FailStaticBorrow(source, operation.Kind, mode.Semantics))
             {
                 return;
-            }
-
-            if (index < argumentCount)
-            {
-                this.RecordBareReborrowLimit(source, source.BoundType, operation.Kind); // A receiver is never a bare acquisition (SPEC 7.3).
             }
 
             if (operation.Kind == ArgumentOperationKind.Borrow && IsExclusive(mode.Semantics))

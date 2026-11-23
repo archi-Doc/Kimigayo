@@ -13,14 +13,16 @@ namespace XunitTest;
 // TransferRequired_Kd naming that case; a bare use that Reborrows in some case makes the closure's receiver Exclusive.
 public sealed class ConditionalCaptureTest
 {
+    // A struct whose method takes an exclusive receiver (ClosureEnvironmentOriginTest reads it too).
+    internal const string NodeMe = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+        "    public func me(self: uniq/Self) -> uniq/i32 during self => self.n@uniq\n";
+
     private const string Main = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
     private const string Tag = "contract Iter<T>\n    associate Tag\n";
     private const string Pair = "func f<s/T>(x: s/i32 during a, p: s/(i32, i32), q: uniq/(s/i32 during a), m: s/T) -> i32\n";
     private const string NodeHead = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f<s/T>(m: s/T, o: obj/Node) -> i32\n";
     private const string ObjectView = NodeHead + "    s is objref or objuniq\n    var p = o@move\n    let y = p@s\n"; // `s/Node` (G759).
     private const string UniqFamily = NodeHead + "    s is uniq or objuniq\n    var p = o@move\n    let y = p@s\n"; // A family.
-    private const string NodeMe = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
-        "    public func me(self: uniq/Self) -> uniq/i32 during self => self.n@uniq\n";
 
     // SPEC 7.7.2, 8.14, 3.5.2 (DECISIONS BU-184): an entry of a pair target or a projection acquires as its initialization would in each
     // case: Copy where Copy is proven, otherwise the entry's TransferRequired_Kd; `@move` transfers it, and a later Move is MovedPlace_Kd.
@@ -68,7 +70,7 @@ public sealed class ConditionalCaptureTest
     public void ACapturedPairLayerIsAcquiredAsItsInitializationWouldBe(string function, string codes)
         => Assert.Equal(codes, Codes(function));
 
-    // Interim (DECISIONS BU-184 amended by G254b): (1) until the bare Reborrow rule names an adaptation family (PLAN, G254b's family row),
+    // Interim (DECISIONS BU-184 amended by G254b): (1) until the bare Reborrow rule names an adaptation family (PLAN G254's family limit),
     // a family `p@s` whose bare acquisition Reborrows in some admitted case is not captured: a located Unsupported_Kd at a written entry,
     // since a body's bare use of it would Reborrow uncontained in the call receiver. (2) Until PLAN G170's identity query, a pair target or a
     // projection is not captured where an identity premise is available in scope (t14: `T is r/i32 during a`), an unrelated one included
