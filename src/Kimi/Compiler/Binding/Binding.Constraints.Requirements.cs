@@ -93,7 +93,8 @@ public sealed partial class Binding
             }
             else
             {
-                this.RecordConstraint(UnwrapTransparentType(node)!, cause);
+                // FailConstraint's record (ReportConstraint), written whether or not the node holds a failure, as it was before R7-E3 E3b-2.
+                this.Record(UnwrapTransparentType(node)!, BindingFailure.InvalidConstraint, [new(ProblemFactKind.Cause, this.FactSite(cause), -1)]);
             }
         }
         else if (result.HasUnresolved && node.BindingState != BindingState.Invalid)

@@ -259,19 +259,9 @@ public sealed partial class Binding
             var mismatch = this.Mismatch(issue.Problem);
             issue.Node.ReportIn(store, requirement, issue.Code, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)], condition: this.ConditionOf(issue.Problem));
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures.TryGetValue(issue.Node, out var erasure))
-        {
-            var subject = DiagnosticTypeName(erasure.Source);
-            var viewTarget = DiagnosticTypeName(erasure.Target);
-            issue.Node.ReportIn(store, requirement, issue.Code, note: $"Erasing {subject} to the {viewTarget} object View requires {subject} is Owned", evidence: issue.Code == DiagnosticCode.UnprovenConstraint_Kd ? [subject, "Owned"] : null);
-        }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
             this.ReportOwnedConversion(issue.Node, store, owned, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.pendingJudgments?.TryGetValue(issue.Node, out var pending) == true)
-        {
-            ReportPendingJudgment(issue.Node, pending, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints.TryGetValue(issue.Node, out var callable))
         {

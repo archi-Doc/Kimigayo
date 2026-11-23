@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 // - Responsibility: one record per node after its clause lists' proof, from the one clause fact (the first clause at the conjunction's
 //   combined verdict, E > R > L > U; ClauseFact): a Function Item reference's (RequireClauses), a selection's pending candidate's and an
 //   overloaded reference's (FailClauseRecord); its publication (ReportClauseConstraint), naming the declaration that states the clause
-//   where the member does not (ForeignClauseOwner); the consumer's read of the fact a judgment left (TakeClauseFact).
+//   where the member does not (ForeignClauseOwner); the consumer's read of the fact a judgment left (TakeClauseFact); the publication of a
+//   record holding only its caller's proposition (ReportProposition).
 // - Inputs: the clause fact the proof frame left (TakeClauseFact) or a candidate's trial kept (ClauseFailure); the U fact of the same
 //   clause.
 // - Outputs: the node's UnsatisfiedConstraint_Kd or UnprovenConstraint_Kd naming its clause, its subject and the declaration; for a
@@ -118,12 +119,14 @@ public sealed partial class Binding
             => premises.Contains(fact) || (fact.Kind == ConstraintKind.And && (Failed(fact.Left!) || Failed(fact.Right!)));
     }
 
-    // The record of a clause fact: Refuted is UnsatisfiedConstraint_Kd, Unknown UnprovenConstraint_Kd, each naming the clause (Related,
-    // role 0) and its kept proposition (Constraint), whose subject the record shows, and a selected call's declaration (role 1), which
-    // states the clause or encloses the foreign Type that does (ForeignClauseOwner).
+    // The record of a clause fact through the one mapping (ConstraintFailureOf: Refuted is UnsatisfiedConstraint_Kd, Unknown
+    // UnprovenConstraint_Kd), naming the clause (Related, role 0) and its kept proposition (Constraint), whose subject the record shows,
+    // and a selected call's declaration (role 1), which states the clause or encloses the foreign Type that does (ForeignClauseOwner).
+    // Recorded always, as landed (E2-5b), outside RecordConstraint's read: its callers RequireClauses (whose own test of the clause fact
+    // stays), FailPendingConstraint and FunctionReferences' single inapplicable candidate (B1 none by reading: each earlier failure returns).
     private BoundType? FailClauseRecord(Koto use, ReferenceConstraintFailure clause, bool unresolved)
     {
-        var failure = clause.Proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint;
+        var failure = ConstraintFailureOf(clause.Proof);
         var site = this.FactSite(clause.Clause);
         Span<ProblemFact> facts = [new(ProblemFactKind.Related, site, 0), new(ProblemFactKind.Constraint, site, this.report.Keep(clause.Constraint)), default];
         var count = 2;
@@ -163,5 +166,14 @@ public sealed partial class Binding
             note: note,
             related: related,
             condition: problem.Condition);
+    }
+
+    // A caller's proposition record (RequireConstraint's `proposition`: the erasure's `S is Owned`, SPEC 15.2.3), from its one Constraint
+    // fact: an Unknown one shows its subject and Contract; its Note went by code (R7-E3 E3b-2, M3).
+    private void ReportProposition(Koto use, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var proposition = this.report.Constraint(this.report.Facts(index)[0]);
+        var unknown = (BindingFailure)problem.Requirement.Kind == BindingFailure.UnprovenConstraint;
+        use.ReportIn(store, problem.Requirement, problem.Code, evidence: unknown ? [DiagnosticTypeName(proposition.Subject!), proposition.Contract!.Name] : null, condition: problem.Condition);
     }
 }

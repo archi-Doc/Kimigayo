@@ -381,8 +381,7 @@ public sealed partial class Binding
             var proof = this.CheckConstraints(declaration.ConstraintNodes, new CallSubstitution(declaration, frame.Types[..slots]), scope);
             if (proof != ConstraintProof.Proven)
             {
-                return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true)
-                    : this.Fail(use, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnsatisfiedConstraint);
+                return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true) : this.RecordConstraint(use, proof, []);
             }
 
             if (!this.enumConstructions.TryGetValue(use, out var plan))

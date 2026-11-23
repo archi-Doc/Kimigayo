@@ -19,9 +19,6 @@ public sealed partial class Binding
     // it appended when it ends.
     private readonly List<BoundArgumentOperation> positionOperations = new();
 
-    // The pending judgment of a call that a single Pending candidate blocks (FailPendingJudgment), for its record (DECISIONS BU-86).
-    private Dictionary<Koto, PendingJudgment>? pendingJudgments;
-
     private enum CandidateApplicability : byte
     {
         Inapplicable,
@@ -155,19 +152,6 @@ public sealed partial class Binding
     // a candidate that failed before its Constraints were judged, or when the clause did not bind (its binding failure is its own record).
     private static ReferenceConstraintFailure? ClauseFailure(ClauseFact? fact, BindingSymbol? declaration)
         => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration) : null;
-
-    // DECISIONS BU-86: the record of a selection that an EnvironmentResult judgment blocks: the argument whose result over its closure's
-    // environment gives the slot no evidence (SPEC 8.10, 7.7.4), named without its acquisition spelling.
-    private static void ReportPendingJudgment(Koto node, PendingJudgment judgment, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var part = judgment.Part!; // An EnvironmentResult judgment always names its argument.
-        var argument = KotoHelper.UnwrapParentheses(part) is ConversionKoto { Left: { } place } ? place : part;
-        node.Report(
-            requirement,
-            code,
-            note: $"The result of {argument} over its environment is no evidence for {judgment.Slot?.Name}",
-            related: [("argument", part, null)]);
-    }
 
     // SPEC 10.2.2, 10.4 step 1: two adaptation classes at one argument or position; false when they are incomparable (an erasure and
     // any other row), which no other argument or tie-breaker rescues.
@@ -328,11 +312,28 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 8.10, 7.7.4 (DECISIONS BU-86): a selection that a single Pending candidate's judgment blocks, explained by that judgment.
+    // SPEC 8.10, 7.7.4 (DECISIONS BU-86, amended by R7-E3 E3b-2): a selection that a single Pending candidate's EnvironmentResult judgment
+    // blocks, the selection's deferral (RecordSelection): the argument whose result over its closure's environment is no evidence (role 6,
+    // "argument") and the slot's Type parameter it leaves unbound (role 7, "slot"), both shown as related locations.
     private BoundType? FailPendingJudgment(InvocationKoto call, PendingJudgment judgment)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailExplained(ref this.pendingJudgments, call, BindingFailure.UnprovenConstraint, judgment, true);
+        this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(judgment.Part!), 6)); // An EnvironmentResult judgment names its argument and slot.
+        this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(judgment.Slot!.Declaration), 7));
+        return this.RecordSelection(call, BindingFailure.UnprovenConstraint);
+    }
+
+    // The pending judgment's record from its facts (FailPendingJudgment): the argument and the slot's Type parameter related; its Note
+    // went by code (R7-E3 E3b-2, M3).
+    private void ReportPendingJudgment(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        node.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            related: [("argument", this.compilation.SyntaxOf(facts[0].Site), null), ("declaration", this.compilation.SyntaxOf(facts[1].Site), null)],
+            condition: problem.Condition);
     }
 
     // SPEC 8.3, 15.6.1: a selection that a single pending Callable proof blocks, explained by that Constraint record.
