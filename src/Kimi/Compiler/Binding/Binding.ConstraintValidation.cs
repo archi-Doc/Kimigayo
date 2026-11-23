@@ -172,6 +172,15 @@ public sealed partial class Binding
         return node is SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration } ? enumeration : null;
     }
 
+    // SPEC 8.3, 8.3.1: the one table of a proof's outcome to its failure. A Proven outcome is no failure: its record is a broken contract.
+    private static BindingFailure ConstraintFailureOf(ConstraintProof proof) => proof switch
+    {
+        ConstraintProof.Refuted => BindingFailure.UnsatisfiedConstraint,
+        ConstraintProof.Unknown => BindingFailure.UnprovenConstraint,
+        ConstraintProof.Error => BindingFailure.InvalidConstraint,
+        _ => BindingFailure.Internal,
+    };
+
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
     private Koto? CallableArgument(Koto use, IsKoto clause)
     {
@@ -754,7 +763,22 @@ public sealed partial class Binding
         return true;
     }
 
-    private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode, Koto? diagnosticCause = null)
+    // The constraint family's one recorder (SPEC 8.3, 23.1.2; R7-E3 E3b delta 2.3): a proof's outcome at a use, through the one mapping
+    // (ConstraintFailureOf), with the facts its caller built, recorded at a use without a failure; a use that already failed keeps its
+    // first failure and drops them (the slot's drop). Its callers: RequireConstraint's Refuted arm, FailUnprovenConstraint's fact-less
+    // branch, FailConstraint's record and a requirement's named cause (Constraints.Requirements), Enums', Specializations' and
+    // FailIterationSubject's outcomes, FunctionReferences' fact-less pending proof. FailClauseRecord records always (E2-5b);
+    // FailUnprovenConstraint's Callable branch and FailCallableSelection keep `callableConstraints` until R7-E4.
+    [Transitional("R7", Reason = "Records only at a use without a failure, so the use keeps its first failure (E2-5a's drop: a Refuted constraint may rest on the use's own rejected registration, probe c2; FailIterationSubject's iterable that already failed, RangeDiagnosticTest's `missing..3`), until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
+    private BoundType? RecordConstraint(Koto use, ConstraintProof proof, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
+        => this.RecordedFailure(use) == BindingFailure.None
+            ? this.Record(use, ConstraintFailureOf(proof), facts, unresolved: unresolved)
+            : this.Fail(use, ConstraintFailureOf(proof), unresolved);
+
+    // The one table of a proof at a use: Error is FailConstraint's record (its guard and cause, R7-E5), Refuted and the final Unknown the
+    // constraint family's (RecordConstraint), the provisional Unknown RequireUnproven's. `proposition`: the caller's proposition, kept
+    // as the record's Constraint fact (the erasure's `S is Owned`, SPEC 15.2.3); none for a use whose proposition is its own clauses.
+    private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode, Koto? diagnosticCause = null, BoundConstraint? proposition = null)
     {
         if (proof == ConstraintProof.Error)
         {
@@ -768,17 +792,21 @@ public sealed partial class Binding
         }
         else if (proof == ConstraintProof.Refuted)
         {
-            this.Fail(use, BindingFailure.UnsatisfiedConstraint); // May rest on the use's own rejected registration (probe c2): the slot's drop until R7-E5 (D-924).
+            this.RecordConstraint(use, proof, proposition is null ? [] : [this.PropositionFact(use, proposition)]);
         }
         else if (proof == ConstraintProof.Unknown && mode == BindingMode.Final)
         {
-            this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: false);
+            this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: false, proposition);
         }
         else if (proof == ConstraintProof.Unknown)
         {
             this.RequireUnproven(use, mode); // The provisional pass leaves the U fact to the next judgment.
         }
     }
+
+    // A caller's proposition as its record's Constraint fact, sited at the use.
+    private ProblemFact PropositionFact(Koto use, BoundConstraint proposition)
+        => new(ProblemFactKind.Constraint, this.FactSite(use), this.report.Keep(proposition));
 
     // SPEC 23.1.2: the outcome of a validation pass's proof at a use, inside the use's frame (opened before the proof). What the proof
     // read of other nodes becomes the prerequisite of its outcome when the outcome is the use's record; a record the use's own check
@@ -812,10 +840,10 @@ public sealed partial class Binding
     }
 
     // The one record of a Constraint proven Unknown (census #25): with the U fact its judgment left (TakeUnknownFact), the clause and its
-    // comparison's failing condition (design-r2 Amendments 4 and 5); without one, the Constraint alone; a foreign fact is a broken
-    // contract. RequireConstraint, RequireUnproven and the direct sites that settle a clause list themselves (Enums, Specializations)
-    // record through it.
-    private BoundType? FailUnprovenConstraint(Koto use, CallableUnknown? fact, bool unresolved)
+    // comparison's failing condition (design-r2 Amendments 4 and 5); without one, the constraint family's record (RecordConstraint) with
+    // the caller's proposition if any; a foreign fact is a broken contract. RequireConstraint, RequireUnproven and the direct sites that
+    // settle a clause list themselves (Enums, Specializations) record through it.
+    private BoundType? FailUnprovenConstraint(Koto use, CallableUnknown? fact, bool unresolved, BoundConstraint? proposition = null)
     {
         if (!this.OwnFrame(use, fact?.Epoch))
         {
@@ -824,7 +852,7 @@ public sealed partial class Binding
 
         if (fact is not { Clause: { } clause } || !fact.Failure.IsCondition)
         {
-            return this.Fail(use, BindingFailure.UnprovenConstraint, unresolved);
+            return this.RecordConstraint(use, ConstraintProof.Unknown, proposition is null ? [] : [this.PropositionFact(use, proposition)], unresolved);
         }
 
         var at = this.CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).

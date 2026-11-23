@@ -347,8 +347,7 @@ public sealed partial class Binding
 
             if (constraints != ConstraintProof.Proven)
             {
-                _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true)
-                    : this.Fail(function, constraints == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnsatisfiedConstraint);
+                _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true) : this.RecordConstraint(function, constraints, []);
                 continue;
             }
 

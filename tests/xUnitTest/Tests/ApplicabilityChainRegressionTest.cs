@@ -652,6 +652,9 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("func f(a: i32, b: i32) -> i32 => a\npublic func main()\n    var y = f(1,, 2)\n", null)]
     // R7-E3 E3b-1 (the Front's R4): a refuted clause over a retained implementation runs the conformance search at the failure (SPEC 8.6.2).
     [InlineData("contract C\n    func same(self: ref/Self, other: ref/Self) -> bool\nopen struct Base\n    Self is C\n    public init() => ()\n    public func same(self: ref/Self, other: ref/Self) -> bool => true\nstruct Derived: Base\n    public init() : base() => ()\nfunc use<T>(value: ref/T)\n    T is C\n    ()\nlet value = Derived.init()\nuse(value)", "NoApplicableOverload_Kd")]
+    // PLAN G763 (R7-E3 E3b-1, D-1161): a rejected closure call with an omitted result (UnboundCallSlotTest's OmittedResult) records its
+    // unbound slot as facts, no Note text formed at the check (G499 X1), so its warm rebind allocates nothing (SPEC 10.5, 10.8).
+    [InlineData("func run<R, F>(action: ref/F) -> R\n    F is Callable<(i32) -> R>\n    return action(1)\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", "UnboundTypeArgument_Kd")]
     public void WarmRejectedSelectionsReuseTheirCandidateFacts(string source, string? code)
     {
         var c = MinimalEmissionTest.Analyze(source);
