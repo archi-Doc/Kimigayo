@@ -494,8 +494,9 @@ public partial class ResultPremiseTest
     }
 
     // SPEC 15.3.4, 15.3.7: a nested Function Type's per-call Origins cannot leave their binder, so the result premise stops at it. The
-    // well-formedness inside it stays the definition's obligation at its Type occurrence, as before the premise existed, never a call
-    // obligation no caller can prove or a bound that leaks the per-call Origin into the caller's Types.
+    // nested signature's own result row stays the definition's obligation at its Type occurrence, as before the premise existed, never a
+    // call obligation no caller can prove or a bound that leaks the per-call Origin into the caller's Types. A borrow layer holding a
+    // Function Type relates only its fixed Origins (SPEC 15.2.3, 15.6.1), so `pick`'s result is well formed.
     [Fact]
     public void ANestedFunctionTypeKeepsItsWellFormednessAtTheDefinition()
     {
@@ -511,21 +512,16 @@ public partial class ResultPremiseTest
         Assert.Equal("origin", input.Role);
         Assert.Equal(getter.IndexOf("-> (ref/i32) ->", StringComparison.Ordinal) + 4, input.Span!.Value.Start);
 
-        // Two signatures with the same Function Type part each keep their own record; the forwarding call adds none.
+        // valid: two signatures with the same Function Type part under a borrow layer, and the forwarding call (SPEC 15.2.3: the per-call
+        // Origins of `(ref/i32) -> ref/i32` are no part of its OwnedOrigins).
         var forward = ActionBox + "func forward(bx: ref/Box) -> ref/((ref/i32) -> ref/i32) during bx\n    return pick(bx)\n\n" +
             "func run() -> i32\n    let box = Box.init(action: ident)\n    let f = forward(box@ref)\n    return 0\n" + Main;
-        Assert.Equal(
-            [("ref/((ref/i32) -> ref/i32) during b", "requires the omitted Origin of ref/i32 outlives b, which is not proven"), ("ref/((ref/i32) -> ref/i32) during bx", "requires the omitted Origin of ref/i32 outlives bx, which is not proven")],
-            DiagnosticCorpus.Check(forward).Diagnostics.Select(x => (Text(forward, x.Span), x.Label)));
+        Assert.Empty(DiagnosticCorpus.Check(forward).Diagnostics);
 
-        // A caller's annotation of the call result is judged by its own Type occurrence; no meet with the per-call Origin reaches it. Binding
-        // records pick's signature (DECISIONS BU-26), so the old analysis stopped before the annotation in use (PLAN G56's recorded limit,
-        // accepted by the owner's answer Q2 to BU-26). Since H5 the MIR publishes its record on this Binding-rejected program directly
-        // (R5-M184, H3b T51): the located Unsupported_Kd at the annotation, so G56's limit now lacks only its UnprovenOriginRelation_Kd.
+        // valid: a caller's annotation of the call result is judged by its own Type occurrence; no meet with the per-call Origin reaches it
+        // (PLAN G56's recorded limit until R7-O3: pick's record and the annotation's located Unsupported_Kd).
         var annotated = ActionBox + "func use(bx: ref/Box) -> i32\n    let f = pick(bx)\n    let g: ref/((ref/i32) -> ref/i32) during bx = f\n    return 0\n" + Main;
-        Assert.Equal(
-            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/((ref/i32) -> ref/i32) during b", "wellFormed"), (nameof(DiagnosticCode.Unsupported_Kd), "ref/((ref/i32) -> ref/i32) during bx", null)],
-            DiagnosticCorpus.Check(annotated).Diagnostics.Select(x => (x.Code, Text(annotated, x.Span), x.Reason?[3].Value)));
+        Assert.Empty(DiagnosticCorpus.Check(annotated).Diagnostics);
 
         // A Function Item converted to a nested Function Type assumes that Type's own well-formedness (the owner's (a)), so leak's
         // premise adds no conversion record; mk's result Type relates a per-call input to `b`, which is mk's record where it is written
@@ -570,6 +566,8 @@ public partial class ResultPremiseTest
     [InlineData(ClauseType + "func k(q: ref/i32, f: () -> Option<T during q>) -> i32\n    origin q outlives static\n    return 0\n\n")] // t7 with the clause
     [InlineData(ClauseType + "struct H {q}\n    origin q outlives static\n    public let f: () -> Option<T during q>\n\n")] // a Field with the clause
     [InlineData("struct S {q}\n    origin q outlives static\n    public let f: () -> Option<S during q>\n\n    public init(f: () -> Option<S during q>) => self.f = f@move\n\n")] // a Field returning its own Type
+    [InlineData("func f(u0: ref/((ref/i32) -> i32)) -> ref/((ref/i32) -> i32) during u0\n    return u0\n\n")] // f_sig_res_ok: a borrow layer holding a Function Type relates only its fixed Origins (SPEC 15.2.3, 15.6.1; none here)
+    [InlineData("struct S {a}\n    public let call: ref/((ref/i32) -> i32) during a\n\n")] // f_fld_ok: as f_sig_res_ok in a Field
     public void ANestedSignaturesResultIsJudgedWhereItIsWritten(string program, params string[] records)
     {
         var text = program + Main;

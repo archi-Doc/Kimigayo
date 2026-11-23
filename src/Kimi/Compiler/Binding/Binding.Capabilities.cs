@@ -899,7 +899,7 @@ public sealed partial class Binding
 
     // SPEC 15.2.3, 15.8.2 (DECISIONS BU-73): a callable signature is Owned when it is with its own per-call Origins closed to static: its
     // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed. The closed signature is the
-    // part Owned judges.
+    // part Owned judges, and a held Function Type's part of a borrow layer's well-formedness (RetainInnerOutlives, SPEC 15.6.1).
     private BoundType ClosedSignature(BoundType signature, Koto binder)
     {
         var count = InputOriginCount(binder);
