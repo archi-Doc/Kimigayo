@@ -17717,6 +17717,22 @@ resumed by R4-M86 (2026-10-20).
     `BindSchemas` (the formation reads `Schema`, which BindSchemas assigns); the record at the module root (N1-3 (a), superseded by
     N1-9 (1): the root has no location, and its Invalid state failed base clauses beside it); a span into the project file's JSON (a
     new location form); a ProblemFact kind naming the configured string (N1-9 (5): the location is the path itself).
+  - **Amended by G1320** (its "Configured default alias" and "Evaluation" clauses; 2026-11-23; Front, Binding; Major; the owner's
+    O-511 (a); F's rulings N1-18, N1-19, N1-20; Q-712): a module's required alias is the library's row. The Compilation parses only
+    the paths a module adds; a required path's row (`Compilation.RequiredAliases`, the one list of required paths: the required
+    `Kimi`) is the library's (`KimiLibrary.DefaultAliases`, made from `RequiredAliases` with the library and evaluated in the
+    library's pass before its table freezes), and a module adding no path reads the library's rows (`EffectiveAliases` returns the
+    `RequiredAliases` instance itself for it). `IndexConfiguredPaths` walks a row only in its own module's pass, so no program pass
+    indexes, resets or evaluates the library's node: its readers (the Type and value import stages, the qualification repairs) read
+    its frozen target (`AliasTargets`). With this rule the mandatory alias opens the reserved Kimi Kotonoha in every module whatever
+    the module declares (SPEC 18.2.3), resolves identically in every module and cannot fail. **Record move (DECISIONS Q13, records
+    on invalid programs):** a module declaring a root `Kimi` (an error, SPEC 18.4.1) has one record, `DuplicateBinding_Kd` at that
+    declaration, and none at a use through the mandatory alias (23.1.2); R7-N1 e3's per-module parse walked `Kimi` from the module's
+    root, opened the user's declaration and added an `UnresolvedBinding_Kd` at the use
+    (`ModuleBindingTest.ARootDeclarationNamedKimiIsTheOnlyRecord`: r04i `group Kimi`, r04j `struct Kimi`, m06i in a dependency); the
+    records before W-329 are restored and no valid program moves. Reason: the per-module parse and per-pass evaluation of the required
+    path cost every compilation a fixed ~0.8 µs warm Bind on Hello (W-329's RP8) for an alias whose answer never differs; one row
+    removes it with no second path.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
