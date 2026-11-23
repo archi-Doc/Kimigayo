@@ -244,7 +244,7 @@ public sealed partial class Binding
     }
 
     // The step a use's published lookup ended at: an Unresolved end's failing step (PublishUse), else the use.
-    private Koto PublishedStep(Koto use) => (use.SyntaxOwner?.Hir.Families.FailingSteps.Get(use.SyntaxId, this)) ?? use;
+    private Koto PublishedStep(Koto use) => use.SyntaxOwner?.Hir.Families.FailingSteps.Get(use.SyntaxId, this) ?? use;
 
     // The symbol a Type name selects, published. Its qualifiers' Types are bound once, in the role of the form the name selects, by
     // BindContainerReference for a nested Type and by BindAssociatedProjection for a projection base (SPEC 15.4.2).
