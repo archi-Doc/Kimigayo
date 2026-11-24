@@ -305,7 +305,7 @@ public sealed partial class Binding
                     return null;
                 }
 
-                this.Fail(conversion, failure);
+                this.RecordWrite(conversion, failure, conversion.Left);
                 return false;
             }
         }

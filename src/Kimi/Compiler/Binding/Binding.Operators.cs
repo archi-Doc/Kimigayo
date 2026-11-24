@@ -178,7 +178,7 @@ public sealed partial class Binding
             (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
         {
             var value = this.BindNode(binary.Right, scope, bindingReferent);
-            this.Fail(binary, referenceBinding);
+            this.RecordWrite(binary, referenceBinding, binary.Left);
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, value, scope);
         }
 
@@ -189,7 +189,7 @@ public sealed partial class Binding
             right is not null && !this.FitsType(right, left) && this.FitsType(right, valueReferent) &&
             ReferenceBindingAssignment(binary.Left) is { } valueBinding)
         {
-            return this.Fail(binary, valueBinding);
+            return this.RecordWrite(binary, valueBinding, binary.Left);
         }
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
@@ -277,7 +277,7 @@ public sealed partial class Binding
         if (!write && type is { SafeReferent: not null } &&
             ReferenceBindingAssignment(target) is { } referenceBinding)
         {
-            this.Fail(operation, referenceBinding);
+            this.RecordWrite(operation, referenceBinding, target);
             return false;
         }
 

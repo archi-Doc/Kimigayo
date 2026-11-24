@@ -360,8 +360,10 @@ public sealed partial class Binding
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
                 break;
-            case BindingFailure.InvalidAssignment or BindingFailure.SharedPathAccess when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 } target:
-                // Role 0, "target": the written target whose path denies the write (RecordWrite).
+            case BindingFailure.InvalidAssignment or BindingFailure.SharedPathAccess or BindingFailure.SharedBindingAssignment or BindingFailure.ExclusiveBindingAssignment
+                when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 } target:
+                // Role 0, "target" (RecordWrite): the Place or binding that denies the access: a write's target, an object handle the
+                // authority denies, a written Borrow's Place, or the reference binding an update or assignment names (SPEC 15.1.6).
                 this.ReportWrite(node, store, this.compilation.SyntaxOf(target.Site), problem.Requirement, problem.Code, problem.Condition);
                 break;
             case BindingFailure.Access when this.FactOf(index, ProblemFactKind.Related) is not null:
