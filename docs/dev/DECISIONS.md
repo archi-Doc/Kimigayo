@@ -2742,7 +2742,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Index by every reader but the conflicts relation.
 - **R4-M101 The C1-F4 view and Binding's formation context** (2026-10-22; under R4-M94's package; E4's "Recorded limit" superseded in
   part by R4-M168; E2's end list superseded in part by BU-89; E2's and E4's InternalInvariant_Kd, and E4's sharing rule, superseded in
-  part by BU-102: the view's throw, an atom's part its forming unit's)
+  part by BU-102: the view's throw, an atom's part its forming unit's; E1's "`ParameterVisible` reads it" superseded by BU-259:
+  parameter visibility by the use's position, `Binding.Functions`)
   - E1 formation context: Binding records the executable body it is binding, an `ExecutableBody`, a body in MIR's key form
     `(BindingSymbol? Definition, int Index)` (Index: a default template's parameter index, a module's ordinal for top-level statements,
     whose function has no symbol; the default value is no body, a declaration). Entries set and restore it (`BindHeader` none,
@@ -18686,7 +18687,8 @@ resumed by R4-M86 (2026-10-20).
   - Open: PLAN G1366 (one publisher of SPEC 15.6's Type-level Loan predicate).
 - **BU-258 A named nested function's declaring body is recorded by the index walk; its signature's name of an enclosing body local names
   that local's region (PLAN G230 (A); R7-O3 O3-A)** (Front, 2026-11-24; Binding; Q-751, D-1248; Major, an acceptance and A5-verdict mover;
-  F's rulings O3-1, O3-11..O3-26) SPEC 15.3.4, 15.6.5, 7.2.3. Supersedes in part BU-56, BU-89's "until G230 (A)" and D-990's result rule.
+  F's rulings O3-1, O3-11..O3-26) SPEC 15.3.4, 15.6.5, 7.2.3. Supersedes in part BU-56, BU-89's "until G230 (A)" and D-990's result rule. (Its Representation's `ParameterVisible` reading
+  superseded by BU-259: `ParameterVisible` reads the use's position, no chain.)
   - Representation: `BindingSymbol.DeclaringBody` is the one recorded fact for the body that declares a function: a Closure's evaluating
     body (written at its header scope; `BoundClosure.EvaluatingBody` is deleted) and a named nested function's declaring body (written by
     the index walk's current-body state `indexBody`: a function's own body, a default template's (f, i), none in a Type's declaration or
@@ -18707,6 +18709,70 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a FunctionKoto member (a semantic fact on syntax); a second chain beside `EvaluatingBody`; a body derived from syntax parents
     at use; `BindingScope.Function` at DeclareFunction (gives f, not (f, i), in a default value).
   - Open: PLAN G230's N1, N2, acc_lift and the module-level form; G1369 (t4_clause).
+- **BU-259 A default names only the preceding parameters by its position: `Binding.Functions` owns SPEC 7.2.3's parameter positions
+  for every name lookup (PLAN G1362)** (Front, 2026-11-24; Binding; Q-760, D-1259; Major, an acceptance mover, class 1; the
+  owner's D-1236 (A), verbatim 「D-1236 a」, and D-1247 (a), verbatim 「a」; F's G1362 rulings 1-8; design `front\notes\restart13\g1362\design.md`,
+  its design review ACCEPT WITH CONDITIONS (`g1362\review-design.md`, N1-N7, 25 twins), the implementation review
+  (`g1362\review-impl.md`, 14 twins); commits ceca573bf, 92780728e, 94c3996c5,
+  15a8e9fcc, c207fce1e, fec72e6a2, the merge 316115573 of dev 965080f34 (W-355's O3-A), the merge 59c5bd442 of dev 34d96c664,
+  ddad4a7fc and 9d6c98cd3 (the implementation review's B1 and N-f), bf0d41372 (its twins as rows), the merge b0d59671f of dev 9a166973f) SPEC 7.2.3, 15.3.4, 9.5, 9.3. Supersedes in part R4-M101 E1 and
+  BU-258's Representation.
+  - Rule: a name lies in default i of function f exactly when the path from it to f enters f through `Parameters[i].DefaultValue`
+    (`DefaultIndex`, the parent walk `InLaterDefault` already made, the one statement of a default's position: the index walk reads it
+    to enter a default template body (f, i), and the HIR's position of a default (`HirPublisher.FormPosition`, which records
+    `Hir.Defaults`) reads it; O3-A's second `DefaultIndex` in `Binding.Indexing` and the HIR's own loop are gone, each a direct child,
+    so the same answer); parameter j is in scope there when j < i, every parameter outside
+    a default, a receiver's or helper's slot in no default (`ParameterInScope`). `ParameterVisible(candidate, use)` reads them and is
+    the one rule of every lookup that selects a parameter by an unqualified name: `ValueStage` and `CanCapture` (through `VisibleAt`)
+    and `OriginCandidate` (`BindOriginName`, `BindOrigin`'s projection, `RawOrigins.Written`), where a parameter the use may not name
+    is no candidate and the walk goes on outward. The same predicate gives a default template body's roots (`RootOf`, by the body's
+    index (f, i)), and the same position, inside a default, the HIR's prepared slot (`InLaterDefault`, `DefaultIndex(...) > slot`). It holds wherever the default holds the name: a
+    named function's signature (relation clauses and projections included) or body, a Closure's header or body, a local's annotation, a
+    default inside the default.
+  - Readings: (R1) D-1236 (A): a later parameter's name in a default's content is invalid at that name. (R2) A signature Origin or set
+    that a later parameter's annotation introduces stays nameable in a default (15.3.4's table: visible in its declaration's scope "in
+    any order"; 7.2.3 restricts parameters, not Origins). (R4) D-1247 (a): a later parameter, or the default's own, is skipped by
+    lookup, so the name selects an outer binding of the same name or nothing (9.5's stages see only the parameters the default may
+    use). (R5) Such a name is bound, not visible: it counts as bound for 15.3.4's decision whether a signature introduces it
+    (`DiscoverOriginNames`) and for "A new Origin or set name cannot hide ..." (`BeginOriginDeclaration`), though no lookup may select
+    it; (A) requires it (else g's `during z` in default 1 would introduce g's own Origin z and be valid).
+  - Records (Q13): a written Origin name that selects nothing, `MissingOriginBinding_Kd` at the name (a projection `z.at`,
+    `InvalidOriginBinding_Kd`, as for any projection whose input names nothing); a value, `UnresolvedBinding_Kd` at the name: no
+    binding is selected, so 9.3's capture rule never applies (dev 4ed6419bc's `InvalidCaptureBinding_Kd` presupposed f's later parameter was
+    found).
+  - Supersedes in part R4-M101 E1's clause "`ParameterVisible` reads it (`defaultBindingDepth` and its `Use.Parent` walk deleted).":
+    the formation context no longer answers parameter visibility; the position does. The reason that no longer holds: E1 took every
+    use in a default to reach the default template (f, i) through the formation context's body chain, but a named function's signature
+    in a default is bound with no body and the written-Origin lookup never read the rule, so dev accepted g's `during z` in f's
+    default 1 (dt_do_later, dt_clo_later).
+  - Supersedes in part BU-258's Representation clause "`EvaluatingBody` returns it for every body, so the view's row 6
+    (`EnclosingAtom`), `ParameterVisible` (7.2.3) and `RegionBounded` read one chain": `ParameterVisible` reads no chain. The declaring
+    body gives a named nested function's body a chain to (f, i), but its signature, bound with no body, has none. BU-258's rejected
+    "a body derived from syntax parents at use" stays rejected: `DefaultIndex` derives from syntax parents a position for selection,
+    not a declaring body.
+  - Moves (class 1 both ways, A5 oracle on 9a166973f: 1,764 rows each side, record differences 0, TIMEOUT/EXIT 0, `artifacts/verify/g1362-oracle/`; the newly accepted rows have the Middle's RP17 consent (C-550, 02:52, no conditions)): newly
+    rejected, accepted on dev, one record at the name: do_later, clo_later, ctor_later, rel_later, proj_later, clo_do_later,
+    local_later, nestdef_origin_later, and shadow_proj_inv (`InvalidOriginBinding_Kd` at `z.at`: f's later `z: Cursor` is skipped
+    and h's `z: ref/i32` has no slot `at`); dev's `UnprovenOriginRelation_Kd` at the initializer -> `MissingOriginBinding_Kd` at z:
+    let_later, do_body_later, and at `self`: meth_self_later (an explicit `self` after the default, 7.3.1); dev's
+    `Unsupported_Kd` at the initializer -> `MissingOriginBinding_Kd` at `self`: ctor_self_let (a constructor's receiver, whose slot
+    is no parameter index, is no written Origin in its defaults either, as BU-23 made it no value there; 6.3.3); dev's
+    `UnprovenOriginRelation_Kd` at the result expression -> `MissingOriginBinding_Kd` at z: res_later (a named function's result
+    Type); dev's `UnprovenOriginRelation_Kd` at the initializer -> `InvalidOriginBinding_Kd` at `z.at`: projlet_later (a projection
+    in a local's annotation); dev's `UnprovenOriginRelation_Kd` at the call's argument (it read the failed name) ->
+    `MissingOriginBinding_Kd` at z: do_later_call; nestval_later and nestdef_later keep dev's `UnresolvedBinding_Kd` at z (BU-258);
+    dev's `InvalidOriginBinding_Kd` at g's `during k` -> `MissingOriginBinding_Kd` at that k: self_origin. Newly accepted (D-1247
+    (a): f's later z is skipped, so `z.at` projects the outer z, where dev's lookup selected f's later `z: ref/i32` and recorded
+    `InvalidOriginBinding_Kd` at `z.at`): shadow_proj_valid (h's `z: Cursor`), shadow_set (h's signature set `Cursor{z}`). An Origin
+    binding moves with no verdict: in shadow_origin, accepted on both, g's `z` binds h's z (dev: f's later z). Every other valid
+    row is accepted on both (shadow_val, skip2_origin, set_sig, do_set, the *_prec rows). Rows:
+    `DefaultBindingTest.ADefaultNamesOnlyThePrecedingParameters` (45). Speed: a parameter's value lookup walks from the use to its
+    function (bounded by IMPL A.4's L, as the HIR's walk per parameter read); no allocation; RP8 Bind within at W-358's slot T-W358.
+  - Rejected: the body-chain rule also read by `OriginCandidate` (fixes the Closure header only: a named function's signature or body
+    has no chain to the default); a scope per default (a `BindingScope` keyed by `DefaultValue`: scope-tree state each lookup would
+    carry); select and reject (D-1247 (b), the owner chose (a)).
+  - Open: PLAN G1375 (a new set or Origin name in a default equal to a later parameter's; R5's "hides"),
+    G1376 (a capture entry that selects nothing is located at its Closure).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
