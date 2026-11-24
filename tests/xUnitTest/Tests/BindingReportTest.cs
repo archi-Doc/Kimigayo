@@ -284,9 +284,13 @@ public sealed class BindingReportTest
         var c = MinimalEmissionTest.Analyze("func f(b: bool) -> ()\n    b++\npublic func main() => ()");
         var issues = c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").ToArray();
         Assert.Equal([DiagnosticCode.InvalidAssignment_Kd, DiagnosticCode.NonNumericOperand_Kd], issues.Select(static x => x.Code));
-        Assert.True(issues[0].Problem >= 0); // R7-E4 E4a-1: the denied write records its problem (RecordWrite), the slot's.
-        Assert.True(issues[1].Problem >= 0);
-        Assert.NotEqual(issues[0].Problem, issues[1].Problem);
+        // R7-E4 E4a-1 (rulings 2, 3): the denied write records its problem (RecordWrite), the slot's: InvalidAssignment_Kd with the
+        // target `b` as its related location (role 0); the operand's NonNumericOperand_Kd is a problem of its own.
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding)!;
+        Assert.Equal(DiagnosticCode.InvalidAssignment_Kd, report.Problem(issues[0].Problem).Code);
+        var target = Assert.Single(report.Facts(issues[0].Problem).ToArray());
+        Assert.Equal((ProblemFactKind.Related, 0L, "b"), (target.Kind, target.Value, c.SyntaxOf(target.Site).ToString()));
+        Assert.Equal(DiagnosticCode.NonNumericOperand_Kd, report.Problem(issues[1].Problem).Code);
         Assert.False(c.Binding.CheckBound().IsComplete);
         Assert.Equal(issues.Select(static x => x.Code), c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").Select(static x => x.Code));
     }
