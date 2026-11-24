@@ -66,9 +66,9 @@ public sealed partial class Binding
 
         // A Property's initializer and its fit are its initializer's body (SPEC 11.8, 6.3.3; DECISIONS R4-M101 E1, E4); a local's are
         // the body that binds the local. The local's region slots are numbered once, in binding order: the slots its equalities fix first
-        // (FixedRegions), then its initializer's Origins with no candidate (ResolveInitializerOrigins), then its Type's (InferLocalOrigins,
-        // LocalBorrowType; SPEC 15.3.6).
-        var slot = -1 - FixedRegions(originDeclaration);
+        // (FixedRegions, whoever completed the declaration), then its initializer's Origins with no candidate (ResolveInitializerOrigins),
+        // then its Type's (InferLocalOrigins, LocalBorrowType; SPEC 15.3.6).
+        var slot = -1 - FixedRegions(this.originDeclarations.GetValueOrDefault(variable));
         var saved = this.EnterBody(symbol.Property is null ? this.formingBody : InitializerBody(symbol));
         BoundType? inferred;
         try

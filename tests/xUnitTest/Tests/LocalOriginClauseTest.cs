@@ -207,13 +207,16 @@ public partial class LocalOriginClauseTest
         Assert.Equal([("borrow", "local@ref"), ("origin", "local@ref"), ("relation", "origin x.s outlives a")], error.Related!.Select(x => (x.Role, Text(source, x.Span))));
     }
 
-    // SPEC 15.3.6 ("Unless fixed by equality"), DECISIONS R8-M56 (PLAN G1369): a `let` local's clause equating its slot with another
-    // Origin fixes the value the slot's region publishes; the initializer's candidate fits it there, one record at the initializer, and
-    // the body reads the fixed value (t4_body_bad: the returned c.item reads p, no second record). A Container alias's clause equating
-    // its set's slot fixes that slot of the alias's Type (SPEC 15.3.3's alias row), read so at each use (alias_eq, alias_eq_ok).
+    // SPEC 15.3.6 ("Unless fixed by equality"), DECISIONS R8-M56 (PLAN G1369): a local's clause equating its slot with another Origin
+    // fixes the value the slot's region publishes, `let` or `var`; the initializer's candidate fits it there, one record at the
+    // initializer, and the body reads the fixed value (t4_body_bad: the returned c.item reads p, no second record); a later assignment
+    // fits the same value (15.4.4; t4_assign_var_bad, t4_assign_var_ok). A Container alias's clause equating its set's slot fixes that
+    // slot of the alias's Type (SPEC 15.3.3's alias row), read so at each use (alias_eq, alias_eq_ok).
     [Theory]
     [InlineData(CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n    return c.item\n" + Main, null)] // t4_body
     [InlineData(CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(q)\n        origin k.at == p\n    return c.item\n" + Main, "Cursor.init(q)")] // t4_body_bad
+    [InlineData(CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    var c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n    c = Cursor.init(q)\n    return c.item\n" + Main, "Cursor.init(q)")] // t4_assign_var_bad
+    [InlineData(CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    var c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n    c = Cursor.init(p)\n    return c.item\n" + Main, null)] // t4_assign_var_ok
     [InlineData(AliasOuter + "func f(p: ref/i32 during static) -> ref/i32 during static => H.keep(p)\n" + Main, null)] // alias_eq_ok
     [InlineData(AliasOuter + "func f(p: ref/i32) -> ref/i32 during static => H.keep(p)\n" + Main, "p)")] // alias_eq
     public void AnEqualityFixesTheSlotItsDeclarationPublishes(string source, string? at)

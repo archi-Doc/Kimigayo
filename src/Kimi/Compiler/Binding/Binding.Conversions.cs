@@ -277,9 +277,10 @@ public sealed partial class Binding
                 return this.BindObjectUpcast(conversion, scope, actual, pattern);
             }
 
-            // SPEC 13.5.6: a typed borrow names exactly the stored Type of the written slot; it selects no
-            // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
-            if (pattern.SafeReferent is { } referent && !ReferenceEquals(actual, referent))
+            // SPEC 13.5.6: a typed borrow names exactly the stored Type of the written slot, both read at the use, where a region of its
+            // own body with a value (a `let` region's, an equality-fixed slot's) is that value (RegionValuesAt; DECISIONS R8-M56); it
+            // selects no referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
+            if (pattern.SafeReferent is { } referent && !ReferenceEquals(this.RegionValuesAt(actual, conversion), this.RegionValuesAt(referent, conversion)))
             {
                 return this.RecordTypeMismatch(conversion, conversion, actual, referent);
             }
@@ -289,8 +290,7 @@ public sealed partial class Binding
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
 
-            if (pattern.SafeReferent is { } stored && pattern.Origin is null && ReferenceEquals(actual, stored) &&
-                this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
+            if (pattern.SafeReferent is not null && pattern.Origin is null && this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
                 var storage = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
                 Complete(conversion.Right, storage);

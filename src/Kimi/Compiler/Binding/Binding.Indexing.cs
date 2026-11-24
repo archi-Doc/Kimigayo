@@ -41,7 +41,7 @@ public sealed partial class Binding
 
     // The executable body the walk is in (SPEC 15.3.4; Binding.ExecutableBodies.cs): a function's own body or a default template's
     // (f, i), none in a Type's declaration or a module's top-level statements; entered where a body begins (EnterIndexBody) and
-    // restored by a Body step after its subtree. DeclareFunction records it as a named function's declaring body.
+    // restored by a Body step after its subtree. DeclareFunction records it as a named function's declaring body, IndexNode as a local's.
     private ExecutableBody indexBody;
 
     // An entry of the walk: a context, in which a node's row runs (Index; Pattern, a match arm's Pattern and its subtree: pattern
@@ -449,6 +449,7 @@ public sealed partial class Binding
                 var declarationScope = node is PropertyKoto && scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? scope.Parent! : scope;
                 var variableSymbol = this.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, declarationScope);
                 variableSymbol.ConditionalDeclaration = ReferenceEquals(declarationScope, scope) ? null : (SyntaxFormKoto)scope.Owner;
+                variableSymbol.DeclaringBody = this.indexBody; // SPEC 15.3.4: a local's declaring body (BindType); none for a Property.
                 if (node is PropertyKoto property)
                 {
                     var bound = variableSymbol.Property ??= new(variableSymbol);

@@ -107,11 +107,14 @@ public sealed partial class Binding
             return this.Record(syntax, BindingFailure.Cycle, [], unresolved: true);
         }
 
-        // A Type expression is checked like an expression: the components that failed are its prerequisites.
+        // A Type expression is checked like an expression: the components that failed are its prerequisites. A Type a local owns is
+        // formed in the local's declaring body whoever demands it, a nested header bound with no body included (SPEC 15.3.4, DECISIONS
+        // R8-M56; PLAN G1369): the atoms, rows and regions of its Origin declaration are that body's, as a header's are no body's.
         var frame = this.BeginConsultation(syntax);
+        var owner = OriginOwner(syntax);
+        var saved = this.EnterBody(owner is VariableKoto && this.symbols.GetValueOrDefault(owner)?.DeclaringBody is { IsBody: true } body ? body : this.formingBody);
         try
         {
-            var owner = OriginOwner(syntax);
             var originDeclaration = owner is not null and not (FunctionKoto or PropertyAccessorKoto) ? this.BeginOriginDeclaration(owner, scope) : null;
             var type = this.HeightChecked(syntax, this.BindTypeStructure(syntax, scope, context));
             if (IsRecovery(syntax, out _))
@@ -151,6 +154,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.formingBody = saved;
             this.resolvingTypes.Remove(syntax);
             this.EndConsultation(syntax, frame);
             this.Consulted(syntax);

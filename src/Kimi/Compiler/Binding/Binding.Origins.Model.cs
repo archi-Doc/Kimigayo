@@ -545,7 +545,7 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 //   declaration's other clauses. A failed clause and its bound Origins (the formation's FailedClauses, the one record of a failed clause)
 //   are no premise or obligation anywhere and name only the slots it leaves Unbound (RestsOnFailedClause). Every other
 //   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s
-//   (a local's none: its clauses assume nothing, SPEC 15.3.3),
+//   (a local's slot by its region valued by the other end, FixedRegion: its clauses assume nothing, SPEC 15.3.3, 15.3.6),
 //   it `Resolves` and is `Completed` as one with no failed clause, and only the pending slots a failed clause names (RestsOnFailedClause)
 //   stay Unbound, each resting on `PendingCause`: the first failed clause, or the Type, alias target or payload operand that failed
 //   before completion (RestPendingOn). A named nested function's failed clause is bound once more in its declaring body

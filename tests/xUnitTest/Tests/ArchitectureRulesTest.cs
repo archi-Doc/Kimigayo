@@ -248,7 +248,7 @@ public class ArchitectureRulesTest
         "Binding.ControlFlow.cs:ReadTypeUnification=1 formed",
         "Binding.ControlFlow.cs:SelectCommonType=2 kind",
         "Binding.Conversions.Raw.cs:CompletePointerConversion=2 kind",
-        "Binding.Conversions.cs:BindConversion=12 formed",
+        "Binding.Conversions.cs:BindConversion=11 formed",
         "Binding.Conversions.cs:BindConversion=2 kind",
         "Binding.Conversions.cs:IsNeverValue=1 kind",
         "Binding.Conversions.cs:IsRuntimeRecordType=3 kind",

@@ -13,15 +13,18 @@ namespace Kimi.Compiler;
 // The rows are a pass part's (PassPart.Regions; DECISIONS BU-220's D-9 line): the find reads the library layer's part first, then the
 // running pass's, and a new row goes into the running pass's. The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 // Output (PLAN G492-a (ii); R7-O2 A1): a `let` local's region has a value, the Origin its declaration fixes for the slot
-// (PublishRegionValue: the initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region.
-// Its readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type),
-// RegionalAt through it. RegionValue is the one reading of any local region's SPEC 15.3.6 value: a `let` region's as published, a `var`
-// region's its row's candidate over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so
-// (the view's row 6, the body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its
-// completion once Final proved it, and before as a reading with no answer yet (the deferral fact).
+// (PublishRegionValue: the initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region;
+// a slot that the local's equality fixes, `let` or `var`, is a region whose value is the equality's other end (FixedRegion; SPEC 15.3.6
+// "Unless fixed by equality", PLAN G1369). Its readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read
+// through it) and RegionValuesAt (a Type), RegionalAt and the typed borrow's identity test (SPEC 13.5.6) through it. RegionValue is the
+// one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
+// over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
+// body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
+// proved it, and before as a reading with no answer yet (the deferral fact).
 // Invariants: a value holds no region of its own body (it is read once, when published); values and bounds are reset each pass
-// (ResetLocalRegions); a `var` region publishes no value: a use in its own body reads the region, and only RegionValue (where a body
-// carries it, or its own body's oracle) reads its candidate over its recorded bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
+// (ResetLocalRegions); a `var` region publishes no value unless its slot is fixed by equality (SPEC 15.3.6): a use in its own body
+// reads the region, and only RegionValue (where a body carries it, or its own body's oracle) reads its candidate over its recorded
+// bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
 // O-385 (a): a body row's ends as the row reads them, SuppliedAtUse with the row; a `let` value as published; an initializer alias as
 // its producers read it) and read as held: LocalRegionSources, LocalRegionBound and LocalRegionSourceUse apply the receiver resolution
 // alone (ReceiverAtUse; a Closure is classified after its body's bounds are stored), never OriginAtUse (DECISIONS R4-M133 as amended).

@@ -3,10 +3,11 @@
 // Binding's formation context (SPEC 15.6, 7.2.3, 6.3.3, 11.8; DECISIONS R4-M101 E1).
 // - Responsibility: the executable body Binding is binding, as an ExecutableBody, recorded on what Binding forms there.
 // - Inputs: the entries that start binding a body or a declaration (BindHeader, BindFunction, BindConcreteClosure, BindAccessorBody, a
-//   Property's initializer, ValidateOriginRelations), each through EnterBody.
+//   Property's initializer, ValidateOriginRelations, and BindType for a Type a local owns: the local's Origin declaration, formed in its
+//   declaring body whoever demands it, PLAN G1369), each through EnterBody.
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
 //   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (a Closure's, ClosureHeaderScope; a named nested
-//   function's is the index walk's, DeclareFunction), and ParameterVisible's answer.
+//   function's or a local's is the index walk's, DeclareFunction and IndexNode), and ParameterVisible's answer.
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
 //   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
 //   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed in it, only AddObligation
