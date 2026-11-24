@@ -9340,7 +9340,8 @@ resumed by R4-M86 (2026-10-20).
     stays ByCase; MirBuilder's ByCase builds at the consumer's Type where `MirTypes.Agree` holds (Binding's name, BU-27's HIR
     contract; no identity premise). A case that Copies keeps the met slot (8.15.2). A written original `s/T` carries the binder's
     `o` (8.1.1, 8.1.2, 15.4.2, 15.6.4 step 2). Limits: the rule names no family (`OuterOrigin` has no family row, so G721's revision
-    4 keeps its family capture row; N8); the owner case's Reborrow of a nested layer is not named (PLAN G254b, O1). Interim (the
+    4 keeps its family capture row; N8); the owner case's Reborrow of a nested layer is not named (PLAN G254b, O1; superseded
+    outside R3's domain by the G254b amendment below). Interim (the
     owner's O-168 (a); removal condition: PLAN G758 opens a `var` local's pair slot as a local region): `LocalBorrowType` notes each
     (`var` local, unopened Parameter-kind pair slot) per pass (cleared in `ResetLocalRegions`); a relation whose shorter end is that
     slot and that was formed against the local itself, an assignment whose target is the local's own Place (`FailExplained`) or a
@@ -9369,6 +9370,49 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-213 (PLAN G813): "its step MeetLayer is a Pattern position's in SelectLayers as well": the containment walk
     meets layers by `MeetOuter`, innermost first; `MeetLayer` (outside in) and `PairSlot` remain a Pattern position's step in
     `SelectLayers` alone.
+  - Amended (2026-11-24; PLAN G254, unit G254b; the owner's O-520 (c), verbatim 「すべて推奨通り」): one bare Reborrow rule,
+    `ReborrowedType(stored, node, reach, cases, out limit)` (`Binding.BareAcquisition`), replaces `BareReborrowLayer` and the old
+    `ReborrowedType`: a stored `uniq/T` or `objuniq/T` (`StoresConcreteExclusive`, one definition) has its Origin met with the
+    reach; a pair layer whose plan (`BareAcquisition`) Reborrows the layer itself in an exclusive admitted case has its
+    outer-Origin slot met; and where its owner case's target Reborrows (SPEC 8.1.1, 8.14, 8.15.2: in the owner case `s/X` is
+    `X`), that target is replaced by its own Reborrow Type under the owner case's assignment (the recursion in nested scratch; the
+    reach is `ReachOf(place, cases)`, the one containment walk, whose `ContainmentWalk` is a `ref struct` carrying `Cases`, read
+    at `MeetPair` through `CaseAdmitted`; the merged walk would meet slots only a Copy case has). An argument whose plan Reborrows
+    in the owner case alone moves from Exact to Same-Semantics Reborrow (SPEC 10.2.2). The rule's `ReferenceEquals(inner,
+    target)` is a C3c site (`Binding.BareAcquisition.cs:ReborrowedType=1 unchanged`). Supersedes G254a's limit "the owner case's
+    Reborrow of a nested layer is not named" outside R3's domain.
+    - R3's domain (an owner case Reborrowing its target under a binder that also admits an invariant Semantics,
+      `InvariantAdmitted`, SPEC 15.3.5: `owner or uniq`, `owner or raw`, and the `obj`/`objuniq` pairs,
+      `Binding.PairCases.cs:82`): no one Type carries that Reborrow once a reach shortens the target, so the rule keeps the layer's
+      own Reborrow (G254a's name; null where no exclusive case Reborrows it, as `BareReborrowLayer` gave, and only where a reach
+      shortens the target: an unshortened target is Same-Semantics, read only by overload ranking, d-rw-par accepted) and sets
+      `limit`, with no record at the use: a known class-1 defect, PLAN G254c. O-515 (a)'s support reduction and O-516 (a)'s
+      receiver rule are withdrawn with R3's recording (`RecordBareReborrowLimit` is not landed).
+    - A departure from the owner question note's §8 (`artifacts\handoff\2026-11-16-pause\middle\notes\g254b-owner-question.md`):
+      §8 had the limit set only where the reach shortens the target; it is set whatever the reach (a fact of the Type and plan).
+      Reason: G721's row (1) (BU-184) evaluates the rule with a `static` reach, `Meet(b, static)` is `b`, so a reach-dependent
+      limit never fires at row (1) and row (1) would not hold R3's domain (a Closure would capture such a layer and its body's
+      uses would take the class-1 naming). Passing the Closure's ρ instead was rejected: forming its atom at capture formation
+      fixes its `Body` to the evaluating body (OriginAtom keeps the first `formingBody`). A body's use of a captured entry is
+      reached through ρ, and by SPEC 15.8.2's table a Shared or Exclusive Closure call's receiver always shortens the target, so
+      for those calls the reach-free limit equals "a body's use would be in R3's domain"; an entry no body uses and a Consuming
+      call keep the limit too, the cost being dev's own record (valid captures no body Reborrows keep dev's `Unsupported_Kd`
+      3:19). The departure is needed: §8's reach-dependent form accepts d-rw-cl-st (invalid; `s is owner or raw`, `var g = func
+      [value, q@move] () -> i32` / `q@follow = value`), which dev and the head reject at 3:19 (the Front's C-502 delta read). The
+      returned Types are §8's on every path; only row (1) reads the limit. Twins showing row (1) firing (dev's record,
+      `Unsupported_Kd` at the entry 3:19, on dev 5654dc0a4 and the head alike): o1u-cl-loc, rw-cl-loc, n-o1u (V), n-o1u-i,
+      o1u-cl-st (I). CaptureEntry records no limit: the entry's own row (1) runs on the same Type and function
+      (`Captures.cs:334`'s comment says so: "the enclosing entry's row (1)"), so a nested entry's source exists only where that
+      entry passed row (1), and refinement only narrows inward (n-o1u, n-o1u-i: dev's `Unsupported_Kd` at the outer entry).
+    - Moves (class 1, newly `UnprovenOriginRelation_Kd`, SPEC 15.6.3, 15.8.2): o1-rt-t, o1-d-st-t, o1-rt-c, o1-id-c, o1-kp-c,
+      o1-j-rt, o1-deep, o1-enum, o1-val, e-pay-r, v-call-r; mix-rt (`owner or ref` over an `owner or uniq` layer: the outer level
+      names the inner layer's own Reborrow); with commit 3 o1-cl-st, n-o1; the reviewers' positions tup-r-rt, arr-r-rt,
+      ctor-r-rt, tp-r-rt, fa-r-rt, cr-r-rt, j-mix-r, pay-inf-r-rt2; an added record beside dev's on an invalid program:
+      pay-inf-r-rt, two-pay-r. R3's domain keeps dev's records on every twin (g254bc's table, 112 labelled twins, dev 5654dc0a4
+      vs the head): the invalid o1u-rt-ab, u-id, rw-rt, rw-id, u-val, v-call-u, u-enum, e-pay-u, j-u-rt, pay-inf-u-rt2, ctor-u-rt
+      accepted (the known defect); the valid o1u-loc, u-arg, rw-loc, rw-arg, o1u-dis, mix-loc, sb2-loc, j-u-loc, pr-get
+      accepted; o1u-rt, u-arg2, two-pay-u, e-pay-nc with dev's records. Evidence: commits e335edc45, 73f1da74b, 081d64aef,
+      ddd85a9c1.
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
@@ -14541,6 +14585,17 @@ resumed by R4-M86 (2026-10-20).
   - Closes PLAN G721: its remaining part is the two interim rows, each removed by its condition's owner (PLAN G254, G170).
   - Amended by BU-228 (the sa unit, 2026-11-19): an omitted list over a pair layer whose plan never Reborrows Copies by `ProveCopy`,
     which judges a pair layer per admitted case (`CopiesInEveryCase` is removed).
+  - Amended (2026-11-24; PLAN G254, unit G254b, its commit 3 and the owner's O-520 (c) revision): G721's interim row (1) holds a
+    pair layer other than the original `s/T` whose complete plan Reborrows in some admitted case where the bare Reborrow rule
+    (BU-27's G254b amendment) names no layer (a family: `OuterOrigin` has no family row; removal PLAN G254's family limit) or has
+    its limit (R3's domain; removal PLAN G254c). Every other such layer is captured as its initialization would be.
+    ConditionalCaptureTest's theory is split: `ACapturedPairLayerIsAcquiredAsItsInitializationWouldBe` and
+    `AReborrowingFamilyOrPremiseMadePairLayerIsUnsupportedUntilTheFamilyRowOrG170`. Moves by SPEC reason: accepted (SPEC 7.7.2:
+    an entry initializes as its initialization would): rows 1-4, the two `p@s` rows, PairFollowTest row 29, o1-cl-loc, n-o1-v,
+    c3-str, rcv-loc; `UnprovenOriginRelation_Kd` (SPEC 15.6.3, 15.8.2): r23, r24, o1-cl-st, n-o1, rcv-pair;
+    `TransferRequired_Kd` (SPEC 7.7.2's omitted list, 8.14): row 7, c3-str-bare; `InvalidAssignment_Kd` on a `let` Closure (SPEC
+    7.7.3): cap-let-r; row 30 BU-177's records. R3's domain keeps row (1)'s record at the entry (o1u-cl-loc, rw-cl-loc, n-o1u,
+    n-o1u-i, o1u-cl-st).
 - **BU-183 A built-in sequence with a declaration states its Indexable conformance in Kimigayo (PLAN G715 part a)** (2026-11-12;
   Front, the library and Binding; Major; implementation reviews 1 and 2 REVISE, 3 ACCEPT WITH NOTES by the Back's reviewer; split by
   the owner's O-197 (a)) SPEC 4.7.1, 8.5.2, 22.1, 3.4.3.
