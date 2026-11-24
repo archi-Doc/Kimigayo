@@ -12,8 +12,8 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private readonly FormationCauseRows formationCauses;
 
-    // PROTOTYPE (E3e Rev 2): the written occurrences JudgeOccurrence judged in this pass (ResetPass empties it).
-    private readonly HashSet<Koto> judgedOccurrences = new(ReferenceEqualityComparer.Instance);
+    // The written occurrences JudgeOccurrence judged in the running pass, its per-pass query's memo.
+    private readonly JudgedOccurrenceRows judgedOccurrences;
 
     // Conformance verifications and agreements in progress: a limit context, not an obligation (the obligation table holds the paths
     // being verified), read by ResolveConformance alone: inside them a conformance limited by OCC-X stays Unknown.
@@ -586,11 +586,12 @@ public sealed partial class Binding
     // decision that reads the occurrence (FailedPart, at that decision's binding) or by ValidateConstraintUses, whichever comes first.
     private void JudgeOccurrence(Koto node, BindingMode mode)
     {
-        if (this.JudgedOccurrence(node) is not { Symbol.Declaration: DeclarationContainerKoto container } type || !this.judgedOccurrences.Add(node))
+        if (this.JudgedOccurrence(node) is not { Symbol.Declaration: DeclarationContainerKoto container } type || this.judgedOccurrences.Contains(node))
         {
             return;
         }
 
+        this.judgedOccurrences.Add(node);
         var written = this.OccurrenceTypeNode(node);
         var scope = this.ConstraintScope(node);
         var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
@@ -1117,6 +1118,16 @@ public sealed partial class Binding
                 binding.pass[i].Syntax.Hir.Families.FormationCauses.Empty();
             }
         }
+    }
+
+    /// <summary>The `judgedOccurrences` family's one accessor (DECISIONS BU-220): a working-state family, the written Type occurrences
+    /// JudgeOccurrence judged in the running pass (its per-pass query's memo), a `bool` row in the occurrence's module's NodeColumns at
+    /// its SyntaxId. A row of an earlier pass reads none, and the library's rows are released at its freeze (NodeColumns.Freeze).</summary>
+    private readonly struct JudgedOccurrenceRows(Binding binding)
+    {
+        internal void Add(Koto node) => HirTables.Of(node).Families.JudgedOccurrences.Ref(node.SyntaxId, binding) = true;
+
+        internal bool Contains(Koto node) => node.SyntaxOwner is { } table && table.Hir.Families.JudgedOccurrences.Get(node.SyntaxId, binding);
     }
 
     // FailedWrittenType's walk over one node's children: the first written Type among them that failed or holds a failed written Type
