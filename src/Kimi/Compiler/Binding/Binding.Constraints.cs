@@ -102,6 +102,36 @@ public sealed partial class Binding
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
 
+    // SPEC 6.1.4, 8.4.3: whether a Contract's clause is an implementation requirement, a condition on its conforming Self (an associated
+    // requirement, or a clause one of whose Types names Self): an obligation of every conformer, never an input condition of a reference
+    // to the Contract, which is a condition only on the Contract's parameters. Read by a reference's formation (CheckConstraints); the
+    // premise supply's gate is another contract, a clause that is not closed (DependentConstraint with the Contract's Self, both kinds).
+    private static bool IsImplementationRequirement(IsKoto clause)
+        => clause.IsAssociatedConstraint || (clause.BoundConstraint is { } constraint && NamesContractSelf(constraint));
+
+    private static bool NamesContractSelf(BoundConstraint constraint)
+        => (constraint.Subject is { } subject && NamesContractSelf(subject)) || (constraint.RequiredType is { } required && NamesContractSelf(required)) ||
+        (constraint.Contract?.Type is { } reference && NamesContractSelf(reference)) ||
+        (constraint.Left is { } left && NamesContractSelf(left)) || (constraint.Right is { } right && NamesContractSelf(right));
+
+    private static bool NamesContractSelf(BoundType type)
+    {
+        if (IsContractSelf(type))
+        {
+            return true;
+        }
+
+        for (var i = 0; type.HasAbstractPart && i < type.Components.Count; i++)
+        {
+            if (NamesContractSelf(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)
         => KotoHelper.IsSelectionBody(match, body) ? this.scopes.GetValueOrDefault(match.Arms[body.SelectionArm].Pattern) : null;
