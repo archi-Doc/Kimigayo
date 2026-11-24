@@ -20,8 +20,9 @@ public sealed partial class Binding
     // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused) with Open 0, or
     // StorageRejected when its storage is Rejected; or an open Type's position on the walk's stack (Open), which every query leaves empty;
     // ResetPass clears both, after a walk a fault aborted too.
-    private readonly Dictionary<BoundType, (int Height, int Open)> storageMarks = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, (int Height, int Open, BoundType? Refused)> storageMarks = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> storageStack = new();
+    private BoundType? storageRefused; // The first instance whose HeightLimit refused the walk, which its refused marks keep (PLAN G651 U2b R3.5).
     private HelperCaptures? helperCaptures;
     private ulong storageVersion;
 
@@ -55,12 +56,14 @@ public sealed partial class Binding
         }
 
         var rejected = false;
+        this.storageRefused = null;
         var height = this.StorageHeight(type, 1, out _, ref rejected);
+        var refused = this.storageRefused;
         foreach (var open in this.storageStack)
         {
             if (height == StorageRefused)
             {
-                this.storageMarks[open] = (StorageRefused, 0);
+                this.storageMarks[open] = (StorageRefused, 0, refused);
             }
             else
             {
@@ -69,6 +72,11 @@ public sealed partial class Binding
         }
 
         this.storageStack.Clear();
+        if (refused is not null)
+        {
+            this.AnswerSite(refused); // PLAN G651 U2b R3.5: a read of the refused instance, fresh or through the storage memo.
+        }
+
         return height > StorageHeightLimit ? StorageOutcome.Limit : rejected ? StorageOutcome.Rejected : StorageOutcome.Prepared;
     }
 
@@ -207,6 +215,7 @@ public sealed partial class Binding
         if (this.storageMarks.TryGetValue(type, out var mark))
         {
             rejected |= mark.Open == StorageRejected;
+            this.storageRefused ??= mark.Open <= 0 ? mark.Refused : null;
             low = mark.Open > 0 ? mark.Open : low;
             return mark.Open > 0 ? 0 : mark.Height;
         }
@@ -218,7 +227,7 @@ public sealed partial class Binding
 
         var position = this.storageStack.Count + 1;
         this.storageStack.Add(type);
-        this.storageMarks[type] = (0, position);
+        this.storageMarks[type] = (0, position, null);
         var height = 0;
         var lowest = position;
         var own = false;
@@ -232,7 +241,7 @@ public sealed partial class Binding
 
         for (var i = position - 1; i < this.storageStack.Count; i++)
         {
-            this.storageMarks[this.storageStack[i]] = (height, own ? StorageRejected : 0);
+            this.storageMarks[this.storageStack[i]] = (height, own ? StorageRejected : 0, null);
         }
 
         this.storageStack.RemoveRange(position - 1, this.storageStack.Count - position + 1);
@@ -249,6 +258,7 @@ public sealed partial class Binding
             var instance = this.Instance(type);
             if (instance.HeightLimit)
             {
+                this.storageRefused ??= type;
                 return StorageRefused;
             }
 
@@ -392,6 +402,13 @@ public sealed partial class Binding
             {
                 return this.FailConstructorAbsence(node, parent);
             }
+
+            // SPEC 23.1.2 (PLAN G651 a2, B5): a clause that gives the selection no base (no Type, an inline cycle) has its record; the base
+            // call rests on the struct's. With no clause, `: base(..)` without a base is the call's own error (SPEC 6.3.3).
+            if (constructor.BoundSymbol!.Scope.Owner is StructKoto { BaseClause: not null } declared)
+            {
+                return this.CompleteDependent(node, declared);
+            }
         }
 
         return this.Fail(node, BindingFailure.InvalidTypeFormation);
@@ -400,7 +417,7 @@ public sealed partial class Binding
     // SPEC 6.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
     private BindingSymbol? BaseConstructorGroup(FunctionKoto constructor, out BoundType? parent)
     {
-        parent = AdtDef.Base(this.types, this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
+        parent = constructor.BoundSymbol!.Scope.Owner is StructKoto owner ? this.SelectionBase(owner) : null;
         return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
@@ -546,7 +563,7 @@ public sealed partial class Binding
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
         var type = baseInitializer
-            ? AdtDef.Base(this.types, this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
+            ? this.SelectionBase((StructKoto)((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner)!
             : this.memberSelections[(MemberAccessKoto)call.Method].DeclaringType!; // ConstructorMember's published declaring Type (C-i)
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)

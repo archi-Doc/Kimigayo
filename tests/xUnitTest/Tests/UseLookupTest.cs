@@ -451,7 +451,7 @@ public class UseLookupTest
         "contract C\n    associate Item\nopen struct P\n    public init() => ()\nstruct S\n    Self is C\n" +
             "    associate C.Item is P\n    public open struct Item\n        public init() => ()\nstruct T : S.Item\n" +
             "    public init() => ()",
-        "AmbiguousBinding_Kd S.Item|InvalidTypeFormation_Kd S.Item|InvalidTypeFormation_Kd base|InvalidTypeFormation_Kd struct T")]
+        "AmbiguousBinding_Kd S.Item|InvalidTypeFormation_Kd S.Item|InvalidTypeFormation_Kd struct T")] // PLAN G651 a2-2b (SPEC 23.1.2, F's C8 rulings 21 and 26, DECISIONS Q13): the omitted base call has no base to select through (the clause names no Type) and rests; its `InvalidTypeFormation_Kd base` goes
     [InlineData(
         "contract C\n    associate Elem\nopen struct P\n    public init() => ()\nstruct S\n    Self is C\n" +
             "    associate C.Elem is P\n    public open struct Item\n        public init() => ()\nstruct T : S.Item\n" +

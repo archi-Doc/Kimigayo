@@ -225,7 +225,7 @@ internal sealed partial class FunctionCodegen
     // (Borrow) or none (Set), returned by the signature. A Field the representative Self does not store is a broken contract.
     private void Storage(BindingSymbol? field, PropertyWitnessKind access, BoundType self)
     {
-        if (AdtDef.FieldOwner(this.typeContext, self, field) is not { } owner || AdtDef.FieldType(this.typeContext, owner.Layer, owner.Index) is not { } stored)
+        if (AdtDef.FieldOwner(this.typeContext, self, field) is not { Index: { } index } owner || AdtDef.FieldType(this.typeContext, owner.Layer, index) is not { } stored)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector admitted the item on the Field (Agrees).
             return;
@@ -237,7 +237,7 @@ internal sealed partial class FunctionCodegen
             return; // Recorded: the collector laid out the representative Self (DECISIONS R5-M44).
         }
 
-        var address = this.Offset(new('p', this.Input(0)), record.Layout.FieldOffsets.Span[owner.Index]);
+        var address = this.Offset(new('p', this.Input(0)), record.Layout.FieldOffsets.Span[index]);
         if (access == PropertyWitnessKind.StorageSet && !this.Replace(type!, lowering, address))
         {
             return; // Recorded.

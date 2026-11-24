@@ -23,10 +23,6 @@ internal sealed partial class InstanceCollector
     /// <returns>The subject.</returns>
     internal SourceRef Subject(int item, MirBody body, in SourceInfo source) => this.Subject(this.Set.Items[item].Site, body, source);
 
-    // DIAGNOSTICS rule 6 (DECISIONS R5-M171): the order of two subjects, by module and then by id, the syntax table's pre-order of parsed
-    // nodes, after which nodes outside the tree (Binding's synthesized ones) follow in creation order.
-    private static int Order(SourceRef x, SourceRef y) => x.Module != y.Module ? x.Module - y.Module : x.Id.CompareTo(y.Id);
-
     // DECISIONS R5-M170: the declaration a DropGlue item's identity names, that of a Nominal, Constructed or Closure Type; none for a
     // structural Type, whose parts are its subterms.
     private static BindingSymbol? Declaration(BoundType type)
@@ -145,7 +141,7 @@ internal sealed partial class InstanceCollector
     // derived), and represented by the first unerased Type that requests it, which is closed (an open one is a broken contract,
     // InternalInvariant_Kd), and by that request's substitution, a shim's: its admitting call's, whose formation the call's edge read
     // (Formed), so TypeOf gives the shim's signature in its instance (DECISIONS R5-M126); null for another kind. A Type higher than the
-    // height cap is, like a Layout limit, a use of its erased Type over a limit in the requesting declaration (Limit, DECISIONS R5-M171),
+    // height cap is, like a Layout limit, a use of its erased Type over a limit in the requesting declaration (MirReport.Limit, R5-M171),
     // read again at each request, before its key is found (a handle glue's key is shared by Types of any height, GlueKey), not a refused
     // key. -1 when refused.
     private int AdmitType(int parent, SourceRef site, MonoKey key, BoundType type, Subst? representative)
@@ -159,7 +155,7 @@ internal sealed partial class InstanceCollector
 
         if (type.Height > HeightLimit)
         {
-            this.Limit(DiagnosticCode.GenerationResourceLimit_Kd, this.types.Erase(type), default, this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
+            this.program!.Problems.Limit(DiagnosticCode.GenerationResourceLimit_Kd, this.types.Erase(type), default, this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
             return -1;
         }
 

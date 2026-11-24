@@ -22,7 +22,8 @@ namespace Kimi.Compiler.Mir;
 //   - a jump whose published target row is null (Transfer): lint row 9 or 10 at the jump (BU-101), Opaque, its operand located (none
 //     for a constant);
 //   - a Field of no stored Type or a receiver of no Type (Field) and an accessor's failed self (Body): the selected slot's, the
-//     receiver's or the self slot's Type is null (PLAN G1073, D-834), Derived;
+//     receiver's or the self slot's Type is null (PLAN G1073, D-834), or the layer walk ends at a base part its instance does not store
+//     (AdtDef.BaseNotStored, FieldOwner's Index none; PLAN G651 a2), Derived;
 //   - a container whose published Completion completes into a destination neither Unit nor Never (Leave): lint row 12 or the guess
 //     rule's Error (R5-M186), Derived;
 //   - an omitted default whose template failed (Body null or Failed) or whose copy the budget refuses (Refuses' Resource record at the

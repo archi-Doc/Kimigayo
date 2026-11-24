@@ -175,7 +175,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 MirUses.ForEach(cases, new(block, index), ref uses);
             }
 
+            var site = types.OpenSite(body.Blocks[block].Terminator.Source.Syntax); // PLAN G651 U2b R5 (D-C4): the terminator's node site.
             this.Terminator(program, body, block, view, body.Blocks[block].Terminator);
+            types.CloseSite(site);
         }
 
         // SPEC 15.6.4, 12.7.2 (the owner's O-109 (a)): a function's summary, computed once per declaration, includes every implementation
