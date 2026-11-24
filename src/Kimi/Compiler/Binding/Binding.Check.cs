@@ -107,8 +107,7 @@ public sealed partial class Binding
                 var consumer = this.synthesizedCalls.GetValueOrDefault(invocation);
                 if (consumer is not { BindingFailure: not BindingFailure.None } && !call.PremiseReadsMark)
                 {
-                    var use = this.VerdictUse(node);
-                    this.RequireClauses(use, this.CheckCallTypeConstraints(call, this.ConstraintScope(node), use), mode, this.Library.PresentedTarget(call.Target));
+                    this.RequireCallVerdicts(node, call, mode);
                 }
 
                 if (consumer is { BindingFailure: not BindingFailure.None })
@@ -156,6 +155,28 @@ public sealed partial class Binding
     {
         this.AddSynthesizedCall(consumer, call);
         return this.BindCall(call, scope, null);
+    }
+
+    // SPEC 10.1, 23.1.2 (PLAN G651 a2, B4): the selected call's two verdicts at its use: the obligation's record first, outside any frame
+    // (an independent refutation is its own record); then the call's own Types in the use's frame (RequireConstraintInFrame's contract),
+    // so what their formation read, a failed declaration a Type names, is that record's prerequisite and a read resting on a limit or a
+    // recovery derives; a use the obligation failed keeps that record, its frame dropped.
+    private void RequireCallVerdicts(Koto node, CallPlan call, BindingMode mode)
+    {
+        var use = this.VerdictUse(node);
+        var target = this.Library.PresentedTarget(call.Target);
+        this.RequireClauses(use, this.CheckCallObligation(call, this.ConstraintScope(node), use), mode, target);
+        var owned = this.RecordedFailure(use) != BindingFailure.None;
+        var frame = this.BeginConsultation(use);
+        this.RequireClauses(use, this.CheckCallTypes(call, this.ConstraintScope(node), use), mode, target);
+        if (owned)
+        {
+            this.DropConsultation(frame);
+        }
+        else
+        {
+            this.EndConsultation(use, frame);
+        }
     }
 
     // SPEC 23.1.2, 11.3 (PLAN G214): the node a call's verdict (its Type's formation, its step five) is recorded at, failed with its

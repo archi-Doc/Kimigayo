@@ -124,7 +124,7 @@ public sealed partial class Binding
     // SPEC 10.1, 10.2.1, 10.5 (PLAN G680): a check of the selected candidate once more, after its defaults (CheckDefaulted), its
     // waiting arguments (BindCallCore) or its fixed construction (ValidateFixedConstruction), never reopens selection: past every
     // argument and result check its step-5 verdict, Refuted as Unknown, is the selected call's obligation, whose record names the clause
-    // (CheckCallTypeConstraints, RequireClauses), and the candidate keeps the state it is selected in. The trial keeps a Refuted clause
+    // (CheckCallObligation, RequireClauses), and the candidate keeps the state it is selected in. The trial keeps a Refuted clause
     // fact only past those checks (TryCandidateCore).
     private static CandidateApplicability AsSelected(CandidateApplicability state, ReferenceConstraintFailure? failure, CandidateApplicability selected)
         => state == CandidateApplicability.Inapplicable && failure is { Proof: ConstraintProof.Refuted } ? selected : state;
