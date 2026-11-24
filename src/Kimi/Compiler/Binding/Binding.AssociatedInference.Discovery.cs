@@ -249,12 +249,13 @@ public sealed partial class Binding
     }
 
     // The associated Type a written projection on the inferring definition `read` names (SPEC 8.5.2), by the binder's one search
-    // (SearchAssociated, recording nothing) over the definition's conformances; a `.(C)` qualifier is not looked up (discovery's one
-    // lookup of a use is NamePath's), so a name two of its Contracts declare is ambiguous here. None when the name is ambiguous or names
-    // none: the read then reads every binding of the definition (Reach over-approximates; it never misses).
+    // (SearchAssociated, recording nothing, its site the projection as in the binder's own search of it) over the definition's
+    // conformances; a `.(C)` qualifier is not looked up (discovery's one lookup of a use is NamePath's), so a name two of its Contracts
+    // declare is ambiguous here. None when the name is ambiguous or names none: the read then reads every binding of the definition
+    // (Reach over-approximates; it never misses).
     private BindingSymbol? ProjectedAssociated(AssociatedInference read, MemberAccessKoto projection, BindingScope scope)
-        => TypeSpelling(projection.Right) is { } name && this.SearchAssociated(this.SelfType(read.Type), scope, name, null) is { Alternative: null, Found: { } found }
-            ? found : null;
+        => TypeSpelling(projection.Right) is { } name &&
+            this.SearchAssociated(this.SelfType(read.Type), scope, name, null, projection) is { Alternative: null, Found: { } found } ? found : null;
 
     private void AddHead(AssociatedInference batch, BindingSymbol? symbol)
     {

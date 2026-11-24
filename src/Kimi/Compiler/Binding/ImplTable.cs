@@ -5,7 +5,9 @@ using Kimi.Compiler.Parsing;
 // ImplTable (R7-V2a; SPEC 8.6, 8.6.1, 8.6.2, 8.8; DECISIONS R7-M16, BU-220; PLAN G949 S1-b1): the conformance declaration table, the one
 // store of a Binding's conformance identities and paths.
 // - Responsibility: one identity (BoundConformance) per Type and Contract; one path (BoundConformancePath) per Type, Contract,
-//   declaration and root Contract; the pass's paths, identities and each Type's identities in registration order; the lookups by key;
+//   declaration and root Contract, kept in its identity's row (NamedPaths: R7-N5 B8, DECISIONS BU-220's composite form, the key's
+//   first part holding the row) and found there by its declaring clause and root (NamedPath); the pass's paths, identities and each
+//   Type's identities in registration order; the lookups by key;
 //   the store decision: an identity or path is held by its Type symbol's module (SPEC 8.6.1: a conformance is declared only in its
 //   Type's own declaration), a library Type's in the base store (LibraryLayer.Impls), any other in the compilation's overlay, which is
 //   the one composition point; the pass stamps that replace the reset; the overlay's end-of-Bind sweep and pool; the built-in rows
@@ -66,7 +68,6 @@ namespace Kimi.Compiler;
 internal sealed class ImplTable
 {
     private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract), BoundConformance> identities = new();
-    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract, IsKoto Declaration, BindingSymbol Root), BoundConformancePath> paths = new();
     private readonly List<BoundConformancePath> active = new();
     private readonly List<BoundConformance> named = new();
     private readonly List<List<BoundConformance>> typeLists = new();
@@ -94,6 +95,7 @@ internal sealed class ImplTable
     private Stack<BoundConformance>? identityPool;
     private Stack<BoundConformancePath>? pathPool;
     private ulong listPass;
+    private int pathCount; // The paths the identities' rows hold.
 
     // The running pass's view (Begin): each store when the pass binds a module it holds, else none.
     private ImplTable? passOverlay;
@@ -162,6 +164,10 @@ internal sealed class ImplTable
 
     /// <summary>Gets a value indicating whether this is the base store (LibraryLayer.Impls), which has no base of its own.</summary>
     internal bool IsBase => this.library is null;
+
+    /// <summary>Gets the path entries this table's lookups compared in the identities' rows so far (NamedPath), read by the scaling tests;
+    /// a lookup in the base counts in the table that asks (never a write to the frozen base).</summary>
+    internal long PathScans { get; private set; }
 
     /// <summary>Gets the paths registered in this pass, the overlay's then the base's, each in registration order.</summary>
     internal LayerList<BoundConformancePath> Paths => new(this.Fresh().active, this.library!.Fresh().active, this.Admitted(this.library.activeAt));
@@ -312,9 +318,8 @@ internal sealed class ImplTable
     internal BoundConformancePath Path(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root)
     {
         var store = this.StoreOf(type);
-        var path = store.paths[(type, contract, declaration, root)];
-        return this.Read(store, path)
-            ?? throw new InvalidOperationException($"A registration named the path of `{type.Name}` to `{contract.Name}` before its registrar step (InternalInvariant; PLAN G949 S1-r1b rule (a)).");
+        return this.NamedPath(store.identities.GetValueOrDefault((type, contract)), declaration, root) is { } path && this.Read(store, path) is { } read ? read
+            : throw new InvalidOperationException($"A registration named the path of `{type.Name}` to `{contract.Name}` before its registrar step (InternalInvariant; PLAN G949 S1-r1b rule (a)).");
     }
 
     /// <summary>Gets a path registered in this pass (Active), as the pass reads it, or null.</summary>
@@ -326,7 +331,7 @@ internal sealed class ImplTable
     internal BoundConformancePath? TryPath(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root)
     {
         var store = this.StoreOf(type);
-        return store.paths.GetValueOrDefault((type, contract, declaration, root)) is { } path && this.Read(store, path) is { Active: true } read ? read : null;
+        return this.NamedPath(store.identities.GetValueOrDefault((type, contract)), declaration, root) is { } path && this.Read(store, path) is { Active: true } read ? read : null;
     }
 
     /// <summary>Registers a path in this pass, in its Type's store: on its first registration it joins Paths and its identity's paths.</summary>
@@ -355,8 +360,6 @@ internal sealed class ImplTable
             result.DeclaredPath = null;
             result.DeclaredSelf = null;
             result.Use = use;
-            result.Declaration = use;
-            result.RootContract = root;
             // The root path is named here and registered by its own call, so the lists follow the caller's order whichever path comes
             // first: an inherited base's order, where a refinement may follow its parent Contract's own conformance.
             result.RootPath = ReferenceEquals(contract, root) ? result : store.Named(type, root, use, root);
@@ -400,13 +403,13 @@ internal sealed class ImplTable
             {
                 identity.Freeze();
             }
-        }
 
-        foreach (var path in this.paths.Values)
-        {
-            if (path.Current)
+            foreach (var path in identity.NamedPaths)
             {
-                path.Freeze();
+                if (path.Current)
+                {
+                    path.Freeze();
+                }
             }
         }
 
@@ -420,11 +423,14 @@ internal sealed class ImplTable
     /// <returns>The path, or null when every current path is verified.</returns>
     internal BoundConformancePath? UnsettledPath()
     {
-        foreach (var path in this.paths.Values)
+        foreach (var identity in this.identities.Values)
         {
-            if (path.Current && (!path.IsVerified || path.Unsupported))
+            foreach (var path in identity.NamedPaths)
             {
-                return path;
+                if (path.Current && (!path.IsVerified || path.Unsupported))
+                {
+                    return path;
+                }
             }
         }
 
@@ -435,22 +441,30 @@ internal sealed class ImplTable
     /// conformance an edit removed is kept, and Identities keeps only registered ones.</summary>
     internal void Sweep()
     {
-        if (this.Fresh().active.Count == this.paths.Count)
+        if (this.Fresh().active.Count == this.pathCount)
         {
             return; // Every path, so every identity, is registered: a warm pass.
         }
 
-        foreach (var (key, path) in this.paths)
-        {
-            if (!path.Current || !path.Active)
-            {
-                this.paths.Remove(key);
-                (this.pathPool ??= new()).Push(path);
-            }
-        }
-
         foreach (var (key, identity) in this.identities)
         {
+            var row = identity.NamedPaths;
+            var kept = 0;
+            for (var i = 0; i < row.Count; i++)
+            {
+                if (row[i] is { Current: true, Active: true })
+                {
+                    row[kept++] = row[i];
+                }
+                else
+                {
+                    (this.pathPool ??= new()).Push(row[i]);
+                }
+            }
+
+            this.pathCount -= row.Count - kept;
+            row.RemoveRange(kept, row.Count - kept);
+
             if (identity.Paths.Count == 0)
             {
                 this.identities.Remove(key);
@@ -458,16 +472,16 @@ internal sealed class ImplTable
             }
         }
 
-        var kept = 0;
+        var listed = 0;
         for (var i = 0; i < this.named.Count; i++)
         {
             if (this.named[i].PathStorage.Count != 0)
             {
-                this.named[kept++] = this.named[i];
+                this.named[listed++] = this.named[i];
             }
         }
 
-        this.named.RemoveRange(kept, this.named.Count - kept);
+        this.named.RemoveRange(listed, this.named.Count - listed);
     }
 
     // PLAN G949 S1-1 (s11-design 3.1): a frozen store (Freeze) is never begun or registered into again; such a write is the
@@ -558,8 +572,27 @@ internal sealed class ImplTable
         return path;
     }
 
-    // One path per Type, Contract, declaration and root Contract, created when first named or taken from the pool emptied; only its
-    // registration activates it. An identity joins the pass's Identities when the pass first names it.
+    // An identity's path by its declaring clause and root Contract: a scan of the identity's row, one entry per (clause, root) that names
+    // the identity's Contract (the suite's longest row 13; a Type declaring N Contracts that each refine C scans its (Type, C) row N
+    // times, the scaling row's bound). PathScans counts the entries compared.
+    private BoundConformancePath? NamedPath(BoundConformance? identity, IsKoto declaration, BindingSymbol root)
+    {
+        var row = identity?.NamedPaths;
+        for (var i = 0; row is not null && i < row.Count; i++)
+        {
+            this.PathScans++;
+            if (ReferenceEquals(row[i].Declaration, declaration) && ReferenceEquals(row[i].RootContract, root))
+            {
+                return row[i];
+            }
+        }
+
+        return null;
+    }
+
+    // One path per Type, Contract, declaration and root Contract, created when first named (its key, Declaration and RootContract, written
+    // then) or taken from the pool emptied, in its identity's row; only its registration activates it. An identity joins the pass's
+    // Identities when the pass first names it.
     private BoundConformancePath Named(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingSymbol root)
     {
         if (!this.identities.TryGetValue((type, contract), out var identity))
@@ -574,10 +607,12 @@ internal sealed class ImplTable
             this.named.Add(identity);
         }
 
-        if (!this.paths.TryGetValue((type, contract, use, root), out var result))
+        if (this.NamedPath(identity, use, root) is not { } result)
         {
             result = this.pathPool is { Count: > 0 } sparePaths ? sparePaths.Pop().Reuse(type, contract, identity) : new(type, contract, this) { Identity = identity };
-            this.paths.Add((type, contract, use, root), result);
+            (result.Declaration, result.RootContract) = (use, root);
+            identity.NamedPaths.Add(result);
+            this.pathCount++;
         }
 
         return this.Touch(result);

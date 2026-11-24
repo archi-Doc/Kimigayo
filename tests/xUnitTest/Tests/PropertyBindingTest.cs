@@ -189,6 +189,16 @@ public partial class PropertyBindingTest
     [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
     public void APropertyWitnessFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 11's Type contract): a Property's Type holding a Function Type is formed without the nested
+    // signature (dev: UnprovenConstraint_Kd at the Property, c1pa), so a getter whose Function result differs gets SPEC's TypeMismatch_Kd
+    // at the getter alone (c1pm; dev: only that UnprovenConstraint_Kd, DECISIONS Q13: a SPEC-required record the Unknown formation hid), as
+    // its control without Origins (c1pmd).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n    public computed p: (Option<T during q>) -> i32\n        get() -> (Option<T during q>) -> i32 => func [] (o) => 0\n", "clean")] // c1pa
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n    public computed p: (Option<T during q>) -> i32\n        get() -> (Option<T during q>) -> i64 => func [] (o) => 0\n", "1*TypeMismatch_Kd")] // c1pm
+    [InlineData("struct H\n    public computed p: () -> i32\n        get() -> () -> i64 => func [] () => 0\n", "1*TypeMismatch_Kd")] // c1pmd
+    public void ANestedSignatureInAPropertyTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("let", false)]
     [InlineData("var", true)]
@@ -718,8 +728,10 @@ public partial class PropertyBindingTest
     // names a non-public contract; 11.1: the getter returns non-Copy storage). D-1163 publishes a late-refuted plan, whose positions keep
     // their kind and test, so G1076's cause (ii) shows at the function and the positions (on dev: at the match, and at the loop); keeping
     // such a plan an Error would need a late-only test in HasFacts and lose c1t's fixes (D-1163 R1.6), so G1076's fix moves these rows.
-    [InlineData(HiddenCaseGetter + Run + "    return match w.e\n        .A(let n) => n\n        .B => 0\n", "InaccessibleBinding_Kd enum; InaccessibleBinding_Kd T is Hidden; PrerequisiteUnavailable_Kd var e: E<Source> = .B; InvalidTypeFormation_Kd .B; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .A(let n); InvalidConstraint_Kd .A(let n); InternalInvariant_Kd let n; InternalInvariant_Kd .B; InvalidConstraint_Kd .B")]
-    [InlineData(HiddenCaseGetter + Run + "    var total = 0\n    loop\n        match w.e\n            .A(let n) => total += n\n            .B => exit\n    return total\n", "InaccessibleBinding_Kd enum; InaccessibleBinding_Kd T is Hidden; PrerequisiteUnavailable_Kd var e: E<Source> = .B; InvalidTypeFormation_Kd .B; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .A(let n); InvalidConstraint_Kd .A(let n); InternalInvariant_Kd let n; InternalInvariant_Kd .B; InvalidConstraint_Kd .B")]
+    // PLAN G1321 (Q13, F's G1321-7): the late recheck judges only the root `.A(let n)`, so `.B`'s InvalidConstraint_Kd, which read E's
+    // failed clause, is gone: G1321's late form, a dependent record as c1t's is (PatternBindingTest).
+    [InlineData(HiddenCaseGetter + Run + "    return match w.e\n        .A(let n) => n\n        .B => 0\n", "InaccessibleBinding_Kd enum; InaccessibleBinding_Kd T is Hidden; PrerequisiteUnavailable_Kd var e: E<Source> = .B; InvalidTypeFormation_Kd .B; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .A(let n); InvalidConstraint_Kd .A(let n); InternalInvariant_Kd let n; InternalInvariant_Kd .B")]
+    [InlineData(HiddenCaseGetter + Run + "    var total = 0\n    loop\n        match w.e\n            .A(let n) => total += n\n            .B => exit\n    return total\n", "InaccessibleBinding_Kd enum; InaccessibleBinding_Kd T is Hidden; PrerequisiteUnavailable_Kd var e: E<Source> = .B; InvalidTypeFormation_Kd .B; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .A(let n); InvalidConstraint_Kd .A(let n); InternalInvariant_Kd let n; InternalInvariant_Kd .B")]
     // open: G1076 (the use itself as the Subject, with an unrelated local's record in an arm)
     [InlineData(NonCopyP + OwnedR + OptionGetter + RunWithLocal + "    let r = match w.opt\n        .Some(_) => R.init()\n        .None => a\n    return r.n\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W, a: R) -> i32; InternalInvariant_Kd .Some(_); InternalInvariant_Kd .None; TransferRequired_Kd a")]
     [InlineData(NonCopyP + "struct W\n    public var h: rc/P = P.init()@rc\n        get() -> rc/P => storage\n    public init() => ()\n" + Run + "    return w.h@follow.x\n", "UnsatisfiedConstraint_Kd var h: rc/P = P.init()@rc; TransferRequired_Kd storage")]

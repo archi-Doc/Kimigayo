@@ -12,6 +12,9 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private readonly FormationCauseRows formationCauses;
 
+    // The written occurrences JudgeOccurrence judged in the running pass, its per-pass query's memo.
+    private readonly JudgedOccurrenceRows judgedOccurrences;
+
     // Conformance verifications and agreements in progress: a limit context, not an obligation (the obligation table holds the paths
     // being verified), read by ResolveConformance alone: inside them a conformance limited by OCC-X stays Unknown.
     private int conformanceChecks;
@@ -23,6 +26,9 @@ public sealed partial class Binding
     // failure. A failure the step records against it (a direction contradiction, a premise error, a proof's) is no failed context for the
     // step's own other checks, a self-read being no failed input; the context fails for every later check (DeclarationFailed).
     private Koto? validationStep;
+
+    // FailedWrittenType's child walk, made once (FailedWrittenChild).
+    private FailedWrittenChild? failedWrittenChild;
 
     // The change signal (invalidations) at the start of the latest walk of the pass's environments, -1 at the pass's start (ResetPass):
     // a walk that changed the binding moved the signal past it (ValidateConstraintEnvironments).
@@ -180,6 +186,10 @@ public sealed partial class Binding
         ConstraintProof.Error => BindingFailure.InvalidConstraint,
         _ => BindingFailure.Internal,
     };
+
+    // Whether a node is written Type syntax: a Type-syntax node, an Origin application or a Type application (a GenericsKoto bound to a
+    // Type's declaration; one bound to a function is a reference or a callee).
+    private static bool IsWrittenType(Koto node) => node is TypeKoto or OriginApplicationKoto or GenericsKoto { BoundSymbol.Kind: BindingSymbolKind.Type };
 
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
     private Koto? CallableArgument(Koto use, IsKoto clause)
@@ -551,41 +561,7 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause), clause), mode, frame);
             }
 
-            // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names. A check that
-            // recorded at a node first keeps its record.
-            if (this.JudgedOccurrence(node) is { Symbol.Declaration: DeclarationContainerKoto container } type)
-            {
-                var written = this.OccurrenceTypeNode(node);
-                var scope = this.ConstraintScope(node);
-                var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
-                var frame = this.BeginConsultation(use);
-                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, use);
-                this.RequireConstraintInFrame(use, result, mode, frame);
-                if (result != ConstraintProof.Proven)
-                {
-                    this.RestLayersOnType(node, written);
-                }
-
-                if (node.BindingState == BindingState.Invalid)
-                {
-                    // Invalid type formation in a clause must not remain available as evidence.
-                    for (var parent = node.Parent; parent is not null; parent = parent.Parent)
-                    {
-                        if (parent is IsKoto { BoundConstraint: { } fact } && scope.Constraints is { } environment)
-                        {
-                            // R7-C3: the clause's own judgment fails its premise; a conformance binding's clause is no premise (not in Facts:
-                            // FailPremise does nothing), its failure being its path's state (design-c31b §3 (c)).
-                            this.FailPremise(environment, fact, scope.Owner);
-                            break;
-                        }
-
-                        if (parent is DeclarationKoto)
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
+            this.JudgeOccurrence(node, mode);
         }
 
         // Compact in place: discharging N obligations never performs N list searches/removals.
@@ -595,7 +571,7 @@ public sealed partial class Binding
             var obligation = this.obligations[i];
             if (obligation.Deadline == BindingDeadline.Definition && this.TypeRoleCauses(obligation) == TypeRoleCause.None)
             {
-                this.obligationSet.Remove(obligation);
+                this.obligationSet.Remove(new(obligation));
                 continue;
             }
 
@@ -603,6 +579,61 @@ public sealed partial class Binding
         }
 
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
+    }
+
+    // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names; a check that recorded at
+    // a node first keeps its record. It is a per-pass query (E3e Revision 2), made once (judgedOccurrences), demanded by the first
+    // decision that reads the occurrence (FailedPart, at that decision's binding) or by ValidateConstraintUses, whichever comes first.
+    // SPEC 8.3.3 (held pending; E3e ruling 20): before the pass's final conformance decision (conformancesDecided) an answer that depends
+    // on a judgment held pending (EndAnswer; a program path's Unknown, BodyBinding's second source) is no verdict: it is not kept, its
+    // frame is dropped with what it read, so it records nothing and nothing rests on it (FailedPart reads the occurrence as not failed),
+    // and ValidateConstraintUses judges the occurrence after that decision. From the decision every answer is the verdict.
+    private void JudgeOccurrence(Koto node, BindingMode mode)
+    {
+        if (this.JudgedOccurrence(node) is not { Symbol.Declaration: DeclarationContainerKoto container } type || this.judgedOccurrences.Contains(node))
+        {
+            return;
+        }
+
+        this.judgedOccurrences.Set(node, true);
+        var written = this.OccurrenceTypeNode(node);
+        var scope = this.ConstraintScope(node);
+        var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
+        var frame = this.BeginConsultation(use);
+        var mark = this.BeginAnswer();
+        var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, use);
+        if (this.EndAnswer(mark, result) && !this.conformancesDecided)
+        {
+            this.judgedOccurrences.Set(node, false);
+            this.DropConsultation(frame);
+            return;
+        }
+
+        this.RequireConstraintInFrame(use, result, mode, frame);
+        if (result != ConstraintProof.Proven)
+        {
+            this.RestLayersOnType(node, written);
+        }
+
+        if (node.BindingState == BindingState.Invalid)
+        {
+            // Invalid type formation in a clause must not remain available as evidence.
+            for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+            {
+                if (parent is IsKoto { BoundConstraint: { } fact } && scope.Constraints is { } environment)
+                {
+                    // R7-C3: the clause's own judgment fails its premise; a conformance binding's clause is no premise (not in Facts:
+                    // FailPremise does nothing), its failure being its path's state (design-c31b §3 (c)).
+                    this.FailPremise(environment, fact, scope.Owner);
+                    break;
+                }
+
+                if (parent is DeclarationKoto)
+                {
+                    break;
+                }
+            }
+        }
     }
 
     // R7-V1c (SPEC 8.3.1, 8.6.3, 23.1.2; F's V1c rulings 3-4): the Type ValidateConstraintUses judges at `node`, or null. A layer that
@@ -656,6 +687,60 @@ public sealed partial class Binding
                 this.SetRecordedState(layer, state);
             }
         }
+    }
+
+    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a), E3e rulings 11, 13 to 15, Revision 2): a failed written Type that a use's published
+    // decision reads, as the part that decision rests on. One rule: the written Types a decision reads are the written Type syntax
+    // under its own syntax (FailedWrittenChild: its children that are written Types, and their written Type components at any depth,
+    // FailedPart), an invocation's through its callee (the callee itself when it is a written Type): a call's, a member call's or a
+    // reference's explicit Type arguments (SPEC F.5), a constructor's, a Case's or a static member's Type-application qualifier, a
+    // runtime test's target (Appendix F's NamedCoreType), a conversion's target (failed for any cause, E3e ruling 15 (b)), and a
+    // Property's written Type, its certificate's. The reader finds the failed occurrence under the layers that hold it, so no layer
+    // takes a state the occurrence's judgment did not give it (RestLayersOnType) and a declaration's written Type, read by its other
+    // readers (a stored Type's Owned proof), keeps them. A written Type node is no decision (its reader decides), nor is a declaration
+    // other than a Property. The decision asks it where it is made (BindNode's end, for a use bound in an executable body; a Property's
+    // certificate, ValidateProperties), demanding each occurrence's judgment (FailedPart, JudgeOccurrence), so it rests before any reader
+    // of it is bound and each reader rests by its own binding (SPEC 23.1.2), with no late rest. A declaration's own syntax (a clause, an
+    // associated Type's binding, a declared Property Type) is bound with no body (R4-M101 E1) and asks nothing at its binding: its
+    // occurrences' judgments read declaration verdicts decided after the bodies, so ValidateConstraintUses demands them first.
+    private Koto? FailedWrittenType(Koto node)
+    {
+        if (this.RecordedState(node) == BindingState.Invalid || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto)
+        {
+            return null;
+        }
+
+        var syntax = node is InvocationKoto invocation ? invocation.Method : node;
+        if (IsWrittenType(syntax))
+        {
+            return this.FailedPart(syntax);
+        }
+
+        var children = this.failedWrittenChild ??= new(this);
+        children.Failed = null;
+        syntax.VisitChildren(children);
+        return children.Failed;
+    }
+
+    // The failed node of the written Type syntax `type` heads, itself or one of its written Type components at any depth, as the part a
+    // reader rests on: the part it rests on itself, or the node.
+    private Koto? FailedPart(Koto type)
+    {
+        this.JudgeOccurrence(type, this.capabilityMode); // The occurrence's one judgment, demanded by its first reader.
+        if (this.RecordedState(type) == BindingState.Invalid)
+        {
+            return this.UnresolvedPart(type) ?? type;
+        }
+
+        for (var i = 0; i < type.TypeComponentCount; i++)
+        {
+            if (type.TypeComponent(i) is var component && IsWrittenType(component) && this.FailedPart(component) is { } failed)
+            {
+                return failed;
+            }
+        }
+
+        return null;
     }
 
     // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
@@ -1037,6 +1122,31 @@ public sealed partial class Binding
             for (var i = 0; i < binding.pass.Count; i++)
             {
                 binding.pass[i].Syntax.Hir.Families.FormationCauses.Empty();
+            }
+        }
+    }
+
+    /// <summary>The `judgedOccurrences` family's one accessor (DECISIONS BU-220): a working-state family, the written Type occurrences
+    /// JudgeOccurrence judged in the running pass (its per-pass query's memo), a `bool` row in the occurrence's module's NodeColumns at
+    /// its SyntaxId. A row of an earlier pass reads none, and the library's rows are released at its freeze (NodeColumns.Freeze).</summary>
+    private readonly struct JudgedOccurrenceRows(Binding binding)
+    {
+        internal void Set(Koto node, bool judged) => HirTables.Of(node).Families.JudgedOccurrences.Ref(node.SyntaxId, binding) = judged;
+
+        internal bool Contains(Koto node) => node.SyntaxOwner is { } table && table.Hir.Families.JudgedOccurrences.Get(node.SyntaxId, binding);
+    }
+
+    // FailedWrittenType's walk over one node's children: the first written Type among them that failed or holds a failed written Type
+    // component, as the part it rests on (FailedPart). One instance per Binding, reset before each walk.
+    private sealed class FailedWrittenChild(Binding binding) : KotoVisitor
+    {
+        internal Koto? Failed { get; set; }
+
+        public override void Visit(Koto node)
+        {
+            if (this.Failed is null && IsWrittenType(node))
+            {
+                this.Failed = binding.FailedPart(node);
             }
         }
     }

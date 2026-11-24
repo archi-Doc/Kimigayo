@@ -6,7 +6,8 @@
 //   Property's initializer, ValidateOriginRelations), each through EnterBody.
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
 //   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (a Closure's, ClosureHeaderScope; a named nested
-//   function's is the index walk's, DeclareFunction).
+//   function's is the index walk's, DeclareFunction), and the decision-time rule's scope (BindNode's end asks FailedWrittenType for a
+//   use bound in a body only, E3e).
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
 //   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
 //   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed in it, only AddObligation

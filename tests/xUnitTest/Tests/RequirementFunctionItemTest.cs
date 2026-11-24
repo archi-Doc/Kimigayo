@@ -170,6 +170,26 @@ public class RequirementFunctionItemTest
         }
     }
 
+    // SPEC 23.1.2 (DECISIONS Q13 rule W), 7.3, 7.7.4, 10.1, 10.7: a requirement whose own parameter Type failed where it is written (8.3:
+    // `Box<string>` with `T is i32` refuted, 5:34) is compared as written wherever a requirement Item is fitted or erased, since none of
+    // those readers reads the requirement's signature verdict: the failed part is a wildcard of a function-group reference alone, which
+    // reads its candidate's verdict. So the Item's records are as without the rule: no applicable requirement (rq1, 9:42), the valid
+    // one selected beside the failed one (rq2), the erasure's mismatch (rq3, 10:39), and through a conforming instance (rq1c: the
+    // implementation's own failed Type, 9:41, and 13:42), never an internal error. Each valid twin is accepted.
+    [Theory]
+    [InlineData("rq1", "contract Readable\n    func read(self: ref/Self, x: Box<string>) -> i32\n\nfunc host<T>(value: ref/T) -> i32\n    T is Readable and Owned\n    let operation: (ref/T, i32) -> i32 = T.read\n    return 0\n\npublic func main() => ()\n", "UnsatisfiedConstraint_Kd 5:34 | NoApplicableOverload_Kd 9:42")]
+    [InlineData("rq1ok", "contract Readable\n    func read(self: ref/Self, x: i32) -> i32\n\nfunc host<T>(value: ref/T) -> i32\n    T is Readable and Owned\n    let operation: (ref/T, i32) -> i32 = T.read\n    return 0\n\npublic func main() => ()\n", "")]
+    [InlineData("rq2", "contract Readable\n    func read(self: ref/Self, x: Box<string>) -> i32\ncontract Viewable\n    func read(self: ref/Self, x: i32) -> i32\n\nfunc host<T>(value: ref/T) -> i32\n    T is Readable and Viewable and Owned\n    let operation: (ref/T, i32) -> i32 = T.read\n    return 0\n\npublic func main() => ()\n", "UnsatisfiedConstraint_Kd 5:34")]
+    [InlineData("rq2ok", "contract Readable\n    func read(self: ref/Self, x: bool) -> i32\ncontract Viewable\n    func read(self: ref/Self, x: i32) -> i32\n\nfunc host<T>(value: ref/T) -> i32\n    T is Readable and Viewable and Owned\n    let operation: (ref/T, i32) -> i32 = T.read\n    return 0\n\npublic func main() => ()\n", "")]
+    [InlineData("rq3", "contract Readable\n    func read(self: ref/Self, x: Box<string>) -> i32\n\nfunc host<T>(value: ref/T) -> i32\n    T is Readable and Owned\n    let operation = T.read\n    let erased: (ref/T, i32) -> i32 = operation\n    return 0\n\npublic func main() => ()\n", "UnsatisfiedConstraint_Kd 5:34 | TypeMismatch_Kd 10:39")]
+    [InlineData("rq3ok", "contract Readable\n    func read(self: ref/Self, x: i32) -> i32\n\nfunc host<T>(value: ref/T) -> i32\n    T is Readable and Owned\n    let operation = T.read\n    let erased: (ref/T, i32) -> i32 = operation\n    return 0\n\npublic func main() => ()\n", "")]
+    [InlineData("rq1c", "contract Readable\n    func read(self: ref/Self, x: Box<string>) -> i32\n\nstruct Value\n    Self is Readable\n    public func read(self: ref/Self, x: Box<string>) -> i32 => 42\n\nfunc host<T>(value: ref/T) -> i32\n    T is Readable and Owned\n    let operation: (ref/T, i32) -> i32 = T.read\n    return operation(value, 1)\n\npublic func main()\n    let value = Value.init()\n    require host(value) == 42 else => $abort(\"read\")\n", "UnsatisfiedConstraint_Kd 5:34 | UnsatisfiedConstraint_Kd 9:41 | NoApplicableOverload_Kd 13:42")]
+    public void ARequirementsFailedPartIsComparedAsWritten(string id, string program, string records)
+    {
+        var located = DiagnosticCorpus.LocatedRecords("struct Box<T>\n    T is i32\n\n" + program);
+        Assert.Equal((id, records), (id, string.Join(" | ", located.Select(static x => string.Join(' ', x.Split(' ').Take(2))))));
+    }
+
     // SPEC 7.3, 10.5 (PLAN G244; DECISIONS BU-34): Binding.ItemComponent's layout. A requirement Item holds no own Type argument and its
     // Components are its Self and Contract reference only; a generic requirement's Item, explicit or not, is a located Unsupported_Kd, so no
     // requirement Item holds a pair slot's argument for TyCtxt's PairBindings.
