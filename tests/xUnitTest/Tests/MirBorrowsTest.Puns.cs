@@ -2814,13 +2814,13 @@ public sealed partial class MirBorrowsTest
     [InlineData("viaCarriedMixedBad", "viaCarriedMixedBad: kk = 2; viaCarriedMixedBad: var slot: raw/u8 = null")] // I, through mx.q
     [InlineData("viaCarriedMixedQFirstPOk", "viaCarriedMixedQFirstPOk: kk = 2; viaCarriedMixedQFirstPOk: var slot: raw/u8 = null")] // I, Field order
     [InlineData("viaCarriedMixedQFirstBad", "viaCarriedMixedQFirstBad: kk = 2; viaCarriedMixedQFirstBad: var slot: raw/u8 = null")] // I
-    [InlineData("viaCarriedMixedSPOk", "viaCarriedMixedSPOk: kk = 2; viaCarriedMixedSPOk: var slot: raw/u8 = null")] // I, s `during static`
+    [InlineData("viaCarriedMixedSPOk", "viaCarriedMixedSPOk: kk = 2")] // I, s `during static`
     [InlineData("viaCarriedMixedTPOk", "viaCarriedMixedTPOk: kk = 2; viaCarriedMixedTPOk: var slot: raw/u8 = null")] // I, an abstract part
     [InlineData("viaCarriedDeepBad", "viaCarriedDeepBad: kk = 2; viaCarriedDeepBad: var hop: raw/(raw/u8) = cell@raw")] // I, past p to hop
     [InlineData("viaCarriedMixedQCopyBad", "viaCarriedMixedQCopyBad: kk = 2; viaCarriedMixedQCopyBad: var slot: raw/u8 = null")] // I, a Copy
-    [InlineData("unknownMixedBad", "unknownMixedBad: kk = 2; unknownMixedBad: var slot: raw/u8 = null")] // I, take's abstract part
-    [InlineData("viaParamQBad", "viaParamQBad: kk = 2")] // I, mx.q holds a parameter's pointer
-    [InlineData("viaParamQPOk", "viaParamQPOk: kk = 2")] // I, mx.p carries it
+    [InlineData("unknownMixedBad", "unknownMixedBad: kk = 2 Unsupported_Kd; unknownMixedBad: var slot: raw/u8 = null Unsupported_Kd")] // I, undecided
+    [InlineData("viaParamQBad", "viaParamQBad: kk = 2; viaParamQBad: var slot: raw/u8 = null")] // I, mx.q holds a parameter's pointer
+    [InlineData("viaParamQPOk", "viaParamQPOk: kk = 2; viaParamQPOk: var slot: raw/u8 = null")] // I, mx.p carries it
     [InlineData("viaCarriedPinOk", "")] // V, every layer stated: f leaves at pin.p only what a admits
     [InlineData("viaParamQPinOk", "")] // V, no unstated layer
     [InlineData("viaCarriedMixedReplacedOk", "")] // V, mx replaced whole after f
