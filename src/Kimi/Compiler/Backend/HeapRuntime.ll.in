@@ -3,13 +3,18 @@
 ; free-list link) and its payload, which the routines return and take. A block of at most 256 KiB, its header included, is 2^k bytes
 ; (k = 5 to 18), popped from its class's list or carved from the current 1 MiB region, whose rest is abandoned when a new region is
 ; mapped; its release pushes it on its class's list, and it is never split, merged or returned. A larger block is a run of whole
-; pages of its own, mapped at its allocation and released at its release. Regions and runs are page-aligned and every class size is
-; a multiple of 32, so every payload is 16-aligned. No OS call: every page comes from the layer. A branch leaving the small path
-; (class list, bump) for a path that calls the layer or a run routine is expected to stay (llvm.expect), so block placement puts
-; those paths after the hot blocks wherever the routines are inlined.
+; pages of its own (PLAN G1311): a released run of at most 1 MiB is kept as the spare, which a later run of its length takes without
+; the layer, and the spare it replaces goes back to the layer; a larger run goes back at its release. The run path is two noinline
+; routines: each has one call site, so the inliner would fold it into every allocation and release site, which measured costs the
+; small path 4-5%, while one call is small beside a large block, whose payload exceeds 256 KiB. Regions and runs are page-aligned and
+; every class size is a multiple of 32, so every payload is 16-aligned. No OS call: every page comes from the layer. A branch
+; leaving the small path (class list, bump) for a path that calls the layer or a run routine is expected to stay (llvm.expect),
+; so block placement puts those paths after the hot blocks wherever the routines are inlined.
 @__kimi_heap_lists = internal global [14 x ptr] zeroinitializer, align 16
 @__kimi_heap_next = internal global ptr null, align 8
 @__kimi_heap_end = internal global ptr null, align 8
+@__kimi_heap_spare = internal global ptr null, align 8
+@__kimi_heap_spare_run = internal global i64 0, align 8
 declare i64 @llvm.ctlz.i64(i64, i1 immarg)
 declare i1 @llvm.expect.i1(i1, i1)
 
@@ -62,23 +67,19 @@ bump:
   store i64 %k, ptr %block, align 16
   br label %done
 large:
-  %rounded = add i64 %size, 4095
-  %run = and i64 %rounded, -4096
-  %pages = call ptr @__kimi_pages(i64 %run)
+  %pages = call ptr @__kimi_heap_take_run(i64 %size)
   %no_pages = icmp eq ptr %pages, null
-  br i1 %no_pages, label %failed, label %own
-own:
-  store i64 %run, ptr %pages, align 16
-  br label %done
+  br i1 %no_pages, label %failed, label %done
 done:
-  %start = phi ptr [ %free, %pop ], [ %block, %bump ], [ %pages, %own ]
+  %start = phi ptr [ %free, %pop ], [ %block, %bump ], [ %pages, %large ]
   %payload = getelementptr i8, ptr %start, i64 16
   ret ptr %payload
 failed:
   ret ptr null
 }
 
-; A payload the allocation returned: a block back on its class's list (-1), or a large run back to the layer (-1, else its OS error).
+; A payload the allocation returned: a block back on its class's list (-1), or a large run back to the allocator (-1, else the OS
+; error of the run it hands to the layer).
 {{__kimi_heap_release}}
 entry:
   %start = getelementptr i8, ptr %block, i64 -16
@@ -95,6 +96,52 @@ class:
   store ptr %start, ptr %head, align 8
   ret i64 -1
 large:
-  %error = call i64 @__kimi_release_pages(ptr %start, i64 %word)
+  %error = call i64 @__kimi_heap_return_run(ptr %start, i64 %word)
+  ret i64 %error
+}
+
+; A large block's run for a block size, the header included: the spare when the size rounded up to whole pages is its length, else
+; the layer's pages of that length, which word 0 records; null when the layer has none.
+define internal ptr @__kimi_heap_take_run(i64 %size) noinline #0 {
+entry:
+  %rounded = add i64 %size, 4095
+  %run = and i64 %rounded, -4096
+  %spare_run = load i64, ptr @__kimi_heap_spare_run, align 8
+  %same = icmp eq i64 %spare_run, %run
+  br i1 %same, label %take, label %map
+take:
+  %spare = load ptr, ptr @__kimi_heap_spare, align 8
+  store i64 0, ptr @__kimi_heap_spare_run, align 8
+  ret ptr %spare
+map:
+  %pages = call ptr @__kimi_pages(i64 %run)
+  %no_pages = icmp eq ptr %pages, null
+  br i1 %no_pages, label %failed, label %own
+own:
+  store i64 %run, ptr %pages, align 16
+  ret ptr %pages
+failed:
+  ret ptr null
+}
+
+; A released run of a byte length: at most 1 MiB, it becomes the spare and the spare it replaces goes to the layer; a larger one goes
+; to the layer. -1 when the layer released what it was given or nothing went to it, else the layer's OS error.
+define internal i64 @__kimi_heap_return_run(ptr %start, i64 %run) noinline #0 {
+entry:
+  %bounded = icmp ule i64 %run, 1048576
+  br i1 %bounded, label %keep, label %release
+keep:
+  %old = load ptr, ptr @__kimi_heap_spare, align 8
+  %old_run = load i64, ptr @__kimi_heap_spare_run, align 8
+  store ptr %start, ptr @__kimi_heap_spare, align 8
+  store i64 %run, ptr @__kimi_heap_spare_run, align 8
+  %had = icmp ne i64 %old_run, 0
+  br i1 %had, label %release, label %kept
+kept:
+  ret i64 -1
+release:
+  %victim = phi ptr [ %start, %entry ], [ %old, %keep ]
+  %victim_run = phi i64 [ %run, %entry ], [ %old_run, %keep ]
+  %error = call i64 @__kimi_release_pages(ptr %victim, i64 %victim_run)
   ret i64 %error
 }
