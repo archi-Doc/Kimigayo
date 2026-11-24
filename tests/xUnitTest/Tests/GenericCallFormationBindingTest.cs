@@ -43,6 +43,18 @@ public class GenericCallFormationBindingTest
             DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Span is { } span ? $"{x.Code} {source.Substring(span.Start, span.Length)}" : x.Code));
     }
 
+    // PLAN G464, E3e ruling 15 (b) (SPEC 23.1.2): a conversion's target is written Type syntax under its own syntax, so a conversion
+    // whose target failed, for any cause, rests on it: here each `objref/Base` is MissingOriginBinding_Kd (a moved value supplies no
+    // Origin), the conversion writes nothing and the Loans over it record nothing (DECISIONS Q13: dev's two ComparisonLoanConflict_Kd,
+    // dependent records, go; MirValidatorTest's R5-M72 row borrows instead).
+    [Fact]
+    public void AFailedConversionTargetRestsTheConversion()
+    {
+        var source = "open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\nfunc own(x: objref/Base) -> () => ()\n" +
+            "func probe<s/T>(flag: bool, a: s/Derived, b: s/Derived) -> ()\n    s is obj\n    own(if flag => a@move@objref/Base else => b@move@objref/Base)\n";
+        Assert.Equal("2*MissingOriginBinding_Kd", DiagnosticCorpus.RecordProfile(source));
+    }
+
     // PLAN G464, O-8 (a) (SPEC 23.1.2, 15.3.4, 8.3): an explicit Type argument whose written occurrence inside a Function Type failed
     // rests the call (no plan, InvalidExplicitArgumentCannotPublishCall) and the call records nothing of its own (DECISIONS Q13, rule W:
     // dev's NoApplicableOverload_Kd at the call, from the call's own formation of the nested result, goes), inside an Option too (o8c2).

@@ -966,16 +966,17 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // R5-M72 (its first review's B1): an input that does not reserve, an obj/Base or an objref/Base, is not checked, though a conditional's
-    // Adapts of a pair layer write it twice; the objref/Base program's only records are Binding's.
+    // Adapts of a pair layer write it twice: a moved obj/Base and a borrowed objref/Base. (A moved value's objref/Base has no Origin, so
+    // its conversion rests on that MissingOriginBinding_Kd and writes no Adapt: PLAN G464, E3e ruling 15 (b).)
     [Theory]
-    [InlineData("obj")]
-    [InlineData("objref")]
-    public void AnInputThatDoesNotReserveIsNotChecked(string semantics)
+    [InlineData("obj", "@move")]
+    [InlineData("objref", "")]
+    public void AnInputThatDoesNotReserveIsNotChecked(string semantics, string transfer)
     {
         var c = MirBuildTest.Compile("open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\n" +
             $"func own(x: {semantics}/Base) -> () => ()\nfunc probe<s/T>(flag: bool, a: s/Derived, b: s/Derived) -> ()\n    s is obj\n" +
-            $"    own(if flag => a@move@{semantics}/Base else => b@move@{semantics}/Base)\n");
-        Assert.Equal(semantics == "obj" ? [] : [Kimi.DiagnosticCode.MissingOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code).Distinct());
+            $"    own(if flag => a{transfer}@{semantics}/Base else => b{transfer}@{semantics}/Base)\n");
+        Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
         Assert.Equal(2, body.Statements.ToArray().Count(static x => x.Rvalue.Kind == MirRvalueKind.Adapt));

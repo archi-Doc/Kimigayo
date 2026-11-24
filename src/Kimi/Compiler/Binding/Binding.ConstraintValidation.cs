@@ -670,12 +670,12 @@ public sealed partial class Binding
     // decision reads are the written Type syntax under its own syntax (FailedWrittenChild: its children that are written Types, and
     // their written Type components at any depth, FailedPart), an invocation's through its callee (the callee itself when it is a
     // written Type): a call's, a member call's or a reference's explicit Type arguments (SPEC F.5), a constructor's, a Case's or a static
-    // member's Type-application qualifier, a runtime test's target (Appendix F's NamedCoreType), and a Property's written Type, its
-    // certificate's. The reader finds the failed occurrence under the layers that hold it, so no layer takes a state
-    // the occurrence's judgment did not give it (RestLayersOnType) and a declaration's written Type, read by its other readers (a stored
-    // Type's Owned proof), keeps them. A written Type node is no decision (its reader decides), nor is an invocation's callee (its
-    // invocation decides) or a declaration other than a Property (no use reads its decision before Check). Check rests the node on it,
-    // as on a failed called declaration.
+    // member's Type-application qualifier, a runtime test's target (Appendix F's NamedCoreType), a conversion's target (failed for any
+    // cause, E3e ruling 15 (b)), and a Property's written Type, its certificate's. The reader finds the failed occurrence under the
+    // layers that hold it, so no layer takes a state the occurrence's judgment did not give it (RestLayersOnType) and a declaration's
+    // written Type, read by its other readers (a stored Type's Owned proof), keeps them. A written Type node is no decision (its reader
+    // decides), nor is an invocation's callee (its invocation decides) or a declaration other than a Property (no use reads its decision
+    // before Check). Check rests the node on it, as on a failed called declaration.
     private Koto? FailedWrittenType(Koto node)
     {
         if (this.RecordedState(node) != BindingState.Resolved || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto ||
