@@ -186,8 +186,11 @@ public sealed partial class Binding
             return this.RecordWrite(binary, binding, binary.Left);
         }
 
+        // SPEC 13.7.1, 13.7.2, 23.1.2: a write's value takes its expected Type, and its route and fit their Types, from a target that
+        // designates a destination only (DesignatesDestination); a target that designates none gives its value no expectation.
+        var located = !assignment || this.DesignatesDestination(binary.Left);
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
-        var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
+        var counterpart = located && ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
         if (referenceBinding is { } assigned)
         {
@@ -201,7 +204,7 @@ public sealed partial class Binding
         // only with null at every layer, which the value decides (JudgeHolderPlace).
         var refused = assignment && bound is not null &&
             (!this.CheckDestination(binary, binary.Left, bound, scope) || (kind != KotoKind.Equals && !this.FitsUpdateResult(binary, binary.Left, bound)));
-        if (refused && !this.DesignatesDestination(binary.Left))
+        if (refused && !located)
         {
             return Complete(binary, null);
         }
