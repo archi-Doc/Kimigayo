@@ -104,7 +104,7 @@ public sealed partial class Binding
             ReferenceConstraintFailure? pending = null;
             var pendingProof = false;
             Koto? invalid = null;
-            var error = false;
+            FunctionKoto? error = null;
             var resting = false;
             this.failedCause = null;
             foreach (var candidate in group)
@@ -151,8 +151,8 @@ public sealed partial class Binding
 
                 if (state == CandidateApplicability.Error)
                 {
-                    error = true;
-                    invalid ??= this.InvalidDeclarationContextCause(function) ?? this.FailedSignaturePart(function);
+                    error ??= function;
+                    invalid ??= this.InvalidDeclarationContextCause(function);
                 }
 
                 if (state == CandidateApplicability.Applicable)
@@ -161,10 +161,13 @@ public sealed partial class Binding
                 }
             }
 
-            if (error)
+            if (error is not null)
             {
-                return (invalid ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(use, cause)
-                    : this.RecordConstraint(use, ConstraintProof.Error, []);
+                // SPEC 23.1.2 (rule W): an Error candidate's failed input, on whose record the reference rests: its failed declaration
+                // context, else the cause its proof read (the channel's), else its own signature verdict, which is not Proven
+                // (FunctionReferenceApplicability's first Error, before any trial), at its declaration, whatever the states of the
+                // written Types it restates when the reference binds (they are judged after the bodies, ValidateConstraintUses).
+                return this.CompleteDependent(use, invalid ?? this.TakeFailedCause().Use ?? error);
             }
 
             if (resting)
@@ -781,9 +784,10 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
-        // SPEC 23.1.2 (rule W): a callee whose own declared signature failed (its SignatureVerdict refuted, recorded where the signature
-        // is written) is a failed input, as a call's candidate in a failed declaration context is (CallSelection's Error): the reference
-        // rests on that record (BindFunctionReference's error arm), never reads the verdict as a fresh, fact-less inapplicability.
+        // SPEC 23.1.2 (rule W): a callee whose own declared signature failed (its SignatureVerdict not Proven, recorded where the
+        // signature is written) is a failed input, as a call's candidate in a failed declaration context is (CallSelection's Error): the
+        // reference rests on that declaration (BindFunctionReference's error arm), never reads the verdict as a fresh, fact-less
+        // inapplicability.
         if (this.CheckSignatureTypeConstraints(function, use) is ConstraintProof.Refuted or ConstraintProof.Error)
         {
             return CandidateApplicability.Error;

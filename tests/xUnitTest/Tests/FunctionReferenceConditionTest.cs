@@ -93,12 +93,14 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
     // SPEC 23.1.2 (rule W), 7.7.4, 10.7: a callee whose own declared signature failed where it is written (8.3: `Box<string>`, with
     // `T is i32` refuted) is a failed input of a reference that needs a Function Type, as a call's candidate in a failed declaration
     // context is: the reference rests on that record and adds none, never an internal error (triage row 9: InternalInvariant_Kd at an
-    // annotated `let`). Each published error as Code@line:column, in source order. Controls: the reference without a Function Type
-    // (its Item's own records, unchanged), a valid callee (none), a valid callee under a failed annotation (the annotation's record and
-    // its dependent mismatch, unchanged).
+    // annotated `let`), whatever the states of its written Types when the reference binds. Each published error as Code@line:column, in
+    // source order. A reference erased at a call argument keeps the record of the call's trial, which folds the callee's verdict into
+    // its proof (8:17; PLAN G375's site, not this rule's). Controls: the reference without a Function Type (its Item's own records,
+    // unchanged), a valid callee (none), a valid callee under a failed annotation (the annotation's record and its dependent mismatch,
+    // unchanged).
     [Theory]
     [InlineData("Box<string>", "", "    let f: () -> Box<string> = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:18")]
-    [InlineData("Box<string>", "func take(f: () -> Box<string>) -> i32 => 0", "    return take(g)", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@5:20")]
+    [InlineData("Box<string>", "func take(f: () -> Box<string>) -> i32 => 0", "    return take(g)", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@5:20 | UnsatisfiedConstraint_Kd@8:17")]
     [InlineData("Box<string>", "", "    let f: () -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13")]
     [InlineData("Box<string>", "", "    let f = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:13")]
     [InlineData("Box<i32>", "", "    let f: () -> Box<i32> = g\n    return 0", "")]
