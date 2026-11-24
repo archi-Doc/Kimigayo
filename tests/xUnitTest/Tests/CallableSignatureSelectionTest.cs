@@ -250,7 +250,8 @@ public class CallableSignatureSelectionTest
     // `not Callable` premise at such a depth contradicts the supplied clause (rncp: accepted before c2-3b, class 1). R7-C2c2 c2-5b
     // (SPEC 8.3.2 Exact assumption and Negation, 10.1): a negated clause is supplied at every depth too: it proves a `not Callable`
     // requirement (nd) and refutes a Callable Constraint, so the candidate requiring it is inapplicable (ndr); a written Callable
-    // premise at such a depth contradicts it (ncp: accepted before c2-5b, class 1). Without the clause, with the positive clause, for
+    // premise at such a depth contradicts it (ncp: accepted before c2-5b, class 1), a written `not Callable` premise agrees with it
+    // (nd2-agree), and a value call finds no candidate (kd2-not). Without the clause, with the positive clause, for
     // another signature or on T itself each stays as it was, and depth 1 (nd1, ncp1s) answers as before. The depth-0 forms with no
     // projection and no identity premise (na: per-call binders, an overload pair, a contradiction) are answered by the rows instead
     // of Supply's fact scan, as before. Rows as CompilationTestHelper.AssertRecordsAtLines reads them.
@@ -276,6 +277,9 @@ public class CallableSignatureSelectionTest
     [InlineData("ncp2s", NotHolder + Apply + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    T.(Holder).Next.(Holder).F is Callable<(i32) -> i32>\n    let g = t.deep()\n    return apply(g)\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32 <- T.(Holder).Next.(Holder).F is Callable<(i32) -> i32>")] // c2-5b: class 1, accepted before
     [InlineData("ncp3s", NotHolder + Apply + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    T.(Holder).Next.(Holder).Next.(Holder).F is Callable<(i32) -> i32>\n    let g = t.deep3()\n    return apply(g)\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32 <- T.(Holder).Next.(Holder).Next.(Holder).F is Callable<(i32) -> i32>")] // c2-5b: class 1, accepted before
     [InlineData("ncp2i", NotHolder + Apply + "func probe<T, U>(t: ref/T) -> i32\n    T is Holder\n    U is T\n    U.(Holder).Next.(Holder).F is Callable<(i32) -> i32>\n    let g = t.deep()\n    return apply(g)\n", "InvalidConstraint_Kd: func probe<T, U>(t: ref/T) -> i32 <- U.(Holder).Next.(Holder).F is Callable<(i32) -> i32>")] // c2-5b: class 1, accepted before
+    [InlineData("nd2-apply", NotHolder + Apply + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return apply(g)\n", "NoApplicableOverload_Kd: return apply(g)")] // c2-5b: UnprovenConstraint_Kd before (record selection, Q13: rejected on both)
+    [InlineData("nd2-agree", NotHolder + NoCall + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    T.(Holder).Next.(Holder).F is not Callable<(i32) -> i32>\n    let g = t.deep()\n    return noCall(g)\n", "")]
+    [InlineData("kd2-not", NotHolder + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return g(1)\n", "NotCallable_Kd: return g(1)")]
     [InlineData("nd1", NotHolder + NoCall + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.near()\n    return noCall(g)\n", "")]
     [InlineData("nd2n-sig", NotHolder + NoCall64 + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return noCall64(g)\n", "UnprovenConstraint_Kd: return noCall64(g)")]
     [InlineData("nd2n-bare", HolderWithoutClause + NoCall + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return noCall(g)\n", "UnprovenConstraint_Kd: return noCall(g)")]
