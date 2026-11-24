@@ -2,7 +2,7 @@
 
 [Specification index](../SPEC.md)
 
-This revision defines one executable target profile, windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)). Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)), including the Kimi Kotonoha's ([§22.1](#221-required-kimi-declarations)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)); the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
+This revision defines two executable target profiles: windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)) and linux-x64, `x86_64-unknown-linux-musl` ([§21.5](../impl/21-layout-runtime-and-code-generation.md#215-linux-x64-runtime)); running or testing a linux-x64 program on a windows-x64 host is Unsupported. Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)), including the Kimi Kotonoha's ([§22.1](#221-required-kimi-declarations)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)), which is also linux-x64's layout; the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
 
 ## 22.1. Required Kimi declarations
 
@@ -384,7 +384,7 @@ struct Cache<T>
 
 ## 22.5. Abort locations and codes
 
-The Abort contract is [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup); the windows-x64 output format is in [§21.4.2](../impl/21-layout-runtime-and-code-generation.md#2142-process-entry-and-exit).
+The Abort contract is [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup); the output format is in [§21.4.2](../impl/21-layout-runtime-and-code-generation.md#2142-process-entry-and-exit) (windows-x64) and [§21.5.2](../impl/21-layout-runtime-and-code-generation.md#2152-process-entry-and-exit) (linux-x64).
 
 ### 22.5.1. Abort location
 
