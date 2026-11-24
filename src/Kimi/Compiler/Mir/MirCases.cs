@@ -28,6 +28,10 @@ internal sealed class MirCases(TyCtxt types)
     /// <summary>Gets the body of the selected view.</summary>
     internal MirBody Body { get; private set; } = null!;
 
+    /// <summary>Gets the selected view's cases, the case of each binder by the binder's index (<see cref="Select"/>), none once
+    /// deselected: the data <see cref="TyCtxt.CaseType"/> and a direct call's contract (TyCtxt.Retains) read a view by.</summary>
+    internal ReadOnlySpan<PairCase> View => this.view.AsSpan(0, this.width);
+
     /// <summary>Gets the number of views of a body: the product of its binders' admitted sets (<see cref="PairBinder.CaseProduct"/>), 1
     /// without a binder, from 1 to <see cref="PairBinder.CaseBound"/>: Binding decides the cases once per definition and publishes no part
     /// of a definition beyond the bound or whose binders admit no case (SPEC 8.15, 8.3.4, 23.1.1), and <see cref="MirValidator"/> checks
@@ -108,7 +112,7 @@ internal sealed class MirCases(TyCtxt types)
             this.view[b] = new(binders[b].Target, (SemanticsKind)BitOperations.TrailingZeroCount(admitted)); // Mask bit i is SemanticsKind i.
         }
 
-        return this.view.AsSpan(0, this.width);
+        return this.View;
     }
 
     /// <summary>Selects no view: every pair layer keeps its declared Type, so a Type of a use no view of which is known admits every case
@@ -171,7 +175,7 @@ internal sealed class MirCases(TyCtxt types)
     /// (<see cref="TyCtxt.CaseType"/>), as a Place's, a local's or a projection's Type is in that case.</summary>
     /// <param name="type">The Type.</param>
     /// <returns>The case Type.</returns>
-    internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
+    internal BoundType Type(BoundType type) => types.CaseType(type, this.View);
 
     /// <summary>Gets the case Type (<see cref="Type"/>) of a Type that may be unknown: none for none, a local or static of no Type (a slot
     /// Binding failed, <see cref="MirLocal"/>; PLAN G1073) and a temp of no Type derived from one, accessed only as MirValidator's Bounded

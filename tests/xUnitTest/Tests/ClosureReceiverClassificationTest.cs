@@ -434,9 +434,10 @@ public class ClosureReceiverClassificationTest
     // only Copy it stays Shared. The value call, the assignment and the Dictionary entry were Shared in every case (2c-2 review B1).
     // The exclusive rows' `var` twin is valid, but the Exclusive call `f(y)` stores the receiver's Content, which leaves the shared capture
     // `g@ref`'s Loan where `g`'s storage ends, so since the MIR decides (R6-check H5; H3b T30) it publishes, under `s = uniq` only, a
-    // ComparisonLoanConflict_Kd at `let g = ...` (PendingGxs, its case note asserted). Under `s = owner` the call is Shared (SPEC 7.7.3):
-    // it acquires `f` shared and its contract's call receiver input is shared, which writes nothing through the environment (SPEC 15.8.2,
-    // 15.6.4), so that view has no record (Z4-M removed PD13's Unsupported_Kd there). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」,
+    // ComparisonLoanConflict_Kd at `let g = ...` (PendingGxs, its case note asserted). Under `s = owner` the call is Shared (SPEC 7.7.3)
+    // and `q` is a `T` by value (SPEC 8.14): the view reads the call's contract in its case, whose call receiver input is shared, which
+    // writes nothing through the environment (SPEC 15.8.2, 15.6.4), and which writes nothing through `q`, so that view has no record
+    // (Z4-M removed PD13's Unsupported_Kd there). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」,
     // board O-1): PLAN G148 (2), GXS's proposal, which reconciles SPEC 15.6.4 with 15.8.2's retention, restores the acceptance and
     // re-points these rows back to no record. G254a (PLAN G254; Q17 class 1; SPEC 8.1.1, 8.1.2, 15.4.2, 15.6.3, 15.8.2): under `s = uniq`
     // the use Reborrows the captured `x` within the call receiver, and `g`'s parameter and the annotated Dictionary element are the

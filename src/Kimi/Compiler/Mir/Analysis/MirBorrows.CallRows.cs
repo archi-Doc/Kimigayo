@@ -8,8 +8,9 @@ namespace Kimi.Compiler.Mir;
 // A5's Call contract records (A3 5, Calls; E14; SPEC 7.2.3, 15.8.2; DECISIONS R4-M51, R4-M63, R4-M93, R4-M148, R4-M154): the retention a
 // Call applies, by callee kind, apart from its transfer (MirBorrows.Calls).
 // Input: a Call terminator; for a callee's contract Binding's retention (TyCtxt.Retains over the callee's declaration and Subst, an
-// intrinsic's library declaration included, or a Value callee's declared signature) and the intrinsic table's retained operand beyond a
-// declaration (MirDescriptors); a default template's call (MirCalleeKind.Fn, Arg > 0) needs neither.
+// intrinsic's library declaration included, its instance read in the view's case, or a Value callee's Type and declared signature, each
+// in the view's case) and the intrinsic table's retained operand beyond a declaration (MirDescriptors); a default template's call
+// (MirCalleeKind.Fn, Arg > 0) needs neither.
 // Output: Planned, in reused scratch (MirBorrows.Holders reads the result's kinds before the forward solve): the result's kinds by
 // operand position (resultKinds) and whether it is untied, the contract's retention whose Writes the Call stores through (planned), its
 // slots' operand positions (slotPositions) and the outputs the call writes only where their receiver refers to (its referent stores,
@@ -177,9 +178,15 @@ internal sealed partial class MirBorrows
             (ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count) != call.Count;
 
     // The retention a Call's contract gives: TyCtxt.Retains over the callee's declaration (an intrinsic's library declaration, E14) and
-    // Subst, or a Value callee's declared signature; none for another terminator, an intrinsic without a declaration or a default template's
-    // call. Its Limit, a genuine limit, retains nothing the stratum follows: the checks record a located Unsupported_Kd at the call
-    // (R4-M51); a call over storage Binding rejected has its rows (G240).
+    // Subst, or over a Value callee's Type and declared signature. Every Type the call passes to its contract is read in the selected view's
+    // case after the call's substitution, never through a cased substitution (MirCases; SPEC 7.7.3, 8.14, 15.8.2, as a destruction's
+    // contract is read over its case Type): a Value call's callee and declared signature, already its instance's Types; a direct call's
+    // instance inputs, result, destruction receiver and bound signatures, which Retains reads in the view's cases (MirCases.View), keyed by
+    // its substitution's case (TyCtxt.CaseSubst). So a Closure callee's call receiver input is the receiver its case admits
+    // (TyCtxt.ClosureReceiverIn), and an input of a pair layer is its case's Type, by value in the owner case, so the call writes nothing
+    // through it there (SPEC 15.6.4); none for another terminator, an intrinsic without a declaration or a default template's call. Its
+    // Limit, a genuine limit, retains nothing the stratum follows: the checks record a located Unsupported_Kd at the call (R4-M51); a call
+    // over storage Binding rejected has its rows (G240).
     private CallRetention? Retaining(in MirTerminator call)
     {
         var callee = call.Callee;
@@ -189,7 +196,7 @@ internal sealed partial class MirBorrows
         }
 
         return callee.Kind == MirCalleeKind.Value
-            ? types.Retains(cases.TypeOf(call.Operand), this.body.Consts[callee.Arg].Type, this.body.Key.Decl)
-            : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl);
+            ? types.Retains(cases.TypeOf(call.Operand), cases.Type(this.body.Consts[callee.Arg].Type), this.body.Key.Decl)
+            : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl, cases.View);
     }
 }

@@ -124,7 +124,7 @@ internal sealed partial class MirBorrows
         this.ownKeys.Clear();
         this.ownIndex.Clear();
         if (this.body.Key is not { Kind: MirBodyKind.Fn or MirBodyKind.Test, Decl: { } declaration } || !this.ReadsRaw(declaration) ||
-            types.Retains(declaration, null, declaration) is not { IsLimit: false } retention || !WritesUntied(retention))
+            types.Retains(declaration, null, declaration, []) is not { IsLimit: false } retention || !WritesUntied(retention))
         {
             return;
         }

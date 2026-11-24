@@ -171,6 +171,35 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
+    // SPEC 8.15 (DECISIONS R4-M<n>, Z4-M): the case key of a call's substitution in one Semantics case, its Self, declaring Type and Types
+    // each read by CaseType (a null slot kept), its lengths, Origins and inputs the call's: the call itself without a case or a pair layer,
+    // and Intern's own where no Type changes, so nothing is allocated then. Retains keys a direct call's contract by it, one entry per
+    // distinct case reading. Must not be substituted through: a pair slot holds its binder's whole Type, and a case form placed there is
+    // judged by Binding's substitution under the caller's premises, not the case (DECISIONS BU-240); a contract instantiates with the
+    // call's own substitution and reads its Types in the case after it (Retains).
+    internal Subst CaseSubst(Subst call, ReadOnlySpan<PairCase> cases)
+    {
+        var paired = call.Self?.ContainsPairLayer == true || call.Declaring?.ContainsPairLayer == true;
+        foreach (var type in call.Types)
+        {
+            paired |= type?.ContainsPairLayer == true;
+        }
+
+        if (cases.IsEmpty || !paired)
+        {
+            return call;
+        }
+
+        var types = Fit(ref this.caseTypes, call.Types.Length);
+        for (var i = 0; i < types.Length; i++)
+        {
+            types[i] = call.Types[i] is { } type ? this.CaseType(type, cases) : null;
+        }
+
+        var self = call.Self is { } conforming ? this.CaseType(conforming, cases) : null;
+        return this.Intern(call.Target, self, call.Declaring is { } owner ? this.CaseType(owner, cases) : null, types, call.Lengths, call.Origins, call.Inputs);
+    }
+
     // A Type parameter's own Type, which no interning shares: a generic parameter's whole Type and a pair parameter's target
     // projection (Binding.Indexing), a Contract's Self (Binding.ContractSelfType); each is made once and kept on its symbol.
     internal BoundType Parameter(string name, BoundTypeKind kind, BindingSymbol symbol) => new(++this.typeCount, name, kind, symbol);

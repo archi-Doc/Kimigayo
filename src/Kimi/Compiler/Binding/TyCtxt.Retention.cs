@@ -16,8 +16,9 @@
 // names, without an Origin; an erased destruction, of a part whose `drop` the destruction walk cannot see (SPEC 16.3.3), retains as the
 // erased call `(uniq/P) -> ()` over the same receiver (RetainsErasedDestruction). The receiver, which cannot be stored, captured or
 // returned, publishes no Value row: it has no Origin a caller names, and rule A keeps only the written-through input's chain.
-// Output: an immutable CallRetention, one per callee, signature or erased destruction's receiver, Type instantiation, the premise
-// scope or declaration it reads and a Closure's call receiver, for the latest Binding pass and reused by later passes until an edit
+// Output: an immutable CallRetention, one per callee, signature or erased destruction's receiver, Type instantiation (a direct call's
+// case key, CaseSubst), the premise scope or declaration it reads and a Closure's call receiver, for the latest Binding pass and reused
+// by later passes until an edit
 // (DECISIONS R4-M154): its Result (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), the result read as an output
 // (ResultWrites: Own the Result, Reached the storages past the result's written layers; null where it has none; G841's H2), per output it
 // may write (Writes, ascending) an OutputRetention, and ReferentStores; an OutputRetention holds the StorageRetention of the output's root storage (Own: what the

@@ -14,9 +14,9 @@ internal sealed partial class TyCtxt
     // HandedCallables' depth bound, MirTypes.Holding's: past it a growing recursive Type's parts are the Limit its hold walk reports.
     private const int HandedBound = 32;
 
-    // Per callee, signature or erased destruction's receiver, Type instantiation, the premise scope or binder the computation reads and a
-    // Closure's call receiver (Retains; null for any other contract); kept across passes with no edit, whose contracts are the same, and
-    // discarded with the source analysis at an edit (Binding.Invalidate). A contract reads its local regions' bounds
+    // Per callee, signature or erased destruction's receiver, Type instantiation (a direct call's case key, CaseSubst), the premise scope
+    // or binder the computation reads and a Closure's call receiver (Retains; null for any other contract); kept across passes with no
+    // edit, whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate). A contract reads its local regions' bounds
     // (Binding.AddRegionMeet) and the Origin-atom borrows (Binding.RawOrigins.Borrows), so its key holds Binding.RetentionState: the
     // region graph's and the borrows' versions until the pass's borrow writers have run, Complete afterwards, so a read while a body binds
     // (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS: G570, as the publication amends it).
@@ -31,8 +31,10 @@ internal sealed partial class TyCtxt
     private readonly Dictionary<BoundType, int> handedSeen = new(ReferenceEqualityComparer.Instance); // Each part's shallowest depth (Binding.Enters).
 
     // SPEC 15.6.4: a callee's retention under a call's Subst (a Fn, Requirement or Virtual MIR callee, the function the Subst targets, or an
-    // Intrinsic one's library declaration; its default templates are A5's), called in `definition`.
-    internal CallRetention Retains(BindingSymbol callee, Subst? subst, BindingSymbol? definition)
+    // Intrinsic one's library declaration; its default templates are A5's), called in `definition`, in the Semantics case `cases` (SPEC
+    // 8.15; none for a case-free reading): every Type the instance hands its contract is read in the case after the call's substitution,
+    // never through a cased substitution (InstanceRetention; DECISIONS R4-M<n>), so its key holds the substitution's case key (CaseSubst).
+    internal CallRetention Retains(BindingSymbol callee, Subst? subst, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
     {
         Debug.Assert(subst is null || ReferenceEquals(subst.Target, callee));
 
@@ -41,14 +43,14 @@ internal sealed partial class TyCtxt
         // `I is Iterator`), so its key holds that premise scope; any other reads alike in every definition.
         var types = subst is null ? null : this.Intern(subst.Target, subst.Self, subst.Declaring, subst.Types, subst.Lengths, [], []);
         var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : null;
-        var state = binding.RetentionState;
-        if (this.retentions.TryGetValue((callee, types, scope, state, null), out var known))
+        (object Callee, Subst? Types, object? Scope, int State, SemanticsKind? Receiver) key = (callee, types is null ? null : this.CaseSubst(types, cases), scope, binding.RetentionState, null);
+        if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
         }
 
-        var retention = this.InstanceRetention(callee, types, scope, definition) ?? CallRetention.Limit;
-        this.retentions.Add((callee, types, scope, state, null), retention);
+        var retention = this.InstanceRetention(callee, types, scope, definition, cases) ?? CallRetention.Limit;
+        this.retentions.Add(key, retention);
         return retention;
     }
 
@@ -261,14 +263,17 @@ internal sealed partial class TyCtxt
     // The retention of a callee's contract and the callables its premises hand its body (Binding.HandedSignatures, erased callables it may
     // call) as the Types instantiate them, or of an erased callee's own signature (ErasedCallee) in `definition`; null where one of them is
     // past Binding's storage limits or does not substitute (CallRetention.Limit; Instance). A `drop` declares no parameter (Signature
-    // numbers none): its input 0 is its destruction receiver over the layer the Types instantiate.
-    private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope? scope, BindingSymbol? definition)
+    // numbers none): its input 0 is its destruction receiver over the layer the Types instantiate. Each instantiated Type it hands the
+    // contract (the result, every input, a bound's signature) is then read in `cases` (CaseType: in the owner case a pair layer's input is
+    // its target by value, SPEC 8.14); Binding.Retains keeps the case-free `types` (its target, Origins and declaring Type's clauses).
+    private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope? scope, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
     {
-        if (this.Instance(callee, types, -1, scope, out var count) is not { } result)
+        if (this.Instance(callee, types, -1, scope, out var count) is not { } instance)
         {
             return null;
         }
 
+        var result = this.CaseType(instance, cases);
         var declaration = (FunctionKoto)callee.Declaration;
         BoundType[] inputs;
         if (declaration.IsDestructor)
@@ -278,7 +283,7 @@ internal sealed partial class TyCtxt
                 return null;
             }
 
-            inputs = [this.DestructionReceiver(layer)];
+            inputs = [this.CaseType(this.DestructionReceiver(layer), cases)];
         }
         else
         {
@@ -290,7 +295,7 @@ internal sealed partial class TyCtxt
                     return null;
                 }
 
-                inputs[i] = input;
+                inputs[i] = this.CaseType(input, cases);
             }
         }
 
@@ -312,7 +317,7 @@ internal sealed partial class TyCtxt
                 return null;
             }
 
-            bounds[i] = bounds[i] with { Signature = bound, Declared = bounds[i].Signature };
+            bounds[i] = bounds[i] with { Signature = this.CaseType(bound, cases), Declared = bounds[i].Signature };
         }
 
         return binding.Retains(declaration, inputs, result, types, CollectionsMarshal.AsSpan(bounds), scope);

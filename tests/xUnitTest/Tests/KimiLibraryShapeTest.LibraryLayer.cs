@@ -466,6 +466,7 @@ public partial class KimiLibraryShapeTest
             ["Binding.types.retentionBounds"] = Rule.Program, // A retention computation's Callable bounds.
             ["Binding.types.composedTypes"] = Rule.Program, // Compose's bindings before interning.
             ["Binding.types.composedOrigins"] = Rule.Program,
+            ["Binding.types.caseTypes"] = Rule.Program, // CaseSubst's case Types before interning.
             ["Binding.types.witnessOrigins"] = Rule.Program, // A witness instance's Origins before interning.
         };
 
