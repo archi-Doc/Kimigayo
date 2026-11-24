@@ -1491,6 +1491,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   programs from SPEC, builds at least three adversarial invalid twins and runs MIR codegen, without reading the change's code; the
   window's G-O stays. §9: board cells and log lines of about three or four lines, linking files for detail. The rest of Q23 is
   WORKFLOW's. For new units. No SPEC or IMPL text. Nothing frozen.
+- Revision 120 (2026-11-25, plan §14; the Back's D-1257, R7-N5 B7's landing): §5.0's D2 row closes b's census line
+  (`shapeJudgments` is a pass memo keyed by `SourceRef`s; DECISIONS BU-220's R7-N5 B7 line); §5.1's N5 row's exit reads
+  ArchitectureRulesTest's `NodeKeyedTablesStayAtTheirSites`, which replaced the line regex, at 0 for Binding's types. No SPEC or
+  IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1

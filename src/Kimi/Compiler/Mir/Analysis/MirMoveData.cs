@@ -139,6 +139,7 @@ internal sealed class MirMoveData(TyCtxt types)
         this.Constructing = body.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(body.Key.Decl);
         if (this.Constructing)
         {
+            var site = types.OpenSite(body.Locals[0].Source.Syntax); // PLAN G651 U2b R5 (D-C4): the local's node site.
             var self = body.Locals[0].Type!; // A constructor's object, its struct's Type (MirBuilder.Body), never of no Type.
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
@@ -154,6 +155,8 @@ internal sealed class MirMoveData(TyCtxt types)
                 var layer = this.Child(0, MirProjectionKind.Base, 1); // Adding grows the arrays first.
                 this.named[layer] = true;
             }
+
+            types.CloseSite(site);
         }
 
         var events = new Events(this, flow);
@@ -162,17 +165,20 @@ internal sealed class MirMoveData(TyCtxt types)
             for (var i = 0; i <= body.Blocks[block].Count; i++)
             {
                 var index = body.Blocks[block].Start + i;
-                events.At(block, i < body.Blocks[block].Count ? body.Statements[index].Kind : MirStatementKind.Assign);
+                var statement = i < body.Blocks[block].Count;
+                var site = types.OpenSite((statement ? body.Statements[index].Source : body.Blocks[block].Terminator.Source).Syntax); // D-C4
+                events.At(block, statement ? body.Statements[index].Kind : MirStatementKind.Assign);
                 MirUses.ForEach(body, new(block, i), ref events);
-                if (i < body.Blocks[block].Count && body.Statements[index].Kind == MirStatementKind.Assign)
+                if (statement && body.Statements[index].Kind == MirStatementKind.Assign)
                 {
                     this.Nevers(index, flow.Head(block), body.Statements[index].Place, body.Statements[index].Rvalue);
                 }
-            }
+                else if (!statement && body.Blocks[block].Terminator.Places)
+                {
+                    this.Inserted(block, body.Blocks[block].Terminator);
+                }
 
-            if (body.Blocks[block].Terminator.Places)
-            {
-                this.Inserted(block, body.Blocks[block].Terminator);
+                types.CloseSite(site);
             }
         }
 
