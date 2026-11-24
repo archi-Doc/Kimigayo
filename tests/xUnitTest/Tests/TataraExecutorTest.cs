@@ -392,9 +392,11 @@ public sealed class TataraExecutorTest : IDisposable
 
     private static string Hash(string path) => File.Exists(path) ? ArtifactFiles.Hash(path) : "(none)";
 
-    // lld-link's arguments after its flavor: the object, the libraries in the build's order, then P13's options.
+    // lld-link's arguments after its flavor, as NativeBuild.Link's list: the object, the libraries in the build's order, then P13's
+    // options and LC3 D1's (no environment, no toolchain detection; the system root the executable's own .native folder, as /out: is
+    // each side's own).
     private static string[] LinkArguments(string obj, string exe, string[] libraries)
-        => [obj, .. libraries, "/entry:" + TargetProfile.Windows.EntrySymbol, "/subsystem:" + TargetProfile.Windows.Subsystem, "/nodefaultlib", "/Brepro", "/out:" + exe];
+        => [obj, .. libraries, "/entry:" + TargetProfile.Windows.EntrySymbol, "/subsystem:" + TargetProfile.Windows.Subsystem, "/nodefaultlib", "/Brepro", "/lldignoreenv", "/winsysroot:" + Path.ChangeExtension(exe, ".native"), "/out:" + exe];
 
     // ld.lld's arguments after its flavor: a static executable of the object and the libraries, no library a .deplibs section names.
     private static string[] ElfLinkArguments(string obj, string exe, string[] libraries) => ["-m", "elf_x86_64", "-static", "--no-dependent-libraries", obj, .. libraries, "-o", exe];

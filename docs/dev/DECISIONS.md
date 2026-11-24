@@ -32099,3 +32099,17 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     same reserved supply, or the same logical name of one Kotonoha"; `UnavailableReservedImport_Kd` "A reserved supply provides only
     its implementation-defined symbol set, and no profile's supply of this name provides the symbol"; requirement
     `Binding.ConflictingImportSupply` "the imports of one symbol agree on their providing library".
+- **T-M39 The link reads no environment and detects no toolchain** (Tatara, 2026-11-24; LC3 Revision 1 D1, Q-735, D-1222; PLAN
+  G1334 (D-1200); Minor, a defect fix (T's ruling 1); P-D's evidence `artifacts\handoff\tatara\units\LC3\r1\p-d.md`; the Middle's
+  review C-528 ACCEPT). `NativeBuild.Link` passes `/lldignoreenv` and `/winsysroot:<stem>.native` (`ArtifactPaths.Native`, the
+  folder of the build's staged inputs, which `StageInput` and `IsStaged` read too). Without them LLD's COFF driver adds
+  `%LINK%`/`%_LINK_%` to its arguments (P-D: `_LINK_=/filealign:4096` changed Hello's executable, which the record does not name;
+  the regression `NativeToolchainTest.TheLinkReadsNoLinkerVariable` failed on the base for both variables) and on every link looks
+  for an MSVC toolchain and a Windows SDK (PATH, the VC variables, the VS setup COM server, the registry, the Kits folders, LIB) to
+  build search paths no Kimi link uses (absolute inputs, `/nodefaultlib`): about 4 ms of a warm link (T-335), 11.9 -> 0.35 ms in a
+  fresh process (P-D). The system root is the build's own inputs folder, which holds no `VC` or `Windows Kits` tree. LLD still
+  reads `LLD_REPRODUCE` (a reproducer archive written elsewhere; no product byte): the one environment read it keeps. Rejected:
+  `/lldignoreenv` alone (the setup and registry route still runs: 10.9 ms in P-D); an empty or a made-up root;
+  `/vctoolsversion`/`/winsdkversion` (D1+, <= 0.09 ms). No product byte moves: every native fixture's executable (12,698) and the
+  LC3 harness's six rows are byte-equal between base and head. IMPL 20.3.2 and 20.4 unchanged: their sentences now hold for LLD
+  too.
