@@ -223,15 +223,18 @@ public sealed class DependencyResolutionTest : IDisposable
         Assert.Equal("InvalidConfiguration", Failure(Resolve(root).Product).Code);
     }
 
-    // ProjectFile's removed settings (Tatara B6b5): a dependency's project file naming one fails its load, the note at its file.
-    [Fact]
-    public void ADependencysRemovedSettingFailsItsLoad()
+    // A dependency's configuration failure fails its load, each note at its file (SPEC 23.1.2): a removed setting (Tatara B6b5) and a key
+    // that is not a name (IMPL 20.1; PLAN G1010), never a reader exception.
+    [Theory]
+    [InlineData("LlvmBin=\"C:/llvm/bin\"", "LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting.")]
+    [InlineData("2=\"a\"", "A setting name in the project file must be a name.", "Failed to deserialize Kimi.ProjectFile value.")]
+    public void ADependencysConfigurationFailureFailsItsLoad(string settings, params string[] notes)
     {
-        var leaf = this.Write("Leaf", "leaf", settings: "LlvmBin=\"C:/llvm/bin\"");
-        var failure = Failure(Resolve(this.Write("Root", "root", Edge("Leaf", "Leaf", "leaf"))).Product);
+        var leaf = this.Write("Leaf", "leaf", settings: settings);
+        var partition = Resolve(this.Write("Root", "root", Edge("Leaf", "Leaf", "leaf"))).Product;
         Assert.Equal(
-            ("InvalidConfiguration", $"Invalid project configuration '{leaf}': LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting."),
-            (failure.Code, failure.Message));
+            notes.Select(x => ("InvalidConfiguration", $"Invalid project configuration '{leaf}': {x}")),
+            (partition.Failures ?? []).Select(static x => (x.Code, x.Message)));
     }
 
     // SPEC 23.1.2 (PLAN G1010): each read of a dependency, its project file's and its source's, is that input's failure; a read that

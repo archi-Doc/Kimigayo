@@ -106,7 +106,7 @@ internal static class CheckService
         catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
         {
             project = null;
-            return Faulted(DiagnosticFault.Exception, ex, path.Value);
+            return Faulted(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Exception, ex, path.Value);
         }
     }
 

@@ -210,13 +210,14 @@ public sealed class CheckJsonOutputTest : IDisposable
 
     // SPEC 23.2.3 (PLAN G1010): a project whose load fails is a Blocked document, its reason the record (its file's read; its
     // configuration's parse and an ill-typed value, IMPL 20.2), and one whose load ends by any other exception is a Faulted document
-    // (DIAGNOSTICS rule 9).
+    // (DIAGNOSTICS rule 9). A key that is not a name is the configuration's own failure (IMPL 20.1), each failure its record.
     [Theory]
     [InlineData("OutputKind={", null, nameof(DiagnosticCode.ProjectLoadFailed_Kd), "': Failed to deserialize Kimi.ProjectFile value.")]
     [InlineData("OutputKind=\"Foo\"", null, nameof(DiagnosticCode.ProjectLoadFailed_Kd), "': Failed to deserialize Kimi.ProjectFile value.")]
+    [InlineData("2=\"a\"", null, nameof(DiagnosticCode.ProjectLoadFailed_Kd), "': A setting name in the project file must be a name.", "': Failed to deserialize Kimi.ProjectFile value.")]
     [InlineData("", "held", nameof(DiagnosticCode.ProjectLoadFailed_Kd), "' could not be loaded: held")]
     [InlineData("", "defect", nameof(DiagnosticCode.CheckFaulted_Kd), "System.InvalidOperationException: defect")]
-    public void AProjectThatDoesNotLoadIsBlockedByItsLoadAndFaultedByAnyOtherException(string settings, string? thrown, string code, string note)
+    public void AProjectThatDoesNotLoadIsBlockedByItsLoadAndFaultedByAnyOtherException(string settings, string? thrown, string code, params string[] notes)
     {
         var project = this.WriteProject("App", "main.kimi", "()");
         if (settings.Length != 0)
@@ -228,9 +229,9 @@ public sealed class CheckJsonOutputTest : IDisposable
         var document = CheckJsonOutput.Create(new KimiOptions(), [project], TestContext.Current.CancellationToken, failure is null ? null : new FailingInputSource(project, failure));
         Assert.Equal(code == nameof(DiagnosticCode.CheckFaulted_Kd) ? CheckOutcome.Faulted : CheckOutcome.Blocked, document.Outcome);
         Assert.False(document.Accepted);
-        var record = Assert.Single(document.Diagnostics);
-        Assert.Equal(code, record.Code);
-        Assert.EndsWith(note, record.Note, StringComparison.Ordinal);
+        Assert.Equal(notes.Length, document.Diagnostics.Length);
+        Assert.All(document.Diagnostics, x => Assert.Equal(code, x.Code));
+        Assert.All(notes, x => Assert.Single(document.Diagnostics, y => y.Note!.EndsWith(x, StringComparison.Ordinal)));
     }
 
     // Standard output carries the document alone; the exit code follows acceptance as in the text form.

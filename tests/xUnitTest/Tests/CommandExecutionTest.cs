@@ -376,7 +376,8 @@ public sealed class CommandExecutionTest : IDisposable
         // kimi test's failures (IMPL 20.6.4; DECISIONS R9-M12; PLAN G1012), the expected outcome first. Exit 2 with its message: an empty
         // selection (O2); two projects with one identity, the later one's line, the loop going on to the next project, whose case is
         // listed (O3); an empty --results-dir, an option error at Parse before any project is prepared, also where no run follows (O5,
-        // O5b). Exit 3 with its message: a results directory that cannot be created, a file in its place (R1, the runner's storage).
+        // O5b); a project file the load cannot read, its reason through the service (L1, PLAN G1010). Exit 3 with its message: a results
+        // directory that cannot be created, a file in its place (R1, the runner's storage).
         // Exit 2, the command's own fault (DIAGNOSTICS rule 9): one CheckFaulted_Kd rendered and its code and message as the result's one
         // errors entry, for the host's console throwing at the "Project: " line (F1, in text and in the document) and at the native
         // build's "Built: " report (F2). No production seam: the console is the host's.
@@ -386,6 +387,7 @@ public sealed class CommandExecutionTest : IDisposable
         [InlineData("project", 2, "Invalid path: --results-dir: ", "--results-dir", "")]
         [InlineData("project", 2, "Invalid path: --results-dir: ", "--list", "--results-dir", "")]
         [InlineData("project", 2, "Invalid path: --results-dir: ", "--allow-empty", "--filter", "zzz", "--results-dir", "")]
+        [InlineData("unreadable", 2, "Every selected project must load successfully.", "--list")]
         [InlineData("results file", 3, null)]
         [InlineData("Project: ", 2, null, "--list")]
         [InlineData("Project: ", 2, null, "--list", "--format", "json")]
@@ -406,6 +408,7 @@ public sealed class CommandExecutionTest : IDisposable
                 options = ["--results-dir", Path.Combine(this.directory, "A", "tests.kimi")];
             }
 
+            using var held = origin == "unreadable" ? new FileStream(input, FileMode.Open, FileAccess.Read, FileShare.None) : null;
             var console = new DiagnosticContractTest.DiagnosticConsole { LineAction = origin.EndsWith(": ", StringComparison.Ordinal) ? (origin, DiagnosticContractTest.DiagnosticConsole.Fail) : null };
             var kimigayo = new Kimigayo(console);
             var (output, error) = (Console.Out, Console.Error);
@@ -443,6 +446,7 @@ public sealed class CommandExecutionTest : IDisposable
             }
 
             Assert.True(message?.StartsWith("Invalid path", StringComparison.Ordinal) != true || console.Text.Length == 0, console.Text);
+            Assert.Equal(origin == "unreadable", console.Text.Contains("' could not be loaded: ", StringComparison.Ordinal));
             Assert.Equal(origin == "identity", stdout.ToString().Contains(" C.kimiproj::passes", StringComparison.Ordinal));
 
             // A Windows x64 library project with one passing test case, its own settings after the target's.
