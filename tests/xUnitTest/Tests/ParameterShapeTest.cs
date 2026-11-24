@@ -216,8 +216,8 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
     // SPEC 7.4, 9.5.1 (R7-N5 B7; the Front's C-518 C2): a pass judges each pair of corresponding parameters once, whatever reaches it again
     // (its position and its name; each use of a gathered group), and keeps one shape contract per pair: n constructors of one Type
     // ("candidates", one call) and a group gathered at the alias stage from n groups of `f<T>(value: T, tag: ref/TagK)` at each of `uses`
-    // uses run the n(n - 1) ordered pairs' judgments once per warm pass at every `uses`, linear in the pairs, and keep the n(n - 1) / 2
-    // contracts of the `value` pairs (the `tag` pairs never overlap). Without the pass's memo: 2n(n - 1) and `uses` times as many judgments,
+    // uses judge their n(n - 1) parameter pairs (`value` and `tag` of each of the n(n - 1) / 2 function pairs) once per warm pass at every
+    // `uses`, linear in the pairs, and keep one contract per `value` pair (the `tag` pairs never overlap). Without the pass's memo: 2n(n - 1) and `uses` times as many judgments,
     // each scanning the later function's contracts for its own (C-518: cubic in n).
     [Theory]
     [InlineData("candidates", 8, 1)]
