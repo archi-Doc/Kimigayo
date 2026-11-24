@@ -323,7 +323,7 @@ public sealed partial class Binding
         var levels = PassPart.Interned(this.Library, this.Library.Layer.Constraints, this.constraints);
         if (PassPart.Find(levels, key, out var result) is null)
         {
-            result = new(key, this.ContainsAssociatedProjection(key.Subject) || this.ContainsAssociatedProjection(key.RequiredType));
+            result = new(key, this.ContainsAssociatedProjection(key.Subject) || this.ContainsAssociatedProjection(key.RequiredType) || this.ContainsAssociatedProjection(key.Contract?.Type));
             levels.Open.Add(key, result);
         }
 
@@ -741,8 +741,9 @@ public sealed partial class Binding
             return constraint;
         }
 
-        // R7-C2c2 c2-4b (design R4.12b, J1): a proposition is identified by its normalized complete Types (SPEC 8.3.1), each in its
-        // class's form in the proposition's view (8.2.3), its Contract reference's arguments included, so request and facts meet here.
+        // R7-C2c2 c2-4b (design R4.12b, J1): a proposition is identified by its normalized complete Types (SPEC 8.3.1), its Contract
+        // reference's arguments included (R7-C2c2 c2-5a: a completed projection there is interpreted as in the subject, 8.2.3), each in
+        // its class's form in the proposition's view, so request and facts meet here.
         var subject = this.ClassForm(this.NormalizeProofType(constraint.Subject, scope, out completion), scope, out var formed);
         completion = Meet(completion, formed);
         var required = constraint.RequiredType;
@@ -756,8 +757,8 @@ public sealed partial class Binding
         var contract = constraint.Contract;
         if (contract is not null && IsBoundContractReference(contract))
         {
-            var reference = this.ClassForm(contract.Type!, scope, out formed);
-            completion = Meet(completion, formed);
+            var reference = this.ClassForm(this.NormalizeProofType(contract.Type!, scope, out var part), scope, out formed);
+            completion = Meet(Meet(completion, part), formed);
             contract = ReferenceEquals(reference, contract.Type) ? contract : this.BoundContractReference(reference);
         }
 
