@@ -131,6 +131,29 @@ public partial class ResultPremiseTest
     // HeldFixed's control: the same well-formedness without a Function Type.
     private const string StoredFixed = "func mk(b: ref/i32, q: ref/i32) -> Option<ref/(ref/i32 during b) during q>\n";
 
+    // The located limit at HeldFixed's result layer (F's ruling O3-24).
+    private const string HeldLimit = nameof(DiagnosticCode.Unsupported_Kd) + "|ref/((ref/i32 during b) -> i32) during q|";
+
+    private const string Loan = nameof(DiagnosticCode.ComparisonLoanConflict_Kd) + "|";
+
+    // leak_mk: mk stores b in the caller's array as `during q` on its result premise; leak_use calls it with a local borrow.
+    private const string HeldLeak = "func mk(b: ref/i32, q: ref/i32, slot: uniq/Array<ref/i32 during q>) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    slot@follow.append(b)\n    return .None\n\n";
+
+    private const string StoredLeak = "func mk(b: ref/i32, q: ref/i32, slot: uniq/Array<ref/i32 during q>) -> Option<ref/(ref/i32 during b) during q>\n    slot@follow.append(b)\n    return .None\n\n";
+
+    private const string LeakUse = "func use(x: ref/i32) -> i32\n    var arr: Array<ref/i32 during x> = []\n    arr.append(x)\n    if true\n        let local: i32 = 41\n" +
+        "        let o: Option<ref/((ref/i32 during x) -> i32) during x> = mk(local@ref, x, arr@uniq)\n    let old: i32 = arr[1]@follow\n    return old\n\n";
+
+    private const string StoredLeakUse = "func use(x: ref/i32) -> i32\n    var arr: Array<ref/i32 during x> = []\n    arr.append(x)\n    if true\n        let local: i32 = 41\n" +
+        "        let o: Option<ref/(ref/i32 during x) during x> = mk(local@ref, x, arr@uniq)\n    let old: i32 = arr[1]@follow\n    return old\n\n";
+
+    // ret_mk: mk returns b as `during q` on its result premise; ret_use calls it with a local borrow.
+    private const string HeldPair = "func mk(b: ref/i32, q: ref/i32) -> (Option<ref/((ref/i32 during b) -> i32) during q>, ref/i32 during q)\n    return (.None, b)\n\n";
+
+    private const string StoredPair = "func mk(b: ref/i32, q: ref/i32) -> (Option<ref/(ref/i32 during b) during q>, ref/i32 during q)\n    return (.None, b)\n\n";
+
+    private const string PairUse = "func use(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 41\n    let t = mk(local@ref, x)\n    return t.1\n\n";
+
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd) + "|";
 
     private const string Constraint = nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|";
@@ -576,26 +599,33 @@ public partial class ResultPremiseTest
         Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
     }
 
-    // SPEC 15.6.1, 15.2.3 (DECISIONS BU-73, R7-O3 O3-B2): a borrow layer holding a Function Type stores its fixed Origins and never its
-    // per-call ones, in a definition's premise over its result (sres_fix, sres_use: UnprovenOriginRelation_Kd "b outlives q" at the result
-    // Type before; sres_bad keeps only its own record) and over an input (in_prem, in_prem_bad: unchanged); a call's fresh regions are
-    // solved small (call_ok, SPEC 15.6.4). call_bad is invalid by SPEC 15.6.4 step 3 (the call must prove its result well formed, which
-    // carries local's borrow past the body) and is accepted (mk's spurious record before): PLAN's O3-B2 issue, the comparison solving a
-    // use-site well-formedness obligation (F's ruling O3-15; WellFormedPremises.EnterStored's contract).
+    // SPEC 15.6.1, 15.2.3, 15.6.4 step 3 (DECISIONS BU-73's amendment, R7-O3 O3-B2, F's ruling O3-24): a definition's result premise holds
+    // a held Function Type's fixed Origins, but no call carries them yet (WellFormedPremises.EnterStored, PLAN's O3-B2 issue), so a row
+    // they form at the result Type that the definition's other premises do not prove is the located Unsupported_Kd at the written borrow
+    // layer (HeldResult; dev: UnprovenOriginRelation_Kd there, a Language record on a valid definition), and no program is accepted on that
+    // premise: sres_fix, sres_use, leak_mk, ret_mk (valid) the limit only; call_ok (valid) and call_bad, leak_use, ret_use (invalid, SPEC
+    // 15.6.4 step 3) rejected by mk's limit, beside A5's Loan record where the borrow is retained; sres_bad keeps its own record at `g`.
+    // The controls without a Function Type, and the input premise (in_prem, in_prem_bad), are unchanged.
     [Theory]
-    [InlineData(HeldFixed + "    return .None\n\n")] // sres_fix
-    [InlineData(HeldFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use: the result premise proves the initializer
+    [InlineData(HeldFixed + "    return .None\n\n", HeldLimit)] // sres_fix
+    [InlineData(HeldFixed + "    let r: ref/i32 during q = b\n    return .None\n\n", HeldLimit)] // sres_use: the premise decides the initializer
     [InlineData(StoredFixed + "    return .None\n\n")] // sres_fix_ctl
     [InlineData(StoredFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use_ctl
-    [InlineData("func mk(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32)) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    return .Some(g)\n\n", Unproven + "g|requires g outlives q, which is not proven")] // sres_bad
+    [InlineData("func mk(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32)) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    return .Some(g)\n\n", HeldLimit, Unproven + "g|requires g outlives q, which is not proven")] // sres_bad
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem: the input's premise b outlives q
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/(ref/i32 during b) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem_ctl
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32) -> i32) during q) -> ref/i32 during q\n    return b\n\n", Unproven + "b|requires b outlives q, which is not proven")] // in_prem_bad: per-call Origins relate nothing
-    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok: fresh regions solved small
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n", HeldLimit)] // call_ok: mk's limit
     [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok_ctl
-    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/((ref/i32 during x) -> i32) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n")] // call_bad: invalid, accepted (PLAN's O3-B2 issue)
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/((ref/i32 during x) -> i32) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", HeldLimit)] // call_bad: mk's limit
     [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/(ref/i32 during x) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x)|requires the borrow local@ref outlives x, which is false")] // call_bad_ctl: the return's fit itself
-    public void AHeldFunctionTypesFixedOriginsAreItsDefinitionsPremises(string program, params string[] records)
+    [InlineData(HeldLeak, HeldLimit)] // leak_mk: the premise decides the store
+    [InlineData(HeldLeak + LeakUse, HeldLimit, Loan + "let local: i32 = 41|")] // leak_use
+    [InlineData(StoredLeak + StoredLeakUse, Loan + "let local: i32 = 41|", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x, arr@uniq)|requires the borrow local@ref outlives x, which is false")] // leak_use_ctl
+    [InlineData(HeldPair, HeldLimit)] // ret_mk: the premise decides the return
+    [InlineData(HeldPair + PairUse, HeldLimit, Loan + "let local: i32 = 41|")] // ret_use
+    [InlineData(StoredPair + PairUse, Loan + "let local: i32 = 41|", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|t.1|requires the borrow local@ref outlives x, which is false")] // ret_use_ctl
+    public void AHeldFunctionTypeInADefinitionsResultIsTheLocatedLimit(string program, params string[] records)
     {
         var text = program + Main;
         Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));

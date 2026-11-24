@@ -62,6 +62,25 @@ public sealed partial class Binding
         => node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto or DeclarationContainerKoto || AssociatedHead(node) is OriginApplicationKoto ||
             HeaderGetter(node, previous) is not null;
 
+    // The signature whose inputs (R2) and result (R3) ExtractOriginPremises reads at `node`, reached from its child `previous`: the node
+    // itself, or a computed or requirement Property's getter at its header.
+    private static Koto? SignatureFrame(Koto node, Koto? previous) => node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto ? node : HeaderGetter(node, previous);
+
+    // The first signature ExtractOriginPremises reads from `use` outward, whose result premise (R3) a request at `use` may assume.
+    private static Koto? NearestSignature(Koto use)
+    {
+        Koto? previous = null;
+        for (Koto? node = use; node is not null; previous = node, node = node.Parent)
+        {
+            if (SignatureFrame(node, previous) is { } signature)
+            {
+                return signature;
+            }
+        }
+
+        return null;
+    }
+
     // The signature whose premises a request at `node` has: the innermost function (an anonymous one included), Function Type or
     // accessor at or above it; null at the top level.
     private static Koto? PremiseSignature(Koto? node)
@@ -328,7 +347,7 @@ public sealed partial class Binding
             }
 
             this.AddAssociatedRequirementPremises(environment, node);
-            if ((node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto ? node : HeaderGetter(node, previous)) is { } signature)
+            if (SignatureFrame(node, previous) is { } signature)
             {
                 // A Function Type quantifies well-formed inputs just as a declaration does. Their intrinsic
                 // relations are assumptions only while checking that signature, never in the enclosing body.

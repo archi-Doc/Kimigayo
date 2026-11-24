@@ -181,10 +181,12 @@ public sealed partial class Binding
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
                 // binding, guarantees its own stored Origins outlive the borrow: each call judges them as the instantiated input's
-                // well-formedness (RequireInputPremises), whether its argument is a Borrow formed there or an existing reference.
+                // well-formedness (RequireInputPremises), whether its argument is a Borrow formed there or an existing reference. A layer
+                // of a definition's assumed result Type walks as AssumedResult (a held Function Type below it forms HeldResult rows).
                 var discharge = context is { Position: TypePosition.Parameter, Direct: true, Owner: FunctionKoto function } &&
                     origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
-                    (AdtDef.IsStruct(type.SafeReferent) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
+                    (AdtDef.IsStruct(type.SafeReferent) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows
+                    : context.Position == TypePosition.Result && AssumesResult(context.Owner) ? OriginDischarge.AssumedResult : OriginDischarge.Judgment;
                 // A written Type's own layer at its use, in no comparison (default), as its retention below.
                 var formation = new UseScope(use);
                 this.RetainInnerOutlives(type.Components[0], origin, ref formation, discharge, RequiredCondition(this.PairSlotCondition(type, ref formation, default)));
@@ -284,10 +286,11 @@ public sealed partial class Binding
     // SPEC 15.6.1: each relation is the well-formedness of the Type occurrence `use` (WellFormed), never a fit of a value: every Origin
     // of OwnedOrigins(inner) (SPEC 15.2.3) outlives `outer`. A held Function Type's part is its call signature with its own per-call
     // Origins closed (DECISIONS BU-73, StoredSignature): its fixed Origins relate, its per-call Origins never do, as they cannot escape
-    // their binder (SPEC 15.3.4). `discharge` applies to the Origins stored directly in `inner`; those of its
-    // components are judged. `condition` is the Semantics case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o`
-    // of an original `s/T` included, is stored only in its binder's borrow cases (SPEC 15.6.5). The layers below one written layer share
-    // its use's scope.
+    // their binder (SPEC 15.3.4). `discharge` applies to the Origins stored directly in `inner`; those of its components are judged,
+    // except below a definition's assumed result layer (AssumedResult, the walk's state, whose own rows are Judgment rows): there a held
+    // Function Type's Origins form HeldResult rows (DECISIONS BU-73's amendment, F's ruling O3-24). `condition` is the Semantics case in
+    // which `outer` stores `inner`; a pair layer's own slot, the implicit `o` of an original `s/T` included, is stored only in its binder's
+    // borrow cases (SPEC 15.6.5). The layers below one written layer share its use's scope.
     private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, ref UseScope use, OriginDischarge discharge = OriginDischarge.Judgment, ulong condition = 0)
     {
         if (!inner.StoresOrigin)
@@ -295,12 +298,16 @@ public sealed partial class Binding
             return;
         }
 
+        var below = discharge is OriginDischarge.AssumedResult or OriginDischarge.HeldResult
+            ? inner.Kind == BoundTypeKind.Function ? OriginDischarge.HeldResult : discharge
+            : OriginDischarge.Judgment;
+        var row = discharge == OriginDischarge.AssumedResult ? below == OriginDischarge.HeldResult ? below : OriginDischarge.Judgment : discharge;
         inner = this.StoredSignature(inner);
 
         // A written Type's retention at its use, in no comparison (default).
         if (this.StoredSlot(inner, ref use, out var slot, default) is { } origin && !OriginOutlives(origin, outer))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use.Use, BindingDeadline.BodyOrigins, inner, origin, outer, WellFormed: true, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, use.Use, BindingDeadline.BodyOrigins, inner, origin, outer, WellFormed: true, Discharge: row, Condition: condition | RequiredCondition(slot)));
         }
 
         for (var i = 0; i < inner.OriginArguments.Count; i++)
@@ -308,13 +315,13 @@ public sealed partial class Binding
             var argument = inner.OriginArguments[i];
             if (!OriginOutlives(argument, outer))
             {
-                this.AddObligation(new(BindingObligationKind.OriginOutlives, use.Use, BindingDeadline.BodyOrigins, inner, argument, outer, WellFormed: true, Discharge: discharge, Condition: condition));
+                this.AddObligation(new(BindingObligationKind.OriginOutlives, use.Use, BindingDeadline.BodyOrigins, inner, argument, outer, WellFormed: true, Discharge: row, Condition: condition));
             }
         }
 
         for (var i = 0; i < inner.Components.Count; i++)
         {
-            this.RetainInnerOutlives(inner.Components[i], outer, ref use, condition: condition);
+            this.RetainInnerOutlives(inner.Components[i], outer, ref use, below, condition);
         }
     }
 

@@ -109,12 +109,16 @@ public sealed partial class Binding
     // use proves for its instantiation (RequireResultPremises): a named function's other than a constructor's, and a getter's, since a
     // custom, computed or Contract `get` produces a function result. A getter is that definition as its accessor syntax, whose result a
     // computed or requirement Property's header is (HeaderGetter), and as the execution view each read calls (AccessorFunction).
-    private static BoundType? AssumedResult(Koto definition) => definition switch
+    private static BoundType? AssumedResult(Koto definition) => !AssumesResult(definition) ? null : definition switch
     {
-        FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result } => result,
-        PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Get, Parent: PropertyKoto { BoundSymbol.Property.Getter.Result: { } result } } => result,
+        FunctionKoto { BoundSymbol.Type: { } result } => result,
+        PropertyAccessorKoto { Parent: PropertyKoto { BoundSymbol.Property.Getter.Result: { } result } } => result,
         _ => null,
     };
+
+    // The definitions that assume their result well formed (AssumedResult's set), also while their result Type is being formed.
+    private static bool AssumesResult(Koto definition)
+        => definition is FunctionKoto { IsAnonymous: false, IsConstructor: false } or PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Get, Parent: PropertyKoto };
 
     // The definition a call's callee stands for: a getter's accessor syntax for its execution view (its inputs and its own clauses are
     // there), else the function itself.

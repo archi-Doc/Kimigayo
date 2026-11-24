@@ -195,8 +195,9 @@ public sealed partial class Binding
         // definition's premises and the judged relations read): reading StoredSignature here forms a use's input well-formedness
         // obligation over it inside a whole-contract comparison, which the comparison does not discharge over the implementation's
         // solvable call Origins (SPEC 15.3.7), rejecting valid conversions (TypeBindingTest.PerCallBinders l1v, e1v, b1v; SPEC 10.7).
-        // Until the comparison solves such an obligation (PLAN's O3-B2 issue, F's ruling O3-15), a call's instantiated result does not
-        // oblige a held Function Type's fixed Origins either (ResultPremiseTest call_bad, SPEC 15.6.4 step 3).
+        // Until the comparison solves such an obligation (PLAN's O3-B2 issue, F's rulings O3-15, O3-24), a call's instantiated result does
+        // not oblige a held Function Type's fixed Origins either (SPEC 15.6.4 step 3), so the definition proves them without its result
+        // premise or is the located limit (OriginDischarge.HeldResult; ResultPremiseTest call_bad).
         private void EnterStored(BoundType pattern, BoundType type, BoundType? argument)
         {
             this.binding.OriginProofMetrics?.WellFormedPart();

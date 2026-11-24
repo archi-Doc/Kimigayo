@@ -204,6 +204,12 @@ public sealed partial class Binding
                 }
 
                 this.obligationSet.Remove(obligation);
+                if (obligation.Discharge == OriginDischarge.HeldResult)
+                {
+                    this.JudgeHeldResultRow(obligation, longer, shorter);
+                    continue;
+                }
+
                 if (obligation.Discharge == OriginDischarge.CallBorrows || this.PublishedPremise(obligation, longer, shorter))
                 {
                     continue;
@@ -231,6 +237,28 @@ public sealed partial class Binding
     private bool PublishedPremise(BindingObligation row, BoundOrigin longer, BoundOrigin shorter)
         => this.ProvesOriginOutlives(longer, shorter, row.Use, row.Condition) &&
             (!row.Equality || this.ProvesOriginOutlives(shorter, longer, row.Use, row.Condition));
+
+    // SPEC 15.6.1, 15.6.4 step 3 (DECISIONS BU-73's amendment, F's ruling O3-24): a HeldResult row holds where the definition's premises
+    // other than its result premise prove it (as WellFormedPremises.DefinitionProves asks), since no call carries the result premise's
+    // held Function Type part (WellFormedPremises.EnterStored); otherwise the definition is the located limit at the row's use, the written
+    // borrow layer, and no program is accepted on that premise. A relation that holds without the premise is the calls' too, from the
+    // substituted clauses and inputs.
+    private void JudgeHeldResultRow(BindingObligation row, BoundOrigin longer, BoundOrigin shorter)
+    {
+        var excluded = this.resultPremiseExcluded;
+        this.resultPremiseExcluded = NearestSignature(row.Use);
+        try
+        {
+            if (!this.PublishedPremise(row, longer, shorter))
+            {
+                this.Fail(row.Use, BindingFailure.Unsupported);
+            }
+        }
+        finally
+        {
+            this.resultPremiseExcluded = excluded;
+        }
+    }
 
     // The clauses of one completed declaration that proof alone does not establish, judged by their owner's part.
     private void ValidateOriginRelations(OriginDeclaration declaration)
