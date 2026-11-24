@@ -40,7 +40,7 @@ public sealed partial class Binding
         else if (!BorrowsWrittenSlot(stored) ||
             !this.AdaptInput(conversion.Left, FixedPattern.Open(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored])), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
         {
-            return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false));
+            return this.RecordWrite(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false), conversion.Left);
         }
 
         var path = this.PathOrigin(conversion.Left);
@@ -86,7 +86,7 @@ public sealed partial class Binding
     {
         if (semantics == SemanticsKind.Uniq && this.ReachedThroughShared(conversion.Left))
         {
-            return this.Fail(conversion, this.AccessFailure(conversion.Left, out _));
+            return this.RecordWrite(conversion, this.AccessFailure(conversion.Left, out _), conversion.Left);
         }
 
         var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: this.RawAnchor(conversion, conversion.Left));
