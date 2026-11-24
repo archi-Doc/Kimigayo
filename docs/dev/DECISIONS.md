@@ -27562,10 +27562,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   (8.9.2): the selection returns the first member in declaration order, the set's **representative**, not a preference; no candidate
   is ranked by how its reference is written (SPEC 8.2.3). Two declared directly collide (8.9.1; the clause's DuplicateBinding_Kd) and
   several by declaration are distinct: both are ambiguous and none is selected. `candidates` publishes the count: each reader says
-  what an ambiguity is for it (the solver Unknown, the index AmbiguousBinding_Kd, the others none), and the one reader that binds one
-  member reads a count above one: **a specification whose qualifier names a conformance of several members gets the located
-  `Unsupported_Kd` at the specification** (order-independent: r1, r2, r1b, r2b; binding a specification to the whole set is PLAN
-  G1300's), and a use of such a projection rests on that limit: `FailConstraint`, the InvalidConstraint record's owner, names as its
+  what an ambiguity is for it (the solver Unknown, the index AmbiguousBinding_Kd, the others none), and the members share one associated Type, which a specification naming any of them specifies (R7-M103; it supersedes this entry's
+  located `Unsupported_Kd` for such a specification, full text at 9a166973f); a use of a projection on an unsupported specification
+  rests on that limit: `FailConstraint`, the InvalidConstraint record's owner, names as its
   cause the part a cause's failure rests on when that part is missing information (a conformance on its unsupported specification,
   which `RestOnSpecification` publishes), so the use's record is derived from the reported `Unsupported_Kd` (rule W; F's ruling 5).
   `SpecifiesContract` reads the admission test for a path's Contract and its ancestors, so a specification belongs to every member of
@@ -28527,6 +28526,52 @@ R8-M* and R9-M* by the stage of the recording unit.
     pqdw: an after-pass Unknown in the copy's normalization never makes it `Incomplete`). The round bound's after-pass rows are
     G881b's (`TypeIdentityTest.ARequestAfterThePassFailsNoNode`, `ARequestPastTheRoundBoundIsAResourceFailure`'s pqcallv, pqmovev,
     pqletv).
+- **R7-M103 A specification binds the whole merged conformance (R7-C3 C3b-2)** (Back, 2026-11-25; PLAN G1300's specification half,
+  Q-769, D-1270; Major, an acceptance mover; design `artifacts\units\c3b-2\design.md` Revision 2b, the Front's review C-546; commits
+  d1fbb37f6, da6e0f353, e95706a16, cf983831b) SPEC 8.5.1, 8.5.5, 8.6.1, 8.8.2, 8.9.2. Amends R7-M82: its located `Unsupported_Kd` for a
+  specification naming a conformance of several members is superseded.
+  - **Rule.** Paths whose bound references are one under the declaration's identity premises are one conformance with one associated
+    Type per declaration (8.6.1, 8.9.2). A specification naming any member, qualified or not, specifies that Type ("paths ... with
+    equal bindings count once", 8.5.1), and the specifications must agree: a disagreement within a root path is a1's
+    `InvalidAssociatedType_Kd` at the declaring clause, once per clause declaring the conformance (Q13 record selection, C-546 OQ-B2);
+    across root paths `ValidateBoundConformanceAgreement` records it, unchanged.
+  - **The members.** `SelectionMembers` (`Binding.Contracts`) is the one enumeration of a selection's candidates, the identities
+    `IsSelectionCandidate` admits in declaration order; `SelectConformance` folds it. `candidates` counts the members of the one
+    conformance a selection represents, whose associated Types are one.
+  - **The set's binding** (new representation, `AssociatedBinding.Set`). `PrepareAssociatedBindings`, the owner of a root path's
+    bindings, calls `JoinMembers` for each requirement of the path's shape. When the selection by its Contract at the path's Self in the
+    path's scope (D, plus P for a conditional root path, 8.8.2) has two or more members, each member's identity is keyed on the path,
+    and its own binding's `Set` names the set's binding for the pass (`Reset` clears it). Two members declared directly are two
+    conformances (8.9.1), and none joins. `AssociatedBindingOf` reads `own.Set ?? own`, so every reader reaches the set's binding through
+    any member. ImplTable keys and `BoundRequirement` stay as written. A Type-level specification is judged in its clause's scope D
+    (`SpecifiesContract`); a block specification belongs to its block's paths and selects under D and P.
+  - **The paths a specification belongs to.** `IsPathAssociated(path, identity)` holds when the path's shape declares the identity or
+    the identity is keyed on the root path to the binding of one of the shape's identities (JoinMembers' keys; no second judgment). It
+    is the one test for the conditional block's check, `VerifyConformance`'s block and member loops and
+    `ValidateConstraintProjectionAccess`, which tested the shape exactly and missed a member that a block's specification selects
+    under D and P (f-condv). Responsibility moved: the block check's membership part moves from `BindConditionalAssociatedSpecifications`
+    to `PrepareAssociatedBindings`' block loop, where the keys are made; the no-path and no-identity failures stay.
+  - **Unqualified names.** `SearchAssociated` takes its query's site and keeps the first match. A later match of the same associated
+    declaration whose reference `IsSelectionCandidate` admits for the earlier bound reference is the same Type (8.5.1); any other is an
+    alternative. Two direct members count once for the name, and their clause keeps `DuplicateBinding_Kd` (b2, s8, r5). The test reads
+    the judge in one direction; the side-independent judge of C3a and PLAN G722 replaces the call, never a second relation beside it.
+    Every measured form gives one verdict across parent orders (G722's a01 accepted in both; a03 rejected in both, as on dev).
+  - **Cost.** `JoinMembers` judges only same-declaration identities with different references, once per root-path requirement per
+    pass; `IsPathAssociated` scans keys only where the exact test fails. A joined member's own binding stays in the path's list, empty
+    for the pass. The four *ScalingTest classes and Binding's Purpose=Allocation tests are unchanged.
+  - **Removes.** `BindSpecification`'s merged branch and `BindAssociatedName`'s `merged` out with their `Unsupported_Kd`; the four exact
+    shape tests.
+  - **Records (Q13).** Acceptance moves (valid, rejected on dev): probes r1, r2, r1b, r2b, r1m, r2bm, r1u, r1c, r1uu, r1us, f-condv,
+    fcc, fco, f-a01, f-a01r; TypeIdentityTest rows mg1, mg2, mg2r, mg1b, mg2b, mg2bm, mg1c, mg1u, mg1uu, mg1us, mg4, mg4c, mg4o, an1c,
+    a01, a01r. Invalid programs move from dev's `Unsupported_Kd` to located Language records: r1i (`TypeMismatch_Kd` alone), r3, r3x
+    (`InvalidAssociatedType_Kd` once), r3d (once per declaring clause), f-mixq, f-cond (r6's records), fcm (`UnsatisfiedConstraint_Kd`
+    at the conditional clause); rows mg1i, mg3, mg3x, mg3d, mg4n, mg4m. The use's `TypeMismatch_Kd` that rested on the limit goes with
+    it (rule W).
+  - **Rejected.** Copying each specification's Type into every member's binding; normalized ImplTable keys (R7-M82); the judge inside
+    `AssociatedBindingOf`; the written member preferred (records would follow spelling: r3 against r3x); one binding per declaration
+    across root paths (a conditional root path forms under its own premises); a per-clause member table; a block-only representative,
+    or the selection judged again at each reader (a second statement beside JoinMembers' keys); the count-once test restricted to the
+    conformance loop (8.5.1 governs every receiver).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
