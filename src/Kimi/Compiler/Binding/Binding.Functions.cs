@@ -2,9 +2,10 @@
 
 // The binding of a function definition: its header (BindHeader's function part, also bound lazily from a use), its signature, then its
 // parts (defaults, base initializer, body); and SPEC 7.2.3's parameter positions, by the default of its function a node lies in
-// (DefaultIndex): which parameters a name there may select (ParameterVisible, the rule of every name lookup, a value's and a written
-// Origin's), and that a parameter read in the default of a later parameter names the slot its call prepared (InLaterDefault, read by
-// the capture diagnostics and the HIR tables, HirRes.PreparedParam).
+// (DefaultIndex) and the parameters in a default's scope (ParameterInScope, also a default template body's roots, RootOf): which
+// parameters a name there may select (ParameterVisible, the rule of every name lookup, a value's and a written Origin's), and that a
+// parameter read in the default of a later parameter names the slot its call prepared (InLaterDefault, read by the capture diagnostics
+// and the HIR tables, HirRes.PreparedParam).
 
 using Kimi.Compiler.Parsing;
 
@@ -33,11 +34,17 @@ public sealed partial class Binding
     }
 
     // SPEC 7.2.3 with 15.3.4 (the owner's D-1236 (A)): whether a name at `use` may select a parameter: in default i of its function,
-    // whatever the default holds (a Closure, a named function's signature or body, a local's annotation), only one before i (never a
-    // constructor's or destructor's receiver, whose slot is no parameter index); elsewhere every parameter in scope.
+    // whatever the default holds (a Closure, a named function's signature or body, a local's annotation), only one before i
+    // (ParameterInScope); elsewhere every parameter in scope.
     private static bool ParameterVisible(BindingSymbol candidate, Koto use)
         => candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function ||
-            (DefaultIndex(use, function, out _) is var index && (index < 0 || (uint)candidate.Slot < (uint)index));
+            ParameterInScope(candidate.Slot, DefaultIndex(use, function, out _));
+
+    // SPEC 7.2.3: whether parameter `slot` (j) of a function is in scope at `index` (i), the default of that function a position lies in:
+    // in a default when j < i (a constructor's or destructor's receiver and a helper borrow, whose slots are no parameter index, never),
+    // and every parameter where `index` < 0 (the function's signature or body). Read by a name's position (ParameterVisible) and by a
+    // default template body's roots (RootOf, the body (f, i)).
+    private static bool ParameterInScope(int slot, int index) => index < 0 || (uint)slot < (uint)index;
 
     // SPEC 7.2.3: the parameter of `function` whose default holds `node`, else -1 (its signature, its body, or outside it); `walked`
     // counts the parents read, the node's depth below the function, bounded by IMPL A.4's L.
