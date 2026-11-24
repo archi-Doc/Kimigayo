@@ -68,6 +68,22 @@ public sealed class BindingReportTest
         Assert.Same(types[0], report.Value(Assert.Single(report.Facts(first).ToArray())));
     }
 
+    // DIAGNOSTICS 4.3 (AF-3b's Checked fact, ProblemFact.cs): a Checked fact is equal by its expected Type and its part's outcome, not by its
+    // packed kept index; another Type or outcome is a broken contract.
+    [Theory]
+    [InlineData(0, false, true)]
+    [InlineData(1, false, false)]
+    [InlineData(0, true, false)]
+    public void ACheckedFactIsEqualByItsTypeAndOutcome(int type, bool ambiguous, bool equal)
+    {
+        var report = new BindingReport();
+        BoundType[] types = [BoundType.Boolean, BoundType.Unit];
+        var first = report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Checked, Other, report.KeepChecked(types[0], false))]);
+        var again = report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Checked, Other, report.KeepChecked(types[type], ambiguous))]);
+        Assert.Equal(equal ? first : -1, again);
+        Assert.Equal((types[0], false), report.Checked(Assert.Single(report.Facts(first).ToArray())));
+    }
+
     // A further problem at a subject (one rule, Condition; R7-E2 E2-3b): an equal problem keeps its condition and adds nothing; new facts take
     // their check's condition, or the one after the subject's last when that is taken (an Origin record beyond the first comes at 1, its
     // first being the slot's, as OriginCondition numbered it; a refining Contract's inherited conflicts from 0); a retried attempt starts over.
