@@ -179,6 +179,9 @@ public class ClosureEnvironmentOriginTest
     private const string NodeTwice = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
         "    public computed twice: i32\n        get() -> i32 => self.n * 2\n";
 
+    private const string NodeVal = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+        "    public computed val: i32\n        get() -> i32 => self.n\n        set(value: i32) -> ()\n            self.n = value\n";
+
     private const string PrintMain = "public func main()\n    Console.writeLine(\"p\")\n";
 
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
@@ -1015,10 +1018,14 @@ public class ClosureEnvironmentOriginTest
     // G254b (SPEC 8.1.1, 8.15.2, 15.3.5, 15.6.5): in the owner case `s/X` is `X`, so where the owner case's `X` Reborrows a nested
     // `uniq/U during b` reached through `h`'s `c`, that Reborrow is met with `c` under the owner case's own reach (o1-own: the owner case
     // selects a root), and a fit needing `c outlives b` is the use's `UnprovenOriginRelation_Kd`, as the concrete twin cu-rt's (o1-*,
-    // e-pay-r, v-call-r). Beside an invariant admitted case (`owner or uniq`, `owner or raw`) no one Type carries it: the rule keeps the
-    // layer's own Reborrow (PLAN G254c, a known class-1 defect; its invalid forms are G254c's reproducers), so valid uses stay accepted
-    // (o1u-loc, u-arg, rw-loc, rw-arg, o1u-dis, mix-loc, sb2-loc, j-u-v; a receiver, SPEC 7.3: rcv-o1v, pr-get; a value read: vr-u, vr-val)
-    // and an independent record stays alone (o1u-rt, u-arg2, mix-rt, rcv-o1). Such a layer is not captured (BU-184's row (1), families
+    // e-pay-r, v-call-r). Beside an invariant admitted case (`owner or uniq`, `owner or raw`) no one Type carries it once the reach
+    // shortens the target: G254c's located Unsupported_Kd at the selected input, its Place Resolved (SPEC 23.1.1, 23.1.2), so every
+    // other case's record stands beside it (o1u-rt, u-arg2, mix-rt; e-pay-nc, two-pay-u). It closes the invalid forms (o1u-rt-ab, u-id,
+    // rw-rt, rw-id, u-val, v-call-u, u-enum, e-pay-u, j-u-rt; an inferred payload, pay-inf-u-rt2; a fixed payload once, fix-pay-u; a
+    // Closure literal's body, cl-par-u-rt; a Closure body through a captured concrete `uniq`, d-rw-clh-st, d-ur-clh-st; an unreachable
+    // source, unr-u-rt) and reduces the valid ones (O-515 (a): o1u-loc, u-arg, rw-loc, rw-arg, o1u-dis, mix-loc, sb2-loc, j-u-v,
+    // pay-inf-u2; a waiting Closure argument once, run-u-loc; a selected candidate's input, which no trial records, ov-sel2). A receiver (SPEC 7.3: rcv-o1v, pr-get, pr-set2) and a value read (vr-u, vr-val) are no such
+    // Reborrow, and rcv-o1's record stays alone. Such a layer is not captured (BU-184's row (1), families
     // and the rule's limit): a located Unsupported_Kd at the entry (o1u-cl-loc, rw-cl-loc; n-o1u, n-o1u-i at the outer entry). Another
     // is captured and its body's uses named (o1-cl-st, n-o1: two chains; o1-cl-loc, n-o1-v; cap-let-r: a `let` Closure whose bare use
     // Reborrows in the owner case makes its call Exclusive, `InvalidAssignment_Kd` as its concrete twin's, SPEC 7.7.3). Each row: every
@@ -1065,16 +1072,36 @@ public class ClosureEnvironmentOriginTest
     [InlineData("e-pay-r", "func f<s/T, U>(m: s/T, " + NestedH + ") -> Option<" + NestedR + ">\n    s is owner or ref\n    return .Some(h@follow)\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow")]
     [InlineData("o1-val", "func f<s/T, U>(m: s/T, " + NestedH + ") -> " + NestedR + "\n    s is owner or ref\n    let g = func (x: " + NestedR + ") -> " + NestedR + " => x@move\n    return g(h@follow)\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow")]
     [InlineData("v-call-r", "func f<s/T, U>(m: s/T, " + NestedH + ", t: (" + NestedR + ") -> " + NestedR + ") -> " + NestedR + "\n    s is owner or ref\n    return t(h@follow)\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow")]
-    [InlineData("o1u-loc", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    let x = h@follow\n    _ = x\n" + PrintMain, "")]
-    [InlineData("u-arg", "func take<V>(x: V) -> () => ()\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    take(h@follow)\n" + PrintMain, "")]
-    [InlineData("rw-loc", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or raw\n    let x = h@follow\n    _ = x\n" + PrintMain, "")]
-    [InlineData("rw-arg", "func take<V>(x: V) -> () => ()\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or raw\n    take(h@follow)\n" + PrintMain, "")]
-    [InlineData("o1u-dis", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    _ = h@follow\n" + PrintMain, "")]
-    [InlineData("mix-loc", NestedMix + " -> ()\n    s is owner or ref\n    t is owner or uniq\n    let x = h@follow\n    _ = x\n" + PrintMain, "")]
-    [InlineData("sb2-loc", "func f<s/T, U>(m: s/T, h: uniq/(s/(s/(uniq/U during d) during b) during a) during c) -> ()\n    s is owner or uniq\n    let x = h@follow\n    _ = x\n" + PrintMain, "")]
-    [InlineData("o1u-rt", "func f<s/T, U>(m: s/T, " + NestedH + ") -> " + NestedR + "\n    s is owner or uniq\n    return h@follow\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow")]
-    [InlineData("u-arg2", "func two<V>(x: V, y: ref/i32 during e) -> ref/i32 during e => y\nfunc f<s/T, U>(m: s/T, " + NestedH + ", y: ref/i32 during e) -> ref/i32 during a\n    s is owner or uniq\n    return two(h@follow, y)\n" + PrintMain, "UnprovenOriginRelation_Kd two(h@follow, y)")]
-    [InlineData("mix-rt", NestedMix + " -> s/(t/(uniq/U during d) during b) during a\n    s is owner or ref\n    t is owner or uniq\n    return h@follow\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow")]
+    [InlineData("o1u-loc", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    let x = h@follow\n    _ = x\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("u-arg", "func take<V>(x: V) -> () => ()\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    take(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("rw-loc", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or raw\n    let x = h@follow\n    _ = x\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("rw-arg", "func take<V>(x: V) -> () => ()\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or raw\n    take(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("o1u-dis", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    _ = h@follow\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("mix-loc", NestedMix + " -> ()\n    s is owner or ref\n    t is owner or uniq\n    let x = h@follow\n    _ = x\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("sb2-loc", "func f<s/T, U>(m: s/T, h: uniq/(s/(s/(uniq/U during d) during b) during a) during c) -> ()\n    s is owner or uniq\n    let x = h@follow\n    _ = x\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("o1u-rt", "func f<s/T, U>(m: s/T, " + NestedH + ") -> " + NestedR + "\n    s is owner or uniq\n    return h@follow\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow; Unsupported_Kd h@follow")]
+    [InlineData("u-arg2", "func two<V>(x: V, y: ref/i32 during e) -> ref/i32 during e => y\nfunc f<s/T, U>(m: s/T, " + NestedH + ", y: ref/i32 during e) -> ref/i32 during a\n    s is owner or uniq\n    return two(h@follow, y)\n" + PrintMain, "UnprovenOriginRelation_Kd two(h@follow, y); Unsupported_Kd h@follow")]
+    [InlineData("mix-rt", NestedMix + " -> s/(t/(uniq/U during d) during b) during a\n    s is owner or ref\n    t is owner or uniq\n    return h@follow\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow; Unsupported_Kd h@follow")]
+    [InlineData("o1u-rt-ab", "func f<s/T, U>(m: s/T, " + NestedH + ") -> " + NestedR + "\n    s is owner or uniq\n    origin c outlives a\n    return h@follow\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("u-id", "func id<V>(x: V) -> V => x@move\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> " + NestedR + "\n    s is owner or uniq\n    origin c outlives a\n    return id(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("rw-rt", "func f<s/T, U>(m: s/T, " + NestedH + ") -> " + NestedR + "\n    s is owner or raw\n    return h@follow\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("rw-id", "func id<V>(x: V) -> V => x@move\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> " + NestedR + "\n    s is owner or raw\n    return id(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("u-val", "func f<s/T, U>(m: s/T, " + NestedH + ") -> " + NestedR + "\n    s is owner or uniq\n    origin c outlives a\n    let g = func (x: " + NestedR + ") -> " + NestedR + " => x@move\n    return g(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("v-call-u", "func f<s/T, U>(m: s/T, " + NestedH + ", t: (" + NestedR + ") -> " + NestedR + ") -> " + NestedR + "\n    s is owner or uniq\n    origin c outlives a\n    return t(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("u-enum", "func f<s/T, U>(m: s/T, q: uniq/(Option<" + NestedR + ">), " + NestedH + ") -> ()\n    s is owner or uniq\n    origin c outlives a\n    q@follow = .Some(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("e-pay-u", "func f<s/T, U>(m: s/T, " + NestedH + ") -> Option<" + NestedR + ">\n    s is owner or uniq\n    origin c outlives a\n    return .Some(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("e-pay-nc", "func f<s/T, U>(m: s/T, " + NestedH + ") -> Option<" + NestedR + ">\n    s is owner or uniq\n    return .Some(h@follow)\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow; Unsupported_Kd h@follow")]
+    [InlineData("two-pay-u", "enum Two<V>\n    Pair(V, i32)\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    let t: Two<" + NestedR + "> = .Pair(h@follow, true)\n    _ = t\n" + PrintMain, "TypeMismatch_Kd .Pair(h@follow, true); UnprovenOriginRelation_Kd h@follow; Unsupported_Kd h@follow; TransferRequired_Kd t")]
+    [InlineData("j-u-rt", "func f<s/T, U>(m: s/T, " + NestedH + ", k: bool) -> " + NestedR + "\n    s is owner or uniq\n    origin c outlives a\n    let r = if k => h@follow else => h@follow\n    return r\n" + PrintMain, "Unsupported_Kd h@follow; Unsupported_Kd h@follow")]
+    [InlineData("pay-inf-u-rt2", "func f<s/T, U>(m: s/T, " + NestedH + ") -> Option<" + NestedR + ">\n    s is owner or uniq\n    origin c outlives a\n    let o = Option.Some(h@follow)\n    return o@move\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("pay-inf-u2", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    let o = Option.Some(h@follow)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("fix-pay-u", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    origin c outlives a\n    let o: Option<" + NestedR + "> = .Some(h@follow)\n    _ = o@move\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("ov-sel2", "func g(x: i32, y: i32) -> () => ()\nfunc g<V>(x: V, y: bool) -> () => ()\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    g(h@follow, true)\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("cl-par-u-rt", "func f<s/T, U>(m: s/T, " + NestedH + ") -> i32\n    s is owner or uniq\n    origin c outlives a\n    let g = func (v: uniq/(" + NestedR + ") during c) -> " + NestedR + " => v@follow\n    return 0\n" + PrintMain, "Unsupported_Kd v@follow")]
+    [InlineData("unr-u-rt", "func f<s/T, U>(m: s/T, " + NestedH + ", value: " + NestedR + ") -> " + NestedR + "\n    s is owner or uniq\n    origin c outlives a\n    return value\n    return h@follow\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("run-u-loc", "func run<G>(g: G) -> ()\n    G is Callable<uniq, () -> ()>\n    return\nfunc f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    run(func [h] () -> ()\n        let x = h@follow\n        _ = x\n    )\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("d-rw-clh-st", "func f<s/T, U>(m: s/T, " + NestedH + ", q: uniq/(" + NestedR + ")) -> i32\n    s is owner or raw\n    var g = func [h@move, q@move] () -> i32\n        q@follow = h@follow\n        return 0\n    return g()\n" + PrintMain, "Unsupported_Kd h@follow")]
+    [InlineData("d-ur-clh-st", "func f<s/T, U>(m: s/T, " + NestedH + ", q: uniq/(" + NestedR + ")) -> i32\n    s is owner or uniq\n    var g = func [h@move, q@move] () -> i32\n        q@follow = h@follow\n        return 0\n    return g()\n" + PrintMain, "UnprovenOriginRelation_Kd h@follow; UnprovenOriginRelation_Kd h@follow; Unsupported_Kd h@follow")]
     [InlineData("o1-loc", "func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or ref\n    let x = h@follow\n    _ = x\n" + PrintMain, "")]
     [InlineData("o1-rtc2", "func f<s/T, U>(m: s/T, " + NestedH + ") -> s/(uniq/U during c) during c\n    s is owner or ref\n    return h@follow\n" + PrintMain, "")]
     [InlineData("o1-own", "func own<s/T>(value: s/(s/(uniq/i32 during a) during b) during c) -> s/(uniq/i32 during a) during b\n    s is owner or ref\n    return value@follow\n" + PrintMain, "")]
@@ -1092,14 +1119,26 @@ public class ClosureEnvironmentOriginTest
     [InlineData("rw-cl-loc", "func f<s/T, U>(m: s/T, value: " + NestedR + ") -> i32\n    s is owner or raw\n    var g = func [value] () -> ()\n        let local = value\n        _ = local\n    g()\n    return 0\n" + PrintMain, "Unsupported_Kd value")]
     [InlineData("n-o1u", "func f<s/T, U>(m: s/T, x: " + NestedR + ") -> i32\n    s is owner or uniq\n    var g = func [x] () -> i32\n        var k = func [x] () -> i32 => 0\n        return k()\n    return g()\n" + PrintMain, "Unsupported_Kd x")]
     [InlineData("n-o1u-i", "func f<s/T, U>(m: s/T, x: " + NestedR + ") -> i32\n    s is owner or uniq\n    var g = func [x] () -> i32\n        let k = func [x] () -> " + NestedR + " => x\n        return 0\n    return g()\n" + PrintMain, "Unsupported_Kd x")]
-    [InlineData("j-u-v", "func f<s/T, U>(m: s/T, " + NestedH + ", k: bool) -> ()\n    s is owner or uniq\n    let r = if k => h@follow else => h@follow\n    _ = r\n" + PrintMain, "")]
+    [InlineData("j-u-v", "func f<s/T, U>(m: s/T, " + NestedH + ", k: bool) -> ()\n    s is owner or uniq\n    let r = if k => h@follow else => h@follow\n    _ = r\n" + PrintMain, "Unsupported_Kd h@follow; Unsupported_Kd h@follow")]
     [InlineData("pr-get", NodeTwice + "func f<s/T>(m: s/T, h: uniq/(s/(uniq/Node during b) during a) during c) -> i32\n    s is owner or uniq\n    return h@follow.twice\n" + PrintMain, "")]
+    [InlineData("pr-set2", NodeVal + "func f<s/T>(m: s/T, h: uniq/(s/(uniq/Node during b) during a) during c) -> ()\n    s is owner or uniq\n    h@follow.val = 3\n" + PrintMain, "")]
     [InlineData("cap-let-r", "func f<s/T, U>(m: s/T, value: " + NestedR + ") -> i32\n    s is owner or ref\n    let g = func [value] () -> ()\n        let local = value\n        _ = local\n    g()\n    return 0\n" + PrintMain, "InvalidAssignment_Kd g")]
     [InlineData("n-o1-v", "func f<s/T, U>(m: s/T, x: " + NestedR + ") -> i32\n    s is owner or ref\n    var g = func [x] () -> i32\n        var k = func [x] () -> i32\n            let y = x\n            _ = y\n            return 0\n        return k()\n    return g()\n" + PrintMain, "")]
     public void APairLayerAcquiredByCaseIsReborrowedWithinTheLayersThatReachIt(string name, string source, string records)
     {
         _ = name;
         Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
+    }
+
+    // G254c (SPEC 23.1.1, 23.1.2; DIAGNOSTICS rule 8): a located limit sets no node state, so every node stays Resolved; the summary
+    // publishes it once at its Place and counts that Place limited, so a Bind whose only record it is rejected a part and is not complete.
+    [Fact]
+    public void ALocatedLimitLeavesItsPlaceResolvedAndTheBindIncomplete()
+    {
+        var c = MinimalEmissionTest.Analyze("func f<s/T, U>(m: s/T, " + NestedH + ") -> ()\n    s is owner or uniq\n    let x = h@follow\n    _ = x\n" + PrintMain);
+        Assert.Equal((0, 0, 1, false), (c.Binding.Result.UnresolvedCount, c.Binding.Result.InvalidCount, c.Binding.Result.LimitedCount, c.Binding.Result.IsComplete));
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, "h@follow", BindingState.Resolved), (issue.Code, issue.Node.ToString(), issue.Node.StateOf(c)));
     }
 
     // One record of ARecordShowsTheBorrowThatSuppliedItsEnd: its code, label, location, related Borrow and destination.
