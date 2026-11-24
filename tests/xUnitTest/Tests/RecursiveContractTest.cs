@@ -404,9 +404,10 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "b-cargs-n2", "contract Marker\n" + KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Marker\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
     [InlineData("guard", "b-cargs-n3", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Copy\n" + KTwice + "        T is K<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
     // SPEC 6.1.4 (R7-C2c2 c2-5a): forming `CK<S>` judges CK's reference input condition `A is E` and never its implementation
-    // requirement `Self.(K<A>).X is Copy`; the twins' input condition fails at the clause (SPEC 23 fixes no code for it).
+    // requirement `Self.(K<A>).X is Copy`; the twins' input condition fails at the clause. cc-n1's supplied `i32 is E` is refuted: 8.3.2's
+    // Error at the premise, which the function's record relates (an-n1 likewise).
     [InlineData("guard", "cc-v1", "contract E\nstruct S\n    Self is E\n    public var n: i32 = 0\n" + KArgs + "contract CK<A>: K<A>\n    A is E\n    Self.(K<A>).X is Copy\nfunc probe<T>(t: ref/T)\n    T is CK<S>\n    ()\n", "")]
-    [InlineData("guard", "cc-n1", "contract E\n" + KArgs + "contract CK<A>: K<A>\n    A is E\n    Self.(K<A>).X is Copy\nfunc probe<T>(t: ref/T)\n    T is CK<i32>\n    ()\n", "*: T is CK<i32> | ...")]
+    [InlineData("guard", "cc-n1", "contract E\n" + KArgs + "contract CK<A>: K<A>\n    A is E\n    Self.(K<A>).X is Copy\nfunc probe<T>(t: ref/T)\n    T is CK<i32>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) <- T is CK<i32> | InvalidConstraint_Kd: T is CK<i32>")]
     [InlineData("guard", "cc-n2", "contract E\ncontract D<U>\n    U is E\nfunc probe<T>(t: ref/T)\n    T is D<i32>\n    ()\n", "*: T is D<i32> | ...")]
     [InlineData("guard", "p05", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "")]
     [InlineData("guard", "p05-n1", "contract CT<A>: GTree<A>\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
@@ -452,7 +453,7 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "or-v2", Either + "func probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
     [InlineData("guard", "an-v1", Both + "struct S\n    Self is E\n    public var tag: i32 = 0\nfunc probe<T>(t: ref/T)\n    T is C<S>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T)")]
     [InlineData("guard", "an-v2", Both + "func probe<T, S>(t: ref/T)\n    S is E\n    T is C<S>\n    ()\n", "")]
-    [InlineData("guard", "an-n1", Both + "func probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "*: T is C<i32> | ...")]
+    [InlineData("guard", "an-n1", Both + "func probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) <- T is C<i32> | InvalidConstraint_Kd: T is C<i32>")]
     [InlineData("guard", "sc-n1", "contract D<U>\ncontract C\n    i32 is D<i64>\nfunc probe<T>(t: ref/T)\n    T is C\n    ()\n", "*: i32 is D<i64> | ...")]
     [InlineData("guard", "er-n1", KArgs + "contract C<A>: K<A>\n    Self.(K<A>).X is Missing\nfunc probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: contract C<A>: K<A> | UnresolvedBinding_Kd: Self.(K<A>).X is Missing")]
     // Closedness does not read a clause's Contract arguments (pre-existing; c2-5a's PLAN row for unit C2, review N3): `Q is F<U>` is a
