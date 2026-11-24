@@ -721,11 +721,15 @@ public sealed partial class Binding
     // Enters `body` for `node`'s subtree: a Body step pushed below its children restores the body the walk was in.
     private void EnterIndexBody(Koto node, BindingScope scope, ExecutableBody body)
     {
-        this.indexStack.Push(new(node, scope, IndexEntryKind.Body, Body: this.indexBody));
+        this.indexStack.Push(new(node, scope, IndexEntryKind.Body) { Body = this.indexBody });
         this.indexBody = body;
     }
 
-    private readonly record struct IndexEntry(Koto Node, BindingScope Scope, IndexEntryKind Kind, int Arm = 0, ExecutableBody Body = default);
+    private readonly record struct IndexEntry(Koto Node, BindingScope Scope, IndexEntryKind Kind, int Arm = 0)
+    {
+        // A Body step's body to restore (EnterIndexBody); the default value for every other entry.
+        internal ExecutableBody Body { get; init; }
+    }
 
     // The walk's pending entries: one array, grown by doubling and kept across passes, so a warm Bind allocates nothing. As a visitor
     // it pushes the children Koto.VisitChildren walks, which PushChildren gives their scope and context and reverses, so they pop in
