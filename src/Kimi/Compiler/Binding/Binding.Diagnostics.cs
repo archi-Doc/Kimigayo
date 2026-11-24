@@ -623,7 +623,6 @@ public sealed partial class Binding
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
-        this.takeLayers?.Clear();
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.captureRepeatRows.Clear();

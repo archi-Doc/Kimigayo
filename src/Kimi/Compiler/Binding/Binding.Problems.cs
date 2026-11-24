@@ -366,6 +366,10 @@ public sealed partial class Binding
                 // authority denies, a written Borrow's Place, or the reference binding an update or assignment names (SPEC 15.1.6).
                 this.ReportWrite(node, store, this.compilation.SyntaxOf(target.Site), problem.Requirement, problem.Code, problem.Condition);
                 break;
+            case BindingFailure.ExclusivePathTake or BindingFailure.SharedPathAccess or BindingFailure.InvalidAssignment when this.FactOf(index, ProblemFactKind.Reason) is { } layers:
+                // A denied Take (FailTake): its Reason the cases of the layers its path passes; no role-0 target, rendered at the node.
+                this.ReportTake(node, store, (SemanticsMask)layers.Value, problem.Requirement, problem.Code, problem.Condition);
+                break;
             case BindingFailure.Access when this.FactOf(index, ProblemFactKind.Related) is not null:
                 this.ReportInaccessible(node, store, index, problem);
                 break;

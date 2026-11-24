@@ -251,10 +251,6 @@ public sealed partial class Binding
         {
             this.ReportCaptureEntry(issue.Node, store, entry, requirement, issue.Code);
         }
-        else if (this.takeLayers?.TryGetValue(issue.Node, out var takeCases) == true)
-        {
-            this.ReportTake(issue.Node, store, takeCases, requirement, issue.Code);
-        }
         else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {
             // The subject stays the failed node; the location is the syntax that shows the two Types.
