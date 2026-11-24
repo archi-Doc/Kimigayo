@@ -67,7 +67,13 @@ public sealed partial class Binding
 
     // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row.
     private static long? ImplementationLimit(BindingFailure failure)
-        => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
+        => failure switch
+        {
+            BindingFailure.TypeHeightLimit => TypeHeightLimit,
+            BindingFailure.PremiseClosureLimit => PremiseClosureLimit,
+            BindingFailure.ResolutionWorkLimit => ResolutionWorkLimit,
+            _ => null,
+        };
 
     // SPEC 4.3.4: a noinit directive's closed reason, with the declaration it initializes.
     private static void ReportNoInit(Koto directive, DiagnosticCollection? store, in BindingProblem problem, NoInitProblem reason)

@@ -1816,6 +1816,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   correction: B10 Revision 1 split the evidence unit, and §7's B10 row already says OSF3c), and its "the interrupt entries (OSF3a)" reads "the interrupt declarations (OSF3a)
   and entries (OSF3b)" as B10 Revision 1's split and §7's row state (T's D-1203 cell (3)). No other decision changes. No SPEC or
   IMPL text. Nothing frozen.
+- Revision 20 (2026-11-24, T's D-1217; NV2 design Revisions 0-1 with M-N, T-340, and the U1 design): §8 gains candidate 5, the
+  native check's time by part (`artifacts/benchmarks/nv2-mn-20261124-0536`): a full rerun 200 s on a quiet machine, about 400 s in
+  K's windows; builds 53%, runs 40%, the fixture keys 77% of an all-reused step's 5.4 s. U1 adopted (the owner's O-519 (a), with
+  O-522 (a2): a run is reused only from an entry really run within the last 12 h); R3, K1, R1, B1, B3, B4 and K3 open, each a unit
+  of its own; four stopped. No decision changes. No SPEC or IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 
