@@ -631,13 +631,24 @@ public sealed partial class Binding
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)
         {
-            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1): the check's selection.
+            // The check's fact alone (uniqIndexing): the conformance it selected, whose condition does not hold here; else the declaration's
+            // UniqIndexable identities (a query by declaration: no judgment), with the key's reference that selected none (Key, SPEC 4.7.1).
             var name = DiagnosticTypeName(core);
-            var registered = this.uniqIndexing.GetValueOrDefault(index).Conformance;
-            var byKey = this.SelectConformance(core, uniqIndexable, owner.Scope, QuerySite.AfterPass, out var candidates) is null && candidates != 0; // by declaration: no scope read
-            return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
-                byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
-                $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";
+            var fact = this.uniqIndexing.GetValueOrDefault(index);
+            if (fact.Conformance is not null)
+            {
+                return $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only";
+            }
+
+            var identities = string.Empty;
+            foreach (var identity in new SelectionMembers(this, core, uniqIndexable, null, owner.Scope, QuerySite.AfterPass))
+            {
+                identities = identities.Length == 0 ? DiagnosticTypeName(identity.Contract.Type!) : $"{identities}, {DiagnosticTypeName(identity.Contract.Type!)}";
+            }
+
+            return identities.Length == 0 ? $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only" :
+                fact.Key is { } key ? $"{name} conforms to {identities} but not to {DiagnosticTypeName(key)}, so its element is published by index alone, which grants Read only" :
+                $"{name} conforms to {identities}, none of which is selected here, so its element is published by index alone, which grants Read only";
         }
 
         return core is { Kind: BoundTypeKind.Parameter } ? $"{DiagnosticTypeName(core)} is not required to be UniqIndexable here, so its element is published by index alone, which grants Read only" : null;

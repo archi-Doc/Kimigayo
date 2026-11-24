@@ -15,8 +15,8 @@ public sealed partial class Binding
     private readonly IndexerCallRows indexerCalls;
 
     // The UniqIndexable side of each user or view index expression, the fact indexUniq's binding and SharedIndexNote read: whether
-    // indexUniq is available here, and the receiver's UniqIndexable conformance the check selected by declaration or by the key (none
-    // for a parameter's fact or a view).
+    // indexUniq is available here, the receiver's UniqIndexable conformance the check selected by declaration or by the key (none for a
+    // parameter's fact or a view), and the UniqIndexable reference it selected by when that selection by the key found no member (Key).
     private readonly UniqIndexingRows uniqIndexing;
 
     /// <summary>Gets the synthesized <c>index</c> (shared) or <c>indexUniq</c> (exclusive) call of a user index expression, or null.</summary>
@@ -77,6 +77,7 @@ public sealed partial class Binding
 
         bool exclusiveAvailable;
         BoundConformance? uniq = null;
+        BoundType? key = null;
         if (core.Symbol is { Declaration: StructKoto or EnumKoto })
         {
             var conformance = this.SelectConformance(core, indexable, scope, source, out var candidates);
@@ -101,8 +102,11 @@ public sealed partial class Binding
                     return true;
                 }
 
-                uniq = this.Library.UniqIndexable is { } uniqByKey && this.KeyReference(uniqByKey, source.Right, scope) is { } uniqReference ?
-                    this.SelectConformance(core, uniqByKey, uniqReference, scope, site, out _) : null;
+                if (this.Library.UniqIndexable is { } uniqByKey && this.KeyReference(uniqByKey, source.Right, scope) is { } uniqReference)
+                {
+                    uniq = this.SelectConformance(core, uniqByKey, uniqReference, scope, site, out var uniqMembers);
+                    key = uniqMembers == 0 ? uniqReference : null;
+                }
             }
             else
             {
@@ -130,7 +134,7 @@ public sealed partial class Binding
             return true;
         }
 
-        this.uniqIndexing[source] = new(exclusiveAvailable, uniq);
+        this.uniqIndexing[source] = new(exclusiveAvailable, uniq, key);
         var shared = this.BindIndexerCall(source, scope, false);
         if (this.LentElement(shared) is not { } element)
         {
@@ -245,7 +249,7 @@ public sealed partial class Binding
     }
 
     // A user or view index expression's UniqIndexable fact (uniqIndexing).
-    internal readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance);
+    internal readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance, BoundType? Key);
 
     /// <summary>The `uniqIndexing` family's one accessor (DECISIONS BU-220): a pass family, a user or view index expression's
     /// UniqIndexable fact (SPEC 4.7.1), kept in the expression's module's NodeColumns at its SyntaxId (the column's default, neither
