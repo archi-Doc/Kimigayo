@@ -161,6 +161,25 @@ internal sealed partial class MirBorrows
         return AdtDef.IsEnum(type) ? Most(most, (Extent.None, Extent.Open)) : most;
     }
 
+    // Whether a raw pointer read punned over a Place of a Type has no provenance (SPEC 5.2, 5.5; 15.6 Holders, example punnedRef: "when
+    // any byte it is read from lies in a part of an `owner` Scalar Type or is a byte that a punned write may not change"), the one
+    // statement both readers of a punned read take: None where no byte of the Place is an `owner` Scalar's (Scalared) or one a punned
+    // write may not change (PlaceBytes' Fixed), so the punned pointer has the provenance written there (5.2); Positive, surely, where
+    // the Place holds no raw pointer's byte (PlaceBytes' Pointer) and surely such a byte; else Open, may: the Place holds both kinds, or
+    // its structure does not state its bytes, and which bytes a read covers is the layout's (IMPL 21.1). The call walk reads "not None"
+    // (MirBorrows.Reach's Unowned: a call composes, SPEC 15.6.4).
+    private Extent NoProvenance(BoundType place)
+    {
+        var bytes = this.PlaceBytes(place);
+        var lacking = bytes.Fixed == Extent.Positive || this.Scalared(place) ? Extent.Positive : bytes.Fixed;
+        if (lacking == Extent.None)
+        {
+            return Extent.None;
+        }
+
+        return bytes.Pointer == Extent.None && lacking == Extent.Positive ? Extent.Positive : Extent.Open;
+    }
+
     // The leading chain's one step under the case view (TyCtxt.Leading, Binding's): the part the specification places at the address of
     // a value of the row's Type, `element` whether it is a fixed array's element (SPEC 4.1: element i at offset i * stride), else a
     // C-layout struct's first Field (IMPL 21.1.2); null where it places none. A row has no path of its own (a Place's case Type, a

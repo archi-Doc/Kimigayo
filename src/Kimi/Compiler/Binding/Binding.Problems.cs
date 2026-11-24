@@ -290,6 +290,12 @@ public sealed partial class Binding
             case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
                 ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
                 break;
+            case BindingFailure.NonExhaustiveMatch when this.FactOf(index, ProblemFactKind.Reason) is { } coverage:
+                ReportMatchCoverage(node, store, problem, coverage.Value);
+                break;
+            case BindingFailure.BaseCall when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
+                ReportBaseCallFailure(node, store, problem, (BaseCallCause)cause.Value);
+                break;
             case BindingFailure.InvalidConstraint when this.report.Facts(index) is [] or [{ Kind: ProblemFactKind.Cause }]: // An Error outcome's record (RecordConstraint)
                 this.ReportConstraint(node, store, problem.Requirement, problem.Code, problem.Condition, this.report.Facts(index) is [var named] ? this.compilation.SyntaxOf(named.Site) : null);
                 break;
@@ -358,6 +364,10 @@ public sealed partial class Binding
             case BindingFailure.MissingOverrideTarget or BindingFailure.AmbiguousOverrideTarget or BindingFailure.OverrideContractMismatch or BindingFailure.DuplicateOverride or BindingFailure.UnprovenOverrideCondition
                 when node is FunctionKoto function && this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportOverrideFailure(function, store, index, problem);
+                break;
+            case BindingFailure.BoundMethodValue when this.FactOf(index, ProblemFactKind.Related) is { } valueMethod && this.compilation.SyntaxOf(valueMethod.Site) is FunctionKoto method:
+                // Role 0, "declaration": the method the value names, whose receiver it would need (SPEC 7.3.4).
+                node.ReportIn(store, problem.Requirement, problem.Code, evidence: [method.Name], related: [("declaration", method, null)], condition: problem.Condition);
                 break;
             case BindingFailure.NotObjectPayload when this.FactOf(index, ProblemFactKind.Related) is { } renouncing: // Role 0: the declaration that opts out, its own or an inherited base's.
                 ReportObjectPayload(node, store, problem, this.compilation.SyntaxOf(renouncing.Site));
