@@ -771,8 +771,7 @@ public partial class KimiLibraryShapeTest
     public void EveryBaseConformancePathIsVerified(string target)
     {
         var library = KimiLibrary.Of(target.Length == 0 ? Kimi.Compiler.Target.TargetTriple.Invalid : Kimi.Compiler.Target.TargetTriple.Parse(target));
-        var paths = ((IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(library.Layer.Impls)!)
-            .Values.Cast<BoundConformancePath>().Where(static x => x.Current).ToArray();
+        var paths = StoredPaths(library.Layer.Impls).Where(static x => x.Current).ToArray();
         Assert.NotEmpty(paths);
         Assert.Empty(paths.Where(static x => !x.IsVerified || x.Unsupported).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
     }
