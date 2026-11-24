@@ -1,15 +1,28 @@
-// tatara_inspect: a COFF or ELF object's symbols as llvm-nm --undefined-only and --defined-only --extern-only list them (--format=posix's
-// letter and name), and the format's two facts (tatara.h): COFF, llvm-readobj --unwind --coff-directives'; ELF, its section table's.
+// tatara_inspect: a COFF or ELF object's, or each member's of an archive, symbols as llvm-nm --undefined-only and --defined-only
+// --extern-only list them (--format=posix's letter and name; llvm-nm's reading of archives and of COFF short import members), each
+// member's form, COMDAT definitions and directive references, the archive's symbol index, and the default-library fact (tatara.h):
+// COFF, llvm-readobj --coff-directives'; ELF, its section table's.
 #include "internal.h"
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/BinaryFormat/ELF.h"
+#include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
+#include "llvm/Object/COFFImportFile.h"
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Object/IRObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/Win64EH.h"
+#include "llvm/Support/Allocator.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Endian.h"
+#include "llvm/Support/StringSaver.h"
 #include <algorithm>
 #include <cctype>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -18,7 +31,14 @@ using namespace llvm::object;
 
 namespace {
 
-using Symbols = std::vector<std::pair<std::string, char>>;
+// A listed symbol: its name, llvm-nm's letter and whether its section admits copies (a defined symbol's, tatara.h's text kind 5).
+struct Listed {
+    std::string name;
+    char letter;
+    bool copy;
+};
+
+using Symbols = std::vector<Listed>;
 
 // llvm-nm's getSymbolNMTypeChar for a COFF symbol that is neither weak, undefined, common nor absolute.
 char sectionLetter(const COFFObjectFile& file, const SymbolRef& symbol, StringRef name)
@@ -163,54 +183,331 @@ char letter(const ObjectFile& file, const SymbolRef& symbol, uint32_t flags, Str
     return (flags & SymbolRef::SF_Global) ? static_cast<char>(std::toupper(static_cast<unsigned char>(result))) : result;
 }
 
-// llvm-nm's order (by name) and posix form, as "<letter> <name>\n".
-void write(Symbols& symbols, std::string& text)
+// llvm-nm's getNMTypeChar for a member that is not an object file. A COFF short import member: its import type's letter (code t, data
+// d, const r), upper case, since every symbol it defines is global. A bitcode member (IRObjectFile): undefined U, a weak one w; weak W;
+// common C; else t for code and d for data, upper case when global.
+char memberLetter(const SymbolicFile& file, uint32_t flags)
 {
-    std::stable_sort(symbols.begin(), symbols.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-    for (const auto& [name, kind] : symbols) {
-        text += kind;
-        text += ' ';
-        text += name;
-        text += '\n';
+    if (const auto* import = dyn_cast<COFFImportFile>(&file)) {
+        int type = import->getCOFFImportHeader()->getType();
+        return type == COFF::IMPORT_CODE ? 'T' : type == COFF::IMPORT_DATA ? 'D' : type == COFF::IMPORT_CONST ? 'R' : '?';
     }
+
+    if (flags & SymbolRef::SF_Undefined) {
+        return (flags & SymbolRef::SF_Weak) ? 'w' : 'U';
+    }
+
+    if (flags & SymbolRef::SF_Weak) {
+        return 'W';
+    }
+
+    if (flags & SymbolRef::SF_Common) {
+        return 'C';
+    }
+
+    char result = (flags & SymbolRef::SF_Executable) ? 't' : 'd';
+    return (flags & SymbolRef::SF_Global) ? static_cast<char>(std::toupper(static_cast<unsigned char>(result))) : result;
 }
 
-// COFF: llvm-readobj prints a RuntimeFunction per entry of a .pdata section and every .drectve section's text. ELF: a non-empty
-// .eh_frame section, and an SHT_LLVM_DEPENDENT_LIBRARIES section (.deplibs). False: a section the reader could not read.
-bool readFlags(const ObjectFile& file, StringRef path, TataraResult& outcome, raw_ostream& message)
+// A COFF COMDAT selection whose copies lld-link keeps one of: any, same size, exact match or largest (no duplicates is an ordinary
+// definition, an associative section defines no symbol of its own, newest LLD refuses).
+bool admitsCopies(uint8_t selection)
 {
-    bool elf = isa<ELFObjectFileBase>(&file);
-    for (const SectionRef& section : file.sections()) {
-        Expected<StringRef> name = section.getName();
-        if (!name) {
-            message << "llvm-readobj: error: " << path << ": " << toString(name.takeError()) << "\n";
-            return false;
-        }
+    return selection == COFF::IMAGE_COMDAT_SELECT_ANY || selection == COFF::IMAGE_COMDAT_SELECT_SAME_SIZE
+        || selection == COFF::IMAGE_COMDAT_SELECT_EXACT_MATCH || selection == COFF::IMAGE_COMDAT_SELECT_LARGEST;
+}
 
-        if (elf) {
-            outcome.hasUnwind |= *name == ".eh_frame" && section.getSize() != 0;
-            outcome.hasDefaultLibrary |= ELFSectionRef(section).getType() == ELF::SHT_LLVM_DEPENDENT_LIBRARIES;
-            continue;
-        }
+// The indexes of an object's sections whose definitions admit copies (tatara.h's text kind 5). COFF: an IMAGE_SCN_LNK_COMDAT section
+// whose section symbol's definition admitsCopies. ELF: a section an SHT_GROUP with GRP_COMDAT lists (ld.lld keeps one group per
+// signature). False with the tool's message when a section cannot be read.
+bool copySections(const ObjectFile& file, StringRef name, DenseSet<uint64_t>& indexes, raw_ostream& message)
+{
+    if (const auto* coff = dyn_cast<COFFObjectFile>(&file)) {
+        for (const SymbolRef& symbol : coff->symbols()) {
+            const coff_aux_section_definition* definition = coff->getCOFFSymbol(symbol).getSectionDefinition();
+            if (!definition || !admitsCopies(definition->Selection)) {
+                continue;
+            }
 
-        if ((*name == ".pdata" || name->starts_with(".pdata$")) && section.getSize() >= sizeof(Win64EH::RuntimeFunction)) {
-            outcome.hasUnwind = 1;
-        }
-
-        if (*name == ".drectve") {
-            Expected<StringRef> contents = section.getContents();
-            if (!contents) {
-                message << "llvm-readobj: error: " << path << ": " << toString(contents.takeError()) << "\n";
+            Expected<section_iterator> section = symbol.getSection();
+            if (!section) {
+                message << "llvm-nm: error: " << name << ": " << toString(section.takeError()) << "\n";
                 return false;
             }
 
-            if (contents->contains_insensitive("DEFAULTLIB")) {
-                outcome.hasDefaultLibrary = 1;
+            if (*section != coff->section_end() && (coff->getCOFFSection(**section)->Characteristics & COFF::IMAGE_SCN_LNK_COMDAT)) {
+                indexes.insert((*section)->getIndex());
+            }
+        }
+
+        return true;
+    }
+
+    // An SHT_GROUP's words, in the object's byte order: the group's flags, then its sections' indexes.
+    endianness order = file.isLittleEndian() ? endianness::little : endianness::big;
+    for (const SectionRef& section : file.sections()) {
+        if (ELFSectionRef(section).getType() != ELF::SHT_GROUP) {
+            continue;
+        }
+
+        Expected<StringRef> contents = section.getContents();
+        if (!contents) {
+            message << "llvm-readobj: error: " << name << ": " << toString(contents.takeError()) << "\n";
+            return false;
+        }
+
+        size_t words = contents->size() / 4;
+        if (words != 0 && (support::endian::read32(contents->data(), order) & ELF::GRP_COMDAT)) {
+            for (size_t i = 1; i < words; ++i) {
+                indexes.insert(support::endian::read32(contents->data() + 4 * i, order));
             }
         }
     }
 
     return true;
+}
+
+// Whether a defined symbol of an object lies in one of its copy sections (copySections).
+Expected<bool> isCopy(const ObjectFile& file, const SymbolRef& symbol, const DenseSet<uint64_t>& copies)
+{
+    if (copies.empty()) {
+        return false;
+    }
+
+    Expected<section_iterator> section = symbol.getSection();
+    if (!section) {
+        return section.takeError();
+    }
+
+    return *section != file.section_end() && copies.contains((*section)->getIndex());
+}
+
+// The value of a .drectve token naming the option (its "/" or "-" form, any case, as LLD's directive parser and option table match
+// it), or nothing.
+std::optional<StringRef> optionValue(StringRef token, StringRef option)
+{
+    bool named = token.size() > option.size() && (token[0] == '/' || token[0] == '-')
+        && token.substr(1, option.size()).equals_insensitive(option);
+    return named ? std::optional<StringRef>(token.substr(option.size() + 1)) : std::nullopt;
+}
+
+// A .drectve's references (tatara.h's text kind 6), its text split as lld-link splits it (the Windows command-line tokenizer): "I
+// <name>" per /include: and "A <from>=<to>" per /alternatename:, in its order. A reference missing a name is skipped (LLD reports it
+// when it links the member); every other option is LLD's. LLD's own parser (lld::coff) is not in the archive's headers.
+void readDirectives(StringRef text, std::string& references)
+{
+    BumpPtrAllocator allocator;
+    StringSaver saver(allocator);
+    SmallVector<StringRef, 16> tokens;
+    cl::TokenizeWindowsCommandLineNoCopy(text, saver, tokens);
+    for (StringRef token : tokens) {
+        if (std::optional<StringRef> name = optionValue(token, "include:"); name && !name->empty()) {
+            references += "I " + name->str() + "\n";
+            continue;
+        }
+
+        auto [from, to] = optionValue(token, "alternatename:").value_or("").split('=');
+        if (!from.empty() && !to.empty()) {
+            references += "A " + from.str() + "=" + to.str() + "\n";
+        }
+    }
+}
+
+// llvm-nm's order (by name) and posix form, as "<letter> <name>\n", then the empty line that ends the member's block.
+void write(Symbols& symbols, std::string& text)
+{
+    std::stable_sort(symbols.begin(), symbols.end(), [](const Listed& a, const Listed& b) { return a.name < b.name; });
+    for (const Listed& symbol : symbols) {
+        text += symbol.letter;
+        text += ' ';
+        text += symbol.name;
+        text += '\n';
+    }
+
+    text += '\n';
+}
+
+// A member's symbols into its blocks of kinds 1, 2 and 5 (the copies among kind 2's, in its order). False with llvm-nm's message when a
+// symbol cannot be read.
+bool readSymbols(const SymbolicFile& file, const DenseSet<uint64_t>& copies, StringRef name, TataraResult& outcome, raw_ostream& message)
+{
+    const auto* object = dyn_cast<ObjectFile>(&file);
+    Symbols undefined;
+    Symbols defined;
+    for (const BasicSymbolRef& symbol : file.symbols()) {
+        Expected<uint32_t> flags = symbol.getFlags();
+        if (!flags) {
+            message << "llvm-nm: error: " << name << ": " << toString(flags.takeError()) << "\n";
+            return false;
+        }
+
+        if (*flags & SymbolRef::SF_FormatSpecific) {
+            continue;
+        }
+
+        std::string symbolName;
+        raw_string_ostream printed(symbolName);
+        if (Error error = symbol.printName(printed)) {
+            message << "llvm-nm: error: " << name << ": " << toString(std::move(error)) << "\n";
+            return false;
+        }
+
+        bool reference = *flags & SymbolRef::SF_Undefined;
+        if (!reference && !(*flags & SymbolRef::SF_Global)) {
+            continue;
+        }
+
+        char kind = object ? letter(*object, SymbolRef(symbol), *flags, symbolName) : memberLetter(file, *flags);
+        Expected<bool> copy = object && !reference ? isCopy(*object, SymbolRef(symbol), copies) : Expected<bool>(false);
+        if (!copy) {
+            message << "llvm-nm: error: " << name << ": " << toString(copy.takeError()) << "\n";
+            return false;
+        }
+
+        (reference ? undefined : defined).push_back({symbolName, kind, *copy});
+    }
+
+    write(undefined, outcome.undefinedSymbols);
+    write(defined, outcome.definedSymbols);
+    for (const Listed& symbol : defined) {
+        outcome.comdats += symbol.copy ? symbol.name + "\n" : "";
+    }
+
+    outcome.comdats += '\n';
+    return true;
+}
+
+// An object's sections: every COFF .drectve section's text, as llvm-readobj --coff-directives prints it, for DEFAULTLIB in any case
+// (flag kind 1) and its references (kind 6, readDirectives); ELF, an SHT_LLVM_DEPENDENT_LIBRARIES section (.deplibs). False with
+// llvm-readobj's message when a section cannot be read.
+bool readSections(const ObjectFile& file, StringRef name, TataraResult& outcome, raw_ostream& message)
+{
+    bool elf = isa<ELFObjectFileBase>(&file);
+    for (const SectionRef& section : file.sections()) {
+        Expected<StringRef> sectionName = section.getName();
+        if (!sectionName) {
+            message << "llvm-readobj: error: " << name << ": " << toString(sectionName.takeError()) << "\n";
+            return false;
+        }
+
+        if (elf) {
+            outcome.hasDefaultLibrary |= ELFSectionRef(section).getType() == ELF::SHT_LLVM_DEPENDENT_LIBRARIES;
+            continue;
+        }
+
+        if (*sectionName != ".drectve") {
+            continue;
+        }
+
+        Expected<StringRef> contents = section.getContents();
+        if (!contents) {
+            message << "llvm-readobj: error: " << name << ": " << toString(contents.takeError()) << "\n";
+            return false;
+        }
+
+        outcome.hasDefaultLibrary |= contents->contains_insensitive("DEFAULTLIB");
+        readDirectives(*contents, outcome.directives);
+    }
+
+    return true;
+}
+
+// One member (an object is one): its block of each per-member text (kinds 1, 2, 4, 5 and 6) and its flag. name: the input's path, or
+// "<path>(<member>)" for an archive's member, as llvm-nm names it in a message. False with the tool's message.
+bool readMember(const SymbolicFile& file, StringRef name, TataraResult& outcome, raw_ostream& message)
+{
+    const auto* object = dyn_cast<ObjectFile>(&file);
+    outcome.forms += isa<COFFImportFile>(&file) ? 'i' : object && !object->isRelocatableObject() ? 's' : 'o';
+    outcome.forms += '\n';
+    DenseSet<uint64_t> copies;
+    bool read = (!object || copySections(*object, name, copies, message)) && readSymbols(file, copies, name, outcome, message)
+        && (!object || readSections(*object, name, outcome, message));
+    outcome.directives += '\n';
+    return read;
+}
+
+// The formats an input or an archive's member is read in, as lld-link links them: a COFF or ELF object, a COFF short import member,
+// and LLVM bitcode (LinkAmbiguity's P4: lld-link links a bitcode member; llvm-nm reads it through IRObjectFile).
+bool isMember(const Binary& binary)
+{
+    return isa<COFFObjectFile>(&binary) || isa<ELFObjectFileBase>(&binary) || isa<COFFImportFile>(&binary) || isa<IRObjectFile>(&binary);
+}
+
+// An archive's member as llvm-nm reads it, named "<path>(<member>)": through readMember, or a failure for another format.
+bool readChild(const Archive::Child& child, StringRef path, LLVMContext& context, TataraResult& outcome, raw_ostream& message)
+{
+    Expected<StringRef> member = child.getName();
+    if (!member) {
+        message << "llvm-nm: error: " << path << ": " << toString(member.takeError()) << "\n";
+        return false;
+    }
+
+    std::string name = (path + "(" + *member + ")").str();
+    Expected<std::unique_ptr<Binary>> binary = child.getAsBinary(&context);
+    if (!binary) {
+        message << "llvm-nm: error: " << name << ": " << toString(binary.takeError()) << "\n";
+        return false;
+    }
+
+    if (!isMember(**binary)) {
+        message << "llvm-nm: error: " << name << ": not a COFF or ELF object\n";
+        return false;
+    }
+
+    return readMember(*cast<SymbolicFile>(binary->get()), name, outcome, message);
+}
+
+// The archive's symbol index (kind 7) as Archive::symbols() yields it: "<position> <name>\n" per entry, the position the walk gave
+// the member it names. False with LLVM's message when an entry's member cannot be read or is no member the walk read.
+bool readIndex(const Archive& archive, const DenseMap<uint64_t, uint32_t>& positions, StringRef path, TataraResult& outcome, raw_ostream& message)
+{
+    for (const Archive::Symbol& symbol : archive.symbols()) {
+        Expected<Archive::Child> member = symbol.getMember();
+        if (!member) {
+            message << "llvm-nm: error: " << path << ": " << toString(member.takeError()) << "\n";
+            return false;
+        }
+
+        auto position = positions.find(member->getChildOffset());
+        if (position == positions.end()) {
+            message << "llvm-nm: error: " << path << ": the symbol index names no member for " << symbol.getName() << "\n";
+            return false;
+        }
+
+        outcome.index += std::to_string(position->second) + " " + symbol.getName().str() + "\n";
+    }
+
+    return true;
+}
+
+// An archive (flag kind 2): its members in order through readChild, each member's position kept by its offset, then its index. A
+// thin archive fails: its members are outside the file. False with LLVM's message as llvm-nm prints it.
+bool readArchive(const Archive& archive, StringRef path, LLVMContext& context, TataraResult& outcome, raw_ostream& message)
+{
+    outcome.isArchive = 1;
+    if (archive.isThin()) {
+        message << "llvm-nm: error: " << path << ": thin archive\n";
+        return false;
+    }
+
+    DenseMap<uint64_t, uint32_t> positions;
+    Error error = Error::success();
+    bool read = true;
+    for (const Archive::Child& child : archive.children(error)) {
+        uint32_t position = positions.size();
+        positions[child.getChildOffset()] = position;
+        if (!readChild(child, path, context, outcome, message)) {
+            read = false;
+            break;
+        }
+    }
+
+    if (error) {
+        message << "llvm-nm: error: " << path << ": " << toString(std::move(error)) << "\n";
+        return false;
+    }
+
+    return read && readIndex(archive, positions, path, outcome, message);
 }
 
 } // namespace
@@ -220,46 +517,23 @@ int32_t TATARA_CALL tatara_inspect(TataraText obj, TataraResult** result)
     return tatara::run(result, [&](TataraResult& outcome) -> int32_t {
         raw_string_ostream message(outcome.message);
         StringRef path = tatara::view(obj);
-        Expected<OwningBinary<ObjectFile>> binary = ObjectFile::createObjectFile(path);
+        LLVMContext context; // the operation's own, for bitcode
+        Expected<OwningBinary<Binary>> binary = createBinary(path, &context);
         if (!binary) {
             message << "llvm-nm: error: " << path << ": " << toString(binary.takeError()) << "\n";
             return 1;
         }
 
-        const ObjectFile* file = binary->getBinary();
-        if (!isa<COFFObjectFile>(file) && !isa<ELFObjectFileBase>(file)) {
+        const Binary* input = binary->getBinary();
+        if (const auto* archive = dyn_cast<Archive>(input)) {
+            return readArchive(*archive, path, context, outcome, message) ? 0 : 1;
+        }
+
+        if (!isMember(*input)) {
             message << "llvm-nm: error: " << path << ": not a COFF or ELF object\n";
             return 1;
         }
 
-        Symbols undefined;
-        Symbols defined;
-        for (const SymbolRef& symbol : file->symbols()) {
-            Expected<uint32_t> flags = symbol.getFlags();
-            if (!flags) {
-                message << "llvm-nm: error: " << path << ": " << toString(flags.takeError()) << "\n";
-                return 1;
-            }
-
-            if (*flags & SymbolRef::SF_FormatSpecific) {
-                continue;
-            }
-
-            Expected<StringRef> name = symbol.getName();
-            if (!name) {
-                message << "llvm-nm: error: " << path << ": " << toString(name.takeError()) << "\n";
-                return 1;
-            }
-
-            if (*flags & SymbolRef::SF_Undefined) {
-                undefined.emplace_back(name->str(), letter(*file, symbol, *flags, *name));
-            } else if (*flags & SymbolRef::SF_Global) {
-                defined.emplace_back(name->str(), letter(*file, symbol, *flags, *name));
-            }
-        }
-
-        write(undefined, outcome.undefinedSymbols);
-        write(defined, outcome.definedSymbols);
-        return readFlags(*file, path, outcome, message) ? 0 : 1;
+        return readMember(*cast<SymbolicFile>(input), path, outcome, message) ? 0 : 1;
     });
 }

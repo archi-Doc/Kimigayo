@@ -15,9 +15,11 @@ delete, which empties the shared root), and never runs setup through the junctio
 `llc -filetype=obj` with the target's CPU, features, relocation and code model) and `tatara_link` (`lld-link` or `ld.lld`, named
 by its first argument as an LLD executable's name, through `lld::lldMain`) read the files the tools would and give equal bytes:
 optimize and emit return their output (the text and the object) in the result, which the caller writes, and LLD writes its own
-files, the only files Tatara writes. `tatara_inspect` returns a COFF or ELF object's undefined and defined external symbols with `llvm-nm`'s letters, and two
-facts: for COFF whether `.pdata` holds an entry and a `.drectve` names `DEFAULTLIB`, for ELF whether `.eh_frame` is non-empty and
-a `.deplibs` (`SHT_LLVM_DEPENDENT_LIBRARIES`) section exists.
+files, the only files Tatara writes. `tatara_inspect` reads a COFF or ELF object, or each member of an archive, and returns each
+member's undefined and defined external symbols with `llvm-nm`'s letters, its form (relocatable object, COFF short import member or
+linked image), its definitions in sections that admit copies (COMDAT) and its `.drectve`'s `/include:` and `/alternatename:`
+references, the archive's symbol index (each entry's member), and two flags: whether a member names a default library (a COFF
+`.drectve` naming `DEFAULTLIB`, an ELF `.deplibs` section) and whether the input is an archive.
 Each call returns 0 (success), 1 (failed; Tatara can run again) or 2 (failed; Tatara cannot run again in this process) and a
 result whose message carries the tools' text, released with `tatara_release`.
 
