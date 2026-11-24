@@ -179,12 +179,14 @@ public partial class PropertyBindingTest
     // (SPEC 8.3.1). DECISIONS Q13: c3b's accessor stops at its failed Property, as one that is no witness does; a setter `has get` does not need is
     // no evidence of the getter. DECISIONS Z27 (PLAN G1058; SPEC 6.3.4, 13.7.1, 15.1.2): `self.b = Box<S>.init()` over the failed Field Type
     // locates the constructing `self` (an enclosing use, its own bit set), so the write gives no UninitializedPlace_Kd (fail-before: one at
-    // the write); the constructor's exit keeps its own (`b` stays unplaced, PLAN G1184).
+    // the write). PLAN G1278 (G1278-A, Q13; F's G1278-4): the Field `b` carries its written `Box<S>` (judged where it is written), so the
+    // write is not failed, places `b` (SPEC 13.7.1) and the constructor's exit gives no UninitializedPlace_Kd (G1184's symptom on this
+    // form); the carriers' restating records go.
     [Theory]
     [InlineData(StoredWitnessNamesItsConformance, "clean")]
     [InlineData(ComputedWitnessNamesItsConformance, "clean")]
     [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 5*InvalidConstraint_Kd 1*UninitializedPlace_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 1*UninitializedPlace_Kd 8*UnsatisfiedConstraint_Kd")]
+    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 6*UnsatisfiedConstraint_Kd")]
     [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the user of the failed witness rests
     [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
     public void APropertyWitnessFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
