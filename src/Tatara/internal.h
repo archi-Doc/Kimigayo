@@ -16,13 +16,15 @@
 #include <optional>
 #include <string>
 
-// One call's outcome; its texts are what tatara_text returns. output: optimize's or emit's output (kind 3), set only on success.
+// One call's outcome; its texts and flags are what tatara_text and tatara_flag return (tatara.h's kinds). output: optimize's or emit's
+// output (kind 3), set only on success.
 struct TataraResult {
     std::string message;
     std::string undefinedSymbols;
     std::string definedSymbols;
-    int32_t hasUnwind = 0;
+    std::string forms, comdats, directives, index;
     int32_t hasDefaultLibrary = 0;
+    int32_t isArchive = 0;
     std::string output;
 };
 

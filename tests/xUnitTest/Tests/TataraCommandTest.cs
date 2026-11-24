@@ -316,7 +316,7 @@ public sealed class TataraCommandTest : IDisposable
         try
         {
             Environment.ExitCode = 0;
-            var code = await CommandExecution.Execute(provider.GetRequiredService<Kimigayo>(), [], () => command.Run(input, cancellationToken));
+            var code = await CommandExecution.Execute(provider.GetRequiredService<Kimigayo>(), TataraCommand.Name, [], (_, _) => command.Run(input, cancellationToken));
             Assert.Equal(0, Environment.ExitCode);
             return (code, console.Text);
         }
