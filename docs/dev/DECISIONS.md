@@ -6942,6 +6942,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     not decide it: an Origin fact made the candidate inapplicable).
   - Open, G379 (b), R7-P4 T2: the Item arm (`ItemContractFits`), `FunctionReferenceApplicability` (census row 14) and the Callable
     proof's per-call fallback (`PerCallCallables`); boundary rows itsel, frsel, frselctl1n and G514's t4q, u2, u2g Explicit until T2.
+  - Amended by BU-253 (2026-11-24; AF-3b, Q-731): the Item arm is now. A Function Item's erasure decides applicability by its
+    structural part, as a Closure's, and its contract is judged by the conversion (`ItemSignatureFits`, named `ItemContractFits`
+    above); itsel, frsel, frselctl1n and t4q are normal rows. The Open line keeps `FunctionReferenceApplicability`,
+    `PerCallCallables`, u2 and u2g.
 - **R4-M214 A7 (commit 04857b18f, N29c) is superseded** (2026-11-19; Back, Binding's selection; PLAN G379 (a)) by G379 (a)
   (Revision 3, commit 76846f209, and Revisions 4-5, commit 780e4d16a): 'an erasure's Shared receiver, Owned environment and
   receiver-free result are judged after selection' had one basis, SPEC 10.7's sentence 'a receiver, Copy, Owned or Loan failure
@@ -9336,7 +9340,8 @@ resumed by R4-M86 (2026-10-20).
     stays ByCase; MirBuilder's ByCase builds at the consumer's Type where `MirTypes.Agree` holds (Binding's name, BU-27's HIR
     contract; no identity premise). A case that Copies keeps the met slot (8.15.2). A written original `s/T` carries the binder's
     `o` (8.1.1, 8.1.2, 15.4.2, 15.6.4 step 2). Limits: the rule names no family (`OuterOrigin` has no family row, so G721's revision
-    4 keeps its family capture row; N8); the owner case's Reborrow of a nested layer is not named (PLAN G254b, O1). Interim (the
+    4 keeps its family capture row; N8); the owner case's Reborrow of a nested layer is not named (PLAN G254b, O1; superseded
+    outside R3's domain by the G254b amendment below). Interim (the
     owner's O-168 (a); removal condition: PLAN G758 opens a `var` local's pair slot as a local region): `LocalBorrowType` notes each
     (`var` local, unopened Parameter-kind pair slot) per pass (cleared in `ResetLocalRegions`); a relation whose shorter end is that
     slot and that was formed against the local itself, an assignment whose target is the local's own Place (`FailExplained`) or a
@@ -9365,6 +9370,49 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-213 (PLAN G813): "its step MeetLayer is a Pattern position's in SelectLayers as well": the containment walk
     meets layers by `MeetOuter`, innermost first; `MeetLayer` (outside in) and `PairSlot` remain a Pattern position's step in
     `SelectLayers` alone.
+  - Amended (2026-11-24; PLAN G254, unit G254b; the owner's O-520 (c), verbatim 「すべて推奨通り」): one bare Reborrow rule,
+    `ReborrowedType(stored, node, reach, cases, out limit)` (`Binding.BareAcquisition`), replaces `BareReborrowLayer` and the old
+    `ReborrowedType`: a stored `uniq/T` or `objuniq/T` (`StoresConcreteExclusive`, one definition) has its Origin met with the
+    reach; a pair layer whose plan (`BareAcquisition`) Reborrows the layer itself in an exclusive admitted case has its
+    outer-Origin slot met; and where its owner case's target Reborrows (SPEC 8.1.1, 8.14, 8.15.2: in the owner case `s/X` is
+    `X`), that target is replaced by its own Reborrow Type under the owner case's assignment (the recursion in nested scratch; the
+    reach is `ReachOf(place, cases)`, the one containment walk, whose `ContainmentWalk` is a `ref struct` carrying `Cases`, read
+    at `MeetPair` through `CaseAdmitted`; the merged walk would meet slots only a Copy case has). An argument whose plan Reborrows
+    in the owner case alone moves from Exact to Same-Semantics Reborrow (SPEC 10.2.2). The rule's `ReferenceEquals(inner,
+    target)` is a C3c site (`Binding.BareAcquisition.cs:ReborrowedType=1 unchanged`). Supersedes G254a's limit "the owner case's
+    Reborrow of a nested layer is not named" outside R3's domain.
+    - R3's domain (an owner case Reborrowing its target under a binder that also admits an invariant Semantics,
+      `InvariantAdmitted`, SPEC 15.3.5: `owner or uniq`, `owner or raw`, and the `obj`/`objuniq` pairs,
+      `Binding.PairCases.cs:82`): no one Type carries that Reborrow once a reach shortens the target, so the rule keeps the layer's
+      own Reborrow (G254a's name; null where no exclusive case Reborrows it, as `BareReborrowLayer` gave, and only where a reach
+      shortens the target: an unshortened target is Same-Semantics, read only by overload ranking, d-rw-par accepted) and sets
+      `limit`, with no record at the use: a known class-1 defect, PLAN G254c. O-515 (a)'s support reduction and O-516 (a)'s
+      receiver rule are withdrawn with R3's recording (`RecordBareReborrowLimit` is not landed).
+    - A departure from the owner question note's §8 (`artifacts\handoff\2026-11-16-pause\middle\notes\g254b-owner-question.md`):
+      §8 had the limit set only where the reach shortens the target; it is set whatever the reach (a fact of the Type and plan).
+      Reason: G721's row (1) (BU-184) evaluates the rule with a `static` reach, `Meet(b, static)` is `b`, so a reach-dependent
+      limit never fires at row (1) and row (1) would not hold R3's domain (a Closure would capture such a layer and its body's
+      uses would take the class-1 naming). Passing the Closure's ρ instead was rejected: forming its atom at capture formation
+      fixes its `Body` to the evaluating body (OriginAtom keeps the first `formingBody`). A body's use of a captured entry is
+      reached through ρ, and by SPEC 15.8.2's table a Shared or Exclusive Closure call's receiver always shortens the target, so
+      for those calls the reach-free limit equals "a body's use would be in R3's domain"; an entry no body uses and a Consuming
+      call keep the limit too, the cost being dev's own record (valid captures no body Reborrows keep dev's `Unsupported_Kd`
+      3:19). The departure is needed: §8's reach-dependent form accepts d-rw-cl-st (invalid; `s is owner or raw`, `var g = func
+      [value, q@move] () -> i32` / `q@follow = value`), which dev and the head reject at 3:19 (the Front's C-502 delta read). The
+      returned Types are §8's on every path; only row (1) reads the limit. Twins showing row (1) firing (dev's record,
+      `Unsupported_Kd` at the entry 3:19, on dev 5654dc0a4 and the head alike): o1u-cl-loc, rw-cl-loc, n-o1u (V), n-o1u-i,
+      o1u-cl-st (I). CaptureEntry records no limit: the entry's own row (1) runs on the same Type and function
+      (`Captures.cs:334`'s comment says so: "the enclosing entry's row (1)"), so a nested entry's source exists only where that
+      entry passed row (1), and refinement only narrows inward (n-o1u, n-o1u-i: dev's `Unsupported_Kd` at the outer entry).
+    - Moves (class 1, newly `UnprovenOriginRelation_Kd`, SPEC 15.6.3, 15.8.2): o1-rt-t, o1-d-st-t, o1-rt-c, o1-id-c, o1-kp-c,
+      o1-j-rt, o1-deep, o1-enum, o1-val, e-pay-r, v-call-r; mix-rt (`owner or ref` over an `owner or uniq` layer: the outer level
+      names the inner layer's own Reborrow); with commit 3 o1-cl-st, n-o1; the reviewers' positions tup-r-rt, arr-r-rt,
+      ctor-r-rt, tp-r-rt, fa-r-rt, cr-r-rt, j-mix-r, pay-inf-r-rt2; an added record beside dev's on an invalid program:
+      pay-inf-r-rt, two-pay-r. R3's domain keeps dev's records on every twin (g254bc's table, 112 labelled twins, dev 5654dc0a4
+      vs the head): the invalid o1u-rt-ab, u-id, rw-rt, rw-id, u-val, v-call-u, u-enum, e-pay-u, j-u-rt, pay-inf-u-rt2, ctor-u-rt
+      accepted (the known defect); the valid o1u-loc, u-arg, rw-loc, rw-arg, o1u-dis, mix-loc, sb2-loc, j-u-loc, pr-get
+      accepted; o1u-rt, u-arg2, two-pay-u, e-pay-nc with dev's records. Evidence: commits e335edc45, 73f1da74b, 081d64aef,
+      ddd85a9c1.
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
@@ -12794,6 +12842,12 @@ resumed by R4-M86 (2026-10-20).
     at vfb_bad and r23_fb_cl_bad stays ... a dependence analysis beyond the failed input" and its p03 sentence ("one such record where
     the base had none"). All three now keep only the failed name's `UnresolvedBinding_Kd`; the reason (the erasure would need to know
     that q's only evidence failed) no longer holds, since the comparison holds with q's call region (R4-M224).
+  - Superseded in part by BU-253 (AF-3b's B1, 5780efddc, 2026-11-24): the G504 amendment's sentence "A join source's erasure is
+    decided once, under the use's premises: its late Type reads `ErasureFits` ... the premise-free `ErasureSignatureFits` stays
+    applicability's". The late Type now reads `ErasureSignatureFits`, and `AdaptAtPosition`'s conversion judges the contract, its
+    failure the record the join rests on. The reason no longer holds: `ErasureSignatureFits` was a premise-free Origin judge that
+    rejected Closures the caller's clause admits (y02c, y02cn crashed); since R4-M213 and BU-253 it is the structural part, which
+    admits every erasure the contract admits (y02c, y02cn, z01 pass).
 
 - **BU-116 A Closure whose result retains its receiver is not erased** (2026-11-07; PLAN G516, O-28, BU #56 by Middle's unit
   r4-oi-o28; Major, no design review required (RI30 B-1)) SPEC 7.7.4, 15.6.4, 5.7 Calls. The owner's O-28 (a), verbatim 「O-28は、(a)：規則 A の保持も「呼び出し元への依存」と数える、で決定します」:
@@ -14531,6 +14585,17 @@ resumed by R4-M86 (2026-10-20).
   - Closes PLAN G721: its remaining part is the two interim rows, each removed by its condition's owner (PLAN G254, G170).
   - Amended by BU-228 (the sa unit, 2026-11-19): an omitted list over a pair layer whose plan never Reborrows Copies by `ProveCopy`,
     which judges a pair layer per admitted case (`CopiesInEveryCase` is removed).
+  - Amended (2026-11-24; PLAN G254, unit G254b, its commit 3 and the owner's O-520 (c) revision): G721's interim row (1) holds a
+    pair layer other than the original `s/T` whose complete plan Reborrows in some admitted case where the bare Reborrow rule
+    (BU-27's G254b amendment) names no layer (a family: `OuterOrigin` has no family row; removal PLAN G254's family limit) or has
+    its limit (R3's domain; removal PLAN G254c). Every other such layer is captured as its initialization would be.
+    ConditionalCaptureTest's theory is split: `ACapturedPairLayerIsAcquiredAsItsInitializationWouldBe` and
+    `AReborrowingFamilyOrPremiseMadePairLayerIsUnsupportedUntilTheFamilyRowOrG170`. Moves by SPEC reason: accepted (SPEC 7.7.2:
+    an entry initializes as its initialization would): rows 1-4, the two `p@s` rows, PairFollowTest row 29, o1-cl-loc, n-o1-v,
+    c3-str, rcv-loc; `UnprovenOriginRelation_Kd` (SPEC 15.6.3, 15.8.2): r23, r24, o1-cl-st, n-o1, rcv-pair;
+    `TransferRequired_Kd` (SPEC 7.7.2's omitted list, 8.14): row 7, c3-str-bare; `InvalidAssignment_Kd` on a `let` Closure (SPEC
+    7.7.3): cap-let-r; row 30 BU-177's records. R3's domain keeps row (1)'s record at the entry (o1u-cl-loc, rw-cl-loc, n-o1u,
+    n-o1u-i, o1u-cl-st).
 - **BU-183 A built-in sequence with a declaration states its Indexable conformance in Kimigayo (PLAN G715 part a)** (2026-11-12;
   Front, the library and Binding; Major; implementation reviews 1 and 2 REVISE, 3 ACCEPT WITH NOTES by the Back's reviewer; split by
   the owner's O-197 (a)) SPEC 4.7.1, 8.5.2, 22.1, 3.4.3.
@@ -15306,6 +15371,9 @@ resumed by R4-M86 (2026-10-20).
     inside the sources is each source's own. The per-position class gives way in part to the one class source
     (`ExpectedTypeClass`); at a whole's places SPEC 14.9.2 step 2 holds with or without a literal (`WholeEvidence`),
     `BesideLiterals` keeping the literal half. U1.6g2 stands until PLAN G924 AF-3b.
+  - Superseded in part by BU-252 (PLAN G924 AF-3b, Q-731; ArgFlow ruling 63): U1.6g2 at a call argument. A probe join that holds a
+    source awaiting its call waits for its call, and the selected candidate completes its waiting sources at the step-1 Type, the
+    parameter Type (SPEC 14.9.2 step 1). An anonymous function's or a reference's join keeps U1.6g2's step-2 Type (PLAN G957).
 - **BU-204 `Infer`'s pattern is always the callee's: at a pair-target position a slot's binding is compared with evidence, never
   matched as a pattern (PLAN G854; a crash patch)** (2026-11-14; Front, Binding inference; Minor, a crash fixed at once under plan
   revision 69 (B); one review by F's reviewer, ACCEPT WITH NOTES; the Middle's C-316 consent; F's D-590 rulings 1-4) SPEC 10.8
@@ -16161,6 +16229,8 @@ resumed by R4-M86 (2026-10-20).
     stays while a family is written through it, and the batch converting the last one (E) deletes it. `PairAdmitted` and
     `ImplicitPairAdmitted` keep `EnsurePassNode` for good (amended by R7-N5 B2a-2, below).
     `originInferences` stays out (B's ruling 2, PLAN G1078). Ratchet ("Node-keyed table members in Binding") 76 -> 70.
+    - Amended by BU-255 (Q-719; PLAN G1078 closed): `originInferences` is deleted, not migrated; an Origin solve's state lives as
+      long as its solve or its call's evaluation.
   - **R7-N5 B5b** (the Back's batch, Q-541; design `b4b5b-design.md` §4-§5, B's rulings 4, 7, 9): `effectBoundRejections` and
     `callablePremiseFailures`, step-cleared at `PrepareEffectBounds`, become pass families of `NodeColumns`
     (`StampedColumn<T, Binding.PassCounter>`), their Clears deleted: the order probe found no read or write of either before its step
@@ -17437,6 +17507,10 @@ resumed by R4-M86 (2026-10-20).
     an open family); failing an open Closure input's slot (ruling 172 (A): rests HN3's independent record), `Stated` reading the mark
     (ruling 172 (B): a second source of the cause rule) and a Keeps exclusion for split parts (ruling 172 (ii)); completing a waiting
     part at a whole mark (ruling 170, stopped by ruling 171: variants A, B, D each move a valid or an independent record).
+  - Amended by BU-252 (PLAN G924 AF-3b v3-A, Q-731; commit 0b and commit 4): in "Waiting parts and the canonical case" a run reads
+    each waiting part's checked verdict at the Type the run formed (`FitChecked`), one judge of a waiting part; `FitCaseAt` leaves the
+    temporary member list (deleted); and a failed argument of a split call is completed whole at the canonical case's parameter
+    (`CompleteValueCallPart`), each part failing there its own record. BU-252 states the replaced and the added sentences.
 - **BU-241 A call's solve holds its representatives and publishes a failed equality** (Front, 2026-11-21; PLAN G1128 R1.3 (i),
   Q-618, its commit 2a; Major, a record and acceptance mover; F's G147 rulings 22, 23, 26, 29, 43; the Middle's word of 2026-11-21
   01:54) SPEC 15.3.6, 15.6.1, 23.1.2. Amends BU-221; closes PLAN G960's r4aL class.
@@ -17653,6 +17727,9 @@ resumed by R4-M86 (2026-10-20).
     contextual Case's lookup without writes; `InferredCase` publishes it), `PayloadTypeAt` (a payload's Type in the constructed
     Type) and `FormReference` (a container reference's one formation from its own arguments and its environment, pure;
     `BindContainerReference` keeps the walk and the writes).
+  - Amended by BU-252 (PLAN G924 AF-3b, Q-731): the queries' one owner of their saved state is dev's `BeginSelectionQuery` /
+    `EndSelectionQuery` (`SelectionQuery`), which also saves `waitingBase`; AF-3b's dependent-part queries are `SelectCallAt` and
+    `FitConstructionAt`, `ConstructionTarget`'s second producer (`CaseAt`, `QualifiedEnumAt`) and consumer (`FitsConstructionAt`).
 - **BU-245 Comparisons of two Types outside the identity judge stay at reviewed sites, one reason each** (Front, 2026-11-22;
   Binding; R7-C3 C3c, the plan's §5.0 C3 part c, RP6, Q-623, D-1040; Minor, tests and a behaviour-preserving move; design
   `...\front\notes\C3\design-c3c.md`; F's C2/C3 rulings 319 and 323; the independent code review ACCEPT WITH CONDITIONS) SPEC 8.2.3.
@@ -17996,6 +18073,193 @@ resumed by R4-M86 (2026-10-20).
     options), a record at the Case Pattern, `RestOnPart` for it, binding the read siblings and resting them by a second walk, reading
     each payload twice; form L (`BoundMatch.Unheld` and the late recheck of the leaf's dropped positions: it kept only a dependent
     record; ruling 7, "Short").
+- **BU-252 A part checked against the expected Type is checked at each candidate's Type, closed or open, once per distinct Type
+  (PLAN G924 AF-3b)** (Front, 2026-11-24; Binding; Major, an acceptance mover (Q-731, D-1215); designs
+  `front\notes\ArgFlow\design-af3.md` Revision 2 with its short check ACCEPT WITH NOTES (C1-C3, F's ArgFlow ruling 42),
+  `af3\design-casepath.md` Revision 1 (rulings 64-69) and `af3\design-v3-A.md` Revisions 1-3, §11.8 and §12 (chosen over v3-B by the
+  owner's order of 2026-11-22 19:4x, rulings 139, 142-145), the owners note `af3\v3a\owners-note.md`; F's ArgFlow rulings 38-44, 57-69,
+  119-125 and 139-187; the owner's O-335 (a), O-351 (a), O-492 (a), O-499 (a) and O-510 (a); K's readings D-1097, D-1117, D-1132 and
+  D-1164) SPEC 10.1, 10.2.2, 10.4 steps 1-2, 10.5.1, 10.6, 10.8, 14.9.2. Supersedes in part BU-203 (U1.6g2 at a call argument);
+  amends BU-240 and BU-244 (their lines).
+  - **The row:** `FitArgument`'s row for a part that awaits its call as a Call or Case (`FitChecked`,
+    `Binding.ArgumentKinds.Checked`) is the one owner of "does it fit a candidate's Type E", closed or open: the part's own resolution
+    at E, as a query that publishes nothing (`SelectCallAt`, `Binding.CallSelection`; `FitConstructionAt`, `Binding.Enums`), is
+    `NoneApplicable` or `Ambiguous`: the candidate is inapplicable, with the fact `CheckedPartFailure` (the part, E, the outcome)
+    carried by the trial frame (`trialChecked`) to the rejected candidate or a Callable row and recorded as the candidate party's
+    `Checked` fact (R7-M62's line); any other outcome keeps it `Waiting` (O-335 (a): a refusal, a Pending premise, a nested
+    declaration or signature failure or a correlation failure read in a losing candidate never decides the call). `FitsPosition`,
+    `ProbeRangeBoundary` and `LateType` read the same row.
+  - **The class (SPEC 10.4 step 1; ruling 63):** by the resolution's result at E (`CheckedClass`, `OwnerResult`): an owner value at
+    `ref/U` is a borrowed temporary and a borrow value by value is a value read (Cross-Semantics adaptation); otherwise Expected-Type
+    fitting, also at a bare atom E (an unbound `T` takes a returned value or a returned borrow whole, 10.2.2 item 2). An Unproven
+    nested selection whose Pending candidates are premise-only is compared as though applicable (`PremisedBest`, shared with
+    `PremisesCannotAffect`; Rd6'); any other Pending keeps the candidate unranked (C2; never Pending). `CheckedClass` is the one class
+    source at a closed and an open position, and `CheckedVerdict.Class` has one source, the part's resolution at E (rulings 124, 126,
+    157).
+  - **An open position (design v3-A commit 2; the owner's O-499 (a), verbatim 「O-499 a」, 2026-11-22):** where a candidate leaves a
+    slot of a position's parameter Type unbound after steps 3 and 4 of SPEC 10.1, the expected Type there is the closed E's formation
+    with each such slot an open atom (`SlotSolution.OpenType`; owner `Binding.OpenSlots`): `BoundTypeKind.OpenSlot` (with
+    `BoundType.ContainsOpenSlot`, `TyCtxt.OpenSlot`, interned per slot symbol and owner level) and `LengthOperation.OpenSlot` (with
+    `BoundLength.OpenSlot`, `BoundLength.ContainsOpenSlot`, `TyCtxt.OpenSlotLength`), two new vocabulary entries, not temporary: the
+    representation of SPEC 10.8's unbound slot at an open position (COMPILER_ARCHITECTURE). An atom names a slot that no evidence
+    binds; while candidates are compared it holds in every fit and agreement and binds nothing (K's D-1117; ArgFlow ruling 148), and
+    in 10.4 step 2 a Type holding it is identical only to itself (the relation walk publishes `MetOpenSlot`, read by the walk's
+    identity uses; ruling 151 B-a). The readers of `MetOpenSlot` are 10.4 step 2 and Infer's evidence agreement; `SameStructure` and
+    `SameBinding` are read as fits (ruling 171 C3, narrowing ruling 151 B-a's reader list). The expected-result match fills a nested
+    slot first and keeps no first-met atom at a nested slot (K's D-1132 reading; ruling 154; `FillOpenSlots`). InferCtxt holds the
+    in-flight owners (`PushOwner`, `PopOwner`, `OwnerCount`), since the check needs them at its one write path (`CheckOpenWrite`: no
+    in-flight owner's frame is written, no atom outlives its owner; a broken write ends the check as `CheckFaulted_Kd`).
+  - **A checked part at an open position (design v3-A 11.8; rulings 156-160):** a nested call, a construction included, is checked at
+    the position's open Type itself, a bare atom included, by its own resolution (`FitChecked`), whose non-null result is judged by
+    the closed fit at that Type, in which the atom holds; a checked part that is not a nested call (a literal form, a join, a
+    leading-dot Case, an awaited anonymous function or function reference) whose place is a bare atom holds and is completed after
+    selection (`PlacedAtOpenSlot`). No owner is carried into a query (SPEC 10.5.1 judges a checked part by the part and its expected
+    Type alone). Its outcomes are the closed E's: no applicable candidate or an ambiguous resolution makes the outer candidate
+    inapplicable (the owner's O-492 (a), BU-224's amendment with D-1072). Under the argument probe, a candidate whose result holds a
+    slot no evidence binds queries none of its checked parts at an open position (`ProbedResultOpen`; ruling 160 C3) and gives such a
+    part no class; applicable, it makes the nested call not independently typable, so the call defers unranked
+    (`EvaluatedCandidate.Deferred`, read by `ClassifySelection` before any comparison and by `SolveSelected`'s deferral) (ArgFlow
+    ruling 171 C2; SPEC 10.5.1 bullet 1).
+  - **10.4 step 2 (phase X; rulings 166, 173, 175 C3):** SPEC 10.4 step 2 compares a waiting checked part's (a Call or Case, checked
+    at each candidate's Type) substituted parameter Types like any source argument (D-1164, K's Reading I); the one position it does
+    not compare is a waiting callable's (an anonymous function or a function reference needing S) at a parameter `F`, `ref/F` or
+    `uniq/F` that it binds, which SPEC 10.8 Unbound slots compares by form ("equal forms compare equal in step 2"; the candidates
+    acquire F in one mode), with the atom read before it (ruling 166); at a Function Type the callable's operation is an Erasure,
+    compared like any source argument.
+  - **A construction qualifier (phase W; ruling 172):** a construction qualifier omits its own list when it writes none and its symbol
+    is no Self (`BindingSymbol.SelfOf`, Q-700's published fact); no consumer decides `Self` by its spelling.
+  - **The memo:** `dependentChecks`, keyed by the part's syntax identity and E (an interned Type; at an open E too, since no owner is
+    carried into a query: design v3-A 11.8.6, replacing ruling 132 C3's open bindings), cleared per pass: a cache (C1); a miss runs the
+    query; a verdict whose query read a split layer is its run's and is not kept (`ReadSplitSince`; BU-240; ruling 152 C1). The
+    selected candidate's completion runs the canonical full evaluation (no kept winner: design R1.7's kept winner is a cost
+    optimization of m - 1 candidate trials per completed checked call of m candidates, not implemented, PLAN G1347; the selection's
+    records stay `CheckCallShapeContracts`' on the full set, R2.5).
+  - **The query's saved state (v3-A commit 0b; ruling 146):** dev's `BeginSelectionQuery` / `EndSelectionQuery` (`SelectionQuery`),
+    the one owner for every query (ruling 120 N2), which also saves and restores `waitingBase` (the enclosing fit's kept waiting parts:
+    a query inside a fit starts its own above them). A named call's selection at an expected Type is dev's `ProbeSelection` (one
+    frame); `SelectCallAt` keeps only the step from its probed selection (`ProbedSelection.Premised`, `OwnsResult`) to the checked
+    verdict.
+  - **The limit (SPEC 10.6; the owner's O-351 (a)):** past 4,096 distinct `(part, E)` queries of one outermost resolution (memo hits
+    not counted; IMPL A.4's checks) no query runs and the outermost call is `ResolutionWorkLimit_Kd` (Resource), its waiting parts
+    resting on it (`MarkWaitingHeaders`, then `Fail`). The counts (the owner's O-510 (a)): k distinct Types over an `idf` chain of
+    depth d make k·d queries (sc-k-d); the wrapping family `take(g^d(mkb^d(1)))` makes 3·2^d - 3 + d(d-1)/2 (the d(d-1)/2 checks at
+    open positions SPEC 10.5.1 asks at each remaining candidate's Type): d = 10, 3,114 queries, is accepted (tv10), and d = 11 is
+    refused at the 4,097th (tv11, tv12).
+  - **Payloads (P-A (a)):** every Case payload is prepared where its part is recorded (`PreparePayloads`; a construction's settled
+    payloads too) and fitted by `FitArgument` at its payload Type (`CompletePayloads`).
+  - **Supersedes BU-203's kept U1.6g2 at a call argument (ArgFlow ruling 63):** a probe join that holds a source awaiting its call
+    waits for its call (`WaitsForItsCall`), and the selected candidate completes its waiting sources at the step-1 Type, the parameter
+    Type (`BindStepThree` binds a waiting part at the position's Target Result Type). Reason no longer holding: U1.6g2 bound the source
+    at the typed sources' step-2 Type before any candidate was known; SPEC 14.9.2 step 1 fixes the Target Result Type at a call
+    argument (jw1, jw1-1 accepted). The 10 U1.6g2 rows of `OriginRelationDiagnosticTest` and G729's c1/c2 keep their records.
+  - **Amends BU-240's "Waiting parts and the canonical case"** (v3-A commit 0b; ruling 146): "a run judges each at the Type the run
+    formed (a Case by `FitCaseAt`; a Call by its own selection probed there)" becomes "a run reads each waiting part's checked verdict
+    at the Type the run formed (`FitChecked`: no candidate or an ambiguity is its failure, `CheckedPartFailure`; an unproven selection,
+    its own or a part's below a Case, `CheckedVerdict.Selection`, is its failure at that part)". `FitCaseAt` leaves BU-240's temporary
+    member list (deleted; `FitConstructionAt` is the Case fit, its failing component `CheckedVerdict.Misfit`, so BU-240's blame and run
+    counts are unchanged). Rule W, the canonical case and every record rule unchanged. Cause: AF-3b changed what `FitArgument`'s
+    awaiting-part row means (it judges the candidate's applicability) while the split still read it as neutral, so an awaiting part was
+    judged twice at one Type and the first judge by call order won. Rejected: dev's `WaitingFails` as the judge with `FitChecked`
+    silent in a split run (a mode steering FitArgument's row by its caller); both judges (two verdicts of one question); R1.7 on the
+    value split (breaks BU-240's twin rule against `BindValueCall` and loses independent records, 23.1.2).
+  - **Adds to that paragraph** (v3-A commit 4, §12; rulings 153, 164, 165): "A failed argument of a split call is completed whole at
+    the canonical case's parameter by the closed path's completion (`CompleteValueCallPart`), so each part failing there is its own
+    record; the run names one waiting part, the one the call rests on (AF-3b v3-A §12, ArgFlow ruling 153)." A part failing only in a
+    non-canonical case still gets no record (PLAN G1350, ending with G886 (R)).
+  - **Moves (Q13):** Q-731's row names each with its SPEC reason: newly accepted (V) from dev's `AmbiguousBinding_Kd` or BU-156's
+    located `Unsupported_Kd`, among them the construction at `ref/U` under two candidates (r1, r1q, r1s), the waiting join source at
+    the step-1 Type (jw1, jw1-1, n6, n6-r, q1), kbm, twm, lw, tw3, hb, px4 and px6; newly rejected (I): rk1, rk1-r, px3, xu1 and xs1
+    (another candidate selected, its use `TypeMismatch_Kd`); refused by the limit (V*): tv11, tv12; record moves on invalid programs
+    to `NoApplicableOverload_Kd` at the call with the candidate's checked part (design R1.7, R2.1), and commit 4's records at the
+    failing parts of a split argument.
+  - Rejected: the one-candidate skip (P5; a mode), a second walk for P3 (b), a located `Unsupported_Kd` for the Case forms; for the
+    open position, the no-expectation resolution (ruling 125's (b), superseded by ruling 126: SPEC gives it only after selection), an
+    open call part ranked Exact or by Expected-Type fitting without its resolution (dev's silent default; cd21bd7d1), an open call
+    part's owner-ness from its candidates' declared results (a second reading; it accepts P5-2, invalid), a probe-written
+    `ArgumentPart` column, an Ambiguous resolution at an open E kept with its candidates' shared class (the prototype's interim; O-492
+    (a)), the tentative frame read by Infer's arm (ruling 128 (ii): five fixes; rev 2's tentative binding of the owner's slot inside a
+    trial judged the agreement during applicability: bsg and kt3 accepted), a frame of atom bindings per query with a frame chain for
+    nested fills (a second store beside the owners' frames and InferCtxt's log), a synthetic Parameter (O-499 (b)), BU-240's `Open`
+    (another contract, temporary), a binding mode steering the walk, an owner carried into a query (ruling 158's (a) and (b)) and a
+    (part, member, E) memo key; no B1 clause (ruling 175's B1 is PLAN G1322's, rulings 176 (c), 177 C1).
+  - Open: PLAN G1345-G1350, G1239, G1270, G1322, G957 (an anonymous function's or a reference's join), G980's rows and G1019 (1).
+- **BU-253 An erasure's Origin and Loan contract is the conversion's alone, a Function Item's as a Closure's; before selection a
+  waiting join position's part is fitted by the structural part (PLAN G924 AF-3b, G379 (b)'s Item arm)** (Front, 2026-11-24;
+  Binding's argument fit and selection; Q-731, D-1213, D-1215; Major, an acceptance mover; R7-P4 T2's first part; designs
+  `front\notes\ArgFlow\af3\design-v3-A-causeB.md` and `af3\design-v3-A-B1.md` §1-§11; F's ArgFlow rulings 179, 181, 183-185; the Back's
+  answer on C-507; the implementation review `af3\review-impl-ag.md` and its delta read; commits 8bff6d6e2, 99234eb64, 5780efddc)
+  SPEC 15.6.1, 10.2, 10.4, 10.5.3, 10.8, 7.7.4. Extends R4-M213 to Function Items and amends it ("Open, G379 (b), R7-P4 T2: the Item
+  arm": the Item arm is now); supersedes in part BU-115's G504 amendment (below).
+  - Cause: `ErasureSignatureFits`' Item arm proved a Function Item's whole contract before selection (`ItemSignatureFits`), so a
+    candidate trial, a checked part's query (a Case payload at E, faa7fa3dd) and `FitPerCall` decided applicability by an Origin
+    relation; and `CompletePayloads` converted a payload only where a fit's operation said Erasure, which a settled payload has none
+    of (8eabb18e9).
+  - Rule: every fit before selection reads the erasure's structural part (`FitsStructuralPartAt` over the callable's signature), a
+    Function Item's as a Closure's. Its Origin and Loan contract is judged once, by the conversion at the instantiated Type after
+    selection (`ErasesToFunction` -> `ErasureFits` -> `ItemSignatureFits`), a failure being the part's `UnprovenOriginContract_Kd`,
+    which never reselects. A construction converts a typed callable payload by the Types it completes (a Closure or Function Item at a
+    Function Type, as `CompleteValueCallPart`). BU-240's split fallback stays on the structural arm (`RestsOnSplitCases` over it);
+    `UnformedItemFails` reads the structural arm.
+  - **B1 (5780efddc; rulings 184, 185): one rule at three sites, no new component, field or vocabulary entry.** Before selection a
+    waiting join position's part is fitted by the structural part only: a late Type's erasure by `ErasureSignatureFits`
+    (`LateAdaptation`; `ErasureFits` has one reader, `ErasesToFunction`), a Tuple or array literal part by its own parts at every
+    position kind (rule A's `FitsWholeAt` row, no longer `PartKind.Typed` only; the default row `LateFits` is a typed or Dictionary
+    part's). After selection the conversion's failure is the record the join rests on (`TryPropagate`'s failed conversion,
+    `BindWaitedSources`). Cause A's row a2 (aebf5be78: a typed part of a waiting position fits by `FitTyped`) is deleted, subsumed.
+  - Supersedes in part BU-115's G504 amendment sentence "its late Type reads `ErasureFits` ... the premise-free
+    `ErasureSignatureFits` stays applicability's": its reason (a premise-free signature fit rejected Closures the caller's clause
+    admits) no longer holds, since `ErasureSignatureFits` is the structural part (BU-115's line).
+  - Moves (Q13; named in 8bff6d6e2, 99234eb64 and 5780efddc). Class 1 (an invalid program now rejected): kdd_bad accepted ->
+    `UnprovenOriginContract_Kd` at `h3`; itsel, frsel, s2_runpair (t_b5's Function Item form), ja1, ja5 and jo1 accepted ->
+    `AmbiguousBinding_Kd`. Class 4 (the record to the converted value, 15.6.1): dd_bad/t4q, kt_bad, itselctl1n, frselctl1n, e1a_n,
+    ruling 183's class rows (TypeBindingTest a0i, a2i, g3i, t08i, x0i, t09i, t10i; CallableSignatureInferenceTest's two;
+    CallOriginRelationTest's Item row; FunctionItemTest's `apply(pk, other)`), ja1n, ja2n, ja4n, ja7n and jd1n:
+    `NoApplicableOverload_Kd` at the call -> `UnprovenOriginContract_Kd` at the Item or value. jo1n, jo4n return to dev's located
+    `Unsupported_Kd` (BU-156, PLAN G443). Class 2 (a valid program accepted): jd1v (7.7.4, 12.4.3) and the head's jo2n (10.8). A
+    Dictionary literal part at a waiting position no longer makes every candidate inapplicable: d_jd2 (candidates differing only in
+    Origins) `NoApplicableOverload_Kd` -> `AmbiguousBinding_Kd` (10.1, 10.8).
+  - Rejected: a structural reading inside `FitConstructionAt` only (a second copy of `FitTyped`'s erasure row); unprepared Item
+    payloads (the query would read an unprepared part); completing every payload by `FitArgument` again (the Case's
+    `TypeMismatch_Kd`); reverting 8eabb18e9 (Formatting.kimi's HIR difference); S1 alone (kd_bad accepted, ruling 178). For B1: the
+    review's one line alone (ja3n's dependent `TypeMismatch_Kd`); site 3 alone (`LateAdaptation` a second judge of the contract:
+    jd1n `NoApplicableOverload_Kd`); keeping a2 (jd1v rejected); a phase flag on `LateType`; dropping the late Type's nested fits.
+  - Open: PLAN G379 (b)'s rest (R7-P4 T2), G514's u2 and u2g, G886 (8) (the Item arm and `ItemSignatureFits` each run BU-240's split
+    protocol), G1343 (ja6v), G1344 (a Case payload's structural misfit still forms its Origin relation).
+- **BU-254 A borrowed owner temporary's operation carries its borrow Type, `TemporaryBorrow`; a step-1 join judges each source once,
+  at its value (PLAN G924 AF-3b, jo2s)** (Front, 2026-11-24; Binding's argument temporaries; Q-731, D-1213, D-1215; Major; design
+  `front\notes\ArgFlow\af3\design-v3-A-B1.md` (jo2s's step); F's ArgFlow rulings 185, 186; the implementation review's delta read;
+  commit f9b968bb1) SPEC 10.2 row 2 and "Temporaries", 3.6, 14.9.2 steps 3-4.
+  - Cause: (F1; pre-existing on dev, exposed by AF-3b's completion of a waiting source at the step-1 Type, which removed BU-156's
+    located `Unsupported_Kd` that hid jo2s) at `ref/U` an aggregate or a value join is one owner temporary borrowed once, but
+    `FitComposite` built that Borrow without its adapted Type, so the selected call's fit never related the temporary's borrow to the
+    parameter's Origin; `FitLiteral`'s literal temporary carried it. (F2; jo5s) `DecideWaiting` ran `BindWaitedSources` at the
+    position's Type before `DecideResult`, so a bound source misfitting at Origin positions only was judged at the join
+    (`CheckTypeUse`) and again at its value by step 4's loop: two records for one relation.
+  - Rule: a borrowed owner temporary's operation carries its borrow Type, `TemporaryBorrow(part, U)` (`Binding.Materialization.cs`,
+    the owner of the owner temporary a value at `ref/U` is: `ref` of U at the part's own Place Origin), for a literal (`FitLiteral`),
+    an aggregate and a value join (`FitComposite`) alike, so the selected call's fit (`JudgeCallFit`) relates the temporary's borrow
+    to the parameter. At a Target Result Type step 1 fixed (`context.Expected`), a join's bound sources are checked by structure in
+    `BindWaitedSources` (a structural misfit keeps its record at the source) and judged once, at their values, by step 4's loop
+    (`DecideResult`); at step 2's common Type the join's own `CheckTypeUse` stays the judge (R7-O1).
+  - Moves (Q13): class 1 jo2s, jo2sv (dev `Unsupported_Kd`, 99234eb64 accepted), jt2, jt6-jt9 (accepted on dev and 99234eb64) ->
+    `UnsatisfiedOriginRelation_Kd` at the argument (a borrowed owner temporary never outlives `static`); jo5s one
+    `UnprovenOriginRelation_Kd` at `o` (99234eb64: two; dev: one at the join).
+  - Rejected: the borrow relation formed at the join's binding (a second owner of the borrow beside the call's operation);
+    suppressing the loop's record after the pre-pass's (a duplicate suppressed afterwards); dropping `DecideWaiting`'s pre-pass (a
+    Closure source must be converted before the loop reads it: ja3v).
+- **BU-255 An Origin solve's state lives as long as its solve or its call's evaluation (PLAN G1078, R7-N5)** (Back, 2026-11-24;
+  Binding; Q-719, D-1201; Major; design `back\notes\r7-n5\g1078-design.md`, B's rulings 1-6, its design review C-470; the Front's
+  implementation review and the Middle's RP17 consent on C-513; commits a067e2678, 95375fdf1) SPEC 8.6.4, 8.6.1, 23.1.2. An Origin
+  solve's state lives as long as its solve or its call's evaluation, with no table: a call keeps one state per candidate
+  (`CallEvaluation.Inferences`, `SlotSolution.Kept`) across the candidate's trial, re-trials, fixed re-check and judgment, returned
+  clean at `ReturnEvaluation`; a contract comparison, `ContractFits`, a value call and a Case construction rent a clean state and
+  return it in their own function. `Binding.originInferences` and `InferenceOf` are gone (ratchet "Node-keyed table members in
+  Binding" 11 -> 10). It fixes a defect: SPEC 8.6.4 with 8.6.1 makes one requirement reached through two bound references two
+  candidates with one declaration, which shared one state, so the later rejected candidate's solve cleared the winner's published
+  failure (Marked) and the call reported dependent records that rule W rests (SPEC 23.1.2); CallOriginRelationTest's SwapK/SwapC rows
+  pin it. It also removes the table's growth across edits. Rejected: (a) keying by the comparison's site (changes `Use`: a semantic
+  unit, the site not proven a program node); (b) a pool outside NodeColumns keyed as today (an owner-approved ratchet exception that
+  keeps the growth).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -25705,6 +25969,16 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Amended by BU-249** (R7-N1 e3; PLAN G1298 closed): `UnselectedTypeSite` reads only the use's published lookup (UseNode,
       `HirTables.LookupOf`, PublishedStep), with `SelectAliasTarget` a fourth reader; this supersedes the statement that a generic's
       site reads no walk (BindConstructedType's `default`): the walk argument is gone. `SelectQualifier` is deleted.
+  - **`Checked`, a sixth Binding kind (AF-3b, PLAN G924, Q-731, DECISIONS BU-252; F's ArgFlow ruling 179; the Back's consent on C-504
+    with C1, C2).** At a candidate party (a named call's rejected candidate, role 3; a Callable value call's premise candidate, role
+    5), after its `Reason`: the argument part checked against its expected Type whose own resolution there failed (SPEC 10.5.1). Its
+    site is the part; its Value is that Type's kept side index times two, plus one where the resolution is ambiguous (else none
+    applies), packed and unpacked by `BindingReport` only (`KeepChecked`, `Checked`; `EqualValue` compares it by its Type and outcome,
+    as `Instance` by its Type). `CandidateFacts` and `FailCallableCandidates` write it (`CheckedFact`); only `CheckedPartText` reads
+    it, which both adapters call to rebuild the candidate's label. Codes, locations and related counts are unchanged. It replaces
+    AF-3b's prototype `RejectedCandidate.CheckedPart` and the old `CallableCandidate`'s, which Q-703 (R7-M75's E3b-1) removed.
+    Rejected: an `Expected` fact plus two `CandidateFlags` bits (two meanings of one kind in one party; a premise candidate's `Reason`
+    is its receiver); a new `Related` role (a related entry no row names); the text in a `Reason` (R4-M132).
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
@@ -31805,3 +32079,23 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: M2 (a PowerShell port of musl's object list: a second copy of musl's build) and M3 (LLVM's Linux archive in WSL: a
     second download) while M1 works; patching musl's sources or `libc.a`; a Linux backend archive for the three helpers (C1); the
     runtime defining the three helpers in IR (compiler-rt's builtins are the canonical owner, and B9e builds them anyway).
+- **T-M38 An import's providing library is its reserved supply or its Kotonoha's name; one final symbol table over every import**
+  (Tatara, 2026-11-24; unit ProvidingLibrary, PLAN G1326 (D-1181), the Front's C-501 C1 and C2; Q-733, D-1216; Major; design
+  `artifacts\handoff\tatara\units\ProvidingLibrary\design.md` Revisions 1-1b; T's rulings 1, 1a, 2-4 and the briefs' rulings 1-5;
+  the review C-524, the Front's and the Middle's ACCEPT) SPEC 22.6, IMPL 20.4, 21.2.
+  - Rule: `ValidateLibraryImports` keys each external symbol by its first import's providing library (`Provider`: a reserved supply
+    by name, else the defining Kotonoha and logical name) and first known physical signature; a later import with another provider
+    is `ConflictingImportSupply_Kd`, with another known signature `ConflictingImportSignature_Kd`, both when both differ (SPEC
+    23.1.2); every import joins once its name arguments pass, whatever its requirement or Types; the Kind comparison goes (one
+    provider, one Kind); the runtime join compares the same provider (`provider != name` goes, no record moves). The checks precede
+    the import's limits, so a later import's limit `Unsupported_Kd` (BU-92's edge, the row limit) gives way to the conflict (BU-92;
+    T's ruling 1a); a record the import's own checks make stands beside it. The program pass's table starts from the frozen
+    library's imports (`LibraryImport.Signature`, ImportAbi's code).
+  - Moves: acceptance, rows 1, 2, 9, 10, 22, 23, 26, 27, 28 of the design's §1 and K1 (the old import/import row); records, rows 5,
+    6, 12, 14, 15, 25, 34, 35 and the cross-module signature pair (a record beside), 18, 20, 29, 30 (an `Unsupported_Kd` replaced).
+  - Rejected: the resolved input as identity (reads files; target-dependent); the Kind proxy; the runtime declarations as table
+    seeds (a code's deletion).
+  - Catalog: `ConflictingImportSupply_Kd` "LibraryImport declarations of one external symbol must name one providing library: the
+    same reserved supply, or the same logical name of one Kotonoha"; `UnavailableReservedImport_Kd` "A reserved supply provides only
+    its implementation-defined symbol set, and no profile's supply of this name provides the symbol"; requirement
+    `Binding.ConflictingImportSupply` "the imports of one symbol agree on their providing library".

@@ -88,7 +88,7 @@ public sealed partial class Binding
     // candidates. Syntax mappings are unchanged (each candidate's MappingOf, read); only binding-dependent applicability is rerun. The
     // re-check never solves through the evaluation's Solution: its rows, child slice, operations, Origins and input Origins are its own
     // scratch, and only the selected candidate's Origins (at its re-trial) and operations (on success) are copied into its columns.
-    private bool ValidateFixedConstruction(in CallEvaluation evaluation, BoundType construction, int selected, bool[] completedWaiting, BoundType?[] waitingContexts)
+    private bool ValidateFixedConstruction(in CallEvaluation evaluation, BoundType construction, int selected)
     {
         var call = evaluation.Call;
         var scope = evaluation.Scope;
@@ -159,6 +159,7 @@ public sealed partial class Binding
                     FixedConstruction = true,
                     Rows = rows.AsSpan(0, argumentCount), // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
                     ChildSlice = ResetSlice(childSlice), // R3: the re-check's own composition, at its first solve.
+                    Kept = evaluation.Inferences.AsSpan(i, 1), // Candidate i's state: its first run's openings (FirstSolve is false).
                 };
                 Debug.Assert(
                     !solution.Rows.Overlaps(evaluation.Rows) && !solution.ChildSlice.Overlaps(evaluation.ChildSlices) &&
@@ -184,7 +185,7 @@ public sealed partial class Binding
                 {
                     for (var a = 0; a < argumentCount; a++)
                     {
-                        if (!completedWaiting[a])
+                        if (!evaluation.CompletedWaiting[a])
                         {
                             continue;
                         }
@@ -193,7 +194,7 @@ public sealed partial class Binding
                         // SPEC 10.5, 10.8: the context its completion used, S for a waiting callable and else the parameter Type.
                         var contextPattern = this.WasWaitingCallable(call.ArgumentNodes[a]) ? this.ExpectedCallSignature(function, pattern) : pattern;
                         var context = contextPattern is null ? null : this.CallType(contextPattern, function, frames[i].Types, scope, null, solution.Origins, solution.Inputs, construction, frames[i].Lengths);
-                        var usedContext = waitingContexts[a];
+                        var usedContext = evaluation.WaitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&
                             (context is null || usedContext is null || !this.IsSubtype(context, usedContext) || !this.IsSubtype(usedContext, context)))
                         {

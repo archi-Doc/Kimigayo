@@ -308,7 +308,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "j11", JoinPositions + "    let d: Dictionary<i32, i32> = [1: 2]\n    return fdt(if c => (d@move, 1) else => ([3: 4], 2))\n", "")]
     [InlineData("guard", "j12", JoinPositions + "    return fdt(if c => ([1: 2], 1) else => ([3: 4], 2))\n", "")]
     [InlineData("guard", "j13", JoinPositions + "    return fdt(if c => ([1: v], v) else => ([3: 4], 5))\n", "")]
-    [InlineData("guard", "j01n", JoinPositions + "    return pt(if c => (n, 1) else => (r, 2))\n", "TypeMismatch_Kd: return pt(if c => (n, 1) else => (r, 2))")]
+    [InlineData("guard", "j01n", JoinPositions + "    return pt(if c => (n, 1) else => (r, 2))\n", "NoApplicableOverload_Kd: return pt(if c => (n, 1) else => (r, 2))")]
     [InlineData("guard", "j02n", JoinPositions + "    return pn((if c => (r, 1) else => (s, 2), 3))\n", "NoApplicableOverload_Kd: return pn((if c => (r, 1) else => (s, 2), 3))")]
     [InlineData("guard", "j03n", JoinPositions + "    return pu(match o\n        .Some(_) => (u, 1)\n        .None => (n, 2)\n    )\n", "NoApplicableOverload_Kd: return pu(match o")]
     [InlineData("guard", "j07n", JoinPositions + "    return gu(if c => (u, 1) else => (n, 2))\n", "NoApplicableOverload_Kd: return gu(if c => (u, 1) else => (n, 2))")]
@@ -462,7 +462,9 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 10.2, 10.8.1, 12.3.1 (PLAN G924 addendum, F's rulings 68 and 71): a Case construction is an owner value, so at an expected
     // `ref/U` it is checked against U and its one temporary is borrowed: contextual or qualified, at an argument or a declared Type
     // (r1-1, r1q-1, lr1, lr1q fail before the addendum). The temporary is never extended for the borrow (lr1u, 10.2 Temporaries). A
-    // failed construction keeps its own record (ri: an undeclared payload name; rn: no such Case; rm: a payload misfit). SPEC 10.2.2
+    // failed construction's own failure keeps its record: an undeclared payload name (ri1, ri1q) and a Case the qualifier's enum does
+    // not declare (rn1q). A contextual Case is checked at the candidate's Type (10.5.1, 6.5.2; PLAN G924 AF-3b, ArgFlow ruling 123), so
+    // one that names no Case there (rn1) leaves the call no applicable candidate, as a payload misfit does (rm1, rm1q). SPEC 10.2.2
     // item 2: a bare-slot result that no evidence binds is a returned value matched against U (bs1); an established binding stays
     // (bs2, bs3).
     [Theory]
@@ -474,9 +476,9 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("G924", "lr1u", ReferenceCases + "    let r: ref/Option<i64> = .Some(identity(1))\n    return kr1(r)\n", "ComparisonLoanConflict_Kd: let r: ref/Option<i64> = .Some(identity(1))")]
     [InlineData("G924", "ri1", ReferenceCases + "    return kr1(.Some(nosuch))\n", "UnresolvedBinding_Kd: return kr1(.Some(nosuch))")]
     [InlineData("G924", "ri1q", ReferenceCases + "    return kr1(Option.Some(nosuch))\n", "UnresolvedBinding_Kd: return kr1(Option.Some(nosuch))")]
-    [InlineData("G924", "rn1", ReferenceCases + "    return kr1(.Nope(1))\n", "UnresolvedBinding_Kd: return kr1(.Nope(1))")]
+    [InlineData("G924", "rn1", ReferenceCases + "    return kr1(.Nope(1))\n", "NoApplicableOverload_Kd: return kr1(.Nope(1))")]
     [InlineData("G924", "rn1q", ReferenceCases + "    return kr1(Option.Nope(1))\n", "UnresolvedBinding_Kd: return kr1(Option.Nope(1))")]
-    [InlineData("G924", "rm1", ReferenceCases + "    return kr1(.Some(true))\n", "TypeMismatch_Kd: return kr1(.Some(true))")]
+    [InlineData("G924", "rm1", ReferenceCases + "    return kr1(.Some(true))\n", "NoApplicableOverload_Kd: return kr1(.Some(true))")]
     [InlineData("G924", "rm1q", ReferenceCases + "    return kr1(Option.Some(true))\n", "NoApplicableOverload_Kd: return kr1(Option.Some(true))")]
     [InlineData("G924", "bs1", ReferenceCases + "    return kb1(identity(1))\n", "")]
     [InlineData("G924", "bs2", ReferenceCases + "    return kb1(identity(n))\n", "")]

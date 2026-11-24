@@ -371,14 +371,20 @@ public partial class TypeIdentityTest
     // The owner's O-335 (a) (SPEC 10.1, 10.4): a refusal a candidate trial reads is held to the selection and settled only by the
     // selected candidate's obligation, so a losing candidate whose `X is Inner` reaches the bound refuses nothing (xov, xovr: step 4
     // selects the candidate without the default, in either declaration order; xov0 the same loser without Pq), and the selected one's
-    // is the limit's record at the call (xovn). Twins of other judgments a check reads: a bare owned Place to `ref/X` asks no Copy
-    // (xbare), a signature's struct Constraint (xstruct, xstructv) and a conditional conformance's `when` premise (xcond, xcondv).
+    // is the limit's record at the call (xovn), also under ko's argument probe at `ko(mid(x, mkNone()))` (rf1n). rf1r (V: step 4
+    // selects the `mid` without the default) pins today's record, the limit's at `mid(` (dev's UnprovenConstraint_Kd): a held refusal
+    // nothing settles is later read as a plain Unknown, a pre-existing defect of the refusal channel, a PLAN open issue to come
+    // (board D-1180; ArgFlow ruling 176), whose unit moves rf1r to accepted. Twins of other judgments a check reads: a bare owned
+    // Place to `ref/X` asks no Copy (xbare), a signature's struct Constraint (xstruct, xstructv) and a conditional conformance's
+    // `when` premise (xcond, xcondv).
     public static TheoryData<string, string, string> RoundBoundRows => new()
     {
         { "xov", Pq + "func pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", string.Empty },
         { "xovr", Pq + "func pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc pick<X>(x: ref/X) -> () => ()\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", string.Empty },
         { "xovn", Pq + "func pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", "PremiseClosureLimit_Kd" },
         { "xov0", Pq + "func pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner0\n    return\nfunc f<T, U>(x: ref/U)\n    U is Mid\n    pick(x)\n", string.Empty },
+        { "rf1r", Pq + "func mkNone<T>() -> Option<T> => .None\nfunc mid<X, R>(x: ref/X, o: Option<R>) -> R => $abort(\"n\")\nfunc mid<X, R>(x: ref/X, o: Option<R>, tag: i32 = 0) -> R\n    X is Inner\n    return $abort(\"m\")\nfunc ko(y: i64) -> i32 => 1\nfunc f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    return ko(mid(x, mkNone()))\n", "PremiseClosureLimit_Kd" },
+        { "rf1n", Pq + "func mkNone<T>() -> Option<T> => .None\nfunc mid<X, R>(x: ref/X, o: Option<R>, tag: i32 = 0) -> R\n    X is Inner\n    return $abort(\"m\")\nfunc ko(y: i64) -> i32 => 1\nfunc f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    return ko(mid(x, mkNone()))\n", "PremiseClosureLimit_Kd" },
         { "xbare", Pq + "func g<X>(x: ref/X) => ()\nfunc f<T>(x: T.(Pq).Up)\n    T is Pq\n    g(x)\n", string.Empty },
         { "xstruct", Pq + "struct Box<X>\n    X is Inner\n    var v: X\nfunc f<T>(x: ref/Box<T.(Pq).Up>)\n    T is Pq\n    return\n", "PremiseClosureLimit_Kd" },
         { "xstructv", Pq + "struct Box<X>\n    X is Inner\n    var v: X\nfunc f<T>(x: ref/Box<T.(Pq).Up>)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    return\n", string.Empty },

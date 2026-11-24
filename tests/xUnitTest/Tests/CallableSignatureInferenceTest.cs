@@ -276,7 +276,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 
     // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.
     [Theory]
-    [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "makeOf(bounded)")]
+    [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "bounded")]
     public void AResultOnlyInstantiationKeepsItsLimits(string body, string code, string text)
     {
         var source = "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc bounded(n: ref/i32) -> ref/i32 during s\n    origin n outlives s\n    return n\n" +
@@ -461,7 +461,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             "func h(p: ref/i32, q: ref/i32) -> ref/i32 during q => make(p, pick)\npublic func main() -> ()\n    Console.writeLine(\"\\(g()@follow)\")\n";
         var rejected = DiagnosticCorpus.Check(escape);
         Assert.False(rejected.Accepted);
-        Assert.Equal(["make(local@ref, pick)", "make(p, pick)"], rejected.Diagnostics.Select(x => Text(escape, x.Span)));
+        Assert.Equal(["pick", "pick"], rejected.Diagnostics.Select(x => Text(escape, x.Span)));
     }
 
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
