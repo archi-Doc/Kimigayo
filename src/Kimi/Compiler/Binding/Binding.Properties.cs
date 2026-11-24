@@ -61,7 +61,7 @@ public sealed partial class Binding
     private bool AccessorTypeMismatch(BoundAccessor accessor)
         => accessor.TypeMismatch ??= accessor.Declaration is { } syntax && UsedType(accessor) is { } used &&
             accessor.Property.Type is { } type && !ReferenceEquals(used, type) &&
-            this.CheckTypeConstraints(used, this.scopes[syntax]) == ConstraintProof.Proven && this.CheckTypeConstraints(type, this.scopes[syntax]) == ConstraintProof.Proven;
+            this.CheckTypeConstraints(used, this.scopes[syntax], syntax) == ConstraintProof.Proven && this.CheckTypeConstraints(type, this.scopes[syntax], syntax) == ConstraintProof.Proven;
 
     private void IndexAccessor(PropertyAccessorKoto syntax, BindingScope scope)
     {
@@ -307,7 +307,7 @@ public sealed partial class Binding
                 this.RecordAccess(declaration!, inaccessible, use.Use);
             }
 
-            this.RequireConstraint(declaration!, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
+            this.RequireConstraint(declaration!, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use), declaration!), mode);
         }
 
         for (var i = 0; i < this.nodes.Count; i++)
@@ -419,15 +419,16 @@ public sealed partial class Binding
         // A resolved signature can still contain a constructed Type whose input
         // constraints fail. Validate before publishing a Property certificate.
         var scope = syntax is null ? this.DeclarationScope(property.Symbol) : this.scopes[syntax];
-        var formation = CombineProof(this.CheckTypeConstraints(property.Type, scope), this.CheckTypeConstraints(accessor.Result, scope), true);
+        var site = (Koto?)syntax ?? property.Declaration; // The accessor's declaration judges its Types (QuerySite).
+        var formation = CombineProof(this.CheckTypeConstraints(property.Type, scope, site), this.CheckTypeConstraints(accessor.Result, scope, site), true);
         if (accessor.Input is { } inputType)
         {
-            formation = CombineProof(formation, this.CheckTypeConstraints(inputType, scope), true);
+            formation = CombineProof(formation, this.CheckTypeConstraints(inputType, scope, site), true);
         }
 
         if (accessor.Receiver is { } receiverSignature)
         {
-            formation = CombineProof(formation, this.CheckTypeConstraints(receiverSignature, scope), true);
+            formation = CombineProof(formation, this.CheckTypeConstraints(receiverSignature, scope, site), true);
         }
 
         if (formation != ConstraintProof.Proven)
@@ -493,8 +494,9 @@ public sealed partial class Binding
                 var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
                 var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
                 var structural = this.ResultStructure();
+                // SPEC 15.3.4, 15.6.5 (R7-O3 O3-A): the result fit is at the value, inside the accessor's body, as a function's (BindFunctionParts).
                 if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
-                    actual is not null && accessor.Result is { } result && !this.FitsValueAt(actual, result, syntax, body, out var failure))
+                    actual is not null && accessor.Result is { } result && !this.FitsValueAt(actual, result, body, body, out var failure))
                 {
                     this.FailMismatch(body, body, actual, result, failure);
                 }

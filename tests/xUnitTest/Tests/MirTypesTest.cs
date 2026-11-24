@@ -21,6 +21,17 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         "struct Forest {a}\n    let r: ref/i32 during a\n    var children: Array<Forest during a>\n" +
         "struct Table\n    var rows: Dictionary<i32, Table>\nstruct Logged\n    var n: i32\n    var children: Array<Logged>\n    drop\n        _ = self.n\n";
 
+    // Z6's named limit R6.1 in a probe's body: `limit` holds an address taken past the shared nc, whose place nw has an exclusive borrow
+    // (nu), so its raw layer's Origin carries SharedAddress with an exclusive member: Limit at the binder arm, where the stored layer
+    // is read (SPEC 5.2.1 condition 3: the address writes nothing, which the members do not show; removal: Z6's route (a)).
+    private const string NamedLimit = "    var n = 1\n    var nw: ref/i32 = n@ref\n    var nu = nw@uniq\n    let nc = nu@ref\n" +
+        "    let limit = Wrap.init(nc@follow@follow@raw@raw/u8)\n";
+
+    // The same holder over another place's address taken through its exclusive borrow mu (SPEC 5.7 Fits and claims under O-498 Q1 (i)):
+    // a call may write a Loan into mw, a `ref/i32`, past it (Through).
+    private const string DecidedHolder = "    var m = 1\n    var mw: ref/i32 = m@ref\n    var mu = mw@uniq\n" +
+        "    let through = Wrap.init(mu@follow@raw@raw/u8)\n";
+
     // SPEC 15.6, 3.2.2, 15.3.5: a value may hold a Loan where a part of its own storage is a borrow, pair or raw layer (a raw pointer
     // carries the holders it addresses and its Loans, SPEC 15.6 Addresses), a Slice, a Function value or an abstract Type, or a Type
     // argument its storage may hold (a library collection behind a raw pointer, a Loan); scalars, strings and Origin-free aggregates hold
@@ -94,22 +105,29 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     // SPEC 23.1.1, IMPL 21.3.2 (DECISIONS R4-M153): a part past the walk's bound where the write fact would be read is the guard's own
     // outcome, Deep, never the write fact: past an exclusive reference (unique40) and in the value's own storage (value40), while a decided
     // write elsewhere in the value outranks it (mixed40); past a shared reference nothing is read (shared40), and at depth 10 the walk is
-    // exact (unique10: a Tuple of integers past an exclusive reference gives nothing). Beside a stored raw layer whose members Binding
-    // does not publish (Limit, as w), the one answer (MirOutcome.Join) is Limit (limitDeep40), as at depth 10 (limitDeep10).
+    // exact (unique10: a Tuple of integers past an exclusive reference gives nothing). A stored raw layer stating x is read where x is
+    // bound (Z6's M3a): x's referent may hold a Loan, so a call writes past it (w, Through), and that decided part outranks the deep one
+    // (wDeep40, wDeep10). Beside a named limit, an address taken past the shared nc (Z6's R6.1: SharedAddress with an exclusive member,
+    // limit), the one answer (MirOutcome.Join) is Limit (limitDeep40), as at depth 10 (limitDeep10); without the shared path the same
+    // holder over another place is decided (through).
     [Fact]
     public void APartPastTheBoundIsTheGuardsDeepOutcome()
     {
         var (body, c) = Probe(
-            $"struct Wrap<E>\n    var value: E\nfunc probe(x: uniq/(ref/i32 during a) during a, unique40: uniq/{Nested(40)}, value40: {Nested(40)}, " +
+            $"struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n" +
+            $"func probe(x: uniq/(ref/i32 during a) during a, unique40: uniq/{Nested(40)}, value40: {Nested(40)}, " +
             $"mixed40: (uniq/(ref/i32 during a) during a, uniq/{Nested(40)} during a), shared40: ref/{Nested(40)}, unique10: uniq/{Nested(10)}, " +
-            $"w: Wrap<raw/u8 during x>, limitDeep40: (Wrap<raw/u8 during x>, uniq/{Nested(40)} during a), " +
-            $"limitDeep10: (Wrap<raw/u8 during x>, uniq/{Nested(10)} during a))\n    return\n");
+            $"w: Wrap<raw/u8 during x>, wDeep40: (Wrap<raw/u8 during x>, uniq/{Nested(40)} during a), " +
+            $"wDeep10: (Wrap<raw/u8 during x>, uniq/{Nested(10)} during a), deep40: uniq/{Nested(40)}, deep10: uniq/{Nested(10)})\n" +
+            NamedLimit + "    let limitDeep40 = (Wrap.init(nc@follow@follow@raw@raw/u8), deep40)\n" +
+            "    let limitDeep10 = (Wrap.init(nc@follow@follow@raw@raw/u8), deep10)\n" + DecidedHolder + "    return\n");
         var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             [("x", MirWrites.Through), ("unique40", MirWrites.Deep), ("value40", MirWrites.Deep), ("mixed40", MirWrites.Through),
-                ("shared40", MirWrites.None), ("unique10", MirWrites.None), ("w", MirWrites.Limit), ("limitDeep40", MirWrites.Limit),
-                ("limitDeep10", MirWrites.Limit)],
-            Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
+                ("shared40", MirWrites.None), ("unique10", MirWrites.None), ("w", MirWrites.Through), ("wDeep40", MirWrites.Through),
+                ("wDeep10", MirWrites.Through), ("deep40", MirWrites.Deep), ("deep10", MirWrites.None), ("limit", MirWrites.Limit),
+                ("limitDeep40", MirWrites.Limit), ("limitDeep10", MirWrites.Limit), ("through", MirWrites.Through)],
+            Parameters(body).Concat(Locals(body, "limit", "limitDeep40", "limitDeep10", "through")).Select(x => (x.Name, Writes(x.Type))).ToArray());
 
         MirWrites Writes(BoundType type)
         {
@@ -141,8 +159,10 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M153's revision 3): a walk's answer is the Join of its parts' outcomes, the same in every order of
     // a Tuple's components, an Array element's components and a struct's Fields. Beside a part past the bound (deep, a Tuple of i32
     // nested 40 deep: Deep alone) a decided part is the answer before and after it (Observation: a Logger, whose drop observes; the guard:
-    // an exclusive reference to a borrow), and a Limit part outranks it (an abstract part not proven Copy; a stored raw layer whose members
-    // Binding does not publish). At depth 10 nothing is past the bound (deep: none) and each answer is the same.
+    // an exclusive reference to a borrow, and a stored raw layer stating x, read where x is bound since Z6's M3a: x's referent may hold a
+    // Loan), and a Limit part outranks it (an abstract part not proven Copy; Z6's named limit R6.1, a holder of an address taken past a
+    // shared path, NamedLimit, in either order: gLimitP, gPLimit). At depth 10 nothing is past the bound (deep: none) and each answer is
+    // the same.
     [Theory]
     [InlineData(40)]
     [InlineData(10)]
@@ -150,17 +170,17 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     {
         var deep = new string('(', depth) + "i32" + string.Concat(Enumerable.Repeat(", i32)", depth));
         var past = depth > 32 ? "Deep" : "None";
-        var observed = Rows("o", "Logger", "T", "Decided");
-        var guarded = Rows("g", "uniq/(ref/i32 during a) during a", "Wrap<raw/u8 during x>", "Through");
+        var observed = Rows("o", "Logger", "T", "Decided", "Limit");
+        var guarded = Rows("g", "uniq/(ref/i32 during a) during a", "Wrap<raw/u8 during x>", "Through", "Through");
         var (body, c) = Probe(
-            "struct Wrap<E>\n    var value: E\nstruct Two<A, B>\n    var a: A\n    var b: B\n" +
-            $"func probe<T>(x: uniq/(ref/i32 during a) during a, {string.Join(", ", observed.Concat(guarded).Select(static x => $"{x.Name}: {x.Type}"))})\n" +
-            "    return\n");
+            "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nstruct Two<A, B>\n    var a: A\n    var b: B\n" +
+            $"func probe<T>(x: uniq/(ref/i32 during a) during a, {string.Join(", ", observed.Concat(guarded).Select(static x => $"{x.Name}: {x.Type}"))}, deep: {deep})\n" +
+            NamedLimit + "    let gLimitP = (Wrap.init(nc@follow@follow@raw@raw/u8), deep)\n    let gPLimit = (deep, Wrap.init(nc@follow@follow@raw@raw/u8))\n    return\n");
         var entered = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         var walked = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
-            observed.Concat(guarded).Select(static x => (x.Name, x.Answer)).ToArray(),
-            Parameters(body).Skip(1).Select(x => (x.Name, x.Name[0] == 'o' ? Observed(x.Type) : Guard(x.Type))).ToArray());
+            [.. observed.Concat(guarded).Select(static x => (x.Name, x.Answer)), ("deep", past), ("gLimitP", "Limit"), ("gPLimit", "Limit")],
+            Parameters(body).Skip(1).Concat(Locals(body, "gLimitP", "gPLimit")).Select(x => (x.Name, x.Name[0] == 'o' ? Observed(x.Type) : Guard(x.Type))).ToArray());
 
         string Observed(BoundType type) => MirTypes.Observation(type, c.Types, body.Key.Decl, entered).ToString();
 
@@ -170,12 +190,13 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
             return writes.ToString();
         }
 
-        // Each container of each order of a decided part (D) or a Limit part (L) and the deep part (P), and the deep part alone.
-        (string Name, string Type, string Answer)[] Rows(string walk, string decided, string limit, string decidedAnswer)
+        // Each container of each order of a decided part (D) or a second part (L: a Limit part, or the guard's stored layer) and the deep
+        // part (P), and the deep part alone.
+        (string Name, string Type, string Answer)[] Rows(string walk, string decided, string limit, string decidedAnswer, string limitAnswer)
         {
             (string Name, string Format)[] containers = [("Tuple", "({0}, {1})"), ("Array", "Array<({0}, {1})>"), ("Field", "Two<{0}, {1}>")];
             (string Name, string First, string Second, string Answer)[] orders =
-                [("DP", decided, deep, decidedAnswer), ("PD", deep, decided, decidedAnswer), ("LP", limit, deep, "Limit"), ("PL", deep, limit, "Limit")];
+                [("DP", decided, deep, decidedAnswer), ("PD", deep, decided, decidedAnswer), ("LP", limit, deep, limitAnswer), ("PL", deep, limit, limitAnswer)];
             var culture = System.Globalization.CultureInfo.InvariantCulture;
             return
             [
@@ -189,8 +210,9 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     // exclusive reference to storage that may hold a Loan (exclusive) and a Function value (function) let a call write past it; an abstract
     // binding (abstract) writes by provenance (Named, SPEC 15.6.4: an owner-decision reversal, the owner's G264 (S) instruction of
     // 2026-11-04, R4-M170, overriding the owner's Q1 (a)); a shared reference, a `var` one included (shared), and an exclusive reference to
-    // a scalar (scalar) do not; a stored raw layer stepping Exclusive with unpublished members leaves it undecided (limit); scalars only
-    // hold no Loan (none).
+    // a scalar (scalar) do not; a stored raw layer holding an exclusive borrow's address (h: u's referent may hold a Loan, read where its
+    // Origin is bound since Z6's M3a) lets it write too (stored), while Z6's named limit R6.1 (an address taken past the shared bc) leaves
+    // it undecided (limit); scalars only hold no Loan (none).
     [Fact]
     public void AClosureHoldsItsEnvironmentsParts()
     {
@@ -204,12 +226,14 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
             "    let abstract = func [var value] () -> T => value\n" +
             "    let function = func [g@move] () => g()\n" +
             "    var y = 1\n    var r: ref/i32 = y@ref\n    var u = r@uniq\n" +
-            "    var h = Wrap2c3.init(u@follow@raw@raw/u8)\n    let limit = func [h@move] () => ()\n" +
+            "    var h = Wrap2c3.init(u@follow@raw@raw/u8)\n    let stored = func [h@move] () => ()\n" +
+            "    var b = 1\n    var bw: ref/i32 = b@ref\n    var bu = bw@uniq\n    let bc = bu@ref\n" +
+            "    var hl = Wrap2c3.init(bc@follow@follow@raw@raw/u8)\n    let limit = func [hl@move] () => ()\n" +
             "public func main() => ()\n");
         Assert.Empty(c.Binding.Issues);
         var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
-            ["Through", "None", "None", "no Loan", "Named", "Through", "Limit"],
+            ["Through", "None", "None", "no Loan", "Named", "Through", "Through", "Limit"],
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
                 .Select(x => MirTypes.HoldsLoans(BoundClosure.Of(x)!.EnvironmentType, c.Types, seen, [], [], out var writes) ? $"{writes}" : "no Loan").ToArray());
     }
@@ -217,16 +241,17 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147, BU-41): a raw layer a holder stores at any depth below it is read on the instance holding it,
     // as the holder's substitution makes that instance: a Field (w), a nested instance's Field (o), an inline Tuple (t), a Case payload (e,
     // ow), an Array element in a Field (h), an Own layer's pointee (op) and its Type argument in a nested Field (bb), and a base (d, bw). A
-    // layer a Type argument supplies whose Origin steps Exclusive publishes no members, so a Loan-free pointee leaves the guard undecided
-    // (Limit; also past a shared parameter borrow, hs), while a pointee that may hold a Loan decides it (wr, orr, dr), as does an exclusive
-    // part beside it (mixed, Through over Limit); the same layer with no Origin, `static` or a plain scalar pointee writes nothing past it
+    // layer a Type argument supplies is read where its Origin is bound (Z6's M3a): `during x` and `during q` state `a`, which keeps x's
+    // exclusive borrow of a `ref/i32` that may hold a Loan (SPEC 5.7 Origins, Authority), so a call writes past it even over a Loan-free
+    // pointee (Through; hs's too), as past a pointee that may hold a Loan (wr, orr, dr) or an exclusive part beside it (mixed), while Z6's
+    // named limit R6.1 (NamedLimit) leaves it undecided (limit); the same layer with no Origin, `static` or a plain scalar pointee writes nothing past it
     // (plain, plainA, plainE, st, dp). A layer written in a Type argument of the declaration's own base clause is the declaration's, which
     // its kept part states (ds: Through; DECISIONS BU-46, R4-M151).
     [Fact]
     public void TheGuardReadsEachStoredLayerOnItsInstance()
     {
         var (body, c) = Probe(
-            "struct Wrap<E>\n    var value: E\nstruct Outer<P>\n    var w: Wrap<P>\nstruct Pair2<P>\n    var p: (P, i32)\n" +
+            "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nstruct Outer<P>\n    var w: Wrap<P>\nstruct Pair2<P>\n    var p: (P, i32)\n" +
             "enum Opt2<P>\n    Has(Wrap<P>)\n    Not\nstruct Hold<P>\n    var items: Array<Wrap<P>>\nstruct OP<P>\n    var data: raw/Wrap<P> during self\n" +
             "struct ErasedBag<T>\n    var data: raw/u8 during self\nstruct Box1<P>\n    var b: ErasedBag<Wrap<P>>\n" +
             "open struct BaseW<P>\n    var w: Wrap<P>\nstruct Der<P> : BaseW<P>\n    var n: i32\n" +
@@ -238,17 +263,17 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
             "bb: Box1<raw/u8 during x>, ow: Option<Wrap<raw/u8 during x>>, d: Der<raw/u8 during x>, bw: BaseW<raw/u8 during x>, " +
             "dr: Der<raw/(ref/i32 during a) during x>, hs: Wrap<raw/u8 during q>, mixed: Mixed<raw/u8 during x> during a, " +
             "plain: Outer<raw/u8>, plainA: Hold<raw/u8>, plainE: Opt2<raw/u8>, st: Outer<raw/u8 during static>, dp: Der<raw/u8>, " +
-            "ds: DerS)\n" +
+            "ds: DerS)\n" + NamedLimit +
             "    return\n");
         var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
         var members = new List<RawMember>();
         Assert.Equal(
-            [("x", MirWrites.Through), ("q", MirWrites.None), ("w", MirWrites.Limit), ("wr", MirWrites.Through), ("o", MirWrites.Limit),
-                ("orr", MirWrites.Through), ("t", MirWrites.Limit), ("e", MirWrites.Limit), ("h", MirWrites.Limit), ("op", MirWrites.Limit),
-                ("bb", MirWrites.Limit), ("ow", MirWrites.Limit), ("d", MirWrites.Limit), ("bw", MirWrites.Limit), ("dr", MirWrites.Through),
-                ("hs", MirWrites.Limit), ("mixed", MirWrites.Through), ("plain", MirWrites.None), ("plainA", MirWrites.None),
-                ("plainE", MirWrites.None), ("st", MirWrites.None), ("dp", MirWrites.None), ("ds", MirWrites.Through)],
-            Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
+            [("x", MirWrites.Through), ("q", MirWrites.None), ("w", MirWrites.Through), ("wr", MirWrites.Through), ("o", MirWrites.Through),
+                ("orr", MirWrites.Through), ("t", MirWrites.Through), ("e", MirWrites.Through), ("h", MirWrites.Through), ("op", MirWrites.Through),
+                ("bb", MirWrites.Through), ("ow", MirWrites.Through), ("d", MirWrites.Through), ("bw", MirWrites.Through), ("dr", MirWrites.Through),
+                ("hs", MirWrites.Through), ("mixed", MirWrites.Through), ("plain", MirWrites.None), ("plainA", MirWrites.None),
+                ("plainE", MirWrites.None), ("st", MirWrites.None), ("dp", MirWrites.None), ("ds", MirWrites.Through), ("limit", MirWrites.Limit)],
+            Parameters(body).Concat(Locals(body, "limit")).Select(x => (x.Name, Writes(x.Type))).ToArray());
         Assert.Empty(members);
 
         MirWrites Writes(BoundType type)
@@ -475,7 +500,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     [Fact]
     public void TheBuiltinArithmeticRowsAreTheBuildersOperators()
     {
-        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.Supports(BoundType.Primitives["i32"], x)).ToArray();
+        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => TyCtxt.HasBuiltinArithmetic(BoundType.Primitives["i32"], x)).ToArray();
         Assert.Equal(6, contracts.Length);
         foreach (var contract in contracts)
         {
@@ -512,6 +537,10 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     // The Arg locals after the return local, in parameter order.
     private static IEnumerable<(string Name, BoundType Type)> Parameters(MirBody body)
         => body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).Select(static x => (x.Name!, x.Type!));
+
+    // The named locals of a probe's body, in the order given (a witness its statements form).
+    private static IEnumerable<(string Name, BoundType Type)> Locals(MirBody body, params string[] names)
+        => names.Select(name => body.Locals.ToArray().First(x => x.Name == name)).Select(static x => (x.Name!, x.Type!));
 
     // A walk that reports nothing and counts the Types it meets, each a First call.
     private struct Walk(HashSet<BoundType> seen) : IMirDestruction

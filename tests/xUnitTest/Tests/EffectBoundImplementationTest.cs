@@ -127,25 +127,43 @@ public partial class EffectBoundImplementationTest
     // SPEC 8.11.2: every function the compiler serves has one effect class, Binding's category of it (TyCtxt.Bodyless) and, for an
     // intrinsic, MIR's row of it (MirDescriptors; MirEffects reads the two). Every library function or $abort that is no body is an
     // intrinsic, and of those Console output and the test temporary directory alone are environment effects (the Storage and Raw
-    // families, the handles, Text.writer and the fixed failures act only on their inputs and the allocator); a library body is no
-    // bodyless category; each of the eight built-in targets (Binding.PrepareBuiltinTargets: equality, comparison and the six arithmetic
-    // operations) is a shim, which acts on its inputs (MirEffects.Class's Shim arm), and the tuple comparisons' calls target two of them.
-    [Fact]
-    public void EveryCompilerFunctionHasOneEffectClass()
+    // families, the handles, Text.writer and the fixed failures act only on their inputs and the allocator), with, in the Linux row's
+    // library, the platform layer's clock (Time.monotonicNanoseconds, the Tatara plan's B7b6; windows-x64's library, the selection of
+    // the one without a target, declares none); a library body is no bodyless category.
+    [Theory]
+    [InlineData("", "WriteStdout,TestTempDirectory")]
+    [InlineData("x86_64-unknown-linux-musl", "WriteStdout,TestTempDirectory,MonotonicClock")]
+    public void EveryCompilerFunctionHasOneEffectClass(string target, string intrinsics)
     {
-        var library = Compilation.CreateForTest().Library;
+        var compilation = Compilation.CreateForTest();
+        Assert.True(target.Length == 0 || compilation.Prepare(target));
+        var library = compilation.Library;
         var environment = new List<IntrinsicId>();
         foreach (var symbol in library.RegisteredSymbols.ToArray().Append(library.Abort))
         {
             var kind = TyCtxt.Bodyless(symbol);
-            Assert.True(symbol.Definition.Kind == DispositionKind.Body ? kind is not (BodylessKind.Intrinsic or BodylessKind.Shim) : kind == BodylessKind.Intrinsic, symbol.Name);
+            Assert.True(
+                symbol.Definition.Kind switch
+                {
+                    DispositionKind.Body => kind is not (BodylessKind.Intrinsic or BodylessKind.Shim or BodylessKind.Form),
+                    DispositionKind.Form => kind == BodylessKind.Form, // Storage.viewStart (L2): the builder writes its MIR form.
+                    _ => kind == BodylessKind.Intrinsic,
+                },
+                symbol.Name);
             if (kind == BodylessKind.Intrinsic && (MirDescriptors.Of(symbol.Definition.Id).Effects & MirEffect.Environment) != 0)
             {
                 environment.Add(symbol.Definition.Id);
             }
         }
 
-        Assert.Equal(new[] { IntrinsicId.WriteStdout, IntrinsicId.TestTempDirectory }, environment.Order().ToArray());
+        Assert.Equal(intrinsics.Split(',').Select(static x => Enum.Parse<IntrinsicId>(x)).Order(), environment.Order());
+    }
+
+    // SPEC 8.11.2: each of the eight built-in targets (Binding.PrepareBuiltinTargets: equality, comparison and the six arithmetic
+    // operations) is a shim, which acts on its inputs (MirEffects.Class's Shim arm), and the tuple comparisons' calls target two of them.
+    [Fact]
+    public void EachBuiltinTargetIsAShim()
+    {
         var c = MinimalEmissionTest.Analyze("let same = (1, 2) == (1, 2)\nlet less = (1, 2) < (3, 4)");
         var shims = KotoTree.Walk(c.Kotonoha.RootKoto)
             .SelectMany(x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(c.Binding, x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())

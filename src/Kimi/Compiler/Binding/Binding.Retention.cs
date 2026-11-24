@@ -57,6 +57,11 @@ public sealed partial class Binding
     // A binder's declared inputs while BinderStep reads them (TyCtxt.Signature in place), reused.
     private readonly List<BoundType> retentionBinderInputs = new();
 
+    // The computation's binder readings (BinderReading: one per Origin, its range of binderReadingMembers, whether it is answered, and its
+    // step), reused.
+    private readonly Dictionary<BoundOrigin, (int Start, int Count, bool Complete, HoldStep Step)> binderReadings = new(ReferenceEqualityComparer.Instance);
+    private readonly List<RawMember> binderReadingMembers = new();
+
     // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract reaches
     // (Reach), as a set and in the order reached (the walk's list: the signature's first), reused.
     private readonly HashSet<(BoundType Subject, BindingSymbol Contract)> retentionContracts = new();
@@ -357,7 +362,10 @@ public sealed partial class Binding
         this.retentionRawStated.Clear();
         this.retentionErased = false;
         this.retentionInstantiated.Clear();
+        this.binderReadings.Clear();
+        this.binderReadingMembers.Clear();
         this.retentionDeclared.Clear();
+        this.retentionCarried.Clear(); // CanCarryLoan's walk holds no Type past its computation (KimiLibraryShapeTest).
     }
 
     // The walked signature as its declaration writes it (retentionDeclared): its function's parameter Types and result without any

@@ -48,9 +48,10 @@ public partial class KimiLibraryShapeTest
         SameAsTheEmptyPrograms(c);
     }
 
-    // The inputs a compilation gives besides the program: C9's test build (Binding) and target (the frozen library's key, design §4, so a
-    // library that came to read it would move this row to a comparison per target), and C11's parse-time inputs: the compile-time
-    // variables (Debug; Parser.Directives) and the documentation and hover collection, which the LSP sets together (Project.cs).
+    // The inputs a compilation gives besides the program: C9's test build (Binding) and target (the frozen library's key, design §4; the
+    // library reads it since the Tatara plan's B7b6, whose Conditions select its declarations, so this row compares per target: with the
+    // empty program checked for its own target), and C11's parse-time inputs: the compile-time variables (Debug; Parser.Directives) and the
+    // documentation and hover collection, which the LSP sets together (Project.cs).
     [Theory]
     [InlineData("test build")]
     [InlineData("32-bit target")]
@@ -92,11 +93,11 @@ public partial class KimiLibraryShapeTest
             root.Alias = ["Lib.Api"];
             root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         }));
-        Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha));
+        Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha).Select(static x => x.Path));
         Assert.NotNull(c.Configuration(c.Kotonoha)!.NativeRequirements[TargetProfile.Windows.Target]["codec"]);
         Assert.NotNull(c.References(c.Kotonoha));
         var library = c.Library.Kotonoha;
-        Assert.Equal(["Kimi"], c.DefaultAliases(library));
+        Assert.Equal(["Kimi"], c.DefaultAliases(library).Select(static x => x.Path));
         Assert.Null(c.Configuration(library));
         Assert.Null(c.References(library));
         SameAsTheEmptyPrograms(c);
@@ -168,9 +169,12 @@ public partial class KimiLibraryShapeTest
         return c;
     }
 
+    // The facts compared with the empty program's for the same target: windows-x64's, the reference read once, or the empty program
+    // checked for another target (the library is that target's freeze, design §4, its declarations selected by its Conditions).
     private static void SameAsTheEmptyPrograms(Compilation c)
     {
-        foreach (var ((fact, expected), (_, actual)) in EmptyProgramFacts.Value.Zip(Facts(c)))
+        var reference = c.TargetTriple == EmptyProgram.Value.TargetTriple ? EmptyProgramFacts.Value : Facts(Check(Compilation.CreateForTest(), string.Empty, c.TargetTriple.Value));
+        foreach (var ((fact, expected), (_, actual)) in reference.Zip(Facts(c)))
         {
             var line = 0;
             while (line < expected.Length && line < actual.Length && expected[line] == actual[line])
@@ -231,7 +235,7 @@ public partial class KimiLibraryShapeTest
 
     // A declaration's own symbol state, which each pass rewrites (design C3) and the tree's lines do not print.
     private static string State(BindingSymbol s, Printer printer)
-        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={printer.Type(s.ContractSelf)} receiver={s.ReceiverIndex}" +
+        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={Where(s.SelfSymbol)}:{printer.Type(s.SelfSymbol?.Type)} receiver={s.ReceiverIndex}" +
             $" next={Where(s.Next)} selfOf={Where(s.SelfOf)} pair={Where(s.Pair)} optOut={Where(s.ObjectPayloadOptOut)} scope={Where(s.Scope.Owner)}" +
             $" contract={s.Contract is not null} property={s.Property is not null} case={s.EnumCase?.Ordinal} schema={s.Schema is not null}" +
             $" adt={s.Adt is not null} source={s.SourceState} resolving={s.Resolving} slot={s.Slot}" +
@@ -239,13 +243,13 @@ public partial class KimiLibraryShapeTest
 
     // A scope's members and facts: a program pass that added to a library scope would show here.
     private static string Scope(BindingScope scope)
-        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] values=[{Names(scope.Values)}]" +
+        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] parameters=[{Names(scope.Parameters?.Types)}] values=[{Names(scope.Values)}] lengths=[{Names(scope.Parameters?.Values)}]" +
             $" origins=[{string.Join(',', scope.Origins?.Keys.Order(StringComparer.Ordinal) ?? Enumerable.Empty<string>())}]" +
             $" constraints={scope.Constraints is not null}" +
             $" premises={Where(scope.ImplementationPremises?.Owner)} path={scope.ConformancePath is not null}";
 
-    private static string Names(Dictionary<string, BindingSymbol> names)
-        => string.Join(',', names.OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
+    private static string Names(Dictionary<string, BindingSymbol>? names)
+        => string.Join(',', (names ?? new()).OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
 
     private static string Where(BindingSymbol? symbol) => Where(symbol?.Declaration);
 

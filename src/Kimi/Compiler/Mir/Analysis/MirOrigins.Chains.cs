@@ -11,7 +11,9 @@
 // or an unclassified Closure's pending atom (DECISIONS R4-M126 §2.5 (c)), is never a source or a judged target: it passes on what reaches
 // it, so a chain through it is judged between its ends and one ending at it records nothing (SPEC 23.1.2; DECISIONS R4-M118). A failing
 // chain with an end the view marks an enclosing body's call region is the located limit instead of its record (NestedLimit). A failed fixed
-// source that is an enclosing body's local region is judged as its solved value's operands (Unproven; PLAN G492-a (ii), O-422 (a)).
+// source that is an enclosing body's local region is judged as its solved value's operands (Unproven; PLAN G492-a (ii), O-422 (a)). A Ref's
+// own Finite atom is Inferred in a class reaching each of its Refs through a borrow layer where another class does not (Promote; Z19's
+// rule (A), staged).
 
 using System.Numerics;
 using Kimi.Diagnostics;
@@ -27,6 +29,9 @@ internal sealed partial class MirOrigins
     private long arenaWords; // The last arena the chains asked for, with the meet law's words (D20).
     private (int Tail, int Head, int Row, int Pending) lastDirect; // The last failed direct edge and its problem's index.
     private ClassEdge[] classEdges = []; // A class's edges by MeetNode's rule, in order (ClassEdges), reused.
+    private int[] reaching = []; // By Ref: the classes with a containment edge of it (Reaching, once per Judge).
+    private int[] refsOf = []; // By own atom below anchorCount: its Refs (Reaching).
+    private int[] unpromoted = []; // By own atom below anchorCount: its Refs the class ClassEdges last formed does not promote (Promote).
     private int classEdgeCount;
 
     // A class's judgment: its edges, then its chains; false when its arena is over the limit, so the stratum skips the body.
@@ -66,12 +71,14 @@ internal sealed partial class MirOrigins
         return false;
     }
 
-    // A class's edges, in order (classEdges): each active row's, Longer -> Shorter and back for an equality, then each containment edge's
-    // (row -1), by MeetNode's rule (OriginChains.Relate); one with an Unclassed end forms none and is an entry with Tail -1 at its site; then
-    // the meet law's (MirOrigins.Meets.cs). False when the law's words are over the limit (D20).
+    // A class's edges, in order (classEdges), after its promoted atoms (Promote), which its judge and queries read (KindOf): each active
+    // row's, Longer -> Shorter and back for an equality, then each containment edge's (row -1), by MeetNode's rule (OriginChains.Relate);
+    // one with an Unclassed end forms none and is an entry with Tail -1 at its site; then the meet law's (MirOrigins.Meets.cs). False when
+    // the law's words are over the limit (D20).
     private bool ClassEdges(int c)
     {
         ref readonly var known = ref this.classes[c];
+        this.Promote(c);
         this.classEdgeCount = 0;
         this.chains.Begin();
         var rows = this.slice.Rows;
@@ -121,6 +128,62 @@ internal sealed partial class MirOrigins
     }
 
     private bool Unclassed(int node) => this.slice.Atoms[node].Kind == OriginAtomKind.Unclassed;
+
+    // Once per Judge, before its classes are judged: per Ref, the classes reaching it through a borrow layer (with a containment edge of
+    // it; a class's edges are in Ref order, Classify), and per own atom, its Refs (Promote's start).
+    private void Reaching()
+    {
+        MirDataflow.Grow(ref this.reaching, this.refCount);
+        MirDataflow.Grow(ref this.refsOf, this.anchorCount);
+        Array.Clear(this.reaching, 0, this.refCount);
+        Array.Clear(this.refsOf, 0, this.anchorCount);
+        for (var r = 0; r < this.refCount; r++)
+        {
+            this.refsOf[this.refs[r].Own]++;
+        }
+
+        for (var c = 0; c < this.classCount; c++)
+        {
+            var previous = -1;
+            foreach (var edge in this.contained.AsSpan(this.classes[c].Start, this.classes[c].Count))
+            {
+                this.reaching[edge.Ref] += edge.Ref != previous ? 1 : 0;
+                previous = edge.Ref;
+            }
+        }
+
+        this.work += this.refCount + this.containedCount;
+    }
+
+    // Z19's rule (A), staged (SPEC 15.6.5: the Origin of a Borrow reached through a borrow has no bound of its own, an inferred region):
+    // a class promotes a Ref it reaches through a borrow layer where another class of the body does not, the case deciding the layer
+    // (MirSteps), a class whose views do not reach the Ref's statement counting as not reaching it; per own atom, the class's Refs it
+    // does not promote. A Ref every class reaches keeps its atom's kind until PLAN's open issue for design (B) states the rule for every
+    // class, which removes this condition.
+    private void Promote(int c)
+    {
+        ref readonly var known = ref this.classes[c];
+        MirDataflow.Grow(ref this.unpromoted, this.anchorCount);
+        this.refsOf.AsSpan(0, this.anchorCount).CopyTo(this.unpromoted);
+        var previous = -1;
+        foreach (var edge in this.contained.AsSpan(known.Start, known.Count))
+        {
+            if (edge.Ref != previous && this.reaching[edge.Ref] < this.classCount)
+            {
+                this.unpromoted[edge.Head]--; // The Ref's own atom.
+            }
+
+            previous = edge.Ref;
+        }
+
+        this.work += this.anchorCount + known.Count;
+    }
+
+    // A node's kind in the class ClassEdges last formed: a Ref's own Finite atom whose every Ref the class promotes is Inferred (Promote);
+    // any other node's is the view's. Only Finite moves, so a reader of Fixed alone may read the view's.
+    private OriginAtomKind KindOf(int node)
+        => this.slice.Atoms[node].Kind is OriginAtomKind.Finite && node < this.anchorCount && this.anchors[node] >= 0 && this.unpromoted[node] == 0
+            ? OriginAtomKind.Inferred : this.slice.Atoms[node].Kind;
 
     // An edge's part (DECISIONS R4-M101 E4, R4-M114): a row's by its index, a containment edge's by its atoms, the layer's when either is the
     // layer's (a Field initializer's Ref); Fixed atoms are shared.
@@ -259,14 +322,15 @@ internal sealed partial class MirOrigins
     }
 
     // A fixed source the target's premises do not derive (oracle closed at the target), judged as the Origin it stands for at a longer end:
-    // an enclosing body's local region (the view's Value: BU-127's solved value, a `let` region's value, a `var` region's meet of its
-    // recorded bounds; the owner's O-422 (a)) as its value's operands, as MeetNode's rule splits a Fixed meet, each operand the oracle does
-    // not derive judged the same way, so an operand that is itself an enclosing local region reads as its value too, and every other one is
-    // its own problem or the nested-body limit (PLAN G492-a (ii); SPEC 15.4.4; at a shorter end, in an identity and in a meet's operand
-    // edge it stays the region, DECISIONS BU-28); any other source itself. In Unknown a source is an inner chain's fixed source, never an
-    // end of the in-edge's row, so an Equality row there splits it too (the Middle's C-350 C2 (a): eqw is accepted like eqwp); only
-    // Direct's Equality row relates its ends themselves (Direct). The recursion ends: a value names regions of enclosing
-    // bodies and `var` regions of its own body that do not reach back to the region (RegionValue), so each step moves down its body's
+    // an enclosing body's local region the body carries (the view's Value, row 6: its SPEC 15.3.6 value, RegionValue, set only for a
+    // region the body carries; R7-O2 A1) as its value's operands, as MeetNode's rule splits a Fixed meet, each operand the oracle does
+    // not derive judged the same way, so an operand that is itself a carried region reads as its value too, and every other one, a region
+    // the body does not carry included, is its own problem or the nested-body limit (PLAN G492-a (ii); SPEC 15.4.4; at a shorter end, in
+    // an identity and in a meet's operand edge the oracle's equality reads the value, DECISIONS R7-O2 A1); any other source itself. In
+    // Unknown a source is an inner chain's fixed source, never an end of the in-edge's row, so an Equality row there splits it too (the
+    // Middle's C-350 C2 (a): eqw is accepted like eqwp); only Direct's Equality row relates its ends themselves (Direct). The recursion
+    // ends: a value names regions of enclosing bodies and `var` regions of its own body that do not reach back to the region
+    // (RegionValue), so each step moves down its body's
     // finite order of definitions or one body outward. One judgement visits each operand once (splitNodes; the owner's O-426 (a)), so
     // values that share a region (a diamond of definitions) judge it once. False when no single problem stands for the source (a limit,
     // or a split region).
@@ -354,11 +418,11 @@ internal sealed partial class MirOrigins
         MirDataflow.StorageLimit(report, this.body, this.allViews, MirStorageTable.Origins, words);
     }
 
-    // A5's judge of a class's graph (OriginChains): the view's atoms as nodes, a relation's edges into classEdges at its site and row, and
-    // the class's verdicts.
+    // A5's judge of a class's graph (OriginChains): the view's atoms as nodes, of the class's kinds (KindOf), a relation's edges into
+    // classEdges at its site and row, and the class's verdicts.
     private readonly struct ChainJudge(MirOrigins owner, SourceRef site, int row) : TyCtxt.IOriginChainRelation, TyCtxt.IOriginChainJudge
     {
-        public OriginAtomKind Kind(int node) => owner.slice.Atoms[node].Kind;
+        public OriginAtomKind Kind(int node) => owner.KindOf(node);
 
         public int Operands(int node) => owner.MeetOperands(node);
 

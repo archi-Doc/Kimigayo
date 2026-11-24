@@ -4,8 +4,9 @@
 // BindingSymbol.Definition) and the intrinsic Contract table.
 // Input: IntrinsicId; IntrinsicKind. Output: an intrinsic's written inputs; an intrinsic Contract's row; the categories of a function
 // without a MIR body (BodylessKind, which TyCtxt.Bodyless gives).
-// Each function has one disposition, set where its symbol is made (the library's registration from `#Intrinsic`, $abort's,
-// Binding.PrepareBuiltinTargets' shims), and each intrinsic Contract one row; temporary intrinsics keep their recorded removal stage.
+// Each function has one disposition, set where its symbol is made (the library's registration from `#Intrinsic` or its catalog entry's
+// Form row, $abort's, Binding.PrepareBuiltinTargets' shims), and each intrinsic Contract one row; temporary intrinsics keep their
+// recorded removal stage.
 // Must not create a second intrinsic allowlist or hand-written library path.
 
 namespace Kimi.Compiler;
@@ -95,6 +96,9 @@ internal enum IntrinsicId : byte
     TestRecordValue,
     TestTempDirectory,
     StaticEnsure, // SPEC 22.4.3.
+    VolatileRead, // Volatile access (SPEC 5.6).
+    VolatileWrite,
+    MonotonicClock, // SPEC 22.8.2, IMPL 21.5.5 (the Tatara plan's decision 25): the platform layer's monotonic clock.
 }
 
 /// <summary>What a function without a MIR body is (SPEC 8.11.2, 22.1, 22.6; TyCtxt.Bodyless), Binding's one category of it, which A4
@@ -115,6 +119,13 @@ internal enum BodylessKind : byte
     /// <summary>A `#LibraryImport` foreign function, an environment effect.</summary>
     Import,
 
+    /// <summary>A library declaration the MIR builder writes as a MIR form (<see cref="DispositionKind.Form"/>): validated MIR has no
+    /// Call of it (MirValidator), so A4 and the instance collector, which trust validated MIR, read none. No value of it reaches MIR
+    /// either: every Form function is `unsafe` (its KimiLibraryShapeTest row), and Binding acquires such a function only as a direct
+    /// callee (SPEC 7.6, Binding.DirectCallOnly). A Form function that is not `unsafe` would add the validator's MirConstKind.FnItem
+    /// row, in its own unit.</summary>
+    Form,
+
     /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18), or whose Body the parser recorded missing
     /// (SPEC 14.2.1): a dependent of that error.</summary>
     Dependent,
@@ -126,10 +137,11 @@ internal enum DispositionKind : byte
     Body, // A Kimigayo body, the declaration's own.
     Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.2 code.
     Shim, // A built-in witness (equality, comparison, arithmetic), whose body the backend generates for its instance.
+    Form, // A call the builder writes as a MIR form, never a Call: its catalog entry's Form row (KimiLibraryCatalog.Entry).
 }
 
 /// <summary>How a call of a function is served (plan 5.8), which its symbol publishes (<see cref="BindingSymbol.Definition"/>): a library
-/// declaration's `#Intrinsic` (IMPL 21.3.4), a built-in target's Shim, otherwise its Body.</summary>
+/// declaration's `#Intrinsic` (IMPL 21.3.4), a built-in target's Shim, a cataloged lang item's Form, otherwise its Body.</summary>
 /// <param name="Kind">How the call is served.</param>
 /// <param name="Id">The intrinsic of an Intrinsic disposition.</param>
 /// <param name="Code">The SPEC 22.5.2 code of <see cref="IntrinsicId.Fail"/>.</param>
@@ -137,11 +149,11 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 {
     // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether an intrinsic's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source
-    // (the source as a Take) and an in-place destruction; a Dictionary entry's placement is the DictionaryStorage.placeEntry body.
-    // Raw.release and Raw.slice write nothing.
+    // (the source as a Take), an in-place destruction and a volatile write at `storage`; a Dictionary entry's placement is the
+    // DictionaryStorage.placeEntry body. Raw.release, Raw.slice and Raw.readVolatile write nothing.
     internal static bool WritesThrough(IntrinsicId id, int parameter) => id switch
     {
-        IntrinsicId.RawInitialize or IntrinsicId.DestroyValues => parameter == 0,
+        IntrinsicId.RawInitialize or IntrinsicId.DestroyValues or IntrinsicId.VolatileWrite => parameter == 0,
         IntrinsicId.MoveBytes => parameter is 0 or 1,
         _ => false,
     };

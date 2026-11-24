@@ -93,9 +93,10 @@ public sealed partial class Binding
 
     // SPEC 10.5.1: whether a recorded part awaits its call, whose selected candidate completes it: its record holds Awaits (a Join, Case,
     // Reference, Function or Call; no Typed, Literal or Aggregate part waits) while its core is unbound and has no failure of its own. A
-    // join's step 3 may bind it first (SPEC 14.9.2), so a bound part is not one its call completed. Of these, all but a Join are SPEC
-    // 10.5.1's waiting parts (the SPEC word, which CompleteWaiting, TakeWaiting and IsWaitingPart keep); a Join keeps its own rows
-    // (FitArgument, CompleteWaiting).
+    // join's step 3 may bind it first (SPEC 14.9.2), so a bound part is not one its call completed. Of these, all but a Join are the
+    // waiting parts, which the selected candidate completes (CompleteWaiting, TakeWaiting): a Call or Case is SPEC 10.5.1's part checked
+    // against the expected Type, checked at each candidate's Type first (FitChecked; IsCheckedCall), and a Function or Reference one
+    // that 10.5.4 checks by its header or at S; a Join keeps its own rows (FitArgument, CompleteWaiting).
     private static bool Awaits(Koto core, ArgumentPart record)
         => (record.Relation & CallRelation.Awaits) != 0 && core.BoundType is null && core.BindingFailure == BindingFailure.None;
 
@@ -123,7 +124,7 @@ public sealed partial class Binding
     // SPEC 10.1, 10.2.1, 10.5 (PLAN G680): a check of the selected candidate once more, after its defaults (CheckDefaulted), its
     // waiting arguments (BindCallCore) or its fixed construction (ValidateFixedConstruction), never reopens selection: past every
     // argument and result check its step-5 verdict, Refuted as Unknown, is the selected call's obligation, whose record names the clause
-    // (CheckCallTypeConstraints, RequireClauses), and the candidate keeps the state it is selected in. The trial keeps a Refuted clause
+    // (CheckCallObligation, RequireClauses), and the candidate keeps the state it is selected in. The trial keeps a Refuted clause
     // fact only past those checks (TryCandidateCore).
     private static CandidateApplicability AsSelected(CandidateApplicability state, ReferenceConstraintFailure? failure, CandidateApplicability selected)
         => state == CandidateApplicability.Inapplicable && failure is { Proof: ConstraintProof.Refuted } ? selected : state;
@@ -163,9 +164,10 @@ public sealed partial class Binding
 
     // SPEC 10.5.1 (DECISIONS BU-43), P2: whether an anonymous function or a contextual Case reached without an expected Type is a result
     // of a call's control-flow argument at a position its call completes (CallableTarget): it then awaits that call, its kind recorded
-    // once, and the call completes it as a waiting argument (TakeWaiting). Only under an argument probe (UnderArgumentProbe), which is
-    // asked first: BindNode asks this of every node, and outside a probe no form is classified.
-    private bool AwaitsCallAtResult(Koto node, BoundType? expected)
+    // once, and the call completes it as a waiting argument (TakeWaiting); a Case's payloads are prepared there (PreparePayloads). Only
+    // under an argument probe (UnderArgumentProbe), which is asked first: BindNode asks this of every node, and outside a probe no form
+    // is classified.
+    private bool AwaitsCallAtResult(Koto node, BindingScope scope, BoundType? expected)
     {
         if (expected is not null || this.argumentProbe is null || node.BindingState != BindingState.Unvisited)
         {
@@ -179,6 +181,7 @@ public sealed partial class Binding
         }
 
         this.RecordPart(node, kind);
+        _ = kind == PartKind.Case && this.PreparePayloads(node, scope); // A failed payload is its own record; the Case rests on it.
         return true;
     }
 
@@ -265,8 +268,9 @@ public sealed partial class Binding
     private ArgumentPart RecordedPart(Koto node)
         => this.argumentParts.TryGetValue(SourceRef.Written(PartCore(node)), out var part) ? part : default;
 
-    // Whether the part still waits for its call as a deferred Call: not yet completed and with no failure of its own (KindOf).
-    private bool IsWaitingPart(Koto node) => this.KindOf(node) == PartKind.Call;
+    // SPEC 10.5.1: whether the part is a nested call or construction checked against the expected Type that still awaits its call, a
+    // deferred Call not yet completed and with no failure of its own (KindOf).
+    private bool IsCheckedCall(Koto node) => this.KindOf(node) == PartKind.Call;
 
     // SPEC 10.5.1, 14.9.2: whether the part is the argument probe's, or a result source of a control-flow expression that is: nested
     // results propagate the same way.
@@ -427,6 +431,9 @@ public sealed partial class Binding
     {
         if (this.RecordsWaitingForm(part))
         {
+            // A contextual Case's payloads are prepared at its record; a failed payload is its own record, not the Case's (the Case stays
+            // recorded and unbound, so a slot only it reaches is still the call's inference boundary, U1.6h-5).
+            _ = ClassifyPart(part) == PartKind.Case && this.PreparePayloads(part, scope);
             return true;
         }
 
@@ -455,7 +462,7 @@ public sealed partial class Binding
         }
 
         if ((this.KindOf(part) == PartKind.Literal && part.CodeContext.RecoveryCause(part) is null) ||
-            this.BindIndependentArgument(part, scope) is not null || this.IsWaitingPart(part) || this.KindOf(part) is PartKind.Aggregate or PartKind.Join)
+            this.BindIndependentArgument(part, scope) is not null || this.IsCheckedCall(part) || this.KindOf(part) is PartKind.Aggregate or PartKind.Join)
         {
             return true;
         }
@@ -493,6 +500,26 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 10.5.1, 6.5.2 (PLAN G924 AF-3b; design-casepath 2.3, B5): a contextual Case's payload arguments, prepared where its part is
+    // recorded, once per pass, with no expectation and outside any trial, as a named call's arguments are (PrepareCallArguments), so its
+    // check against an expected Type reads prepared parts only (FitConstructionAt); false when one failed (its own record; the Case is
+    // no failed part).
+    private bool PreparePayloads(Koto part, BindingScope scope)
+    {
+        if (KotoHelper.UnwrapParentheses(part) is not InvocationKoto { Method: SyntaxFormKoto { Akind: KotoKind.InferredCase } } construction)
+        {
+            return true;
+        }
+
+        var valid = true;
+        for (var i = 0; i < construction.ArgumentNodes.Count; i++)
+        {
+            valid &= this.PrepareArgument(construction.ArgumentNodes[i], scope, default, callableContext: true);
+        }
+
+        return valid;
+    }
+
     // SPEC 10.5: first obtain independent evidence. Only an inner call that would need a result expectation waits; failures of
     // its own inputs or declarations are still diagnosed here. Parentheses preserve the same boundary.
     private BoundType? BindIndependentArgument(Koto argument, BindingScope scope)
@@ -517,6 +544,7 @@ public sealed partial class Binding
         if (ClassifyPart(operand) is var kind && kind is PartKind.Function or PartKind.Case)
         {
             this.RecordPart(operand, kind);
+            _ = kind == PartKind.Case && this.PreparePayloads(operand, scope); // As at an argument (P1): its check reads prepared payloads.
         }
 
         var previous = this.nestedOperandProbe;
@@ -550,7 +578,8 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds or that holds a waiting part, or of a
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
-    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the parts' own Types
+    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved); a candidate that left a checked
+    // part unqueried there reaches it unranked (ClassifySelection's DeferredCandidate) and waits so. Otherwise the parts' own Types
     // apply to the selected candidate step by step (OwnTypeSteps), its checks running once more after each; a failure reports that
     // candidate, never another (its Constraints are the selected call's obligation, CheckDefaulted), and a slot still unbound is the
     // inference boundary, a failed argument part included (rule W). False when the call is complete: waiting or failed.
@@ -565,7 +594,7 @@ public sealed partial class Binding
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, declaringType);
         var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
-        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved(evaluation.Mapping)))
+        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved()))
         {
             this.DeferNestedCall(call, evaluation.Expected);
             Complete(call, null);
@@ -577,10 +606,10 @@ public sealed partial class Binding
             return true;
         }
 
-        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(winner);
         foreach (var kind in OwnTypeSteps)
         {
-            if (solution.DefaultArguments(evaluation.Mapping, kind, out var applied) is { } misfit)
+            if (solution.DefaultArguments(kind, out var applied) is { } misfit)
             {
                 this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
                 return false;
@@ -604,19 +633,7 @@ public sealed partial class Binding
         else
         {
             // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-            this.FailUnboundSlots(
-                call,
-                selected,
-                evaluation.Scope,
-                evaluation.Frames[winner].Types,
-                evaluation.Frames[winner].Lengths,
-                evaluation.Mapping,
-                operations,
-                evaluation.Expected,
-                evaluation.Self,
-                evaluation.Origins,
-                evaluation.Inputs,
-                declaringType);
+            this.FailUnboundSlots(in solution, operations);
         }
 
         return false;
@@ -626,29 +643,23 @@ public sealed partial class Binding
     // never reselects.
     private bool CheckDefaulted(ref CallEvaluation evaluation, int winner, SlotSolution solution, Span<BoundArgumentOperation> operations)
     {
-        var state = this.TryCandidate(
-            solution,
-            evaluation.Mapping,
-            evaluation.Evaluated[winner].ArgumentMap,
-            evaluation.Expected,
-            operations,
-            out _,
-            out var unsolved,
-            out _,
-            out _,
-            out var failure,
-            out _);
-        state = AsSelected(state, failure, evaluation.Evaluated[winner].State);
+        var trial = evaluation.Evaluated[winner]; // A local copy: the row takes back only State and Unsolved.
+        this.TryCandidate(solution, evaluation.Expected, operations, ref trial);
+        var state = AsSelected(trial.State, trial.ConstraintFailure, evaluation.Evaluated[winner].State);
         if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
-            evaluation.Evaluated[winner] = evaluation.Evaluated[winner] with { State = state, Unsolved = unsolved };
+            (evaluation.Evaluated[winner].State, evaluation.Evaluated[winner].Unsolved) = (state, trial.Unsolved);
             return true;
         }
 
-        var call = evaluation.Call;
-        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: failure));
-        this.RecordRejected(call, this.rejectedRows.Count - 1);
-        this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
+        // A Pending outcome records no candidate (R7-M62: its record shows none).
+        var pending = state == CandidateApplicability.Pending;
+        if (!pending)
+        {
+            this.CandidateFacts(solution.Function, trial.ConstraintFailure);
+        }
+
+        this.FailWaitingSelection(evaluation.Call, pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         return false;
     }
 

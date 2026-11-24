@@ -35,22 +35,22 @@ public sealed partial class Binding
         }
     }
 
-    private bool IsGenericInteger(BoundType? type, BindingScope scope)
+    private bool IsGenericInteger(BoundType? type, BindingScope scope, QuerySite site)
         => type is { IsProofDecided: true } &&
-            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
+            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope, site) == ConstraintProof.Proven;
 
     // SPEC 8.7.4, 3.1.1: Wrapping<T> over a Type proven PrimitiveInteger has the wrapping integer operators, unary minus for
     // every instantiation, the generic literals 0 through 127 and the conversions to and from T; each instance uses its Scalar.
-    private bool IsGenericWrapping(BoundType? type, BindingScope scope)
+    private bool IsGenericWrapping(BoundType? type, BindingScope scope, QuerySite site)
         => type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping &&
-            this.IsGenericInteger(type.Components[0], scope);
+            this.IsGenericInteger(type.Components[0], scope, site);
 
     // An integer Type, concrete or generic: the Types that positions, range boundaries, lengths and shift counts accept.
-    private bool IsIntegerOperand(BoundType? type, BindingScope scope) => type is { IsInteger: true } || this.IsGenericInteger(type, scope);
+    private bool IsIntegerOperand(BoundType? type, BindingScope scope, QuerySite site) => type is { IsInteger: true } || this.IsGenericInteger(type, scope, site);
 
     // A Type with the integer operators (SPEC 13.3.1): an integer or wrapping integer Type, concrete or generic.
-    private bool IsArithmeticInteger(BoundType? type, BindingScope scope)
-        => type is { HasIntegerArithmetic: true } || this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
+    private bool IsArithmeticInteger(BoundType? type, BindingScope scope, QuerySite site)
+        => type is { HasIntegerArithmetic: true } || this.IsGenericInteger(type, scope, site) || this.IsGenericWrapping(type, scope, site);
 
     private BoundType? BindUnary(UnaryKoto unary, BindingScope scope, BoundType? expected)
     {
@@ -72,16 +72,16 @@ public sealed partial class Binding
 
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
         {
-            if (this.TakesGenericLiterals(expected, scope))
+            if (this.TakesGenericLiterals(expected, scope, unary))
             {
                 if (!number.IsInteger)
                 {
-                    return this.Fail(unary, BindingFailure.TypeMismatch);
+                    return this.RecordTypeMismatch(unary, unary, new(null, MismatchForm.FloatingPointLiteral), expected!); // SPEC 12.3.1, 8.7.4.
                 }
 
                 if (!FitsGenericInteger(number, unary.Akind == KotoKind.PrefixMinus))
                 {
-                    return this.Fail(unary, BindingFailure.InvalidLiteral);
+                    return this.Record(unary, BindingFailure.InvalidLiteral, []);
                 }
 
                 Complete(number, expected);
@@ -97,7 +97,7 @@ public sealed partial class Binding
 
             if (!FitsLiteral(number, type, unary.Akind == KotoKind.PrefixMinus))
             {
-                return this.Fail(unary, BindingFailure.InvalidLiteral);
+                return this.Record(unary, BindingFailure.InvalidLiteral, []);
             }
 
             Complete(number, type);
@@ -173,23 +173,23 @@ public sealed partial class Binding
 
         var bound = this.BindNode(binary.Left, scope, context);
         var left = assignment ? bound : this.ReadReferent(binary.Left, bound);
-        // Keep a reference binding's authority failure ahead of literal fitting and compound applicability.
-        if (assignment && left?.SafeReferent is { } bindingReferent &&
-            (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
+        // SPEC 15.1.6 (R7-E4 rulings 8, 9, 15): a write that names a reference binding's mode (ReferenceBindingAssignment's one decision: an
+        // update, or an `=` to a non-reassignable binding, whatever the value) records it ahead of literal fitting and compound applicability;
+        // an `=` to a reassignable one is a rebind, bound and judged below as any `=`.
+        var referenceBinding = assignment && left?.SafeReferent is not null ? ReferenceBindingAssignment(binary.Left, binary) : null;
+        if (referenceBinding is { } binding && left?.SafeReferent is { } bindingReferent && (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)))
         {
             var value = this.BindNode(binary.Right, scope, bindingReferent);
-            this.Fail(binary, referenceBinding);
+            this.RecordWrite(binary, binding, binary.Left);
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, value, scope);
         }
 
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
         var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
-        if (assignment && kind == KotoKind.Equals && left?.SafeReferent is { } valueReferent &&
-            right is not null && !this.FitsType(right, left) && this.FitsType(right, valueReferent) &&
-            ReferenceBindingAssignment(binary.Left) is { } valueBinding)
+        if (kind == KotoKind.Equals && referenceBinding is { } assigned)
         {
-            return this.Fail(binary, valueBinding);
+            return this.RecordWrite(binary, assigned, binary.Left);
         }
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
@@ -203,7 +203,7 @@ public sealed partial class Binding
 
         if (assignment && left is not null && kind == KotoKind.Equals)
         {
-            this.JudgeHolderPlace(binary.Left, HolderAccess.Write, binary.Right, binary);
+            this.JudgeHolderPlace(binary.Left, binary.Right, binary);
         }
 
         if (decision.Failure == BindingFailure.None && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
@@ -262,9 +262,9 @@ public sealed partial class Binding
 
     // SPEC 13.7.1, 3.4, 15.1.5: the one destination check of an assignment, compound assignment, increment or decrement, run once the
     // operands and route have bound, whatever they gave: the target is located with write permission under the path, `let`/`var` and
-    // Property permissions. It reads the target, never the value's Type. An update of a reference binding names the binding's mode
-    // (SPEC 15.1.6); a plain write's mode record rests on its value (BindBinary). An update of a `during self` layer's Place or an
-    // enclosing one is the allowlist's (JudgeHolderPlace; SPEC 5.7).
+    // Property permissions. It reads the target, never the value's Type. A write whose code is a reference binding's mode
+    // (ReferenceBindingAssignment's one decision, SPEC 15.1.6) records it. An update of a `during self` layer's Place or an enclosing one
+    // is the allowlist's (JudgeHolderPlace; SPEC 5.7).
     private bool CheckDestination(Koto operation, Koto target, BoundType type, BindingScope scope)
     {
         if (!this.ValidPropertyWritePath(target, scope))
@@ -273,14 +273,13 @@ public sealed partial class Binding
             return false;
         }
 
-        var write = operation is BinaryKoto { Akind: KotoKind.Equals };
-        if (!write && type is { SafeReferent: not null } &&
-            ReferenceBindingAssignment(target) is { } referenceBinding)
+        if (type is { SafeReferent: not null } && ReferenceBindingAssignment(target, operation) is { } referenceBinding)
         {
-            this.Fail(operation, referenceBinding);
+            this.RecordWrite(operation, referenceBinding, target);
             return false;
         }
 
+        var write = operation is BinaryKoto { Akind: KotoKind.Equals };
         if (!this.WritablePlace(target, this.PathFold(target, [])) &&
             !(write && (CanInitializeLocal(target, scope) || (IsSpecialField(target, out var constructor) && constructor.IsConstructor))))
         {
@@ -290,7 +289,7 @@ public sealed partial class Binding
 
         if (!write)
         {
-            this.JudgeHolderPlace(target, HolderAccess.Update, null, operation);
+            this.JudgeHolderPlace(target, null, operation);
         }
 
         return true;
@@ -341,7 +340,7 @@ public sealed partial class Binding
         var result = assignment ? BoundType.Unit : left;
         if (operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan)
         {
-            var count = this.ShiftCountApplicability(right, scope);
+            var count = this.ShiftCountApplicability(right, scope, binary);
             return count.Failure == BindingFailure.None ? Complete(binary, result) : this.FailOperator(binary, binary.Right, count);
         }
 
@@ -380,14 +379,7 @@ public sealed partial class Binding
                 ? this.Fail(binary, BindingFailure.Unsupported, true) : Complete(binary, result);
         }
 
-        var rejected = binary.ArithmeticStorage ??= new();
-        rejected.Active = false;
-        rejected.Candidates.Clear();
-        rejected.Sources.Clear();
-        return this.FailExplained(
-            ref this.arithmeticSelectionFailures,
-            binary,
-            BindingFailure.ArithmeticSelection,
-            new(rejected, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit));
+        (binary.ArithmeticStorage ??= new()).Active = false;
+        return this.RecordArithmeticSelection(binary, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit, null);
     }
 }

@@ -32,6 +32,14 @@ public sealed partial class MirBorrowsTest
         "    public init(x: S.Output) => self.x = x@move\nfunc f(c: bool, h: uniq/HS<HOLDER>)\n    var t = \"t\"\n    var s = \"s\"\n" +
         "    var u = \"u\"\n    var y = 1\n    var m = 0\n    var xs: [2 of i32] = [0, 0]\n    var p = Pair.init()\n";
 
+    // PLAN G1058's struct (DECISIONS Z27's probes): a part to move, s, beside a part to write, n.
+    private const string TwoFields = "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n" +
+        "        self.s = s@move\n        self.n = n\n";
+
+    // DECISIONS Z27's review twins (z27ir): a base struct whose `level` has a custom `set`, beside a part to move, name.
+    private const string SetLevel = "open struct Device\n    public var name: string\n    public var level: i32\n        set(value: i32) -> ()\n" +
+        "            storage = value\n    protected init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\n";
+
     // The codes PLAN G1022's write rows observe: A5's Loan conflicts and A1's MovedPlace_Kd and UninitializedPlace_Kd.
     private static DiagnosticCode[] WriteCodes => [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.UninitializedPlace_Kd];
 
@@ -215,7 +223,7 @@ public sealed partial class MirBorrowsTest
     // the site: a failed selection's receiver beside a live Loan on a sibling Field (a valid program's Weak limit, an unresolved member), a
     // kept exclusive borrow whose Loan ends at the site (R4-M70), and a located element or referent read, through a shared reference too,
     // add no Loan conflict beside Binding's records (an element read uninitialized stays A1's, at the element; the Weak limit's construction
-    // keeps G1058's UninitializedPlace_Kd, D-983). A located element through a runtime index reads under a live Loan once, at the element,
+    // gives no record since DECISIONS Z27, PLAN G1058 closed: fail-before, G1058's UninitializedPlace_Kd, D-983). A located element through a runtime index reads under a live Loan once, at the element,
     // where its Index guard's shared borrow is (R4-M56), as its resolved twins do (fail-before: a second conflict at the site), and a read
     // through a Deref under a live reborrow conflicts at the read, as its twin's; a located exclusive borrow is its built value (a
     // Temporary), whose Loan ends at its construction.
@@ -224,13 +232,13 @@ public sealed partial class MirBorrowsTest
         "struct Node\n    public let w: Weak<rc/Node>\n    public var v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n        self.w = w@move\n" +
         "        self.v = v\nfunc f(w: Weak<rc/Node>) -> i32\n    var n: Node = Node.init(w@move, 1)\n    let r = n.v@uniq\n    let k = n.w@ref\n" +
         "    r@follow = 2\n    return 0\n",
-        "init: self.w = w@move UninitializedPlace_Kd")]
+        "")]
     [InlineData(
         "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n        self.n = n\n" +
         "func f()\n    var p = P.init(\"s\", 1)\n    let r = p.s@uniq\n    let q = p.nofield\n    r@follow = \"t\"\n",
         "")]
     [InlineData("func k(a: uniq/i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let z = k(y@uniq, missing)\n    y = 2\n    return z\n", "")]
-    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let z = match y@uniq\n        .Nope => 1\n        _ => 2\n    y = .None\n", "")]
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let z = match y@uniq\n        .Some(_) => 1\n    y = .None\n", "")]
     [InlineData("func f()\n    var a: [2 of i32]\n    missing = a[0]\n", "f: a[0] UninitializedPlace_Kd")]
     [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    missing = r@follow\n    y = 2\n", "")]
     [InlineData("struct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f(p: ref/Q)\n    missing = p.n\n", "")]
@@ -294,7 +302,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let t = (Option.Some(y@uniq), g(y))\n", "ComparisonLoanConflict_Kd@4:35")] // cr-tw-opt
     [InlineData("func inspect(v: ref/[2 of i32]) => ()\nfunc k(x: i32) => ()\nfunc f()\n    var v: [2 of i32] = [1, 2]\n    var i = 0\n    let r = v@uniq\n    missing(v[i])\n    inspect(r)\n", "ComparisonLoanConflict_Kd@7:13")] // n27-ridx
     [InlineData("func inspect(v: ref/[2 of i32]) => ()\nfunc k(x: i32) => ()\nfunc f()\n    var v: [2 of i32] = [1, 2]\n    var i = 0\n    let r = v@uniq\n    k(v[i])\n    inspect(r)\n", "ComparisonLoanConflict_Kd@7:7 | ComparisonLoanConflict_Kd@7:5")] // n27-tw-ridx
-    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match
     [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n        _ => 2\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match-ok
     [InlineData("func f()\n    var h = 1\n    let r = h@uniq\n    let p = h@raw/Missing\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // z-raw-missing
     [InlineData("func f()\n    var h = 1\n    let r = h@uniq\n    let p = h@raw\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // z-raw-ok
@@ -313,12 +321,13 @@ public sealed partial class MirBorrowsTest
 
     // PLAN G1022's exposure (SPEC 23.1.1): valid programs Binding rejects only through its Unsupported_Kd limits reach the derived write
     // too (tests/milestones/Milestone41.kimi's `self.selfWeak = selfWeak@move`, Milestone43.kimi's `owner.level = 30`), and keep the
-    // records they had before it: Binding's limits, no construction record, and (w2) the false UninitializedPlace_Kd the derived write's
-    // site gives the construction receiver `self` while `v` is uninitialized, a root of the target the site names as read (PLAN G1058's
-    // first form, D-983; not G1022's, and DECISIONS Z17 keeps it: the target's root stays undecided). Each row: the program, Binding's
-    // codes, the problems.
+    // records they had before it: Binding's limits and no construction record; (w2) the construction receiver `self`, the target's kept
+    // operand, is an enclosing use whose own bit the constructor sets, so `v` uninitialized gives no record (PLAN G1058's first form,
+    // D-983, closed by DECISIONS Z27; fail-before: a false UninitializedPlace_Kd at the write). Since PLAN G1184 (Z28) w2's and Milestone
+    // 41's write into the failed Weak Field is that Field's Place, no derived write, with the same records (MirInitTest
+    // AFieldWhoseSlotFailedIsItsOwnPlace). Each row: the program, Binding's codes, the problems.
     [Theory]
-    [InlineData("struct Node\n    public let w: Weak<rc/Node>\n    public let v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n        self.w = w@move\n        self.v = v\n", "Unsupported_Kd Unsupported_Kd", "init: self.w = w@move UninitializedPlace_Kd")]
+    [InlineData("struct Node\n    public let w: Weak<rc/Node>\n    public let v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n        self.w = w@move\n        self.v = v\n", "Unsupported_Kd Unsupported_Kd", "")]
     [InlineData("open struct Device\n    public var level: i32\n        set(value: i32) -> ()\n            storage = value\n    protected init(level: i32)\n        self.level = level\nstruct Lamp : Device\n    public init(level: i32) : base(level) => ()\nfunc g()\n    var owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init(40))\n    owner.level = 30\n", "Unsupported_Kd", "")]
     public void AWriteRejectedOnlyThroughALimitKeepsItsRecords(string source, string binding, string expected)
     {
@@ -329,6 +338,71 @@ public sealed partial class MirBorrowsTest
         new Stratum(c.Types).Run(program);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.IsRecord);
         Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, WriteCodes));
+    }
+
+    // PLAN G1058, G1186 (DECISIONS Z27; SPEC 13.7.1 steps 1-2, 15.1.2, 15.1.3, 6.3.4, 23.1.2): a derived write takes its right side at its
+    // own node (step 1), then evaluates its target's kept operands (step 2), and its site names the in-place ones as enclosing uses, which
+    // A1 checks for construction only, their own bits and their ancestors'. A target over a partly moved root, a constructing receiver or
+    // a placed Field gives no record (p03, p04 at 10:5, p19, p22, t05 at 10:9, t06, t08, t16, Milestone 41 at 11:9, since PLAN G1184 a
+    // Field Place's write; fail-before: a false MovedPlace_Kd or UninitializedPlace_Kd at the write); one whose root is moved whole, never constructed or a moved reference keeps it
+    // (p07, p08, p09), as a runtime index reads its array whole (t09) and the valid twin has none (p10). Step 2's operands are checked at
+    // their own nodes (p11's uninitialized index at 4:7 and t11's second move at 3:16, fail-before: at the write; p12's MovedPlace_Kd at
+    // 6:9 and p21's conflict, fail-before: none), after step 1 (t12, u1: the right side is read, or its failed take is a site at its node,
+    // before step 2 moves it). A target whose operation calls an accessor (a `set`, an update's `get`) takes its receiver whole (SPEC
+    // 11.3.1, 13.7.2: `uniq/Self`, `ref/Self`), so Binding publishes the receiver as those calls' input, a kept use: v1's inherited custom
+    // `set`, u5's update through it, c6's inherited computed `set`, g8's update through a custom `get` (a `let` receiver), and n6's,
+    // r16's and r17's updates through the `get` of a Property with no `set` (getter-only computed, a `let` with a custom `get`) keep
+    // MovedPlace_Kd after a sibling Field's Move beside their limit or Language error (fail-before: v1, u5, c6 without it on commit 2,
+    // g8 also on commit 3, n6, r16 and r17 also on commit 4), as the decided twins v3, g8v and n6v report it. A write to a Property
+    // with no `set` calls no accessor (SPEC 13.7.1 step 2), so it takes no receiver: r18 gives its own record alone (dev's
+    // MovedPlace_Kd went with commit 2, by the Middle's Q13 ruling). Each row: the program, then its records, Binding's and the
+    // analyses', code@line:col.
+    [Theory]
+    [InlineData(TwoFields + "func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    p.nofield = 1\n", "UnresolvedBinding_Kd@10:5")] // p03
+    [InlineData(TwoFields + "func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    p.n = 2\n", "")] // p10, valid
+    [InlineData("struct R\n    public let a: i32\n    public var b: i32\n    public init(a: i32, b: i32)\n        self.a = a\n        self.b = b\nfunc f() -> i32\n    var x = R.init(1, 2)\n    let t = x.b@move\n    x.a = 3\n    return x.b\n", "InaccessibleBinding_Kd@10:5 | MovedPlace_Kd@11:12")] // p04
+    [InlineData(TwoFields + "func f()\n    var p = P.init(\"s\", 1)\n    let a = p@move\n    p.nofield = 1\n", "UnresolvedBinding_Kd@10:5 | MovedPlace_Kd@10:5")] // p07
+    [InlineData(TwoFields + "func f()\n    var p: P\n    p.nofield = 1\n", "UnresolvedBinding_Kd@9:5 | UninitializedPlace_Kd@9:5")] // p08
+    [InlineData(TwoFields + "func f()\n    var q = P.init(\"s\", 1)\n    let r = q@uniq\n    let r2 = r@move\n    r.nofield = 1\n", "UnresolvedBinding_Kd@11:5 | MovedPlace_Kd@11:5")] // p09
+    [InlineData("func f()\n    var a: [2 of i32] = [1, 2]\n    var i: isize\n    a[i].nofield = 1\n", "UnresolvedBinding_Kd@4:5 | UninitializedPlace_Kd@4:7")] // p11
+    [InlineData("func at(t: string) -> isize => 0\nfunc use(t: string) => ()\nfunc f()\n    var t = \"a\"\n    missing[at(t@move)] = 1\n    use(t@move)\n", "UnresolvedBinding_Kd@5:5 | MovedPlace_Kd@6:9")] // p12
+    [InlineData("struct Q\n    public var m: i32\n    public init(m: i32) => self.m = m\nstruct P\n    public var s: string\n    public var q: Q\n    public init(s: string, q: Q)\n        self.s = s@move\n        self.q = q@move\nfunc f()\n    var p = P.init(\"s\", Q.init(1))\n    let a = p.s@move\n    p.q.nofield = 1\n", "UnresolvedBinding_Kd@13:5")] // p19
+    [InlineData("func k(x: i32) -> isize => 0\nfunc f()\n    var y = 1\n    let r = y@uniq\n    missing[k(y)] = 1\n    r@follow = 2\n", "UnresolvedBinding_Kd@5:5 | ComparisonLoanConflict_Kd@5:13")] // p21
+    [InlineData(TwoFields + "func f(y: string)\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    p.nofield = y\n    let b = y@move\n", "UnresolvedBinding_Kd@10:5 | TransferRequired_Kd@10:17")] // p22
+    [InlineData(TwoFields + "func f(c: bool)\n    var p = P.init(\"s\", 1)\n    while c\n        p.nofield = 1\n        let a = p.s@move\n", "UnresolvedBinding_Kd@10:9 | MovedPlace_Kd@11:17")] // t05
+    [InlineData(TwoFields + "func g(q: P) -> ()\n    let f = func [var q@move] ()\n        let a = q.s@move\n        q.nofield = 1\n    f@move()\n", "UnresolvedBinding_Kd@10:9")] // t06
+    [InlineData(TwoFields + "func f()\n    var a: [2 of P] = [P.init(\"a\", 1), P.init(\"b\", 2)]\n    let x = a[1]@move\n    a[0].nofield = 1\n", "UnresolvedBinding_Kd@10:5")] // t08
+    [InlineData(TwoFields + "func f()\n    var a: [2 of P] = [P.init(\"a\", 1), P.init(\"b\", 2)]\n    let i: isize = 0\n    let x = a[1]@move\n    a[i].nofield = 1\n", "UnresolvedBinding_Kd@11:5 | MovedPlace_Kd@11:5")] // t09
+    [InlineData("func at(t: string) -> isize => 0\nfunc f(y: string)\n    missing[at(y@move)] = y@move\n", "UnresolvedBinding_Kd@3:5 | MovedPlace_Kd@3:16")] // t11
+    [InlineData("func at(t: string) -> isize => 0\nfunc f(y: string)\n    missing[at(y@move)] = y\n", "UnresolvedBinding_Kd@3:5 | TransferRequired_Kd@3:27")] // t12
+    [InlineData("struct Q\n    public var m: string\n    public init(m: string) => self.m = m@move\nstruct P\n    public var q: Q\n    public var n: i32\n    public init(n: i32)\n        self.q = Q.init(\"m\")\n        self.q.nofield = 1\n        self.n = n\n", "UnresolvedBinding_Kd@9:9")] // t16
+    [InlineData("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc at(b: Bad) -> isize => 0\nfunc f(b: Bad)\n    missing[at(b@move)] = b\n", "UnsatisfiedConstraint_Kd@2:5 | UnresolvedBinding_Kd@7:5")] // u1
+    [InlineData(SetLevel + "struct Lamp : Device\n    public init(name: string, level: i32) : base(name@move, level) => ()\nfunc g()\n    var owner = Lamp.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level = 30\n", "Unsupported_Kd@14:5 | MovedPlace_Kd@14:5")] // z27ir's v1
+    [InlineData(SetLevel + "struct Lamp : Device\n    public init(name: string, level: i32) : base(name@move, level) => ()\nfunc g()\n    var owner = Lamp.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level += 1\n", "Unsupported_Kd@14:5 | MovedPlace_Kd@14:5")] // C-498's u5
+    [InlineData("open struct Device\n    public var name: string\n    public var level: i32\n    public computed percent: i32\n        get() -> i32 => self.level\n        set(value: i32) -> () => self.level = value\n    protected init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\n" + "struct Lamp : Device\n    public init(name: string, level: i32) : base(name@move, level) => ()\nfunc g()\n    var owner = Lamp.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.percent = 30\n", "Unsupported_Kd@15:5 | MovedPlace_Kd@15:5")] // C-498's c6
+    [InlineData("struct Device\n    public var name: string\n    public var level: i32\n        get() -> i32 => storage\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    let owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level += 1\n", "InvalidAssignment_Kd@11:5 | MovedPlace_Kd@11:5")] // C-498's g8
+    [InlineData("struct Device\n    public var name: string\n    public var level: i32\n        get() -> i32 => storage\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    var owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level += 1\n", "MovedPlace_Kd@11:5")] // C-498's g8v, decided
+    [InlineData("struct Device\n    public var name: string\n    public var level: i32\n        set(value: i32) -> ()\n            storage = value\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    var owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level = 30\n", "MovedPlace_Kd@12:5")] // z27ir's v3, decided
+    [InlineData("struct P\n    public var s: string\n    public var n: i32\n    public computed p: i32\n        get() -> i32 => self.n\n    public init(s: string, n: i32)\n        self.s = s@move\n        self.n = n\nfunc g()\n    var x = P.init(\"s\", 1)\n    let a = x.s@move\n    x.p += 1\n", "InaccessibleBinding_Kd@12:5 | MovedPlace_Kd@12:5")] // z27fx2's n6 (N6)
+    [InlineData("struct P\n    public var s: string\n    public var n: i32\n    public computed p: i32\n        get() -> i32 => self.n\n    public init(s: string, n: i32)\n        self.s = s@move\n        self.n = n\nfunc g()\n    var x = P.init(\"s\", 1)\n    let a = x.s@move\n    let k = x.p + 1\n", "MovedPlace_Kd@12:13")] // z27fx2's n6v, decided
+    [InlineData("struct Device\n    public var name: string\n    public var level: i32\n    public computed percent: i32\n        get() -> i32 => self.level\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    var owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.percent += 1\n", "InaccessibleBinding_Kd@12:5 | MovedPlace_Kd@12:5")] // C-498's r16
+    [InlineData("struct Device\n    public var name: string\n    public let level: i32\n        get() -> i32 => storage\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    var owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level += 1\n", "InaccessibleBinding_Kd@11:5 | MovedPlace_Kd@11:5")] // C-498's r17
+    [InlineData("struct Device\n    public var name: string\n    public var level: i32\n    public computed percent: i32\n        get() -> i32 => self.level\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    var owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.percent = 30\n", "InaccessibleBinding_Kd@12:5")] // C-498's r18: no `set`, no call
+    [InlineData("tests/milestones/Milestone41.kimi", "Unsupported_Kd@8:26 | Unsupported_Kd@10:27 | Unsupported_Kd@15:19 | Unsupported_Kd@17:16 | Unsupported_Kd@18:11 | Unsupported_Kd@26:11 | Unsupported_Kd@31:11 | Unsupported_Kd@36:32 | Unsupported_Kd@37:15 | Unsupported_Kd@41:16 | Unsupported_Kd@42:11")] // Milestone 41, valid but for Binding's Weak limits
+    public void ADerivedWritesTargetIsEnclosedNotRead(string source, string expected)
+    {
+        source = source.StartsWith("tests/", StringComparison.Ordinal)
+            ? File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../..", source)).Replace("\r\n", "\n", StringComparison.Ordinal) : source;
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.IsRecord);
+        string[] records = [.. c.Binding.Issues.Select(x => $"{x.Code}@{At(x.Node.Span.Start)}"),
+            .. program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code}@{At(c.SyntaxOf(x.Subject).Span.Start)}")];
+        Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), records);
+
+        string At(int offset) => $"{source[..offset].Count(static x => x == '\n') + 1}:{offset - source.LastIndexOf('\n', Math.Max(offset - 1, 0))}";
     }
 
     // SPEC 23.1.2 (G240; DECISIONS BU-36): a call over storage whose part Binding did not bind keeps the rows that hold whatever the part
@@ -443,7 +517,7 @@ public sealed partial class MirBorrowsTest
         var block = body.AddBlock();
         body.Push(block, MirStatement.Assign(x, MirRvalue.Use(Constant(2)), At(1)));
         body.Push(block, MirStatement.Assign(r, MirRvalue.Ref(MirRefKind.Shared, x, reference), At(2)));
-        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(null, body.AddOpaque(new(0, 3), [], 0)), At(3)));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(null, body.AddOpaque(new(0, 3), [], 0, 0)), At(3)));
         var operands = body.AddOperand(MirOperand.Move(unknown));
         _ = Constant(1);
         body.Push(block, MirStatement.Assign(value, MirRvalue.Binary(Enum.Parse<MirBinaryOp>(op), operands, proven: true), At(4)));

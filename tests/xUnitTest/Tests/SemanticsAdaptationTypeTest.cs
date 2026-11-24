@@ -32,7 +32,7 @@ public class SemanticsAdaptationTypeTest
         Assert.Same(c.Binding.CaseType(pair.WholeType!, references), reference.Components[0]);
         Assert.NotEqual(ConstraintProof.Proven, c.Binding.ProveCopy(type, function));
         Assert.NotEqual(ConstraintProof.Proven, c.Binding.ProveOwned(type, function));
-        Assert.Contains("case s", Binding.HoverTypeName(type), StringComparison.Ordinal);
+        Assert.Contains("case s", c.Binding.HoverTypeName(type), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class SemanticsAdaptationTypeTest
         var (c, _, pair) = Parse("func f<s/T>(value: s/T)\n    s is owner or objref\n    ()");
         var source = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Static);
         var type = c.Binding.SemanticsAdaptation(pair, source, BoundOrigin.Static, pair.Scope);
-        Assert.Equal(SemanticsMask.Ref | SemanticsMask.ObjRef, c.Binding.ResultSemantics(type, pair.Scope));
+        Assert.Equal(SemanticsMask.Ref | SemanticsMask.ObjRef, c.Binding.ResultSemantics(type, pair.Scope, Binding.QuerySite.AfterPass));
     }
 
     [Fact]
@@ -164,9 +164,9 @@ public class SemanticsAdaptationTypeTest
         var actual = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: local);
         var same = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: BoundOrigin.Static);
         var expected = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [longer], origin: local);
-        Assert.Equal(SemanticsMask.Ref, c.Binding.ResultSemantics(actual, pair.Scope));
-        Assert.True(c.Binding.FitsTypeAt(actual, same, function, out _));
-        Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
+        Assert.Equal(SemanticsMask.Ref, c.Binding.ResultSemantics(actual, pair.Scope, Binding.QuerySite.AfterPass));
+        Assert.True(c.Binding.FitsTypeAt(actual, same, function, out _, null));
+        Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _, null));
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.Owner)];
         Assert.Same(reference, c.Binding.CaseType(actual, cases));
     }
@@ -179,7 +179,7 @@ public class SemanticsAdaptationTypeTest
     {
         var (c, function, _) = Parse($"func f<s/T, U>(value: U)\n    s is owner\n    U is {evidence}\n    ()");
         var parameter = function.SymbolOf()!.Schema!.GenericSlots[1].Symbol;
-        Assert.Equal(SemanticsMask.Owner, c.Binding.ResultSemantics(parameter.Type!, parameter.Scope));
+        Assert.Equal(SemanticsMask.Owner, c.Binding.ResultSemantics(parameter.Type!, parameter.Scope, Binding.QuerySite.AfterPass));
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class SemanticsAdaptationTypeTest
         var shorter = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair), pair.Scope);
         var actual = c.Binding.SemanticsAdaptation(pair, longer, BoundOrigin.Static, pair.Scope);
         var expected = c.Binding.SemanticsAdaptation(pair, shorter, BoundOrigin.Static, pair.Scope);
-        Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
+        Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _, null));
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.Raw)];
         Assert.False(c.Binding.FitsType(c.Binding.CaseType(actual, cases), c.Binding.CaseType(expected, cases)));
     }

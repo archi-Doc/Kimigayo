@@ -12,9 +12,15 @@ delete, which empties the shared root), and never runs setup through the junctio
 ## Operations
 
 `tatara_optimize` (`opt -passes=verify`, then `opt -S -passes=default<O2> -mtriple`), `tatara_emit` (`opt -passes=verify`, then
-`llc -filetype=obj` with the target's CPU, features, relocation and code model) and `tatara_link` (`lld-link`, through
-`lld::lldMain`) read and write the files the tools would, with equal bytes. `tatara_inspect` returns an object's undefined and
-defined external symbols with `llvm-nm`'s letters, and whether `.pdata` holds an entry and a `.drectve` names `DEFAULTLIB`.
+`llc -filetype=obj` with the target's CPU, features, relocation and code model) and `tatara_link` (`lld-link` or `ld.lld`, named
+by its first argument as an LLD executable's name, through `lld::lldMain`) read the files the tools would and give equal bytes:
+optimize and emit return their output (the text and the object) in the result, which the caller writes, and LLD writes its own
+files, the only files Tatara writes. `tatara_inspect` reads a COFF or ELF object, or each member of an archive, and returns each
+member's undefined and defined external symbols with `llvm-nm`'s letters, its form (relocatable object, COFF short import member or
+linked image), its definitions that admit copies (a COMDAT section; a bitcode member's comdat) and its `.drectve`'s (a bitcode
+member's linker options') `/include:` and `/alternatename:` references, the archive's symbol index (each entry's member), and two
+flags: whether a member names a default library (a COFF `.drectve` or a bitcode member's linker options naming `DEFAULTLIB`, an ELF
+`.deplibs` section) and whether the input is an archive.
 Each call returns 0 (success), 1 (failed; Tatara can run again) or 2 (failed; Tatara cannot run again in this process) and a
 result whose message carries the tools' text, released with `tatara_release`.
 
@@ -57,7 +63,7 @@ functions `tatara.h` declares.
 
 Tatara links as LLVM's own tools link. The LLVM libraries are globbed, and the Windows libraries and options are read from
 `LLVMSupport`'s `INTERFACE_LINK_LIBRARIES` in the archive's `lib/cmake/llvm/LLVMExports.cmake`; the reader accepts only the
-shapes it knows and fails on any other token. `lldCOFF.lib` and `lldCommon.lib` are added for `tatara_link`. One departure:
+shapes it knows and fails on any other token. `lldCOFF.lib`, `lldELF.lib` and `lldCommon.lib` are added for `tatara_link`. One departure:
 `diaguids.lib` comes from the discovered Visual Studio, because `LLVMDebugInfoPDB`'s interface names a path on LLVM's build
 machine.
 

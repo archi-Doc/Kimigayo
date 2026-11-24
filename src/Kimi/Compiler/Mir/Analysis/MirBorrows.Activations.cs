@@ -65,8 +65,11 @@ internal sealed partial class MirBorrows
     // DECISIONS Z17c (SPEC 15.6.7): the kept uses of the Opaque site a statement assigns (MirOpaque.Kept), the Places of an Error node's
     // kept parts, which it takes as the invocation it replaces takes its inputs; none for any other statement, so a default's site, which
     // runs during the reservation, activates nothing.
-    private ReadOnlySpan<MirPlace> KeptUses(in MirStatement statement) => statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque }
-        ? this.body.OpaqueUses.Slice(this.body.OpaqueSites[statement.Rvalue.Arg].Start, this.body.OpaqueSites[statement.Rvalue.Arg].Kept) : default;
+    private ReadOnlySpan<MirPlace> KeptUses(in MirStatement statement)
+    {
+        var site = this.body.SiteOf(statement);
+        return this.body.OpaqueUses.Slice(site.Start, site.Kept);
+    }
 
     // A reservation holder's state, read once per call since the call moves it: an input that holds no reservation is not read.
     private void Reserve(ulong[] state, int local, DiagnosticCode code)
@@ -104,7 +107,7 @@ internal sealed partial class MirBorrows
 
             if (loan.Destroying)
             {
-                this.Destroyed(reservation, cases.TypeOf(this.lent[local]), taking, at);
+                this.Destroyed(reservation, cases.TypeOf(this.LentInto(local)), taking, at);
             }
         }
 

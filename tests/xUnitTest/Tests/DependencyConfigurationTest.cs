@@ -73,10 +73,10 @@ public class DependencyConfigurationTest
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
         => Assert.True(Record.Exception(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))) is TinyhandException or ProjectConfigurationException);
 
-    // IMPL 20.4 (Tatara B6a and G1211, decision 20): kernel32 and kimi_backend are the compiler's supplies, so a project's entry for
-    // either, a requirement or a supply, its own or for a package, under any target key, fails at the load with one note naming it and
-    // its record, each entry its own (SPEC 23.1.2; NativeConfiguration; publication does not repeat the check, DECISIONS R5-M165).
-    // Each expected entry is "<record>.<name>".
+    // IMPL 20.4 (Tatara B6a and G1211, decision 20; B7b5, R2): kernel32, kimi_backend and c, every target row's supplies, are the
+    // compiler's, so a project's entry for any of them, a requirement or a supply, its own or for a package, under any target key, fails at
+    // the load with one note naming it and its record, each entry its own (SPEC 23.1.2; NativeConfiguration; publication does not repeat
+    // the check, DECISIONS R5-M165). Each expected entry is "<record>.<name>".
     [Theory]
     [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}", "NativeLibraries.kernel32")]
     [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\" Input=\"vendor/kimi_backend.lib\"}}}", "NativeLibraries.kimi_backend")]
@@ -87,6 +87,12 @@ public class DependencyConfigurationTest
     [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\"} kernel32={Kind=\"import\"}}}", "NativeRequirements.kimi_backend", "NativeRequirements.kernel32")]
     [InlineData("NativeRequirements={t={kernel32={Kind=\"import\"}}} NativeLibraries={t={kernel32={Input=\"k.lib\"}}}", "NativeRequirements.kernel32", "NativeLibraries.kernel32")]
     [InlineData("NativeRequirements={t={kimi_backend={Kind=\"static\"}}} NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kimi_backend\" Input=\"a.lib\"}}}", "NativeRequirements.kimi_backend", "NativeLibraries.kimi_backend")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={c={Kind=\"static\" Input=\"c.lib\"}}}", "NativeLibraries.c")]
+    [InlineData("NativeLibraries={\"x86_64-unknown-linux-musl\"={c={Kind=\"static\" Input=\"c.a\"}}}", "NativeLibraries.c")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"c\" Input=\"c.a\"}}}", "NativeLibraries.c")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={c={Kind=\"static\"}}}", "NativeRequirements.c")]
+    [InlineData("NativeRequirements={\"x86_64-unknown-linux-musl\"={c={Kind=\"static\"}}}", "NativeRequirements.c")]
+    [InlineData("NativeRequirements={t={c={Kind=\"static\"}}} NativeLibraries={t={c={Input=\"c.a\"}}}", "NativeRequirements.c", "NativeLibraries.c")]
     public void AReservedSupplysEntryFailsAtTheLoad(string source, params string[] entries)
     {
         var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures;
@@ -104,6 +110,24 @@ public class DependencyConfigurationTest
     public void ARemovedSettingFailsTheLoad(string source, string[] notes)
     {
         Assert.Equal(notes, Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures);
+    }
+
+    // IMPL 20.1 (PLAN G1010, R9 part B's Revision 2): a key that is not a name, at each position the map checks read, is the
+    // configuration's failure with its own note naming its map (SPEC 23.1.2), never a reader exception; the map is then unreadable, so the
+    // deserializer's failure is kept too.
+    [Theory]
+    [InlineData("2=\"a\"", "the project file")]
+    [InlineData("Dependencies={1={}}", "Dependencies")]
+    [InlineData("Test={1=2}", "Test")]
+    [InlineData("Test={Environment={1=\"a\"}}", "Test.Environment")]
+    [InlineData("NativeLibraries={1=2}", "NativeLibraries")]
+    [InlineData("NativeRequirements={1=2}", "NativeRequirements")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={1=2}}", "NativeLibraries")]
+    public void ASettingNameThatIsNotANameFailsTheLoad(string source, string map)
+    {
+        Assert.Equal(
+            new[] { $"A setting name in {map} must be a name.", "Failed to deserialize Kimi.ProjectFile value." },
+            Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures);
     }
 
     [Fact]

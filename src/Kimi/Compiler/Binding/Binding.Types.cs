@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<Koto> resolvingTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly ResolvingTypeRows resolvingTypes;
 
     /// <summary>Tests whether a Type name is written directly as the target of an object form such as <c>objref/T</c>.</summary>
     private static bool IsDirectObjectTarget(Koto syntax)
@@ -58,17 +58,8 @@ public sealed partial class Binding
     };
 
     // A Container's direct Type members named `name`, as a path (SPEC 9.6) or an opening alias (18.2.1) reaches them: never its formal
-    // parameters, which only the scope walk finds at their declaring position (9.5).
-    private static BindingSymbol? MemberTypes(BindingScope container, string name)
-    {
-        var head = container.Types.GetValueOrDefault(name);
-        while (head is not null && IsGenericParameter(head))
-        {
-            head = head.Next;
-        }
-
-        return head;
-    }
+    // parameters, which only the scope walk finds at their declaring position (9.5; BindingScope.Parameters).
+    private static BindingSymbol? MemberTypes(BindingScope container, string name) => container.Types.GetValueOrDefault(name);
 
     private BoundType? BindType(Koto syntax, BindingScope scope)
         => this.BindType(syntax, scope, this.TypeContext(syntax, scope));
@@ -124,7 +115,7 @@ public sealed partial class Binding
 
         if (!this.resolvingTypes.Add(syntax))
         {
-            return this.Fail(syntax, BindingFailure.Cycle, true);
+            return this.Record(syntax, BindingFailure.Cycle, [], unresolved: true);
         }
 
         // A Type expression is checked like an expression: the components that failed are its prerequisites.
@@ -334,6 +325,15 @@ public sealed partial class Binding
         return this.BindNamedType(syntax, scope, context, applyingOrigins);
     }
 
+    // SPEC 23.1.2: where a Type use that selected nothing fails, at every Type position (BindNamedType, BindConstructedType), a Contract's
+    // parent (BuildContract) and an alias target (SelectAliasTarget), read from the use's published lookup alone (NamePath; F's ruling
+    // N1-13 B1, PLAN G1298), so every reader names one site whoever evaluated the walk: an Unresolved walk at its failing step when that
+    // step is a qualifier of the path, as `S.Missing` of `S.Missing.X` and of `S.Missing.X<T>`; else a generic at its Name (its arguments
+    // keep their own records); else the use, where an ambiguity or a qualification stop keeps its own record.
+    private Koto UnselectedTypeSite(Koto syntax)
+        => UseNode(syntax) is var use && HirTables.LookupOf(use) == PathEnd.Unresolved && this.PublishedStep(use) is var step && StoppedAtQualifier(step, syntax) ? step
+            : syntax is GenericsKoto generic ? generic.Identifier! : syntax;
+
     // The named Type a use's one lookup selected: the lookup published on the use (a requirement's, a qualifier's, a Contract parent's,
     // an Origin set's), else BindType's own, the use's first. Nothing here looks the name up again; a failed lookup's facts (a
     // qualification stop, an ambiguity) are the ones FailMissing explains.
@@ -359,13 +359,10 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            // SPEC 23.1.2: an unresolved walk failed at its failing step (its use), as `S.Missing` of `S.Missing.X`, when that step is a
-            // qualifier of the path; an ambiguity or a qualification stop keeps its own record at the path.
-            return this.FailMissing(head.End == PathEnd.Unresolved && StoppedAtQualifier(head.Use, syntax) ? head.Use : syntax, scope, BindingFailure.MissingType);
+            return this.FailMissing(this.UnselectedTypeSite(syntax), scope, BindingFailure.MissingType);
         }
 
         syntax.BoundSymbol = symbol;
-        var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
         if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || symbol.IsContract)
         {
             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
@@ -402,15 +399,11 @@ public sealed partial class Binding
             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, symbol.Type));
         }
 
-        if (symbol.Kind == BindingSymbolKind.TypeParameter)
+        if (symbol.Kind == BindingSymbolKind.TypeParameter || symbol.SelfOf is not null)
         {
-            // A Type parameter is its own Type, a Contract's Self among them (SPEC 9.1).
+            // A Type parameter is its own Type, a Contract's Self among them; a struct's or enum's Self is its declaration applied to its
+            // own bindings (SPEC 9.1), the Type its symbol carries.
             return symbol.Type;
-        }
-
-        if (isSelf)
-        {
-            return this.SelfType(symbol);
         }
 
         return symbol.Declaration is DeclarationContainerKoto
@@ -421,13 +414,14 @@ public sealed partial class Binding
     private BoundType? BindConstructedType(GenericsKoto generic, BindingSymbol? definition, BindingScope scope, TypeBindingContext context)
     {
         var container = definition?.Declaration as DeclarationContainerKoto;
-        if (definition is null || container is null or ContractKoto || generic.TypeArguments.Count != container.GenericParameterNodes.Count)
+        if (definition is null || container is null or ContractKoto || generic.TypeArguments.Count != definition.GenericArity)
         {
-            // A missing Name, a head that is no Type or a wrong arity forms no application (SPEC 9.5, 9.7), and each is its own record.
+            // A missing Name, a head that is no Type or a wrong arity (the symbol's own: a Self has none) forms no application (SPEC 9.5,
+            // 9.7), and each is its own record.
             this.BindUnappliedArguments(generic, scope, context.Nested);
-            return definition is null ? this.FailMissing(generic.Identifier!, scope, BindingFailure.MissingType)
+            return definition is null ? this.FailMissing(this.UnselectedTypeSite(generic), scope, BindingFailure.MissingType)
                 : container is null or ContractKoto ? this.Fail(generic, BindingFailure.InvalidTypeFormation)
-                : this.RecordArity(generic, definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count);
+                : this.RecordArity(generic, definition, definition.GenericArity, generic.TypeArguments.Count);
         }
 
         generic.Identifier!.BoundSymbol = definition;
@@ -491,5 +485,29 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(buffer, clearArray: true);
         }
+    }
+
+    /// <summary>The `resolvingTypes` family's one accessor (DECISIONS BU-220): a pass family, BindType's cycle guard, the Type syntax whose
+    /// BindType is on the stack, a `bool` row in the syntax's module's NodeColumns at its SyntaxId, set at BindType's start and reset in its
+    /// finally. Its rows are the running pass's working state, all reset when no BindType runs, so the freeze releases them
+    /// (NodeColumns.Freeze). Its members keep the names its readers use.</summary>
+    private readonly struct ResolvingTypeRows(Binding binding)
+    {
+        // False when the syntax is already on the stack (a cycle), as HashSet.Add.
+        internal bool Add(Koto syntax)
+        {
+            ref var row = ref HirTables.Of(syntax).Families.ResolvingTypes.Ref(syntax.SyntaxId, binding);
+            if (row)
+            {
+                return false;
+            }
+
+            row = true;
+            return true;
+        }
+
+        internal void Remove(Koto syntax) => HirTables.Of(syntax).Families.ResolvingTypes.Ref(syntax.SyntaxId, binding) = false;
+
+        internal bool Contains(Koto syntax) => syntax.SyntaxOwner is { } table && table.Hir.Families.ResolvingTypes.Get(syntax.SyntaxId, binding);
     }
 }

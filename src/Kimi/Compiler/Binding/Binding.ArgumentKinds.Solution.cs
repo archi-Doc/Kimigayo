@@ -6,15 +6,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The solution of the call's `candidate`-th candidate from its evaluation: the call's slot arrays, scope, Self, explicit Type
-    // arguments and the candidate's root rows. Its Origin views cover the candidate's slots (RequireOriginWidths).
+    // The solution of the call's `candidate`-th candidate from its evaluation: its frame, mapping, Origin strides and root rows, and the
+    // call's scope, Self, explicit Type arguments and the candidate's requirement reference. Its Origin views cover the candidate's
+    // slots (RequireOriginWidths).
     private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
     {
         RequireOriginWidths(function, evaluation.OriginSlots, evaluation.InputSlots);
         return new()
         {
-            Rows = evaluation.Rows.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
-            ChildSlice = evaluation.ChildSlices.AsSpan(candidate * 2, 2),
+            Rows = evaluation.RowsOf(candidate),
+            ChildSlice = evaluation.ChildSliceOf(candidate),
             Binding = this,
             Call = evaluation.Call,
             Binder = function,
@@ -25,8 +26,11 @@ public sealed partial class Binding
             Self = evaluation.Self,
             DeclaringType = declaringType,
             Frame = evaluation.Frames[candidate],
-            Origins = evaluation.Origins,
-            Inputs = evaluation.Inputs,
+            Mapping = evaluation.MappingOf(candidate),
+            Origins = evaluation.OriginsOf(candidate),
+            Inputs = evaluation.InputsOf(candidate),
+            RequirementContract = evaluation.RequirementContractOf(candidate),
+            Kept = evaluation.Inferences.AsSpan(candidate, 1),
         };
     }
 
@@ -72,8 +76,10 @@ public sealed partial class Binding
         internal BoundType? Self;
         internal BoundType? DeclaringType;
         internal SlotFrame Frame;
+        internal ReadOnlySpan<int> Mapping; // A candidate's call argument i maps to its parameter Mapping[i] (MapCallArguments); empty outside a named call's candidate.
         internal Span<BoundOrigin> Origins;
         internal Span<BoundOrigin> Inputs;
+        internal BindingSymbol? RequirementContract; // A named call's candidate's (CallEvaluation.RequirementContractOf); its trial runs under it.
         internal bool FixedConstruction;
 
         // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
@@ -81,7 +87,14 @@ public sealed partial class Binding
         // slice (TryCandidate's: an evaluation's, unset when the candidate's evaluation begins, or a fixed construction's re-check,
         // which keeps the selected candidate's openings), so each evaluation's first solve clears them.
         internal bool FirstSolve;
+
+        // PLAN G1078: this run's solve, begun at its first bound (BeginInference), and the candidate's state across its runs, the one
+        // slot Kept: OriginInference is Kept[0] once begun, or null when the run began none. Kept is the candidate's slot of its call's
+        // evaluation (CallEvaluation.Inferences), kept across its trial, re-trials, fixed re-check and judgment; a Case construction's
+        // or a value call's own slot, returned by its function; empty for a property update, which begins none (an empty slot at a
+        // Begin is a broken contract).
         internal OriginInference? OriginInference;
+        internal Span<OriginInference?> Kept;
 
         // F1 (R4-M164): each argument's root row for this candidate's call (Contribute; Binding.ArgumentKinds.Rows.cs), a slice of the
         // call's pooled CallEvaluation.Rows (one per argument of each candidate; none for a call without arguments), which lives until
@@ -128,6 +141,21 @@ public sealed partial class Binding
             this.Left = left;
         }
 
+        // The candidate's state (Kept), rented clean at its first use; a candidate that begins no solve reads and writes only its
+        // openings there (OriginInference.Opened).
+        internal readonly OriginInference KeptInference()
+        {
+            if (this.Kept.IsEmpty)
+            {
+                throw new InvalidOperationException("A call or construction that solves Origins keeps its solve state's slot (InternalInvariant; PLAN G1078).");
+            }
+
+            return this.Kept[0] ??= this.Binding.RentInference(this.Call, this.Binder);
+        }
+
+        // This run's solve, begun over the candidate's state at its first bound.
+        internal OriginInference BeginInference() => this.OriginInference ??= this.Binding.BeginOriginInference(this.KeptInference());
+
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);
 
@@ -167,16 +195,16 @@ public sealed partial class Binding
         // SPEC 10.5.1 (D4): whether the result holds a Type or Semantics slot that neither evidence nor a waiting callable fixes with
         // no outer expectation (OpenWaitingSlots), as a construction's does (HoldsOpenSlot); a constructor's result holds all its slots.
         // Origin slots are not counted.
-        internal readonly bool ResultHoldsUnsolved(int[] mapping)
+        internal readonly bool ResultHoldsUnsolved()
         {
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, this.Mapping, ref unsolved);
                 var open = new OpenWaitingSlots(ref unsolved, this);
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
-                    this.Binding.TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, this.SlotOwner, open);
+                    this.Binding.TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[this.Mapping[i]].Type.BoundType!, this.SlotOwner, open);
                 }
 
                 return !unsolved.IsEmpty &&
@@ -190,7 +218,7 @@ public sealed partial class Binding
 
         // SPEC 15.3.6, 10.8: a Callable proof that fails only because a slot holds the open region of an argument's own per-call Origin,
         // and holds once that per-call Origin stands in for it, is no inapplicability: the argument is reported after selection.
-        internal readonly bool PerCallCallables(int[] mapping, Span<BoundArgumentOperation> marks)
+        internal readonly bool PerCallCallables(Span<BoundArgumentOperation> marks)
         {
             var count = CallOwnSlots(this.Function).Count;
             var restored = this.Binding.typeScratch.Rent(count);
@@ -199,7 +227,7 @@ public sealed partial class Binding
                 // SPEC 10.7, 10.8: first instantiate each argument's per-call input at a required input over a fixed Origin; when every
                 // Constraint then holds, that instantiation solves the slots and nothing is reported.
                 this.Types[..count].CopyTo(restored);
-                if (this.StandIns(mapping, restored.AsSpan(0, count), marks, true) && this.Prove(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
+                if (this.StandIns(restored.AsSpan(0, count), marks, true) && this.Prove(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
                 {
                     this.Frame.CopyTypes(restored.AsSpan(0, count));
                     this.CompleteOperationTypes(marks);
@@ -207,7 +235,7 @@ public sealed partial class Binding
                 }
 
                 this.Types[..count].CopyTo(restored);
-                var marked = this.StandIns(mapping, restored.AsSpan(0, count), marks, false);
+                var marked = this.StandIns(restored.AsSpan(0, count), marks, false);
                 if (!marked || this.Prove(restored.AsSpan(0, count), false) != ConstraintProof.Proven)
                 {
                     for (var i = 0; i < this.Call.ArgumentNodes.Count && marked; i++)
@@ -244,7 +272,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var inference = this.OriginInference ??= binding.BeginOriginInference(this.Call, this.Binder);
+                var inference = this.BeginInference();
                 var opened = inference.SlotVariableCount;
                 var skeleton = binding.SlotSkeleton(head, this.Call, inference);
                 if (inference.SlotVariableCount == opened)
@@ -256,7 +284,7 @@ public sealed partial class Binding
                 try
                 {
                     // Oldest first, in the arguments' order, so dev's record location is kept (R1.3 (i)).
-                    CollectOldestFirst(binding, head, skeleton, inference);
+                    CollectOldestFirst(binding, head, skeleton, inference, this.Call);
                 }
                 finally
                 {
@@ -273,12 +301,12 @@ public sealed partial class Binding
                 }
             }
 
-            static void CollectOldestFirst(Binding binding, SlotBinding? node, BoundType skeleton, OriginInference inference)
+            static void CollectOldestFirst(Binding binding, SlotBinding? node, BoundType skeleton, OriginInference inference, QuerySite site)
             {
                 if (node is not null)
                 {
-                    CollectOldestFirst(binding, node.Next, skeleton, inference);
-                    binding.CollectOriginInference(skeleton, node.Type, inference, node.Polarity);
+                    CollectOldestFirst(binding, node.Next, skeleton, inference, site);
+                    binding.CollectOriginInference(skeleton, node.Type, inference, site, node.Polarity);
                 }
             }
 
@@ -342,7 +370,7 @@ public sealed partial class Binding
                 return;
             }
 
-            var opened = this.Binding.InferenceOf(this.Call, this.Function);
+            var opened = this.KeptInference();
             if (this.FirstSolve)
             {
                 opened.Opened.Clear();
@@ -366,7 +394,7 @@ public sealed partial class Binding
                 return;
             }
 
-            var opened = this.Binding.InferenceOf(this.Call, this.Function);
+            var opened = this.KeptInference();
             for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
             {
                 if (waited.Opens(g) && this.Types[g] is { CarriesOrigin: true } solution && this.Frame.BindsCovariantly(g) && !this.FixedSlot(g))
@@ -396,15 +424,22 @@ public sealed partial class Binding
             return new(waiting, covariant, blocked);
         }
 
-        // Each operation's parameter Type with the solution substituted, where it is complete.
+        // Each operation's parameter Type with the solution substituted, where it is complete, and the source and adapted Types its fit
+        // derived from the parameter Type (ValueAtParameter) derived again from the completed one by the same rule (ExpectedValueType;
+        // SPEC 10.2 row 2, 15.6.4 step 1); any other operation's source and adapted Types are the source's own and stay.
         internal readonly void CompleteOperationTypes(Span<BoundArgumentOperation> operations)
         {
             for (var i = 0; i < operations.Length; i++)
             {
-                if (operations[i] is { Source: not null, ParameterIndex: >= 0 } operation &&
+                if (operations[i] is { Source: { } source, ParameterIndex: >= 0 } operation &&
                     this.Type(this.Function.Parameters[operation.ParameterIndex].Type.BoundType!) is { } completed)
                 {
                     operations[i] = operation with { ParameterType = completed };
+                    if (operation.ValueAtParameter)
+                    {
+                        var value = this.Binding.ExpectedValueType(source, completed, this.Scope, out _, out var borrow);
+                        operations[i] = operations[i] with { SourceType = value, AdaptedType = borrow };
+                    }
                 }
             }
         }
@@ -416,14 +451,14 @@ public sealed partial class Binding
             var function = this.Function;
             var constructor = function.IsConstructor;
             var arguments = constructor ? this.Types[..CallSlotCount(function)] : slots;
-            binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
+            binding.BeginProof(this.Call); // A candidate's applicability is one conjunction (DECISIONS BU-22), judged at its call.
             var closedOwner = this.DeclaringType is { } declaringType
                 ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
-            var reference = binding.activeRequirementContract; // The Contract reference CallSelection tries the candidate under (SPEC 8.6.4).
+            var reference = this.RequirementContract; // The Contract reference the candidate is tried under (SPEC 8.6.4).
             var bindings = new CandidateBindings(
                 function, function.BoundSymbol!, this.Substitution(arguments), this.Self, this.DeclaringType, closedOwner, reference, unbound, constructor);
             var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
-            proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function), true); // The trial's alone until R7-C2 (b) (PLAN G375).
+            proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function, QuerySite.Nested), true); // The trial's alone until R7-C2 (b) (PLAN G375).
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
             var clause = binding.ProofClause(proof); // G351a: at the trial's verdict.
             proof = binding.EndProof(proof);
@@ -487,10 +522,7 @@ public sealed partial class Binding
                 return binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
             }
 
-            var rows = binding.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
-            var fits = binding.ErasureSignatureFits(actual, type, node, binding.comparisonRows, out _);
-            binding.DropComparisonRows(rows);
-            return fits;
+            return binding.ErasureSignatureFits(actual, type, node);
         }
 
         // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot
@@ -501,14 +533,14 @@ public sealed partial class Binding
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.
         // Replaces the open regions of each argument whose Callable signature holds one, marking that argument unless `fixedOnly`.
-        private readonly bool StandIns(int[] mapping, Span<BoundType?> slots, Span<BoundArgumentOperation> targets, bool fixedOnly)
+        private readonly bool StandIns(Span<BoundType?> slots, Span<BoundArgumentOperation> targets, bool fixedOnly)
         {
             var binding = this.Binding;
             var replaced = false;
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
                 var source = this.Call.ArgumentNodes[i];
-                if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
+                if (this.Function.Parameters[this.Mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
                     source.BoundType is null ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     binding.CallMemberPattern(requiredSignature, this.Binder, this.DeclaringType) is not { } memberSignature ||

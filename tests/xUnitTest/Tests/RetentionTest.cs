@@ -1035,7 +1035,11 @@ public sealed partial class RetentionTest
     // none (SPEC 15.6.4's abstract-storage sentence, 8.2.3; the owner's O-360 (a), PLAN G935: store 1's conjunction `p > s & r > s &
     // a > s` was the instantiated reading of E's binding, relabelled). x's raw layer is a Type argument's, judged where `r` is bound (SPEC
     // 5.7 Authority, 5.2.1 condition 3; DECISIONS BU-113): g states `r` by `zr: uniq` (and by `zr: ref` with `zu: uniq`), so f may write
-    // past it; by `zr: ref` alone, a pointer stating `r` has no write authority, and f writes nothing past it (`reached {}`).
+    // past it; by `zr: ref` alone, a pointer stating `r` has no write authority, and f writes nothing past it (`reached {}`). Store 0's own
+    // Content is a borrow formed through x's path stored at a position stating `r`, so its fit lists `a > r` beside `p > r`: `a`, Box2's
+    // slot behind the raw layer, is a layer of that path no well-formedness relates to `r` (Revision 10; SPEC 15.6.1: a store is an Origin
+    // relation of the callee's body, so a call that cannot prove `a > r` cannot make it). The pair was missing while the walk stopped at
+    // x's raw layer as a supplied layer without members (the Limit before Z6's M3a), relabelled with M3a's binder reading.
     [Theory]
     [InlineData("zr: uniq/i32 during r", "reached {0 Content} if {0 Value: p > a & 0 Value: r > a}")]
     [InlineData("zr: ref/i32 during r", "reached {}")]
@@ -1045,7 +1049,7 @@ public sealed partial class RetentionTest
         var c = Bind("struct Box2 {a}\n    public var inner: uniq/i32 during a\n    public init(inner: uniq/i32 during a) => self.inner = inner\n" +
             "func f<T, E>(x: T, w: uniq/E) => ()\n" +
             $"func g({statements}, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
-        Assert.Equal([$"store 0: own {{0 Content}} if {{0 Value: p > r}}, {reached}, store 1: own {{1 Content}}, reached {{}}"], Calls(c, "f"));
+        Assert.Equal([$"store 0: own {{0 Content}} if {{0 Value: p > r & 0 Value: a > r}}, {reached}, store 1: own {{1 Content}}, reached {{}}"], Calls(c, "f"));
     }
 
     // SPEC 5.2.1 condition 3, 5.7 Authority (DECISIONS BU-113): a call's contract reads a raw layer by its position. A View method's own
@@ -1378,6 +1382,8 @@ public sealed partial class RetentionTest
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
     [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
+    [InlineData("let p: raw/u64 = Raw.allocate(1)\nunsafe => _ = Raw.readVolatile(p)\n", "readVolatile", "")] // The owner's C-527 Q1 (a): T is PrimitiveInteger, which can carry no Loan or address, so the result keeps no read through p (it kept "result {0 Content}").
+    [InlineData("let p: raw/u64 = Raw.allocate(1)\nunsafe => Raw.writeVolatile(p, 1)\n", "writeVolatile", "store 0: own {1 Value}, reached {}")]
     [InlineData(Pp + "var x = Pp.init(p: null)\nKimi.Intrinsics.replace(x@uniq, with: Pp.init(p: null))\n", "replace", "store 0: own {1 Value}, reached {}")]
     [InlineData(Pp + "var x = Pp.init(p: null)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: Pp.init(p: null))\n", "exchange", "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
@@ -1919,12 +1925,13 @@ public sealed partial class RetentionTest
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
     // SPEC 15.6.4's abstract-storage sentence (PLAN G935 c3-4; the Middle's C-370): an output states whether it was read in the callee's
-    // terms (OutputRetention.Kept), the mode TyCtxt.EntryType reads: a callee whose rows its declared signature gives, whatever its T
-    // is bound to, a Scalar included (`trade`); not a published transfer operation, whose rows SPEC states (`swap`), nor a by-value
-    // input that is the kept Type itself, read instantiated (`takeT`'s x).
+    // terms (OutputRetention.Kept), the mode TyCtxt.EntryType reads: a callee whose rows its declared signature gives (`trade`); not a
+    // published transfer operation, whose rows SPEC states (`swap`), nor a by-value input that is the kept Type itself, read
+    // instantiated (`takeT`'s x). Bound to a Scalar, `trade`'s T can carry no Loan or address, so its storages keep no read and its
+    // outputs no entry (the owner's C-527 Q1 (a); before it, "0 kept, 1 kept" whatever the binding).
     [Theory]
     [InlineData("func trade<T>(a: uniq/T, b: uniq/T) => ()\nvar x: raw/u8 = null\nvar y: raw/u8 = null\ntrade(x@uniq, y@uniq)\n", "trade", "0 kept, 1 kept")]
-    [InlineData("func trade<T>(a: uniq/T, b: uniq/T) => ()\nvar x: u64 = 0\nvar y: u64 = 0\ntrade(x@uniq, y@uniq)\n", "trade", "0 kept, 1 kept")]
+    [InlineData("func trade<T>(a: uniq/T, b: uniq/T) => ()\nvar x: u64 = 0\nvar y: u64 = 0\ntrade(x@uniq, y@uniq)\n", "trade", "")]
     [InlineData("var x: raw/u8 = null\nvar y: raw/u8 = null\nKimi.Intrinsics.swap(x@uniq, y@uniq)\n", "swap", "0 shown, 1 shown")]
     [InlineData("func takeT<T>(x: T, value: raw/u8) => ()\nvar c: raw/u8 = null\nvar v: raw/u8 = null\ntakeT(c@uniq, v)\n", "takeT", "0 shown")]
     public void AnOutputStatesWhetherItWasReadInTheCalleesTerms(string source, string callee, string expected)

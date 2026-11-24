@@ -6,17 +6,18 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private ConstraintProof CompareCallableContracts(FnSig requirement, FnSig implementation, BindingScope scope, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
+    private ConstraintProof CompareCallableContracts(FnSig requirement, FnSig implementation, BindingScope scope, QuerySite site, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
     {
         if (requirement.InputCount != implementation.InputCount)
         {
             return ConstraintProof.Refuted;
         }
 
-        var inference = this.BeginOriginInference(requirement.Binder, implementation.Binder);
+        var inference = this.BeginOriginInference(this.RentInference(requirement.Binder, implementation.Binder));
         var demanded = this.RentTypes(requirement.InputCount);
         var written = this.RentTypes(requirement.InputCount);
         var count = 0;
+        var session = this.OpenPremiseSession(); // PLAN G1082: the comparison's proof requests share its premise environment.
         try
         {
             for (var i = 0; i < requirement.InputCount; i++)
@@ -67,12 +68,12 @@ public sealed partial class Binding
             for (var i = 0; i < count; i++)
             {
                 this.MatchInputOrigins(written[i], demanded[i], implementation.Binder, origins, inputs);
-                this.CollectOriginInference(written[i], demanded[i], inference);
+                this.CollectOriginInference(written[i], demanded[i], inference, site);
             }
 
             if (implementation.Result is { } produced && expected is not null && this.ProjectCallableType(produced, declaringType) is { } projected)
             {
-                this.CollectOriginInference(projected, expected, inference, result: true);
+                this.CollectOriginInference(projected, expected, inference, site, result: true);
             }
 
             // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
@@ -125,8 +126,10 @@ public sealed partial class Binding
         }
         finally
         {
+            session?.Close();
             this.typeScratch.Return(written, clearArray: true);
             this.typeScratch.Return(demanded, clearArray: true);
+            this.ReturnInference(inference);
         }
 
         // An implementation Type with the requirement's slots for its own and its declaring Type's arguments projected.

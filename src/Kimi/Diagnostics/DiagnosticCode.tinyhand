@@ -545,7 +545,7 @@
 
   + Name="ConflictingImportSupply_Kd"
     Category="Language"
-    Message="LibraryImport declarations of one external symbol must agree on their requirement Kind, which selects dllimport generation"
+    Message="LibraryImport declarations of one external symbol must name one providing library: the same reserved supply, or the same logical name of one Kotonoha"
 
   + Name="DirectCallFunctionValue_Kd"
     Category="Language"
@@ -554,7 +554,7 @@
 
   + Name="UnavailableReservedImport_Kd"
     Category="Language"
-    Message="The reserved kernel32 supply exports only the reviewed project-owned definition; extending it requires a definition and profile update"
+    Message="A reserved supply provides only its implementation-defined symbol set, and no profile's supply of this name provides the symbol"
 
   + Name="MissingNativeRequirement_Kd"
     Category="Input"
@@ -802,6 +802,11 @@
     Category="Resource"
     Message="A judgment here is not decided within the implementation limit of {0} {1}"
     Arguments="limit:Number,bound:Text"
+
+  + Name="ResolutionWorkLimit_Kd"
+    Category="Resource"
+    Message="The resolution of this call checks more than the implementation limit of {0} nested arguments against distinct expected Types"
+    Arguments="limit:Number"
 
   + Name="ExpansionLimit_Kd"
     Category="Resource"

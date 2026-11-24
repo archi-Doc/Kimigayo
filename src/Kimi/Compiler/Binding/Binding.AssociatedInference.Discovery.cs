@@ -188,7 +188,9 @@ public sealed partial class Binding
                 return null;
             }
 
-            this.AddHead(batch, path.Symbol);
+            // The definition the use names (SPEC 6.1.5, 9.1): a written `Self` selects the declaration's Self symbol, which names it (Named).
+            var named = path.Symbol?.Named;
+            this.AddHead(batch, named);
             for (var i = 0; use is GenericsKoto generic && i < generic.TypeArguments.Count; i++)
             {
                 this.DiscoverWritten(batch, source, generic.TypeArguments[i], scope, subject);
@@ -205,7 +207,7 @@ public sealed partial class Binding
                 }
             }
 
-            return path.Symbol;
+            return named;
         }
 
         switch (use)

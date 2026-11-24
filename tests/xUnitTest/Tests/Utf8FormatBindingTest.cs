@@ -124,10 +124,10 @@ public class Utf8FormatBindingTest
     // SPEC 3.1.1, 22.10.2 (R8-S2d1): an abstract Wrapping<T> over a proven PrimitiveInteger is Utf8Format by the witness table's
     // WrappingFormat row (no longer by a premise): written, interpolated, converted and passed as a `U is Utf8Format` argument, with no
     // record. Its invalid twin, Wrapping<T> over a T not proven PrimitiveInteger, keeps the records it had before R8-S2d1 (the parameter's
-    // two and two at each use, all UnprovenConstraint_Kd; the same at S2c's head), none added.
+    // one, R7-V1c's one record per written occurrence, and two at each use, all UnprovenConstraint_Kd; the same at S2c's head), none added.
     [Theory]
     [InlineData("    T is PrimitiveInteger\n", 0)]
-    [InlineData("", 10)]
+    [InlineData("", 9)]
     public void AnAbstractWrappingIntegerIsTheTablesUtf8Format(string premise, int unproven)
     {
         var c = MinimalEmissionTest.Analyze(
@@ -138,16 +138,16 @@ public class Utf8FormatBindingTest
     }
 
     // SPEC 3.1.1, 8.3, 23.1.2 (R8-S2d1's move (a), pinned by R8-S2b1): a header that applies `Holder<E>` (`E is Utf8Format`) to a
-    // Wrapping<T> over a T not proven PrimitiveInteger reports the Type's two formation records and no verdict of Holder's own over that
-    // failed child: the WrappingFormat row's construction arm proves the conformance, and the formation is always checked (fail-before:
-    // a third UnprovenConstraint_Kd, Holder's, at S2c's head).
+    // Wrapping<T> over a T not proven PrimitiveInteger reports the Type's formation record (one per written occurrence, R7-V1c) and no
+    // verdict of Holder's own over that failed child: the WrappingFormat row's construction arm proves the conformance, and the formation
+    // is always checked (fail-before: a second UnprovenConstraint_Kd, Holder's, at S2c's head).
     [Fact]
     public void AHolderOverAnIllFormedWrappingReportsOnlyItsFormation()
     {
         var c = MinimalEmissionTest.Analyze(
             "struct Holder<E>\n    E is Utf8Format\n    public var items: Array<E> = []\n    public init() => ()\n" +
             "func take<T>(h: ref/Holder<Wrapping<T>>) -> isize\n    return h.items.length\n");
-        Assert.Equal(["UnprovenConstraint_Kd", "UnprovenConstraint_Kd"], c.Binding.Issues.Select(static x => x.Code.ToString()));
+        Assert.Equal(["UnprovenConstraint_Kd"], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
 
     // SPEC 22.10.1 (R8-S2a's invalid twin): a user Type that states no Utf8Format conformance is still rejected, with its record.

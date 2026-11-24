@@ -2,7 +2,8 @@
 
 // Owns the problems of one Binding pass (DIAGNOSTICS 4.1; R7-E1): Binding's record beside MirReport, over the same fact vocabulary
 // (ProblemFact), one problem per check key (Subject, Requirement, Condition).
-// Input: Add calls of Binding's recorder (Binding.Problems.cs), each a problem and its facts; Keep calls, each a Type- or length-valued fact's value;
+// Input: Add calls of Binding's recorder (Binding.Problems.cs), each a problem and its facts; Keep calls, each a Type- or length-valued fact's value
+// (KeepChecked a Checked fact's packed one);
 // Unlink and Restore calls of a retried or abandoned attempt.
 // Output: a subject's problems in recording order, a problem by its key, its facts, a fact's kept value.
 // Invariants: a linked subject's rows and the key index agree, Unlink and Restore keeping them in step; a report of a linked key equals the
@@ -132,10 +133,22 @@ internal sealed class BindingReport
         return this.origins.Count - 1;
     }
 
+    /// <summary>Keeps a Checked fact's value (ProblemFact.cs; the packing's one writer): its expected Type, kept as a side, times two, plus
+    /// one where the part's resolution there is ambiguous.</summary>
+    /// <param name="expected">The Type the part was checked against.</param>
+    /// <param name="ambiguous">Whether its resolution there is ambiguous (else none applies).</param>
+    /// <returns>The fact's Value.</returns>
+    internal long KeepChecked(BoundType expected, bool ambiguous) => (this.Keep(expected) << 1) | (ambiguous ? 1L : 0L);
+
     /// <summary>Gets a Type-valued fact's Type.</summary>
     /// <param name="fact">The fact.</param>
     /// <returns>The Type.</returns>
     internal BoundType Value(in ProblemFact fact) => (BoundType)this.sides[(int)fact.Value];
+
+    /// <summary>Gets a Checked fact's expected Type and its part's outcome there (the packing's one reader, KeepChecked's).</summary>
+    /// <param name="fact">The fact.</param>
+    /// <returns>The Type, and whether the part's resolution there is ambiguous (else none applies).</returns>
+    internal (BoundType Expected, bool Ambiguous) Checked(in ProblemFact fact) => ((BoundType)this.sides[(int)(fact.Value >> 1)], (fact.Value & 1) != 0);
 
     /// <summary>Gets a length-valued side's length.</summary>
     /// <param name="fact">The fact.</param>
@@ -289,6 +302,7 @@ internal sealed class BindingReport
     {
         ProblemFactKind.Actual or ProblemFactKind.Expected or ProblemFactKind.Operand or ProblemFactKind.Terminal or ProblemFactKind.Key or ProblemFactKind.Instance
             => Equals(this.sides[(int)kept.Value], this.sides[(int)reported.Value]),
+        ProblemFactKind.Checked => this.Checked(kept).Equals(this.Checked(reported)),
         ProblemFactKind.Constraint => ReferenceEquals(this.Constraint(kept), this.Constraint(reported)),
         ProblemFactKind.OriginRecord => this.Origin(kept) == this.Origin(reported),
         _ => kept.Value == reported.Value,

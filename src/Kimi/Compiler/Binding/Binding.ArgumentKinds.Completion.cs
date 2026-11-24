@@ -24,7 +24,7 @@ public sealed partial class Binding
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, evaluation.Evaluated[winner].DeclaringType);
-        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(winner);
         var contract = this.activeRequirementContract;
         this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
         var completed = true;
@@ -33,7 +33,7 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var argument = call.ArgumentNodes[i];
-                var pattern = selected.Parameters[evaluation.Mapping[i]].Type.BoundType!;
+                var pattern = selected.Parameters[solution.Mapping[i]].Type.BoundType!;
                 this.TakeArgument(argument); // SPEC 10.5.1: the call has selected; no conflict in the argument waits for it since.
                 if (this.IsWaiting(argument))
                 {
@@ -88,7 +88,7 @@ public sealed partial class Binding
             var argument = call.ArgumentNodes[i];
             if (this.PropagateBound(argument, operations[i].ParameterType) is null)
             {
-                if (this.FormsBorrows && this.synthesizedCalls?.ContainsKey(call) != true)
+                if (this.FormsBorrows && !this.synthesizedCalls.ContainsKey(call))
                 {
                     // Selection wrote the call's operations (the receiver's last), and this argument's header may state their Borrows'
                     // atoms: formed before it binds (Binding.RawOrigins.Borrows). A synthesized call's plan is its consumer's to commit
@@ -191,7 +191,7 @@ public sealed partial class Binding
     // unbound (PLAN R1e); no candidate is selected again (SPEC 10.1); a deferred call is completed by its outer call.
     private BoundType? CompleteUnselected(InvocationKoto call, BindingScope scope, BoundType? type)
     {
-        if (type is not null || this.IsWaitingPart(call))
+        if (type is not null || this.IsCheckedCall(call))
         {
             return type;
         }
@@ -212,18 +212,20 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 23.1.2, 10.5.1 (DECISIONS BU-240 with rule W; G812 rulings 124, 126, 128, 132): a part of a value call on the split awaiting its
-    // call (a named Call or a contextual Case) that fails in every case of the bindings it reads, always at that same part, is completed
-    // at the Type the canonical case formed for it (each binding at its first admitted Semantics), where it fails as that run found,
-    // outside the probes and outside the call's consultation, and that failure is its record; the call rests on it unless it fails by
-    // itself (BindValueCallOnSplit). Every other deferred call stays completed by its outer call (CompleteUnselectedPart): what only
-    // the missing expectation causes is dependent.
-    private void CompleteFailedPart(Koto failed, BoundType formed, BindingScope scope)
+    // SPEC 23.1.2, 10.5.1, 8.15.2 (DECISIONS BU-240 with rule W; G812 rulings 124, 126, 128, 132; ArgFlow rulings 153, 164): an argument
+    // of a call on the split that fails in every case of the bindings it reads, always at the same part awaiting its call (a named Call
+    // or a contextual Case), is completed whole at the parameter the canonical case formed for it (each binding at its first admitted
+    // Semantics), as the closed path completes an argument (CompleteValueCallPart), outside the probes and outside the call's
+    // consultation: the waiting part fails as that run found, and each part failing there is its own record, the canonical case's (a
+    // part failing only in another case gets none: BU-240's canonical completion, PLAN G886). The call rests on the waiting part unless
+    // it fails by itself (BindValueCallOnSplit). Every other deferred call stays completed by its outer call (CompleteUnselectedPart):
+    // what only the missing expectation causes is dependent.
+    private void CompleteFailedPart(Koto argument, BoundType parameter, BindingScope scope)
     {
         var consultation = this.SuspendConsultation();
         var probes = (this.argumentProbe, this.nestedOperandProbe);
         (this.argumentProbe, this.nestedOperandProbe) = (null, null);
-        this.BindNode(failed, scope, formed);
+        _ = this.CompleteValueCallPart(argument, parameter, scope);
         (this.argumentProbe, this.nestedOperandProbe) = probes;
         this.ResumeConsultation(consultation);
     }

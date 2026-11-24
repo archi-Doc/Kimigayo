@@ -21,9 +21,9 @@ public sealed partial class Binding
     // declarations' and the use's (SPEC 23.1.2). No subject-kind test decides pending or none.
     // W5 (ContractSolver's Completion): Complete only where no route applies (each route's static gate, no chain path naming the
     // receiver, no registered conformance for it), Provisional past any gate.
-    private ProjectionOutcome ProjectionSpecification(BoundType projection, BindingScope scope)
+    private ProjectionOutcome ProjectionSpecification(BoundType projection, BindingScope scope, QuerySite site)
     {
-        var builtin = this.BuiltinArithmeticOutput(projection, scope, out var completion);
+        var builtin = this.BuiltinArithmeticOutput(projection, scope, site, out var completion);
         if (builtin is null)
         {
             builtin = this.FixedArrayIteratorType(projection, out var iterator);
@@ -37,7 +37,7 @@ public sealed partial class Binding
 
         var subject = projection.Components[0];
         var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
-        var resolved = this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier);
+        var resolved = this.ResolveAssociated(subject, projection.Symbol!, scope, site, qualifier);
         completion = Meet(completion, resolved.Completion);
         if (resolved.Type is not { } binding)
         {
@@ -53,22 +53,22 @@ public sealed partial class Binding
     // null without one or where two such paths disagree. Declarations only (no identity, no proof); `pending` when a binding is not yet
     // complete. Its readers are the identity table's binding grounds and ContractTypeCore's specification on a Member, so one
     // projection has one form; a conditional conformance's binding is no ground and completes nothing here (N8's named limit).
-    private BoundType? UnconditionalBinding(BoundType member, BoundType projection, out bool pending)
+    private BoundType? UnconditionalBinding(BoundType member, BoundType projection, QuerySite site, out bool pending)
     {
         pending = false;
         var associated = projection.Symbol!;
         var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
         if (member.Symbol is not { } owner || qualifier is { Kind: BoundTypeKind.Constructed } || associated.Scope.Owner.BoundSymbol is not { } contract ||
-            this.ConformanceByDeclaration(owner, contract, out _) is not { } identity)
+            this.SelectConformance(member, contract, owner.Scope, site, out _) is not { } identity)
         {
-            return null; // a Contract reference with Type arguments selects by reference (ConformanceByReference, a proof): no ground (named limit)
+            return null; // a Contract reference with Type arguments selects by reference (SelectConformance, a proof): no ground (named limit)
         }
 
         BoundType? found = null;
         for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
             var path = this.impls.PathsOf(identity)[i];
-            if (path.InheritedFrom is not null || path.Premises is not null || this.AssociatedInPath(path, member, associated, qualifier, path.Scope) is not { } selected)
+            if (path.InheritedFrom is not null || path.Premises is not null || this.AssociatedInPath(path, member, associated, qualifier, path.Scope, site) is not { } selected)
             {
                 continue;
             }
@@ -103,7 +103,7 @@ public sealed partial class Binding
     // evidence, a path the evidence holds pending (PathConditions) names no Type: the projection stays itself there, and only a judgment
     // that reads that part reads the obligation pending. A formation read uses dev's deferred binding, whose retained obligation the
     // written site's formation proves after the conformance holds.
-    private ProjectionOutcome ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier)
+    private ProjectionOutcome ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, QuerySite site, BoundType? qualifier)
     {
         var pending = this.AssociatedEvidencePending;
         var named = false;
@@ -112,7 +112,7 @@ public sealed partial class Binding
             if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol))
             {
                 named = true;
-                if (this.AssociatedInPath(path, receiver, associated, qualifier, scope) is { } selected)
+                if (this.AssociatedInPath(path, receiver, associated, qualifier, scope, site) is { } selected)
                 {
                     var found = this.ResolveAssociated(path, selected, out pending);
                     return found is null ? new(null, null, pending, null, default, Completion.Provisional) : new(found, receiver, false, path, selected, Completion.Provisional);
@@ -121,9 +121,8 @@ public sealed partial class Binding
         }
 
         var constructed = qualifier is { Kind: BoundTypeKind.Constructed };
-        if (receiver.Symbol is not { } owner ||
-            (!constructed ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _)
-                : this.ConformanceByReference(owner, receiver, associated, qualifier!, scope)) is not { } identity)
+        if (receiver.Symbol is null ||
+            this.SelectConformance(receiver, associated.Scope.Owner.BoundSymbol!, constructed ? qualifier : null, scope, site, out _) is not { } identity)
         {
             return new(null, null, pending, null, default, named || (receiver.Symbol is not null && constructed) ? Completion.Provisional : Completion.Complete);
         }
@@ -134,13 +133,13 @@ public sealed partial class Binding
         for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
             var path = this.impls.PathsOf(identity)[i];
-            var condition = this.PathConditions(path, receiver, scope, out var held);
+            var condition = this.PathConditions(path, receiver, scope, site, out var held);
             if (condition == ConstraintProof.Error)
             {
                 return new(null, null, pending, null, default, Completion.Provisional);
             }
 
-            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier, scope) is not { } selected)
+            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier, scope, site) is not { } selected)
             {
                 continue;
             }
@@ -159,7 +158,7 @@ public sealed partial class Binding
 
             if (condition == ConstraintProof.Proven)
             {
-                if (available is { } agreed && !this.PathsAgree(agreed.Binding, binding, receiver, scope))
+                if (available is { } agreed && !this.PathsAgree(agreed.Binding, binding, receiver, scope, site))
                 {
                     return new(null, null, pending, null, default, Completion.Provisional);
                 }
@@ -167,7 +166,7 @@ public sealed partial class Binding
                 available = (binding, path, selected);
             }
 
-            conflicting |= unproven is { } other && !this.PathsAgree(other.Binding, binding, receiver, scope);
+            conflicting |= unproven is { } other && !this.PathsAgree(other.Binding, binding, receiver, scope, site);
             unproven = (binding, path, selected);
         }
 
@@ -181,17 +180,17 @@ public sealed partial class Binding
     // requirement's evidence in progress holds the path pending (`held`): the path's evidence (its conditions and, for a path they do not
     // rule out, the receiver's formation, one answer) depends on an obligation that evidence holds (EndHeldAnswer). A formation read holds
     // none, so it reads the conditions alone.
-    private ConstraintProof PathConditions(BoundConformancePath path, BoundType receiver, BindingScope scope, out bool held)
+    private ConstraintProof PathConditions(BoundConformancePath path, BoundType receiver, BindingScope scope, QuerySite site, out bool held)
     {
         held = false;
         if (this.FormationRead)
         {
-            return this.PathEvidence(path, receiver, scope);
+            return this.PathEvidence(path, receiver, scope, site);
         }
 
         var mark = this.BeginAnswer();
-        var condition = this.PathEvidence(path, receiver, scope);
-        var evidence = condition is ConstraintProof.Proven or ConstraintProof.Unknown ? CombineProof(condition, this.InstanceFormation(receiver, scope), true) : condition;
+        var condition = this.PathEvidence(path, receiver, scope, site);
+        var evidence = condition is ConstraintProof.Proven or ConstraintProof.Unknown ? CombineProof(condition, this.InstanceFormation(receiver, scope, site), true) : condition;
         held = this.EndHeldAnswer(mark, evidence);
         return condition;
     }
@@ -201,37 +200,9 @@ public sealed partial class Binding
     // conditions only: OwningIterator's direct `Self is LendingIterator` binds `I.(LendingIterator).LentItem(step)` and its refinement path
     // through `Self is Iterator when I is Iterator` binds `I.Item` (Iterator's `LendingIterator.LentItem(step) is Item`), both i32 under
     // OwningIterator<Counter>. The instances are judged by SameConformanceType, as the declaration's agreement check judges two paths.
-    private bool PathsAgree(BoundType left, BoundType right, BoundType receiver, BindingScope scope)
+    private bool PathsAgree(BoundType left, BoundType right, BoundType receiver, BindingScope scope, QuerySite site)
         => this.SameCompleteType(left, right) ||
-            (this.StoredType(left, receiver) is { } x && this.StoredType(right, receiver) is { } y && this.SameConformanceType(x, y, scope));
-
-    // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
-    // names `qualifier` in `scope` (NamesReference) as the declaring reference of `associated`.
-    private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier, BindingScope scope)
-    {
-        if (this.ConformancesOf(owner) is not { } identities)
-        {
-            return null;
-        }
-
-        BoundConformance? found = null;
-        for (var i = 0; i < identities.Count; i++)
-        {
-            var identity = identities[i];
-            if (identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
-                (ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope)))
-            {
-                if (found is not null && !ReferenceEquals(found, identity))
-                {
-                    return null;
-                }
-
-                found = identity;
-            }
-        }
-
-        return found;
-    }
+            (this.StoredType(left, receiver) is { } x && this.StoredType(right, receiver) is { } y && this.SameConformanceType(x, y, scope, site));
 
     // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
     // complete Type), the conformance path it comes from (its Scope the binding's conformance scope) and the path's identity it binds (a

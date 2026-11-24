@@ -22,6 +22,10 @@ public enum LengthOperation : byte
     Sub,
     InterpolationBound,
     InterpolationHint,
+
+    // PLAN G924 AF-3b v3-A (the owner's O-499 (a)): a length atom, the length slot BoundLength.OpenSlot of the candidate at owner level
+    // Value, which no evidence binds at an open position (Binding.OpenSlots); never a Parameter, nothing binds it.
+    OpenSlot,
 }
 
 /// <summary>Interned checked length expression. Symbolic arithmetic is validated at instantiation.</summary>
@@ -29,7 +33,7 @@ public enum LengthOperation : byte
 /// its value Types, erased, at least one undecided: the bound term (rule L, TyCtxt.StackBound) is the stack region of a direct
 /// interpolation in a generic body, the hint term (TyCtxt.HintBound) the bytes an owning interpolation's later writes may still
 /// reserve. A substitution folds it again by its own operation (TyCtxt.Refold).</remarks>
-public sealed class BoundLength(LengthOperation operation, long value, BindingSymbol? parameter, BoundLength? left, BoundLength? right, BoundType? values = null)
+public sealed class BoundLength(LengthOperation operation, long value, BindingSymbol? parameter, BoundLength? left, BoundLength? right, BoundType? values = null, BindingSymbol? openSlot = null)
 {
     public LengthOperation Operation { get; } = operation;
 
@@ -44,7 +48,14 @@ public sealed class BoundLength(LengthOperation operation, long value, BindingSy
     /// <summary>Gets an interpolation term's value Types (a Tuple); null for every other length.</summary>
     public BoundType? Values { get; } = values;
 
-    public bool IsConstant => this.Parameter is null && this.Left is null && this.Right is null && this.Values is null;
+    /// <summary>Gets a length atom's slot (LengthOperation.OpenSlot; its owner's level is <see cref="Value"/>); null for every other
+    /// length.</summary>
+    public BindingSymbol? OpenSlot { get; } = openSlot;
+
+    public bool IsConstant => this.Parameter is null && this.Left is null && this.Right is null && this.Values is null && this.OpenSlot is null;
+
+    // PLAN G924 AF-3b v3-A: whether the length is or holds a length atom (BoundType.ContainsOpenSlot reads it).
+    internal bool ContainsOpenSlot { get; } = openSlot is not null || left is { ContainsOpenSlot: true } || right is { ContainsOpenSlot: true };
 
     /// <summary>Gets a value indicating whether it is a term whose value Types have an abstract part; a bound term is then an abstract part
     /// of the fixed array it is the length of (BoundType.HasAbstractPart, ContainsParameter): only that array's instance folds it.</summary>
@@ -53,7 +64,7 @@ public sealed class BoundLength(LengthOperation operation, long value, BindingSy
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(LengthOperation Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right, BoundType? Values), BoundLength> lengths = new();
+    private readonly Dictionary<(LengthOperation Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right, BoundType? Values, BindingSymbol? OpenSlot), BoundLength> lengths = new();
     private readonly List<BindingSymbol> activeLengthConstants = new();
     private readonly ScratchBuffers<BoundLength?> lengthScratch = new();
 
@@ -70,7 +81,7 @@ public sealed partial class Binding
             : this.StorageInstance(values, subst) is { } image ? this.types.Refold(length, image) : null;
 
     // The one interning of a length: a commutative operation's operands in CompareLength's order, then one instance per key.
-    internal BoundLength InternLength(LengthOperation operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null, BoundType? values = null)
+    internal BoundLength InternLength(LengthOperation operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null, BoundType? values = null, BindingSymbol? openSlot = null)
     {
         if (operation is LengthOperation.Add or LengthOperation.Mul && CompareLength(left, right) > 0)
         {
@@ -78,11 +89,11 @@ public sealed partial class Binding
         }
 
         // The one find over the two levels (PassPart.Levels; PLAN G949 Stage 2 U4).
-        var key = (operation, value, parameter, left, right, values);
+        var key = (operation, value, parameter, left, right, values, openSlot);
         var levels = PassPart.Interned(this.Library, this.Library.Layer.Lengths, this.lengths);
         if (PassPart.Find(levels, key, out var result) is null)
         {
-            levels.Open.Add(key, result = new(operation, value, parameter, left, right, values));
+            levels.Open.Add(key, result = new(operation, value, parameter, left, right, values, openSlot));
         }
 
         return result!;
@@ -237,6 +248,16 @@ public sealed partial class Binding
 
         if (result == 0)
         {
+            result = (left.OpenSlot?.Slot ?? -1).CompareTo(right.OpenSlot?.Slot ?? -1); // Two length atoms: by slot (level in Value).
+        }
+
+        if (result == 0)
+        {
+            result = (left.OpenSlot?.Declaration.Span.Start ?? -1).CompareTo(right.OpenSlot?.Declaration.Span.Start ?? -1);
+        }
+
+        if (result == 0)
+        {
             result = CompareValues(left.Values, right.Values);
         }
 
@@ -331,39 +352,37 @@ public sealed partial class Binding
         return name is not null && this.Lookup(name, scope, syntax) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
     }
 
-    private bool InferLength(BoundType pattern, BoundType actual, Koto binder, SlotFrame frame)
+    // A fixed array's length as one expression: its expression, or its constant interned.
+    private BoundLength LengthOf(BoundType type) => type.LengthExpression ?? this.InternLength(LengthOperation.Constant, type.Length);
+
+    // SPEC 4.4.2, 10.8: a length pattern against a supplied length, the length-specific part of Infer's match. The binder's own length slot
+    // is returned (`slot`), whose bindings Infer's slot arm agrees by the Type slot's rule; any other pattern holds while not yet
+    // substitutable, when equal, or when the supplied length holds an atom.
+    private bool InferLength(BoundLength pattern, BoundLength supplied, Koto binder, SlotFrame frame, out int slot)
     {
-        if (actual.Length < 0)
+        slot = pattern is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder) ? parameter.Slot : -1;
+        if (slot >= 0)
         {
-            return true; // A local annotation's length hole supplies no evidence for a callee's length parameter.
-        }
-
-        var supplied = actual.LengthExpression ?? this.InternLength(LengthOperation.Constant, actual.Length);
-        return this.InferLength(pattern.LengthExpression ?? this.InternLength(LengthOperation.Constant, pattern.Length), supplied, binder, frame);
-    }
-
-    private bool InferLength(BoundLength pattern, BoundLength supplied, Koto binder, SlotFrame frame)
-    {
-        if (pattern is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
-        {
-            var previous = frame.Lengths[parameter.Slot];
-            if (previous is null)
-            {
-                frame.SetLength(parameter.Slot, supplied);
-                return true;
-            }
-
-            return ReferenceEquals(previous, supplied);
+            return true;
         }
 
         var required = this.SubstituteLength(pattern, binder, default, frame.Lengths); // A declared length holds no interpolation term.
         // A later input may establish slots used by a compound expression. The
-        // completed signature is checked after all direct-slot evidence is known.
-        return required is null || ReferenceEquals(required, supplied);
+        // completed signature is checked after all direct-slot evidence is known. A supplied length holding an atom holds and binds
+        // nothing (Binding.OpenSlots).
+        return required is null || ReferenceEquals(required, supplied) || supplied.ContainsOpenSlot;
     }
 
     private bool ProveLength(BoundLength expression, FunctionKoto? function)
     {
+        // PLAN G924 AF-3b v3-A (Binding.OpenSlots; SPEC 4.4.2: a dependent obligation is checked at a concrete call after inference): a
+        // length holding an open atom is an unbound slot's, so its obligation is not judged while candidates are compared: the prover's
+        // intake rule, as at JudgeConstraintAtom; the completed Type after selection is judged here again.
+        if (expression.ContainsOpenSlot)
+        {
+            return true;
+        }
+
         if (expression.IsConstant)
         {
             return ValidLength(expression.Value);

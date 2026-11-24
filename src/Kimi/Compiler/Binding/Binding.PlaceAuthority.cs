@@ -11,13 +11,15 @@ namespace Kimi.Compiler;
 //   case assignment (SPEC 8.15.2: each assigned pair binder's layers take its case, every other layer its weakest case; the empty
 //   assignment is every layer at its weakest case, which an operation valid in every case reads) and the
 //   one diagnostic for a capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority);
+//   whether the path passes a conformance selection (PathPrefix.Conformance, SPEC 4.7.1, 5.4: an address through one has `index`'s
+//   shared authority; the address mark reads it);
 //   whether a Place offers Write (Writable), as a whole Place, the question of an assignment's whole target and of a pair layer's
 //   owner-case operand (WritablePlace), and what a part's owner grants it or lends it (WritableOwner, LendsOwner: the one reading
 //   of SPEC 15.1.5's writable roots for a part, a writable temporary's included, WritableTemporary, whose whole Temporary Place no
 //   lowering writes yet, IsTemporaryPlace); whether a receiver can be
 //   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
 //   borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace and, for a handle, LendsHandle, with the static root), with the
-//   one diagnostic for a written Borrow it may not (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow);
+//   one diagnostic for a written Borrow it may not (BorrowFailure), and whether an implicit Borrow lends a static root (BorrowsStaticRoot);
 //   whether an explicit discard's allowed Take of a raw Place destroys it in place (DestroysInPlace, SPEC 14.2.4; the HIR publisher
 //   writes it).
 //   The in-place reads it decides the paths of are Binding.InPlaceReads'.
@@ -30,8 +32,8 @@ namespace Kimi.Compiler;
 //   range), whose receiver is folded as its own query (Owner, LentOwner); an exclusive reading of a receiver's access Type
 //   (ExclusiveAccessType) takes the receiver's ReferentAuthority from the fold, so no rule queries a path again. A shared layer anywhere
 //   on a path bounds it to Read; a path's layer below a Place is its own Type's (LayerAuthority).
-// - Prohibitions: nothing here reports a diagnostic but FailStaticBorrow, called where an implicit Borrow's operation is final (callers
-//   record the failure AccessFailure or BorrowFailure names), selects a candidate or changes a Type.
+// - Prohibitions: nothing here reports a diagnostic (callers record the failure AccessFailure or BorrowFailure names, and a selected
+//   input's static-root limit is JudgeSelectedInput's), selects a candidate or changes a Type.
 public sealed partial class Binding
 {
     private long pathFoldSteps;
@@ -214,17 +216,21 @@ public sealed partial class Binding
             PathStep.Receiver when Receiver(source)?.Parts == SemanticsKind.Uniq => PathGrant.Owner with { Authority = SemanticsKind.Uniq },
             _ => PathGrant.Owner,
         };
-        return new(root, root.Access, step == PathStep.RawFollow, this.Writes(source, root.Access, step == PathStep.RawFollow, null));
+        return new(root, root.Access, step == PathStep.RawFollow, this.Writes(source, root.Access, step == PathStep.RawFollow, null), false);
     }
 
     // One prefix of a fold, from the prefix it selects from (owner): its grant under the case assignment (Then), its access under the
-    // empty one, whether it is a raw Place's inline part (SPEC 5.2), and whether it offers Write (Writes).
+    // empty one, whether it is a raw Place's inline part (SPEC 5.2), whether it offers Write (Writes), and whether the path passes a
+    // conformance selection (SPEC 4.7.1: a user index's element, or an Array's or Dictionary's, owned or through a borrow; a fixed array's
+    // is a built-in projection).
     private PathPrefix Prefix(Koto source, PathStep step, Koto next, in PathPrefix owner, ReadOnlySpan<PairCase> assignment)
     {
         var grant = this.Then(owner.Grant, step, source, next, owner, assignment);
         var access = assignment.IsEmpty ? grant.Access : this.Then(PathGrant.Owner with { Authority = owner.Access }, step, source, next, owner, []).Access;
         var raw = owner.Raw && source is BinaryKoto part && this.IsInlinePart(part);
-        return new(grant, access, raw, this.Writes(source, access, raw, owner));
+        var conformance = owner.Conformance || step is PathStep.UserIndex or PathStep.ArrayElement ||
+            (step == PathStep.BorrowedElement && next.BoundType?.SafeReferent?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary);
+        return new(grant, access, raw, this.Writes(source, access, raw, owner), conformance);
     }
 
     // One step of PathFold: what `source`'s path grants under a case assignment, from what the path of `next`, the prefix it selects
@@ -634,7 +640,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.2, PLAN P42: whether Binding lends a Place to a written Borrow: as SPEC does (LendsPlace), except a Place rooted at a
     // static Field, whose Loans no analysis models yet (BorrowFailure names the Borrow unsupported). An implicit Borrow belongs to an
-    // operation that selection may still discard, so it is lent as SPEC lends it and reported once final (FailStaticBorrow).
+    // operation that selection may still discard, so it is lent as SPEC lends it and reported once final (JudgeSelectedInput).
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
         => this.LendsPlace(source, scope, exclusive, out var staticRoot) && staticRoot is null;
 
@@ -649,22 +655,11 @@ public sealed partial class Binding
             _ => BindingFailure.InvalidAssignment,
         };
 
-    // SPEC 15.6, 15.6.2, PLAN P42: the one diagnostic for an implicit Borrow of a static root (a receiver's, a value call's callee, an
-    // argument's, an expected Type's or a Case payload's adaptation), recorded where its operation is final and before that input's
-    // Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged (BorrowFailure): a Borrow,
-    // base borrow or payload projection in a mode of a Place whose path SPEC roots at a static Field fails its source as the located
-    // Unsupported_Kd. True when it fails.
-    private bool FailStaticBorrow(Koto source, ArgumentOperationKind kind, SemanticsKind mode)
-    {
-        if (kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection) ||
-            !this.LendsPlace(source, this.ConstraintScope(source), IsExclusive(mode), out var staticRoot) || staticRoot is null)
-        {
-            return false;
-        }
-
-        this.Fail(source, BindingFailure.Unsupported);
-        return true;
-    }
+    // SPEC 15.6, 15.6.2, PLAN P42: whether an implicit Borrow (a Borrow, base borrow or payload projection in a mode) of `source` lends a
+    // Place whose path SPEC roots at a static Field, whose Loans no analysis models yet: a selected input's limit (JudgeSelectedInput).
+    private bool BorrowsStaticRoot(Koto source, ArgumentOperationKind kind, SemanticsKind mode)
+        => kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection &&
+            this.LendsPlace(source, this.ConstraintScope(source), IsExclusive(mode), out var staticRoot) && staticRoot is not null;
 
     // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field or static storage at the root
     // of the path that lends it (SPEC 15.6.2: through inline parts, elements and an owning handle's payload, an own step), if any; a
@@ -875,8 +870,10 @@ public sealed partial class Binding
 
     // One prefix of a Place's path, folded from its root (PathFold): Grant under the query's case assignment; Access, the path's access
     // under the empty assignment (ReachedThroughShared's reading); Raw, whether the prefix is a raw Place's root or an inline part of
-    // one (SPEC 5.2); Writable, whether it offers Write (Writes).
-    private readonly record struct PathPrefix(PathGrant Grant, SemanticsKind Access, bool Raw, bool Writable);
+    // one (SPEC 5.2); Writable, whether it offers Write (Writes); Conformance, whether the path passes a conformance selection since its
+    // root (Prefix), through which an address selects `index` and has its shared authority whatever the path grants (SPEC 5.4; the
+    // address mark, MarkLimits).
+    private readonly record struct PathPrefix(PathGrant Grant, SemanticsKind Access, bool Raw, bool Writable, bool Conformance);
 
     // One prefix of a lending fold (LendFold): its path (PathFold's prefix), the query's mode, whether SPEC lends it in that mode, and
     // the static Field or static storage at the root of the path that lends it (LendsPlace).

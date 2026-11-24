@@ -3,6 +3,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using System.Text.RegularExpressions;
+using Kimi.Command;
 using Kimi.Testing;
 using Xunit;
 
@@ -54,7 +55,7 @@ public class TestProtocolTest
         }
 
         input.Position = 0;
-        await Assert.ThrowsAsync<InvalidDataException>(() => TestWorker.Receive(input, outcome, new(), new(TestOptions.Parse([])), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidDataException>(() => TestWorker.Receive(input, outcome, new(), new(TestOptions.Read([])), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -67,7 +68,7 @@ public class TestProtocolTest
         Frame(input, 2, 1, 0, 1);
         Frame(input, 6, count: 1000);
         input.Position = 0;
-        await TestWorker.Receive(input, outcome, new() { DiagnosticCount = 0, DiagnosticBytes = 0 }, new(TestOptions.Parse([])), TestContext.Current.CancellationToken);
+        await TestWorker.Receive(input, outcome, new() { DiagnosticCount = 0, DiagnosticBytes = 0 }, new(TestOptions.Read([])), TestContext.Current.CancellationToken);
         Assert.True(outcome.Completed);
         Assert.Equal(1000UL, outcome.FailureCount);
         Assert.Empty(outcome.Failures);
@@ -86,7 +87,7 @@ public class TestProtocolTest
         Frame(input, 3, 1, 0, 2, "outer");
         Frame(input, 4, 1, 0, 2);
         input.Position = 0;
-        await TestWorker.Receive(input, outcome, new(), new(TestOptions.Parse([])), TestContext.Current.CancellationToken);
+        await TestWorker.Receive(input, outcome, new(), new(TestOptions.Read([])), TestContext.Current.CancellationToken);
         Assert.False(outcome.Completed);
         Assert.Equal("requireAbort", outcome.Termination);
         Assert.Equal("outer", outcome.Failures[0].Message);
@@ -110,7 +111,7 @@ public class TestProtocolTest
         Frame(input, 5, count: 1);
         Phase(input, phase);
         input.Position = 0;
-        await TestWorker.Receive(input, outcome, new(), new(TestOptions.Parse([])), TestContext.Current.CancellationToken);
+        await TestWorker.Receive(input, outcome, new(), new(TestOptions.Read([])), TestContext.Current.CancellationToken);
         Assert.Equal("abort", outcome.Termination);
         Assert.Equal(name, outcome.Failures[0].Phase);
         Assert.Equal(name, outcome.TerminationPhase);
@@ -130,12 +131,12 @@ public class TestProtocolTest
     {
         var outcome = Create();
         using var input = new MemoryStream([32, 0, 0]);
-        await Assert.ThrowsAsync<EndOfStreamException>(() => TestWorker.Receive(input, outcome, new(), new(TestOptions.Parse([])), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<EndOfStreamException>(() => TestWorker.Receive(input, outcome, new(), new(TestOptions.Read([])), TestContext.Current.CancellationToken));
         Assert.False(outcome.Completed);
     }
 
+    // TestOptions' own checks of the values read (IMPL 20.6.2; the reader's rows are CommandOptionsTest's).
     [Theory]
-    [InlineData("--unknown")]
     [InlineData("--jobs", "0")]
     [InlineData("--jobs", "1", "--no-parallel")]
     [InlineData("--case", "id", "--filter", "name")]
@@ -143,9 +144,9 @@ public class TestProtocolTest
     [InlineData("--timeout", "1441m")]
     [InlineData("--case-log-bytes", "-1")]
     [InlineData("--run-diagnostic-bytes", "2147483648")]
-    [InlineData("--format", "json", "--format", "text")]
+    [InlineData("a", "b")]
     public void RejectsInvalidOptions(params string[] args)
-        => Assert.Throws<InvalidDataException>(() => TestOptions.Parse(args));
+        => Assert.Throws<CommandInputException>(() => TestOptions.Read(args).Validate());
 
     [Theory]
     [InlineData("Test = { Unknown = 1 }")]

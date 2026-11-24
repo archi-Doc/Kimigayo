@@ -88,8 +88,11 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _))
+                if (environment.IsFailed(fact))
                 {
+                    // A state read (R7-E5 c1, Rev 2 R2.2 (2), R2.3 (S)): the consult's limit set here without the consult, as the
+                    // environment's origin-less cause, so no state read rests on a failed fact's origin.
+                    this.ScopeReads.Limit ??= environment.FailedPremise;
                     failed ??= environment.FailedPremise;
                 }
             }
@@ -100,11 +103,14 @@ public sealed partial class Binding
 
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (its open
     // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
-    // its published source state. SPEC 8.3.3 Limits, 23.1.1-23.1.2 (C4 rulings 17-19): every exit of the check passes here, its single
-    // exit after its own judgment, where the component's one Resource record is written when this conformance's use holds it
-    // (DecideAtLimit's decision, read by HoldsInferenceLimit), so the record depends on nothing the check found (an early exit over a
-    // failed declaration context included), every Resource binding's use rests on it, and the check's own records stay beside it (one
-    // written before the check would fail the declaration it reads and drop them).
+    // its published source state. The verification is the path's own judgment, whichever reader asks (its conformance check, an
+    // agreement, a resolution's disjunction): its verdict is kept on the path and its records are at the path's use, so every query it
+    // asks names conformance.Use (QuerySite; R7-C6 a, F's C8 ruling 22: one site source, not the first reader's). SPEC 8.3.3 Limits,
+    // 23.1.1-23.1.2 (C4 rulings 17-19): every exit of the check passes here, its single exit after its own judgment, where the
+    // component's one Resource record is written when this conformance's use holds it (DecideAtLimit's decision, read by
+    // HoldsInferenceLimit), so the record depends on nothing the check found (an early exit over a failed declaration context included),
+    // every Resource binding's use rests on it, and the check's own records stay beside it (one written before the check would fail the
+    // declaration it reads and drop them).
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
         var proof = this.CheckConformance(conformance, inheritedProof);
@@ -185,7 +191,7 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ConformanceSelf(conformance);
-            var declarationProof = this.ReadSourceState(conformance.Type, out _);
+            var declarationProof = this.ReadSourceState(conformance.Type, conformance.Use, out _);
             if (!this.ValidArithmeticConformance(conformance, self))
             {
                 return ConstraintProof.Error;
@@ -210,7 +216,7 @@ public sealed partial class Binding
             if (IntrinsicContract.Of(conformance.Contract.Intrinsic).Judged)
             {
                 // SPEC 8.7.1: the judgment of `Self is K`, as a Contract clause is proven; a declared Copy is validated where it opts in.
-                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope), true);
+                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, conformance.Use), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;
                 return intrinsicProof;
             }
@@ -224,7 +230,7 @@ public sealed partial class Binding
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
                 {
                     var identity = shape.AssociatedTypes[i];
-                    if (this.SpecificationPart(conformance, identity) is { } part)
+                    if (this.SpecificationPart(conformance, identity, conformance.Use) is { } part)
                     {
                         // SPEC 23.1.2: an identity whose explicit specification did not bind is never inferred; its absence rests on
                         // that specification, while every other missing identity still reports.
@@ -239,7 +245,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.InferenceHole(conformance, identity))
+                    if (this.InferenceHole(conformance, identity, conformance.Use))
                     {
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem == InferenceProblem.Limit)
@@ -333,7 +339,7 @@ public sealed partial class Binding
 
                 var associated = this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol);
                 var clauseScope = this.AssociatedFormationScope(conformance, associated, scope);
-                proof = CombineProof(proof, this.ProveRequirement(constraint, clauseScope, self), true);
+                proof = CombineProof(proof, this.ProveRequirement(constraint, clauseScope, self, conformance.Use), true);
             }
 
             var container = (DeclarationContainerKoto)conformance.Type.Declaration;
@@ -351,7 +357,7 @@ public sealed partial class Binding
                         if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
                         {
                             var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
-                            proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity)), true);
+                            proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity), conformance.Use), true);
                         }
                     }
                 }
@@ -360,7 +366,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
-                    this.SpecifiesContract(clause, conformance.Contract))
+                    this.SpecifiesContract(clause, conformance.Type, conformance.Contract, conformance.Use))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -368,7 +374,7 @@ public sealed partial class Binding
                     }
 
                     var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
-                    proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity)), true);
+                    proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity), conformance.Use), true);
                 }
             }
 
@@ -447,7 +453,7 @@ public sealed partial class Binding
             // Q13). Every other reader rested at the first branch.
             if (proof == ConstraintProof.Proven)
             {
-                this.BeginProof();
+                this.BeginProof(conformance.Use);
                 proof = this.EndProof(this.ConsultsFailedPremise(conformance.Scope.Parent) is null ? ConstraintProof.Proven : ConstraintProof.Unknown);
             }
 
@@ -496,7 +502,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.AssociatedTypes.Count; i++)
         {
             if (this.AssociatedBindingOf(conformance.RootPath, shape.AssociatedTypes[i]) is { Problem: InferenceProblem.Limit } binding &&
-                ReferenceEquals(binding.ProblemDetail, conformance.Use) && this.InferenceHole(conformance, shape.AssociatedTypes[i]))
+                ReferenceEquals(binding.ProblemDetail, conformance.Use) && this.InferenceHole(conformance, shape.AssociatedTypes[i], conformance.Use))
             {
                 return true;
             }
@@ -509,13 +515,13 @@ public sealed partial class Binding
     // specification's obligation): one answer holding pending the obligations open when it began (BeginEvidence), so a part of the
     // specified Types whose route depends on one stays the projection there (HeldPending) and only a judgment reading that part reads it
     // pending; Unknown when the answer depends on one (it supplies none). The clause is instantiated for the conforming Type inside it.
-    private ConstraintProof ProveRequirement(BoundConstraint written, BindingScope scope, BoundType self)
+    private ConstraintProof ProveRequirement(BoundConstraint written, BindingScope scope, BoundType self, QuerySite site)
     {
         var mark = this.BeginEvidence();
         var verdict = ConstraintProof.Unknown;
         try
         {
-            verdict = this.ProveConstraint(this.ContractConstraint(written, scope, self), scope);
+            verdict = this.ProveConstraint(this.ContractConstraint(written, scope, self), scope, site);
         }
         finally
         {
@@ -529,17 +535,17 @@ public sealed partial class Binding
     // formed from (`binding`, its first candidate) is the binding itself, a formation read (the Types it names are formed where written,
     // after the conformance holds); every other conjunct is an obligation of the conformance, a requirement's evidence: a further identity
     // atom (its consequence, an identity between Types, is checked and never assumed) or any other conjunct. One proof, as the clause's.
-    private ConstraintProof ProveSpecification(BoundConstraint written, BindingScope scope, BoundType self, BoundType? binding)
+    private ConstraintProof ProveSpecification(BoundConstraint written, BindingScope scope, BoundType self, BoundType? binding, QuerySite site)
     {
-        this.BeginProof();
+        this.BeginProof(site);
         return this.EndProof(Conjunct(written));
 
         ConstraintProof Conjunct(BoundConstraint conjunct)
             => conjunct.Kind switch
             {
                 ConstraintKind.And => CombineProof(Conjunct(conjunct.Left!), Conjunct(conjunct.Right!), true),
-                ConstraintKind.TypeIdentity when ReferenceEquals(conjunct.RequiredType, binding) => this.ProveConstraint(this.ContractConstraint(conjunct, scope, self), scope),
-                _ => this.ProveRequirement(conjunct, scope, self),
+                ConstraintKind.TypeIdentity when ReferenceEquals(conjunct.RequiredType, binding) => this.ProveConstraint(this.ContractConstraint(conjunct, scope, self), scope, QuerySite.Nested),
+                _ => this.ProveRequirement(conjunct, scope, self, site),
             };
     }
 
@@ -627,7 +633,12 @@ public sealed partial class Binding
                 return (ConstraintProof.Unknown, null);
             }
 
-            this.AddConstraintFact(environment, this.ContractConstraint(constraint, premises, self));
+            var instance = this.ContractConstraint(constraint, premises, self);
+            this.AddConstraintFact(environment, instance);
+            if (!ReferenceEquals(instance, constraint))
+            {
+                environment.AddStatement(instance, requirement, constraint); // at Self (SPEC 8.11.4); an unchanged one is in place
+            }
         }
 
         this.ExpandScopeContractPremises(premises);
@@ -647,8 +658,8 @@ public sealed partial class Binding
             // SPEC 15.3.7: the implementation's Origins are solved first (CompareCallableContracts), and its clauses are read under the
             // one substitution its signature is (PLAN G700, G707).
             var proof = CombineProof(
-                this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises),
-                this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
+                this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises, conformance.Use),
+                this.CompareCallableContracts(new(requirement), new(implementation), premises, conformance.Use, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
                 true);
             var substitution = SubstitutionOf(implementation, selection.DeclaringType, arguments.AsSpan(0, requirement.GenericArguments.Count), default, origins, inputs);
             IsKoto? bound = null;
@@ -661,7 +672,7 @@ public sealed partial class Binding
 
                 var substituted = this.SubstituteConstraint(constraint, substitution);
 
-                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);
+                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises, conformance.Use), true);
                 var clause = (IsKoto)implementation.TypeConstraints[i];
                 if (clause.EffectBounds.Count != 0 && substituted.Kind == ConstraintKind.Callable)
                 {

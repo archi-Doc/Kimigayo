@@ -6,8 +6,9 @@ namespace Kimi.Compiler;
 
 // Step 5's obligation (SPEC 10.1 step 5, 8.1.3; DECISIONS BU-136, PLAN G572 U2a), a part of constraint validation.
 // - Responsibility: a candidate's Constraints and premises over its bindings, one conjunction in one order (StepFiveConjunction) over
-//   one value, CandidateBindings, the candidate's substitution; and the selected call's obligation (CheckCallTypeConstraints): that
-//   conjunction judged again in the Final loop, then the selected call's own Types.
+//   one value, CandidateBindings, the candidate's substitution; and the selected call's two verdicts at its use: its obligation
+//   (CheckCallObligation), that conjunction judged again in the Final loop, then its own Types (CheckCallTypes), each one proof and one
+//   record (Binding.Check: the obligation's outside any frame, the Types' in the use's frame; PLAN G651 a2, B4).
 // - Inputs: the trial's solution (SlotSolution.Prove) with the Contract reference its candidate is tried under (the
 //   activeRequirementContract CallSelection sets), or the selected call's plan (CallPlan's columns, RequirementContract among them);
 //   the scope whose premises apply.
@@ -20,7 +21,11 @@ namespace Kimi.Compiler;
 //   CandidateBindings holds no verdict, and no judgment but step 5's conjunction reads it.
 public sealed partial class Binding
 {
-    private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)
+    // SPEC 10.1 step 5: the selected candidate's obligation, its trial's conjunction (StepFiveConjunction) or a non-function target's
+    // declaring Type and member conditions, the owner slots past the callee's own and an unresolved declaration context: one proof that
+    // keeps its facts for its record. Judged before the call's own Types and recorded on its own, so a failed declaration a Type of the
+    // call names never absorbs an independent refutation (SPEC 23.1.2; PLAN G651 a2, B4).
+    private ConstraintProof CheckCallObligation(CallPlan call, BindingScope scope, QuerySite site)
     {
         // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
         var target = this.Library.PresentedTarget(call.Target);
@@ -29,9 +34,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        // SPEC 10.1: the selected candidate's obligation is its trial's conjunction (StepFiveConjunction), as one proof that keeps its
-        // facts for the record, then the selected call's own Types.
-        this.BeginProof();
+        this.BeginProof(site);
         ConstraintProof proof;
         if (target.Declaration is FunctionKoto function)
         {
@@ -50,8 +53,8 @@ public sealed partial class Binding
         }
         else
         {
-            proof = call.DeclaringType is { } declaringType ? this.CheckTypeConstraints(declaringType, scope) : ConstraintProof.Proven;
-            proof = CombineProof(proof, this.ProveMemberConditions(target, call.DeclaringType, scope), true);
+            proof = call.DeclaringType is { } declaringType ? this.CheckTypeConstraints(declaringType, scope, QuerySite.Nested) : ConstraintProof.Proven;
+            proof = CombineProof(proof, this.ProveMemberConditions(target, call.DeclaringType, scope, QuerySite.Nested), true);
         }
 
         // The slots past the callee's own (a constructor's owner slots) keep the Final check's formation read.
@@ -60,7 +63,7 @@ public sealed partial class Binding
         {
             if (call.TypeArguments[i] is { } argument)
             {
-                proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope), true);
+                proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope, QuerySite.Nested), true);
             }
         }
 
@@ -69,10 +72,19 @@ public sealed partial class Binding
             proof = CombineProof(proof, ConstraintProof.Unknown, true);
         }
 
-        proof = CombineProof(proof, this.CheckTypeConstraints(call.ReturnType, scope), true);
+        return this.EndCallProof(proof);
+    }
+
+    // SPEC 10.1, 8.3: the selected call's own Types, its result, conforming Type and each operand's source and parameter Types: one proof,
+    // judged after the obligation in the use's frame (Binding.Check), so a Type naming a failed declaration rests on that declaration's
+    // record (RestsOnRecoveryOrLimit) where it is a limit's or a recovery's.
+    private ConstraintProof CheckCallTypes(CallPlan call, BindingScope scope, QuerySite site)
+    {
+        this.BeginProof(site);
+        var proof = this.CheckTypeConstraints(call.ReturnType, scope, QuerySite.Nested);
         if (call.ConformingType is { } conformingType)
         {
-            proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope), true);
+            proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope, QuerySite.Nested), true);
         }
 
         proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
@@ -81,6 +93,12 @@ public sealed partial class Binding
             proof = CombineProof(proof, this.CheckOperationTypeConstraints(operation, scope), true);
         }
 
+        return this.EndCallProof(proof);
+    }
+
+    // The two verdicts' common close: the facts their record reads (the Unknown fact, the clause), then the proof scope's answer.
+    private ConstraintProof EndCallProof(ConstraintProof proof)
+    {
         var fact = this.ProofCause(proof) is null ? this.ProofFact(proof) : null;
         var clause = this.ProofClause(proof);
         proof = this.EndProof(proof);
@@ -92,7 +110,7 @@ public sealed partial class Binding
     // SPEC 10.1 step 5, 8.1.3 (DECISIONS: G572 U2a): a candidate's Constraints and premises over its bindings, one conjunction in
     // one order: the callee's Constraints, its owner Type's formation, each own binding's formation (a length slot bound, a Type slot
     // formed, an unsolved slot only where 10.8 leaves it unbound), the member's conditions. The candidate trial (SlotSolution.Prove) and
-    // the selected call's obligation (CheckCallTypeConstraints) judge it over the same value; the declared signature stays the trial's
+    // the selected call's obligation (CheckCallObligation) judge it over the same value; the declared signature stays the trial's
     // (C2 (b), PLAN G375). `incomplete` and `slotOwner` are the trial's: a waiting argument's open slots (10.5.1, 10.8).
     private ConstraintProof StepFiveConjunction(in CandidateBindings bindings, BindingScope scope, bool incomplete, Koto? slotOwner)
     {
@@ -103,10 +121,10 @@ public sealed partial class Binding
         {
             var function = bindings.Function;
             var open = !bindings.Unbound.IsEmpty;
-            var proof = this.CheckConstraints(CandidateClauses(function, slotOwner, 0)!, bindings.Substitution, scope, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
+            var proof = this.CheckConstraints(CandidateClauses(function, slotOwner, 0)!, bindings.Substitution, scope, QuerySite.Nested, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
             if (bindings.Owner is { } owner)
             {
-                proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
+                proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope, QuerySite.Nested), true);
             }
             else if (bindings.InfersOwner && bindings.DeclaringType is not null && slotOwner is StructKoto openOwner)
             {
@@ -114,7 +132,7 @@ public sealed partial class Binding
                 proof = CombineProof(
                     proof,
                     this.CheckConstraints(
-                        CandidateClauses(function, slotOwner, 1)!, new CallSubstitution(openOwner, bindings.Slots), scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
+                        CandidateClauses(function, slotOwner, 1)!, new CallSubstitution(openOwner, bindings.Slots), scope, QuerySite.Nested, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
                     true);
             }
 
@@ -123,12 +141,12 @@ public sealed partial class Binding
             for (var i = 0; i < own.Count && i < bindings.Slots.Length; i++)
             {
                 var slot = own[i] is LengthParameterKoto ? ((i < lengths.Length && lengths[i] is not null) || bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown)
-                    : bindings.Slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope)
+                    : bindings.Slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope, QuerySite.Nested)
                     : bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown;
                 proof = CombineProof(proof, slot, true);
             }
 
-            return CombineProof(proof, this.ProveMemberConditions(bindings.Target, bindings.DeclaringType, scope), true);
+            return CombineProof(proof, this.ProveMemberConditions(bindings.Target, bindings.DeclaringType, scope, QuerySite.Nested), true);
         }
         finally
         {
@@ -138,10 +156,10 @@ public sealed partial class Binding
 
     private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
     {
-        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope) : ConstraintProof.Proven;
+        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope, QuerySite.Nested) : ConstraintProof.Proven;
         if (operation.ParameterType is { } parameter && !ReferenceEquals(parameter, operation.SourceType))
         {
-            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope), true);
+            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope, QuerySite.Nested), true);
         }
 
         return proof;
@@ -149,7 +167,7 @@ public sealed partial class Binding
 
     // SPEC 10.1 steps 3 to 5 (DECISIONS: G572 U2a): a candidate's bindings as inference leaves them and the selected call publishes
     // them; the one input of step 5's conjunction (StepFiveConjunction).
-    // - Inputs: the trial's solution (SlotSolution.Prove) or the selected call's plan (CheckCallTypeConstraints, CallPlan's columns).
+    // - Inputs: the trial's solution (SlotSolution.Prove) or the selected call's plan (CheckCallObligation, CallPlan's columns).
     // - Invariants: Substitution is the candidate's one substitution (Binding.CallSubstitution), the value its signature is read under;
     //   Slots (its Types) holds the call's slots, the callee's own first (CallOwnSlots), a constructor's owner slots after them; a null Type
     //   slot is unsolved, and Unbound lists those 10.8 leaves unbound (none in a plan); Lengths is per slot; DeclaringType is the Type the

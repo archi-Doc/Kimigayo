@@ -65,7 +65,7 @@ public sealed partial class Binding
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                if (this.InferenceHole(path, identity))
+                if (this.InferenceHole(path, identity, path.Use))
                 {
                     InferenceBatches.Batch(path.Type).Active = true;
                     break;
@@ -218,7 +218,7 @@ public sealed partial class Binding
 
                 foreach (var identity in path.Contract.Contract!.AssociatedStorage)
                 {
-                    if (this.InferenceHole(path, identity) && this.AssociatedBindingOf(path, identity) is { } binding &&
+                    if (this.InferenceHole(path, identity, path.Use) && this.AssociatedBindingOf(path, identity) is { } binding &&
                         !this.inferenceBindingIndex.ContainsKey(binding))
                     {
                         // One value per definition and identity (SPEC 8.5.5: `Self is C and P` with C: P conforms to P once): the root
@@ -457,7 +457,7 @@ public sealed partial class Binding
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                hasHole |= this.InferenceHole(path, identity);
+                hasHole |= this.InferenceHole(path, identity, path.Use);
             }
         }
 
@@ -531,7 +531,7 @@ public sealed partial class Binding
 
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                if (!this.InferenceHole(path, identity) || !run.Evidence.TryGetValue(identity.Symbol, out var evidence))
+                if (!this.InferenceHole(path, identity, path.Use) || !run.Evidence.TryGetValue(identity.Symbol, out var evidence))
                 {
                     continue;
                 }
@@ -560,8 +560,8 @@ public sealed partial class Binding
 
                     // SPEC 8.5.5 Completion: evidence from another path is usable when the destination's premises prove the source's; the
                     // proof is one of the source's reads, under the run's hold (design §3.1, B3).
-                    if (this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) &&
-                        this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope) == ConstraintProof.Proven)
+                    if (this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope, path.Use) &&
+                        this.ProveConformanceConditions(source.Path, this.SelfType(path.Type), path.Scope, path.Use) == ConstraintProof.Proven)
                     {
                         usable.Add((source, this.ContractType(source.Type, path.Scope)));
                     }

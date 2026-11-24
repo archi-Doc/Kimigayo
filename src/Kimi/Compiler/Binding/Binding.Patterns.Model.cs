@@ -8,6 +8,10 @@ namespace Kimi.Compiler;
 
 public enum BoundPatternKind : byte
 {
+    /// <summary>A leaf that tests, selects and binds nothing: its Pattern failed with its own record, a payload Pattern of its Case was not
+    /// read, or it rests on the failed Subject (<see cref="BoundPattern.MatchedType"/> null; SPEC 14.8.1, 23.1.2). Every other position
+    /// is buildable: a Case position has a child for each payload of its selected Case, whose Type was read at the position, and a Tuple
+    /// position one for each element; a position the late recheck refutes keeps its kind and its test.</summary>
     Invalid,
     Wildcard,
     Binding,
@@ -23,8 +27,6 @@ public enum PatternAcquisition : byte
     Copy,
     Borrow,
     Move,
-    CopyOrMove,
-    Deferred,
 }
 
 public enum PatternAccessMode : byte
@@ -61,8 +63,10 @@ public readonly record struct PatternLiteral(PatternLiteralKind Kind, Int128 Bit
 /// layer that lacks its structure, a Binding reached with owned access the qualifying pair layer it would otherwise take by value),
 /// <see cref="AccessMode"/> is the access its path grants to the selected value, and <see cref="OwnedPart"/> whether that value may
 /// lie in the owned Subject or iteration item: its path passed only pair layers admitting owner, whose owner case selects the
-/// Place itself (SPEC 15.1.6 "a part of an owned Subject or iteration item", 13.5.5).</summary>
-public readonly record struct BoundPattern(Koto Source, BoundType MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
+/// Place itself (SPEC 15.1.6 "a part of an owned Subject or iteration item", 13.5.5). <see cref="MatchedType"/> is the Type the
+/// position matched, null exactly at a resting leaf: the Invalid position of an arm whose Pattern rests on the failed Subject, which
+/// matched no Type (SPEC 23.1.2).</summary>
+public readonly record struct BoundPattern(Koto Source, BoundType? MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
     BoundEnumCase? Case = null, BindingSymbol? BodySymbol = null, PatternAcquisition Acquisition = PatternAcquisition.None,
     bool WholePosition = false, PatternLiteral Literal = default,
     PatternAccessMode AccessMode = PatternAccessMode.Owned, int ImplicitFollows = 0,
@@ -90,8 +94,9 @@ public sealed class BoundMatch
 
     internal List<byte> CaseCoverage { get; } = new();
 
-    /// <summary>Gets or sets a value indicating whether a Pattern position or a guard of the match has a located failure; the plan
-    /// cannot be built.</summary>
+    /// <summary>Gets or sets a value indicating whether a Pattern position or a guard of the match has a located failure: the match's
+    /// coverage is not computed (<see cref="MatchCoverageState.Invalid"/>), and the plan is still built (a failed position is an Invalid
+    /// leaf or keeps its test); <see cref="Pending"/> keeps it unbuilt.</summary>
     internal bool Invalid { get; set; }
 
     internal bool Pending { get; set; }

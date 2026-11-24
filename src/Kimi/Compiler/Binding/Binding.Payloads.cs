@@ -20,7 +20,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.ProveSealed(view, scope) != ConstraintProof.Proven)
+        if (this.ProveSealed(view, scope, source) != ConstraintProof.Proven)
         {
             return false;
         }

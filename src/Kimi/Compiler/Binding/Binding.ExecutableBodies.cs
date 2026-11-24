@@ -5,11 +5,13 @@
 // - Inputs: the entries that start binding a body or a declaration (BindHeader, BindFunction, BindConcreteClosure, BindAccessorBody, a
 //   Property's initializer, ValidateOriginRelations), each through EnterBody.
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
-//   OriginDeclaration.Body (BeginOriginDeclaration), BoundClosure.EvaluatingBody (BindConcreteClosure), and ParameterVisible's answer.
+//   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (a Closure's, ClosureHeaderScope; a named nested
+//   function's is the index walk's, DeclareFunction), and ParameterVisible's answer.
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
 //   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
-//   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed or stamped in it, and it
-//   is never a MIR key.
+//   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed in it, only AddObligation
+//   stamps it, on a relation formed in a body with a nested signature's per-call end (that signature's declaration row, R7-O3 U-O3), and
+//   it is never a MIR key.
 // - Prohibitions: no body derived from a scope chain, Use.Parent or syntax.
 
 using Kimi.Compiler.Parsing;
@@ -27,8 +29,7 @@ internal readonly record struct ExecutableBody
     internal ExecutableBody(BindingSymbol? definition, int index = -1) => (this.Definition, this.index) = (definition, index + 1);
 
     /// <summary>Gets the declaration judge's frame (SPEC 15.3.4; DECISIONS BU-89): no body, distinct from the default value, in which
-    /// every executable body's Origin a declaration's row names is a fixed Origin of that declaration, until PLAN G230 (A) records the
-    /// declaring body.</summary>
+    /// every executable body's Origin a declaration's row names is a fixed Origin of that declaration.</summary>
     internal static ExecutableBody Declarations { get; } = new(null, -2);
 
     internal BindingSymbol? Definition { get; }
@@ -49,9 +50,10 @@ public sealed partial class Binding
     internal static bool IsStatic(BindingSymbol? property)
         => property is { Kind: BindingSymbolKind.Property, Scope.Owner: DeclarationContainerKoto { HasStaticMembersOnly: true } };
 
-    // A Closure's evaluating body (SPEC 15.3.4), recorded on its plan when it is bound; no body for any other.
-    private static ExecutableBody EvaluatingBody(ExecutableBody body)
-        => body.Definition?.Declaration is FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan } ? plan.EvaluatingBody : default;
+    // The body that declares `body`'s definition (SPEC 15.3.4), the one recorded fact BindingSymbol.DeclaringBody: a Closure's evaluating
+    // body, recorded on its symbol when its header is bound, and a named nested function's declaring body, recorded by the index walk
+    // (PLAN G230 (A)); no body for any other.
+    private static ExecutableBody EvaluatingBody(ExecutableBody body) => body.Definition is { } definition ? definition.DeclaringBody : default;
 
     // A function's own body; a module's top-level statements have no symbol and are named by the module's ordinal.
     private static ExecutableBody FunctionBody(FunctionKoto function, BindingSymbol? symbol)

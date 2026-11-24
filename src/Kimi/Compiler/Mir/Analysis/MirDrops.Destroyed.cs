@@ -8,7 +8,7 @@
 // Input: a row of a body's drop table and the row's Type in the reader's view of it (the view's case Type for A4, an instance's closed
 // Type for the Backend), or a Type alone; the reader's TyCtxt, whose instances' stored Types the walk reads, never kept.
 // Output: the steps in destruction order, each part named by its move-path step from its
-// level's Type with the Type MirBody.PartType gives it, under its governing row or, without one, its parent's own bit.
+// level's Type with the Type MirBody.SelectsPart gives it, under its governing row or, without one, its parent's own bit.
 // Invariants: a level with rows and the level without rows are one enumeration (Walker.Level over MirTypes.LevelPart), so a group that
 // moved nothing out of a level and a glue function's level give the same parts in the same order; no order is stated here: the index
 // of a walk is keyed by the part's step and argument, not by its rank, and a part's child row is found by its key (Child); a walk
@@ -202,7 +202,7 @@ internal sealed partial class MirDropTable
             for (var rank = 0L; rank < count; rank++)
             {
                 var (kind, at) = MirTypes.LevelPart(types, type, rank);
-                if (MirBody.PartType(types, type, kind, (int)at) is { } part)
+                if (MirBody.SelectsPart(types, type, kind, (int)at, out var part) && part is not null)
                 {
                     this.Step(part, row, this.Child(row, kind, at), kind, at);
                 }

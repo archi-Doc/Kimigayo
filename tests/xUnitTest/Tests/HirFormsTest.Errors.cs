@@ -12,6 +12,17 @@ namespace XunitTest;
 /// node, the operands it keeps and the children it replaces.</summary>
 public sealed partial class HirFormsTest
 {
+    // PLAN G1184's struct (the Z28 design's rows): a stored Field `w` whose Type the Weak limit leaves unformed (its slot failed, BU-234)
+    // beside a typed `s`, its constructor placing both; and the twins whose `w` has a custom `set` (r23) or a custom `get` (g1).
+    internal const string FailedSlot = "struct N\n    public var w: Weak<rc/N>\n    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n" +
+        "        self.w = w@move\n        self.s = s@move\n";
+
+    internal const string CustomSet = "struct N\n    public var w: Weak<rc/N>\n        set(value: Weak<rc/N>) -> ()\n            storage = value@move\n" +
+        "    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        self.w = w@move\n        self.s = s@move\n";
+
+    internal const string CustomGet = "struct N\n    public var w: Weak<rc/N>\n        get() -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage)\n" +
+        "    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        self.w = w@move\n        self.s = s@move\n";
+
     // The callees of the Keeps rows (ARejectedNodeKeepsWhatItsFormEvaluatesOnEveryPath).
     private const string K = "func k(a: i32) -> i32 => a\nfunc k2(a: i32, b: i32) -> i32 => a\n";
 
@@ -28,13 +39,17 @@ public sealed partial class HirFormsTest
         "func g(a: Weak<rc/Node>, b: i32) -> i32 => b\nfunc f(w: Weak<rc/Node>, u: Weak<rc/Node>) -> i32\n" +
         "    var n: Node = Node.init(w@move, 1, 2)\n    let r = n.v@uniq\n    let k = g(u@move, n.x)\n    r@follow = 2\n    return k\n";
 
+    // DECISIONS Z27's review twins (z27ir): a base struct whose `level` has a custom `set`, beside a part to move, name.
+    private const string SetLevel = "open struct Device\n    public var name: string\n    public var level: i32\n        set(value: i32) -> ()\n" +
+        "            storage = value\n    protected init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\n";
+
     // The Z17c design review's cr-opt-excess rows (B6; SPEC 6.5.1, 15.6.7): an Option construction, its statement appended.
     private const string OptionExcess = "func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n";
 
     // Declarations whose callers' inputs need an Origin relation between fixed Origins the premises do not prove, whatever the input's
     // acquisition or adaptation: since R7-O1 b1 a row A5 judges (UnprovenOriginRelation_Kd at the input), the input itself resolved. State's
     // static Places, which a call's input borrows, are the inputs Binding still rejects after selection: the located limit until P42
-    // (FailStaticBorrow; DECISIONS BU-25).
+    // (JudgeSelectedInput; DECISIONS BU-25).
     private const string DerivedInputs = """
         struct Tally
             public var n: i32 = 0
@@ -349,12 +364,13 @@ public sealed partial class HirFormsTest
         Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(limited), HirTables.AdjustOf(limited), HirTables.PlanOf(limited).Adjust));
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-103, BU-110): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param
-    // whose Move rests on an Error Copy proof, a group of a typeless alias, and a binding whose Copy proof is Error (Deferred), a match arm's
-    // or a for loop's item, also a Tuple item's slot; an Error node's folds to its derived value (Temporary, None; R4-M109), a name of a
+    // SPEC 23.1.2 (DECISIONS BU-103, BU-110): a consumed Place whose acquisition failed is published Failed: a Param whose Move rests on
+    // an Error Copy proof, a group of a typeless alias; an Error node's folds to its derived value (Temporary, None; R4-M109), a name of a
     // typeless local among them, which is an Error since Z16 (HasFacts' Name row: a name needs its Type), discarded or not. Fail-before:
-    // each was the column's default (Unset, None), and a for item whose Copy proof is Error was (Move, None). A valid Copy item stays
-    // Copied and a Non-Copy one Moved.
+    // each was the column's default (Unset, None). SPEC 15.1.6 (F's C8 ruling 24, superseding BU-110's Error rule for a transferred
+    // Subject or item): a part of an owned Subject or iteration item is transferred with its responsibility, so it Moves and no Copy is
+    // asked, whatever its Copy proof: a match arm's binding of a temporary Subject (`let v`) and a for loop's item or Tuple item's slot
+    // over a moved Array (`e`, `p`, `j`, `o`, `u`), Copy or not (they were Failed where the proof is Error, Copied where it is Proven).
     [Fact]
     public void AFailedAcquisitionIsPublishedFailed()
     {
@@ -375,13 +391,12 @@ public sealed partial class HirFormsTest
             .Select(static x => $"{x} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire} {HirTables.PlanOf(x).Adjust.Acquire}");
         string[] expected =
         [
-            "b Name Failed Unset", "t.5 Error Temporary Unset", "(z) Group Failed Unset", "let v Syntax Failed Unset", "e Syntax Failed Unset",
-            "p Syntax Failed Unset",
+            "b Name Failed Unset", "t.5 Error Temporary Unset", "(z) Group Failed Unset",
         ];
         Assert.Equal(expected, rows);
-        var items = Reachable(c.Kotonoha).Where(static x => x.ToString() is "j" or "o" or "u" && HirTables.Op(x) == HirOp.Syntax)
+        var items = Reachable(c.Kotonoha).Where(static x => x.ToString() is "let v" or "e" or "p" or "j" or "o" or "u" && HirTables.Op(x) == HirOp.Syntax)
             .Select(static x => $"{x} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["j Copy", "o Copy", "u Move"], items);
+        Assert.Equal(["let v Move", "e Move", "p Move", "j Move", "o Move", "u Move"], items);
     }
 
     // SPEC 12, 13.4, 14, 23.1.2 (DECISIONS Z16, the one Keeps rule; Z15 2g-D's B5 rows): a node Binding rejected or left unresolved keeps,
@@ -403,7 +418,7 @@ public sealed partial class HirFormsTest
     [InlineData("enum E\n    case A(i32, i32)\nfunc f() -> i32\n    var x: i32\n    let e = E.A(x, missing)\n    return 1\n", "E.A(x, missing)", "x missing")]
     [InlineData("func f() -> string\n    var x: i32\n    return \"\\(x) \\(missing)\"\n", "\"", "\"\" x \" \" missing \"\"")]
     [InlineData(
-        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n",
+        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n    r@follow = .None\n",
         "match y",
         "y")]
     [InlineData("func f() -> i32\n    var x: i32\n    for i in missing(x)\n        _ = i\n    return 1\n", "for i", "missing(x)")]
@@ -434,9 +449,10 @@ public sealed partial class HirFormsTest
     // 15.1.6), as it takes a valid node's child of that form: an operator's Copy operand, a non-Copy operand it inspects through a shared
     // Loan and an Error value, a Tuple's elements, `and`'s left operand, a built-in index's index, a match's Place Subject, which its plan
     // borrows shared, a for's Iterable, and the operand of a conversion Binding left unclassified (KindOp's Convert arm: a same-Type
-    // acquisition and G839's `h@raw/Missing`); none for a selection's receiver or a built-in index's base (in place: r-weak-sibling's
-    // `n.w`, valid beside its limits, an unresolved member, and a value base, which the rule takes as a Temporary in place:
-    // `mk()[missing]`, the row that fails without FormReads' in-place guard), nor a borrow's operand. A failed object creation's operand
+    // acquisition and G839's `h@raw/Missing`); none for a selection's receiver or a built-in index's base (in place: an unresolved
+    // member, and a value base, which the rule takes as a Temporary in place: `mk()[missing]`, the row that fails without FormReads'
+    // in-place guard), nor a borrow's operand (r-weak-sibling's `n.w@ref`: since PLAN G1184 its `n.w` is a Field Place over its failed
+    // slot, no Error, AUseOfAFieldWhoseSlotFailedIsItsFieldPlace). A failed object creation's operand
     // is read as any conversion's (`s@rc/Missing`; `s@rc` of a non-Copy `s`, SPEC 13.6.2). DECISIONS G1178 (SPEC 7.4, 10.1, 10.2,
     // 15.1.5): an argument of an application Binding did not resolve, which no operation takes, is read under every candidate by its
     // evaluation as a value, whatever the failure: a selected callee with a failed argument (`k2(x, missing)`), too many (`k`; an excess
@@ -456,7 +472,12 @@ public sealed partial class HirFormsTest
     // inputs (its conflict at `g(y)` rests on the member's failure either way); so is an application of a construction's value
     // (`Option.Some(1)(y@uniq, g(y))`, the code review's C1: not callable, and its arguments are no payloads, Some's being `1`;
     // fail-before: read as payloads by the callee's Case symbol alone); an aggregate's elements (c-tuple-later's `(y@uniq, g(y), missing)`: no reservation passes through aggregate storage), an operator's operands, a Subject, an
-    // Iterable or a conversion's operand. Only a kept operand carries either fact. Each row lists the kept operands that carry one: the
+    // Iterable or a conversion's operand. DECISIONS Z27 (SPEC 11.3.1, 13.7.1, 13.7.2): a write's or an update's target whose accessor
+    // calls Binding did not plan gives them its receiver as an input: z27ir's v1 (an inherited custom `set`, beside its limit), C-498's
+    // g8 (an update through a custom `get`, a `let` receiver; fail-before on commit 3: none), n6 and r17 (updates through the `get` of a
+    // Property with no `set`: getter-only computed, a `let` with a custom `get`; fail-before on commit 4: none); a target its operation
+    // reaches through the storage gives none (`x.a = 3` and `x.a += 1`, a `let` Field: no `set`, a standard `get`). Only a kept operand
+    // carries either fact. Each row lists the kept operands that carry one: the
     // take, then "input" or "-". Fail-before: no kept operand carried a take (D-986's rows) or was an input (the facts unpublished).
     [Theory]
     [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "k2(x, missing)", "x Copy/None input; missing Temporary/None input")]
@@ -490,16 +511,21 @@ public sealed partial class HirFormsTest
     [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing", "c Copy/None -")]
     [InlineData("func f(v: [3 of i32]) -> i32\n    return v[missing]\n", "v[missing]", "missing Temporary/None -")]
     [InlineData(
-        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n",
+        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n    r@follow = .None\n",
         "match y",
         "y None/SharedBorrow -")]
     [InlineData("func f() -> i32\n    var x: i32\n    for i in missing(x)\n        _ = i\n    return 1\n", "for i in missing(x)", "missing(x) Temporary/None -")]
     [InlineData("func f(s: string) -> string\n    return s@string\n", "s@string", "s Move/None -")]
     [InlineData("func f() -> i32\n    var h = 1\n    let r = h@uniq\n    let p = h@raw/Missing\n    r@follow = 2\n    return 0\n", "h@raw/Missing", "h Copy/None -")]
-    [InlineData(WeakSibling, "n.w", "")]
     [InlineData(WeakSibling, "n.w@ref", "")]
     [InlineData("func mk() -> [3 of i32] => [1, 2, 3]\nfunc f() -> i32\n    return mk()[missing]\n", "mk()[missing]", "missing Temporary/None -")]
     [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing\n", "p.missing", "")]
+    [InlineData(SetLevel + "struct Lamp : Device\n    public init(name: string, level: i32) : base(name@move, level) => ()\nfunc g()\n    var owner = Lamp.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level = 30\n", "owner.level", "owner Unset/None input")]
+    [InlineData("struct Device\n    public var name: string\n    public var level: i32\n        get() -> i32 => storage\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    let owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level += 1\n", "owner.level", "owner Unset/None input")]
+    [InlineData("struct R\n    public let a: i32\n    public var b: i32\n    public init(a: i32, b: i32)\n        self.a = a\n        self.b = b\nfunc f() -> i32\n    var x = R.init(1, 2)\n    x.a = 3\n    return x.b\n", "x.a", "")]
+    [InlineData("struct P\n    public var s: string\n    public var n: i32\n    public computed p: i32\n        get() -> i32 => self.n\n    public init(s: string, n: i32)\n        self.s = s@move\n        self.n = n\nfunc g()\n    var x = P.init(\"s\", 1)\n    let a = x.s@move\n    x.p += 1\n", "x.p", "x Unset/None input")]
+    [InlineData("struct R\n    public let a: i32\n    public var b: i32\n    public init(a: i32, b: i32)\n        self.a = a\n        self.b = b\nfunc f() -> i32\n    var x = R.init(1, 2)\n    x.a += 1\n    return x.b\n", "x.a", "")]
+    [InlineData("struct Device\n    public var name: string\n    public let level: i32\n        get() -> i32 => storage\n    public init(name: string, level: i32)\n        self.name = name@move\n        self.level = level\nfunc g()\n    var owner = Device.init(\"desk\", 40)\n    let n = owner.name@move\n    owner.level += 1\n", "owner.level", "owner Unset/None input")]
     public void AKeptOperandCarriesItsErrorsFormsTakeAndInput(string source, string text, string facts)
     {
         var kept = new HirAdjust(HirAcquire.None, HirAdaptation.None);
@@ -569,7 +595,7 @@ public sealed partial class HirFormsTest
     [InlineData("func f() -> i32\n    var x: i32\n    x = \"a\"\n    return x\n", "\"a\"")]
     [InlineData("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc a(b: Bad) -> Bad => b\n", "b")]
     [InlineData("func use(x: string) => ()\nfunc f()\n    let q = missing\n    use(q@move)\n    use(q@move)\n", "q")]
-    [InlineData("func f(v: Option<i32>) -> i32\n    return match v\n        .Some(let n) if missing(n) => 1\n        _ => 0\n", "match v")]
+    [InlineData("func f(v: Option<i32>) -> i32\n    return match v\n        .Some(let n) if missing(n) => 1\n        _ => 0\n", "missing(n)")]
     [InlineData("group G\n    public let s: Missing = 1\nfunc f() -> i32\n    return G.s\n", "G.s")]
     [InlineData("struct Q\n    public var n: Missing = 1\n    public var m: i32\n    public init(m: i32)\n        self.m = m\n", "")]
     [InlineData("group G\n    public let s: i32 = missing\nfunc f() -> i32\n    return G.s\n", "missing")]
@@ -583,6 +609,59 @@ public sealed partial class HirFormsTest
         Assert.All(facts, x => Assert.NotNull(c.Binding.RestingCauses(x)));
         Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
         Assert.True(fact.Length == 0 ? facts.Length == 0 : facts.Any(x => x.ToString()!.StartsWith(fact, StringComparison.Ordinal)), string.Join(", ", facts.Select(static x => x.ToString())));
+    }
+
+    // PLAN G1184 (DECISIONS BU-<n>, Z28; SPEC 23.1.2, 6.3.4, 11.3, 11.7, 13.7.1, 15.1.3): a use Binding resolved to a stored Field whose
+    // own slot failed (FailedSlot's `w`, the Weak limit's Field, BU-234) and that it accesses directly, over a receiver of a Type, is that
+    // Field's Place of no Type (Binding.FailedField): a member access published Field, an accessor's `storage` a Name, each with no Type
+    // and the Place kind Field. Rows: the constructor's first placement (q01), through a custom `set` (r23, SPEC 11.7: no setter call)
+    // and beside a custom `get` (g1), with r23's and g1's `storage` over their inserted typed `self`; a read kept under its Error borrow
+    // (q10, r-weak-sibling's `n.w`; SPEC 15.1.3: its own Move Path), also under its Error Move (q14: the `@move` Binding cannot bind
+    // without the Type rests on the Field's TypeSource); a discarded one taken Failed in its plan row (d2, SPEC 14.2.2), resting on the
+    // same TypeSource; a user index below a write target selecting indexUniq as its typed twin (d5, SPEC 4.7.1: the target's exclusive
+    // need reaches its receiver); a member Binding resolved on an identity premise's Type, direct or nested (d14 `t.w`, x1 `a[0].w`;
+    // SPEC 8.2.3), whose receiver Place the builder cannot index (its located limit, as for the typed twin). Stay Errors: a read through
+    // a custom `get` (g2, the getter's call), a computed Property (no storage), a `storage` whose accessor's `self` failed (d3: no
+    // receiver of a Type), a name of a failed local (q16, R7-M65's Name row) and, for now, an update's target (`h.x += 1`, a derived
+    // write as on dev: a temporary limit of MirBuilder.Update, removed when it builds an update over a Field Place of no Type). Each
+    // row: the node, then its Op, Type, Place kind, Adjust, plan row's Adjust and selection. Fail-before: each Field Place an Error, its parts
+    // replaced or kept under it; the update's row passes on F1 by construction (it guards the intermediate predicate, under which the
+    // builder faulted). No row leaves a Broken node.
+    [Theory]
+    [InlineData(FailedSlot, "self.w", "Field - Field None Unset")]
+    [InlineData(FailedSlot + "func f(n: N)\n    let t = n.s@move\n    let k = n.w@ref\n", "n.w", "Field - Field None Unset")]
+    [InlineData(WeakSibling, "n.w", "Field - Field None Unset")]
+    [InlineData(FailedSlot + "func f(n: N)\n    n.w\n", "n.w", "Field - Field Unset Failed")]
+    [InlineData(FailedSlot + "func f(n: N)\n    let k = n.w@move\n", "n.w", "Field - Field None Unset")]
+    [InlineData(FailedSlot + "func f(d: uniq/Dictionary<i32, N>, w: Weak<rc/N>)\n    d[1].w = w@move\n", "d[1]", "Call N CallResult None Unset indexUniq")]
+    [InlineData(CustomSet, "self.w", "Field - Field None Unset")]
+    [InlineData(CustomSet, "storage", "Name - Field None Unset")]
+    [InlineData(CustomGet, "self.w", "Field - Field None Unset")]
+    [InlineData(CustomGet, "storage", "Name - Field None Unset")]
+    [InlineData(CustomGet + "func f(n: N)\n    let t = n.s@move\n    let k = n.w\n", "n.w", "Error - Value None Unset")]
+    [InlineData(
+        "struct N\n    public var w: Weak<rc/N>\n    public computed c: Weak<rc/N>\n        get() -> Weak<rc/N> => Kimi.Intrinsics.clone(self.w@ref)\n" +
+        "    public init(w: Weak<rc/N>) => self.w = w@move\nfunc f(n: N)\n    let k = n.c@ref\n",
+        "n.c",
+        "Error - Value None Unset")]
+    [InlineData(
+        "struct N\n    public var w: Weak<rc/N>\n        set(self: uniq/Missing, value: Weak<rc/N>) -> ()\n            storage = value@move\n" +
+        "    public init(w: Weak<rc/N>) => self.w = w@move\n",
+        "storage",
+        "Error - Value Temporary Unset")]
+    [InlineData(FailedSlot + "func f(n: N)\n    var w2: Weak<rc/N>\n    w2 = n.w@move\n    let y = w2@move\n", "w2", "Error - Value None Unset")]
+    [InlineData(FailedSlot + "func f<T>(t: uniq/T, w: Weak<rc/N>)\n    T is N\n    t.w = w@move\n", "t.w", "Field - Field None Unset")]
+    [InlineData(FailedSlot + "func f<T>(a: uniq/[2 of T], w: Weak<rc/N>)\n    T is N\n    a[0].w = w@move\n", "a[0].w", "Field - Field None Unset")]
+    [InlineData("struct HU<S>\n    public var x: Missing<S>\nfunc f(h: uniq/HU<i32>) -> ()\n    h.x += 1\n", "h.x", "Error - Value Temporary Unset")]
+    public void AUseOfAFieldWhoseSlotFailedIsItsFieldPlace(string source, string text, string facts)
+    {
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).Last(x => x.ToString() == text);
+        var selection = ExpansionPlan.Of(c.Binding, node)?.Second?.Target.Name is { } name ? " " + name : string.Empty;
+        var type = HirTables.TypeOf(node)?.ToString() ?? "-";
+        Assert.Equal(facts, $"{HirTables.Op(node)} {type} {HirTables.PlaceOf(node).Kind} {HirTables.AdjustOf(node).Acquire} {HirTables.PlanOf(node).Adjust.Acquire}{selection}");
+        Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
     }
 
     // The 1-based line:column of an offset in a source.

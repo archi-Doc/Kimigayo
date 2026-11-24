@@ -114,6 +114,30 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 8.15.2, 15.6.3 (G254b, G254c): each use of `h@follow` whose owner case Reborrows a nested layer beside an invariant case plans
+    // its owner case and walks its reach under that case, then is judged again at its selected input (each owner-case level counted), so
+    // a body's work grows linearly in its uses; each use is one located limit beside its Resolved Place.
+    [Fact]
+    public void OwnerCaseReborrowsAreLinearInTheUses()
+    {
+        var steps = new[] { 128, 256, 512 }.Select(static n => Work(n)).ToArray();
+        Assert.True(steps[1] > steps[0] && MirBorrowsTest.Grows(steps, 2), string.Join(' ', steps));
+
+        static long Work(int uses)
+        {
+            var source = new System.Text.StringBuilder("func take<V>(x: V) -> () => ()\n");
+            source.Append("func f<s/T, U>(m: s/T, h: uniq/(s/(uniq/U during b) during a) during c) -> ()\n    s is owner or uniq\n");
+            for (var i = 0; i < uses; i++)
+            {
+                source.Append("    take(h@follow)\n");
+            }
+
+            var c = MirBuildTest.Compile(source.Append(LayerMain).ToString());
+            Assert.Equal((0, 0, uses), (c.Binding.Result.UnresolvedCount, c.Binding.Result.InvalidCount, c.Binding.Result.LimitedCount));
+            return c.Binding.TermWalkWork;
+        }
+    }
+
     // SPEC 15.4.2: a borrow layer nested in an input names its Origin, so each layer below the outermost one names a_k, the innermost one
     // `innermost` where given.
     internal static string RefLayers(int layers, string terminal, string? innermost = null)

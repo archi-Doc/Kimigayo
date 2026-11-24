@@ -51,6 +51,22 @@ public partial class TypeDagScalingTest
         Assert.Equal($"{n + 1}*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source + "public func main() -> ()\n    return\n"));
     }
 
+    // R7-C3 b (F's V2a2/C3b ruling 3 C3; SPEC 8.6.1, 8.9.1): a Type with n conformances to one Contract declaration, `C<K0>` to `C<Kn-1>`,
+    // each specified and each used once: a selection scans the Type's identities of that declaration (SelectConformance, one NamesReference
+    // for each one not written as the reference), so a use and a specification cost n judgments and the program n^2, where dev's exact
+    // key cost one each; the program is valid at every n (distinct concrete arguments never collide). Timed at n = 32 and 128 on both sides.
+    [Theory]
+    [InlineData(32)]
+    [InlineData(128)]
+    public void ConformancesToOneContractAreSelectedByOneScanEach(int n)
+    {
+        var keys = string.Concat(Enumerable.Range(0, n).Select(static i => $"struct K{i}\n"));
+        var clauses = string.Concat(Enumerable.Range(0, n).Select(static i => $"    Self is C<K{i}>\n    associate C<K{i}>.Item is i32\n"));
+        var uses = string.Concat(Enumerable.Range(0, n).Select(static i => $"func need{i}<T>(x: ref/T) -> i32\n    T is C<K{i}>\n    return 1\nlet n{i} = need{i}(m@ref)\n"));
+        var c = MinimalEmissionTest.Analyze("contract C<E>\n    associate Item\n" + keys + "struct M\n" + clauses + "    public init() => ()\nlet m = M.init()\n" + uses + "let present = 1");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
     // PLAN G935 c3-2 (F's G935 ruling 74 C4; the Middle's G986 measure): `f<T0..Tn>(v: T0)` with `Ti is (Ti+1, Ti+1)` and a raw leaf. f's
     // declared retention (TyCtxt.Retains, which A5 reads at a call of f) views its signature as f's body sees it (Binding.Viewed), each
     // (part, depth) once (viewedParts): n + 1 distinct parts, not 2^n paths. Before the memo: n = 24 took seconds, n = 32 did not finish.

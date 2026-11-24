@@ -1,6 +1,7 @@
-# Integration regression for bounded native workers using the installed LLVM toolchain.
+# Integration regression for the native fixture runner: its kimi tatara builds (the configuration's Kimi.dll) and bounded run workers;
+# the delayed-execution probes use the installed LLVM toolchain.
 [CmdletBinding()]
-param([string] $ToolchainRoot = '')
+param([string] $ToolchainRoot = '', [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
@@ -11,11 +12,12 @@ $runner = Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1'
 $utf8 = [Text.UTF8Encoding]::new($false)
 $ir = @'
 target triple = "x86_64-pc-windows-msvc"
+@_fltused = global i32 0
 @text = private constant [4 x i8] c"\E6\97\A5\0A"
 declare dllimport ptr @GetStdHandle(i32)
 declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
 declare dllimport void @ExitProcess(i32) noreturn
-define void @__kimi_start() noreturn {
+define void @__kimi_start() noreturn uwtable {
   %written = alloca i32
   %out = call ptr @GetStdHandle(i32 -11)
   %a = call i32 @WriteFile(ptr %out, ptr @text, i32 4, ptr %written, ptr null)
@@ -40,7 +42,7 @@ function Invoke-Case(
     $logs = Join-Path $evidence $name
     $caught = $false
     try {
-        & $runner -ToolchainRoot $ToolchainRoot -FixtureDirectory $fixtures -FixturePattern $pattern `
+        & $runner -Configuration $Configuration -FixtureDirectory $fixtures -FixturePattern $pattern `
             -OutputDirectory (Join-Path $work $name) -LogDirectory $logs -Parallel $parallel `
             -ExecutionDeadlineMilliseconds $deadline @reuse *> (Join-Path $evidence "$name.log")
     }
@@ -65,18 +67,21 @@ $null = Invoke-Case 'broad-pattern' (Join-Path $valid '*') 4 -expected $true -co
 if (@($serial | Where-Object { $_.status -cne 'passed' }).Count -or @($parallel | Where-Object { $_.status -cne 'passed' }).Count) {
     throw 'Valid fixtures failed.'
 }
-# A passed result is reused only while its environment key, fixture key and -ReuseHours freshness all hold.
+# A passed result is reused whole only while its environment key, fixture key and -ReuseHours freshness all hold.
 $reuseFixtures = Join-Path $work 'reuse'
 New-Fixture $reuseFixtures 'one'
 New-Fixture $reuseFixtures 'two'
 function Read-NativeResults([string] $name) { Get-Content (Join-Path $evidence "$name/native-results.json") -Raw | ConvertFrom-Json -DateKind String }
-function Assert-Reuse([string] $name, [object[]] $records, [string[]] $reused) {
+# A reused fixture has no execution, and two linked builds when it was built ($built), else none; any other fixture was built.
+function Assert-Reuse([string] $name, [object[]] $records, [string[]] $reused, [string[]] $built = @()) {
     foreach ($record in $records) {
         $isReused = $record.fixture -cin $reused
-        if ([bool]$record.reused -ne $isReused -or ($isReused -and $record.tools.Count + $record.executions.Count -ne 0) -or
-            (-not $isReused -and $record.tools.Count -eq 0)) { throw "Unexpected reuse of $($record.fixture): $name" }
+        $builds = if ($record.fixture -cin $built) { 2 } else { 0 }
+        if ([bool]$record.reused -ne $isReused -or ($isReused -and ($record.executions.Count -ne 0 -or $record.builds.Count -ne $builds -or
+            @($record.builds | Where-Object recordStatus -CNE 'linked').Count -ne 0)) -or
+            (-not $isReused -and $record.builds.Count -eq 0)) { throw "Unexpected reuse of $($record.fixture): $name" }
     }
-    $split = "$($records.Count - $reused.Count) fixtures run, $($reused.Count) reused"
+    $split = "$($records.Count - $reused.Count) fixtures run, $($reused.Count) reused ($($built.Count) of them built;"
     if (@($records | Where-Object status -CNE 'passed').Count -eq 0 -and
         -not (Select-String -LiteralPath (Join-Path $evidence "$name.log") -SimpleMatch "Passed $(2 * $records.Count) native scalar executions (O0/O2); $split")) {
         throw "Missing reuse split: $name"
@@ -85,18 +90,24 @@ function Assert-Reuse([string] $name, [object[]] $records, [string[]] $reused) {
 $first = Invoke-Case 'reuse-first' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000
 $stored = Read-NativeResults 'reuse-first'
 if ($stored.environmentKey -cnotmatch '^[0-9a-f]{64}$' -or $stored.fixtures.Count -ne 2 -or
-    @($stored.fixtures | Where-Object { $_.key -cnotmatch '^[0-9a-f]{64}$' -or $_.status -cne 'passed' -or -not (Test-Path -LiteralPath $_.log) -or
-        ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($_.verifiedAt)).TotalMinutes -gt 10 }).Count) {
+    @($stored.fixtures | Where-Object { $_.key -cnotmatch '^[0-9a-f]{64}$' -or $_.runKey -cnotmatch '^[0-9a-f]{64}$' -or $_.status -cne 'passed' -or
+        -not (Test-Path -LiteralPath $_.log) -or ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($_.verifiedAt)).TotalMinutes -gt 10 }).Count) {
     throw 'The first run did not record keyed, verified results.'
 }
 Assert-Reuse 'reuse-first' $first @()
+# Each entry of a case that reused both fixtures keeps reuse-first's execution time, log, fixture key and run key.
+function Assert-Kept([string] $name) {
+    foreach ($entry in (Read-NativeResults $name).fixtures) {
+        $origin = $stored.fixtures | Where-Object fixture -CEQ $entry.fixture
+        if ($entry.verifiedAt -cne $origin.verifiedAt -or $entry.log -cne $origin.log -or $entry.key -cne $origin.key -or $entry.runKey -cne $origin.runKey) {
+            throw "A reused entry lost its verification: $name"
+        }
+    }
+}
 $firstResults = Join-Path $evidence 'reuse-first/native-results.json'
 $records = Invoke-Case 'reuse-all' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse @{ ReuseResults = $firstResults }
 Assert-Reuse 'reuse-all' $records @('one.ll', 'two.ll')
-foreach ($entry in (Read-NativeResults 'reuse-all').fixtures) {
-    $origin = $stored.fixtures | Where-Object fixture -CEQ $entry.fixture
-    if ($entry.verifiedAt -cne $origin.verifiedAt -or $entry.log -cne $origin.log -or $entry.key -cne $origin.key) { throw 'A reused entry lost its verification.' }
-}
+Assert-Kept 'reuse-all'
 # A changed sidecar re-runs only its fixture; the failure is recorded and never reused afterwards.
 [IO.File]::WriteAllText((Join-Path $reuseFixtures 'two.stdout'), 'wrong', $utf8)
 $records = Invoke-Case 'reuse-changed' (Join-Path $reuseFixtures '*.ll') 2 -expected $false -count 2 -deadline 30000 -reuse @{ ReuseResults = $firstResults }
@@ -120,6 +131,58 @@ Assert-Reuse 'reuse-hours' $records @('one.ll', 'two.ll')
 # Another environment (here the deadline) re-runs everything.
 $records = Invoke-Case 'reuse-environment' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 29999 -reuse @{ ReuseResults = $firstResults }
 Assert-Reuse 'reuse-environment' $records @()
+# Run reuse: reuse-first's results as the base of another environment (64 zeros) whose executables are unchanged, each entry edited
+# by $edit; returns the case's -reuse arguments.
+function New-MovedBase([string] $name, [scriptblock] $edit = { }) {
+    $base = Read-NativeResults 'reuse-first'
+    $base.environmentKey = '0' * 64
+    foreach ($entry in $base.fixtures) { & $edit $entry }
+    $path = Join-Path $work "$name-results.json"
+    $base | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $path
+    @{ ReuseResults = $path }
+}
+# Rebuilt byte-identical executables are not run again: both fixtures are built and reused, keeping their entries' verification.
+$records = Invoke-Case 'reuse-runs' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs')
+Assert-Reuse 'reuse-runs' $records @('one.ll', 'two.ll') @('one.ll', 'two.ll')
+Assert-Kept 'reuse-runs'
+# A changed executable (one: a volatile store to a new global, the same output) and a changed sidecar (two) run.
+$padded = $ir.Replace('@_fltused = global i32 0', "@_fltused = global i32 0`n@pad = global i32 0")
+New-Fixture $reuseFixtures 'one' -source ($padded.Replace('  %written = alloca i32', "  store volatile i32 1, ptr @pad`n  %written = alloca i32"))
+[IO.File]::WriteAllText((Join-Path $reuseFixtures 'two.stdout'), 'wrong', $utf8)
+$records = Invoke-Case 'reuse-runs-changed' (Join-Path $reuseFixtures '*.ll') 2 -expected $false -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs-changed')
+Assert-Reuse 'reuse-runs-changed' $records @()
+if (($records | Where-Object fixture -CEQ 'one.ll').status -cne 'passed' -or ($records | Where-Object fixture -CEQ 'one.ll').executions.Count -ne 2 -or
+    ($records | Where-Object fixture -CEQ 'two.ll').status -cne 'failed') { throw 'A changed executable or sidecar was not run.' }
+foreach ($pair in @('one', 'O0/one')) {
+    $before = Get-Content (Join-Path $work "reuse-first/$pair.link.build.json") -Raw | ConvertFrom-Json
+    if ((Get-Content (Join-Path $work "reuse-runs-changed/$pair.link.build.json") -Raw | ConvertFrom-Json).executableSha256 -ceq $before.executableSha256) {
+        throw 'The changed fixture linked the same executable.'
+    }
+}
+New-Fixture $reuseFixtures 'one'
+New-Fixture $reuseFixtures 'two'
+# An entry executed more than -ReuseHours ago (one) or failed (two) is no candidate: both run.
+$records = Invoke-Case 'reuse-runs-stale' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs-stale' {
+    param($entry)
+    if ($entry.fixture -ceq 'one.ll') { $entry.verifiedAt = [DateTimeOffset]::UtcNow.AddHours(-25).ToString('o') } else { $entry.status = 'failed' }
+})
+Assert-Reuse 'reuse-runs-stale' $records @()
+# A run is reused only from an entry executed within half of -ReuseHours (O-522 (a2)): one, executed 13 h ago, runs although its
+# run key is equal; two, executed 11 h ago, is reused.
+$records = Invoke-Case 'reuse-runs-half' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs-half' {
+    param($entry)
+    $entry.verifiedAt = [DateTimeOffset]::UtcNow.AddHours($(if ($entry.fixture -ceq 'one.ll') { -13 } else { -11 })).ToString('o')
+})
+Assert-Reuse 'reuse-runs-half' $records @('two.ll') @('two.ll')
+if (((Read-NativeResults 'reuse-runs-half').fixtures | Where-Object fixture -CEQ 'one.ll').runKey -cne ($stored.fixtures | Where-Object fixture -CEQ 'one.ll').runKey) {
+    throw 'An executed entry lost its run key.'
+}
+# An entry written before run keys (one) is not reusable for runs.
+$records = Invoke-Case 'reuse-runs-unkeyed' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs-unkeyed' {
+    param($entry)
+    if ($entry.fixture -ceq 'one.ll') { $entry.PSObject.Properties.Remove('runKey') }
+})
+Assert-Reuse 'reuse-runs-unkeyed' $records @('two.ll') @('two.ll')
 $mixed = Join-Path $work 'mixed'
 New-Fixture $mixed 'valid'
 New-Fixture $mixed 'bad-output' -stdout 'wrong'
@@ -149,7 +212,10 @@ New-Fixture $mixed 'returned-divergence'
 New-Fixture $mixed 'nul-output' -stdout "日`0`n"
 New-Fixture $mixed 'normalized-error' -source ($ir.Replace('\E6\97\A5', 'e\CC\81')) -stdout "e$([char]0x301)`n" -stderr "$([char]0xE9)`n"
 New-Fixture $mixed 'bom-output' -stdout "$([char]0xFEFF)日`n"
-$records = Invoke-Case 'mixed-failures' (Join-Path $mixed '*.ll') 4 -expected $false -count 12 -deadline 30000
+# A kernel32 import referenced in another form than its declaration (ExitProcess without dllimport): it links through kernel32.lib's
+# thunk, so only the build's object inspection rejects it.
+New-Fixture $mixed 'forbidden-dependency' -source ($ir.Replace('declare dllimport void @ExitProcess', 'declare void @ExitProcess'))
+$records = Invoke-Case 'mixed-failures' (Join-Path $mixed '*.ll') 4 -expected $false -count 13 -deadline 30000
 if (@($records | Where-Object status -CEQ 'passed').Count -ne 1 -or ($records | Where-Object fixture -eq 'valid.ll').status -cne 'passed') {
     throw 'Failures were lost or affected an independent fixture.'
 }
@@ -167,15 +233,43 @@ $sample = $invalid.executions[0].result
 if ($sample.violations.Count -ne 2 -or @($sample.violations | Where-Object kind -CNE 'invalidUtf8').Count -ne 0 -or
     $sample.problems.Count -ne 0 -or $null -ne $sample.unrecoveredProcessId) { throw 'Invalid UTF-8 capture/recovery facts were lost.' }
 $badIr = $records | Where-Object fixture -CEQ 'bad-ir.ll'
-if ($badIr.status -cne 'failed' -or $badIr.tools[0].exitCode -eq 0) { throw 'An observed LLVM failure became incomplete.' }
+if ($badIr.status -cne 'failed' -or $badIr.builds[0].recordStatus -ceq 'linked') { throw 'An observed LLVM failure became incomplete.' }
 $unverified = $records | Where-Object fixture -CEQ 'unverified-ir.ll'
-if ($unverified.status -cne 'failed' -or $unverified.tools.Count -ne 1 -or $unverified.tools[0].exitCode -eq 0 -or
-    $unverified.executions.Count -ne 0) { throw 'IR that fails only the verifier was not rejected by the first opt.' }
+if ($unverified.status -cne 'failed' -or $unverified.builds.Count -ne 1 -or $unverified.builds[0].recordStatus -ceq 'linked' -or
+    $unverified.executions.Count -ne 0) { throw 'IR that fails only the verifier was not rejected by its first build.' }
+$dependency = $records | Where-Object fixture -CEQ 'forbidden-dependency.ll'
+if ($dependency.status -cne 'failed' -or $dependency.builds[0].recordStatus -ceq 'linked' -or $dependency.problems.Count -ne 0 -or
+    -not (Select-String -LiteralPath $dependency.builds[0].log -SimpleMatch 'Unsupported actual object dependency: ExitProcess U')) {
+    throw 'A forbidden dependency was linked, failed otherwise or became an incomplete observation.'
+}
 $missingInput = $records | Where-Object fixture -CEQ 'missing-sidecar.ll'
 if ($missingInput.status -cne 'incomplete' -or $missingInput.problems.Count -ne 1 -or
     $missingInput.problems[0].operation -cne 'fixture.input') { throw 'Missing input lost its owning operation.' }
-$divergent = Join-Path $work 'divergent' 
-New-Fixture $divergent 'loop' -source "target triple = `"x86_64-pc-windows-msvc`"`ndefine void @__kimi_start() noreturn {`nentry:`n  br label %loop`nloop:`n  br label %loop`n}`n" -stdout '' -stderr '' -exitCode 0
+# A build that ends its session (an LLVM fatal error: x86 cannot select an AArch64 intrinsic, its result kept at O2) dealt ahead of
+# another fixture in one lane: the lines after it go to a later round's session, where the other fixture is built and passes.
+$rounds = Join-Path $work 'fatal'
+New-Fixture $rounds 'cannot-select' -source @'
+target triple = "x86_64-pc-windows-msvc"
+@_fltused = global i32 0
+@v = global <4 x i32> zeroinitializer
+declare <4 x i32> @llvm.aarch64.neon.abs.v4i32(<4 x i32>)
+declare dllimport void @ExitProcess(i32) noreturn
+define void @__kimi_start() noreturn uwtable {
+  %x = load volatile <4 x i32>, ptr @v
+  %y = call <4 x i32> @llvm.aarch64.neon.abs.v4i32(<4 x i32> %x)
+  store volatile <4 x i32> %y, ptr @v
+  call void @ExitProcess(i32 7)
+  unreachable
+}
+'@
+New-Fixture $rounds 'valid'
+$records = Invoke-Case 'rounds' (Join-Path $rounds '*.ll') 1 -expected $false -count 2 -deadline 30000
+$fatal = $records | Where-Object fixture -CEQ 'cannot-select.ll'
+$later = $records | Where-Object fixture -CEQ 'valid.ll'
+if ($fatal.status -cne 'failed' -or $fatal.builds[0].log -cnotmatch 'session-0\.log$' -or $later.status -cne 'passed' -or
+    @($later.builds | Where-Object log -CMatch 'session-0\.log$').Count -ne 0) { throw 'A session ended by its build lost the next round.' }
+$divergent = Join-Path $work 'divergent'
+New-Fixture $divergent 'loop' -source "target triple = `"x86_64-pc-windows-msvc`"`n@_fltused = global i32 0`ndefine void @__kimi_start() noreturn uwtable {`nentry:`n  br label %loop`nloop:`n  br label %loop`n}`n" -stdout '' -stderr '' -exitCode 0
 [IO.File]::WriteAllText((Join-Path $divergent 'loop.observation'), '100', $utf8)
 $records = Invoke-Case 'divergence' (Join-Path $divergent '*.ll') 2 -expected $true -count 1 -deadline 30000
 foreach ($execution in $records[0].executions) {
@@ -213,96 +307,42 @@ if ($missing.status -cne 'incomplete' -or $missing.termination -cne 'notStarted'
     $missing.problems.Count -ne 1 -or $missing.problems[0].operation -cne 'launch') { throw 'Missing launch invented observation facts.' }
 $results.Add(@{ name = 'missing-executable'; passed = $true; records = @($missing) })
 
-# A real successful link followed by loss of our executable stays incomplete, never a known failure.
-. (Join-Path $repo 'src/backend/windows-x64/kernel32.ps1')
-$chainLogs = Join-Path $evidence 'launch-gap/native-0-fixtures'
-$chainWork = Join-Path $work 'launch-gap'
-$null = New-Item -ItemType Directory -Force $chainLogs, $chainWork
-$wrapper = Join-Path $chainWork 'link-and-retain.ps1'
-$wrapperSource = @'
-$ErrorActionPreference = 'Stop'
-& 'TOOLCHAIN/lld-link.exe' @args
-if ($LASTEXITCODE -ne 0) { throw "Real linker failed: $LASTEXITCODE" }
-$output = @($args | Where-Object { $_.StartsWith('/out:', [StringComparison]::OrdinalIgnoreCase) })
-if ($output.Count -ne 1) { throw 'Expected one linker output.' }
-$source = (Resolve-Path -LiteralPath $output[0].Substring(5)).Path
-$root = (Resolve-Path -LiteralPath 'WORK').Path.TrimEnd('\') + '\'
-$destination = [IO.Path]::GetFullPath($source + '.retained')
-if (-not $source.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or
-    -not $destination.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or
-    (Test-Path -LiteralPath $destination)) { throw 'Generated executable escaped the isolated test or would be overwritten.' }
-foreach ($path in @($source, $root)) {
-    if (((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Reparse point rejected.' }
+# A linked build whose executable is lost before its run stays incomplete, never a known failure: the serial case's pairs, the O0
+# executable removed, run again by the worker.
+function Get-Builds([string] $output, [string] $stem) {
+    @{ "$stem.ll" = @(foreach ($level in @('O0', 'O2')) {
+        $pair = if ($level -ceq 'O2') { Join-Path $output $stem } else { Join-Path $output "O0/$stem" }
+        [pscustomobject]@{ level = $level; manifest = "$pair.link.json"; record = "$pair.link.build.json"; log = 'none' }
+    }) }
 }
-$hash = (Get-FileHash -LiteralPath $source).Hash
-Move-Item -LiteralPath $source -Destination $destination
-if ((Get-FileHash -LiteralPath $destination).Hash -cne $hash) { throw 'Retained executable changed.' }
-'@
-[IO.File]::WriteAllText($wrapper, $wrapperSource.Replace('TOOLCHAIN', $tools).Replace('WORK', $chainWork), $utf8)
-$workerTools = @{}
-foreach ($name in @('opt', 'llc', 'llvm-nm')) { $workerTools[$name] = Join-Path $tools "$name.exe" }
-$workerTools['lld-link'] = $wrapper
-$allowed = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-foreach ($symbol in (Read-KimiWindowsProfile).providedSymbols) { $null = $allowed.Add($symbol) }
-foreach ($line in ((Get-KimiKernel32Definition) -split [char]10 | Select-Object -Skip 2)) {
-    $symbol = $line.Trim()
-    if ($symbol) { $null = $allowed.Add($symbol); $null = $allowed.Add("__imp_$symbol") }
-}
-$context = @{
-    tools = $workerTools; fixtures = $valid; output = $chainWork; kernel = Get-KimiKernel32
-    archive = Get-KimiBackendArchive
-    allowedSymbols = [string[]]@($allowed); logs = $chainLogs; executionDeadlineMilliseconds = 30000
-}
+$serialOutput = Join-Path $work 'serial'
+$context = @{ fixtures = $valid; logs = (Join-Path $evidence 'launch-gap'); builds = (Get-Builds $serialOutput 'one'); executionDeadlineMilliseconds = 30000 }
+$null = New-Item -ItemType Directory -Force $context.logs
+Remove-Item -LiteralPath (Join-Path $serialOutput 'O0/one.O0.exe')
 $worker = Join-Path $repo 'src/backend/windows-x64/test-scalar-fixture.ps1'
 $record = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $context
 if ($record.status -cne 'incomplete' -or $record.executions.Count -ne 1 -or
     $record.executions[0].result.problems[0].operation -cne 'launch') { throw 'A lost executable became a known failure or lost its execution.' }
 $results.Add(@{ name = 'launch-gap'; passed = $true; records = @($record) })
 
-# Failure to write tool evidence remains incomplete at the fixture boundary, never an input or LLVM failure.
-$context.logs = Join-Path $evidence 'evidence-write'
+# A pair no session attempted (it has no record) is incomplete, never a failed build.
+$context.logs = Join-Path $evidence 'unattempted'
 $null = New-Item -ItemType Directory -Force $context.logs
-$context.output = Join-Path $chainWork 'blocked-output'
-$null = New-Item -ItemType Directory -Force (Join-Path $context.output 'one.O0.undefined.txt')
-$blocked = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $context
-if ($blocked.status -cne 'incomplete' -or $blocked.problems.Count -ne 1 -or
-    $blocked.problems[0].operation -cne 'fixture' -or $blocked.executions.Count -ne 0 -or
-    @($blocked.tools | Where-Object exitCode -NE 0).Count -ne 0) { throw 'Evidence write failure was misclassified.' }
-$results.Add(@{ name = 'evidence-write'; passed = $true; records = @($blocked) })
-
-# A tool that never launches is incomplete; a successfully observed forbidden dependency is a definite failure.
-$context.output = Join-Path $chainWork 'boundary-output'
-$context.logs = Join-Path $evidence 'tool-launch'
-$null = New-Item -ItemType Directory -Force $context.output, $context.logs
-$context.tools.opt = Join-Path $chainWork 'missing-opt.exe'
-$unlaunchedTool = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $context
-if ($unlaunchedTool.status -cne 'incomplete' -or $unlaunchedTool.problems[0].operation -cne 'tool.launch' -or
-    $unlaunchedTool.tools.Count -ne 0) { throw 'An unlaunched LLVM tool became an observed nonzero exit.' }
-$results.Add(@{ name = 'tool-launch'; passed = $true; records = @($unlaunchedTool) })
-$context.tools.opt = Join-Path $tools 'opt.exe'
-$context.allowedSymbols = [string[]]@()
-$context.logs = Join-Path $evidence 'dependency'
-$null = New-Item -ItemType Directory -Force $context.logs
-$dependency = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $context
-if ($dependency.status -cne 'failed' -or $dependency.violations[0].kind -cne 'dependency' -or
-    $dependency.problems.Count -ne 0) { throw 'A forbidden dependency became an incomplete observation.' }
-$results.Add(@{ name = 'dependency'; passed = $true; records = @($dependency) })
-
-# The merged llvm-nm names each object by its path; a path the console decodes differently (a non-ASCII folder under code page 932)
-# must make the fixture incomplete, never drop the forbidden dependency and pass.
-$savedEncoding = [Console]::OutputEncoding
-try {
-    [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(932)
-    $context.output = Join-Path $chainWork "nm-$([char]0x51FA)$([char]0x529B)"
-    $context.logs = Join-Path $evidence 'nm-attribution'
-    $null = New-Item -ItemType Directory -Force $context.output, $context.logs
-    $attribution = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $context
+$context.builds = Get-Builds (Join-Path $work 'unattempted') 'one'
+$unattempted = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $context
+if ($unattempted.status -cne 'incomplete' -or $unattempted.problems[0].operation -cne 'build' -or $unattempted.builds.Count -ne 0) {
+    throw 'An unattempted build became a known failure.'
 }
-finally { [Console]::OutputEncoding = $savedEncoding }
-$attributed = ($attribution.status -ceq 'failed' -and $attribution.violations[0].kind -ceq 'dependency') -or
-    ($attribution.status -ceq 'incomplete' -and $attribution.problems[0].operation -ceq 'tool.output')
-if (-not $attributed) { throw "A merged llvm-nm line that names no object passed or was misclassified: $($attribution.status)" }
-$results.Add(@{ name = 'nm-attribution'; passed = $true; records = @($attribution) })
+$results.Add(@{ name = 'unattempted'; passed = $true; records = @($unattempted) })
+
+# A non-ASCII output folder under a console input code page that is not UTF-8 (932, which a redirected input otherwise takes): the
+# sessions' UTF-8 lines and the pairs' records name the pairs exactly.
+$savedInput = [Console]::InputEncoding
+try {
+    [Console]::InputEncoding = [Text.Encoding]::GetEncoding(932)
+    $null = Invoke-Case "path-$([char]0x51FA)$([char]0x529B)" (Join-Path $valid '*.ll') 2 -expected $true -count 2 -deadline 30000
+}
+finally { [Console]::InputEncoding = $savedInput }
 
 # An unwritable log destination aborts the step instead of publishing a failed fixture.
 $context.logs = Join-Path $work 'evidence-file'
@@ -375,9 +415,9 @@ $empty = Join-Path $work 'empty'
 New-Item -ItemType Directory $empty | Out-Null
 [IO.File]::WriteAllText((Join-Path $empty 'orphan.stdout'), 'sidecar only', $utf8)
 $caught = $false
-try { & $runner -ToolchainRoot $ToolchainRoot -FixtureDirectory $empty -FixturePattern '*' *> (Join-Path $evidence 'empty.log') }
+try { & $runner -Configuration $Configuration -FixtureDirectory $empty -FixturePattern '*' *> (Join-Path $evidence 'empty.log') }
 catch { $caught = $true; $_ | Out-String | Add-Content (Join-Path $evidence 'empty.log') }
 if (-not $caught) { throw 'An empty selection must fail.' }
 $results | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $evidence 'summary.json')
-Write-Output ("PASS native runner: serial/parallel UTF-8, exits, mixed failures, result reuse, CPU observation, " +
-    "delayed/insufficient execution, broad patterns and sidecar-only rejection; $evidence")
+Write-Output ("PASS native runner: serial/parallel UTF-8, exits, mixed failures, forbidden dependency, unattempted and lost builds, rounds, " +
+    "non-ASCII paths, result and run reuse, CPU observation, delayed/insufficient execution, broad patterns and sidecar-only rejection; $evidence")

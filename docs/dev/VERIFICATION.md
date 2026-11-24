@@ -5,13 +5,18 @@
 `.github/workflows/test.yml` runs only on pushes to `main`, including merge updates, as recorded in [SETTLED.md](../SETTLED.md#running-full-ci-before-integration-into-main). Ubuntu checks the
 managed solution with warnings as errors. Windows uses the ordinary Session verifier for all functional/allocation
 regressions and every regenerated native fixture at O0/O2, then runs the native-worker PowerShell regressions, CLI
-integration, and extension unit/integration tests with the managed compiler. Neither job runs NativeAOT.
+integration, and extension unit/integration tests with the managed compiler. The `kimi` job publishes `kimi.exe` (NativeAOT)
+with `scripts/build-kimi.ps1` and its product check, beside the other two jobs.
 
 The Windows job downloads the adopted LLVM archive only on a toolchain-cache miss, checks its pinned SHA-256, extracts it
 and calls the backend setup script with `-LlvmRoot <the extracted archive>`, which also builds `tatara.dll`; the cache key
 covers `profile.json`, `setup.ps1`, the backend's sources and builders (`src/backend/windows-x64/src/**`, `build.ps1`,
 `kernel32.ps1`) and `src/Tatara`, so a change to any of them reruns setup, which must reproduce the committed libraries.
 Explicit toolchain verification checks cached installations too.
+The archive fetch is one composite action, `.github/actions/llvm-archive`, which publishes the extracted root as its output:
+the Windows job runs it on a toolchain-cache miss, the `kimi` job on every run. A red `kimi` job is the Tatara session's to
+answer; a break from a `src/Tatara`-only change is found at the next `main` push, not in its window. The job checks the
+runner's SDK (setup-dotnet 10.0.x), not a local one.
 Update the archive version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
 when a later step fails. A configured lane is not evidence of a successful hosted run; inspect that run's results.
 
@@ -172,18 +177,20 @@ own).
 `-VerifyToolchain` runs `kimi toolchain verify` (the compiler's self-check, `toolchain.json`) and then
 `src/backend/windows-x64/check-toolchain.ps1` (the development toolchain: the tools and `tatara.dll` against
 `installation.json` and the catalog, `check-toolchain.log`); the summary's `toolchainVerification` is `passed` only
-when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrote, and setup installs no archive DLL
-(`supportingDlls: {}`); a base before Tatara B6b3 still verifies such a root (its verify reads the empty object). A root
-made from B6b6 on has no `windows_x64`: it serves bases from B6a on for builds, from B6b3 on for verify and from B6b6 on
-for the native fixtures and the other scripts that linked the root's libraries. Existing roots, the shared one included,
-keep their files (setup deletes nothing). `src/backend/windows-x64/test-toolchain-verification.ps1` tests
+when both pass. Setup's last step runs `check-toolchain.ps1` on the root it wrote, and setup installs and records no
+archive DLL (Tatara G1231, DECISIONS T-M11; an older setup's `supportingDlls` and its DLLs are not read). A root set up
+from G1231 on has neither `windows_x64` nor that member: it serves bases from B6a on for builds, from G1231 on for
+`check-toolchain.ps1` (an older base's check requires the member) and from B6b6 on for the native fixtures and the other
+scripts that linked the root's libraries. Existing roots, the shared one included, keep their files (setup deletes nothing). `src/backend/windows-x64/test-toolchain-verification.ps1` tests
 `check-toolchain.ps1` and takes no `-Configuration` (it runs no compiler); its rows check, in turn, one root it makes
 (`artifacts/verify/toolchain/<guid>/toolchain`, removed at the end), whose tools and DLLs are hard links to the toolchain's
 (never written; a hard link needs the toolchain's volume) and whose `installation.json` is a copy, the only file the rows
 change.
 
 `scripts/build-kimi.ps1 -LlvmRoot <the pinned archive, extracted>` publishes `kimi.exe` with Tatara linked in and checks the
-product (PLAN G1245 says when a unit runs it). Tatara's objects embed the archive's absolute path, so the bytes of `tatara.dll`
+product (CI's `kimi` job runs it on every `main` push; a unit changing the script or `Kimi.csproj`'s publish items runs it under
+the tooling row, with the NativeAOT instruction in its brief); its product check includes a build of `docs/examples/Hello` by the
+published `Kimi.exe` (exactly 14 bytes, empty stderr, exit 0). Tatara's objects embed the archive's absolute path, so the bytes of `tatara.dll`
 and `kimi.exe` depend on where the archive is extracted: byte comparisons and start-cost runs extract it at one path.
 
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start
@@ -196,13 +203,20 @@ evidence directory and the date. Reuse an existing base for the same commit; pro
 against the base of the commit it starts from; pass `-DiagnosticBaseline` an absolute Windows path (`C:/...` or `C:\...`),
 since `verify.ps1` does not resolve a Git Bash path such as `/c/...`.
 
-`test-scalars.ps1` writes `native-results.json` beside `results.json`: an environment key (hashes of the LLVM tools, backend
-archive, kernel32 library, runner scripts and `profile.json`, the allowed symbols and the deadline) and, per fixture, a key over
-its `.ll`, `.stdout`, `.stderr`, `.exit` and `.observation` files, its status and when it last executed. `verify.ps1 -NativeReuse
-<base>/native-results.json` (the runner's `-ReuseResults`) skips a fixture whose entry has both keys equal, status `passed` and an
-execution within `-ReuseHours` (24); every other fixture executes, so each fixture runs at least daily and at once when an input
-changes. The success line reports the split (`N fixtures run, M reused`); a base without the file means a full native run. The keys
-do not see machine load or the inherited environment, so a flaky observation or deadline failure can stay hidden for up to a day.
+`test-scalars.ps1` writes `native-results.json` beside `results.json`: an environment key (hashes of the compiler's `tatara.dll`,
+the backend archive, kernel32, the native build's code under `src/Kimi/Build`, the `tatara` and `build` commands and the target
+profile, the runner scripts, `kernel32.def` and `profile.json`, and the deadline) and, per fixture, a key over its `.ll`,
+`.stdout`, `.stderr`, `.exit` and `.observation` files, a run key over its two executables (the hash each linked record names,
+which its file has), the four sidecars (`.stdout` to `.observation`), the run scripts (`test-scalars.ps1`,
+`test-scalar-fixture.ps1`, `test-scalar-process.ps1`, `expected-output.ps1`) and the deadline, its status and when it last
+executed. `verify.ps1 -NativeReuse <base>/native-results.json` (the runner's `-ReuseResults`) takes the base's entries with status
+`passed` and an execution within `-ReuseHours` (24): a fixture whose environment and fixture keys equal its entry's is neither
+built nor run; every other fixture is built, and one whose run key then equals its entry's, executed within half of `-ReuseHours`
+(12), is not run (DECISIONS Q16). A reused fixture keeps its entry's execution time and log, so each fixture runs at least daily,
+again at a rebuild 12-24 h after its last execution, and at once when its executables, sidecars, run scripts or deadline change.
+The success line reports the split (`N fixtures run, M reused (K of them built; ...)`); a base without the file, or with entries
+written before run keys, means every built fixture runs. The keys do not see machine load or the inherited environment, so a
+flaky observation or deadline failure can stay hidden for up to a day.
 
 ## Specification acceptance and support boundaries
 
@@ -278,7 +292,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 
 ## Native fixtures
 
-`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four workers; 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit-code and dependency oracles are checked at each level.
+`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four; 1 runs serially. The runner (`test-scalars.ps1 -Configuration`) writes each fixture's two IR/manifest pairs (the manifest `kimi emit` writes for this compiler, once per run) and builds them in up to that many `kimi tatara` sessions of the configuration's `Kimi.dll` (`build --Manifest`, through Tatara: the input IR verified, O2 optimized and verified again, each object inspected as `kimi build` does), then runs O0 and O2 of each fixture whose run the base does not reuse ([Shared heavy runs and bases](#shared-heavy-runs-and-bases)). stdout, stderr, exit-code and dependency oracles are checked at each level. A build whose record is not linked is a failure, whatever stopped it. Use a fresh output folder: every pending pair is rewritten and its earlier record removed before the first session.
 
 Each fixture owns its output names and log. Workers publish status (passed, failed or incomplete), completed optimization levels and per-level execution measurements; the parent waits for every worker, preserves failure logs and fails the step if any fixture fails, is incomplete or has no result. Verify stores per-fixture logs and `results.json` under its evidence directory, with generated binaries under `temp/`. Fixture patterns are still processed in order, and parallelism is bounded within each pattern.
 
@@ -294,4 +308,4 @@ comparison accepts old ok records; it rejects incomplete results.
 Native selection and its input hashes include only `.ll` files, even with a broad pattern such as `*`.
 Sidecar expectation files never become compiler inputs; a pattern matching only sidecars fails as an empty selection.
 
-After changes to native verification, run `./tests/scripts/NativeFixtureRunnerTest.ps1` with the installed toolchain. It checks serial/parallel equivalence, UTF-8 stdout/stderr, nonzero expected exits, mixed independent failures, CPU observation, delayed execution, insufficient observation, expected-completion deadlines, lost executable launches, invalid UTF-8, evidence failure and empty selections. Native recovery uses one fixed 5-second grace separate from the execution deadline; unavailable launch/CPU/recovery/capture is incomplete, while captured invalid UTF-8 is a failure. Logs, including intentional failure cases, remain in `artifacts/verify/`.
+After changes to native verification, run `./tests/scripts/NativeFixtureRunnerTest.ps1 [-Configuration]` with the built compiler and the installed toolchain. It checks serial/parallel equivalence, UTF-8 stdout/stderr, nonzero expected exits, mixed independent failures, CPU observation, delayed execution, insufficient observation, expected-completion deadlines, lost executable launches, a forbidden dependency, an unattempted and a lost build, a non-ASCII output path under a non-UTF-8 input code page, a session ended by its build (the next round builds the rest), invalid UTF-8, evidence failure and empty selections. Native recovery uses one fixed 5-second grace separate from the execution deadline; unavailable launch/CPU/recovery/capture is incomplete, while captured invalid UTF-8 is a failure. Logs, including intentional failure cases, remain in `artifacts/verify/`.

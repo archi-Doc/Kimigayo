@@ -128,7 +128,7 @@ public class QualificationRequiredTest
         => Assert.NotEmpty(DiagnosticCorpus.Check("struct S: S.N\n    open struct N: S\npublic func main() => ()").Diagnostics);
 
     // Since the MIR decides acceptance (R6-check H5), the constructor whose write Binding rejects also has A1's UninitializedPlace_Kd,
-    // since the rejected write initializes nothing (PLAN G105): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
+    // since the rejected write initializes nothing (PLAN G1184): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
     [Fact]
     public void AnOwnStoredFieldCanBeQualifiedInAConstructorBody()
     {

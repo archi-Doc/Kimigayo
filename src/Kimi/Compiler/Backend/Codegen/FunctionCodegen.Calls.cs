@@ -225,8 +225,9 @@ internal sealed partial class FunctionCodegen
         this.Branch(call.Target);
     }
 
-    // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every call,
-    // value calls included, package C row 14); its value, or null for a void result. Its callee is one value: the routine's symbol, or an
+    // A call of a routine, its result's extension and each argument with its parameter's Type and attributes (the O2 parity list's
+    // `noundef nonnull ...` at every call, value calls included, package C row 14; an import's System V extensions, its own at each call,
+    // IMPL 21.2); its value, or null for a void result. Its callee is one value: the routine's symbol, or an
     // entry pointer (an erased value's table entry, FunctionCodegen.Closures; a virtual slot's, EntryOf); nothing else decides how it calls.
     private Value? WriteCall(FunctionAbi routine, ReadOnlySpan<Value> arguments, Value? entry = null)
     {
@@ -239,7 +240,9 @@ internal sealed partial class FunctionCodegen
             output.Write(" = ");
         }
 
-        output.Write("call ");
+        output.Write("call");
+        output.Write(routine.ResultExtension);
+        output.Write(' ');
         output.Write(routine.Result);
         output.Write(' ');
         if (entry is { } pointer)

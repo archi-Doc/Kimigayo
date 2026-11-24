@@ -26,8 +26,8 @@ public sealed partial class Binding
     private ulong storageVersion;
 
     /// <summary>Storage preparation's verdict on a Type (DECISIONS BU-12, BU-36); a limit takes precedence, and the verdict depends on the
-    /// Type alone. The order is the precedence, so the verdict of several parts is the greatest (TyCtxt.Compose, BU-38). Layout's Rejected
-    /// (R5-M37) names the same fact over the parts it places.</summary>
+    /// Type alone. The order is the precedence, so the verdict of several parts in PrepareTypeStorage's own walk is the greatest (BU-38).
+    /// Layout's Rejected (R5-M37) names the same fact over the parts it places.</summary>
     internal enum StorageOutcome : byte
     {
         /// <summary>Every part the storage reaches substitutes, within PLAN G128's limits.</summary>
@@ -307,10 +307,9 @@ public sealed partial class Binding
         receiver.Type = scope.Parent?.Owner.BoundSymbol?.Type;
         if (!scope.Values.TryAdd("self", receiver))
         {
-            // Transitional, R7-E5 (R7-E2 E2-4's B1 (a)): the written `self` repeats the implicit receiver (SPEC 9.3) and keeps the slot's
-            // failure: the function may also be the first or a later of a Signature group, which RecordDuplicateGroups records after Index
-            // under the same key with its own facts, until R7-E5's per-problem inputs place this record beside the group's.
-            this.Fail(function, BindingFailure.Duplicate);
+            // SPEC 9.3: the written `self` repeats the implicit receiver, which declares at the function itself (no first node). Numbered:
+            // the function may also be a Signature group's first or later, whose record RecordDuplicateGroups numbers beside this one.
+            this.RecordNumbered(function, BindingFailure.Duplicate, []);
         }
     }
 
@@ -368,7 +367,7 @@ public sealed partial class Binding
             unwrapped = UnwrapTypeSyntax(root.Operands[0]);
         }
 
-        if (unwrapped is GenericsKoto || TypeSpelling(unwrapped) == "Self" ||
+        if (unwrapped is GenericsKoto || symbol.SelfOf is not null ||
             symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 })
         {
             return this.EnumQualifierType(syntax, symbol, scope, null);
@@ -393,6 +392,13 @@ public sealed partial class Binding
             {
                 return this.FailConstructorAbsence(node, parent);
             }
+
+            // SPEC 23.1.2 (PLAN G651 a2, B5): a clause that gives the selection no base (no Type, an inline cycle) has its record; the base
+            // call rests on the struct's. With no clause, `: base(..)` without a base is the call's own error (SPEC 6.3.3).
+            if (constructor.BoundSymbol!.Scope.Owner is StructKoto { BaseClause: not null } declared)
+            {
+                return this.CompleteDependent(node, declared);
+            }
         }
 
         return this.Fail(node, BindingFailure.InvalidTypeFormation);
@@ -401,7 +407,7 @@ public sealed partial class Binding
     // SPEC 6.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
     private BindingSymbol? BaseConstructorGroup(FunctionKoto constructor, out BoundType? parent)
     {
-        parent = AdtDef.Base(this.types, this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
+        parent = constructor.BoundSymbol!.Scope.Owner is StructKoto owner ? this.SelectionBase(owner) : null;
         return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
@@ -547,7 +553,7 @@ public sealed partial class Binding
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
         var type = baseInitializer
-            ? AdtDef.Base(this.types, this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
+            ? this.SelectionBase((StructKoto)((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner)!
             : this.memberSelections[(MemberAccessKoto)call.Method].DeclaringType!; // ConstructorMember's published declaring Type (C-i)
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)

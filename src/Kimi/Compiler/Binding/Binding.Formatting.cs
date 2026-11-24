@@ -71,7 +71,7 @@ public sealed partial class Binding
     private (BindingSymbol Target, BoundType? Declaring)? LeafTarget(BindingSymbol site, BoundType self, BindingSymbol contract, string? name)
     {
         if (contract.Contract?.OwnRequirement() is { } requirement &&
-            this.ResolveRequirementWitness(requirement, self, contract, this.ConstraintScope(site.Declaration)) is
+            this.ResolveRequirementWitness(requirement, self, contract, this.ConstraintScope(site.Declaration), site.Declaration) is
             { Kind: RequirementWitnessKind.LibraryWitness, Target: { } member })
         {
             return (member, null);
@@ -127,7 +127,7 @@ public sealed partial class Binding
         Prepare(ref this.builtinCompare, KimiDeclarationId.Comparable);
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
-            if (!ArithmeticContracts.IsLeft(id))
+            if (!KimiLibraryCatalog.IsLeftContract(id))
             {
                 Prepare(ref this.builtinArithmetic[ArithmeticSlot(id)], id);
             }

@@ -32,7 +32,7 @@ internal sealed partial class MirBorrows
             var set = terminator.Kind == MirTerminatorKind.Call && terminator.Target >= 0 ? this.Ending(terminator.Place) : 0;
             if (this.InPlaceTarget(terminator) is var target and >= 0)
             {
-                set = this.sets.Union(set, this.Ending(this.lent[target]));
+                set = this.sets.Union(set, this.Ending(this.LentInto(target)));
                 this.Destroying(target);
             }
 
@@ -84,7 +84,7 @@ internal sealed partial class MirBorrows
     // formed, and its activation writes it (A3 5's access and err(activate)).
     private void Destroying(int local)
     {
-        var (first, end) = this.Subtree(new(this.lent[local].Root));
+        var (first, end) = this.Subtree(new(this.LentInto(local).Root));
         for (var l = first; l < end; l++)
         {
             ref var loan = ref this.loans[l];

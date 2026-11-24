@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -12,10 +13,7 @@ public sealed partial class Binding
 
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
 
-    // The rows of every failed selection's rejectedCandidates range, cleared by ResetPrerequisites with their capacity kept, as the
-    // prerequisite and parameter-shape stores are, so a warm rebind of a rejected call allocates nothing. A range is contiguous: a
-    // check appends its rows with no other append to this list between its first row and RecordRejected.
-    private readonly List<RejectedCandidate> rejectedRows = [];
+    private readonly List<ProblemFact> acquisitionFacts = []; // FailAcquisition's facts, a kept scratch (AcquisitionFacts).
 
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
 
@@ -35,18 +33,6 @@ public sealed partial class Binding
     // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
     private Dictionary<Koto, PerCallSlotFact>? perCallSlots;
 
-    // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
-    private Dictionary<Koto, Koto>? writeTargets;
-
-    // The candidates a failed overload selection considered, recorded only when it fails: the use's range of rejectedRows.
-    private Dictionary<Koto, (int Start, int Count)>? rejectedCandidates;
-
-    // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
-    // object handle, recorded only when the check fails.
-    private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
-
-    private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false, int ReceiverParameter = -1, bool ErasureIncomparable = false, ReferenceConstraintFailure? ConstraintFailure = null);
-
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
     // slot would hold (as bits) and that signature.
     private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature);
@@ -55,15 +41,17 @@ public sealed partial class Binding
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
 
     /// <summary>Forms the Transfer candidate of a bare Place (SPEC 23.1.3): <c>@move</c> after the Place, or <c>(*p)@move</c> around a dereference.</summary>
+    /// <param name="store">The store the record goes to (Compilation.StoreOf), which locates the edits.</param>
     /// <param name="node">The reporting node, in the Place's document.</param>
     /// <param name="place">The Place.</param>
     /// <param name="judgment">The Take judgment; never refuted.</param>
     /// <returns>The candidate.</returns>
-    internal static DiagnosticRepairFact[] TransferRepair(Koto node, Koto place, AcquisitionJudgment judgment)
+    internal static DiagnosticRepairFact[] TransferRepair(DiagnosticCollection store, Koto node, Koto place, AcquisitionJudgment judgment)
     {
+        var document = node.CodeContext.SourceDocument;
         DiagnosticEditFact[] edits = place is DereferenceKoto
-            ? [node.Edit(new(place.Span.Start, 0), "("), node.Edit(new(place.Span.End, 0), ")@move")]
-            : [node.Edit(new(place.Span.End, 0), "@move")];
+            ? [store.Edit(new(place.Span.Start, 0), "(", document), store.Edit(new(place.Span.End, 0), ")@move", document)]
+            : [store.Edit(new(place.Span.End, 0), "@move", document)];
         var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
         var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
         return [new(RepairKind.Transfer, [place.ToString(), TransferDestination(place)], edits, verified, required)];
@@ -487,36 +475,83 @@ public sealed partial class Binding
         return this.Fail(node, failure, unresolved);
     }
 
-    /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>
+    /// <summary>Records a write whose target's path denies it (SPEC 3.4, 15.1.5) with the target (`Related` role 0, "target"), beside any
+    /// other failure of the write (SPEC 23.1.2: the check reads the target's path, never the value or the route); an unsupported path is
+    /// located only.</summary>
     /// <param name="node">The write.</param>
     /// <param name="target">The written target.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailWrite(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, this.AccessFailure(target, out _), target);
+        => this.RecordWrite(node, this.AccessFailure(target, out _), target);
 
     private BoundType? FailObjectAuthority(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, BindingFailure.SharedPathAccess, target);
+        => this.RecordWrite(node, BindingFailure.SharedPathAccess, target);
 
-    // A bare Place that needs its acquisition spelled (TransferRequired or ExclusiveBorrowRequired), with the Place it names.
-    private BoundType? FailAcquisition(Koto node, BindingFailure failure, Koto place, bool @object = false, bool unresolved = false)
-        => this.FailExplained(ref this.acquisitionPlaces, node, failure, (place, @object), unresolved);
-
-    // SPEC 3.5, 15.1.5, 23.1.3: the acquisition a bare Place needs spelled, located at the Place with the candidate that writes it:
-    // an exclusive borrow is verified exclusively writable (BorrowablePlace held), a transfer has Take judged from the Place's path.
-    private void ReportAcquisition(Koto node, DiagnosticCollection? store, Koto place, bool @object, DiagnosticRequirement requirement, DiagnosticCode code)
+    // The one recorder of a denied write (AccessFailure's code, or the object authority's): the target related; a write the implementation
+    // does not support yet is the located limit (SPEC 23.1.1), at the write as before.
+    private BoundType? RecordWrite(Koto node, BindingFailure failure, Koto target)
     {
+        if (failure == BindingFailure.Unsupported)
+        {
+            this.RecordLocated(node, node.Span);
+            return null;
+        }
+
+        return this.RecordNumbered(node, failure, [new(ProblemFactKind.Related, this.FactSite(target), 0)]);
+    }
+
+    // The one recorder of a bare Place that needs its acquisition spelled (TransferRequired or ExclusiveBorrowRequired; SPEC 15.1.5),
+    // numbered: the Place as `Related` role 0, "place"; a Reason: bit 0 whether an exclusive borrow is of an object handle, above it a
+    // transfer's Take judgment (O-A1); and, for a transfer of a Place whose Type has a pair layer, a second Reason: the mask of the cases
+    // its bare acquisition moves in (R7-E4 ruling 6, D1), the judgments the adapter once made at publication, made here at the failure.
+    private BoundType? FailAcquisition(Koto node, BindingFailure failure, Koto place, bool @object = false, bool unresolved = false)
+    {
+        this.acquisitionFacts.Clear();
+        this.AcquisitionFacts(this.acquisitionFacts, node, failure, place, @object);
+        return this.RecordNumbered(node, failure, CollectionsMarshal.AsSpan(this.acquisitionFacts), unresolved);
+    }
+
+    // The facts of a bare Place's acquisition record, appended to `facts` (FailAcquisition's scratch, or the selection's when a call's
+    // selection records it through RecordSelection's one guard).
+    private void AcquisitionFacts(List<ProblemFact> facts, Koto node, BindingFailure failure, Koto place, bool @object)
+    {
+        var transfer = failure == BindingFailure.TransferRequired;
+        var judgment = transfer ? this.TakeJudgment(place) : AcquisitionJudgment.Verified;
+        facts.Add(new(ProblemFactKind.Related, this.FactSite(place), 0));
+        facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(node), (@object ? 1L : 0L) | ((long)judgment << 1)));
+        if (transfer && this.AcquisitionCaseMask(place) is { } cases)
+        {
+            facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(node), (long)cases));
+        }
+    }
+
+    // SPEC 3.5, 15.1.5, 23.1.3: the acquisition a bare Place needs spelled, located at the Place with the candidate that writes it, from
+    // the record's facts (FailAcquisition): an exclusive borrow is verified exclusively writable (BorrowablePlace held), a transfer's Take
+    // judgment and moving cases were made at the failure.
+    private void ReportAcquisition(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        if (store is null)
+        {
+            return;
+        }
+
+        var (requirement, code) = (problem.Requirement, problem.Code);
+        var place = this.compilation.SyntaxOf(facts[0].Site);
         var text = place.ToString();
         if (code == DiagnosticCode.ExclusiveBorrowRequired_Kd)
         {
-            var spelling = @object ? "@objuniq" : "@uniq";
-            node.ReportIn(store, requirement, code, at: place, evidence: [text], repairs: [new(RepairKind.BorrowExclusively, [text, spelling], [node.Edit(new(place.Span.End, 0), spelling)], RepairConditionSet.ExclusiveAccess, RepairConditionSet.UsageLegality)]);
+            var spelling = (facts[1].Value & 1) != 0 ? "@objuniq" : "@uniq";
+            var edit = store.Edit(new(place.Span.End, 0), spelling, node.CodeContext.SourceDocument);
+            node.ReportIn(store, requirement, code, at: place, evidence: [text], repairs: [new(RepairKind.BorrowExclusively, [text, spelling], [edit], RepairConditionSet.ExclusiveAccess, RepairConditionSet.UsageLegality)], condition: problem.Condition);
             return;
         }
 
         // SPEC 8.15, 23.1.2 (R6-check H1): a pair-layer Place carries the cases its bare acquisition moves in, as the `case` fact. A
         // default's move of a prepared argument (SPEC 7.2.3) names no target and offers no transfer, since none is valid in a default.
-        var judgment = this.TakeJudgment(place);
-        var found = this.AcquisitionCases(place, out var single);
+        var judgment = (AcquisitionJudgment)(facts[1].Value >> 1);
+        var single = false;
+        var found = facts.Length > 2 ? this.AcquisitionCases(place, (ulong)facts[2].Value, out single) : null;
         var prepared = code == DiagnosticCode.DefaultArgumentMove_Kd;
         node.ReportIn(
             store,
@@ -526,12 +561,13 @@ public sealed partial class Binding
             at: place,
             evidence: CaseEvidence(code, prepared ? null : text, found),
             related: WithCaseDeclarations(null, this.namedCaseBinders, found),
-            repairs: prepared || judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
+            repairs: prepared || judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(store, node, place, judgment),
+            condition: problem.Condition);
     }
 
     // Reports a write failure at its target; an assignment names the target. An
     // Exclusive call of a closure (SPEC 7.7.3) borrows the callee exclusively, so the callee is the written target.
-    private void ReportWrite(Koto node, DiagnosticCollection? store, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportWrite(Koto node, DiagnosticCollection? store, Koto target, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition)
     {
         var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
         var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
@@ -550,7 +586,7 @@ public sealed partial class Binding
             var handle = KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } followed ? followed.Left.BoundType : target.BoundType;
             var authority = handle?.HandleMode is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : null;
             var note = code != DiagnosticCode.SharedPathAccess_Kd ? null : objectCallee ? authority is null ? callNote : $"{callNote}. {authority}" : authority ?? this.SharedIndexNote(target);
-            node.ReportIn(store, requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
+            node.ReportIn(store, requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null, condition: condition);
             return;
         }
 
@@ -560,7 +596,7 @@ public sealed partial class Binding
             root = KotoHelper.UnwrapParentheses(root is MemberAccessKoto member ? member.Left : ((IndexKoto)root).Left);
         }
 
-        node.ReportIn(store, requirement, code, note: callNote, at: target, evidence: [target.ToString()]);
+        node.ReportIn(store, requirement, code, note: callNote, at: target, evidence: [target.ToString()], condition: condition);
     }
 
     // SPEC 4.7.1, 8.3.3: a user index publishes its element exclusively only through indexUniq. When the receiver's Type
@@ -584,7 +620,7 @@ public sealed partial class Binding
             // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1): the check's selection.
             var name = DiagnosticTypeName(core);
             var registered = this.uniqIndexing.GetValueOrDefault(index).Conformance;
-            _ = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey);
+            var byKey = this.SelectConformance(core, uniqIndexable, owner.Scope, QuerySite.AfterPass, out var candidates) is null && candidates != 0; // by declaration: no scope read
             return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
                 byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
                 $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";
@@ -610,34 +646,21 @@ public sealed partial class Binding
             related: [("property", property.NameKoto, $"{property.NameKoto.IdentifierName} is read through ref/Self and written through uniq/Self")]);
     }
 
-    // Publishes the rejected-candidate rows a failed selection appended from `start` on as its fact at `use`.
-    private void RecordRejected(Koto use, int start)
-        => (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = (start, this.rejectedRows.Count - start);
-
     private void ResetPrerequisites()
     {
         this.invalidations = 0;
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();
-        this.qualificationStops?.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
-        this.pendingJudgments?.Clear();
-        this.arithmeticSelectionFailures?.Clear();
-        this.arithmeticDirectionFailures?.Clear();
-        this.writeTargets?.Clear();
-        this.takeLayers?.Clear();
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.captureRepeatRows.Clear();
         this.pairCaseRows.Clear();
-        this.rejectedCandidates?.Clear();
-        this.rejectedRows.Clear();
-        this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
         this.duplicateOrder.Clear();
         this.specificationLinks?.Clear();
@@ -716,7 +739,7 @@ public sealed partial class Binding
             return null;
         }
 
-        this.Fail(member, BindingFailure.Access);
+        this.RecordAccess(member, first!, null); // SPEC 9.4: every candidate is inaccessible; the first the walk met is related.
         return member;
     }
 
@@ -733,19 +756,24 @@ public sealed partial class Binding
             return;
         }
 
+        // SPEC 23.1.1, 23.1.2 (rule W; R7-C3 b, F's ruling 5): a cause whose failure rests on a part that is missing information (a
+        // conformance on its unsupported specification, RestOnSpecification) carries that part's record, which this record then rests on.
+        if (!IsMissingInformation(diagnosticCause) && diagnosticCause is not null && this.partPrerequisites.TryGetValue(diagnosticCause, out var part) &&
+            IsMissingInformation(part))
+        {
+            diagnosticCause = part;
+        }
+
         if (!IsMissingInformation(diagnosticCause) && use is IsKoto clause && this.FindMissingConformanceName(clause) is { } missing)
         {
             diagnosticCause = missing; // What the outcome rests on is consulted; the record explains itself by missing information.
         }
 
-        this.RecordConstraint(use, diagnosticCause);
+        // SPEC 8.3, 23.1.2: an invalid Constraint, with the part its check named as the cause it rests on (a Cause fact, Value -1: a Binding
+        // cause at the site, never shown); a cause whose own record is missing information makes this record derived from that one
+        // (ReportConstraint). Later validators still see an invalid node. The guard above leaves RecordConstraint's read always passing.
+        this.RecordConstraint(use, ConstraintProof.Error, diagnosticCause is null ? [] : [new(ProblemFactKind.Cause, this.FactSite(diagnosticCause), -1)]);
     }
-
-    // SPEC 8.3, 23.1.2: an invalid Constraint, with the part its check named as the cause it rests on (a Cause fact, Value -1: a Binding
-    // cause at the site, never shown); a cause whose own record is missing information makes this record derived from that one
-    // (ReportConstraint). Later validators still see an invalid node.
-    private void RecordConstraint(Koto use, Koto? cause)
-        => this.Record(use, BindingFailure.InvalidConstraint, cause is null ? [] : [new(ProblemFactKind.Cause, this.FactSite(cause), -1)]);
 
     // The part a node's InvalidConstraint problem names as its cause, or null.
     private Koto? ConstraintCause(Koto node)

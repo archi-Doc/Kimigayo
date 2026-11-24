@@ -15,6 +15,14 @@ public sealed partial class Binding
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
     private BindingSymbol? activeRequirementContract;
 
+    // SPEC 8.6.4 (F's ruling N1-7 (1)): a requirement is reached through its subject Type: the requirement group a Constraint gave the
+    // use's member lookup, or a callee its creator pinned with its bound Contract. A Name that selected one without (an opened Contract's
+    // direct member at stage 5) names no Type to call it through, as `Empty.empty()` does not: read on the selected candidate (the call
+    // binder's winner, BindReference's group of one; never a gathered group's first: N1-13 B3; a function reference to a group holding
+    // one is the reference reader's limit), and the Name records the miss that use records (UnresolvedBinding_Kd).
+    private bool LacksRequirementSubject(Koto use, BindingSymbol selected)
+        => selected.Declaration is FunctionKoto { IsRequirement: true } && use is not RequirementCalleeKoto && this.ReferenceRequirements(use) is null;
+
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
         // SPEC 9.6, 13.3.3, 13.4.1, 22.10.2: requirements are gathered from Constraints, so only a Type parameter, a projection or a
@@ -55,13 +63,13 @@ public sealed partial class Binding
         // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
         // concrete integers gain no members. Temporary: this clause names Position apart from PrimitiveIntegerSupplies until
         // PLAN G776 decides the member calls an entailed built-in conformance gives; it then reads that list or goes.
-        if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
+        if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope, member))
         {
             Add(position);
         }
 
         // Numeric witnesses are requirements under generic evidence, not named numeric members.
-        if (this.IsGenericInteger(type, scope))
+        if (this.IsGenericInteger(type, scope, member))
         {
             for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.RemainderProvider; id++)
             {
@@ -78,7 +86,7 @@ public sealed partial class Binding
         for (var i = 0; i < group.Contracts.Count + group.PropertyContracts.Count; i++)
         {
             var contract = i < group.Contracts.Count ? group.Contracts[i] : group.PropertyContracts[i - group.Contracts.Count];
-            if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope) == ConstraintProof.Proven)
+            if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope, member) == ConstraintProof.Proven)
             {
                 this.AddContractPremises(contract.Contract!, type, scope);
             }
@@ -99,7 +107,7 @@ public sealed partial class Binding
             }
             else if (expected != current)
             {
-                this.Fail(member, BindingFailure.ReceiverShapeMismatch);
+                this.Record(member, BindingFailure.ReceiverShapeMismatch, []);
                 group.Active = false;
                 return null;
             }
@@ -120,8 +128,17 @@ public sealed partial class Binding
                 return group.Properties[0];
             }
 
-            // SPEC 11.9: a Property requirement is instance-only, so a Type names none; several identities are not implemented.
-            this.Fail(member, typeAccess ? BindingFailure.MissingName : BindingFailure.Unsupported, true);
+            // SPEC 11.9: a Property requirement is instance-only, so a Type names none; several identities are not implemented (the
+            // located limit). The check's own decision, each in its family's form; the caller's FailMissing keeps this first failure.
+            if (typeAccess)
+            {
+                this.Record(member, BindingFailure.MissingName, [], unresolved: true);
+            }
+            else
+            {
+                this.RecordLocated(member, member.Span, unresolved: true);
+            }
+
             return null;
         }
 

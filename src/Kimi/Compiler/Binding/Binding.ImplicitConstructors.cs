@@ -47,9 +47,10 @@ public sealed partial class Binding
     internal OmittedBaseSelection SelectOmittedBaseConstructor(FunctionKoto constructor)
     {
         var call = constructor.BaseInitializer!;
-        if (this.BaseConstructorGroup(constructor, out _) is not { } group)
+        if (this.BaseConstructorGroup(constructor, out var parent) is not { } group)
         {
-            return new(OmittedBaseOutcome.NoBaseConstructor);
+            // SPEC 23.1.2 (PLAN G651 a2, B5): a clause that gives the selection no base rests the selection on the struct's records.
+            return parent is null ? new(OmittedBaseOutcome.Dependent, Cause: constructor.BoundSymbol!.Scope.Owner) : new(OmittedBaseOutcome.NoBaseConstructor);
         }
 
         var candidates = FunctionGroup.Of(group);
@@ -118,7 +119,7 @@ public sealed partial class Binding
         var selection = new OmittedBaseSelection(OmittedBaseOutcome.Dependent, Cause: clause);
         this.implicitConstructorDecisions.Add(structure, selection);
         if (this.inheritanceStates.TryGetValue(structure.BoundSymbol!, out var state) && state == 2 && clause.BoundType is { } baseType &&
-            this.CheckTypeConstraints(baseType, this.scopes[structure]) == ConstraintProof.Proven)
+            this.CheckTypeConstraints(baseType, this.scopes[structure], structure) == ConstraintProof.Proven)
         {
             // A base synthesized constructor that does not exist for a reason other than absence leaves this one resting on that reason.
             if (baseType.Symbol?.Declaration is StructKoto parent && (parent.ImplicitConstructorPending || this.implicitConstructorDecisions.ContainsKey(parent)) &&

@@ -45,11 +45,11 @@ public sealed partial class Binding
 
     // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, under the Contract reference the call selected (null when it
     // recorded none) and the caller's premise scope.
-    internal RequirementWitness ResolveRequirementWitness(BindingSymbol requirement, BoundType self, BindingSymbol? contract, BindingScope scope)
+    internal RequirementWitness ResolveRequirementWitness(BindingSymbol requirement, BoundType self, BindingSymbol? contract, BindingScope scope, QuerySite site)
     {
         if (requirement.Declaration is FunctionKoto { Accessor: { } accessor })
         {
-            return this.PropertyRequirementWitness(accessor, self, contract, scope);
+            return this.PropertyRequirementWitness(accessor, self, contract, scope, site);
         }
 
         // The built-in row of the requirement's own Contract (ImplTable.Builtin), keyed on it: a built-in Type's conformance has no
@@ -71,7 +71,7 @@ public sealed partial class Binding
             return default;
         }
 
-        if (this.ConformanceWitness(requirement, self, contract, scope, out var witness) is not { } declaring)
+        if (this.ConformanceWitness(requirement, self, contract, scope, site, out var witness) is not { } declaring)
         {
             return default;
         }
@@ -87,19 +87,19 @@ public sealed partial class Binding
 
     // SPEC 8.11.3: the witness a verified conformance of a Self to a Contract maps a requirement to, and the instance of the Type
     // that declares it (a base's for an inherited witness); null where none resolves.
-    private BoundType? ConformanceWitness(BindingSymbol requirement, BoundType self, BindingSymbol contract, BindingScope scope, out BoundWitness witness)
+    private BoundType? ConformanceWitness(BindingSymbol requirement, BoundType self, BindingSymbol contract, BindingScope scope, QuerySite site, out BoundWitness witness)
     {
         witness = default;
-        return this.ResolveConformance(self, contract, scope, out var path) == ConstraintProof.Proven && path is { IsVerified: true } &&
+        return this.ResolveConformance(self, contract, scope, site, out var path) == ConstraintProof.Proven && path is { IsVerified: true } &&
             path.WitnessMap.TryGetValue(new(requirement, contract), out witness) && witness.Function is { ObjectCompatibility: ConstraintProof.Proven } function
             ? this.StoredType(function.DeclaringType, self) : null;
     }
 
     // SPEC 11.9.2: the verified operation a conformance maps a Property requirement's accessor to, and the instance of the Type that
     // implements it. A standard witness is a member of the conforming Type itself, so only an accessor call can be inherited (OCC-X as above).
-    private RequirementWitness PropertyRequirementWitness(BoundAccessor requirement, BoundType self, BindingSymbol? contract, BindingScope scope)
+    private RequirementWitness PropertyRequirementWitness(BoundAccessor requirement, BoundType self, BindingSymbol? contract, BindingScope scope, QuerySite site)
     {
-        if (contract is null || this.ResolveConformance(self, contract, scope, out var path) != ConstraintProof.Proven || path is not { IsVerified: true } ||
+        if (contract is null || this.ResolveConformance(self, contract, scope, site, out var path) != ConstraintProof.Proven || path is not { IsVerified: true } ||
             !path.PropertyWitnessMap.TryGetValue((new(requirement.Property.Symbol, contract), requirement.Kind), out var witness))
         {
             return default;

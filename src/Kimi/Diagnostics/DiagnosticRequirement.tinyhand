@@ -523,7 +523,7 @@
     Description="the runtime symbol import matches the reserved supply"
 
   + Name="Binding.ConflictingImportSupply"
-    Description="the imports of one symbol agree on their supply"
+    Description="the imports of one symbol agree on their providing library"
 
   + Name="Binding.DirectCallFunctionValue"
     Description="the function that supports direct calls only is not used as a value"
@@ -701,6 +701,9 @@
 
   + Name="Binding.AnalysisLimit"
     Description="every analysis Binding bounds stays within its implementation limit"
+
+  + Name="Binding.ResolutionWorkLimit"
+    Description="the resolution of every call stays within the implementation's limit of checked arguments"
 
   + Name="Emission"
     Description="generation succeeds"

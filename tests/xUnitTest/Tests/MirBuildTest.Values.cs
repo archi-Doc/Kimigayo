@@ -26,16 +26,16 @@ public sealed partial class MirBuildTest
     // of a local whose rejected declaration has no Type (one with a Type is its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage).
     // Building goes on after each. A Field Binding failed whose own Type is valid (a struct with a misplaced `length` slot) has its
     // initializer published (PLAN G1071's gate 1, F's C2 ruling 261 (3)), so each constructor builds it, with no Opaque, record or finding
-    // (it was an Opaque in each constructor while only a Resolved definition's parts were published). The unbuilt form is the tuple
-    // default the call's substitution cannot instantiate (Unbuilt); its Opaque names the roots of the slots before the default.
+    // (it was an Opaque in each constructor while only a Resolved definition's parts were published). The unbuilt form is the selection
+    // through an identity premise (Unbuilt); its Opaque names the receiver's root.
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = CompilationTestHelper.Parse(
             "struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            Unbuilt.Declarations + $"func f(a: i32, x: i32) -> i32\n    let c = {Unbuilt.Callee}(x)\n    return a\n" +
-            $"func g() -> i32 => missing\nfunc h(a: i32, c: bool, u: i32) -> i32\n    defer\n" +
-            $"        let d = {Unbuilt.Callee}(u)\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
+            Unbuilt.Declarations + $"func f<T>(a: i32, x: ref/T) -> i32\n    {Unbuilt.Premise}\n    let c = x.0.a\n    return a\n" +
+            $"func g() -> i32 => missing\nfunc h<T>(a: i32, c: bool, u: ref/T) -> i32\n    {Unbuilt.Premise}\n    defer\n" +
+            "        let d = u.0.a\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
         Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
         c.Bind();
         _ = c.Binding.CheckStartup(OutputKind.Application);
@@ -44,11 +44,11 @@ public sealed partial class MirBuildTest
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g" or "h" or "k").ToDictionary(static x => x.Key.Decl!.Name);
         var unbuilt = bodies["f"];
         Assert.True(unbuilt.HasOpaque);
-        Assert.Equal(new[] { 4 }, unbuilt.OpaqueUses.ToArray().Select(static x => x.Root)); // take's argument slot before the default.
+        Assert.Equal(new[] { 2 }, unbuilt.OpaqueUses.ToArray().Select(static x => x.Root)); // The receiver's root, f's parameter x.
         Assert.Contains(unbuilt.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
         var records = program.Records(MirRecordClass.Construction).Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
-        Assert.Equal([$"{Unbuilt.Callee}(u)", $"{Unbuilt.Callee}(x)"], records);
-        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == $"{Unbuilt.Callee}(u)"));
+        Assert.Equal(["u.0", "x.0"], records);
+        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "u.0"));
 
         Assert.Equal(0, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
@@ -64,8 +64,11 @@ public sealed partial class MirBuildTest
     // (fail-before: _1.1 undecided, kept 0); a kept invocation argument's written exclusive borrow is two-phase, while a tuple's element
     // and a Case payload stay Uniq (B6; fail-before: all Uniq); nested Errors keep their own parts (missing2's site none, the inner
     // Error's x and missing2's temp, the outer's the inner's temp); a failed default's site after an Error site keeps none (C2: its earlier
-    // slot only, a pending slot its call's entry activates). Each site's kept count and uses, in order, then the reads, then the exclusive
-    // borrows.
+    // slot only, a pending slot its call's entry activates). DECISIONS Z27 (SPEC 13.7.1 steps 1-2): a derived write's site names its
+    // target's in-place kept operand as an enclosing use (p, _1; fail-before: its root undecided, no count), and a right side neither read
+    // nor a Temporary (a Place whose bare Move rests on an Error Copy proof, published Failed without an Error node) is a site of its own
+    // at its node, before the target's parts, so the write's site names no use of it (fail-before: the write's one site named b, _1).
+    // Each site's kept count (and enclosing count) and uses, in order, then the reads, then the exclusive borrows.
     [Theory]
     [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing = p.n\n", "0: / FakeRead(_1.1) / ")]
     [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    missing(p.n)\n", "1: _3 /  / ")]
@@ -77,6 +80,8 @@ public sealed partial class MirBuildTest
     [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let e: Option<uniq/i32> = .Some(y@uniq, g(y))\n", "2: _3 _4 /  / &uniq")]
     [InlineData("func f()\n    var x = 1\n    missing(x + missing2)\n", "0: | 2: _4 _5 | 1: _3 /  / ")]
     [InlineData("func h(x: i32, y: i32 = missing) -> i32 => y\nfunc f()\n    let q = 2\n    let a = missing(q)\n    let b = h(1)\n", "1: _4 | 1: _3 | 0: _6 /  / ")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    p.nofield = 1\n", "0 enclosing 1: _1 /  / ")]
+    [InlineData("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc k() -> isize => 0\nfunc f(b: Bad)\n    missing[k()] = b\n", "0: _1 | 0: | 1 enclosing 1: _5 _4 /  / ")] // z27r2's u2
     public void AnOpaqueSiteNamesOnlyWhatItDoesNotDecide(string source, string expected)
     {
         var program = Compile("struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n" +
@@ -85,7 +90,8 @@ public sealed partial class MirBuildTest
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
-        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?(?: kept (\d+))?:(.*)$").Select(static x => $"{(x.Groups[1].Success ? x.Groups[1].Value : "0")}: {x.Groups[2].Value.Trim()}".Trim());
+        var sites = Regex.Matches(dump, @"(?m)^  opaque \d+(?: @\d+)?(?: kept (\d+))?( enclosing \d+)?:(.*)$")
+            .Select(static x => $"{(x.Groups[1].Success ? x.Groups[1].Value : "0")}{x.Groups[2].Value}: {x.Groups[3].Value.Trim()}".Trim());
         var reads = Regex.Matches(dump, @"FakeRead\([^)]*\)").Select(static x => x.Value);
         var borrows = Regex.Matches(dump, @"&uniq(?: two-phase)?").Select(static x => x.Value);
         Assert.Equal(expected, $"{string.Join(" | ", sites)} / {string.Join(" ", reads)} / {string.Join(" ", borrows)}");
@@ -242,6 +248,7 @@ public sealed partial class MirBuildTest
     [Theory]
     [InlineData("func f<s/T>(x: s/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = acquire b0 (_1@b0)", "move (_1@b0)")]
     [InlineData("func f(r: uniq/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = &uniq (*(*_1))", "move (*(*_1))")]
+    [InlineData("func f<s/T, U>(m: s/T, h: uniq/(s/(uniq/U during b) during a) during c)\n    s is owner or ref\n    let x = h@follow\n", "_3 = acquire b0 (*_2)", "move (*_2)")] // G254b: built at Binding's name (MirTypes.Agree).
     public void ABareAcquisitionThroughItsOwnLayersKeepsItsPlan(string source, string built, string absent)
     {
         var c = Compile(source);
@@ -527,6 +534,51 @@ public sealed partial class MirBuildTest
         Assert.Equal(receiver != "uniq/Self", body.HasOpaque);
     }
 
+    // PLAN G1184 (SPEC 6.3.3, 23.1.2; BU-234): a stored Field whose slot failed has its Field Place, of no Type (MirBody.Selects), so its
+    // constructor places its initializer there (MirBuilder.Stored, Construct), a literal Binding types and a receiverless struct function's
+    // call as the typed twin's literal, with no validator finding and no construction record (fail-before: not placed, no write into the
+    // Field).
+    [Theory]
+    [InlineData("Weak<rc/Node> = 5")]
+    [InlineData("Weak<rc/Node> = Node.mk()")]
+    [InlineData("i32 = 5")]
+    public void AFailedFieldsInitializerIsPlacedIntoItsFieldPlace(string field)
+    {
+        var c = Compile(
+            $"struct Node\n    public var w: {field}\n    public let v: i32\n    public init(v: i32)\n        self.v = v\n" +
+            "    public func mk() -> Weak<rc/Node>\n        return Node.mk()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+        var body = program.Bodies.ToArray().Single(static x => x.Source.Module == 0 && AdtDef.IsConstructor(x.Key.Decl));
+        bool Field(MirPlace place) => place is { Root: 0, Projection: > 0 } && body.Projections[place.Projection] is { Prefix: 0, Kind: MirProjectionKind.Field, Arg: 0 };
+        var written = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign).Select(static x => x.Place)
+            .Concat(body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(static x => x.Terminator.Place)).Where(Field).ToArray();
+        var place = Assert.Single(written);
+        Assert.Equal(field.StartsWith("i32", StringComparison.Ordinal), body.TypeOf(place) is not null);
+    }
+
+    // PLAN G1184 (DECISIONS R7-M88; IMPL A.4, R7-T1): the one projection rule (MirBody.SelectsPart) gives a Field step of no Type only for
+    // a stored Field whose own slot failed; a part past IMPL A.4's height whose slot is typed is no part, so neither the builder's Stored
+    // nor a constructor's Move Paths (MirMoveData) take it as one: D<T>'s `v: W^250<T>` is no part of D<W^8000<i32>> (8,251) and a typed
+    // part of D<W^7800<i32>> (8,051) (fail-before: a struct arm admitting every part in range answers true past the height).
+    [Theory]
+    [InlineData(40, false)]
+    [InlineData(39, true)]
+    public void APartPastTheHeightIsNoPart(int lifts, bool stored)
+    {
+        var c = Compile($"struct W<T>\n    public var v: T\nstruct D<T>\n    public var v: {W(250)}\nfunc lift<T>(p: raw/T) -> raw/{W(200)} => null\n" +
+            "func mk<T>(p: raw/T) -> raw/D<T> => null\npublic func main() -> ()\n    let p0: raw/i32 = null\n" +
+            string.Concat(Enumerable.Range(1, lifts).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    let d = mk(p{lifts})\n    return\n");
+        var main = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var type = main.Locals.ToArray().Single(static x => x.Name == "d").Type!.Components[0];
+        Assert.True(AdtDef.IsStruct(type));
+        Assert.Equal((stored, stored), (MirBody.SelectsPart(c.Types, type, MirProjectionKind.Field, 0, out var part), part is not null));
+        Assert.False(AdtDef.FieldSlotFailed(type, 0));
+
+        static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
     // PLAN G396 (3) Z1 (DECISIONS R4-M61; consumers trust validated IR): an arm of a closed HIR vocabulary, or of a fact a published Op
     // guarantees, that no published form takes is a broken contract, InternalInvariant_Kd at the node with an Opaque value in its place,
     // which the validator accepts. Each row publishes one node so by hand after the publish (fail-before: Unsupported_Kd at the same node):
@@ -746,7 +798,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var held = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref)
-            .Select(x => (Binding.HoverTypeName(body.Locals[x.Place.Root].Type!), Binding.HoverTypeName(x.Rvalue.Type!)));
+            .Select(x => (c.Binding.HoverTypeName(body.Locals[x.Place.Root].Type!), c.Binding.HoverTypeName(x.Rvalue.Type!)));
         Assert.Equal(Enumerable.Repeat(("uniq/i32 during (s and a)", "uniq/i32 during (s and a)"), 4), held);
     }
 
@@ -813,12 +865,12 @@ public sealed partial class MirBuildTest
         }
     }
 
-    // SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2 (DECISIONS BU-110): a for item is acquired by the match's rule, so one whose Copy proof is Error is
-    // published Failed with no record of its own (the declaration's is reported) and its local takes a value derived from that failure,
-    // while the loop and its body are built: the body's independent MovedPlace_Kd stays. Fail-before: the item was moved out of the
-    // Subject's payload.
+    // SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2 (F's C8 ruling 24, superseding BU-110's Error rule for an iteration item): a for item is
+    // transferred with its responsibility, so it is moved out of the Subject's payload whatever its Copy proof (Error here: the
+    // declaration's record is reported) and no Copy is asked; the loop and its body are built, and the body's independent MovedPlace_Kd
+    // stays. It took a value derived from the failure (BU-110) before the ruling.
     [Fact]
-    public void AForItemWhoseCopyProofIsErrorIsDerived()
+    public void AForItemOfAMovedSubjectMovesWhateverItsCopyProof()
     {
         var c = Compile("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc g(xs: Array<Bad>)\n" +
             "    for x in xs@move\n        let s: string = \"a\"\n        let t = s@move\n        let u = s@move\npublic func main() => ()\n");
@@ -833,13 +885,14 @@ public sealed partial class MirBuildTest
         var item = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "x");
         var write = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && x.Place == new MirPlace(item));
         var source = body.Operands[write.Rvalue.Start].Place;
-        Assert.Contains(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
+        Assert.DoesNotContain(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
     }
 
-    // SPEC 15.1.6, 14.8, 23.1.2 (DECISIONS R4-M179): a match binding whose Copy proof is Error is Failed with no record of its own and takes
-    // a derived value, while its match is built as over the Copy twin: an arm's independent MovedPlace_Kd stays, in either arm and either
+    // SPEC 15.1.6, 14.8, 23.1.2 (F's C8 ruling 24, superseding R4-M179's Error rule for a moved Subject): a binding of a moved Subject is
+    // transferred with its responsibility, so it is moved out of the payload whatever its Copy proof (Error for Bad, Proven for Good) and
+    // takes no derived value; the match is built as over the Copy twin: an arm's independent MovedPlace_Kd stays, in either arm and either
     // match of a nesting, and a use of the match's value adds none; an arm reading the binding by value fails at bind time and adds no
-    // MIR record. Fail-before: the match was built Opaque.
+    // MIR record. Fail-before (R4-M179): the match was built Opaque; before the ruling the Bad binding took a derived value.
     [Theory]
     [InlineData("    let s: string = \"a\"\n    match o@move\n        .Some(let v) => pair(s@move, s@move)\n        .None => ()\n", "MovedPlace_Kd s")]
     [InlineData("    let t: string = \"b\"\n    match o@move\n        .Some(let v) => ()\n        .None => pair(t@move, t@move)\n", "MovedPlace_Kd t")]
@@ -847,7 +900,7 @@ public sealed partial class MirBuildTest
     [InlineData("    let s: string = \"a\"\n    match n\n        .Some(let k) => match o@move\n            .Some(let v) => pair(s@move, s@move)\n            .None => ()\n        .None => ()\n", "MovedPlace_Kd s")]
     [InlineData("    match o@move\n        .Some(let v) => take(v, v)\n        .None => ()\n", "")]
     [InlineData("    let r: i32 = match o@move\n        .Some(let v) => 1\n        .None => 2\n    use(r)\n", "")]
-    public void AMatchBindingWhoseCopyProofIsErrorIsDerived(string body, string expected)
+    public void AMovedSubjectsBindingMovesWhateverItsCopyProof(string body, string expected)
     {
         foreach (var (type, field) in new[] { ("Bad", "s: string = \"\""), ("Good", "n: i32 = 0") })
         {
@@ -872,7 +925,7 @@ public sealed partial class MirBuildTest
 
             var write = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && x.Place == new MirPlace(v));
             var source = g.Operands[write.Rvalue.Start].Place;
-            Assert.Equal(type == "Bad", statements.Any(x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root)));
+            Assert.DoesNotContain(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
         }
     }
 

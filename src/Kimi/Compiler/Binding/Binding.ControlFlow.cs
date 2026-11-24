@@ -47,9 +47,10 @@ public sealed partial class Binding
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.2).</summary>
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="scope">The scope supplying read-Type Constraints.</param>
+    /// <param name="site">The site of the judgment that needs the answer (QuerySite).</param>
     /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
     /// <returns>The common Type, or null when none is supplied or the sources conflict.</returns>
-    internal BoundType? SelectCommonType(List<BoundType> types, BindingScope scope, out bool conflict)
+    internal BoundType? SelectCommonType(List<BoundType> types, BindingScope scope, QuerySite site, out bool conflict)
     {
         conflict = false;
         for (var i = 0; i < types.Count; i++)
@@ -69,7 +70,7 @@ public sealed partial class Binding
 
         // SPEC 3.5.3, 14.9.2: sources that differ only in safe reference layers over one read Type unify to that Type,
         // and each reference source is value-read. Sources with the same layers keep the borrow rule below.
-        if (this.ReadTypeUnification(types, scope) is { } scalar)
+        if (this.ReadTypeUnification(types, scope, site) is { } scalar)
         {
             return scalar;
         }
@@ -80,7 +81,7 @@ public sealed partial class Binding
         var common = types.Count > 0 ? types[0] : null;
         for (var i = 1; i < types.Count && common is not null; i++)
         {
-            common = ReferenceEquals(common, BoundType.Never) ? types[i] : ReferenceEquals(types[i], BoundType.Never) ? common : this.CommonOriginType(common, types[i], out _);
+            common = ReferenceEquals(common, BoundType.Never) ? types[i] : ReferenceEquals(types[i], BoundType.Never) ? common : this.CommonOriginType(common, types[i], site, out _);
         }
 
         if (common is not null)
@@ -147,15 +148,19 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1 (DECISIONS BU-43, BU-78; PLAN G924 B2, F's ruling 46): whether a join that is no conflict is its call's argument probe
-    // control flow, which its call classifies (ClassifiedByCall): a typed one holding a failed source, or one with an array literal
-    // source that awaits its position (step 3 at its typed sources' Type would decide it before the call's places meet).
+    // control flow, which its call classifies (ClassifiedByCall): a typed one holding a failed source, one with an array literal source
+    // that awaits its position (step 3 at its typed sources' Type would decide it before the call's places meet), or one holding a
+    // nested call, construction or Case that awaits its call (SPEC 14.9.2 step 1, ArgFlow ruling 63: that source is checked and
+    // completed at the parameter Type under each candidate, never at the typed sources' step-2 Type; an anonymous function's or
+    // reference's join keeps U1.6g3b's step-2 Type, D-735's open issue).
     private bool WaitsForItsCall(Koto node, ResultContext context, bool awaiting)
         => context.HasTyped && context.Cause is not null ? this.ClassifiedByCall(node, null)
-            : awaiting && AwaitingAggregateSource(context) is { } shape && this.ClassifiedByCall(node, shape);
+            : awaiting && (AwaitingAggregateSource(context) is { } shape ? this.ClassifiedByCall(node, shape)
+                : this.HoldsCheckedPart(node) && this.ClassifiedByCall(node, null));
 
     // SPEC 14.9.2: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
-    private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope)
+    private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope, QuerySite site)
     {
         BoundType? scalar = null;
         var differ = false;
@@ -172,7 +177,7 @@ public sealed partial class Binding
 
             differ |= first.SafeReferent is not null;
             if ((scalar is not null && !ReferenceEquals(scalar, terminal)) ||
-                (!terminal.IsScalar && !this.IsReadType(terminal, scope)))
+                (!terminal.IsScalar && !this.IsReadType(terminal, scope, site)))
             {
                 return null;
             }
@@ -186,8 +191,8 @@ public sealed partial class Binding
     // SPEC 3.5.3, 14.9.2 step 2: beside literal sources, the typed sources' common Type `common` ending in a read Type through safe
     // reference layers gives that read Type: the literals are literals of it and the reference sources supply it by a value read. Every
     // formation with literal sources reads it: a join's own sources (InferResultExpected) and a position's parts (PositionType).
-    private BoundType? BesideLiterals(BoundType? common, BindingScope scope)
-        => common is not null && this.ReadTypeReferent(common, scope) is { } terminal ? terminal : common;
+    private BoundType? BesideLiterals(BoundType? common, BindingScope scope, QuerySite site)
+        => common is not null && this.ReadTypeReferent(common, scope, site) is { } terminal ? terminal : common;
 
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
     {
@@ -325,7 +330,7 @@ public sealed partial class Binding
         var conflict = false;
         if (common is null)
         {
-            common = this.SelectCommonType(types, this.ConstraintScope(node), out conflict);
+            common = this.SelectCommonType(types, this.ConstraintScope(node), node, out conflict);
         }
         else
         {

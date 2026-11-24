@@ -174,6 +174,8 @@ internal static class MirDescriptors
         IntrinsicId.MakeRc => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
         IntrinsicId.MakeArc => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
         IntrinsicId.RawInitialize => Intrinsic(MirEffect.None, 2),
+        IntrinsicId.VolatileRead => Intrinsic(MirEffect.None, 1), // Raw accesses through its arguments (SPEC 8.11.2), as RawInitialize's.
+        IntrinsicId.VolatileWrite => Intrinsic(MirEffect.None, 2),
         IntrinsicId.RawSlice => Intrinsic(MirEffect.None, 3) with { Retained = 2 }, // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Intrinsic(MirEffect.None, 3),
         IntrinsicId.Stride => Intrinsic(MirEffect.None, 0),
@@ -195,6 +197,7 @@ internal static class MirDescriptors
         IntrinsicId.TestRecordValue => Intrinsic(MirEffect.Environment, 2), // The side and the Scalar value (F8b).
         IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
         IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment | MirEffect.Allocation, 0), // The path's copy on the heap.
+        IntrinsicId.MonotonicClock => Intrinsic(MirEffect.Environment, 0), // A platform read, no Abort: Time.readCounter raises clockFailure.
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
         _ => default,
     };

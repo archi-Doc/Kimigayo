@@ -29,13 +29,13 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 // Command
                 context.AddCommand<DefaultCommand>();
                 context.AddCommand<LspCommand, LspCommand.Options>();
-                context.AddCommand<BuildCommand, BuildCommand.Options>();
-                context.AddCommand<CheckCommand, KimiOptions>();
-                context.AddCommand<RestoreCommand, KimiOptions>();
-                context.AddCommand<EmitCommand, KimiOptions>();
-                context.AddCommand<RunCommand, RunCommand.Options>();
+                context.AddCommand<BuildCommand>();
+                context.AddCommand<CheckCommand>();
+                context.AddCommand<RestoreCommand>();
+                context.AddCommand<EmitCommand>();
+                context.AddCommand<RunCommand>();
                 context.AddCommand<TestCommand>();
-                context.AddCommand<ToolchainCommand, ToolchainCommand.Options>();
+                context.AddCommand<ToolchainCommand>();
                 context.AddCommand<TataraCommand>();
 
                 // Logger
@@ -116,7 +116,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 
             // Every command, test included, receives its arguments from this parser: split, and a quoted one unwrapped (PLAN G1214).
             var parser = this.Context.CreateSimpleParser(parserOptions);
-            if (!parser.Parse(KimiOptions.ExpandFlags(commandLine)))
+            if (!parser.Parse(commandLine))
             {
                 Environment.ExitCode = 1;
             }

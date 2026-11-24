@@ -173,7 +173,7 @@ public partial class KimiLibraryShapeTest
         }
 
         var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.summaryEpoch");
-        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Depends", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
+        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Depends", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
         foreach (var store in LibraryLayer.StoresOf(LibraryLayer.Rule.Epoch))
         {
             var value = (IEnumerable)LibraryLayer.ValueAt(binding, store);
@@ -419,8 +419,10 @@ public partial class KimiLibraryShapeTest
             ["Binding.identityPool"] = Rule.Program, // The free identity tables each capability epoch's end returns (ResetIdentityClasses).
             ["Binding.inlineSummaries"] = Rule.Program, // ValidateInlineLayouts' summaries, emptied at its start in each pass.
             ["Binding.inlineSummaryPool"] = Rule.Program, // Their pool: its live prefix is inlineSummaries' values (AssertLivePrefix).
+            ["Binding.rawFits"] = Rule.Program, // The running pass's raw fits (G147 ruling 75), emptied at each pass's start; the publication reads them.
             ["Binding.resultStructure.outward"] = Rule.Program, // That walk's Outward target chains, emptied by its Clear for each body.
             ["Binding.hirPublisher.completion.outward"] = Rule.Program, // The publisher's Outward target chains for the body it published last (M4).
+            ["Binding.memberSelections.rows"] = Rule.Program, // MemberSelections' rows its column's slots index (R7-N5 B1b-2), emptied by each pass's ResetContracts.
 
             // A run's view, a per-run cache and a walk's reused scratch the reads after a Bind (MIR's) use too (PLAN G949 S1-1, ruling 199 w1
             // (ii)): rebuilt at the run's first read, current in one run, or cleared at the walk's start, so after a step it holds what the

@@ -103,6 +103,14 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    let v: i32 = 1\n    let r = v@ref/i64", "v@ref/i64", "expected i64, found i32")]
     [InlineData("unsafe func f(p: raw/i32) -> f64 => p@f64\npublic func main() => ()", "p@f64", "expected f64, found raw/i32")]
     [InlineData("struct S\n    public computed item: i32\n        get(self: ref/Self) -> bool => true\npublic func main() => ()", "get(self: ref/Self) -> bool => true", "expected i32, found bool")]
+
+    // R7-E3 E3c-2: a guard's Type, a construction at its expected Type and a floating-point literal at a generic integer position, plain
+    // and signed, name the two sides they compared.
+    [InlineData("func f(x: i32) -> i32 => match x\n    _ if x => 0\n    _ => 1\npublic func main() => ()", "x", "expected bool, found i32")]
+    [InlineData("enum E<T>\n    A(T)\npublic func main()\n    let x: E<i32> = E<bool>.A(true)", "E<bool>.A(true)", "expected E<i32>, found E<bool>")]
+    [InlineData("func f<T>(v: T) -> T\n    T is PrimitiveInteger\n    return 1.5\npublic func main() => ()", "1.5", "expected T, found floating-point literal")]
+    [InlineData("func f<T>(v: T) -> T\n    T is PrimitiveInteger\n    return -1.5\npublic func main() => ()", "-1.5", "expected T, found floating-point literal")]
+    [InlineData("struct B\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nenum E\n    A(B)\nfunc f(b: ref/B) -> i32\n    let x = E.A(b)\n    return 0\npublic func main() => ()", "E.A(b)", "expected B, found ref/B")]
     public void TargetChecksShowTheirLocationAndFacts(string source, string text, string label)
     {
         var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)));
@@ -469,8 +477,8 @@ public class DiagnosticPrecisionTest
     [InlineData("i12v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func makeRcCyclic(build: (i32) -> i32) -> i32 => build(1)\nlet n = makeRcCyclic(func [] (x: i32) -> i32 => x)\nConsole.writeLine(\"ok\")\n")]
     // Invalid by another rule, where no `#Unsupported` declaration is selected: the records are that rule's.
     [InlineData("g10x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = Kimi.downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 2:9")]
-    [InlineData("g13x", "alias W => Weak\nfunc f(w: ref/W<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:1", "UnresolvedBinding_Kd 2:15")]
-    [InlineData("g14x", "alias D => Kimi.Intrinsics.downgrade\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:1")]
+    [InlineData("g13x", "alias W => Weak\nfunc f(w: ref/W<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:12 x4", "UnresolvedBinding_Kd 2:15 x1")]
+    [InlineData("g14x", "alias D => Kimi.Intrinsics.downgrade\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:12 x25")]
     // Moved by R8-G1-3b-2 to `ParameterShapeMismatch_Kd` at the use: the library's declared `downgrade<s/T>(value: ref/(s/T))` and
     // Mine's `downgrade(value: i32)` gathered at the alias stage fail SPEC 9.5.1's check (7.4.3: an original s/T overlaps every key;
     // 7.4.4 step 3), so every use is an error and no candidate is selected. R8's mixed groups are i09x-i12v and the hook's u rows.
@@ -510,16 +518,16 @@ public class DiagnosticPrecisionTest
     // two arity-1 candidates, Kimi.Weak and Mine.Weak); 9.7's arity filter keeps an arity-0 `Weak` valid (tw19v).
     [InlineData("tw18x", "alias Kimi\nalias Mine\ngroup Mine\n    public struct Weak<T>\n        public let x: i32\nfunc f(w: ref/Weak<i32>) -> i32 => w.x\nConsole.writeLine(\"ok\")\n", "AmbiguousBinding_Kd 6:15")]
     [InlineData("tw19v", "alias Kimi\nalias Mine\ngroup Mine\n    public struct Weak\n        public let x: i32\nfunc f(w: ref/Weak) -> i32 => w.x\nConsole.writeLine(\"ok\")\n")]
-    // Moved by R8-G1-3b-2 to `Unsupported_Kd` at the use from a Language record on the miss (q03x at the `Kimi.Weak` member 1:13; h03x
-    // keeps the alias's `InvalidTypeFormation_Kd` 1:1 beside the target's 1:7: open issue O4; g15x's alias walk has the alias as its
-    // only node, so its record is at 1:1).
+    // Moved by R8-G1-3b-2 to `Unsupported_Kd` at the use from a Language record on the miss (q03x at the `Kimi.Weak` member 1:13). An
+    // alias target's walk records where it fails, as every Type use's does, and the alias rests on that record (F's rulings N1-5 (4),
+    // N1-7 (2), (3)): g15x at the target 1:12, h03x the target's 1:7 alone, g13x and g14x at their missing component.
     [InlineData("r12x", "func f(w: ref/Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:15")]
     [InlineData("g08x", "struct Weak\n    public let x: i32\nfunc f(w: ref/Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 3:15")]
     [InlineData("g09x", "func f(w: ref/::Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:17")]
-    [InlineData("g15x", "alias W => Kimi.Weak\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:1")]
+    [InlineData("g15x", "alias W => Kimi.Weak\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:12 x9")]
     [InlineData("h01x", "alias Kimi.Intrinsics\nlet r = makeRc(1)\nlet w = downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 3:9")]
     [InlineData("h02x", "alias Kimi.Intrinsics\nlet f = downgrade\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
-    [InlineData("h03x", "alias Kimi.Weak<rc/i32>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:7", "InvalidTypeFormation_Kd 1:1")]
+    [InlineData("h03x", "alias Kimi.Weak<rc/i32>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:7")]
     [InlineData("h04x", "let w = Weak<rc/i32>.init()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:9")]
     [InlineData("h11x", "alias Kimi.Intrinsics\nlet f = downgrade<rc/i32>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
     [InlineData("i09x", "alias Kimi.Intrinsics\nalias Mine\nstruct Node\n    public let v: i32\ngroup Mine\n    public func makeRcCyclic(build: (i32, i32) -> i32) -> i32 => build(1, 2)\nlet node = makeRcCyclic(func [] (weak) -> Node => Node.init(v: 1))\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 7:12")]
@@ -539,8 +547,11 @@ public class DiagnosticPrecisionTest
     [InlineData("h12x", "func ident<T>(x: T) -> T => x\nlet n = Kimi.Intrinsics.makeRcCyclic(ident)\n", "TransferRequired_Kd 1:29", "Unsupported_Kd 2:9", "UnboundTypeArgument_Kd 2:38")]
     public void UnsupportedDeclarationUsesAreLocated(string row, string source, params string[] expected)
     {
+        // A row naming a record's span (` xN`, F's ruling N1-13 C1) is compared with it.
         var output = DiagnosticCorpus.Check(source);
-        Assert.Equal(expected.Order(StringComparer.Ordinal), ErrorsAt(source, output).Order(StringComparer.Ordinal));
+        var errors = output.Diagnostics.Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)
+            .Select(x => At(source, x.Span!.Value.Start, x.Code) is var at && expected.Contains($"{at} x{x.Span!.Value.Length}") ? $"{at} x{x.Span!.Value.Length}" : at);
+        Assert.Equal(expected.Order(StringComparer.Ordinal), errors.Order(StringComparer.Ordinal));
         Assert.True(output.Accepted == (expected.Length == 0), row);
     }
 

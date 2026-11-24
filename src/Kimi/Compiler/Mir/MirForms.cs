@@ -91,8 +91,9 @@ internal readonly record struct MirRvalue(
 
     internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
 
-    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, of the raw pointer Type to
-    // its element; its access is a raw borrow of the Place, as `&raw P[i]`'s is.
+    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, or of a raw pointer Place,
+    // whose elements start at its value (SPEC 5.3; Storage.viewStart's form), of the raw pointer Type to its element; its access is a raw
+    // borrow of the Place, as `&raw P[i]`'s is.
     internal static MirRvalue Storage(MirPlace place, BoundType type) => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, Type: type);
 
     // SPEC 4.8.1, 8.15.3 (G597): a keyed Storage, of a key selection whose key's start is open in the body (MirTypes.StartsAtStorage), which
@@ -129,7 +130,8 @@ internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Pla
 /// <see cref="Symbol"/> the library declaration of the compiler function it serves, under its Subst, whose parameters its first operands
 /// pass (those the builder adds follow them, MirDescriptors), or null for one without a library declaration, whose result holds no Loan
 /// (A3 E14, DECISIONS R4-M63); a Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken
-/// constant at <see cref="Arg"/> (DECISIONS R4-M41).</summary>
+/// constant at <see cref="Arg"/> (DECISIONS R4-M41; CallPlan.DeclaredSignature: for an abstract callee the signature the call selected
+/// among its Callable premises, whose bounds A4 reads, SPEC 8.11.4).</summary>
 internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Symbol = null, Subst? Subst = null, int Arg = 0, BindingSymbol? Contract = null)
 {
     internal static MirCallee Intrinsic(IntrinsicId id, BindingSymbol? declaration = null, Subst? subst = null)
@@ -252,8 +254,10 @@ internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType? Type,
 /// access (<see cref="MirDescriptors.IsUndecided"/>), which only A1 judges at the Place and every other reader at its root
 /// (<see cref="MirDescriptors.Judged"/>). The first <see cref="Kept"/> (at most <see cref="Count"/>) are an Error node's kept parts'
 /// Places, which the site takes as the invocation it replaces takes its inputs, so A5 activates the reservations they hold (DECISIONS
-/// Z17c, SPEC 15.6.7); 0 for every other site (a default's, which runs during the reservation, a derived value's, a jump's).</summary>
-internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count, int Kept);
+/// Z17c, SPEC 15.6.7); 0 for every other site (a default's, which runs during the reservation, a derived value's, a jump's). The next
+/// <see cref="Enclosing"/> (after the kept ones) are enclosing parts: the replaced form designates a Place strictly within each, so A1
+/// checks its construction, not its value; every reader but A1 reads every use alike.</summary>
+internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count, int Kept, int Enclosing);
 
 /// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
 /// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure

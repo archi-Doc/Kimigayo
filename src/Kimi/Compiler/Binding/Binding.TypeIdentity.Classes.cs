@@ -802,7 +802,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    var instance = binding.UnconditionalBinding(this.types[m], type, out var unfinished);
+                    var instance = binding.UnconditionalBinding(this.types[m], type, QuerySite.Nested, out var unfinished);
                     this.provisional |= unfinished;
                     if (instance is null)
                     {

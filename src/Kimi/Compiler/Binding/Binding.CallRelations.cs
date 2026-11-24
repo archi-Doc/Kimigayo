@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 // Call relations (SPEC 15.6.1, 15.6.5, 10.1): the Origin relations of a selected call, formed after selection at their own sources
 // (the receiver's and each argument's fit to its completed parameter Type, then each substituted clause and a Within row) as rows of the
 // body, which A5 judges (FormBodyRelation; R7-O1: Binding judges no call position and records none), each row with the input that fixed
-// its equality (FixedBy); and the bounds its fits give omitted Origins (CollectFitBounds). Files: this one; .Records.cs (the records of
-// a node beyond the first).
+// its equality (FixedBy); and the bounds its fits give omitted Origins (CollectFitBounds). Its input fits and its substituted clauses that
+// relate an input raw layer's Origin to another form the call's raw fits (rawFits; G147 ruling 75). Files: this one; .Records.cs (the
+// records of a node beyond the first).
 public sealed partial class Binding
 {
     // Whether the Origins and Origin arguments of a Type's parts name `origin`, a meet's operand included (a meet's operands are atoms,
@@ -66,9 +67,9 @@ public sealed partial class Binding
     {
         var selected = solution.Function;
 
-        // The selected candidate's solve as its runs retained it (InferenceOf), whose published Marked fact the clauses and the input
-        // premises read; the solution rebuilt for this judgment carries none.
-        var solved = this.originInferences.GetValueOrDefault((call, selected));
+        // The selected candidate's solve as its runs in this evaluation kept it (SlotSolution.Kept), whose published Marked fact the
+        // clauses and the input premises read; the solution rebuilt for this judgment begins none, and a property update keeps none.
+        var solved = solution.Kept is [var kept] ? kept : null;
         this.RecordOpenings(call, solution);
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
@@ -126,7 +127,7 @@ public sealed partial class Binding
     // SlotSolution.OpenWaited reads).
     private void RecordOpenings(Koto call, in SlotSolution solution)
     {
-        if (this.HasWaitingPosition(solution) && this.originInferences.TryGetValue((call, solution.Function), out var inference))
+        if (this.HasWaitingPosition(solution) && solution.Kept is [{ } inference])
         {
             foreach (var (region, bound) in inference.Opened)
             {
@@ -185,6 +186,13 @@ public sealed partial class Binding
                 var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, declaringType);
                 var shorter = this.SubstituteClauseOrigin(relation.Shorter, selected, origins, inputs, declaringType);
                 this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
+
+                // G147 ruling 75 Q-B: a clause letting another Origin outlive (or equal) an input raw layer's Origin summarizes a fit the
+                // callee may make into that layer, so the call forms that raw fit (the second source of rawFits, by its one entry rule).
+                if (this.InputRawLayerStates(selected, relation.Shorter) || (relation.Equality && this.InputRawLayerStates(selected, relation.Longer)))
+                {
+                    this.AddRawFit(this.rawFits, shorter, longer, relation.Equality);
+                }
             }
         }
 
@@ -221,23 +229,24 @@ public sealed partial class Binding
         BoundType? declaringType)
         => this.Substitute(origin, SubstitutionOf(selected.OriginBinder, declaringType, default, default, origins, inputs));
 
-    // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
-    // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
-    // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
+    // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input's
+    // located limits are judged first (JudgeSelectedInput): a Borrow of a static root fails it, its relations (SPEC 11.8, a fit to static)
+    // waiting for P42, and the bare Reborrow rule's Shortened Reborrow is recorded beside it, its fit judged.
+    // An implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
     // Origin relation problem (JudgeHolderPlace; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];
         if (operation is { Source: { } source, ParameterType: { } mode })
         {
-            if (this.FailStaticBorrow(source, operation.Kind, mode.Semantics))
+            if (this.JudgeSelectedInput(source, operation.Kind, mode.Semantics, operation.SourceType, operation.AdaptedType))
             {
                 return;
             }
 
             if (operation.Kind == ArgumentOperationKind.Borrow && IsExclusive(mode.Semantics))
             {
-                this.JudgeHolderPlace(source, HolderAccess.ExclusiveBorrow, null, source);
+                this.JudgeHolderPlace(source, null, source);
             }
         }
 
@@ -281,8 +290,8 @@ public sealed partial class Binding
             pattern = null;
         }
 
-        // A call's fit is judged at the call, in no comparison (default).
-        if (this.FitOuterOrigins(actual, expected, this, context.At, out var longer, out var shorter, default) == OuterOriginFit.Relation)
+        // A call's fit is judged at the call, in no comparison (default); it places the argument, so it forms its raw fits (rawFits).
+        if (this.FitOuterOrigins(actual, expected, context.At, context.At, default, this.rawFits, invariant) is (OuterOriginFit.Relation, var longer, var shorter))
         {
             // SPEC 8.1.2, 15.6.5: a pair layer's slot, `o` included, exists only in its binder's borrow cases.
             this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At, default));
@@ -368,6 +377,21 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    // Whether a raw layer of one of the callee's parameter Types states `origin` (a meet's operand included): a test of their Origin
+    // summaries' RawNodes.
+    private bool InputRawLayerStates(FunctionKoto selected, BoundOrigin origin)
+    {
+        for (var i = 0; i < selected.Parameters.Count; i++)
+        {
+            if (selected.Parameters[i].Type.BoundType is { } type && Array.IndexOf(this.SummaryOf(type).RawNodes, origin) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The first input, receiver first, whose parameter Type names `origin`.

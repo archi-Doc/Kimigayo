@@ -1,20 +1,16 @@
 {
   "packageId": "kimi-backend-windows-x64",
-  "abiVersion": 2,
+  "abiVersion": 3,
   "profile": "windows-x64-v1",
   "llvmVersion": "22.1.8",
   "library": "kimi_backend",
-  "artifactSha256": "4ef5b90f70bf22dea6fd2a6fb495f11025e3ecf4b7afa68b356801c9252c5d26",
+  "artifactSha256": "626a858a08d70544c0a37b4e0cc6a2df39134d3eddade59e3ff92506f17f125f",
   "providedSymbols": [
-    "__chkstk",
-    "memcmp",
-    "memcpy",
-    "memmove",
-    "memset"
+    "__chkstk"
   ],
   "kernel32": {
-    "definitionSha256": "0494d8c54aed8091f78d7705a028f5fd41a86f8eb768d10ec6b496fb9981f197",
+    "definitionSha256": "b4057369c7072b3705334019a1f7815ae7fb1f6da609dd7eda8d43992b18b71d",
     "dlltoolSha256": "3733b6d47353a29f18b0e543675d83c525655a7cdfa3fb9c06cfc5d4a1a4fdfc",
-    "sha256": "7ff5239191780386a2dabcddd3703d04d526adfdc6458b8cc6493589fc5374c3"
+    "sha256": "1659d7ee924948faee51de6931404d58d6087ed03f499ff172134169fe829441"
   }
 }

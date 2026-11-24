@@ -46,7 +46,8 @@ embedded and implemented.
   protocol; it has no compiler-recognized name or special startup hook.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owning`, `borrowing`, `OwningIterator<I>`, `BorrowingIterator<I>`) as ordinary Kimigayo.
 - A declaration the compiler implements is written in its container without a Body and carries `#Intrinsic` (or
-  `#Unsupported`; a linked constructor carries `#Lang`): `Console.writeStdout` in `Formatting.kimi`, the object
+  `#Unsupported`; a linked constructor carries `#Lang`, as does `Storage.viewStart`, a function whose calls the compiler
+  writes as a form, never as a call): `Console.writeStdout` in `Formatting.kimi`, the object
   factories and `clone` in `Intrinsics.kimi` (with the four `#Unsupported` Weak operations), Array's two constructors in
   `Array.kimi`, the storage operations in `Storage.kimi`, the raw operations in `Raw.kimi` and `Test.tempDirectory` in
   `Test.kimi`.

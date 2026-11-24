@@ -8,8 +8,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The construction qualifiers that leave their own slots open (ConstructionTargetType), for the pass.
-    private readonly HashSet<Koto> inferredConstructionTargets = new(ReferenceEqualityComparer.Instance);
+    private readonly InferredConstructionTargetRows inferredConstructionTargets;
 
     // A container keeps its own slots first, followed by its parent's effective slots.
     // Slot symbols retain their original binder and ordinal; spelling is not identity.
@@ -307,12 +306,12 @@ public sealed partial class Binding
                 environment = this.BindContainerQualifier(member.Left, qualifier, scope, context);
                 if (environment is null)
                 {
-                    return null;
+                    return this.CompleteDependent(syntax, member.Left); // SPEC 23.1.2 (rule W): the qualifier's formation record.
                 }
 
                 if (IsCore(qualifier) && symbol.Kind == BindingSymbolKind.Type && this.AlsoAssociated(environment, symbol.Name, member, scope))
                 {
-                    return this.Fail(member, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
+                    return this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // SPEC 9.7.3: it resolves both ways (a flag).
                 }
 
                 environment = this.QualifierEnvironment(environment, symbol, container, parent, scope, syntax);
@@ -417,6 +416,13 @@ public sealed partial class Binding
             return result is null ? null : this.PublishType(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
         }
 
+        if (symbol.Declaration is ContractKoto)
+        {
+            // SPEC 8.4, 18.2.1: a Contract reference has no Type role either; the bound Contract reference is formed where every other is,
+            // and the qualifier completes with it, as a group's does (a Contract without arguments forms no Type there).
+            return this.BindContractReference(syntax, symbol, scope) is { } contract ? this.PublishType(syntax, contract.Type) : null;
+        }
+
         return this.BindType(syntax, scope, context with { SuppressOuter = true });
     }
 
@@ -437,5 +443,16 @@ public sealed partial class Binding
 
             syntax = next;
         }
+    }
+
+    /// <summary>The `inferredConstructionTargets` family's one accessor (DECISIONS BU-220): a working-state family, the construction
+    /// qualifiers that leave their own slots open (ConstructionTargetType), which the construction completes with its solved Type; a
+    /// `bool` row in the qualifier's module's NodeColumns at its SyntaxId. A row of an earlier pass reads none, and the library's rows
+    /// are released at its freeze (NodeColumns.Freeze). Its members keep the names its readers use.</summary>
+    private readonly struct InferredConstructionTargetRows(Binding binding)
+    {
+        internal void Add(Koto syntax) => HirTables.Of(syntax).Families.InferredConstructionTargets.Ref(syntax.SyntaxId, binding) = true;
+
+        internal bool Contains(Koto syntax) => syntax.SyntaxOwner is { } table && table.Hir.Families.InferredConstructionTargets.Get(syntax.SyntaxId, binding);
     }
 }

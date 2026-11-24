@@ -20,7 +20,7 @@ public partial class KimiLibraryShapeTest
     {
         var library = Library.Value.Library;
         var declared = new Dictionary<KimiDeclarationId, Koto>();
-        foreach (var (attribute, target) in LibraryAttributes(AttributeKind.Lang))
+        foreach (var (attribute, target) in LibraryAttributes(Library.Value, AttributeKind.Lang))
         {
             var name = Assert.Single(Texts(attribute));
             Assert.False(target is FunctionKoto { IsSpecialization: true }, name);
@@ -40,32 +40,38 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(sourced.Order(), declared.Keys.Order());
         Assert.Equal(declared.Count, declared.Values.Distinct().Count());
-        Assert.Equal((120, 137), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names; G1-3b-2: Weak's.
+        Assert.Equal((122, 139), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names; G1-3b-2: Weak's.
     }
 
     // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the Definition the registration gives the declaration's symbol;
     // `#Intrinsic("Fail", "Code")` carries Fail's SPEC 22.5.2 code. An intrinsic other than Fail is named once. The
-    // intrinsics no declaration names are those the MIR builder emits without a library function, `$abort`'s among them.
-    [Fact]
-    public void EachIntrinsicAttributeNamesItsIntrinsic()
+    // intrinsics no declaration names are those the MIR builder emits without a library function, `$abort`'s among them, and on
+    // windows-x64 (the library without a target is its selection) MonotonicClock: its library declares no Time.monotonicNanoseconds, so
+    // no Windows module reaches the platform layer's clock, which Windows' layer does not define (the Tatara plan's B7b6, N6).
+    [Theory]
+    [InlineData("", 20, "MonotonicClock")]
+    [InlineData("x86_64-unknown-linux-musl", 21, "")]
+    public void EachIntrinsicAttributeNamesItsIntrinsic(string target, int count, string unnamed)
     {
+        var c = LibraryOf(target);
         var named = new List<IntrinsicId>();
-        foreach (var (attribute, target) in LibraryAttributes(AttributeKind.Intrinsic))
+        foreach (var (attribute, declaration) in LibraryAttributes(c, AttributeKind.Intrinsic))
         {
             var texts = Texts(attribute);
-            Assert.True(Enum.TryParse<IntrinsicId>(texts[0], out var id) && id.ToString() == texts[0] && id != IntrinsicId.None, Line(target));
+            Assert.True(Enum.TryParse<IntrinsicId>(texts[0], out var id) && id.ToString() == texts[0] && id != IntrinsicId.None, Line(declaration));
             Assert.Equal(id == IntrinsicId.Fail ? 2 : 1, texts.Length);
-            Assert.Equal(target.SymbolOf(Library.Value)!.Definition, new(DispositionKind.Intrinsic, id, id == IntrinsicId.Fail ? texts[1] : null));
+            Assert.Equal(declaration.SymbolOf(c)!.Definition, new(DispositionKind.Intrinsic, id, id == IntrinsicId.Fail ? texts[1] : null));
             named.Add(id);
         }
 
         var once = named.Where(static x => x != IntrinsicId.Fail).ToArray();
         Assert.Equal(once.Distinct(), once);
-        Assert.Equal((18, 6), (once.Length, named.Count - once.Length)); // Fail: the Time unit's Storage.clockFailure is the sixth.
+        Assert.Equal((count, 6), (once.Length, named.Count - once.Length)); // Fail: the Time unit's Storage.clockFailure is the sixth.
         Assert.Equal(
             [
                 IntrinsicId.None, IntrinsicId.Abort, IntrinsicId.TypeTest, IntrinsicId.TestObserve, IntrinsicId.TestMessage, IntrinsicId.TestRequireAbort,
                 IntrinsicId.TestRecordValue, IntrinsicId.StaticEnsure,
+                .. unnamed.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(static x => Enum.Parse<IntrinsicId>(x)),
             ],
             Enum.GetValues<IntrinsicId>().Except(named));
     }
@@ -102,7 +108,7 @@ public partial class KimiLibraryShapeTest
     {
         var registered = Library.Value.Library.RegisteredSymbols.ToArray();
         var declared = new HashSet<BindingSymbol>();
-        foreach (var (attribute, target) in LibraryAttributes(AttributeKind.CallerLocation))
+        foreach (var (attribute, target) in LibraryAttributes(Library.Value, AttributeKind.CallerLocation))
         {
             Assert.Empty(Texts(attribute));
             var symbol = Assert.IsType<FunctionKoto>(target).SymbolOf(Library.Value)!;
@@ -118,11 +124,11 @@ public partial class KimiLibraryShapeTest
         Assert.Equal((108, 108), (declared.Count, flagged.Length));
     }
 
-    // The library's Attributes of one kind, each with the declaration it is written on, in source order.
-    private static List<(AttributeKoto Attribute, Koto Target)> LibraryAttributes(AttributeKind kind)
+    // A bound library's Attributes of one kind, each with the declaration it is written on, in source order.
+    private static List<(AttributeKoto Attribute, Koto Target)> LibraryAttributes(Compilation c, AttributeKind kind)
     {
         var found = new List<(AttributeKoto, Koto)>();
-        foreach (var node in KotoTree.Walk(Library.Value.Library.Kotonoha.RootKoto))
+        foreach (var node in KotoTree.Walk(c.Library.Kotonoha.RootKoto))
         {
             if (node is AttributeKoto attribute && attribute.Kind == kind)
             {
