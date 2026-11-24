@@ -7008,6 +7008,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   rows with no selection to protect).
   - Amended by R7-M89 (R7-O2 A1+A2, 2026-11-22; the owner's O-481 (b)): s2c, e6c, s9, e-owul and c-ntup are valid, their records
     unchanged (O-406 (a)'s located `Unsupported_Kd` at the argument); e-owu stays invalid.
+  - Amended by BU-256 (D-1223, Q-736, 2026-11-24): the `Final` class is a leaf with a local region the forming body judges whose
+    bounds are not complete (`RegionBounded`). A call's region complete at its use is judged at once: an erasure over one at a call
+    argument records `UnprovenConstraint_Kd` at the converted value after selection, not the located `Unsupported_Kd` (PLAN G1030).
 - **R4-M216 An operand's check set takes its own value only where its operation keeps it (the A5 one-tree landing's (c2))**
   (2026-11-19, landing with Q-539; Middle, A5; Major, restores dev's verdicts; commit 9c0896ed8) SPEC 15.6, 12.2. Supersedes in part
   R4-M66 (design A3 §12 E13 (1) (a): an operand's check set holds its own value, an rvalue's single one's too).
@@ -18355,6 +18358,30 @@ resumed by R4-M86 (2026-10-20).
   pin it. It also removes the table's growth across edits. Rejected: (a) keying by the comparison's site (changes `Use`: a semantic
   unit, the site not proven a program node); (b) a pool outside NodeColumns keyed as today (an owner-approved ratchet exception that
   keeps the growth).
+- **BU-256 A call's region complete at its use is read at once (PLAN G1030's call-region part, R1-a)** (Front, 2026-11-24; Binding;
+  Q-736, D-1223; Major; design `front\notes\restart12\r1a\design.md`, F's R1-a rulings 1-3 (`r1a\ruling.md`), its design review
+  ACCEPT WITH CONDITIONS (`r1a\review-design.md`, C1-C5 met), the Middle's agreement on C-488; commits 1fcbca245, 373275889) SPEC
+  15.3.6, 15.4.4, 15.6.4, 10.1, 15.2.3, 8.3.1. Amends R4-M215's Final class.
+  - Rule: a call's region whose binder node is bound, whose bound Type names it only at covariant positions (`OccurrenceVariance`)
+    and which has no recorded upper bound has every bound its candidate reads (`CallRegionComplete`, `Binding.OpenOrigins`). The
+    binder node is the call (its result), or, for a region keyed elsewhere, a construction's unsupplied slot (by its callee node), an
+    interpolation's segment call or a function reference's use; the composition of variances keeps each safe, and a region its
+    node's Type does not name is Unused, not complete. `RegionBounded` (`Binding.LocalRegions`, the one "bounds complete" gate)
+    gains that disjunct, so its readers judge the region at once: with no source it has no answer, `Owned` over it is Unknown
+    (BU-127; never Refuted, 8.3.1), step 5 leaves the candidate applicable (10.1) and the erasure's record after selection is
+    `UnprovenConstraint_Kd` at the converted value (BU-107).
+  - The erasure's Final class (`RegionLeaf`, `Binding.OwnedConversions`) reads the same gate instead of restating it: a leaf with a
+    local region the forming body judges whose bounds are not complete (amends R4-M215).
+  - Reading: a `let` declaration fixes its initializer call's region (15.4.4), so a later slot solve keeping it beside another open
+    region (`FillOpenOrigins`) does not reopen it (r1a-fill-inv).
+  - Moves (Q13, rejected programs; no acceptance move): the class "an erasure at a call argument over a call region complete at the
+    use", G1030's located `Unsupported_Kd` -> `UnprovenConstraint_Kd` at the converted value: r1a-ocall, r1a-gen (a covariant Type
+    argument), r1a-idt (a nested generic call), r1a-fill-ord (a recorded lower bound), r1a-fill-later, r1a-fill-inv. Kept at G1030:
+    r1a-inv, r1a-fill-before and r1a-var-late (valid).
+  - Rejected: a test of the holder's syntax; the conjunction over a `var` region's sources at step 5 (O-406 (a): a later assignment
+    may refute it); a Refuted answer for a source-less region (8.3.1); a memo without a measured need (`OccurrenceVariance` runs per
+    call-region read on Binding's hot path; its nested `visitedParts` query changes no answer; the window's RP8 Bind reading decides).
+  - Open: PLAN G1030 (1)-(3).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
