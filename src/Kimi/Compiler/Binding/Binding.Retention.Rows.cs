@@ -416,7 +416,13 @@ public sealed partial class Binding
 
         foreach (var (storage, signature, bound) in this.storageBound)
         {
-            this.HiddenKinds(kinds[storage], signature, bound, output); // The root of a binding of the callee's kept Type: its rows in the callee's terms, once.
+            // The root of a binding of the callee's kept Type: its rows in the callee's terms, once, where a value of the Type the call
+            // binds there can carry a Loan or an address; elsewhere the instantiated tests' rows above are the root's, as Admits filters
+            // them (SPEC 15.6.4 "determined by the instantiated public contract"; the owner's O-353 (a): both bounds).
+            if (this.CanCarryLoan(bound))
+            {
+                this.HiddenKinds(kinds[storage], signature, output);
+            }
         }
 
         for (var s = 0; s < kinds.Count; s++)
@@ -452,23 +458,21 @@ public sealed partial class Binding
     // holds input i where i's declared Type, or a part it holds by value, is that Type (Value), where i's declared referent or pointee
     // holds it (Content; Chain further), or where a callable the contract hands the body may retain i there (FilledKinds); never by the
     // binding's Origins, which are the caller's, and no storage past a layer of the binding gets one (a raw layer the abstract Type does
-    // not show adds no reach of its own). The Type the call binds it to, `bound`, bounds only the reads (SPEC 15.6.4's first sentence,
-    // "determined by the instantiated public contract"; the owner's O-353 (a)): a read or chain of reads through an input is retained
-    // only by a storage that may retain an Origin inside the input's referent or pointee, or by a raw layer the call writes, so where no
-    // value of `bound` can carry a Loan or an address (CanCarryLoan, SPEC 15.6's predicate) the storage keeps no Content or Chain row; an
-    // input's own value (Value: it is, or holds by value, that Type) it keeps whatever `bound` is, since that storage can hold a value of
-    // a part the input holds by value (15.6.4's argument sentence; the owner's O-359 (a)).
+    // not show adds no reach of its own). Storages reads these rows only where a value of the Type the call binds there can carry a Loan
+    // or an address (CanCarryLoan, SPEC 15.6's predicate): a storage of a Type that can carry neither retains no read through an input
+    // (15.6.4: only "a result or storage that may retain an Origin inside its pointee Type", or a raw layer the call writes, does) and
+    // hides no part, so the instantiated tests' rows (an input's own value where the storage can hold it: UnnamedKinds, O-359 (a),
+    // O-435 (a)), filtered by Admits, are the whole record there.
     // `excluded`, the input this storage is written through (its output), keeps nothing here: its own value never (15.6.4: a pointer is
     // never part of its own pointee), and what a read or chain of reads through it gives is that storage's own content.
-    private void HiddenKinds(RetentionKind[] kinds, BoundType hidden, BoundType bound, int excluded)
+    private void HiddenKinds(RetentionKind[] kinds, BoundType hidden, int excluded)
     {
         var known = this.Hidden(hidden, kinds.Length);
-        var reads = this.CanCarryLoan(bound) ? RetentionKind.Value | RetentionKind.Content | RetentionKind.Chain : RetentionKind.Value;
         for (var i = 0; i < kinds.Length; i++)
         {
             // An input with sources takes its own value's row from the instantiated tests that Admits lets through (their Origin fits and
             // pairs stand); a raw input, or one holding a raw part by value, the hold walk's source, takes it here.
-            var kind = (this.RawInput(i) ? known[i] : known[i] & ~RetentionKind.Value) & reads;
+            var kind = this.RawInput(i) ? known[i] : known[i] & ~RetentionKind.Value;
             kinds[i] |= i == excluded ? RetentionKind.None : kind;
         }
 
@@ -515,10 +519,10 @@ public sealed partial class Binding
         return known!;
     }
 
-    // SPEC 15.6's predicate (HiddenKinds' bound): whether a value of a Type can carry a Loan or an address, that is, whether some part of
-    // it, through its own storage, its Type arguments and the storage its owning handles own (the entries that pass a walk on, Passes), is
-    // one that does not pass it on: a borrow, a raw layer, an erased callable's environment, an abstract part, or a part Binding did not
-    // bind (it may be any Type). A Function Item and a Scalar hold no entry; a concrete Closure carries what its environment holds (SPEC
+    // SPEC 15.6's predicate (where Storages reads HiddenKinds' rows): whether a value of a Type can carry a Loan or an address, that is,
+    // whether some part of it, through its own storage, its Type arguments and the storage its owning handles own (the entries that pass
+    // a walk on, Passes), is one that does not pass it on: a borrow, a raw layer, an erased callable's environment, an abstract part, or a
+    // part Binding did not bind (it may be any Type). A Function Item and a Scalar hold no entry; a concrete Closure carries what its environment holds (SPEC
     // 15.8.2; Holdings' Closure row, as the hold walk and MirTypes.HoldsLoans read it). Fails closed: true past StorageBound and at
     // Binding's Limit. Each Type is walked once per query (retentionCarried), so a recursive Type ends; its repeat adds nothing its first
     // meeting lacks.
