@@ -85,9 +85,9 @@ public sealed partial class Binding
     /// <summary>
     /// SPEC 8.6.1, 8.4.3, 8.9 (R7-C3 b, PLAN G302): the one selection of a Type's conformance by a Contract, the declaration of
     /// `contract` with its bound reference `reference` (SPEC 8.6.1's pair) or with none (a query by declaration, which the compiler asks,
-    /// SPEC 8.4.3). Its candidates are the identities of `receiver`'s declaration that IsSelectionCandidate admits. Candidates naming one
-    /// bound reference are one conformance (SPEC 8.6.1: an explicit one and those implied by refinement; 8.9.2: merging paths, PLAN G798's
-    /// `Gx&lt;i32&gt;`), so any member represents it: their bindings and mappings must agree, and a disagreement is the declaration's error
+    /// SPEC 8.4.3), folding SelectionMembers. Its candidates are the identities of `receiver`'s declaration that IsSelectionCandidate
+    /// admits. Candidates naming one bound reference are one conformance (SPEC 8.6.1: an explicit one and those implied by refinement;
+    /// 8.9.2: merging paths, PLAN G798's `Gx&lt;i32&gt;`), so any member represents it: their bindings and mappings must agree, and a disagreement is the declaration's error
     /// (8.9.2). The selection returns the first member in declaration order (ConformancesOf's registration order), the set's
     /// representative, not a preference among members.
     /// Two declared directly are distinct conformances that collide (SPEC 8.9.1; the clause has its DuplicateBinding_Kd), and without a
@@ -99,21 +99,10 @@ public sealed partial class Binding
     private BoundConformance? SelectConformance(BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site, out int candidates)
     {
         candidates = 0;
-        if (receiver.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
-        {
-            return null;
-        }
-
         BoundConformance? found = null;
         var direct = false;
-        for (var i = 0; i < identities.Count; i++)
+        foreach (var identity in new SelectionMembers(this, receiver, contract, reference, scope, site))
         {
-            var identity = identities[i];
-            if (!this.IsSelectionCandidate(identity.Contract, receiver, contract, reference, scope, site))
-            {
-                continue;
-            }
-
             candidates++;
             if ((found is not null && reference is null) || (direct && identity.DirectClause is not null))
             {
@@ -673,6 +662,32 @@ public sealed partial class Binding
                     this.Fail(contract, BindingFailure.Access);
                 }
             }
+        }
+    }
+
+    // SPEC 8.6.1: a selection's members, the identities of `receiver`'s declaration (ConformancesOf, in declaration order) that
+    // IsSelectionCandidate admits for `contract`'s declaration with `reference` (none: a query by declaration) in `scope`. The one
+    // enumeration of a selection's candidates: SelectConformance folds it.
+    private ref struct SelectionMembers(Binding binding, BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site)
+    {
+        private readonly List<BoundConformance>? identities = receiver.Symbol is { } owner ? binding.ConformancesOf(owner) : null;
+        private int next;
+
+        public readonly BoundConformance Current => this.identities![this.next - 1];
+
+        public readonly SelectionMembers GetEnumerator() => this;
+
+        public bool MoveNext()
+        {
+            while (this.identities is not null && this.next < this.identities.Count)
+            {
+                if (binding.IsSelectionCandidate(this.identities[this.next++].Contract, receiver, contract, reference, scope, site))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
