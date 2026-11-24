@@ -14,8 +14,8 @@
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
 // - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Signature, EnvironmentType and InfersResult (its
-//   Storage, Carried and EvaluatingBody are Binding.Captures'); a ClosureReceiverRefutation; the located InternalInvariant_Kd of each use
-//   no consumer takes.
+//   Storage and Carried, and the symbol's DeclaringBody, are Binding.Captures'); a ClosureReceiverRefutation; the located
+//   InternalInvariant_Kd of each use no consumer takes.
 // - Invariants: BindClosure clears the published Signature, Published and Classified before a binding, and the pending relations an
 //   earlier binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause)
 //   and has them classified right after the body is bound, its pending relations judged then (Binding.OriginProof.cs); PublishClosure
