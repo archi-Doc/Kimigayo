@@ -81,6 +81,11 @@ public sealed partial class Binding
         return false;
     }
 
+    // PLAN G1278 (SPEC 6.5.2, 8.6.3, 12.3): a contextual Case (`.Name`) takes its Enum Type, arguments and Origins included, from its
+    // expected Type, so it carries that Type (judged at its formation site) and forms none; every other acquisition forms its Type from
+    // its qualifier and the arguments and Origins it inferred, judged by the construction and by CompleteEnumAcquisitions.
+    private static bool CarriesExpectedEnum(Koto use) => use is SyntaxFormKoto { Akind: KotoKind.InferredCase };
+
     private static bool NeedsEnumContext(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -591,7 +596,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var proof = this.CheckConstraints(declaration.ConstraintNodes, new CallSubstitution(declaration, frame.Types[..slots]), scope, use);
+            var proof = CarriesExpectedEnum(use) ? ConstraintProof.Proven : this.CheckConstraints(declaration.ConstraintNodes, new CallSubstitution(declaration, frame.Types[..slots]), scope, use);
             if (proof != ConstraintProof.Proven)
             {
                 return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true) : this.RecordConstraint(use, proof, []);
@@ -915,6 +920,23 @@ public sealed partial class Binding
         return this.ReplaceHolder(stored, null);
     }
 
+    // The formation an acquisition's completed plan judges (CompleteEnumAcquisitions): its Enum Type and each payload parameter Type.
+    private ConstraintProof EnumFormation(Koto use, BoundEnumConstruction plan, BindingScope scope)
+    {
+        if (CarriesExpectedEnum(use))
+        {
+            return ConstraintProof.Proven;
+        }
+
+        var formation = this.CheckTypeConstraints(plan.Type, scope, use);
+        for (var i = 0; i < plan.PayloadOperations.Length; i++)
+        {
+            formation = CombineProof(formation, this.CheckTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope, use), true);
+        }
+
+        return formation;
+    }
+
     private void CompleteEnumAcquisitions()
     {
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
@@ -937,12 +959,7 @@ public sealed partial class Binding
             }
 
             var scope = this.ConstraintScope(use);
-            var formation = this.CheckTypeConstraints(plan.Type, scope, use);
-            for (var i = 0; i < plan.PayloadOperations.Length; i++)
-            {
-                formation = CombineProof(formation, this.CheckTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope, use), true);
-            }
-
+            var formation = this.EnumFormation(use, plan, scope);
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;

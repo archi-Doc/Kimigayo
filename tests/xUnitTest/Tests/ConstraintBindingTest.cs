@@ -622,6 +622,29 @@ public class ConstraintBindingTest
         Assert.All(records, static x => Assert.StartsWith("UnsatisfiedConstraint_Kd ", x, StringComparison.Ordinal));
     }
 
+    // SPEC 8.6.3, 23.1.2 (PLAN G1278): a constructed Type with clauses is judged once, at its formation site; a node that carries it (a
+    // Function at its result, a Field, a local or a parameter and their reads, a call result, an acquisition or a `let` at its expected
+    // Type) is neither judged nor rested (Q13: their restating records are gone). Guards keep their independent records: a Type written
+    // in an expression, a call's own clause (8.3.1), a literal and an acquisition that infer their Type (12.4, 10.8), a body's own
+    // failure. `struct H`'s 8:12 is ValidateAccessor's (PLAN G1278-B); dictann's literal 8:33, a carrier still judged, is named open.
+    [Theory]
+    [InlineData("struct H\n    public var x: Box<S>", "UnsatisfiedConstraint_Kd 8:12 | UnsatisfiedConstraint_Kd 8:19")]
+    [InlineData("func g() -> Box<S> => $abort(\"no\")", "UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("func g()\n    let b: Option<Box<S>> = .None", "UnsatisfiedConstraint_Kd 8:19")]
+    [InlineData("func g() -> Box<S> => $abort(\"no\")\nfunc h() -> i32\n    let v = g()\n    return v.nope", "NoApplicableOverload_Kd 9:13 | UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("func g(b: Box<S>) -> i32\n    return b.nope", "UnresolvedBinding_Kd 8:12 | UnsatisfiedConstraint_Kd 7:11")]
+    [InlineData("func g(p: Box<S>) -> i32\n    let b: Box<S> = p@move\n    return b.nope", "UnresolvedBinding_Kd 9:12 | UnsatisfiedConstraint_Kd 7:11 | UnsatisfiedConstraint_Kd 8:12")]
+    [InlineData("func g(s: S)\n    let d: Dictionary<S, i32> = [s@move: 1]", "UnsatisfiedConstraint_Kd 8:12 | UnsatisfiedConstraint_Kd 8:33")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g()\n    let e: E<S> = .B", "UnsatisfiedConstraint_Kd 12:12")]
+    [InlineData("func make<T>() -> T => $abort(\"no\")\nfunc g()\n    let o = make<Box<S>>()", "NoApplicableOverload_Kd 9:13 | UnsatisfiedConstraint_Kd 9:18")]
+    [InlineData("func wrap<T>(x: T) -> Box<T>\n    T is C\n    return $abort(\"no\")\nfunc g(s: S)\n    let b = wrap(s@move)", "NoApplicableOverload_Kd 11:13")]
+    [InlineData("func g(s: S)\n    let d = [s@move: 1]", "UnsatisfiedConstraint_Kd 8:13")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g(s: S)\n    let e = E.A(s@move)", "UnsatisfiedConstraint_Kd 12:13")]
+    [InlineData("func g() -> Box<S> => 1", "TypeMismatch_Kd 7:23 | UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g()\n    let e: E<K> = .B", "")]
+    public void AFormedTypeIsJudgedAtItsFormationSiteOnly(string declaration, string records)
+        => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n").Select(static x => string.Join(' ', x.Split(' ', 3).Take(2))).Order(StringComparer.Ordinal)));
+
     // SPEC 23.1.2, 15.3.1 (R7-V1c, F's V1c ruling 3): the walk judges a written occurrence once, at the outermost layer of it whose Type is
     // formed. A wrapper whose `during` binds no slot (Box has none) forms no Type, so the occurrence is judged at the Type below it and
     // both independent failures are reported, the Origin's and `S is C`'s (ee393bf26 judged nothing there); with a slot the wrapper's
