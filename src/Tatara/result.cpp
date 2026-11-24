@@ -6,6 +6,7 @@ TataraText TATARA_CALL tatara_text(const TataraResult* result, int32_t kind)
     const std::string* text = kind == 0 ? &result->message
         : kind == 1                     ? &result->undefinedSymbols
         : kind == 2                     ? &result->definedSymbols
+        : kind == 3                     ? &result->output
                                         : nullptr;
     return text ? TataraText{text->data(), text->size()} : TataraText{nullptr, 0};
 }

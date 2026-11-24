@@ -114,8 +114,9 @@ public partial class TypeDagScalingTest
         }
     }
 
-    // SPEC 8.15.2, 15.6.3 (G254b): each bare use of `h@follow` whose owner case Reborrows a nested layer plans its owner case and walks
-    // its reach under that case once, so a body's work grows linearly in its uses.
+    // SPEC 8.15.2, 15.6.3 (G254b, G254c): each use of `h@follow` whose owner case Reborrows a nested layer beside an invariant case plans
+    // its owner case and walks its reach under that case, then is judged again at its selected input (each owner-case level counted), so
+    // a body's work grows linearly in its uses; each use is one located limit beside its Resolved Place.
     [Fact]
     public void OwnerCaseReborrowsAreLinearInTheUses()
     {
@@ -125,14 +126,14 @@ public partial class TypeDagScalingTest
         static long Work(int uses)
         {
             var source = new System.Text.StringBuilder("func take<V>(x: V) -> () => ()\n");
-            source.Append("func f<s/T, U>(m: s/T, h: uniq/(s/(uniq/U during b) during a) during c) -> ()\n    s is owner or ref\n");
+            source.Append("func f<s/T, U>(m: s/T, h: uniq/(s/(uniq/U during b) during a) during c) -> ()\n    s is owner or uniq\n");
             for (var i = 0; i < uses; i++)
             {
                 source.Append("    take(h@follow)\n");
             }
 
             var c = MirBuildTest.Compile(source.Append(LayerMain).ToString());
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            Assert.Equal((0, 0, uses), (c.Binding.Result.UnresolvedCount, c.Binding.Result.InvalidCount, c.Binding.Result.LimitedCount));
             return c.Binding.TermWalkWork;
         }
     }

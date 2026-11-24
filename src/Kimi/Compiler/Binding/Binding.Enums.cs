@@ -866,9 +866,10 @@ public sealed partial class Binding
 
             // The acquisition and the fit are independent (PLAN G262): a failed acquisition is deferred, the fit judged on the Type it
             // supplies, and the failure explains the payload where its structure fits, as a candidate's does (TryCandidate). A payload's
-            // Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
+            // located limits are judged first (JudgeSelectedInput): a Borrow of a static root fails it, its relations waiting for P42, and a
+            // Shortened Reborrow is recorded beside it, its fit judged.
             var fits = this.AdaptInput(source, FixedPattern.Open(type), actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
-                (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsValueAt(adaptedType, type, source, source, out failure));
+                (this.JudgeSelectedInput(source, kind, type.Semantics, actual, adaptedType) || this.FitsValueAt(adaptedType, type, source, source, out failure));
             var acquisition = this.acquisitionFailure is { } deferred && (fits || this.FitsStructuralPartAt(adaptedType, type, source))
                 ? deferred : default(AcquisitionFailure?);
             if (acquisition is { } failed)
@@ -949,15 +950,20 @@ public sealed partial class Binding
 
             for (var i = 0; i < plan.PayloadOperations.Length; i++)
             {
+                // SPEC 3.5, 8.3.3 (R7-C6 a, F's C8 ruling 7): only a payload acquired from a Place by value is judged here, from the
+                // Place (the Copy query's site); a moved, borrowed or temporary payload needs no Copy, so none is asked.
                 var operation = plan.PayloadOperations[i];
-                var proof = this.ProveCopy(operation.ParameterType!, use);
-                if (proof == ConstraintProof.Error)
+                if (operation.Kind != ArgumentOperationKind.Value || operation.Source is not { } payloadSource || !this.IsBarePlace(payloadSource))
+                {
+                    continue;
+                }
+
+                if (this.ProveCopy(operation.ParameterType!, scope, payloadSource) == ConstraintProof.Error)
                 {
                     plan.IsValid = false;
                     this.Fail(use, BindingFailure.InvalidConstraint);
                 }
-                else if (operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && this.IsBarePlace(payloadSource) &&
-                    this.BareAcquire(operation.SourceType!, payloadSource, out _) == HirAcquire.Move)
+                else if (this.BareAcquire(operation.SourceType!, payloadSource, out _) == HirAcquire.Move)
                 {
                     // SPEC 6.5.2, 3.5, 8.14: a payload Place is acquired by its bare acquisition, by case for a pair layer; one without a
                     // plan never Moves into a payload; write value@move.

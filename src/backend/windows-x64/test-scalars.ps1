@@ -7,6 +7,9 @@
 # their own: one process doing the lines' LLVM and LLD work through Tatara, as kimi build does (NativeBuild: optimize, emit, inspect,
 # link). A line whose pair has no record after its session was not attempted (Tatara's refusal ends a session after its line) and goes
 # to the next round of lanes. Runs: test-scalar-fixture.ps1, -Parallel at a time, reads each pair's record and runs its executable.
+# Reuse (-ReuseResults; DECISIONS Q16 as amended by the owner's O-519 (a) and O-522 (a2)): a fixture whose environment and fixture
+# keys equal its passed base entry's is neither built nor run; every other fixture is built, and one whose run key then equals its
+# entry's, executed within half of -ReuseHours, is not run; every other built fixture runs.
 # Writes results.json, native-results.json and each session's log to -LogDirectory.
 [CmdletBinding()]
 param(
@@ -17,7 +20,8 @@ param(
     [string] $LogDirectory = '',
     [ValidateRange(1, 2147483647)] [int] $ExecutionDeadlineMilliseconds = 30000,
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(4, [Environment]::ProcessorCount),
-    # A previous run's native-results.json: its passed entries with this run's keys, verified within -ReuseHours, are not re-executed.
+    # A previous run's native-results.json: its passed entries executed within -ReuseHours are not executed again when this run's
+    # environment and fixture keys equal theirs, or, within half of -ReuseHours, when the built fixture's run key equals theirs.
     [string] $ReuseResults = '',
     [ValidateRange(1, 2147483647)] [int] $ReuseHours = 24
 )
@@ -37,7 +41,9 @@ New-Item -ItemType Directory -Force $logs | Out-Null
 $utf8 = [Text.UTF8Encoding]::new($false)
 # A native outcome depends only on the fixture's files (fixture key) and on the compiler's Tatara, the supplies, the native build's code
 # (src/Kimi/Build, the tatara and build commands and the target profile), the runner code and the deadline (environment key); missing
-# files hash as empty.
+# files hash as empty. A run depends only on its O0 and O2 executables (each linked record's executableSha256, taken when the file the
+# record names has that hash, IMPL 20.3.2), the fixture's four sidecars and the run environment: the run scripts and the deadline (run
+# key, DECISIONS Q16).
 function Get-NativeKey([string[]] $Parts) {
     [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Parts -join "`n")))
 }
@@ -46,43 +52,55 @@ function Get-NativeFileHash([string] $Path) {
     $stream = [IO.File]::OpenRead($Path)
     try { [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
 }
+$runScripts = @('test-scalars.ps1', 'test-scalar-fixture.ps1', 'test-scalar-process.ps1', 'expected-output.ps1')
 $environment = @((Join-Path (Split-Path -Parent $compiler) 'tatara.dll'), (Get-KimiBackendArchive), (Get-KimiKernel32)) +
     @(Get-ChildItem -LiteralPath (Join-Path $repo 'src/Kimi/Build') -Filter '*.cs' -File -Recurse | ForEach-Object FullName | Sort-Object) +
     @(foreach ($name in @('TataraCommand.cs', 'BuildCommand.cs')) { Join-Path $repo "src/Kimi/Unit/Command/$name" }) +
     @(Get-ChildItem -LiteralPath (Join-Path $repo 'src/Kimi/Compiler/Core') -Filter '*Profile.cs' -File | Sort-Object Name | ForEach-Object FullName) +
-    @(foreach ($name in @('test-scalars.ps1', 'test-scalar-fixture.ps1', 'test-scalar-process.ps1', 'expected-output.ps1', 'toolchain.ps1', 'kernel32.ps1', 'kernel32.def', 'profile.json')) {
+    @(foreach ($name in $runScripts + @('toolchain.ps1', 'kernel32.ps1', 'kernel32.def', 'profile.json')) {
         Join-Path $PSScriptRoot $name
     })
 $environmentKey = Get-NativeKey (@($environment | ForEach-Object { Get-NativeFileHash $_ }) + "$ExecutionDeadlineMilliseconds")
+$runEnvironment = Get-NativeKey (@(foreach ($name in $runScripts) { Get-NativeFileHash (Join-Path $PSScriptRoot $name) }) + "$ExecutionDeadlineMilliseconds")
 $now = [DateTimeOffset]::UtcNow
 $stored = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+$sameEnvironment = $false
 if ($ReuseResults) {
     $previous = Get-Content -LiteralPath $ReuseResults -Raw | ConvertFrom-Json -DateKind String
-    if ($previous.environmentKey -ceq $environmentKey) {
-        foreach ($entry in $previous.fixtures) {
-            $age = $now - [DateTimeOffset]::Parse($entry.verifiedAt, [Globalization.CultureInfo]::InvariantCulture)
-            if ($entry.status -ceq 'passed' -and $age -ge [TimeSpan]::Zero -and $age -le [TimeSpan]::FromHours($ReuseHours)) { $stored[$entry.fixture] = $entry }
-        }
+    $sameEnvironment = $previous.environmentKey -ceq $environmentKey
+    foreach ($entry in $previous.fixtures) {
+        $age = $now - [DateTimeOffset]::Parse($entry.verifiedAt, [Globalization.CultureInfo]::InvariantCulture)
+        if ($entry.status -ceq 'passed' -and $age -ge [TimeSpan]::Zero -and $age -le [TimeSpan]::FromHours($ReuseHours)) { $stored[$entry.fixture] = $entry }
     }
 }
 $keys = @{}
 $irHashes = @{}
+$sidecars = @{}
+$runKeys = @{}
 $reused = [Collections.Generic.List[object]]::new()
 $pending = [Collections.Generic.List[IO.FileInfo]]::new()
+# A fixture not executed in this run: its outcome and log as of its entry's execution, with this run's builds (none when reused whole).
+function New-ReusedResult([string] $Fixture, $Entry, [object[]] $Builds) {
+    [pscustomobject][ordered]@{
+        fixture = $Fixture; status = 'passed'; seconds = 0; log = $Entry.log; levels = @('O0', 'O2'); executions = @()
+        builds = $Builds; problems = @(); reused = $true; verifiedAt = $Entry.verifiedAt
+    }
+}
 foreach ($fixture in $selectedFixtures) {
     $stem = Join-Path $fixtures $fixture.BaseName
     $irHashes[$fixture.Name] = Get-NativeFileHash $fixture.FullName
-    $keys[$fixture.Name] = Get-NativeKey (@($irHashes[$fixture.Name]) + @(foreach ($extension in @('stdout', 'stderr', 'exit', 'observation')) { Get-NativeFileHash "$stem.$extension" }))
+    $sidecars[$fixture.Name] = @(foreach ($extension in @('stdout', 'stderr', 'exit', 'observation')) { Get-NativeFileHash "$stem.$extension" })
+    $keys[$fixture.Name] = Get-NativeKey (@($irHashes[$fixture.Name]) + $sidecars[$fixture.Name])
     $entry = $null
-    if ($stored.TryGetValue($fixture.Name, [ref] $entry) -and $entry.key -ceq $keys[$fixture.Name]) {
-        $reused.Add([pscustomobject][ordered]@{
-            fixture = $fixture.Name; status = 'passed'; seconds = 0; log = $entry.log; levels = @('O0', 'O2'); executions = @()
-            builds = @(); problems = @(); reused = $true; verifiedAt = $entry.verifiedAt
-        })
+    if ($sameEnvironment -and $stored.TryGetValue($fixture.Name, [ref] $entry) -and $entry.key -ceq $keys[$fixture.Name]) {
+        $reused.Add((New-ReusedResult $fixture.Name $entry @()))
+        $runKeys[$fixture.Name] = $entry.runKey
     }
     else { $pending.Add($fixture) }
 }
 $builds = @{}
+$toRun = [Collections.Generic.List[IO.FileInfo]]::new() # The built fixtures whose run is not reused.
+$rebuilt = 0
 if ($pending.Count -gt 0) {
     # The manifest: what kimi emit writes for a one-line program, with the pair's fields left for each fixture.
     $template = Join-Path $out 'manifest-template'
@@ -167,14 +185,49 @@ if ($pending.Count -gt 0) {
         if (-not $attempted) { break }
         $queue = $left
     }
+    # Each built fixture's verified executables (both records linked, each file the hash its record names), in up to -Parallel
+    # chunks of fixtures; a function crosses into the runspaces as its text.
+    $hashText = ${function:Get-NativeFileHash}.ToString()
+    $verified = @{}
+    @(for ($k = 0; $k -lt [Math]::Min($Parallel, $pending.Count); $k++) { , @(for ($i = $k; $i -lt $pending.Count; $i += $Parallel) { $i }) }) | ForEach-Object -Parallel {
+        $ErrorActionPreference = 'Stop'
+        ${function:Get-NativeFileHash} = $using:hashText
+        $pending = $using:pending; $builds = $using:builds
+        foreach ($i in $_) {
+            $name = $pending[$i].Name
+            [pscustomobject]@{ fixture = $name; hashes = @(foreach ($build in $builds[$name]) {
+                if ([IO.File]::Exists($build.record)) {
+                    $record = Get-Content -LiteralPath $build.record -Raw | ConvertFrom-Json
+                    if ($record.status -ceq 'linked' -and
+                        (Get-NativeFileHash (Join-Path (Split-Path -Parent $build.record) $record.executable)) -ceq $record.executableSha256) { $record.executableSha256 }
+                }
+            }) }
+        }
+    } -ThrottleLimit $Parallel | ForEach-Object { $verified[$_.fixture] = $_.hashes }
+    # A fixture with both executables verified has a run key; one whose key equals its entry's, executed within half of -ReuseHours
+    # (O-522 (a2): a rebuild 12-24 h after a run executes it again), is reused with this run's builds. Every other fixture runs.
+    foreach ($fixture in $pending) {
+        $hashes = $verified[$fixture.Name]
+        $runKey = if ($hashes.Count -eq 2) { Get-NativeKey (@($hashes) + $sidecars[$fixture.Name] + $runEnvironment) } else { $null }
+        $runKeys[$fixture.Name] = $runKey
+        $entry = $null
+        if ($null -ne $runKey -and $stored.TryGetValue($fixture.Name, [ref] $entry) -and $entry.runKey -ceq $runKey -and
+            [DateTimeOffset]::Parse($entry.verifiedAt, [Globalization.CultureInfo]::InvariantCulture) -ge $now.AddHours(-$ReuseHours / 2)) {
+            $reused.Add((New-ReusedResult $fixture.Name $entry @(foreach ($build in $builds[$fixture.Name]) {
+                [pscustomobject]@{ level = $build.level; manifest = $build.manifest; recordStatus = 'linked'; log = $build.log }
+            })))
+            $rebuilt++
+        }
+        else { $toRun.Add($fixture) }
+    }
 }
 $context = @{ fixtures = $fixtures; logs = $logs; builds = $builds; executionDeadlineMilliseconds = $ExecutionDeadlineMilliseconds }
 $worker = Join-Path $PSScriptRoot 'test-scalar-fixture.ps1'
 if ($Parallel -eq 1) {
-    $results = @($pending | ForEach-Object { & $worker -Fixture $_ -Context $context })
+    $results = @($toRun | ForEach-Object { & $worker -Fixture $_ -Context $context })
 }
 else {
-    $results = @($pending | ForEach-Object -Parallel {
+    $results = @($toRun | ForEach-Object -Parallel {
         & $using:worker -Fixture $_ -Context $using:context
     } -ThrottleLimit $Parallel)
 }
@@ -185,7 +238,7 @@ $results | ConvertTo-Json -Depth 6 -AsArray | Set-Content -LiteralPath (Join-Pat
     environmentKey = $environmentKey; written = [DateTimeOffset]::UtcNow.ToString('o')
     fixtures = @(foreach ($result in $results) {
         [ordered]@{
-            fixture = $result.fixture; key = $keys[$result.fixture]; status = $result.status; log = $result.log
+            fixture = $result.fixture; key = $keys[$result.fixture]; runKey = $runKeys[$result.fixture]; status = $result.status; log = $result.log
             verifiedAt = if ($result.reused) { $result.verifiedAt } else { $now.ToString('o') }
         }
     })
@@ -198,4 +251,4 @@ foreach ($result in $results) {
     Write-Output "$($result.fixture): $($result.status.ToUpperInvariant()); $($result.log)"
 }
 if ($results.Count -ne $selectedFixtures.Count -or $failures.Count -gt 0) { throw "Native fixture verification failed ($incomplete incomplete); see $logs" }
-Write-Output "Passed $runs native scalar executions (O0/O2); $executed fixtures run, $($reused.Count) reused (verified within $ReuseHours h)"
+Write-Output "Passed $runs native scalar executions (O0/O2); $executed fixtures run, $($reused.Count) reused ($rebuilt of them built; verified within $ReuseHours h)"

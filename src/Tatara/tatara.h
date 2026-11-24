@@ -4,7 +4,8 @@
 //   (llvm-nm and llvm-readobj, for COFF and ELF objects) and link (lld-link or ld.lld), with bytes and text equal to the tools'; and
 //   report the build's identity.
 // Inputs: the pinned LLVM archive (its headers and static libraries); at run time, file paths and the target values of each call.
-// Outputs: tatara.dll, exporting the functions declared here and nothing else; the files each operation writes.
+// Outputs: tatara.dll, exporting the functions declared here and nothing else; each call's result (optimize's and emit's output
+//   among its texts); the files LLD writes, which are the only files Tatara writes.
 // Invariants: built and linked as LLVM's own tools are (static release CRT, no RTTI, no exceptions, the archive's link interface);
 //   the DLL's static CRT allocates with LLVM's integrated rpmalloc and no allocation crosses the ABI. tatara_identity's and
 //   tatara_abi's strings are static; a result's texts are owned by the result until tatara_release. Tatara's process-wide LLVM
@@ -31,7 +32,8 @@ extern "C" {
 #endif
 
 // Every struct that crosses holds only pointer-sized members (no packing dependence).
-// UTF-8, not NUL-terminated; an argument's text is borrowed for the call, a result's is owned by the result.
+// UTF-8, not NUL-terminated; an argument's text is borrowed for the call, a result's is owned by the result. Emit's output, an
+// object's bytes, is not text.
 typedef struct TataraText { const char* bytes; size_t length; } TataraText;
 // The values llc takes as -mtriple, -mcpu, -mattr, -relocation-model and -code-model (an empty value: the tool's default).
 typedef struct TataraTarget { TataraText triple, cpu, features, relocationModel, codeModel; } TataraTarget;
@@ -46,13 +48,16 @@ __declspec(dllexport) void TATARA_CALL tatara_identity(TataraIdentity* identity)
 // A static string: the SHA-256 (lower-case hex) of this file's bytes, passed by build.ps1.
 __declspec(dllexport) const char* TATARA_CALL tatara_abi(void);
 
-// ir, optimizedIr and obj are file paths; Tatara reads and writes the files, as the tools do.
+// ir and inspect's obj are paths of files Tatara reads, as the tools do. Emit's obj only names the object (llc's -o: the name debug
+// information gives it) and is never opened. Optimize and emit return their output in the result (tatara_text kind 3), which the
+// caller writes; only LLD writes files.
 // 0: success. 1: the request failed (the message says why); Tatara can run again. 2: the request failed and Tatara cannot run again
 // in this process (a fatal LLVM or LLD error, a crash caught by recovery, or LLD's canRunAgain false); every later call returns 2
 // with the first cause. *result is set for every return code and is released by the caller. Never throws.
-// optimize: opt -passes=verify, then opt -S -passes=default<O2> -mtriple=<triple> (the text written with CRLF line ends).
-__declspec(dllexport) int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, TataraText optimizedIr, TataraResult** result);
-// emit: opt -passes=verify, then llc -O<optimizationLevel> -filetype=obj with the target's values (optimizationLevel 0 to 3).
+// optimize: opt -passes=verify, then opt -S -passes=default<O2> -mtriple=<triple>; its output the text opt writes (CRLF line ends).
+__declspec(dllexport) int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, TataraResult** result);
+// emit: opt -passes=verify, then llc -O<optimizationLevel> -filetype=obj with the target's values (optimizationLevel 0 to 3); its
+// output the object's bytes.
 __declspec(dllexport) int32_t TATARA_CALL tatara_emit(const TataraTarget* target, TataraText ir, TataraText obj, int32_t optimizationLevel, TataraResult** result);
 // inspect: the COFF or ELF object's symbols as llvm-nm lists them and the two flags below; another format is a failure (1).
 __declspec(dllexport) int32_t TATARA_CALL tatara_inspect(TataraText obj, TataraResult** result);
@@ -60,8 +65,8 @@ __declspec(dllexport) int32_t TATARA_CALL tatara_inspect(TataraText obj, TataraR
 // executable's name does; another flavor is a failure (1).
 __declspec(dllexport) int32_t TATARA_CALL tatara_link(const TataraText* arguments, size_t count, TataraResult** result);
 // kind 0: the message (every operation; the tools' standard output and error, empty when they print nothing). Inspect: 1 the
-// undefined symbols, 2 the defined external symbols, one "<llvm-nm's letter> <name>\n" per symbol in llvm-nm's order. Another
-// kind, or a kind the operation does not set: an empty text.
+// undefined symbols, 2 the defined external symbols, one "<llvm-nm's letter> <name>\n" per symbol in llvm-nm's order. Optimize and
+// emit: 3 the output, set by a successful call only. Another kind, or a kind the operation does not set: an empty text.
 __declspec(dllexport) TataraText TATARA_CALL tatara_text(const TataraResult* result, int32_t kind);
 // Inspect, kind 0 (unwind information): COFF, 1 when a .pdata section holds an entry (llvm-readobj --unwind prints a
 // RuntimeFunction); ELF, 1 when a non-empty .eh_frame section exists. Kind 1 (a library the object names for the link): COFF, 1
