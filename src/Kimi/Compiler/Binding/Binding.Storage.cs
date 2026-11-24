@@ -166,6 +166,14 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 6.3.3 (G651 a2-2): the base a constructor's selection reads: the base clause under the struct's Self as Substitute forms Base
+    // (its kept part, KeptType, without raw Origins), also where the instance does not store it, so an independent selection failure stays
+    // judged, as LookupMember's base step reads a failed clause (R7-N3b, R7-N2c); none where the clause names no Type or the struct lies on
+    // an inline cycle (AdtDef.Base's reading), which no selection reads past.
+    internal BoundType? SelectionBase(StructKoto declaration)
+        => declaration.BaseClause is { } clause && declaration.BoundSymbol!.Adt is not { InlineCycle: true }
+            ? this.WithoutRawOrigins(this.KeptType(clause, this.SelfType(declaration.BoundSymbol!))) : null;
+
     // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
     // completable projections completed (CompleteProjections), then each raw layer it writes without `during` stating Unstated
     // (WithUnstatedOrigins, the one producer of a Type stating Unstated), then under the instance's substitution, completed again for the

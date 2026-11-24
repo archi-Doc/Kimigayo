@@ -73,6 +73,14 @@ internal sealed class AdtDef
     // R7-T1: whether a struct's or enum's instance has a stored Type past IMPL A.4's height (InstanceStorage.HeightLimit).
     internal static bool HeightLimit(TyCtxt types, BoundType type) => (IsStruct(type) || IsEnum(type)) && Instance(types, type).HeightLimit;
 
+    // DECISIONS BU-37, SPEC 23.1.2 (G651 a2-2): a base part its instance does not store: the struct's declaration writes a base clause and
+    // the instance has no Base, because the clause names no Type or does not substitute, its part passes IMPL A.4's height
+    // (InstanceStorage.HeightLimit), or the struct lies on an inline cycle (Base). Each carries a reported record (the clause's or one it
+    // rests on, the limit's at its site, the container's InvalidInlineLayout_Kd), so a reader of the instance's storage reads this one
+    // statement as it reads FieldType's null (MirBody.SelectsPart): a value derived from that part's error (rule W), never "no base" of its
+    // own. A selection reads the clause instead (Binding.SelectionBase).
+    internal static bool BaseNotStored(TyCtxt types, BoundType type) => Declaration(type) is { BaseClause: not null } && Base(types, type) is null;
+
     internal static int Count(BoundType type) => Struct(type)?.Fields.Length ?? 0;
 
     // Selection identities include inherited fields, base first. Construction and destruction keep their separate layers.

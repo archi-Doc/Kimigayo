@@ -52,12 +52,13 @@ public sealed partial class Binding
             return this.FailExplained(BaseCallFailureRows.Family, reference, BindingFailure.BaseCall, (true, BaseCallCause.NoSelfCapture));
         }
 
-        if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.types, this.SelfType(type)) is not { } baseType)
+        var self = this.SelfType(type);
+        if (structure.BindingState == BindingState.Invalid || AdtDef.BaseNotStored(this.types, self))
         {
             return this.CompleteDependent(reference, structure);
         }
 
-        reference.BasePath = this.MemberPath(null, clause, baseType);
+        reference.BasePath = this.MemberPath(null, clause, AdtDef.Base(this.types, self)!);
         return this.BindReference(reference, receiver, scope);
     }
 
