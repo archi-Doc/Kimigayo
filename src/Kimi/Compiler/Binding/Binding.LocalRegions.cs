@@ -23,11 +23,11 @@ namespace Kimi.Compiler;
 // over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
 // body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
 // proved it, and before as a reading with no answer yet (the deferral fact).
-// Invariants: a value holds no region of its own body that has a value (each is read through once, when published), so a read at a use
-// is one step; it may hold a `var` region of its own body with none (a `let` initializer, or an equality, naming a `var` local), which a
-// use in that body reads as the region and RegionValue as its candidate, whose walk reads each bound's region with a value through it
-// and the body's `var` regions that reach back to the region through their bounds, so each further read moves down that body's
-// definitions or one body outward and ends (DECISIONS R8-M56 (ii) fact (a), as amended); values and bounds are reset each pass
+// Invariants: a value holds no region of its own body that publishes a value (each is read through once, when published), so a read at
+// a use is one step; it may hold a `var` region of its own body that publishes none (a `let` initializer, or an equality, naming a `var`
+// local), which a use in that body reads as the region and RegionValue as its candidate, whose walk reads each bound's region with a
+// value through it and the body's `var` regions that reach back to the region through their bounds, so each further read moves down
+// that body's definitions or one body outward and ends (DECISIONS R8-M56 (ii) fact (a), as amended); values and bounds are reset each pass
 // (ResetLocalRegions); a `var` region publishes no value unless its slot is fixed by equality (SPEC 15.3.6): a use in its own body
 // reads the region, and only RegionValue (where a body carries it, or its own body's oracle) reads its candidate over its recorded
 // bounds. A bound's parent is stored as its store read it at the bound's use (the owner's

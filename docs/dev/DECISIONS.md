@@ -4985,6 +4985,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     arr2 were falsely Unknown); a per-call gate.
   - Superseded in part by R7-M66 (D-944): P9's "its call result atom the call's Unbound atom, R4-M118's second source". P9 images
     only the call receiver ρ, and the G280 cascade at the argument (h1's and d3's Owned `UnprovenConstraint_Kd`) is gone.
+    Then superseded by R7-M101 (B1): the call result atom is imaged as the call's own result region.
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
   (superseded in part by R4-M157: the holding walk's key, and R4-M57) (2026-10-28; G272's design-first candidate, design 2; the owner's
   「G272: (1)」 and 「G272 要件: (a)」) SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis
@@ -16763,6 +16764,19 @@ resumed by R4-M86 (2026-10-20).
     node). `memberPaths` stays a site for B7c (C-518 B1: the scanned `MemberPaths` row was O(N^2) per warm Bind); Binding's other
     newly visible tables (`inlineSummaries`, `collisionSubstitutions`, `obligationSet` and `PassPart.ObligationSet`, `valueInReads`,
     `TyCtxt.retentions`, `ImplTable.paths`) are batch B8's (`valueInReads` B8a's).
+  - **R7-N5 B7c** (the Back's, Q-763, D-1263; design `b7c-design.md`, B's rulings 1-3; the Front's C-518 (i)): `memberPaths` stays a
+    content-hash interner, keyed `(BoundMemberPath? Parent, SourceRef Base, BoundType Type)` by the base clause's `SourceRef` (value
+    identity, R7-M19's key) and emptied by every edit in `Invalidate`, so its lifetime is the edit counter's: a path is one object
+    across Binds with no edit (the warm identity and 0 B rows), no key outlives its numbering (a module is renumbered only when its
+    Version changed, which only `SyntaxTable.Edit` changes, and both of Edit's callers reach `Invalidate`), and no removed clause stays
+    reachable. Identity across an edit is no contract (`SameMemberPath` compares by Declaration and Type; MIR and the Backend read no
+    path). A lookup is one hash operation; a `Debug.Assert` checks that a hit's path names the clause. Owner: Binding's
+    `MemberPath`, the table's one writer and reader. Exposure: none (no acceptance or record moves; the whole suite on the prototype).
+    Readings: SPEC 6.2.2 and 9.6 (a member reached through base clauses), 23.1.2 (no record moves); BU-220's interner and removal
+    rules. `NodeKeyedTablesStayAtTheirSites`' Binding count 13 -> 12. Rejected: B7's scanned `MemberPaths` row (C-518 B1: quadratic
+    per warm Bind in N instantiations and in fan-in; retention past depth 2), a `KeyedRow` of root paths with successor interning
+    (kept-family rows for an identity across edits no reader needs), a `Koto` key emptied at the edit (a node-keyed table outside
+    Syntax), a per-pass interner (breaks the warm identity and the 0 B rows).
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
@@ -26655,6 +26669,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     Binding failure, which R4-M118 forbids (BU-102 threw at a use outside the call's subtree). R4-M118's Unbound then has one source,
     `PendingOrigin`. In a calling body the atom is another body's root (the view's row 9): a row naming it is A5's located
     `Unsupported_Kd`. P8's arm for an Unbound operand (the call result atom) stays.
+    Superseded in part by R7-M101 (B1): a value call images its Closure's call result atom as its own call result region.
   - **Records** (Q13). MIR problems with typed facts; the partition Binding → Ownership; twins are one record (`Binding.IsTwinRecord`
     goes, with the test MIR side's twin filter); independent records restored. An Unbound end is a row whose failure is the record
     (PLAN G739's dependent record goes). An enclosing body's call region at a moved row is the nested-body limit. V6 Unstated and V7 holder place record a problem that leaves
@@ -26677,6 +26692,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     `X outlives (X and ...)` (a symptom fix that leaves the hole).
   - **Open:** P8's `BodyLocalIn` Anchor arm leaves out a raw Place's Borrow that SPEC 5.2.2 fits to its destination, so a use of such
     a Closure (r01, valid) is A5's located `Unsupported_Kd` (the Front's).
+    Closed by R7-M101 (B1): the raw Place's Borrow is fitted through the call result region and a use of such a Closure is accepted.
 - **R7-M67 A kept operand's whole-Place read by its Error's form: `PlanRow.KeptRead`** (Front, 2026-11-21; D-986, Q-606, for
   Z17's commit 3 (R7 plan stream Z, PLAN G396 (4)); Major, behaviour-preserving alone; F's G147 rulings 40-42, 51 and 53; the
   Middle's C4 agreement and RP17 consent on D-986) SPEC 3.4.3, 3.5, 12, 13.4, 15.1.4, 15.1.5, 15.1.6, 15.6.2, 23.1.2. Amends R7-M65
@@ -28198,6 +28214,30 @@ R8-M* and R9-M* by the stage of the recording unit.
     ruling E26-5; `ErasureOwnedDiagnosticTest` passes on the head, ch2 included).
   - Rejected: a worklist over changed readers (above); a Provisional node per kept answer (BU-59); another fixed or random order
     (no fixed order bounds a chain whose direction turns at every link); leaving the case to C3 (the plan gives it to e2-6).
+- **R7-M101 B1: a value call images its Closure's call result atom as its own call result region** (Middle, 2026-11-25; Z9 cause B,
+  C-488; the Front's design, carried by the Middle; Major, Binding, an acceptance mover both ways; F's R1-a rulings 1 (e), 2, 4; the owner's
+  O-523 (a); RP17 consent 11-25 03:05) SPEC 15.8.2, 15.6.4, 15.3.6, 10.1, 8.3.1, 5.2.2, 23.1.2.
+  - **Rule.** `CallAtomOf` reports `CallResultSlot` (`CallAtoms.Result`); `ValueCallResult` fills `PerCallImages`' result slot with
+    `CallResultRegion(call)` (`Binding.OpenOrigins`, key `CallResultKey = SlotRegionKey - 2^28`, one of the call-region family): one
+    substitution (`SubstituteStoredOrigins`), as for rho. With no source the region has no answer, read at once by R1-a.
+  - **Supersedes** R7-M66's "P9's call result image" bullet (reason no longer holding: it weighed only an Unbound image resting on no
+    Binding failure, R4-M118; a call region of the calling body rests on nothing, and the row 9 `Unsupported_Kd` for the callee's atom goes)
+    and **closes** R7-M66's Open r01 (the raw Place's Borrow captured by a returned literal is accepted, SPEC 5.2.2, 15.8.2).
+    **Amends BU-104:** a value call's call result region, `CallResultRegion`, key `CallResultKey`, one of the call-region family.
+  - **Record move (its own line).** An erasure of a maker's call value whose region has no source is Unknown, not Refuted (8.3.1, 15.6.5): the
+    record is `UnprovenConstraint_Kd` at the argument (10.1, 15.2.3, BU-107), not `NoApplicableOverload_Kd` at the call (the maker's atom
+    refuted at step 5 meant nothing in the caller). R4-M152 round 3's family (a `ref/i32` result at `() -> i32`) keeps its record.
+  - **Moves** (ClosureResultOriginTest; 13 moved, 13 new rows): the 5 `Apply` rows and d_raw_let, d_direct, d_raw_direct, b_nested_call,
+    b_raw_nested_call (the record move); d_var, d_raw_var (`NoApplicableOverload_Kd` -> `Unsupported_Kd` at `a`, PLAN G1030's located
+    limit, O-523 (a)); x_pair_let newly rejected (`AmbiguousBinding_Kd run(a)`, 10.1, 10.4); the raw row, f_raw_two, b_raw_nested_gen,
+    b_raw_move newly accepted (5.2.2, 15.8.2); the 5 `Generic` rows, G280 rows 8-9, f_g_var, f_g_twice lose their dependent
+    `Unsupported_Kd` (23.1.2, Q13 rule W). A5 oracle: 0 of 1,764 corpus rows move.
+  - **Rejected:** B2 (a view row: a consumer deciding what P9 publishes); B3 (row 9 whitelisted for the family: keeps `Unsupported_Kd` on
+    valid programs).
+  - **Open:** C-488's C3; what still reaches `CallAtoms.Foreign` after B1; P8's Unbound-operand arm (a returned value resting on a Binding
+    failure now reaches callers as a source-less call region, an erasure there recording `UnprovenConstraint_Kd` beside the Binding
+    failure: Q13's dependent class): the Middle's trace on the joint O3-A + B1 head. Non-blocking: i4's Note text says "not static" for
+    an Unknown proof (the diagnostics adapter's text).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -33287,3 +33327,25 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     library (C-514 B1), every COMDAT copy a candidate (C-514 B2 (ii)), the compiled object's references (C-514 B3), keeping
     `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact), a `testBuild` flag with a `TargetProfile`
     column (ruling 21's fallback), the runtime's entries inside `Externals` (its `FunctionAbi`; ruling 32).
+- **T-M46 A library inconsistent with its declared Kind is an error at the link** (Tatara, 2026-11-25; PLAN G1330, D-1192, Q-762;
+  Major; design `artifacts\handoff\tatara\units\LinkAmbiguity\kind-design.md` Revision 0 with its corrections 1-3 from LinkAmbiguity
+  Revisions 1-3a (`kind-brief-impl.md`); the Middle's C-514; T's ruling 24). IMPL 20.4 makes a native dependency inconsistent with its
+  declared `Kind` an error; nothing compared a library with its Kind: LLD links an import library declared `static` through import
+  thunks (a DLL the program did not declare) and binds a dllimport reference to code by its local-import rule. LinkAmbiguity's step
+  (`NativeBuild.CheckDependencies`, T-M45) judges each unit the link may load, the library inputs that are objects (the only form
+  lld-link loads whole) and each library's pick in its closure (never every member defining a symbol: a second definer is judged only as another symbol's
+  pick), against its library's Kind (K): a unit's class, kept per member with the input's facts (`LinkInput.Classes`, `LinkClass`),
+  is Import for a COFF short import member (text kind 4, `i`) or an object defining an `.idata` global (llvm-nm's `I`), Image for a
+  linked image (`s`), else Code; `static` admits Code, `import` admits Import, nothing admits Image. An inconsistent pick still joins
+  the closure, so every other failure is found. A library input that is no archive and not an object (a linked image, a bare short
+  import member) is no library but IMPL 20.4's unsupported native dependency, whatever its Kind, and fails before the link: a linked
+  image as T's ruling 24 states (lld-link refuses a DLL with an ordinary error, "unknown file type"), and a bare short import member
+  so that it never reaches LLD, which refuses it with its fatal(), after which Tatara refuses every later call of the process (T's
+  rulings 53 and 54). K2: the module's declared import (`__imp_X` of the step's start, the manifest's declarations: the same at O0
+  and O2, never the object's undefined symbols) that no whole file defines and no library picks, while a whole input or a library's
+  pick defines `X`, fails (LLD would bind it to that code); with `X` defined nowhere LLD's undefined symbol stands. K2 is temporary: NamedProvider's rule P (PLAN G1333) replaces it. The lines join LinkAmbiguity's in its one
+  `InvalidDataException`: K's in Ordinal library order (a pick's symbols joined, a whole input's line by its class, a linked image
+  inside an archive its own line, T's ruling 24), then K2's and the ambiguous symbols' in Ordinal symbol order. Readings KR1-KR4
+  (kind-design.md §7). Rejected: the whole library's composition (rejects an MSVC import library with static members and a static
+  archive's unused bundled import member), a sibling step (the closure twice), staging (bytes, not loads), LLD's `/WX`, the manifest
+  naming each import's library (PLAN G1333), a Tatara verdict.
