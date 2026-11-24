@@ -116,6 +116,11 @@ public class ClosureEnvironmentOriginTest
 
     private const string OtherStore = "    var other: Array<ref/i32> = []\n    put(other@uniq, a)\n    return 0\npublic func main() => ()\n";
 
+    // C-537's t7 family: a nested `pass` naming the `let` local r, called in r's own body; the block's `inner` kept past its end.
+    private const string LetPass = "func f(p: ref/i32) -> i32\n    let r = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n";
+
+    private const string PassBlock = "    if true\n        let inner: i32 = 41\n        keep = pass(inner@ref)\n    return keep@follow\npublic func main() => ()\n";
+
     // G6's two forms of a function whose Closure stores through a captured `q` into an Origin of the enclosing body (2c-D design B's g6).
     private const string G6Single = "func use(p: uniq/i32, q: uniq/(uniq/i32 during p)) -> i32\n";
 
@@ -561,7 +566,9 @@ public class ClosureEnvironmentOriginTest
     // review's rv-impl\labels.tsv): a name of the enclosing f's local reached through two named levels (nest2) or a Closure (clo), an
     // annotated local (ann, a_ann_res), a function value (a_fval) and the borrowed local bl: each invalid twin is the relation's record at
     // the returned value, each valid twin accepted. A member of a Type declared in a body (C6's form) is misplaced syntax, so the
-    // declaring-body chain is the only answer RegionBounded reads.
+    // declaring-body chain is the only answer RegionBounded reads. A call of such a function in r's own body reads `during r` there as r's
+    // value (DECISIONS R8-M56; SPEC 15.4.4), so passing a block's borrow is Refuted for a `let` r (t7d_fn, t7e_blk,
+    // t7_leak beside its Loan conflict, F's O3-25) and judged through the region for a `var` r (t7v_fn, t7v_leak), as for a root pass (t7c_top).
     [Theory]
     [InlineData("func f(a: i32, action: () -> i32 = func [] () -> i32\n    let y: i32 = 1\n    let q = y@ref\n    let r = q\n    func g(x: ref/i32 during r) -> ref/i32 during q => x\n    return 0\n) -> i32 => action()\npublic func main() => ()\n", "UnprovenOriginRelation_Kd x\n    return")]
     [InlineData("func f(a: i32, action: () -> i32 = func [] () -> i32\n    let y: i32 = 1\n    let q = y@ref\n    let r = q\n    func g(x: ref/i32 during r) -> ref/i32 during r => x\n    return 0\n) -> i32 => action()\npublic func main() => ()\n")]
@@ -597,6 +604,12 @@ public class ClosureEnvironmentOriginTest
     [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    let r: ref/i32 = p\n    func lift(v: ref/i32 during r) -> ref/i32 during p => v\n    return lift(r)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd v\n")] // ann_lift
     [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    let r: ref/i32 = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pass(r)\n    return p\npublic func main() => ()\n")] // ann_ok
     [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    struct S\n        public func get(self: ref/Self, x: ref/i32 during r) -> i32 => x@follow\n    return 0\npublic func main() => ()\n", "MisplacedSyntax_Kd struct S\n")] // mt_member
+    [InlineData(LetPass + "    let inner: i32 = 41\n    let k = pass(inner@ref)\n    return k@follow\npublic func main() => ()\n", "UnsatisfiedOriginRelation_Kd inner@ref")] // t7d_fn
+    [InlineData(LetPass + "    if true\n        let inner: i32 = 41\n        let k = pass(inner@ref)\n        return k@follow\n    return 0\npublic func main() => ()\n", "UnsatisfiedOriginRelation_Kd inner@ref")] // t7e_blk
+    [InlineData(LetPass + "    var keep = r\n" + PassBlock, "ComparisonLoanConflict_Kd let inner", "UnsatisfiedOriginRelation_Kd inner@ref")] // t7_leak
+    [InlineData("func pass(v: ref/i32) -> ref/i32 during v => v\nfunc f(p: ref/i32) -> i32\n    var keep = p\n" + PassBlock, "ComparisonLoanConflict_Kd let inner")] // t7c_top
+    [InlineData("func f(p: ref/i32) -> i32\n    var r = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n    let inner: i32 = 41\n    let k = pass(inner@ref)\n    return k@follow\npublic func main() => ()\n")] // t7v_fn
+    [InlineData("func f(p: ref/i32) -> i32\n    var r = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n    var keep = r\n" + PassBlock, "ComparisonLoanConflict_Kd let inner")] // t7v_leak
     public void ANestedSignatureNamingABodyLocalNamesItsRegion(string source, params string[] records)
     {
         var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
