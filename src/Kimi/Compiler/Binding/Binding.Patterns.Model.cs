@@ -65,8 +65,8 @@ public readonly record struct PatternLiteral(PatternLiteralKind Kind, Int128 Bit
 /// <see cref="AccessMode"/> is the access its path grants to the selected value, and <see cref="OwnedPart"/> whether that value may
 /// lie in the owned Subject or iteration item: its path passed only pair layers admitting owner, whose owner case selects the
 /// Place itself (SPEC 15.1.6 "a part of an owned Subject or iteration item", 13.5.5). <see cref="MatchedType"/> is the Type the
-/// position matched, null exactly at a resting leaf: the Invalid position of an arm whose Pattern rests on the failed Subject, which
-/// matched no Type (SPEC 23.1.2).</summary>
+/// position matched, null exactly at a resting leaf: the Invalid position of an arm whose Pattern rests on the failed Subject or on the
+/// Subject Type BindMatch refuted, which matched no Type (SPEC 23.1.2).</summary>
 public readonly record struct BoundPattern(Koto Source, BoundType? MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
     BoundEnumCase? Case = null, BindingSymbol? BodySymbol = null, PatternAcquisition Acquisition = PatternAcquisition.None,
     bool WholePosition = false, PatternLiteral Literal = default,

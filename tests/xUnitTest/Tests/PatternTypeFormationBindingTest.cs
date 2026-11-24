@@ -97,6 +97,25 @@ public class PatternTypeFormationBindingTest
         Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque });
     }
 
+    // SPEC 9.4.4, 15.1.6, 23.1.2 (PLAN G1321, the Middle's C-551 K1): public Wrap's and E's requirement `T is Hidden` expose the
+    // non-public contract Hidden (their own records); E<Source> passes BindMatch's judgment and the late recheck refutes it at the root
+    // only, so `.A(let x)` keeps its kind and x, an owned part of the `@move` Subject below the root, is acquired without a proof:
+    // Moved (before: the per-position recheck refuted x's own Type Wrap<Source> and left x unacquired). The plan is built.
+    [Fact]
+    public void ALateRefutedRootAcquiresItsBindingsBelow()
+    {
+        var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic struct Wrap<T>\n    T is Hidden\npublic enum E<T>\n    T is Hidden\n    A(Wrap<T>)\n    B\nfunc f(value: E<Source>) => match value@move\n    .A(let x) => ()\n    .B => ()");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
+        var plan = Plan(c);
+        Assert.Equal(MatchCoverageState.Invalid, plan.Coverage.State);
+        Assert.Equal(BoundPatternKind.Case, plan.Positions[0].Kind);
+        var binding = Assert.Single(plan.Positions, static x => x.Kind == BoundPatternKind.Binding);
+        Assert.Equal(0, binding.Parent);
+        Assert.Equal(PatternAcquisition.Move, binding.Acquisition);
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
     [Fact]
     public void UnrelatedInvalidContextPreservesValidPattern()
     {

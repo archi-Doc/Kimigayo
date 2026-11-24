@@ -366,11 +366,12 @@ public class PatternBindingTest
     // (casefailsibnope, casefailsiblit); the positions they formed rest on the unread payload, so a late recheck there is not made
     // (caselatesib, caselatesibloop: its InvalidConstraint_Kd read E's failed clause, a dependent record by rule W). Each valid twin has
     // no record; a twin with its own record has it at the same span. PLAN G1321 (Q13, dependent records removed): the plan judges its
-    // Subject Type once, at its root position, and every arm's Pattern rests on a refuted one (BU-251 D2), so a later arm's record of
-    // the failed clause read that failed root directly: min, nouse (InvalidConstraint_Kd 8:13), matchinvloop (UnsatisfiedConstraint_Kd
-    // 8:13), c1t (InvalidConstraint_Kd 11:9), c1tloop, c1tguard (InvalidConstraint_Kd 13:13) keep the root's record only. The
-    // InvalidConstraint_Kd 13:12 of caselatesibtwin's nested payload position (`.A(let n)` of `E<Source>`) read E's failed clause, the
-    // kind caselatesib's is, so it is gone too.
+    // Subject Type once, at its root position. In min, nouse (InvalidConstraint_Kd 8:13) and matchinvloop (UnsatisfiedConstraint_Kd
+    // 8:13) BindMatch refutes it and every arm's Pattern rests on that root (BU-251 D2), so the second arm's record read the failed root
+    // directly. In c1t (InvalidConstraint_Kd 11:9), c1tloop and c1tguard (InvalidConstraint_Kd 13:13) the refutation is late
+    // (`E<Source>` passes BindMatch's judgment): the second arm keeps its kind and its test (D3's late form), and its record is gone
+    // because the late recheck judges only the root; it read E's failed clause, a dependent record as caselatesib's is, and so is
+    // caselatesibtwin's InvalidConstraint_Kd 13:12 at its nested payload position (`.A(let n)` of `E<Source>`).
     [Theory]
     [InlineData("nope", "func sum(o: Option<i32>) -> i32\n    var total = 0\n    loop\n        match o\n            .Some(let v) => total += v\n            .Nope => exit\n    return total\n\npublic func main()\n    Console.writeLine(\"\\(sum(.None))\")\n", "InvalidPattern_Kd 6:13 | UnresolvedBinding_Kd 6:13")]
     [InlineData("mismatch", "func drain<I>(iterator: uniq/I) -> i64\n    I is Iterator\n    var total: i64 = 0\n    loop\n        match iterator.next()\n            .Some(let value) => total += value\n            .None => exit\n    return total\n\npublic func main()\n    Console.writeLine(\"x\")\n", "TypeMismatch_Kd 6:42")]

@@ -111,8 +111,9 @@ public sealed partial class Binding
         }
     }
 
-    // A pattern left unbound rests on the failure that left it so (PatternMarker): the failed Subject `failure`, when there is one, or
-    // the payload Pattern of its Case whose Type was not read (BindPattern's Case leaf).
+    // A pattern left unbound rests on the failure that left it so (PatternMarker): `failure`, when there is one, the failed Subject or
+    // the root position whose Subject Type BindMatch refuted, or the payload Pattern of its Case whose Type was not read (BindPattern's
+    // Case leaf).
     private void MarkPatternTree(Koto pattern, Koto? failure)
         => (this.patternMarker ??= new(this)).Mark(pattern, failure);
 
@@ -789,14 +790,15 @@ public sealed partial class Binding
     }
 
     // Completes what BindPattern left unvisited: Unit, or resting on the nearest failure above it, a failed position or the failure it
-    // starts from, the failed Subject or a Case leaf's unread payload Pattern (RestOnFailure).
+    // starts from, the failed Subject, the root position whose Subject Type BindMatch refuted or a Case leaf's unread payload Pattern
+    // (RestOnFailure).
     private sealed class PatternMarker(Binding binding) : KotoVisitor
     {
         private Koto? failure;
 
-        public void Mark(Koto pattern, Koto? subject)
+        public void Mark(Koto pattern, Koto? failure)
         {
-            this.failure = subject;
+            this.failure = failure;
             this.Visit(pattern);
             this.failure = null;
         }
