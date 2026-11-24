@@ -175,7 +175,7 @@ public class AggregateArgumentInferenceTest
     [InlineData("guard", "e1fi", "func one() -> i32 => 1\nfunc two() -> i32 => 2\nfunc k() -> i32\n    let a: Array<() -> i32> = [\n        one,\n        two\n    ]\n    return 0\n", "")]
     [InlineData("guard", "e1ow", "func k() -> i32\n    let n = 7\n    let a: Array<() -> i32> = [\n        func [n@ref] () => n + 1\n    ]\n    return 0\n", "UnsatisfiedConstraint_Kd: func [n@ref] () => n + 1")]
     [InlineData("guard", "e1ar", "func k() -> i32\n    let a: Array<() -> i32> = [\n        func (x: i32) -> i32 => x\n    ]\n    return 0\n", "TypeMismatch_Kd: func (x: i32) -> i32 => x")]
-    [InlineData("guard", "e1ac", "func k() -> i32\n    let c = func (x: i32) -> i32 => x\n    let a: Array<() -> i32> = [\n        c@move\n    ]\n    return 0\n", "TypeMismatch_Kd: c@move")]
+    [InlineData("E3", "e1ac", "func k() -> i32\n    let c = func (x: i32) -> i32 => x\n    let a: Array<() -> i32> = [\n        c@move\n    ]\n    return 0\n", "TypeMismatch_Kd: c@move")]
     public void AnElementsMisfitIsRecordedAtThatElement(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 }

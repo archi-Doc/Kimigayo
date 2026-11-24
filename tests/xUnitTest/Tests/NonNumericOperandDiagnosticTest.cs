@@ -72,10 +72,10 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
 
     // SPEC 23.1.2, 13.7.1, 13.7.2: a compound assignment or update whose destination failed keeps its route, judged by the admitted path
     // (G509): the route reads neither the destination's authority nor its Holder, so both records stand, the route's as its writable twin
-    // gives it (a counterpart's fit, a shift count, a pointer offset); a refused plain write keeps its value's fit. An update of a reference
-    // binding computes in the binding's read Type (SPEC 15.1.6; a raw pointer is none, SPEC 13.3.4). The destination check reads the
-    // destination only, so its record stands beside a route that failed first, a user provider's selection (G1310, G509's parameter form)
-    // or a string's with a failed operand (G502's r16).
+    // gives it (a counterpart's fit, a shift count, a pointer offset); a refused plain write keeps its value's fit, its Origin part
+    // included (SPEC 15.6.1: the A5 record of its writable twin). An update of a reference binding computes in the binding's read Type
+    // (SPEC 15.1.6; a raw pointer is none, SPEC 13.3.4). The destination check reads the destination only, so its record stands beside a
+    // route that failed first, a user provider's selection (G1310, G509's parameter form) or a string's with a failed operand (G502's r16).
     [Theory]
     [InlineData(Provider + "func f() -> ()\n    let value = V.init()\n    value += true\n", "InvalidAssignment_Kd", "ArithmeticSelection_Kd")]
     [InlineData(Provider + "func f(x: V, y: bool) -> ()\n    x += y\n", "InvalidAssignment_Kd", "ArithmeticSelection_Kd")]
@@ -98,6 +98,8 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(u: i32, n: i64) -> ()\n    u = n\n", "InvalidAssignment_Kd", "TypeMismatch_Kd")]
     [InlineData("func f(items: uniq/Array<raw/i32>) -> ()\n    for item in items\n        item += 1\n", "ExclusiveBindingAssignment_Kd", "OperatorNotDefined_Kd")]
     [InlineData("func f(items: uniq/Array<raw/i32>, n: isize) -> ()\n    for item in items\n        item += n\n", "ExclusiveBindingAssignment_Kd", "OperatorNotDefined_Kd")]
+    [InlineData("func f(items: uniq/Array<i32>, s: bool) -> ()\n    for item in items\n        item <<= s\n", "ExclusiveBindingAssignment_Kd", "InvalidShiftCount_Kd")]
+    [InlineData("func f(u: ref/i32 during a, v: ref/i32 during b) -> ()\n    u = v\n", "InvalidAssignment_Kd", "UnprovenOriginRelation_Kd")]
     public void AFailedDestinationKeepsItsRoute(string source, params string[] codes)
     {
         var c = MinimalEmissionTest.Check(source + "public func main() => ()");
@@ -118,12 +120,15 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal($"expected {expected}, found {found}", mismatch.Label);
     }
 
-    // The route holds, or an assignment has none: the destination's record stands alone.
+    // The route or the value's fit holds, or an assignment has none: the destination's record stands alone. SPEC 13.7.1: a target that
+    // designates no Place or Property access (a call result) has no read Type, so its route rests on that record.
     [Theory]
     [InlineData("func f(u: i32, n: i32) -> ()\n    u += n\n", "InvalidAssignment_Kd")]
     [InlineData("func f(n: i32) -> ()\n    n++\n", "InvalidAssignment_Kd")]
     [InlineData("func f(items: uniq/Array<i32>, n: i32) -> ()\n    for item in items\n        item += n\n", "ExclusiveBindingAssignment_Kd")]
     [InlineData("struct S\n    public var v: i32 = 0\nfunc f(s: ref/S) -> ()\n    s.v += 1\n", "SharedPathAccess_Kd")]
+    [InlineData("func f(u: ref/i32 during a, v: ref/i32 during a) -> ()\n    u = v\n", "InvalidAssignment_Kd")]
+    [InlineData("func get() -> bool => true\nfunc f() -> ()\n    get() += true\n", "InvalidAssignment_Kd")]
     public void AHoldingRouteAddsNothing(string source, string destination)
     {
         var c = MinimalEmissionTest.Check(source + "public func main() => ()");

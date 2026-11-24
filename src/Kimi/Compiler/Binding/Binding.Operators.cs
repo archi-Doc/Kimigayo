@@ -125,9 +125,14 @@ public sealed partial class Binding
                 return decision.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, decision);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 // SPEC 13.7.1, 23.1.2: the route reads no verdict of the destination, so it is judged whatever the destination gave, its
-                // record beside the destination's; a refused update keeps no Type. Increment and decrement apply to integer and wrapping
-                // integer Types, never to floats (SPEC 13.2).
+                // record beside the destination's, in the read Type a located target has (DesignatesDestination); a refused update keeps
+                // no Type. Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
                 var refused = !this.CheckDestination(unary, unary.Operand, operand, scope) || !this.FitsUpdateResult(unary, unary.Operand, operand);
+                if (refused && !this.DesignatesDestination(unary.Operand))
+                {
+                    return Complete(unary, null);
+                }
+
                 var update = this.OperatorApplicabilityOf(unary, this.UpdateOperand(unary, unary.Operand, operand), null, scope);
                 return update.Failure != BindingFailure.None ? this.FailOperator(unary, unary, update) : Complete(unary, refused ? null : operand);
             case KotoKind.Dereference:
@@ -191,11 +196,16 @@ public sealed partial class Binding
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
         // SPEC 13.7.1, 13.7.2, 23.1.2: whether the destination admits the write reads the target only, never the value, and the route and
-        // the value's fit read no verdict of it, so each is judged whatever the other gave, its records beside the other's; a refused node
-        // keeps no Type. SPEC 5.7: a write admits a `during self` layer's Place only with null at every layer, which the value decides
-        // (JudgeHolderPlace).
+        // the value's fit read no verdict of it, so each is judged whatever the other gave, its records beside the other's, in the Types a
+        // located target has (DesignatesDestination); a refused node keeps no Type. SPEC 5.7: a write admits a `during self` layer's Place
+        // only with null at every layer, which the value decides (JudgeHolderPlace).
         var refused = assignment && bound is not null &&
             (!this.CheckDestination(binary, binary.Left, bound, scope) || (kind != KotoKind.Equals && !this.FitsUpdateResult(binary, binary.Left, bound)));
+        if (refused && !this.DesignatesDestination(binary.Left))
+        {
+            return Complete(binary, null);
+        }
+
         if (!refused && assignment && bound is not null && kind == KotoKind.Equals)
         {
             this.JudgeHolderPlace(binary.Left, binary.Right, binary);
@@ -252,6 +262,13 @@ public sealed partial class Binding
     // Type, as the admitted path does.
     private BoundType? UpdateOperand(Koto operation, Koto target, BoundType? type)
         => ReferenceBindingAssignment(target, type, operation) is not null && this.ReadTypeReferent(type, target) is { } read ? read : type;
+
+    // SPEC 13.7.1, 13.7.2, 23.1.2: whether a write's target designates a destination, a Place (IsBarePlace) or a Property access, whose
+    // destination and read Types stand whatever its permission, so a refused write's value fit and route are still judged in them. A
+    // target that designates neither (a Temporary Value: a call result, a literal, an element of a Never receiver) has no destination or
+    // read Type, so a refused write's value fit and route over it rest on the destination's record.
+    private bool DesignatesDestination(Koto target)
+        => this.IsBarePlace(target) || KotoHelper.UnwrapParentheses(target).BoundSymbol?.Property is not null;
 
     // SPEC 13.7.1, 3.4, 15.1.5: the one destination check of an assignment, compound assignment, increment or decrement, run once the
     // operands and route have bound, whatever they gave: the target is located with write permission under the path, `let`/`var` and
