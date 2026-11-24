@@ -89,13 +89,15 @@ public sealed partial class Binding
     }
 
     // SPEC 23.1.2, DIAGNOSTICS 4.3 (G651 a2-1): a base rule's failure this check writes records the part it read (a clause its base
-    // declaration, a struct its base clause), so publication derives it from that part's recovery or limit record (RestsOnRecoveryOrLimit).
-    // A node an earlier check failed keeps that check's record and gains no part: its failure did not read this one.
+    // declaration, a struct its base clause) as the check's one read (RecordRead), so publication derives it from that part's recovery or
+    // limit record (RestsOnRecoveryOrLimit); never as the node's resting part (AddPrerequisite), which InvalidDeclarationCause reads first,
+    // over a kept signature or premise-error context (G651 a2-1b, C8 ruling 21's B2). A node an earlier check failed keeps that check's
+    // record and gains no read: its failure did not read this one.
     private void FailBaseRule(Koto node, Koto? read)
     {
-        if (read is not null && this.RecordedFailure(node) == BindingFailure.None)
+        if (read is not null && this.RecordedFailure(node) == BindingFailure.None && this.IsUnresolvedPrerequisite(read))
         {
-            this.AddPrerequisite(node, read);
+            this.RecordRead(node, read);
         }
 
         this.Fail(node, BindingFailure.InvalidTypeFormation);

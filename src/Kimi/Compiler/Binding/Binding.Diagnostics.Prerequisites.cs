@@ -396,8 +396,7 @@ public sealed partial class Binding
     // bindings). While binding, a node's consumers are not bound yet, so the walk stops at once.
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
-        this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
-        this.prerequisiteStore.Add(cause);
+        this.RecordRead(node, cause);
         if (this.pass.Binds(node.SyntaxOwner))
         {
             var top = node;
@@ -414,8 +413,7 @@ public sealed partial class Binding
             Complete(node, null);
             for (var place = node; !ReferenceEquals(place, top); place = place.Parent!)
             {
-                this.prerequisites[place.Parent!] = (this.prerequisiteStore.Count, 1);
-                this.prerequisiteStore.Add(place);
+                this.RecordRead(place.Parent!, place);
                 Complete(place.Parent!, null);
             }
 
@@ -438,6 +436,14 @@ public sealed partial class Binding
         this.consultationStart = this.consulted.Count;
         this.consultationNode = node;
         return parent;
+    }
+
+    // SPEC 23.1.2: a check run outside any frame records its one read as the node's prerequisite range, the range EndConsultation writes
+    // for a frame's reads: CompleteDependent's cause and each Place it rests, RestOnRepeatedSet's set, a failed base rule's part.
+    private void RecordRead(Koto node, Koto read)
+    {
+        this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
+        this.prerequisiteStore.Add(read);
     }
 
     private void EndConsultation(Koto node, (int Start, Koto? Node) parent)
