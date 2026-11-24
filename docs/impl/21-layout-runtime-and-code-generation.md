@@ -229,7 +229,7 @@ Every module defines `memcmp`, `memcpy`, `memmove` and `memset`, which generated
 
 ## 21.5. Linux x64 runtime
 
-linux-x64 (`x86_64-unknown-linux-musl`) builds static ELF executables for `x86_64-unknown-linux-musl` ([§20.3.2](20-compilation-configuration.md#2032-builds-and-artifacts)). This section describes the runtime of the modules the compiler generates for it.
+A linux-x64 Application is a static ELF executable for `x86_64-unknown-linux-musl` ([§20.3.2](20-compilation-configuration.md#2032-builds-and-artifacts)); storage is laid out as on windows-x64 ([§21.1](#211-storage-layout)). This section describes the runtime of the modules the compiler generates for it.
 
 ### 21.5.1. Target
 
