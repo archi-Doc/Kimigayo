@@ -440,6 +440,18 @@ public class ClosureEnvironmentOriginTest
     public void AResultOverExternalOriginsOutlivesTheCall(string body)
         => Assert.Empty(DiagnosticCorpus.Check("func keep2(s: string, v: uniq/i32) -> uniq/i32 during v => v\n" + Main + body).Diagnostics);
 
+    // PLAN G257's forms (SPEC 15.8.2, 15.6.5, 15.4.3): a Borrow of an environment binding through a Shared receiver lies in the receiver
+    // Origin, so a branch meet returned `during p` needs it to outlive p (branch); an annotated result uses ordinary elision without the
+    // hidden receiver, so it defaults to static (omitted, SPEC 15.8.2's own example; each Borrow its record); an omitted result's Origins are
+    // per-call Origins of the call contract (omitted_ok), and the meet passed to a Closure's input is valid (arg).
+    [Theory]
+    [InlineData("branch", "func use(p: ref/i32, b: bool) -> i32\n    let n: i32 = 1\n    let c = func [n, p, b] () -> ref/i32 during p => if b => n@ref else => p\n    return 0\n", "UnprovenOriginRelation_Kd n@ref")]
+    [InlineData("omitted", "func use(p: ref/i32, b: bool) -> i32\n    let n: i32 = 1\n    let c = func [n, b] () -> ref/i32 => if b => n@ref else => n@ref\n    return 0\n", "UnprovenOriginRelation_Kd n@ref; UnprovenOriginRelation_Kd n@ref")]
+    [InlineData("omitted_ok", "func use(p: ref/i32, b: bool) -> i32\n    let n: i32 = 1\n    let c = func [n, b] () => if b => n@ref else => n@ref\n    return 0\n", "")]
+    [InlineData("arg", "func use(p: ref/i32, b: bool) -> i32\n    let n: i32 = 1\n    let f = func (x: ref/i32) -> i32 => x@follow\n    let c = func [n, p, b, f] () -> i32 => f(if b => n@ref else => p)\n    return c()\n", "")]
+    public void AnEnvironmentBorrowsMeetIsJudgedAtTheResult(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
     // SPEC 15.6.5, 15.3.4 (PLAN G227, DECISIONS BU-28): in a Closure body the Origins of its captures are fixed, so the body never bounds
     // them. Storing the call's own input or another capture's Origin into the environment is Unknown, and storing a borrow local to the call
     // is Refuted. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
