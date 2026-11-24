@@ -102,7 +102,6 @@ public sealed partial class Binding
         this.reachedThroughBorrow = new(this);
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
-        this.baseCallFailures = new(this);
         this.resultContexts = new(this);
         this.callableConstraints = new(this);
         this.uniqIndexing = new(this);

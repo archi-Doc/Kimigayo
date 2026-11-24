@@ -554,7 +554,7 @@ public sealed partial class Binding
                 if (!this.FitsStructurallyAt(result, expected, use))
                 {
                     return !this.FitsTypeAt(result, expected, use, out var contract, null) && contract.IsCondition
-                        ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
+                        ? this.RecordMismatch(use, use, result, expected, contract) : this.RecordTypeMismatch(use, use, result, expected);
                 }
 
                 if (!this.FitsValueAt(result, expected, use, use, out var failure))
@@ -884,7 +884,9 @@ public sealed partial class Binding
             }
             else if (!fits)
             {
-                this.Fail(use, BindingFailure.TypeMismatch);
+                // A Case construction reports its own failure, with its sides (ruling 14). B1 none: a kept acquisition beside a misfit
+                // takes the condition arm above, never this one (the Front's C-439 c3a-c3c), so no record joins TransferRequired_Kd here.
+                this.RecordTypeMismatch(use, use, adaptedType, type);
             }
 
             if (!fits || acquisition is not null)
@@ -944,7 +946,7 @@ public sealed partial class Binding
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
-                this.Fail(use, ConstraintFailureOf(formation), formation == ConstraintProof.Unknown);
+                this.RecordConstraint(use, formation, [], formation == ConstraintProof.Unknown);
                 continue;
             }
 
