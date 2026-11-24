@@ -60,7 +60,8 @@ __declspec(dllexport) int32_t TATARA_CALL tatara_optimize(const TataraTarget* ta
 // output the object's bytes.
 __declspec(dllexport) int32_t TATARA_CALL tatara_emit(const TataraTarget* target, TataraText ir, TataraText obj, int32_t optimizationLevel, TataraResult** result);
 // inspect: the COFF or ELF object's, or each member's of an archive (llvm-nm's reading of archives and of COFF short import members),
-// symbols as llvm-nm lists them, the members' facts below and the flags; a thin archive or another format is a failure (1).
+// symbols as llvm-nm lists them, the members' facts below and the flags; a thin archive, another format, a short import member LLD
+// calls broken (shorter than its header and SizeOfData, or no NUL in its name) or a listed name holding a line break is a failure (1).
 __declspec(dllexport) int32_t TATARA_CALL tatara_inspect(TataraText obj, TataraResult** result);
 // link: LLD with these arguments as its argv: arguments[0] names the flavor, "lld-link" (COFF) or "ld.lld" (ELF), as an LLD
 // executable's name does; another flavor is a failure (1).

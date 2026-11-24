@@ -193,6 +193,10 @@ public sealed class TataraExecutorTest : IDisposable
     [InlineData("index")]
     [InlineData("malformed")]
     [InlineData("thin")]
+    [InlineData("resource")]
+    [InlineData("linebreak")]
+    [InlineData("truncated")]
+    [InlineData("unterminated")]
     public async Task TataraInspectsAnArchivesMembers(string row)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
@@ -220,6 +224,13 @@ public sealed class TataraExecutorTest : IDisposable
             "index" => this.InspectsTheIndex(),
             "malformed" => this.FailsOnAMalformedArchive(),
             "thin" => this.FailsOnAThinArchive(),
+
+            // Crafted members (C-533): a COFF resource; short import members whose name holds a line break, that end inside their
+            // header (the magic alone), or whose name has no NUL (LLD's "broken import library").
+            "resource" => this.FailsOnAMember("not a COFF or ELF object", [0, 0, 0, 0, 0x20, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0xFF, 0xFF, 0, 0, .. new byte[16]]),
+            "linebreak" => this.FailsOnAMember("a name holds a line break", ShortImport("a\nb\0KERNEL32.dll\0"u8)),
+            "truncated" => this.FailsOnAMember("broken import library", [0, 0, 0xFF, 0xFF]),
+            "unterminated" => this.FailsOnAMember("broken import library", ShortImport("abc"u8)),
             _ => throw new ArgumentOutOfRangeException(nameof(row)),
         });
     }
@@ -638,6 +649,18 @@ public sealed class TataraExecutorTest : IDisposable
         return string.Join('\n', lines);
     }
 
+    // A COFF short import member (IMAGE_FILE_IMPORT_HEADER: Sig2 0xFFFF, machine x64, the data's size, code imported by name), then the
+    // data: the symbol's name and the DLL's, each ended by a NUL.
+    private static byte[] ShortImport(ReadOnlySpan<byte> data)
+    {
+        var header = new byte[20];
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(2), 0xFFFF);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(6), 0x8664);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12), data.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(18), 4);
+        return [.. header, .. data];
+    }
+
     // The row's input inspected and described (Describe).
     private static async Task Expect(string expected, Task<string> input) => Assert.Equal(expected, Describe(Tatara.Instance.Inspect(Context, await input)));
 
@@ -922,6 +945,19 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Contains("truncated or malformed archive", error.Message, StringComparison.Ordinal);
         await this.Compile(NoAutolink, M2);
         await Expect("object\no T:helper\nindex", Task.FromResult(Path.Combine(this.directory, "m2.obj")));
+    }
+
+    // An archive whose one member is the given bytes (written here: llvm-lib would read a crafted member itself; a GNU archive with no
+    // index) fails (1) with the text naming the member, and Tatara runs again (no call returned 2).
+    private Task FailsOnAMember(string text, byte[] member)
+    {
+        var library = Path.Combine(this.directory, "crafted.lib");
+        var header = Encoding.ASCII.GetBytes($"{"m.obj/",-16}{0,-12}{0,-6}{0,-6}{644,-8}{member.Length,-10}`\n");
+        File.WriteAllBytes(library, [.. "!<arch>\n"u8, .. header, .. member, .. member.Length % 2 == 0 ? [] : "\n"u8]);
+        var error = Assert.Throws<IOException>(() => Tatara.Instance.Inspect(Context, library));
+        Assert.Contains("crafted.lib(m.obj): " + text, error.Message, StringComparison.Ordinal);
+        Assert.Null(Tatara.FirstRefusal());
+        return Task.CompletedTask;
     }
 
     // A thin archive (llvm-lib /llvmlibthin) fails: its members are outside the file.

@@ -291,26 +291,50 @@ std::optional<StringRef> optionValue(StringRef token, StringRef option)
     return named ? std::optional<StringRef>(token.substr(option.size() + 1)) : std::nullopt;
 }
 
+// Whether a name can be listed: the texts are lines (tatara.h), so a name holding a line break fails the input (1) with llvm-nm's
+// message naming the member (C-533 N-1), never a misaligned block.
+bool listable(StringRef text, StringRef name, raw_ostream& message)
+{
+    if (text.find_first_of("\r\n") == StringRef::npos) {
+        return true;
+    }
+
+    message << "llvm-nm: error: " << name << ": a name holds a line break: ";
+    message.write_escaped(text);
+    message << "\n";
+    return false;
+}
+
 // A .drectve's references (tatara.h's text kind 6), its text split as lld-link splits it (the Windows command-line tokenizer): "I
 // <name>" per /include: and "A <from>=<to>" per /alternatename:, in its order. A reference missing a name is skipped (LLD reports it
-// when it links the member); every other option is LLD's. LLD's own parser (lld::coff) is not in the archive's headers.
-void readDirectives(StringRef text, std::string& references)
+// when it links the member); every other option is LLD's. LLD's own parser (lld::coff) is not in the archive's headers. False when a
+// name cannot be listed.
+bool readDirectives(StringRef text, StringRef name, std::string& references, raw_ostream& message)
 {
     BumpPtrAllocator allocator;
     StringSaver saver(allocator);
     SmallVector<StringRef, 16> tokens;
     cl::TokenizeWindowsCommandLineNoCopy(text, saver, tokens);
     for (StringRef token : tokens) {
-        if (std::optional<StringRef> name = optionValue(token, "include:"); name && !name->empty()) {
-            references += "I " + name->str() + "\n";
+        if (std::optional<StringRef> include = optionValue(token, "include:"); include && !include->empty()) {
+            references += "I " + include->str() + "\n";
+            if (!listable(*include, name, message)) {
+                return false;
+            }
+
             continue;
         }
 
         auto [from, to] = optionValue(token, "alternatename:").value_or("").split('=');
         if (!from.empty() && !to.empty()) {
             references += "A " + from.str() + "=" + to.str() + "\n";
+            if (!listable(from, name, message) || !listable(to, name, message)) {
+                return false;
+            }
         }
     }
+
+    return true;
 }
 
 // llvm-nm's order (by name) and posix form, as "<letter> <name>\n", then the empty line that ends the member's block.
@@ -355,6 +379,10 @@ bool readSymbols(const SymbolicFile& file, const DenseSet<uint64_t>& copies, Str
         bool reference = *flags & SymbolRef::SF_Undefined;
         if (!reference && !(*flags & SymbolRef::SF_Global)) {
             continue;
+        }
+
+        if (!listable(symbolName, name, message)) {
+            return false;
         }
 
         char kind = object ? letter(*object, SymbolRef(symbol), *flags, symbolName) : memberLetter(file, *flags);
@@ -406,16 +434,35 @@ bool readSections(const ObjectFile& file, StringRef name, TataraResult& outcome,
         }
 
         outcome.hasDefaultLibrary |= contents->contains_insensitive("DEFAULTLIB");
-        readDirectives(*contents, outcome.directives);
+        if (!readDirectives(*contents, name, outcome.directives, message)) {
+            return false;
+        }
     }
 
     return true;
 }
 
+// LLD's ImportFile::parse check, which COFFImportFile does not make before it reads a short import member's header and name: the member
+// holds its whole header and exactly SizeOfData bytes after it, among them the name's NUL (C-533 B1).
+bool isBrokenImport(const SymbolicFile& file)
+{
+    const auto* import = dyn_cast<COFFImportFile>(&file);
+    StringRef data = import ? import->getData() : StringRef();
+    size_t header = sizeof(coff_import_header);
+    return import && (data.size() < header || data.size() != header + import->getCOFFImportHeader()->SizeOfData
+        || !data.drop_front(header).contains('\0'));
+}
+
 // One member (an object is one): its block of each per-member text (kinds 1, 2, 4, 5 and 6) and its flag. name: the input's path, or
-// "<path>(<member>)" for an archive's member, as llvm-nm names it in a message. False with the tool's message.
+// "<path>(<member>)" for an archive's member, as llvm-nm names it in a message. False with the tool's message; a broken short import
+// member with LLD's.
 bool readMember(const SymbolicFile& file, StringRef name, TataraResult& outcome, raw_ostream& message)
 {
+    if (isBrokenImport(file)) {
+        message << "llvm-nm: error: " << name << ": broken import library\n";
+        return false;
+    }
+
     const auto* object = dyn_cast<ObjectFile>(&file);
     outcome.forms += isa<COFFImportFile>(&file) ? 'i' : object && !object->isRelocatableObject() ? 's' : 'o';
     outcome.forms += '\n';
@@ -469,6 +516,10 @@ bool readIndex(const Archive& archive, const DenseMap<uint64_t, uint32_t>& posit
         }
 
         auto position = positions.find(member->getChildOffset());
+        if (!listable(symbol.getName(), path, message)) {
+            return false;
+        }
+
         if (position == positions.end()) {
             message << "llvm-nm: error: " << path << ": the symbol index names no member for " << symbol.getName() << "\n";
             return false;
