@@ -380,6 +380,10 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     native build's code (`src/Kimi/Build/**/*.cs`, `src/Kimi/Unit/Command/TataraCommand.cs` and `BuildCommand.cs`,
     `src/Kimi/Compiler/Core/*Profile.cs`), the eight runner files and the deadline; the LLVM tools and the allowed symbols leave (the
     runner starts no tool).
+  - Amended by T-M40 (NV2 U1, the owner's O-519 (a) and O-522 (a2)): a fixture that is built (its environment or fixture key
+    changed) is not run when its run key (its two executables, the four sidecars, the run scripts and the deadline) equals its
+    passed entry's executed within half of `-ReuseHours` (12 h); it is marked reused and keeps that execution's time, so every
+    fixture still runs at least every 24 hours.
 - **Q17 Open issues: one row per cause and a closing lane in each area** (2026-11-08, owner; [WORKFLOW](WORKFLOW.md) "Open issues";
   the Coordinator's proposal).
   - The owner (verbatim): 「PLANのOpen issuesは、1，2，3の対策で進めてください。」, to the Coordinator's three measures.
@@ -32113,3 +32117,23 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   `/vctoolsversion`/`/winsdkversion` (D1+, <= 0.09 ms). No product byte moves: every native fixture's executable (12,698) and the
   LC3 harness's six rows are byte-equal between base and head. IMPL 20.3.2 and 20.4 unchanged: their sentences now hold for LLD
   too.
+- **T-M40 A rebuilt fixture's run is reused when its executables did not change** (Tatara, 2026-11-24; NV2 U1, the owner's
+  O-519 (a), verbatim 「すべて推奨通り」 (K's OWNER line 11-24 05:35), and O-522 (a2), verbatim 「O-522 a2」 (K's dialog, 11-24
+  08:2x); Q-737, D-1224; Major; design `artifacts\handoff\tatara\units\NV2\u1-design.md`, T's rulings 8-11 and 18
+  (`rulings-rev0.md`); review C-530, the Middle's and the Back's ACCEPT, K's consent on the runner's hunks). Amends Q16. Each
+  `native-results.json` entry gains `runKey`: SHA-256 over the fixture's O0 and O2 executables (each linked record's
+  `executableSha256`, taken when the file the record names has that hash, IMPL 20.3.2), its four sidecars and the run environment
+  (`test-scalars.ps1`, `test-scalar-fixture.ps1`, `test-scalar-process.ps1`, `expected-output.ps1` and the deadline). A fixture
+  the base does not reuse whole is built; after the builds, one whose run key equals its passed base entry's, executed within half
+  of `-ReuseHours` (12 h), is not run: `results.json` marks it `reused` with this run's two linked builds, and its entry keeps the
+  base's log, execution time and run key with this run's fixture key. An entry executed 12-24 h ago is still reused whole when both
+  keys are equal, but a rebuild runs it again and refreshes its execution time (O-522 (a2): the daily execution rides on a rebuild
+  window whenever one falls in that band). Every build and its record checks run; an unlinked build or an executable that is not
+  its record's runs as before. Measured: K's kw336, kw338, kw339 and kw340 rebuilt byte-identical executables for 6,330, 6,349,
+  6,349 and 6,349 fixtures. Stated cost: a reused run keeps its execution time, so a fixture not rebuilt 12-24 h after its last
+  execution expires at 24 h and its next window builds and runs it (design §6 F1, bounded by (a2)). Rejected: keying on the IR or
+  the objects (the executable is what runs); the record's hash without the file (IMPL 20.3.2's windows would pass a lost
+  executable); a run environment without `test-scalars.ps1` (a run-loop change would land unrun in its window); refreshing the
+  execution time on reuse (Q16's daily execution); run reuse for any entry within `-ReuseHours` (O-519 (a) as first decided: the
+  daily execution no longer rode on rebuild windows, F1). Open: PLAN G1351 (the worker runs a linked record's file without the
+  hash check; pre-existing, the Middle's C-530 N-1).
