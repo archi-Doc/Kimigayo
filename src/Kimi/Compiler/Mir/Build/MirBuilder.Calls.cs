@@ -53,19 +53,42 @@ internal sealed partial class MirBuilder
     // 22.5.1), and a direct base call the implementation the virtual selection names. A call of a Never function or a diverging intrinsic
     // has no runtime successor and continues for the checks (SPEC 14.10); a call whose operand does not complete enters no callee at run
     // time (SPEC 15.6.7), but for the checks it continues where that operand's code continues, its later operands, defaults and activation
-    // checked there (SPEC 14.10.3), each operand as built: a Never form's is the Never value (DECISIONS R4-M62).
+    // checked there (SPEC 14.10.3), each operand as built: a Never form's is the Never value (DECISIONS R4-M62). A value call whose Closure
+    // receiver is by case (HirTables.CaseDecider; SPEC 7.7.3, PLAN G13) is a frame's owner (MirBuilder.Cases) where its decision splits the
+    // side's views: the call is assembled on each side into the one destination.
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, params ReadOnlySpan<(Koto? Node, MirOperand Value)> given)
     {
-        var function = call.Kind == CalleeKind.Value ? null : call.Target;
-        var receiver = function is null ? null : call.Receiver;
-        var count = call.Arity();
-        var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
         if (!call.Covers())
         {
             this.Invariant(node, destination); // CallPlan.Covers: HasFacts states it for a plain call, an expansion's plan holds it.
             return;
         }
 
+        var decider = call.Kind == CalleeKind.Value ? HirTables.CaseDecider(compilation.Binding, node) : null;
+        var decision = decider is null ? 0 : this.Decision(decider);
+        if ((this.Views & decision) == 0 || (this.Views & ~decision) == 0)
+        {
+            this.Assemble(destination, call, node, first, given);
+            return;
+        }
+
+        var frame = this.Open(node, decider!, decision, this.located.Count); // Its CaseSwitch takes the statement start (Info).
+        var info = this.Info(node);
+        this.Assemble(destination, call, node, first, given);
+        this.Turn(frame, info);
+        this.Assemble(destination, call, node, first, given);
+        this.Close(frame, info);
+    }
+
+    // A call's code on the side being built (Call): a by-case value call's callee taken as that side's views acquire it, by the shared
+    // receiver Binding publishes (CallPlan.SharedReceiver, the callee's plan-row take) where they are outside its decider's decision, else
+    // by the call's receiver operation (the column's take).
+    private void Assemble(MirPlace destination, CallPlan call, Koto node, Koto? first, ReadOnlySpan<(Koto? Node, MirOperand Value)> given)
+    {
+        var function = call.Kind == CalleeKind.Value ? null : call.Target;
+        var receiver = function is null ? null : call.Receiver;
+        var count = call.Arity();
+        var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
         var source = call.ReceiverOperation.Source ?? call.CalleeValue;
         var pending = this.arguments.Count;
         var subst = compilation.Types.SubstOf(call);
@@ -74,7 +97,10 @@ internal sealed partial class MirBuilder
         if (function is null)
         {
             // The callee value, pending while the arguments are evaluated.
-            var operand = this.Operand(source, call.ReceiverOperation.AdaptedType, input: true);
+            var shared = HirTables.CaseDecider(compilation.Binding, node) is { } decider && (this.Views & this.Decision(decider)) == 0;
+            var operand = shared
+                ? this.Operand(source, HirTables.PlanOf(source).Adjust, call.SharedReceiver.AdaptedType, input: true)
+                : this.Operand(source, call.ReceiverOperation.AdaptedType, input: true);
             this.arguments.Add(last > -2 ? this.Secure(operand, source) : operand);
         }
 

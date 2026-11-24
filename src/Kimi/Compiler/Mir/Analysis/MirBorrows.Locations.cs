@@ -73,7 +73,7 @@ internal sealed partial class MirBorrows
         if (this.overstored > 0)
         {
             // The storing rule (MirBorrows.Storing): at the store, with no fact (an Anchor reads as a Loan's; DECISIONS Q13).
-            this.Record(DiagnosticCode.UnretainedRawStore_Kd, OwnershipRequirement.UnretainedRawStore, this.Subject(at), []);
+            this.AddProblem(DiagnosticCode.UnretainedRawStore_Kd, OwnershipRequirement.UnretainedRawStore, this.Subject(at), []);
             this.overstored = 0;
         }
 

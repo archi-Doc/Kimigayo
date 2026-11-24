@@ -227,7 +227,7 @@ internal sealed partial class MirBorrows
     private void Default(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, int root)
     {
         this.facts[0] = new(ProblemFactKind.Anchor, this.body.Subject(this.body.Locals[root].Source));
-        this.Record(code, requirement, subject, this.CauseFacts(1));
+        this.AddProblem(code, requirement, subject, this.CauseFacts(1));
     }
 
     // Whether a failure is its template's (D11): the copy holding the operation's scope and the issues of its Loan and reservation (-1:

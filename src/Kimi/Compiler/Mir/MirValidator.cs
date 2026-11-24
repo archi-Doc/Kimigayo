@@ -133,9 +133,11 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
 
         checker.Finish();
-        checker.Views(this.cases, walked && body.CaseSwitches > 0 ? this.BlockViews(body) : null); // Successors in range only.
+        var reached = walked && body.CaseSwitches > 0 ? this.BlockViews(body) : null; // Successors in range only.
+        checker.Views(this.cases, reached);
         if (walked)
         {
+            checker.Receivers(this.cases, reached);
             this.Diverged(body, findings);
             this.Reach(body, findings);
             this.Unensured(body, findings);

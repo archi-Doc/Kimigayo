@@ -78,7 +78,7 @@ public partial class TypeDagScalingTest
         var c = MinimalEmissionTest.Analyze(IdentitySource("rawtree", n));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
-        Assert.NotNull(c.Types.Retains(f.SymbolOf()!, null, null));
+        Assert.NotNull(c.Types.Retains(f.SymbolOf()!, null, null, []));
     }
 
     // R7-C3a (the provisional path's bound, Binding.TypeIdentity's contract): a table read under a Provisional availability (a Contract's
