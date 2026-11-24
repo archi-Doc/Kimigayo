@@ -775,11 +775,18 @@ public sealed partial class Binding
             ? this.Record(use, ConstraintFailureOf(proof), facts, unresolved: unresolved)
             : this.Fail(use, ConstraintFailureOf(proof), unresolved);
 
-    // The one table of a proof at a use: Error is FailConstraint's record (its guard and cause, R7-E5), Refuted and the final Unknown the
-    // constraint family's (RecordConstraint), the provisional Unknown RequireUnproven's. `proposition`: the caller's proposition, kept
-    // as the record's Constraint fact (the erasure's `S is Owned`, SPEC 15.2.3); none for a use whose proposition is its own clauses.
+    // The one table of a proof at a use: Error is FailConstraint's record (its guard and cause, R7-E5), unless it rests on a limit's
+    // record (ProofRestsOnLimit: the use is that record's dependent, SPEC 23.1.2; R7-C6 a, F's C8 ruling 9 C1), Refuted and the final
+    // Unknown the constraint family's (RecordConstraint), the provisional Unknown RequireUnproven's. `proposition`: the caller's
+    // proposition, kept as the record's Constraint fact (the erasure's `S is Owned`, SPEC 15.2.3); none for a use whose proposition is
+    // its own clauses.
     private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode, Koto? diagnosticCause = null, BoundConstraint? proposition = null)
     {
+        if (proof == ConstraintProof.Error && diagnosticCause is null && this.ProofRestsOnLimit(use, proof))
+        {
+            return;
+        }
+
         if (proof == ConstraintProof.Error)
         {
             var cause = diagnosticCause ?? this.TakeFailedCause().Use;
