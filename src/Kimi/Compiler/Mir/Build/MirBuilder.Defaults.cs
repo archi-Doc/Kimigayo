@@ -106,11 +106,11 @@ internal sealed partial class MirBuilder
     // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
     // (every slot, its arguments), or an Opaque value reading those slots where its template failed (no record), the body budget refuses
     // the copy (Refuses: the call's Resource record) or the call's substitution does not form it (Instantiates, decided before a copy is
-    // written: a formation that fails after Binding's run: BU-36's, the call's Unsupported_Kd, SPEC 23.1.1, through Unsupported, until
-    // G651 U2c, the Back's; a height refusal, which the innermost site records (PLAN G651 U2b R1), an Opaque value with no record, as a
-    // failed template's; over storage Binding rejected or past its storage bound the copy is built, as the written call is, DECISIONS
-    // R4-M139, PLAN G396 (3)). A default that does not complete reaches no later default and no callee at run
-    // time (SPEC 15.6.7); building goes on for the checks.
+    // written: a height refusal, which the innermost site records (PLAN G651 U2b R1), no record of its own, as a failed template's; Incomplete,
+    // read as the collector reads it (DECISIONS R5-M151; PLAN G651 U2c): a broken contract at the call in a complete compilation
+    // (Invariant: InternalInvariant_Kd), else a dependent of Binding's records (no record); over storage Binding rejected or past its
+    // storage bound the copy is built, as the written call is, DECISIONS R4-M139, PLAN G396 (3)). A default that does not complete
+    // reaches no later default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
     private void Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
     {
         foreach (ref readonly var omitted in call.DefaultArguments)
@@ -121,7 +121,7 @@ internal sealed partial class MirBuilder
             var limit = template is { Body: { } copy, Recursive: false } && this.Refuses(copy.Statements.Length, node);
             var formation = !limit && template is { Body: { } made, Recursive: false, Failed: false } && subst is not null
                 ? this.Instantiates(made, subst) : TyCtxt.Formation.Formed;
-            var unsupported = formation == TyCtxt.Formation.Incomplete;
+            var broken = formation == TyCtxt.Formation.Incomplete && compilation.Types.BindingComplete;
             var at = this.arguments.Count;
             var completes = Completes(decl.Expression);
             if (!template.Recursive && (template.Body is null || template.Failed || limit || formation != TyCtxt.Formation.Formed))
@@ -132,9 +132,9 @@ internal sealed partial class MirBuilder
                     this.SiteUse(new(this.arguments[start + MirCallee.Position(function, i)].Place.Root));
                 }
 
-                if (unsupported)
+                if (broken)
                 {
-                    this.Unsupported(node, slot, decl.Expression);
+                    this.Invariant(node, slot, completes);
                 }
                 else
                 {

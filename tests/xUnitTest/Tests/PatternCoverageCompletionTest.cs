@@ -24,6 +24,18 @@ public class PatternCoverageCompletionTest
         Assert.DoesNotContain(restored.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
     }
 
+    // SPEC 9.4.4, 14.8.4, 23.1.2 (PLAN G1321): the late refutation of `E<Source>` (public E's requirement exposes Hidden) is at a nested
+    // payload position under a proven root `F`, and the late recheck judges only the root, so the coverage stays the Patterns': `.D`'s
+    // absence reads nothing of E, an independent NonExhaustiveMatch_Kd (before: the per-position recheck set the coverage Invalid).
+    [Fact]
+    public void ALateNestedRefutationKeepsTheMissingCoverage()
+    {
+        var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A(i32)\n    B\nenum F\n    C(E<Source>, i32)\n    D\nfunc f(v: F) -> i32\n    return match v\n        .C(.A(let n), _) => n");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
+    }
+
     [Fact]
     public void ValidTypeStillRequiresMissingCaseCoverage()
     {

@@ -135,6 +135,10 @@ public sealed class BoundConformance
 
     internal List<BoundConformancePath> PathStorage { get; } = new();
 
+    // ImplTable's row (R7-N5 B8): every path its store keeps for the identity, named and not swept, across passes; ImplTable.NamedPath
+    // finds one by its declaring clause and root Contract, ImplTable.Sweep compacts it.
+    internal List<BoundConformancePath> NamedPaths { get; } = new();
+
     // Rule (a) (ImplTable): the point of the identity's first path and of its last, and, for a base identity, its paths before the last
     // later point's join (its paths at point 1 while every base row registers at point 1 or 2: ImplTable's premise); written by the pass
     // that registers it.
@@ -217,6 +221,7 @@ public sealed class BoundConformance
         this.Type = type;
         this.Contract = contract;
         this.Stamp = 0;
+        this.NamedPaths.Clear(); // Already empty: Sweep pools an identity once its row is.
         return this;
     }
 }
@@ -338,6 +343,10 @@ public sealed class BoundConformancePath : ICheckCause
     internal ulong Stamp { get; private set; }
 
     internal bool Current => this.Stamp == this.store.Pass;
+
+    // Whether the path is the program part's (ImplTable's overlay, by its store rule), the part ValidateConformances' final pass judges
+    // again (Binding.ResolveConformance reads it, R7-E3 E3e ruling 20).
+    internal bool InProgram => !this.store.IsBase;
 
     // The facts a component keeps by this path and a second key (DECISIONS BU-220), each a small list on the path, kept with it across
     // passes as ImplTable keeps the path, null until its first entry; the owning component's accessor is the list's one reader and writer.
