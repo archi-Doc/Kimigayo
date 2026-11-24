@@ -9,6 +9,26 @@ namespace XunitTest;
 
 public class GenericCallFormationBindingTest
 {
+    // PLAN G464, E3e ruling 13 (SPEC 23.1.2, 15.3.4, 8.3): a use whose own syntax holds a written Type with a failed occurrence inside a
+    // Function Type rests on it, as an explicit argument's call does (below): a reference's explicit Type argument (t5), a constructor's
+    // (t6), a Case's (t6e) and a payload-less Case's (t10) Type-application qualifier, a member call's explicit Type argument (t7). Each
+    // records only the written `Box<string>`'s UnsatisfiedConstraint_Kd (DECISIONS Q13, rule W: dev's restating UnsatisfiedConstraint_Kd
+    // or NoApplicableOverload_Kd at the use goes) and publishes no decision of its own.
+    [Theory]
+    [InlineData("func ku<U>(f: U) -> i32 => 0\nfunc host() -> i32\n    let g = ku<() -> Box<string>>\n    return 0\n", "ku<() -> Box<string>>")] // t5
+    [InlineData("struct Holder<U>\n    public let u: i32\n    public init(u: i32) => self.u = u\nfunc host() -> i32\n    let h = Holder<() -> Box<string>>.init(u: 1)\n    return 0\n", "Holder<() -> Box<string>>.init(u: 1)")] // t6
+    [InlineData("enum E<U>\n    C(i32)\n    N\nfunc host() -> i32\n    let e = E<() -> Box<string>>.C(1)\n    return 0\n", "E<() -> Box<string>>.C(1)")] // t6e
+    [InlineData("enum E<U>\n    C(i32)\n    N\nfunc host() -> i32\n    let e = E<() -> Box<string>>.N\n    return 0\n", "E<() -> Box<string>>.N")] // t10
+    [InlineData("struct S\n    public init() => ()\n    public func take<V>(self: ref/Self) => ()\nfunc host(s: ref/S) -> i32\n    s.take<() -> Box<string>>()\n    return 0\n", "s.take<() -> Box<string>>()")] // t7
+    public void AFailedOccurrenceInAUsesWrittenTypeRestsTheUse(string program, string use)
+    {
+        var source = "struct Box<T>\n    T is i32\n" + program;
+        Assert.Equal("1*UnsatisfiedConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
+        var c = MinimalEmissionTest.Analyze(source);
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).First(x => x is InvocationKoto or GenericsKoto or MemberAccessKoto && x.Span.Length == use.Length && source.Substring(x.Span.Start, x.Span.Length) == use);
+        Assert.NotEqual(BindingState.Resolved, node.StateOf());
+    }
+
     // PLAN G464, O-8 (a) (SPEC 23.1.2, 15.3.4, 8.3): an explicit Type argument whose written occurrence inside a Function Type failed
     // rests the call (no plan, InvalidExplicitArgumentCannotPublishCall) and the call records nothing of its own (DECISIONS Q13, rule W:
     // dev's NoApplicableOverload_Kd at the call, from the call's own formation of the nested result, goes), inside an Option too (o8c2).

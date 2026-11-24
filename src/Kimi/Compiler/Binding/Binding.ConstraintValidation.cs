@@ -186,7 +186,7 @@ public sealed partial class Binding
     // argument list, a qualifier). RestLayersOnType walks it.
     private static Koto? TypeLayerOver(Koto node)
     {
-        if (node.Parent is not { } layer || layer is not (TypeKoto or OriginApplicationKoto or GenericsKoto { BoundSymbol.Kind: BindingSymbolKind.Type }))
+        if (node.Parent is not { } layer || !IsWrittenType(layer))
         {
             return null;
         }
@@ -201,6 +201,10 @@ public sealed partial class Binding
 
         return null;
     }
+
+    // Whether a node is written Type syntax: a Type-syntax node, an Origin application or a Type application (a GenericsKoto bound to a
+    // Type's declaration; one bound to a function is a reference or a callee).
+    private static bool IsWrittenType(Koto node) => node is TypeKoto or OriginApplicationKoto or GenericsKoto { BoundSymbol.Kind: BindingSymbolKind.Type };
 
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
     private Koto? CallableArgument(Koto use, IsKoto clause)
@@ -682,26 +686,39 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a)): a failed written Type that a node's published decision read before the written
-    // occurrences were judged (ValidateConstraintUses), as the part that Type rests on: a selected call's explicit Type argument (its
-    // plan), a Property's Type (its certificate). One row per form; a decision that reads a written Type before that judgment adds a row.
-    // Check rests the node on it, as on a failed called declaration (InvalidCalledDeclaration).
+    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a), E3e rulings 11 and 13): a failed written Type that a use's published decision read before
+    // the written occurrences were judged (ValidateConstraintUses), as the part that Type rests on. One rule: the written Types a
+    // decision reads are the Type positions of its own syntax (TypeComponent, SPEC F.5), an invocation's through its callee (the callee
+    // itself when it is a written Type): a call's or a reference's explicit Type arguments, a constructor's, a Case's or a static member's
+    // Type-application qualifier; and a Property's written Type, its certificate's. A written Type layer is no decision (RestLayersOnType
+    // rests it), nor is an invocation's callee (its invocation decides). Check rests the node on it, as on a failed called declaration.
     private Koto? FailedWrittenType(Koto node)
     {
-        if (node is InvocationKoto { Method: GenericsKoto generic } invocation && this.CallOf(invocation) is not null)
+        if (this.RecordedState(node) != BindingState.Resolved || IsWrittenType(node) || node.Parent is InvocationKoto { Method: var callee } && ReferenceEquals(callee, node))
         {
-            for (var i = 0; i < generic.TypeArguments.Count; i++)
-            {
-                if (this.FailedPart(generic.TypeArguments[i]) is { } part)
-                {
-                    return part;
-                }
-            }
-
             return null;
         }
 
-        return node is PropertyKoto { TypeKoto: { } type, BoundSymbol.Property.IsVerified: true } ? this.FailedPart(type) : null;
+        if (node is PropertyKoto { TypeKoto: { } type })
+        {
+            return this.FailedPart(type);
+        }
+
+        var syntax = node is InvocationKoto invocation ? invocation.Method : node;
+        if (IsWrittenType(syntax))
+        {
+            return this.FailedPart(syntax);
+        }
+
+        for (var i = 0; i < syntax.TypeComponentCount; i++)
+        {
+            if (syntax.TypeComponent(i) is var part && IsWrittenType(part) && this.FailedPart(part) is { } failed)
+            {
+                return failed;
+            }
+        }
+
+        return null;
     }
 
     // A failed written Type node as the part a reader rests on: the part it rests on itself, or the node.
