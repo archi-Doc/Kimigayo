@@ -26987,7 +26987,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     with dev f227e33ce).
 - **R7-M88 A Field step of no Type is a Place its write defines** (Middle, 2026-11-23; PLAN G1184, Z28's MIR half, Q-713, D-1188, a
   joint unit with the Front's F; Major; design `middle\notes\z28-design.md` Revisions 0-2 and its reviews; the order: M, then the
-  Front's F on M, then M3 on F) SPEC 23.1.2, 6.3.3, 6.3.4, 13.7.1.
+  Front's F on M, then M3 on F, Q-739) SPEC 23.1.2, 6.3.3, 6.3.4, 13.7.1.
   - `MirBody.Selects` is the one projection rule: whether a Place of a Type admits a step, and the Type it selects, none only for a
     stored Field whose own slot failed (BU-234's failed slot: the Field's symbol has no Type, `AdtDef.FieldSlotFailed`; its body-free
     arms are `SelectsPart`). `AdtDef.FieldType` is null for two more causes, an instance part past IMPL A.4's height (R7-T1) and a part
@@ -27008,6 +27008,18 @@ R8-M* and R9-M* by the stage of the recording unit.
     the builder's one reading of a node that may have no Type), none for a Field Place over a failed slot, so a receiver Place the
     step cannot index (a Type parameter an identity premise makes the struct) is its located `Unsupported_Kd` (Z28 unit F's fix
     commit 5de610425).
+  - M3 (Q-739, D-1227; design D3 (d); the Middle's C-493 read, M3-1; the unit M review's N-d): `MirMoveData` gives a constructor's
+    `_0` a Move Path per Field it places, by the one projection rule `Stored` reads (`MirBody.SelectsPart`: a stored Field, of no Type
+    where its own slot failed; a part the instance does not store stays out), no longer per Field with a stored Type. It relies on
+    BU-250's contract: every constructor write into an own Field whose slot failed is that Field Place, but an update's target, a
+    derived write until PLAN G1340 that defines nothing, as A1's update of an Uninitialized typed Field defines nothing (PLAN G1114).
+    Records (Q13): a constructor that never places such a Field reports `UninitializedPlace_Kd` at its exit (q07 4:12, SPEC 6.3.5;
+    also over an unresolved Type, q07m) and one placing a `let` one twice `ReassignedLet_Kd` (q06 6:9, SPEC 11.7), each its typed
+    twin's, independent records dev lost; an update-only constructor (G1340's u7) gains its typed twin's dependent exit record (4:12,
+    G1114), its independent 5:9 still lost (G1340). It supersedes G105's rule for G522's case (commit f5e9aaf7d, R4 #33: "A1 requires
+    no constructor Field without a stored Type"), whose reason no longer holds for a failed slot (`Stored` gave it no Place, so its
+    exit record read the failed input; since R7-M88 and BU-250 it is placed, and the exit check reads no Type); the rule stands for a
+    part the instance does not store.
   - A case reader of a written Place takes rule W (`MirCases.KnownTypeOf`), as A5's receiving part does: the pun rule's `Punning` with
     it (a Place of no Type has no bytes to pun); every other case reader reads a Place the validator states typed, by D1's first-step
     check (a step's prefix or the storage below a layer, `MirCases.Layer` included; a read, moved, borrowed, dropped or called Place,
@@ -27016,7 +27028,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     with F the false `UninitializedPlace_Kd` beside the Weak limit (e.w2, Milestone 41 11:9) and at a later read, and the false
     `MovedPlace_Kd` at a failed Field beside a moved sibling or over a partly moved root go. No acceptance move, no generated code.
   - Amends R7-M64's `Bounded` scope (a whole slot: now every admitted Place of no Type), adds `placing` beside R4-M132's term, and
-    retires the builder's "a Field Binding formed no stored Type for has no Place" (`Stored`, `Construct`). Rejected: a `MirAccess` or
+    retires the builder's "a Field Binding formed no stored Type for has no Place" (`Stored`, `Construct`), and, with M3,
+    `MirMoveData`'s "a child per Field with a stored Type" (G105's f5e9aaf7d filter). Rejected: a `MirAccess` or
     projection kind for the step (a vocabulary entry); a second copy of the struct test in the validator (the prototype's `Admits`
     term); skipping a first step in the admitted-step test (the prototype's `row.Prefix != 0`: `Copy(_1.w)` would pass, D1); admitting
     every null stored part (`AdtDef.FieldType` null; the review's C-ir1 and N-e: it would make a part the instance does not store, one
