@@ -24,9 +24,11 @@ namespace Kimi.Command;
 // (EndProgramLine) and restores it at its end, and a redirected one leaves it (Tatara unit SP1). Prohibitions: no build rule of its
 // own; the loop catches nothing (CommandExecution classifies a command's failures); a refusal is read from Tatara, never from a
 // message's text.
-[SimpleCommand("tatara")]
+[SimpleCommand(TataraCommand.Name)]
 public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitContext, IServiceScopeFactory scopes) : ISimpleCommand
 {
+    public const string Name = "tatara";
+
     /// <summary>The longest line, in UTF-16 code units: a command line's limit (CreateProcess).</summary>
     internal const int LineLimit = 32_767;
 
@@ -44,7 +46,7 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
 
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(kimigayo, args, async () =>
+        Environment.ExitCode = await CommandExecution.Execute(kimigayo, Name, args, async (_, _) =>
         {
             if (args.Length != 0)
             {

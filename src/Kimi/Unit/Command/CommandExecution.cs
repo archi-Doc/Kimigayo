@@ -10,31 +10,27 @@ namespace Kimi.Command;
 // SPEC 23.2.2: a toolchain, output or launch failure) print their message and fail the command (IMPL 20.3: exit 1); Project's results
 // render their own faults. An exception no result owns ends the command's own result as Faulted: one CheckFaulted_Kd (Exception), no
 // location (SPEC 23.2.3: an internal selection failure is Faulted with an Internal error; DIAGNOSTICS rule 9), exit 1. Cancellation
-// returns 130. No exception type decides a fault here. A removed option among the arguments the parser handed the command (Tatara
-// B6b4, KimiOptions.RemovedOption) is the command's input error before its action runs: each occurrence's text on standard error, so
-// check --Format json writes no document (SPEC 23.3), and exit 1.
+// returns 130. No exception type decides a fault here. The command's arguments are read by KimiOptions.Read: each invalid option, a
+// removed one by its removal (Tatara B6b4; IMPL 20.3.2), is the command's input error before its action runs, its text on standard
+// error, so check --Format json writes no document (SPEC 23.3), and exit 1; the action receives the options and the inputs.
 internal static class CommandExecution
 {
-    internal static async Task<int> Execute(Kimigayo kimigayo, string[] arguments, Func<Task<int>> action)
+    internal static async Task<int> Execute(Kimigayo kimigayo, string command, string[] arguments, Func<KimiOptions, string[], Task<int>> action)
     {
-        var removed = false;
-        foreach (var argument in arguments)
+        var values = KimiOptions.Read(command, arguments, out var inputs, out var errors);
+        foreach (var error in errors)
         {
-            if (KimiOptions.RemovedOption(argument) is { } text)
-            {
-                Console.Error.WriteLine(text);
-                removed = true;
-            }
+            Console.Error.WriteLine(error);
         }
 
-        if (removed)
+        if (errors.Count != 0)
         {
             return 1;
         }
 
         try
         {
-            return await action().ConfigureAwait(false);
+            return await action(KimiOptions.From(values), inputs.ToArray()).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
