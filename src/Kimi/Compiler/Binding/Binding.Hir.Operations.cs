@@ -201,13 +201,10 @@ public sealed partial class Binding
                         return body;
                     }
 
-                    for (var i = 0; i < function.Parameters.Count; i++)
+                    if (DefaultIndex(node, function, out _) is >= 0 and var index && binding.PartsPublished(function))
                     {
-                        if (ReferenceEquals(node, function.Parameters[i].DefaultValue) && binding.PartsPublished(function))
-                        {
-                            this.table!.Hir.Defaults!.Add(new(function, i));
-                            return HirPosition.Evaluated;
-                        }
+                        this.table!.Hir.Defaults!.Add(new(function, index));
+                        return HirPosition.Evaluated;
                     }
 
                     return HirPosition.None;

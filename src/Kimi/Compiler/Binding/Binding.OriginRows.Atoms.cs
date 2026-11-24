@@ -89,16 +89,17 @@ public sealed partial class Binding
     };
 
     // Whether an atom is a root of a body, by the body that formed it (a non-declaration binder) or by its slot's role (E5): parameter j
-    // of f is a root of f's body and of each template (f, i) with j < i; a receiver and a helper borrow of their own body; an environment
-    // binding and a call result of their Closure's; a Closure literal's value of the body that evaluates it; an accessor's self and value
-    // of the accessor's; a Property's storage of each of its accessors' (one atom, whichever formed it first).
+    // of f is a root of f's body and of each template (f, i) with j < i, and a receiver and a helper borrow of f's body alone (SPEC 7.2.3,
+    // ParameterInScope); an environment binding and a call result of their Closure's; a Closure literal's value of the body that
+    // evaluates it; an accessor's self and value of the accessor's; a Property's storage of each of its accessors' (one atom, whichever
+    // formed it first).
     private static bool RootOf(BoundOrigin atom, ProjectionRole role, ExecutableBody body) => role switch
     {
         ProjectionRole.None or ProjectionRole.Place => atom.Body == body,
         ProjectionRole.Storage => body.Definition?.Declaration is PropertyAccessorKoto { Parent: var property } && ReferenceEquals(property, atom.Binder),
         ProjectionRole.ClosureValue => body.IsBody && EvaluatingBody(new(atom.Binder!.BoundSymbol)) == body,
-        ProjectionRole.Parameter when atom.Binder is FunctionKoto => DeclaredBy(atom, body) && (body.Index < 0 || (uint)atom.Slot < (uint)body.Index),
-        ProjectionRole.Receiver or ProjectionRole.Helper => DeclaredBy(atom, body) && body.Index < 0,
+        ProjectionRole.Parameter or ProjectionRole.Receiver or ProjectionRole.Helper when atom.Binder is FunctionKoto
+            => DeclaredBy(atom, body) && ParameterInScope(atom.Slot, body.Index),
         _ => DeclaredBy(atom, body),
     };
 
