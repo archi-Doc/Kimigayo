@@ -4985,6 +4985,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     arr2 were falsely Unknown); a per-call gate.
   - Superseded in part by R7-M66 (D-944): P9's "its call result atom the call's Unbound atom, R4-M118's second source". P9 images
     only the call receiver ρ, and the G280 cascade at the argument (h1's and d3's Owned `UnprovenConstraint_Kd`) is gone.
+    Then superseded by R7-M101 (B1): the call result atom is imaged as the call's own result region.
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
   (superseded in part by R4-M157: the holding walk's key, and R4-M57) (2026-10-28; G272's design-first candidate, design 2; the owner's
   「G272: (1)」 and 「G272 要件: (a)」) SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis
@@ -26655,6 +26656,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     Binding failure, which R4-M118 forbids (BU-102 threw at a use outside the call's subtree). R4-M118's Unbound then has one source,
     `PendingOrigin`. In a calling body the atom is another body's root (the view's row 9): a row naming it is A5's located
     `Unsupported_Kd`. P8's arm for an Unbound operand (the call result atom) stays.
+    Superseded in part by R7-M101 (B1): a value call images its Closure's call result atom as its own call result region.
   - **Records** (Q13). MIR problems with typed facts; the partition Binding → Ownership; twins are one record (`Binding.IsTwinRecord`
     goes, with the test MIR side's twin filter); independent records restored. An Unbound end is a row whose failure is the record
     (PLAN G739's dependent record goes). An enclosing body's call region at a moved row is the nested-body limit. V6 Unstated and V7 holder place record a problem that leaves
@@ -26677,6 +26679,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     `X outlives (X and ...)` (a symptom fix that leaves the hole).
   - **Open:** P8's `BodyLocalIn` Anchor arm leaves out a raw Place's Borrow that SPEC 5.2.2 fits to its destination, so a use of such
     a Closure (r01, valid) is A5's located `Unsupported_Kd` (the Front's).
+    Closed by R7-M101 (B1): the raw Place's Borrow is fitted through the call result region and a use of such a Closure is accepted.
 - **R7-M67 A kept operand's whole-Place read by its Error's form: `PlanRow.KeptRead`** (Front, 2026-11-21; D-986, Q-606, for
   Z17's commit 3 (R7 plan stream Z, PLAN G396 (4)); Major, behaviour-preserving alone; F's G147 rulings 40-42, 51 and 53; the
   Middle's C4 agreement and RP17 consent on D-986) SPEC 3.4.3, 3.5, 12, 13.4, 15.1.4, 15.1.5, 15.1.6, 15.6.2, 23.1.2. Amends R7-M65
@@ -28198,6 +28201,30 @@ R8-M* and R9-M* by the stage of the recording unit.
     ruling E26-5; `ErasureOwnedDiagnosticTest` passes on the head, ch2 included).
   - Rejected: a worklist over changed readers (above); a Provisional node per kept answer (BU-59); another fixed or random order
     (no fixed order bounds a chain whose direction turns at every link); leaving the case to C3 (the plan gives it to e2-6).
+- **R7-M101 B1: a value call images its Closure's call result atom as its own call result region** (Middle, 2026-11-25; Z9 cause B,
+  C-488; the Front's design, carried by the Middle; Major, Binding, an acceptance mover both ways; F's R1-a rulings 1 (e), 2, 4; the owner's
+  O-523 (a); RP17 consent 11-25 03:05) SPEC 15.8.2, 15.6.4, 15.3.6, 10.1, 8.3.1, 5.2.2, 23.1.2.
+  - **Rule.** `CallAtomOf` reports `CallResultSlot` (`CallAtoms.Result`); `ValueCallResult` fills `PerCallImages`' result slot with
+    `CallResultRegion(call)` (`Binding.OpenOrigins`, key `CallResultKey = SlotRegionKey - 2^28`, one of the call-region family): one
+    substitution (`SubstituteStoredOrigins`), as for rho. With no source the region has no answer, read at once by R1-a.
+  - **Supersedes** R7-M66's "P9's call result image" bullet (reason no longer holding: it weighed only an Unbound image resting on no
+    Binding failure, R4-M118; a call region of the calling body rests on nothing, and the row 9 `Unsupported_Kd` for the callee's atom goes)
+    and **closes** R7-M66's Open r01 (the raw Place's Borrow captured by a returned literal is accepted, SPEC 5.2.2, 15.8.2).
+    **Amends BU-104:** a value call's call result region, `CallResultRegion`, key `CallResultKey`, one of the call-region family.
+  - **Record move (its own line).** An erasure of a maker's call value whose region has no source is Unknown, not Refuted (8.3.1, 15.6.5): the
+    record is `UnprovenConstraint_Kd` at the argument (10.1, 15.2.3, BU-107), not `NoApplicableOverload_Kd` at the call (the maker's atom
+    refuted at step 5 meant nothing in the caller). R4-M152 round 3's family (a `ref/i32` result at `() -> i32`) keeps its record.
+  - **Moves** (ClosureResultOriginTest; 13 moved, 13 new rows): the 5 `Apply` rows and d_raw_let, d_direct, d_raw_direct, b_nested_call,
+    b_raw_nested_call (the record move); d_var, d_raw_var (`NoApplicableOverload_Kd` -> `Unsupported_Kd` at `a`, PLAN G1030's located
+    limit, O-523 (a)); x_pair_let newly rejected (`AmbiguousBinding_Kd run(a)`, 10.1, 10.4); the raw row, f_raw_two, b_raw_nested_gen,
+    b_raw_move newly accepted (5.2.2, 15.8.2); the 5 `Generic` rows, G280 rows 8-9, f_g_var, f_g_twice lose their dependent
+    `Unsupported_Kd` (23.1.2, Q13 rule W). A5 oracle: 0 of 1,764 corpus rows move.
+  - **Rejected:** B2 (a view row: a consumer deciding what P9 publishes); B3 (row 9 whitelisted for the family: keeps `Unsupported_Kd` on
+    valid programs).
+  - **Open:** C-488's C3; what still reaches `CallAtoms.Foreign` after B1; P8's Unbound-operand arm (a returned value resting on a Binding
+    failure now reaches callers as a source-less call region, an erasure there recording `UnprovenConstraint_Kd` beside the Binding
+    failure: Q13's dependent class): the Middle's trace on the joint O3-A + B1 head. Non-blocking: i4's Note text says "not static" for
+    an Unknown proof (the diagnostics adapter's text).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
