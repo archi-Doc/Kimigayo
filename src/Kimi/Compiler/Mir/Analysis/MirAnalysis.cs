@@ -58,6 +58,7 @@ internal sealed class MirAnalysis
     private readonly MirEffects effects;
     private readonly MirBorrows borrows;
     private readonly MirOrigins origins;
+    private readonly TyCtxt types; // The after-run body sites' owner (PLAN G651 U2b R5).
     private readonly MirReport.Kept libraryProblems = new(); // The library step's problems, replayed in a version that keeps its facts.
     private ulong version; // The program version whose problems the program holds (0: none).
     private int stepped; // The bodies steps 1 and 2 have run on, the library step's included: a position of the build-order list.
@@ -67,6 +68,7 @@ internal sealed class MirAnalysis
     /// <param name="types">The Type context of the programs, which the case views, the move paths and drop elaboration read.</param>
     internal MirAnalysis(TyCtxt types)
     {
+        this.types = types;
         // The scratch the analyses share: MirCases, the one MirReach, the dataflow arena and the move paths.
         var reach = new MirReach(); // The one reachability walk: A3's runtime walks, the dataflow's block order and phases.
         this.cases = new(types);
@@ -118,7 +120,15 @@ internal sealed class MirAnalysis
         var list = program.LibraryBodies;
         for (; stepped < list.Length; stepped++)
         {
-            this.Body(program, list[stepped]); // 0. step 2 per library body the library stores do not hold.
+            var site = this.Open(list[stepped]);
+            try
+            {
+                this.Body(program, list[stepped]); // 0. step 2 per library body the library stores do not hold.
+            }
+            finally
+            {
+                this.Close(program, list[stepped], site);
+            }
         }
 
         if (!kept)
@@ -137,7 +147,16 @@ internal sealed class MirAnalysis
         {
             if (!body.HasFinding && Judged(body, rootModules))
             {
-                this.lints.Run(body, program.Problems); // 0. A3 per judged library body.
+                var site = this.Open(body);
+                try
+                {
+                    this.lints.Run(body, program.Problems); // 0. A3 per judged library body.
+                }
+                finally
+                {
+                    this.Close(program, body, site);
+                }
+
                 this.Judgments++;
             }
         }
@@ -156,7 +175,16 @@ internal sealed class MirAnalysis
         {
             if (Judged(body, rootModules) && !body.HasFinding)
             {
-                this.Borrows(program, body); // 4. per judged body.
+                var site = this.Open(body);
+                try
+                {
+                    this.Borrows(program, body); // 4. per judged body.
+                }
+                finally
+                {
+                    this.Close(program, body, site);
+                }
+
                 this.Judgments++;
             }
         }
@@ -191,15 +219,29 @@ internal sealed class MirAnalysis
         for (; this.stepped < program.Bodies.Length; this.stepped++)
         {
             var body = program.Bodies[this.stepped];
-            if (!body.HasFinding && Judged(body, rootModules))
+            var site = this.Open(body);
+            try
             {
-                this.lints.Run(body, program.Problems); // 1. A3 per judged body.
-                this.Judgments++;
-            }
+                if (!body.HasFinding && Judged(body, rootModules))
+                {
+                    this.lints.Run(body, program.Problems); // 1. A3 per judged body.
+                    this.Judgments++;
+                }
 
-            this.Body(program, body); // 2. per body.
+                this.Body(program, body); // 2. per body.
+            }
+            finally
+            {
+                this.Close(program, body, site);
+            }
         }
     }
+
+    // PLAN G651 U2b R5: each step's body is a body site, closed in a finally, whose marks are uses of the body's declaration
+    // (MirReport.Uses); a library body's mark is a broken contract there.
+    private OwnerState Open(MirBody body) => this.types.OpenBodySite(body.Source);
+
+    private void Close(MirProgram program, MirBody body, OwnerState site) => program.Problems.Uses(this.types, this.types.CloseBodySite(site), body.Key);
 
     // Step 2 of one body: its block order and move paths, then per view A1, then A2, a body whose A1 arena exceeds the analyses' limit
     // stopping those views (R4-M15a), then per view A4's local facts; a body with a validator finding, which no consumer reads (R5-M183), an
