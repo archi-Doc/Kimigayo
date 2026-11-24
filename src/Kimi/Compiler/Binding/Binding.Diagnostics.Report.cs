@@ -222,11 +222,6 @@ public sealed partial class Binding
         {
             // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
         }
-        else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd or DiagnosticCode.DefaultArgumentMove_Kd &&
-            this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
-        {
-            this.ReportAcquisition(issue.Node, store, acquisition.Place, acquisition.Object, requirement, issue.Code);
-        }
         else if (issue.Code == DiagnosticCode.InvalidCaptureBinding_Kd && issue.Node is IdentifierNameKoto { BoundSymbol: { } contextual } && IsContextualBinding(contextual))
         {
             this.ReportContextualCapture(issue.Node, store, contextual, requirement, issue.Code);

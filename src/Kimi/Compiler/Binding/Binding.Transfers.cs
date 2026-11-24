@@ -136,8 +136,4 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 7.2.3 (Q8-4, Q8-8): whether a failed bare move is of the node's own Place (FailAcquisition at the Place itself) rooted in a
-    // prepared parameter, which records DefaultArgumentMove_Kd: a default never moves a preceding argument.
-    private bool PreparedMove(Koto node)
-        => this.acquisitionPlaces?.TryGetValue(node, out var acquisition) == true && ReferenceEquals(acquisition.Place, node) && PreparedRoot(node);
 }
