@@ -1501,6 +1501,12 @@ public sealed partial class MirBorrowsTest
     // The body read forms' declarations (ARawPointerABodyReadsPunnedReachesUnownedStorage).
     private const string BodyReadShapes = """
         func usep<T>(p: raw/T) => ()
+        func pass<T>(p: ref/T) -> ref/T during p => p
+        func stash(slot: raw/(raw/u8), value: raw/u8) => ()
+        func at<T>(p: raw/u8) -> raw/T => p@raw/T
+        enum PunE
+            Ptr(raw/(raw/u8))
+            Num(u64)
         struct Node
             public var v: i32
             public init(v: i32) => self.v = v
@@ -1738,6 +1744,427 @@ public sealed partial class MirBorrowsTest
                 let rr = (rs@follow).1@ref
                 unsafe
                     let v = rr@follow
+                    *v = spare
+                kk = 2
+            """,
+        ["uRefBytesReborrowBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@uniq
+                    let b2 = (b@follow)@uniq
+                    let q = b2@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesReborrow3Bad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@uniq
+                    let b2 = (b@follow)@uniq
+                    let b3 = (b2@follow)@ref
+                    let q = b3@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesBorrowCopyBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@ref
+                    let c = b
+                    let q = c@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["uRefBytesBorrowCallBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@ref
+                    let c = pass(b)
+                    let q = c@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["rvBorrowCallReborrowBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@ref
+                    let c = pass(b)
+                    let d = (c@follow)@ref
+                    let q = d@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["rvBorrowRelentTwiceBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                unsafe
+                    let b = (*(w@raw@raw/(raw/(raw/u8))))@uniq
+                    var c = (b@follow)@ref
+                    if flag
+                        c = (b@follow)@ref
+                    let q = c@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["rvMatchPunTupleSharedBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                var ws: (ref/i32, ref/i32) = (y@ref, y@ref)
+                unsafe
+                    match *(ws@raw@raw/((raw/(raw/u8), raw/(raw/u8))))
+                        (let q, let q2) => *(q@follow) = spare
+                kk = 2
+            """,
+        ["rvMatchPunTupleUniqBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                var ws: (ref/i32, ref/i32) = (y@ref, y@ref)
+                unsafe
+                    match (*(ws@raw@raw/((raw/(raw/u8), raw/(raw/u8)))))@uniq
+                        (let q, let q2) => *(q@follow) = spare
+                kk = 2
+            """,
+        ["sOriginLetOk"] = """
+                var other: raw/u8 = null
+                let ro = other@uniq
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                var cell: raw/(raw/u8) during ro = null
+                unsafe
+                    let q = *(w@raw@raw/(raw/(raw/u8)))
+                    cell = q@(raw/(raw/u8) during ro)
+                    *cell = spare
+                kk = 2
+            """,
+        ["sOriginGenSpareBad"] = """
+                var other: raw/u8 = null
+                let ro = other@uniq
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let pp = at<raw/(raw/u8) during ro>(w@raw@raw/u8)
+                unsafe
+                    let q = *pp
+                    *q = spare
+                kk = 2
+            """,
+        ["sOriginGenReadOk"] = """
+                var other: raw/u8 = null
+                let ro = other@uniq
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let pp = at<raw/(raw/u8) during ro>(w@raw@raw/u8)
+                unsafe
+                    let q = *pp
+                    let z = q
+                kk = 2
+            """,
+        ["oqPartRefBodyBad"] = """
+                var y: u64 = 5@u64
+                let h = (y@ref, 7@u64)
+                let p = (h.0)@follow@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["uReborrowChainOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let rr = (rs@follow).1@uniq
+                let rr2 = (rr@follow)@ref
+                unsafe
+                    let v = rr2@follow
+                    *v = spare
+                kk = 2
+            """,
+        ["uReborrowChainBad"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let rr = (rs@follow).1@uniq
+                let rr2 = (rr@follow)@ref
+                unsafe
+                    let v = rr2@follow
+                    *v = spare
+                kk = 2
+                usep(other)
+            """,
+        ["uReborrowFieldCopyOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let rr = (rs@follow).1@ref
+                let c = rr
+                unsafe
+                    let v = c@follow
+                    *v = spare
+                kk = 2
+            """,
+        ["uReborrowFieldTwiceOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                var rr = (rs@follow).1@ref
+                if flag
+                    rr = (rs@follow).1@ref
+                unsafe
+                    let v = rr@follow
+                    *v = spare
+                kk = 2
+            """,
+        ["absEnumUniqNoWriteOk"] = """
+                var other: raw/u8 = null
+                var e: PunE = .Ptr(other@raw)
+                if flag
+                    e = .Num(5)
+                let m = e@uniq
+                match m@follow
+                    .Ptr(let q) => stash(q@follow, spare)
+                    .Num(let n) => ()
+                kk = 2
+            """,
+        ["absEnumUniqBad"] = """
+                var other: raw/u8 = null
+                var e: PunE = .Ptr(other@raw)
+                if flag
+                    e = .Num(5)
+                let m = e@uniq
+                match m@follow
+                    .Ptr(let q) => stash(q@follow, spare)
+                    .Num(let n) => ()
+                kk = 2
+                usep(other)
+            """,
+        ["uScalarViaBorrowBodyBad"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let q = (rs@follow).0@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *q
+                    *v = spare
+                kk = 2
+            """,
+        ["uReborrowFieldCallOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let rr = (rs@follow).1@ref
+                let c = pass(rr)
+                unsafe
+                    let v = c@follow
+                    *v = spare
+                kk = 2
+            """,
+        ["rvCallFieldBad"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                unsafe
+                    let c = pass((*((rs@follow).0@raw@raw/(raw/(raw/u8))))@ref)
+                    let v = c@follow
+                    *v = spare
+                kk = 2
+            """,
+        ["rvIndexViaBorrowOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let q = (rs@follow).1@raw
+                unsafe
+                    let v = q[0]
+                    *v = spare
+                kk = 2
+            """,
+        ["rvIndexViaBorrowBad"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let q = (rs@follow).0@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = q[0]
+                    *v = spare
+                kk = 2
+            """,
+        ["rvExposedViaBorrowOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                let rs = s@uniq
+                let q = (rs@follow).1@raw
+                let qa = q@raw
+                unsafe
+                    let v = *q
+                    *v = spare
+                kk = 2
+            """,
+        ["rvBorrowTwiceMixedBad"] = """
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                var other: raw/u8 = null
+                var x: raw/(raw/u8) = other@raw
+                var c = x@ref
+                if flag
+                    unsafe => c = (*(w@raw@raw/(raw/(raw/u8))))@ref
+                unsafe
+                    let q = c@follow
+                    *q = spare
+                kk = 2
+            """,
+        ["r3MixRefCastOk"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let h = (a@ref, w@ref)
+                let p = (h.0)@follow@raw@raw/u8@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["r3MixRefCastBad"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let h = (a@ref, w@ref)
+                let p = (h.1)@follow@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["r3PartRefsCastOk"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var y: u64 = 5@u64
+                let h = (a@ref, y@ref)
+                let p = (h.0)@follow@raw@raw/u8@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["oqPartRefsBodyBad"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var y: u64 = 5@u64
+                let h = (a@ref, y@ref)
+                let p = (h.1)@follow@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["oqPartRefsCallOk"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var y: u64 = 5@u64
+                let h = (a@ref, y@ref)
+                let c = pass(h.0)
+                unsafe
+                    let v = c@follow
+                    *v = spare
+                kk = 2
+            """,
+        ["oqPartRefsCallBad"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var y: u64 = 5@u64
+                let h = (a@ref, y@ref)
+                unsafe
+                    let c = pass((*((h.1)@follow@raw@raw/(raw/(raw/u8))))@ref)
+                    let v = c@follow
+                    *v = spare
+                kk = 2
+            """,
+        ["r4MixOpenCastOk"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var other2: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other2@raw)
+                let h = (a@ref, s@ref)
+                let p = (h.0)@follow@raw@raw/u8@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["r4MixOpenS1Ok"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var other2: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other2@raw)
+                let h = (a@ref, s@ref)
+                let p = ((h.1)@follow).1@raw@raw/u8@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["r4MixOpenCastBad"] = """
+                var other: raw/u8 = null
+                var a: raw/(raw/u8) = other@raw
+                var other2: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other2@raw)
+                let h = (a@ref, s@ref)
+                let p = ((h.1)@follow).0@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["r3bOpenRefCastOk"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let h = (s@ref, w@ref)
+                let p = ((h.0)@follow).1@raw@raw/u8@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["r3bOpenRefCastBad"] = """
+                var other: raw/u8 = null
+                var s: (u64, raw/(raw/u8)) = (7@u64, other@raw)
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let h = (s@ref, w@ref)
+                let p = (h.1)@follow@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["r5PunPtrRefCastOk"] = """
+                var other: raw/u8 = null
+                var b: raw/u16 = other@raw@raw/u16
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let h = (b@ref, w@ref)
+                let p = (h.0)@follow@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
+                    *v = spare
+                kk = 2
+            """,
+        ["r5PunPtrRefCastBad"] = """
+                var other: raw/u8 = null
+                var b: raw/u16 = other@raw@raw/u16
+                var y: i32 = 5
+                var w: ref/i32 = y@ref
+                let h = (b@ref, w@ref)
+                let p = (h.1)@follow@raw@raw/(raw/(raw/u8))
+                unsafe
+                    let v = *p
                     *v = spare
                 kk = 2
             """,
@@ -2045,15 +2472,17 @@ public sealed partial class MirBorrowsTest
     }
 
     // PLAN G785, the pun rule's read site (SPEC 15.6 Holders, example punnedRef; 5.2; 5.5): a raw pointer a body reads punned over bytes
-    // no raw pointer wrote reaches storage the body does not own, whatever else the holder carries. Each Bad row reads q at
-    // `raw/(raw/u8)` over w's bytes, stores spare through it and uses r after (kk = 2): over a reference's bytes (5.5), a `uniq` one's,
-    // an `owner` Scalar part's beside a Loan, an element of a punned fixed array, `p[0]`, a Take, the whole array then its element, past
-    // a shared layer (the body's store has no shared exception: 15.6) and through a raw Place's borrow (5.2: "a read of it, also through
-    // its borrow"), each accepted before. Where the Place holds a raw pointer's byte beside such a byte, or its structure does not state
-    // its bytes, which bytes the read covers is the layout's (IMPL 21.1): undecided, the located Unsupported_Kd where the conflict rests
-    // on it, never a Language error (a Slice's bytes; a Tuple's by layout, uPtrTupleBodyOk; a pointer formed past a borrow through a
-    // component step names the whole holder, R4-M198's Position per value: uFieldViaBorrowBodyOk, the owner's O-517 (a)). A safe
-    // reborrow of a part reads at its own Type (its lend designates it: uReborrowFieldOk). The controls keep their verdicts.
+    // no raw pointer wrote reaches storage the body does not own, whatever else the holder carries. Each Bad row stores spare through
+    // such a pointer and uses r after (kk = 2): over a reference's bytes (5.5), a `uniq` one's, an `owner` Scalar part's beside a Loan,
+    // an element of a punned fixed array, `p[0]`, a Take, the whole array then its element, past a shared layer (the body's store has no
+    // shared exception: 15.6), through a raw Place's borrow (5.2: "a read of it, also through its borrow"), its reborrows, its Copy, a
+    // call's result of it, a local re-lent twice, a match binding of a punned Tuple, and a claim of an Origin on such a pointer (15.6
+    // Holders: a stated Origin bounds no borrow-checking assumption); each accepted before. A Deref whose referent MirBorrows.Lent resolves
+    // exactly reads its Place at its own Type (a safe reborrow of a part, its chain, its Copy, a local stored twice). Through a referent
+    // Lent does not resolve (a call's result, `p[n]`, an exposed local, a Cast), where the Places the value names hold raw pointer bytes
+    // and other bytes, in one holder or across holders where one keeps provenance, or a Place's structure or layout states no bytes, the
+    // value cannot tell a typed read from a punned one: the located Unsupported_Kd where the conflict rests on it, never a Language error
+    // (the support reduction the owner approved by its rule, O-521 Q1 (a); PLAN G785b). The controls keep their verdicts.
     [Theory]
     [InlineData("uRefBytesBodyBad", "uRefBytesBodyBad: kk = 2")] // I, 15.6's example punnedRef in the body
     [InlineData("uUniqBytesBodyBad", "uUniqBytesBodyBad: kk = 2")] // I, a `uniq` reference's bytes
@@ -2067,7 +2496,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("uRefBytesUniqBorrowBad", "uRefBytesUniqBorrowBad: kk = 2")] // I, through a raw Place's `uniq` borrow
     [InlineData("uSliceBytesBodyBad", "uSliceBytesBodyBad: kk = 2 Unsupported_Kd")] // I, a Slice's bytes are not stated (PlaceBytes Open)
     [InlineData("uPtrTupleBodyOk", "uPtrTupleBodyOk: kk = 2 Unsupported_Kd")] // by layout: w.0's raw pointer (V) or w.1's u64 (I)
-    [InlineData("uFieldViaBorrowBodyOk", "uFieldViaBorrowBodyOk: kk = 2 Unsupported_Kd")] // V, R4-M198's limit (O-517 (a))
+    [InlineData("uFieldViaBorrowBodyOk", "")] // V, an exact raw Ref of s.1: its own Type
     [InlineData("uHandleBytesBodyBad", "uHandleBytesBodyBad: kk = 2")] // I, a handle's bytes
     [InlineData("uScalarBytesBodyBad", "uScalarBytesBodyBad: kk = 2")] // I, a lone u64's bytes
     [InlineData("uPtrBytesBodyBad", "uPtrBytesBodyBad: kk = 2")] // I, a raw pointer's bytes: its provenance, other used after
@@ -2081,6 +2510,44 @@ public sealed partial class MirBorrowsTest
     [InlineData("uRefBytesBorrowOk", "")] // V, as uRefBytesBodyOk through the borrow
     [InlineData("uPtrBorrowTypedOk", "")] // V, a typed raw Place's borrow
     [InlineData("uReborrowFieldOk", "")] // V, a safe reborrow of s.1 at its own Type
+    [InlineData("uRefBytesReborrowBad", "uRefBytesReborrowBad: kk = 2")] // I, a reborrow of a raw Place borrow's referent
+    [InlineData("uRefBytesReborrow3Bad", "uRefBytesReborrow3Bad: kk = 2")] // I, a chain of three
+    [InlineData("uRefBytesBorrowCopyBad", "uRefBytesBorrowCopyBad: kk = 2")] // I, a Copy of the borrow
+    [InlineData("uRefBytesBorrowCallBad", "uRefBytesBorrowCallBad: kk = 2")] // I, the borrow through a call's result
+    [InlineData("rvBorrowCallReborrowBad", "rvBorrowCallReborrowBad: kk = 2")] // I, a call's result, then reborrowed
+    [InlineData("rvBorrowRelentTwiceBad", "rvBorrowRelentTwiceBad: kk = 2")] // I, re-lent by two stores
+    [InlineData("rvMatchPunTupleSharedBad", "rvMatchPunTupleSharedBad: kk = 2")] // I, a match binding of a punned Tuple
+    [InlineData("rvMatchPunTupleUniqBad", "rvMatchPunTupleUniqBad: kk = 2")] // I, the same through a `uniq` borrow
+    [InlineData("sOriginLetOk", "sOriginLetOk: kk = 2")] // I (relabelled after its run), a claim of an Origin on the punned pointer
+    [InlineData("sOriginGenSpareBad", "sOriginGenSpareBad: kk = 2")] // I, a punned read at a Type stating an Origin
+    [InlineData("oqPartRefBodyBad", "oqPartRefBodyBad: kk = 2")] // I, a non-holder's u64 bytes
+    [InlineData("uReborrowChainBad", "uReborrowChainBad: kk = 2")] // I, other holds spare and is used after
+    [InlineData("absEnumUniqBad", "absEnumUniqBad: kk = 2")] // I, the same through a match binding
+    [InlineData("sOriginGenReadOk", "")] // V, the read at a Type stating an Origin, no store
+    [InlineData("uReborrowChainOk", "")] // V, a typed reborrow chain
+    [InlineData("uReborrowFieldCopyOk", "")] // V, a Copy of a typed reborrow
+    [InlineData("uReborrowFieldTwiceOk", "")] // V, a local stored twice, each store exact
+    [InlineData("absEnumUniqNoWriteOk", "")] // V, a match binding of e's payload
+    [InlineData("uScalarViaBorrowBodyBad", "uScalarViaBorrowBodyBad: kk = 2 Unsupported_Kd")] // I, s.0 through a Cast past a borrow
+    [InlineData("rvCallFieldBad", "rvCallFieldBad: kk = 2 Unsupported_Kd")] // I, s.0's u64 through a call's result
+    [InlineData("rvIndexViaBorrowBad", "rvIndexViaBorrowBad: kk = 2 Unsupported_Kd")] // I, s.0's u64 through `q[0]`
+    [InlineData("rvBorrowTwiceMixedBad", "rvBorrowTwiceMixedBad: kk = 2 Unsupported_Kd")] // I, x's raw pointer or w's reference bytes
+    [InlineData("oqPartRefsBodyBad", "oqPartRefsBodyBad: kk = 2 Unsupported_Kd")] // I, y's u64 beside a, by a Cast
+    [InlineData("oqPartRefsCallBad", "oqPartRefsCallBad: kk = 2 Unsupported_Kd")] // I, the same through a call's result
+    [InlineData("r3MixRefCastBad", "r3MixRefCastBad: kk = 2 Unsupported_Kd")] // I, w's reference bytes beside a
+    [InlineData("r4MixOpenCastBad", "r4MixOpenCastBad: kk = 2 Unsupported_Kd")] // I, s.0's u64 beside a
+    [InlineData("r3bOpenRefCastBad", "r3bOpenRefCastBad: kk = 2 Unsupported_Kd")] // I, w's reference bytes beside s
+    [InlineData("r5PunPtrRefCastBad", "r5PunPtrRefCastBad: kk = 2 Unsupported_Kd")] // I, w's reference bytes beside b
+    [InlineData("uReborrowFieldCallOk", "uReborrowFieldCallOk: kk = 2 Unsupported_Kd")] // V, s.1 through "a call's result"
+    [InlineData("rvIndexViaBorrowOk", "rvIndexViaBorrowOk: kk = 2 Unsupported_Kd")] // V, s.1 through "`p + n`/`p[n]`"
+    [InlineData("rvExposedViaBorrowOk", "rvExposedViaBorrowOk: kk = 2 Unsupported_Kd")] // V, s.1 through "an exposed local"
+    [InlineData("r4MixOpenS1Ok", "r4MixOpenS1Ok: kk = 2 Unsupported_Kd")] // V, s.1 through "a Cast", beside a
+    [InlineData("r3bOpenRefCastOk", "r3bOpenRefCastOk: kk = 2 Unsupported_Kd")] // V, s.1 through "a Cast", beside w
+    [InlineData("r4MixOpenCastOk", "r4MixOpenCastOk: kk = 2 Unsupported_Kd")] // V, a through "a Cast", beside s: one entry keeps provenance
+    [InlineData("r3MixRefCastOk", "r3MixRefCastOk: kk = 2 Unsupported_Kd")] // V, a through "a Cast", beside w
+    [InlineData("r3PartRefsCastOk", "r3PartRefsCastOk: kk = 2 Unsupported_Kd")] // V, a through "a Cast", beside y's u64
+    [InlineData("oqPartRefsCallOk", "oqPartRefsCallOk: kk = 2 Unsupported_Kd")] // V, a through "a call's result", beside y's u64
+    [InlineData("r5PunPtrRefCastOk", "r5PunPtrRefCastOk: kk = 2 Unsupported_Kd")] // V, b's raw pointer bytes (5.2) through "a Cast", beside w
     public void ARawPointerABodyReadsPunnedReachesUnownedStorage(string form, string expected)
     {
         var c = MirBuildTest.Compile(BodyReadShapes + BodyRead(form) + "public func main() => ()\n");
@@ -2091,7 +2558,8 @@ public sealed partial class MirBorrowsTest
     // V16 (DECISIONS R4-M140, C-189's readers): after a rebind, the pun rule's key memo, its scans and its walks past a call's first step
     // run again over a store pun, a walk past a holder, an undecided write, a stated layer and a no-store input, and the gather's Limit
     // read keys (a holder reached only through a set carrying Φ_U, its state and its stores; PLAN G775), and a body's punned reads
-    // (through a raw Deref, a raw Place's borrow and a typed reborrow; PLAN G785), and allocate nothing.
+    // (through a raw Deref, a raw Place's borrow, its reborrow, a typed reborrow and a local stored twice, MirBorrows.Lent's exactness
+    // in its own step buffer; PLAN G785), and allocate nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ThePunRuleAllocatesNothingWarm()
@@ -2099,7 +2567,8 @@ public sealed partial class MirBorrowsTest
         var head = PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)];
         var c = MirBuildTest.Compile(Prelude + head + Form(PunForms, "storePunBad") + Form(PunForms, "pastPunBad") + Form(PunForms, "arrayMidBad") +
             Form(PunForms, "statedOk") + Form(PunForms, "sliceReadOk") + Form(PunForms, "closureMixedRests") + Form(PunForms, "selfStoreRests") +
-            BodyRead("uRefBytesBodyBad") + BodyRead("uRefBytesBorrowBad") + BodyRead("uReborrowFieldOk"));
+            BodyRead("uRefBytesBodyBad") + BodyRead("uRefBytesBorrowBad") + BodyRead("uRefBytesReborrowBad") + BodyRead("uReborrowFieldOk") +
+            BodyRead("uReborrowFieldTwiceOk"));
         var stratum = new Stratum(c.Types);
         stratum.Run(c.BuildMir());
         MirProgram? program = null;
@@ -2110,12 +2579,13 @@ public sealed partial class MirBorrowsTest
         }));
         Assert.Contains("pastPunBad: kk = 2", Problems(c, program!, LoanCodes));
         Assert.Contains("uRefBytesBorrowBad: kk = 2", Problems(c, program!, LoanCodes));
+        Assert.Contains("uRefBytesReborrowBad: kk = 2", Problems(c, program!, LoanCodes));
     }
 
-    // A body read form (BodyReadForms) as its function: the head, kk, its `uniq` borrow r and spare (a raw pointer holding r's Loan),
-    // then its statements.
+    // A body read form (BodyReadForms) as its function: the head (a `flag` for the forms that branch), kk, its `uniq` borrow r and spare
+    // (a raw pointer holding r's Loan), then its statements.
     private static string BodyRead(string form)
-        => $"func {form}()\n    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n{BodyReadForms[form]}\n";
+        => $"func {form}(flag: bool)\n    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n{BodyReadForms[form]}\n";
 
     // A copy of a body with each Place `(*_x)...` of the local `_x` rebased onto the Place X its Ref `_x = &X` borrows (Copied), every other
     // row as built: a match Subject's (its bindings, discriminant and reads), or a binding's (its stores).
