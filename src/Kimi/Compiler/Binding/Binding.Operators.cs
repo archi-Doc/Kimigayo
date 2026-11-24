@@ -185,8 +185,12 @@ public sealed partial class Binding
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
         var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
+        // SPEC 15.1.6 (R7-E4 ruling 8): a value of its referent Type assigned to a reference binding names the binding's mode
+        // (ReferenceBindingAssignment's contract), whatever the value's form; only a reassignable binding, which a value fitting the
+        // binding's own Type rebinds (a temporary borrow, SPEC 10.2, 12.3.1), goes on to the write's own check.
         if (assignment && kind == KotoKind.Equals && left?.SafeReferent is { } valueReferent &&
-            right is not null && !this.FitsType(right, left) && this.FitsType(right, valueReferent) &&
+            right is not null && this.FitsType(right, valueReferent) &&
+            (!this.FitsType(right, left) || KotoHelper.UnwrapParentheses(binary.Left).BoundSymbol is not { } bound || !Reassignable(bound)) &&
             ReferenceBindingAssignment(binary.Left) is { } valueBinding)
         {
             return this.RecordWrite(binary, valueBinding, binary.Left);
