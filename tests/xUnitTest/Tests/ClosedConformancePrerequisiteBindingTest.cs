@@ -129,11 +129,11 @@ public class ClosedConformancePrerequisiteBindingTest
     // The rounds' bound (BU-59): a chain of declarations whose closed clauses each rest on the next one's conformance settles in a
     // bounded number of rounds in every declaration order, so the checks grow linearly. The spiral order (R7-C2e2 e2-6, PLAN G838) turns
     // the chain's direction at every link (X(n-1) in the middle, X(n-2) to its right, X(n-3) to the left, ...), so a round in either
-    // direction settles one link only.
+    // direction would settle one link only; the rounds after the first follow the reads (OrderPendingSources), so it settles in three.
     [Theory]
     [InlineData("forward")]
     [InlineData("reverse")]
-    [InlineData("spiral", Explicit = true)]
+    [InlineData("spiral")]
     public void AChainOfClosedClausesSettlesInBoundedRounds(string order)
     {
         var shallow = Work(16);
@@ -168,7 +168,7 @@ public class ClosedConformancePrerequisiteBindingTest
     [Fact]
     public void WarmFinitePrerequisiteVerificationAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public contract C\npublic struct A\n    B is C\n    Self is C\npublic struct B\n    Self is C");
+        var c = MinimalEmissionTest.Analyze("public contract C\npublic struct A\n    B is C\n    Self is C\npublic struct B\n    D is C\n    Self is C\npublic struct D\n    Self is C");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
