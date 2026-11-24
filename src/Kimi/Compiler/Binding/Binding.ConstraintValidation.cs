@@ -12,6 +12,9 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private readonly FormationCauseRows formationCauses;
 
+    // PROTOTYPE (E3e Rev 2): the written occurrences JudgeOccurrence judged in this pass (ResetPass empties it).
+    private readonly HashSet<Koto> judgedOccurrences = new(ReferenceEqualityComparer.Instance);
+
     // Conformance verifications and agreements in progress: a limit context, not an obligation (the obligation table holds the paths
     // being verified), read by ResolveConformance alone: inside them a conformance limited by OCC-X stays Unknown.
     private int conformanceChecks;
@@ -558,41 +561,7 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause), clause), mode, frame);
             }
 
-            // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names. A check that
-            // recorded at a node first keeps its record.
-            if (this.JudgedOccurrence(node) is { Symbol.Declaration: DeclarationContainerKoto container } type)
-            {
-                var written = this.OccurrenceTypeNode(node);
-                var scope = this.ConstraintScope(node);
-                var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
-                var frame = this.BeginConsultation(use);
-                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, use);
-                this.RequireConstraintInFrame(use, result, mode, frame);
-                if (result != ConstraintProof.Proven)
-                {
-                    this.RestLayersOnType(node, written);
-                }
-
-                if (node.BindingState == BindingState.Invalid)
-                {
-                    // Invalid type formation in a clause must not remain available as evidence.
-                    for (var parent = node.Parent; parent is not null; parent = parent.Parent)
-                    {
-                        if (parent is IsKoto { BoundConstraint: { } fact } && scope.Constraints is { } environment)
-                        {
-                            // R7-C3: the clause's own judgment fails its premise; a conformance binding's clause is no premise (not in Facts:
-                            // FailPremise does nothing), its failure being its path's state (design-c31b §3 (c)).
-                            this.FailPremise(environment, fact, scope.Owner);
-                            break;
-                        }
-
-                        if (parent is DeclarationKoto)
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
+            this.JudgeOccurrence(node, mode);
         }
 
         // Compact in place: discharging N obligations never performs N list searches/removals.
@@ -610,6 +579,48 @@ public sealed partial class Binding
         }
 
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
+    }
+
+    // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names; a check that recorded at
+    // a node first keeps its record. PROTOTYPE (E3e Rev 2): a per-pass query, made once (judgedOccurrences), demanded by the first
+    // decision that reads the occurrence (FailedPart, at that decision's binding) or by ValidateConstraintUses, whichever comes first.
+    private void JudgeOccurrence(Koto node, BindingMode mode)
+    {
+        if (this.JudgedOccurrence(node) is not { Symbol.Declaration: DeclarationContainerKoto container } type || !this.judgedOccurrences.Add(node))
+        {
+            return;
+        }
+
+        var written = this.OccurrenceTypeNode(node);
+        var scope = this.ConstraintScope(node);
+        var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
+        var frame = this.BeginConsultation(use);
+        var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, use);
+        this.RequireConstraintInFrame(use, result, mode, frame);
+        if (result != ConstraintProof.Proven)
+        {
+            this.RestLayersOnType(node, written);
+        }
+
+        if (node.BindingState == BindingState.Invalid)
+        {
+            // Invalid type formation in a clause must not remain available as evidence.
+            for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+            {
+                if (parent is IsKoto { BoundConstraint: { } fact } && scope.Constraints is { } environment)
+                {
+                    // R7-C3: the clause's own judgment fails its premise; a conformance binding's clause is no premise (not in Facts:
+                    // FailPremise does nothing), its failure being its path's state (design-c31b §3 (c)).
+                    this.FailPremise(environment, fact, scope.Owner);
+                    break;
+                }
+
+                if (parent is DeclarationKoto)
+                {
+                    break;
+                }
+            }
+        }
     }
 
     // R7-V1c (SPEC 8.3.1, 8.6.3, 23.1.2; F's V1c rulings 3-4): the Type ValidateConstraintUses judges at `node`, or null. A layer that
@@ -674,12 +685,12 @@ public sealed partial class Binding
     // cause, E3e ruling 15 (b)), and a Property's written Type, its certificate's. The reader finds the failed occurrence under the
     // layers that hold it, so no layer takes a state the occurrence's judgment did not give it (RestLayersOnType) and a declaration's
     // written Type, read by its other readers (a stored Type's Owned proof), keeps them. A written Type node is no decision (its reader
-    // decides), nor is an invocation's callee (its invocation decides) or a declaration other than a Property (no use reads its decision
-    // before Check). Check rests the node on it, as on a failed called declaration.
+    // decides), nor is a declaration other than a Property. PROTOTYPE (E3e Rev 2): the decision asks it where it is made (BindNode's end;
+    // a Property's certificate, ValidateProperties), demanding each occurrence's judgment (FailedPart, JudgeOccurrence), so it rests before
+    // any reader of it is bound and each reader rests by its own binding (SPEC 23.1.2), with no late rest.
     private Koto? FailedWrittenType(Koto node)
     {
-        if (this.RecordedState(node) != BindingState.Resolved || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto ||
-            (node.Parent is InvocationKoto { Method: var callee } && ReferenceEquals(callee, node)))
+        if (this.RecordedState(node) == BindingState.Invalid || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto)
         {
             return null;
         }
@@ -700,6 +711,7 @@ public sealed partial class Binding
     // reader rests on: the part it rests on itself, or the node.
     private Koto? FailedPart(Koto type)
     {
+        this.JudgeOccurrence(type, this.capabilityMode); // PROTOTYPE: the occurrence's one judgment, demanded by its first reader.
         if (this.RecordedState(type) == BindingState.Invalid)
         {
             return this.UnresolvedPart(type) ?? type;
