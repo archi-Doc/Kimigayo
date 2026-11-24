@@ -17,9 +17,10 @@ namespace Kimi.Compiler;
 //   owner-case operand (WritablePlace), and what a part's owner grants it or lends it (WritableOwner, LendsOwner: the one reading
 //   of SPEC 15.1.5's writable roots for a part, a writable temporary's included, WritableTemporary, whose whole Temporary Place no
 //   lowering writes yet, IsTemporaryPlace); whether a receiver can be
-//   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
+//   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5; its denial, ExclusiveAcquisitionDenial); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
 //   borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace and, for a handle, LendsHandle, with the static root), with the
-//   one diagnostic for a written Borrow it may not (BorrowFailure), and whether an implicit Borrow lends a static root (BorrowsStaticRoot);
+//   one diagnostic for a written Borrow it may not (BorrowFailure), the one lending verdict of an owned input, written or implicit
+//   (OwnedLending), and whether an implicit Borrow lends a static root (BorrowsStaticRoot);
 //   whether an explicit discard's allowed Take of a raw Place destroys it in place (DestroysInPlace, SPEC 14.2.4; the HIR publisher
 //   writes it).
 //   The in-place reads it decides the paths of are Binding.InPlaceReads'.
@@ -175,10 +176,15 @@ public sealed partial class Binding
 
     // SPEC 4.7.1, 15.1.5: whether a receiver can be exclusively acquired, which a selection through indexUniq or an exclusive view
     // needs: its path is not shared (ReferentAuthority) and its binding permits it (AcquirableByBinding), both read from one fold.
-    private bool ExclusivelyAcquirable(Koto receiver)
+    private bool ExclusivelyAcquirable(Koto receiver) => this.ExclusiveAcquisitionDenial(receiver) is null;
+
+    // SPEC 7.3.3, 15.6.2: ExclusivelyAcquirable's denial as the failure its written twin `p@follow@uniq` records (AccessFailure's codes):
+    // a shared layer on the referent's path SharedPathAccess, a binding that does not permit it InvalidAssignment; null when acquirable.
+    private BindingFailure? ExclusiveAcquisitionDenial(Koto receiver)
     {
         var path = this.PathFold(receiver, []);
-        return this.ReferentAuthority(receiver, path.Access) != SemanticsKind.Ref && this.AcquirableByBinding(receiver, path, []);
+        return this.ReferentAuthority(receiver, path.Access) == SemanticsKind.Ref ? BindingFailure.SharedPathAccess
+            : this.AcquirableByBinding(receiver, path, []) ? null : BindingFailure.InvalidAssignment;
     }
 
     // SPEC 3.4, 3.4.3, 15.1.5 (the invariant: one path computation decides writes, Moves and borrows): a Place's path folded from its
@@ -643,6 +649,24 @@ public sealed partial class Binding
     // operation that selection may still discard, so it is lent as SPEC lends it and reported once final (JudgeSelectedInput).
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
         => this.LendsPlace(source, scope, exclusive, out var staticRoot) && staticRoot is null;
+
+    // SPEC 15.1.5 (the lending rule, exclusive acquisition), 13.5.6, 7.3, 10.2: the one lending verdict of an owned input, a value's or
+    // an object handle's, borrowed in a mode, written (AdaptInput's reference-slot arm, ExplicitAdaptations' borrowing case) or implicit
+    // (AdaptInput, AdaptObjectBorrow). A written Borrow outside a Receiver Expression is lent as Binding lends its Place
+    // (BorrowablePlace), an implicit one, a receiver's included, as SPEC does (LendsPlace), otherwise a Temporary Value as
+    // BorrowableTemporary admits it (spelled when written or a receiver). None: lent as is; ExclusiveBorrowRequired: an implicit exclusive
+    // borrow outside a receiver, lent only when spelled; null: nothing is lent (a written Borrow, whose own check records it, or a
+    // Temporary Value).
+    private BindingFailure? OwnedLending(Koto source, BindingScope scope, bool exclusive, bool explicitBorrow, bool receiver, bool fixedExpectation)
+    {
+        var written = explicitBorrow && !receiver;
+        if (written ? this.BorrowablePlace(source, scope, exclusive) : this.LendsPlace(source, scope, exclusive, out _))
+        {
+            return exclusive && !explicitBorrow && !receiver ? BindingFailure.ExclusiveBorrowRequired : BindingFailure.None;
+        }
+
+        return this.BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) ? BindingFailure.None : null;
+    }
 
     // SPEC 15.6.2, 15.6.4: the one diagnostic for a written Borrow of a Place Binding does not lend (BorrowablePlace): one that SPEC
     // lends but whose root is a static Field is unsupported; otherwise an exclusive borrow names the capability its path denies

@@ -417,8 +417,9 @@ public sealed partial class Binding
         {
             // SPEC 13.5.6: an explicit @ref/@uniq on a slot storing a reference or handle borrows that slot and
             // adds one layer; a temporary reference value is materialized first (SPEC 3.6).
-            // A getter result is lent only shared (SPEC 11.5), as every Temporary Value is admitted (BorrowableTemporary).
-            if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) && !this.BorrowableTemporary(source, target == SemanticsKind.Uniq, true, fixedExpectation))
+            // A getter result is lent only shared (SPEC 11.5), as every Temporary Value is admitted (BorrowableTemporary). The borrow is
+            // written, at a receiver too: the lending rule's written form (OwnedLending).
+            if (this.OwnedLending(source, scope, target == SemanticsKind.Uniq, explicitBorrow: true, receiver: false, fixedExpectation) is null)
             {
                 return false;
             }
@@ -481,21 +482,11 @@ public sealed partial class Binding
             // SPEC 13.5.6: an explicit borrow of a slot storing a pair layer, an application or an adaptation family (SPEC 13.5.5,
             // TryAdaptationSelector), borrows that slot like a stored value, whatever each admitted case stores. A written
             // Borrow is lent as Binding lends it, an implicit one (a receiver's too) as SPEC does (BorrowablePlace).
-            var exclusive = target == SemanticsKind.Uniq;
-            if (explicitBorrow && !receiver ? this.BorrowablePlace(source, scope, exclusive) : !judged || this.LendsPlace(source, scope, exclusive, out _))
-            {
-                // SPEC 15.1.5 lending rule: an owned Place is lent exclusively by @uniq at every position other
-                // than a Receiver Expression, whatever its access path; a receiver is acquired implicitly (SPEC 7.3).
-                if (exclusive && !explicitBorrow && !receiver)
-                {
-                    if (!this.RequireAcquisition(source, actual, pattern.Components[0], BindingFailure.ExclusiveBorrowRequired, false, fixedExpectation, deferAcquisition))
-                    {
-                        return false;
-                    }
-                }
-            }
-            else if (!this.BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) &&
-                !(target == SemanticsKind.Ref && this.KindOf(source) == PartKind.Literal))
+            // SPEC 15.1.5 lending rule (OwnedLending): an owned Place is lent exclusively by @uniq at every position other than a
+            // Receiver Expression, whatever its access path; a receiver is acquired implicitly (SPEC 7.3).
+            var lending = judged ? this.OwnedLending(source, scope, target == SemanticsKind.Uniq, explicitBorrow, receiver, fixedExpectation) : BindingFailure.None;
+            if (lending is not { } verdict ? !(target == SemanticsKind.Ref && this.KindOf(source) == PartKind.Literal)
+                : verdict != BindingFailure.None && !this.RequireAcquisition(source, actual, pattern.Components[0], verdict, false, fixedExpectation, deferAcquisition))
             {
                 return false;
             }
@@ -567,18 +558,14 @@ public sealed partial class Binding
             quality = exclusive ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
         }
         else if (actual.HandleMode is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
-            ((explicitOwner && !receiver ? this.BorrowablePlace(source, scope, exclusive) : this.LendsPlace(source, scope, exclusive, out _)) ||
-            this.BorrowableTemporary(source, exclusive, explicitOwner || receiver, fixedExpectation)))
+            this.OwnedLending(source, scope, exclusive, explicitOwner, receiver, fixedExpectation) is { } lending)
         {
-            // SPEC 13.5.5, 13.5.6: a handle lends its object from a Place, as Binding lends it to a written Borrow and as SPEC does to an
-            // implicit one (BorrowablePlace), or from a Temporary Value.
-            if (exclusive && !explicitOwner && !receiver)
+            // SPEC 13.5.5, 13.5.6: a handle lends its object from a Place or a Temporary Value (OwnedLending); an owned handle is lent
+            // exclusively by @objuniq except as a receiver (SPEC 15.1.5, 7.3).
+            if (lending != BindingFailure.None &&
+                !this.RequireAcquisition(source, actual.Components[0], pattern.Components[0], lending, true, fixedExpectation, deferAcquisition))
             {
-                // SPEC 15.1.5 lending rule: an owned handle is lent exclusively by @objuniq except as a receiver (SPEC 7.3).
-                if (!this.RequireAcquisition(source, actual.Components[0], pattern.Components[0], BindingFailure.ExclusiveBorrowRequired, true, fixedExpectation, deferAcquisition))
-                {
-                    return false;
-                }
+                return false;
             }
 
             kind = ArgumentOperationKind.Borrow;

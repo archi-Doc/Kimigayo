@@ -37,6 +37,10 @@ public sealed partial class Binding
         this.UnlinkProblems(node);
     }
 
+    // A located limit's one fact: the part's span, packed (start above, length below), read back by LocatedPart.
+    private static ProblemFact LocatedFact(Koto node, SourceSpan part)
+        => new(ProblemFactKind.Span, SourceRef.Of(node), ((long)part.Start << 32) | (uint)part.Length);
+
     // The code of a failure at a node: the one table, with the rows that read the node until their checks record their own (E3, E4).
     private DiagnosticCode CodeOf(Koto node, BindingFailure failure)
     {
@@ -184,17 +188,14 @@ public sealed partial class Binding
     // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee; its own record
     // beside any other failure of its node (SPEC 23.1.2).
     private void RecordLocated(Koto node, SourceSpan part, bool unresolved = false)
-    {
-        long value = ((long)part.Start << 32) | (uint)part.Length;
-        this.Record(node, BindingFailure.Unsupported, [new(ProblemFactKind.Span, SourceRef.Of(node), value)], unresolved: unresolved);
-    }
+        => this.Record(node, BindingFailure.Unsupported, [LocatedFact(node, part)], unresolved: unresolved);
 
     // SPEC 23.1.1, 23.1.2 (PLAN G254c): a located limit beside its node, which keeps its state, Type and rows: a problem that sets no slot,
     // so no consumer reads the node as a failed input, published by its subject (CollectIssue). At condition 1 at least, as a further
     // Origin record is, so the node's own first failure, set later at 0, keeps its key; an equal record keeps its first's (DIAGNOSTICS 4.3).
     private void RecordLocatedLimit(Koto node, SourceSpan part)
     {
-        ReadOnlySpan<ProblemFact> facts = [new(ProblemFactKind.Span, SourceRef.Of(node), ((long)part.Start << 32) | (uint)part.Length)];
+        ReadOnlySpan<ProblemFact> facts = [LocatedFact(node, part)];
         BindingProblem problem = new(this.CodeOf(node, BindingFailure.Unsupported), DiagnosticRequirement.Binding(BindingFailure.Unsupported), SourceRef.Of(node), 1);
         this.report.Add(problem with { Condition = this.report.Condition(problem, facts) }, facts);
     }
