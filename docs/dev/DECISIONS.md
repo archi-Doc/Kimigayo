@@ -16764,6 +16764,19 @@ resumed by R4-M86 (2026-10-20).
     node). `memberPaths` stays a site for B7c (C-518 B1: the scanned `MemberPaths` row was O(N^2) per warm Bind); Binding's other
     newly visible tables (`inlineSummaries`, `collisionSubstitutions`, `obligationSet` and `PassPart.ObligationSet`, `valueInReads`,
     `TyCtxt.retentions`, `ImplTable.paths`) are batch B8's (`valueInReads` B8a's).
+  - **R7-N5 B7c** (the Back's, Q-763, D-1263; design `b7c-design.md`, B's rulings 1-3; the Front's C-518 (i)): `memberPaths` stays a
+    content-hash interner, keyed `(BoundMemberPath? Parent, SourceRef Base, BoundType Type)` by the base clause's `SourceRef` (value
+    identity, R7-M19's key) and emptied by every edit in `Invalidate`, so its lifetime is the edit counter's: a path is one object
+    across Binds with no edit (the warm identity and 0 B rows), no key outlives its numbering (a module is renumbered only when its
+    Version changed, which only `SyntaxTable.Edit` changes, and both of Edit's callers reach `Invalidate`), and no removed clause stays
+    reachable. Identity across an edit is no contract (`SameMemberPath` compares by Declaration and Type; MIR and the Backend read no
+    path). A lookup is one hash operation; a `Debug.Assert` checks that a hit's path names the clause. Owner: Binding's
+    `MemberPath`, the table's one writer and reader. Exposure: none (no acceptance or record moves; the whole suite on the prototype).
+    Readings: SPEC 6.2.2 and 9.6 (a member reached through base clauses), 23.1.2 (no record moves); BU-220's interner and removal
+    rules. `NodeKeyedTablesStayAtTheirSites`' Binding count 13 -> 12. Rejected: B7's scanned `MemberPaths` row (C-518 B1: quadratic
+    per warm Bind in N instantiations and in fan-in; retention past depth 2), a `KeyedRow` of root paths with successor interning
+    (kept-family rows for an identity across edits no reader needs), a `Koto` key emptied at the edit (a node-keyed table outside
+    Syntax), a per-pass interner (breaks the warm identity and the 0 B rows).
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
