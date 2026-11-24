@@ -229,7 +229,7 @@ Every module defines `memcmp`, `memcpy`, `memmove` and `memset`, which generated
 
 ## 21.5. Linux x64 runtime
 
-linux-x64 (`x86_64-unknown-linux-musl`) is not yet an executable target profile ([§22](../spec/22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions)): no command builds, runs or tests a program for it. This section describes the runtime of the modules the compiler generates for it.
+linux-x64 (`x86_64-unknown-linux-musl`) is an executable target profile only for `build --Manifest` ([§20.3.2](20-compilation-configuration.md#2032-builds-and-artifacts)): a linux-x64 manifest builds into `Name.O0` or `Name.O2`, a static ELF executable; no command emits, runs or tests a program for it yet ([§22](../spec/22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions)). This section describes the runtime of the modules the compiler generates for it.
 
 ### 21.5.1. Target
 
@@ -250,3 +250,7 @@ Allocation follows [§21.4.3](#2143-memory) over anonymous private pages that `m
 ### 21.5.5. Elapsed time
 
 `Time.Stopwatch` ([§22.8.2](../spec/22-core-execution-and-foreign-functions.md#2282-stopwatch)) reads the `clock_gettime` system call's `CLOCK_MONOTONIC` clock as a counter of nanoseconds, with frequency 10^9. A failed read or a negative value is a clock failure (`KIMI_E_CLOCK`, [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes)).
+
+### 21.5.6. Native imports and backend support
+
+The runtime defines `memcmp`, `memcpy`, `memmove` and `memset` as on windows-x64 ([§21.4.7](#2147-native-imports-and-backend-support)), and a member of a supplied library that the link takes and that gives a non-weak definition of one of them is an error at the link, and a weak one yields to the module's, as there. linux-x64 has no backend support archive: generated functions probe the stack inline ([§21.5.1](#2151-target)), and a module defines no `_fltused`. `c` is defined in [§20.4](20-compilation-configuration.md#204-native-libraries); a program that links it starts through its startup files ([§21.5.2](#2152-process-entry-and-exit)).

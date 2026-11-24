@@ -33866,3 +33866,31 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   (kind-design.md §7). Rejected: the whole library's composition (rejects an MSVC import library with static members and a static
   archive's unused bundled import member), a sibling step (the closure twice), staging (bytes, not loads), LLD's `/WX`, the manifest
   naming each import's library (PLAN G1333), a Tatara verdict.
+- **T-M47. The native build per target row (Tatara B7b7, D-1274, Q-773).** Decision: the link manifest's fixed head is per row (the common
+  rows from the row's columns, the backend-support rows only where the row reserves `kimi_backend`); `LinkManifest.CheckFixed` reads
+  `target` first and returns the row, which every later check and the build read. `TargetProfile` gains `Format` (COFF, ELF: the
+  executable format, which selects the link writer and the executable's extension) and `InputExtension` (`.lib`, `.a`: a program
+  library's input and staged extension). The generation result publishes the entry (`GeneratedModule.Entry`: `main` on the C path, the
+  row's entry symbol otherwise, null for a Library), which the manifest writes. A row's compiler supplies are listed per row, its
+  `CRuntime` only when the module requires it, in Ordinal name order. One representation holds a supply's material:
+  `ToolchainIdentity.CompilerSupply(Row, Supply, Entry, Files)`, each `SupplyFile(Name, Resource, Sha256, Place)` with its place
+  (`SupplyPlace`: Start, Library, End; a COFF file's Library) from the row's catalog (C-469 n1), read once by `ToolchainIdentity.ReadFile`,
+  where a missing or other place is the toolchain's `InvalidDataException` naming the file (T's ruling 79); `toolchain verify` states one
+  form per file. A compiler's supply of several files takes no `sha256` assertion: such an entry is not this compiler's. The C path's files are one
+  staged input each of library `c` (the record's `libraries` rows per input, ruling 49), in the build's one staged list
+  (`NativeToolchain.StagedLibrary(Name, Kind, Sha256, Held, Place)`, a program library's place null); LinkAmbiguity's whole-file rule loads the start
+  and end files whole, and the place orders only the ELF line. The ELF line (ld.lld): `-m elf_x86_64 -static --no-dependent-libraries
+  --gc-sections --build-id=none`, start files, the object, the program's libraries in manifest order, `c`'s library files, end files;
+  `-e <entry>` only when no start file is staged. ld.lld only warns of an undefined `-e` entry, so the object's inspection checks on
+  every format that the object defines the manifest's entry as an external text symbol, else the build's input failure naming it (T's
+  ruling 79). The ELF writer has no D1 counterpart (ld.lld reads no LINK variable), reads
+  `LLD_REPRODUCE`, and leaves `--no-mmap-output-file` to a later measurement. A staged copy beginning `!<thin>\n` is an error at staging,
+  before the dependency check and generation (change W2, after LinkAmbiguity; R3, Reading 6). An archive whose index is empty while a
+  member defines an external symbol is a dependency-check line on every format (`LinkInput.Unindexed`, T's ruling 48); the pick is the
+  first index entry on every format. A library input that is no library (ruling 54) is reported before the link on both formats:
+  lld-link refuses a DLL and ld.lld's static link a shared object with an ordinary error, after which Tatara runs again (P-K4, P-K5b);
+  only COFF's bare import member reaches LLD's `fatal()` (PB3). Development: `scripts/run-linux-elf.ps1` runs ELFs under WSL against
+  `tests/linux-elf/expectations.json` (B7b9's CI reads the same file), recording WSL's kernel; the WSL programs' texts are kept for B7b9
+  (`artifacts\tatara\b7b7\probes\B7b7WslProbeTest.cs.txt`, ruling 55). Rejected: refusing a Linux manifest at the CLI until B7b8 (a
+  clause keyed on the row); a Format switch in the dependency check; a member-order reader for ELF picks; places as strings, which
+  the ELF writer dropped when unknown; `--require-defined=<entry>` on the ELF line (a second, ELF-only judge of the entry).
