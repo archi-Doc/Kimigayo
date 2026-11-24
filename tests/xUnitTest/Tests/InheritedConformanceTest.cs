@@ -504,14 +504,16 @@ public class InheritedConformanceTest
     }
 
     // SPEC 8.5.2, 8.6.2 (PLAN G602): the invalid twins keep their records at the clause that has no evidence: the far end lacks HasBase,
-    // through one or two projected levels, or the projection names a Type without it.
+    // through one or two projected levels, or the projection names a Type without it. SPEC 23.1.2 (PLAN G651 a2-2b, F's C8 rulings 21
+    // and 26; DECISIONS Q13): the clause names no Type, so the base call `: base()` has no base to select through and rests on the
+    // clause's record (it no longer records `InvalidTypeFormation_Kd` at `base`).
     [Theory]
     [InlineData(MissingHeir + ProjectedSource + "struct D: Source.(HasBase).Parent\n    public init(): base() => ()\n", "Source")]
     [InlineData(MissingHeir + ProjectedSource + ProjectedSource2 + "struct D: Source2.(HasBase).Parent\n    public init(): base() => ()\n", "Source2")]
     [InlineData(ProjectedHeir + "open struct Other\n    public init() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is Other\nopen struct Source: S2.(HasBase).Parent\n    public init(): base() => ()\nstruct D: Source.(HasBase).Parent\n    public init(): base() => ()\n", "Source")]
     public void AClauseWithoutTheInheritedConformanceKeepsItsRecords(string source, string heir)
         => Assert.Equal(
-            $"InvalidTypeFormation_Kd struct|InvalidTypeFormation_Kd {heir}.(HasBase).Parent|UnsatisfiedConstraint_Kd {heir}.(HasBase).Parent|InvalidTypeFormation_Kd base",
+            $"InvalidTypeFormation_Kd struct|InvalidTypeFormation_Kd {heir}.(HasBase).Parent|UnsatisfiedConstraint_Kd {heir}.(HasBase).Parent",
             Records(source));
 
     // SPEC 8.6.2 (PLAN G602): a conformance whose requirement returns Self is not inherited, through a projected base as through a nominal

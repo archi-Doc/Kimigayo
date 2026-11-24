@@ -273,6 +273,7 @@ public sealed partial class Binding
         this.PublishInheritedOptOuts();
         this.VerifyEarlyObjectForms();
         this.RegisterInheritedConformances();
+        this.PrepareInheritedScopes(); // SPEC 8.8.2, PLAN G651 a2 (form M): the heir scopes at the end of the registrations.
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();
         this.PrepareCases();
@@ -296,7 +297,6 @@ public sealed partial class Binding
         this.PrepareStorage();
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
-        this.PrepareInheritedScopes(); // SPEC 8.8.2: the heir scopes before their readers (inline layouts, verification).
         this.ValidateInlineLayouts();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ValidateSignatures();
