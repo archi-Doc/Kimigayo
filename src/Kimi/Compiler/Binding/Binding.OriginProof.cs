@@ -321,7 +321,7 @@ public sealed partial class Binding
         var version = this.originStateVersion;
         longer = this.OriginAtUse(longer, use, comparison);
         shorter = this.OriginAtUse(shorter, use, comparison);
-        this.OriginProofMetrics?.Enter(longer, shorter, use, this.originPremiseDepth);
+        this.OriginProofMetrics?.Enter(this.originPremiseDepth);
         var proven = this.EntailsOrigin(longer, shorter, use, comparison, condition);
         if (version != this.originStateVersion)
         {
