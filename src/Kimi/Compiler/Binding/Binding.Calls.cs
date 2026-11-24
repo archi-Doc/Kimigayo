@@ -582,7 +582,8 @@ public sealed partial class Binding
         var failure = acquisition?.Kind ?? BindingFailure.NoApplicableCandidate;
         if (failure != BindingFailure.NoApplicableCandidate && acquisition is { } absent)
         {
-            return this.FailAcquisition(call, failure, absent.Place, absent.Object, true);
+            this.AcquisitionFacts(this.candidateFacts, call, failure, absent.Place, absent.Object);
+            return this.RecordSelection(call, failure); // The selection's one guard (R7-E4 ruling 6, D2).
         }
 
         var argumentCount = call.ArgumentNodes.Count;
