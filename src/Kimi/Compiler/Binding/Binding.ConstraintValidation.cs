@@ -700,7 +700,7 @@ public sealed partial class Binding
     private Koto? FailedWrittenType(Koto node)
     {
         if (this.RecordedState(node) != BindingState.Resolved || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto ||
-            node.Parent is InvocationKoto { Method: var callee } && ReferenceEquals(callee, node))
+            (node.Parent is InvocationKoto { Method: var callee } && ReferenceEquals(callee, node)))
         {
             return null;
         }
