@@ -3,11 +3,16 @@
 // Binding's formation context (SPEC 15.6, 7.2.3, 6.3.3, 11.8; DECISIONS R4-M101 E1).
 // - Responsibility: the executable body Binding is binding, as an ExecutableBody, recorded on what Binding forms there.
 // - Inputs: the entries that start binding a body or a declaration (BindHeader, BindFunction, BindConcreteClosure, BindAccessorBody, a
-//   Property's initializer, ValidateOriginRelations, and BindType for a Type a local owns: the local's Origin declaration, formed in its
-//   declaring body whoever demands it, PLAN G1369), each through EnterBody.
+//   Property's initializer, ValidateOriginRelations, and a local's declaration: BindVariable and BindType, PLAN G1369), each through
+//   EnterBody, with the one value of each body (FunctionBody, a default template's, AccessorBody, InitializerBody).
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
 //   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (a Closure's, ClosureHeaderScope; a named nested
 //   function's or a local's is the index walk's, DeclareFunction and IndexNode), and ParameterVisible's answer.
+// - The rule for a local (SPEC 15.3.4, 15.3.6; DECISIONS R8-M56): its declaration, its Type's Origin declaration and its initializer are
+//   formed in its declaring body whoever demands them (FormingBodyOf: a use, a capture or a nested header binding them first), so every
+//   atom, row and region they form is that body's. DeclaringBody is total for a local: the index walk enters every body Binding forms
+//   locals in with the value Binding enters it with (a function's or a module's top-level statements', a default template, an accessor
+//   body, a Property's initializer), and a local with none is an InternalInvariant.
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
 //   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
 //   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed in it, only AddObligation
@@ -60,6 +65,9 @@ public sealed partial class Binding
     private static ExecutableBody FunctionBody(FunctionKoto function, BindingSymbol? symbol)
         => symbol is null && function.IsGenerated ? new(null, function.SyntaxOwner!.Module) : new(symbol);
 
+    // An accessor's own body (SPEC 11.3; DECISIONS R4-M101 E1).
+    private static ExecutableBody AccessorBody(PropertyAccessorKoto accessor) => new(Accessor(accessor).SignatureSymbol);
+
     // A Property's initializer (SPEC 11.8, 6.3.3): a static Property's own body, or for an instance Field the layer unit, the Field
     // initializers of its struct layer, which MIR builds into each constructor of that layer (DECISIONS R4-M101 E4).
     private static ExecutableBody InitializerBody(BindingSymbol property) => IsStatic(property) ? new(property) : LayerOf(property);
@@ -73,6 +81,19 @@ public sealed partial class Binding
         var saved = this.formingBody;
         this.formingBody = body;
         return saved;
+    }
+
+    // The body a declaration `owner` owns is formed in (the local rule above): a local's declaring body whoever demands it; the demander's
+    // context for any other owner (a Property's own syntax with no body, BindHeader; a Type's, an alias's, a function's).
+    private ExecutableBody FormingBodyOf(Koto? owner)
+    {
+        if (owner is not FieldKoto local)
+        {
+            return this.formingBody;
+        }
+
+        var body = this.symbols[local].DeclaringBody;
+        return body.IsBody ? body : throw new InvalidOperationException("A local has no declaring body (InternalInvariant; PLAN G1369).");
     }
 
     // SPEC 7.2.3: in default i of f, or in a Closure its evaluation reaches, a parameter of f is visible only when it precedes i (a

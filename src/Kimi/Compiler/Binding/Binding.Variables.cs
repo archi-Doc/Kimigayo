@@ -10,9 +10,20 @@ public sealed partial class Binding
 {
     private BoundType? BindVariable(VariableKoto variable, BindingScope scope)
     {
-        // A variable is checked in its own frame, also when a use binds it first (BindReference).
+        // A variable is checked in its own frame, also when a use binds it first (BindReference), and a local in its declaring body
+        // (FormingBodyOf; PLAN G1369), also when a use, a capture or a nested header binds it first.
         var frame = this.BeginConsultation(variable);
-        var type = this.BindVariableCore(variable, scope);
+        var saved = this.EnterBody(this.FormingBodyOf(variable));
+        BoundType? type;
+        try
+        {
+            type = this.BindVariableCore(variable, scope);
+        }
+        finally
+        {
+            this.formingBody = saved;
+        }
+
         this.EndConsultation(variable, frame);
         this.Consulted(variable);
         return type;
@@ -65,9 +76,9 @@ public sealed partial class Binding
         }
 
         // A Property's initializer and its fit are its initializer's body (SPEC 11.8, 6.3.3; DECISIONS R4-M101 E1, E4); a local's are
-        // the body that binds the local. The local's region slots are numbered once, in binding order: the slots its equalities fix first
-        // (FixedRegions, whoever completed the declaration), then its initializer's Origins with no candidate (ResolveInitializerOrigins),
-        // then its Type's (InferLocalOrigins, LocalBorrowType; SPEC 15.3.6).
+        // its declaring body, which BindVariable entered. The local's region slots are numbered once, in binding order: the slots its
+        // equalities fix first (FixedRegions, whoever completed the declaration), then its initializer's Origins with no candidate
+        // (ResolveInitializerOrigins), then its Type's (InferLocalOrigins, LocalBorrowType; SPEC 15.3.6).
         var slot = -1 - FixedRegions(this.originDeclarations.GetValueOrDefault(variable));
         var saved = this.EnterBody(symbol.Property is null ? this.formingBody : InitializerBody(symbol));
         BoundType? inferred;

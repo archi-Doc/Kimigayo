@@ -397,9 +397,9 @@ public sealed class BindingSymbol
 
     /// <summary>Gets or sets the executable body that declares this function or local, which EvaluatingBody returns for a function
     /// (SPEC 15.3.4; Binding.ExecutableBodies.cs): a Closure's evaluating body, which binds its header and captures, written by its header
-    /// scope (ClosureHeaderScope) before any header binding; a named nested function's or a local's declaring body, written by the index
-    /// walk that declares it (DeclareFunction, IndexNode), in which BindType forms a local's Origin declaration whoever demands it (PLAN
-    /// G1369); no body for any other symbol. MIR never reads it.</summary>
+    /// scope (ClosureHeaderScope) before any header binding; a named nested function's declaring body (DeclareFunction) and a local's,
+    /// always a body (IndexNode), written by the index walk that declares it; no body for any other symbol. A local's declaration is
+    /// formed in it whoever demands it (FormingBodyOf, the one reader for a local; PLAN G1369). MIR never reads it.</summary>
     internal ExecutableBody DeclaringBody { get; set; }
 
     internal SyntaxFormKoto? ConditionalDeclaration { get; set; }

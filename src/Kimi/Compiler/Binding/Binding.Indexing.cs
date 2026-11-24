@@ -39,9 +39,10 @@ public sealed partial class Binding
 {
     private readonly IndexStack indexStack = new();
 
-    // The executable body the walk is in (SPEC 15.3.4; Binding.ExecutableBodies.cs): a function's own body or a default template's
-    // (f, i), none in a Type's declaration or a module's top-level statements; entered where a body begins (EnterIndexBody) and
-    // restored by a Body step after its subtree. DeclareFunction records it as a named function's declaring body, IndexNode as a local's.
+    // The executable body the walk is in (SPEC 15.3.4; Binding.ExecutableBodies.cs), with the value Binding enters it with: a function's
+    // own body (FunctionBody: a module's top-level statements' included), a default template's (f, i), an accessor body (AccessorBody) or
+    // a Property's initializer (InitializerBody); none in a Type's declaration. Entered where a body begins (EnterIndexBody) and restored
+    // by a Body step after its subtree. IndexNode records it as a local's declaring body, DeclareFunction as a named nested function's.
     private ExecutableBody indexBody;
 
     // An entry of the walk: a context, in which a node's row runs (Index; Pattern, a match arm's Pattern and its subtree: pattern
@@ -414,7 +415,7 @@ public sealed partial class Binding
                     this.DeclareFunction(function, scope);
                 }
 
-                this.EnterIndexBody(node, scope, function.IsGenerated ? default : FunctionBody(function, this.symbols[function]));
+                this.EnterIndexBody(node, scope, FunctionBody(function, this.symbols.GetValueOrDefault(function)));
 
                 scope = this.GetScope(node, scope);
                 for (var i = 0; i < function.Parameters.Count; i++)
@@ -428,6 +429,7 @@ public sealed partial class Binding
             case PropertyAccessorKoto accessor:
                 scope = this.GetScope(node, scope);
                 this.IndexAccessor(accessor, scope);
+                this.EnterIndexBody(node, scope, AccessorBody(accessor));
                 break;
             case CodeBlockKoto:
                 if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
@@ -449,9 +451,10 @@ public sealed partial class Binding
                 var declarationScope = node is PropertyKoto && scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? scope.Parent! : scope;
                 var variableSymbol = this.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, declarationScope);
                 variableSymbol.ConditionalDeclaration = ReferenceEquals(declarationScope, scope) ? null : (SyntaxFormKoto)scope.Owner;
-                variableSymbol.DeclaringBody = this.indexBody; // SPEC 15.3.4: a local's declaring body (BindType); none for a Property.
+                variableSymbol.DeclaringBody = this.indexBody; // SPEC 15.3.4: a local's declaring body (FormingBodyOf); none for a Property.
                 if (node is PropertyKoto property)
                 {
+                    this.EnterIndexBody(node, scope, InitializerBody(variableSymbol));
                     var bound = variableSymbol.Property ??= new(variableSymbol);
                     bound.IsVerified = false;
                     var getter = property.GetAccessor(PropertyAccessorKind.Get);
@@ -699,7 +702,10 @@ public sealed partial class Binding
 
         var symbol = this.Declare(function, function.Name, BindingSymbolKind.Function, function, memberScope);
         symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
-        symbol.DeclaringBody = this.indexBody; // SPEC 15.3.4: a named nested function's declaring body; none for any other.
+        // SPEC 15.3.4 (DECISIONS BU-258): a named nested function's declaring body, a function's own body or a default template; none for
+        // any other, a function a module's top-level statements, an accessor body or a Property's initializer declares included: PLAN
+        // G230's root form and acc_lift, whose located Unsupported_Kd stays until G230 records these bodies here too.
+        symbol.DeclaringBody = this.indexBody.Definition?.Declaration is FunctionKoto ? this.indexBody : default;
         // The members of the fixed array and the integer Position witness are receiver functions of internal
         // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
         if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || this.Library.IsBuiltinMemberGroup(memberScope.Owner))

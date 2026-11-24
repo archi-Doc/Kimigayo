@@ -542,14 +542,13 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 //   contract copies its original's); `Completed`, `Relations` and `Body`; `PendingCause`; `Set`;
 //   `InferredVariance`. Each is the state as the formation left it, with no judgment.
 // - A failed clause's answers (SPEC 15.3.3, 23.1.2; H11b-0 B1): a clause that does not bind fails itself, never its owner or the
-//   declaration's other clauses. A failed clause and its bound Origins (the formation's FailedClauses, the one record of a failed clause)
+//   declaration's other clauses. A failed clause's bound Origins (the formation's FailedClauses)
 //   are no premise or obligation anywhere and name only the slots it leaves Unbound (RestsOnFailedClause). Every other
 //   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s
 //   (a local's slot by its region valued by the other end, FixedRegion: its clauses assume nothing, SPEC 15.3.3, 15.3.6),
 //   it `Resolves` and is `Completed` as one with no failed clause, and only the pending slots a failed clause names (RestsOnFailedClause)
 //   stay Unbound, each resting on `PendingCause`: the first failed clause, or the Type, alias target or payload operand that failed
-//   before completion (RestPendingOn). A named nested function's failed clause is bound once more in its declaring body
-//   (BindFailedClausesInBody): one that binds there joins `Relations` from then on, substituting nothing, and leaves FailedClauses (state 4).
+//   before completion (RestPendingOn).
 // - Before completion ends: begun, `Set` answers and `Relations` is empty; during completion `Relations` holds the clauses bound so far.
 // - Invariants: a state member is private; every read outside the formation's files is one of the read members, so the readers of a
 //   declaration are their callers; Reset returns every answer to the unbegun declaration's (not `Resolves`, not `Completed`, empty).
@@ -567,9 +566,7 @@ public sealed partial class Binding
         // The body that opened it: a local's, or none for a declaration's (DECISIONS R4-M101 E1), whose late rows it owns.
         private ExecutableBody body;
 
-        // 0: not begun. 1: begun, its pending slots collected. 2: its pending slots completing. 3: completed. 4: completed, and a named
-        // nested function's failed clauses bound once more at its header's first demand in its declaring body (BindFailedClausesInBody),
-        // which therefore happens at most once a pass: no reader in that body reads it before a relation that binding adds.
+        // 0: not begun. 1: begun, its pending slots collected. 2: its pending slots completing. 3: completed.
         private int state;
 
         // The failed part its pending Origins rest on (RestPendingOn): a failed clause, or its Type, alias target or payload operand that
@@ -577,10 +574,9 @@ public sealed partial class Binding
         // Origins reach body rows only, which A5 judges (DECISIONS R4-M118).
         private Koto? pendingFailure;
 
-        // Each clause that failed, in order, with its bound Origins, null where an operand is unavailable (FailOriginClause): it leaves
-        // Unbound only the inference variables they name (RestsOnFailedClause; DECISIONS BU-68); one that binds in its declaring body
-        // leaves it (BindFailedClausesInBody). The list is kept across binds.
-        private List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
+        // The bound Origins of each clause that failed, null where an operand is unavailable (FailOriginClause): it leaves Unbound only
+        // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68). Kept across binds.
+        private List<(BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
 
         // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
         // allocated only for a local that has such Origins and kept across binds.
@@ -601,7 +597,7 @@ public sealed partial class Binding
         internal bool Resolves => this.state >= 2;
 
         // Whether its completion ended: its clauses are bound (each failed one aside) and its substitutions made.
-        internal bool Completed => this.state >= 3;
+        internal bool Completed => this.state == 3;
 
         // The number of substitutions, ResolveOrigin's bound on a chain.
         internal int Substitutions => this.replacements.Count;
@@ -649,7 +645,7 @@ public sealed partial class Binding
 
             internal ref Koto? PendingFailure => ref declaration.pendingFailure;
 
-            internal ref List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
+            internal ref List<(BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
 
             internal ref Dictionary<BoundOrigin, OriginVariance>? Inferred => ref declaration.inferred;
 

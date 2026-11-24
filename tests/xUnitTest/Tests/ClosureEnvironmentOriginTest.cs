@@ -617,17 +617,23 @@ public class ClosureEnvironmentOriginTest
     [InlineData("func f(p: ref/i32) -> i32\n    var r = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n    var keep = r\n" + PassBlock, "ComparisonLoanConflict_Kd let inner")] // t7v_leak
     // PLAN G1369 (SPEC 15.3.3's Local row, 15.6.1, 15.6.5): a local's clause assumes nothing, so its equality is no premise of a nested
     // signature that names the slot: k.at is c's region, fixed in lift (t4_clause, accepted before G1369). lift's own clause is its
-    // contract (15.3.3's function row), bound once more in f's body where k.at is the region: a premise of lift's body and an obligation
-    // of each call, also of a call bound before lift's statement (t4_sig accepted; t4_fwd's call cannot prove k.at, q, outlives p).
+    // contract (15.3.3's function row): a premise of lift's body (t4_sig). A nested clause naming a local's omitted set slot (t4_fwd,
+    // invalid; t4_fwd_ok, valid) keeps dev's records, BU-56's located limit at both `k.at` with the body's record at `v`: PLAN G230's
+    // omitted-set-slot form, not G1369's.
     [InlineData(CursorLocal + "    func lift(v: ref/i32 during k.at) -> ref/i32 during p => v\n    return lift(c.item)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd v\n")] // t4_clause
     [InlineData(CursorLocal + "    func lift(v: ref/i32 during k.at) -> ref/i32 during p\n        origin k.at outlives p\n        return v\n    return lift(c.item)\npublic func main() => ()\n")] // t4_sig
     [InlineData(
         CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(q)\n    let w = lift(c.item)\n" +
             "    func lift(v: ref/i32 during s) -> ref/i32 during p\n        origin s == k.at\n        origin k.at outlives p\n        return v\n    return w\npublic func main() => ()\n",
-        "UnprovenOriginRelation_Kd lift(c.item)")] // t4_fwd
+        "Unsupported_Kd k.at\n",
+        "Unsupported_Kd k.at outlives",
+        "UnprovenOriginRelation_Kd v\n")] // t4_fwd
     [InlineData(
         CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n    let w = lift(c.item)\n" +
-            "    func lift(v: ref/i32 during s) -> ref/i32 during p\n        origin s == k.at\n        origin k.at outlives p\n        return v\n    return w\npublic func main() => ()\n")] // t4_fwd_ok
+            "    func lift(v: ref/i32 during s) -> ref/i32 during p\n        origin s == k.at\n        origin k.at outlives p\n        return v\n    return w\npublic func main() => ()\n",
+        "Unsupported_Kd k.at\n",
+        "Unsupported_Kd k.at outlives",
+        "UnprovenOriginRelation_Kd v\n")] // t4_fwd_ok
     // PLAN G1369 rule 4 (SPEC 15.3.6, 15.4.4; DECISIONS R8-M56 as amended): a `var` slot an equality fixes is its region as a `let`
     // slot is, so lift reads it fixed there with no premise (t4_clause_var). A clause equating the slot with a `let` local of the body
     // (t4_q) is valid (k.at's value is q's, p, in f's body) but stays rejected as on dev: lift's header completes c before f's statements
@@ -655,17 +661,16 @@ public class ClosureEnvironmentOriginTest
         }
     }
 
-    // A nested function's clause naming a body local's set slot binds once more in its declaring body (SPEC 15.3.3, 15.3.4; PLAN G1369:
-    // it was BU-56's located Unsupported_Kd at x.s), so `put` is checked under it: the store of the block's `inner` through it is the
-    // leak's own record, which the clause-free twin reports too.
+    // An Unsupported clause naming a body local fails only itself (SPEC 15.3.3, 23.1.2; H11b-0 B1), so `put` is checked: the store of the
+    // block's `inner` through it is the leak's own record, which the clause-free twin reports too.
     [Fact]
-    public void AClauseNamingABodyLocalSetLeavesTheLeaksOwnRecord()
+    public void AnUnsupportedClauseLeavesTheLeaksOwnRecord()
     {
         const string Clause = "        origin q == x.s\n";
         var source = NestedHead + "    func put(slot: uniq/Array<ref/i32 during q>, v: ref/i32 during q)\n" + Clause + "        slot@follow.append(v)\n" + NestedStore;
         var twin = source.Replace(Clause, string.Empty, StringComparison.Ordinal);
         Assert.Equal(
-            [$"{nameof(DiagnosticCode.ComparisonLoanConflict_Kd)} let inner: i32 = 41"],
+            [$"{nameof(DiagnosticCode.Unsupported_Kd)} x.s", $"{nameof(DiagnosticCode.ComparisonLoanConflict_Kd)} let inner: i32 = 41"],
             ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).OrderBy(static x => x.Span.Start)
                 .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}"));
         Assert.Equal(
