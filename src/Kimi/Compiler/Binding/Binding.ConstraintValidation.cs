@@ -571,7 +571,7 @@ public sealed partial class Binding
             var obligation = this.obligations[i];
             if (obligation.Deadline == BindingDeadline.Definition && this.TypeRoleCauses(obligation) == TypeRoleCause.None)
             {
-                this.obligationSet.Remove(obligation);
+                this.obligationSet.Remove(new(obligation));
                 continue;
             }
 

@@ -58,7 +58,7 @@ public sealed partial class Binding
                 }
             }
 
-            this.obligationSet.Remove(obligation);
+            this.obligationSet.Remove(new(obligation));
             this.obligations.RemoveAt(i);
         }
 
@@ -115,7 +115,7 @@ public sealed partial class Binding
                 declaration.Forming.Replacements[pending] = this.LocalRegionSlot(owner, slot--, this.OccurrenceVariance(declared, pending, this));
             }
 
-            this.obligationSet.Remove(obligation);
+            this.obligationSet.Remove(new(obligation));
             this.obligations.RemoveAt(i);
         }
 

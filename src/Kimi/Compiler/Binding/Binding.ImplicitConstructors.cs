@@ -180,7 +180,7 @@ public sealed partial class Binding
             var obligation = this.obligations[i];
             if (this.WithinWithdrawnConstructor(obligation.Use))
             {
-                this.obligationSet.Remove(obligation);
+                this.obligationSet.Remove(new(obligation));
                 continue;
             }
 

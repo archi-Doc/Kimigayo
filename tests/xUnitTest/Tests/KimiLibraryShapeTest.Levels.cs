@@ -147,8 +147,7 @@ public partial class KimiLibraryShapeTest
         var (first, second) = (MinimalEmissionTest.Analyze(HopChainProgram), MinimalEmissionTest.Analyze(HopChainProgram));
         Assert.True(first.Binding.Result.IsComplete && second.Binding.Result.IsComplete, MinimalEmissionTest.Describe(first));
         var layer = first.Library.Layer;
-        var paths = ((System.Collections.IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(layer.Impls)!).Values.Cast<BoundConformancePath>();
-        var frozen = paths.SelectMany(static x => x.HopChains ?? []).ToHashSet<Binding.ResolutionHops>(ReferenceEqualityComparer.Instance);
+        var frozen = StoredPaths(layer.Impls).SelectMany(static x => x.HopChains ?? []).ToHashSet<Binding.ResolutionHops>(ReferenceEqualityComparer.Instance);
         Assert.Empty(frozen.Where(x => x.Step.Id > layer.TypeCount).Select(static x => $"{x.Path.Type.Name} is {x.Path.Contract.Name}: {x.Step}"));
         var own = HopsOf(first).Concat(HopsOf(second)).ToArray();
         Assert.NotEmpty(HopsOf(first));
@@ -174,4 +173,9 @@ public partial class KimiLibraryShapeTest
     private static Dictionary<TKey, TValue> Own<TKey, TValue>(object owner, string field)
         where TKey : notnull
         => (Dictionary<TKey, TValue>)owner.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+
+    // Every path a conformance store keeps: its identities' rows (BoundConformance.NamedPaths; R7-N5 B8, DECISIONS BU-220), named and not
+    // swept, as the table's own Freeze and UnsettledPath walk them.
+    private static IEnumerable<BoundConformancePath> StoredPaths(ImplTable impls)
+        => Own<(BindingSymbol Type, BindingSymbol Contract), BoundConformance>(impls, "identities").Values.SelectMany(static x => x.NamedPaths);
 }

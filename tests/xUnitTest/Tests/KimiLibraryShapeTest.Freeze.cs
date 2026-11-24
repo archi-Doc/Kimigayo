@@ -31,6 +31,7 @@ public partial class KimiLibraryShapeTest
         ["ViewIndex.Serial"] = "a Closure(view) entry's view serial at its forming, compared for equality with its scope's (n3's counter, settled by B1)",
         ["BinderSet.low"] = "a word of a binder bit set, selected by its width",
         ["BindingObligation.Condition"] = "an obligation's condition mask, selected by its width",
+        ["ObligationKey.Condition"] = "the obligation's condition mask in its dedup key (R7-N5 B8), selected by its width",
         ["SyntaxTable.Version"] = "n4: the module's syntax change counter, compared only with its numbering memo",
         ["SyntaxTable.numberedVersion"] = "n4: the numbering memo",
         ["BoundContract.State"] = "n5: a completion state, not a counter copy (complete in the layer's part: e3)",
@@ -772,8 +773,7 @@ public partial class KimiLibraryShapeTest
     public void EveryBaseConformancePathIsVerified(string target)
     {
         var library = KimiLibrary.Of(target.Length == 0 ? Kimi.Compiler.Target.TargetTriple.Invalid : Kimi.Compiler.Target.TargetTriple.Parse(target));
-        var paths = ((IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(library.Layer.Impls)!)
-            .Values.Cast<BoundConformancePath>().Where(static x => x.Current).ToArray();
+        var paths = StoredPaths(library.Layer.Impls).Where(static x => x.Current).ToArray();
         Assert.NotEmpty(paths);
         Assert.Empty(paths.Where(static x => !x.IsVerified || x.Unsupported).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
     }

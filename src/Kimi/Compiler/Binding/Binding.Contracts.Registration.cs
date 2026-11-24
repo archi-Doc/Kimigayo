@@ -26,6 +26,10 @@ public sealed partial class Binding
     // Object forms over a concrete Type formed before the opt-outs are published (VerifyEarlyObjectForms).
     private List<(Koto Use, BoundType Target)>? earlyObjectForms;
 
+    /// <summary>Gets the path entries the conformance table's lookups compared in its identities' rows so far (ImplTable.PathScans), read
+    /// by the scaling tests.</summary>
+    internal long ConformancePathScans => this.impls.PathScans;
+
     // SPEC 8.6.1: `Self is C` in a Type declaration declares conformance; RegisterConformances registers exactly these clauses.
     private static bool DeclaresConformance(IsKoto clause)
         => clause.Parent is StructKoto or EnumKoto && IsSelfConstraint(clause);

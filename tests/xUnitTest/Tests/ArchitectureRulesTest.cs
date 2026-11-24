@@ -117,11 +117,11 @@ public class ArchitectureRulesTest
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
-    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding,
-    // TyCtxt and ImplTable are R7-N5's (B7c, B8), MirBody and MirBuilder the Middle's, DiagnosticOwner the Diagnostics owner's, HoverBuilder
-    // and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands second takes the merged counts.
-    private const string NodeKeyedTableSites = "Binding=12;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;ImplTable=1;MirBody=1;MirBuilder=1;" +
-        "TyCtxt=1";
+    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding
+    // is R7-N5's (B7c's left in W-359, ImplTable's in B8a, TyCtxt's in B8b), MirBody and MirBuilder the Middle's, DiagnosticOwner the
+    // Diagnostics owner's, HoverBuilder and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands
+    // second takes the merged counts.
+    private const string NodeKeyedTableSites = "Binding=7;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1";
 
     // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -850,7 +850,7 @@ public class ArchitectureRulesTest
     // R7-N5, PLAN G949 S1-N5 and G1314 (DECISIONS BU-220; COMPILER_ARCHITECTURE's Syntax identity): a node-keyed table outside Syntax is a
     // field of a keyed collection (a dictionary, a set or a weak table) whose key's equality reaches a node: a Koto type or an interface
     // one implements, object, or a Kimi type, value tuple or Nullable that is a value type or has its own Equals, one of whose fields
-    // reaches one (ShapePair, CollisionTerm, BindingObligation). Read from the compiled fields, so a named key type hides no node; a field of
+    // reaches one (ShapePair, BindingObligation). Read from the compiled fields, so a named key type hides no node; a field of
     // a constructed Kimi generic type is read through its fields. A class with reference equality (BindingSymbol, BoundType) is its own
     // identity and a SourceRef key a node's value identity, no node; a BCL struct's internals never count. Not seen: a node in a BCL key's
     // generic arguments (KeyValuePair, Tuple) or a node-keyed collection held as a value or an element; review reads those. Counted by
