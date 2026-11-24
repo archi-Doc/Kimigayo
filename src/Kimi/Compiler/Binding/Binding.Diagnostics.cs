@@ -599,6 +599,20 @@ public sealed partial class Binding
         node.ReportIn(store, requirement, code, note: callNote, at: target, evidence: [target.ToString()], condition: condition);
     }
 
+    // SPEC 4.7.1, 8.9.1: an ambiguous index key's record (RecordKeyAmbiguity), at the index expression, each conformance its selection
+    // weighed related by the instance it stands for and the recorded members counted.
+    private void ReportKeyAmbiguity(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var related = new (string Role, Koto At, string? Label)[facts.Length / 2];
+        for (var i = 0; i < related.Length; i++)
+        {
+            related[i] = ("conformance", this.compilation.SyntaxOf(facts[2 * i].Site), DiagnosticTypeName(this.report.Value(facts[(2 * i) + 1])));
+        }
+
+        node.ReportIn(store, problem.Requirement, problem.Code, evidence: [related.Length], related: related, condition: problem.Condition);
+    }
+
     // SPEC 4.7.1, 8.3.3: a user index publishes its element exclusively only through indexUniq. When the receiver's Type
     // lacks it, the shared layer is the element published by index, and the Note names why indexUniq is absent.
     private string? SharedIndexNote(Koto target)
