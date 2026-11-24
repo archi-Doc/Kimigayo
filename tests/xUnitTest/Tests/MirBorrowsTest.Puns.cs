@@ -2383,13 +2383,14 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 5.2 (PLAN G806; the owner's O-220 (a), O-231 (a)): a whole-value write writes the written Type's raw Places (TyCtxt.RawPlaces).
     // A UniqSlice<T>'s stored Fields are raw Places, so a UniqSlice written over the raw pointer `q` holds writes `length`, a Scalar, there
-    // (uSliceBad4, rejected since G806; uSliceBad3 beside its own Origin record). A struct whose storage Binding cannot state whole, at
-    // Binding's Limit (Nest<u64>) or with an unbound Field (US), is undecided and keeps its published rows, so its Scalar Field still puns
-    // beside the other part's own record. Each Ok twin writes over a Tuple holding no raw pointer.
+    // (uSliceBad4, rejected since G806). uSliceBad3's written `UniqSlice<u8> during static` fails on its own Origin record, so the
+    // conversion over `q` rests on it and writes nothing, and no Loan record follows (E3e ruling 17, SPEC 23.1.2). A struct whose storage
+    // Binding cannot state whole, at Binding's Limit (Nest<u64>) or with an unbound Field (US), is undecided and keeps its published rows,
+    // so its Scalar Field still puns beside the other part's own record. Each Ok twin writes over a Tuple holding no raw pointer.
     [Theory]
     [InlineData("uSliceBad4", "src: uniq/[4 of u8] during a", "UniqSlice<u8> during a", "", "uSliceBad4: kk = 2")]
     [InlineData("uSliceOk4", "src: uniq/[4 of u8] during a", "UniqSlice<u8> during a", "", "")]
-    [InlineData("uSliceBad3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "uSliceBad3: kk = 2")]
+    [InlineData("uSliceBad3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "")]
     [InlineData("uSliceOk3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "")]
     [InlineData("nNestBad", "", "Nest<u64>", "", "nNestBad: kk = 2; nNestBad: viaW(q@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
     [InlineData("nNestOk", "", "Nest<u64>", "", "nNestOk: viaW(w@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
