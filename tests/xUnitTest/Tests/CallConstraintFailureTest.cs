@@ -56,9 +56,11 @@ public class CallConstraintFailureTest
         func use(s: ref/S, b: ref/Box<S>, w: ref/Zed<S>) -> i32 => s.m(b, w)
         """;
 
-    // PLAN G375: an answer other than Proven is computed at each read, in the reader's own scope, at a call and a reference.
+    // PLAN G375: an answer other than Proven is computed at each read, in the reader's own scope, at a reference and through a call's
+    // result. PLAN G464 (SPEC 15.6.4 step 3, 23.1.2; DECISIONS Q13, dependent): a call no longer forms its instantiated inputs, so the
+    // named call `f(s)`, whose input names the failed S, records nothing of its own.
     [Theory]
-    [InlineData(FailedAtCallAndReference, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(FailedAtCallAndReference, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(FailedAtMatching, "1*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
     [InlineData(FailedWithACycle, "1*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
     public void AFailedSignatureIsComputedAtEachRead(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));

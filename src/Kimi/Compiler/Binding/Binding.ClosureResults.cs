@@ -6,8 +6,8 @@
 //   body-local source left out (BodyLocalIn: a local, a parameter's own storage, a temporary, an environment binding the call consumes),
 //   the Closure's call result atom where a source was left out and none remains or one rests on a failure (an Unbound one), and static
 //   where the position has no source; FitResultSources, each returned value fitted to it in the Closure's body, so a left-out source is
-//   Refuted at the returned value, A5's record (R7-O1); CallResultOrigin, that call result atom, which each call publishes as it is
-//   (Binding.ValueCalls' P9).
+//   Refuted at the returned value, A5's record (R7-O1); CallResultOrigin, that call result atom, a per-call Origin which each call
+//   instantiates as its own call result region in the calling body (Binding.ValueCalls' P9, B1).
 // - Inputs: the result Type with its own body's regions resolved (ResolveLocalResultOrigins), the classified receiver, the Closure's body and
 //   its result context's sources.
 // - Outputs: the published Type; the fits' rows and records, through the binding-time fit (FitsValueAt; its Origin positions are rows
@@ -161,6 +161,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.8.2, 23.1: a Closure's call result atom: a published position no admissible source supplies, whose Refuted relation A5
-    // judges at the returned value; each call publishes it as it is (Binding.ValueCalls), and the `closure` display is `call result`.
+    // judges at the returned value; each call images it as its own call result region (SPEC 15.8.2, 15.6.4; Binding.ValueCalls,
+    // CallResultRegion), and the `closure` display is `call result`.
     private BoundOrigin CallResultOrigin(FunctionKoto function) => this.OriginAtom(function, OriginKind.Projection, CallResultSlot);
 }

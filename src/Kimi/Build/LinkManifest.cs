@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the link manifest's fixed fields and its readers (schema 4; IMPL 20.3.2 leaves the format implementation-defined; R9-B1): the
+// Owns the link manifest's fixed fields and its readers (schema 5, whose external declarations list the runtime's imports too,
+// LinkAmbiguity; IMPL 20.3.2 leaves the format implementation-defined; R9-B1): the
 // fixed fields, the profile and backend supply identity this compiler states, as one row table that publication writes (WriteFixed) and
 // the native build checks (CheckFixed) in the same order; the libraries entries of the compiler's supplies (IMPL 20.4's reserved names,
 // ToolchainIdentity.Supplies), each written from its row (WriteCompilerSupply) and checked against it (CheckCompilerSupply); and the
@@ -30,7 +31,7 @@ internal static class LinkManifest
     // The fixed fields in writing and checking order, by path, each a string, an Int32 or a string list.
     private static readonly (string Path, object Value)[] Rows =
     [
-        ("schemaVersion", 4),
+        ("schemaVersion", 5),
         ("target", TargetProfile.Windows.Target),
         ("codegen.profile", TargetProfile.Windows.Name),
         ("codegen.llvmVersion", ToolchainIdentity.LlvmVersion),

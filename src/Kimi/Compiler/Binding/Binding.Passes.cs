@@ -133,7 +133,8 @@ public sealed partial class Binding
 
     // Per run, a restart's included, and per edit (Invalidate): a new counter value, so no stamp of an earlier run reads current, and
     // the work counters, which the scaling checks read as the last run's work. The local-region graph's version starts again: every
-    // bound a run records moves it, whichever part holds the row, so it only rises within a run (n55-design 2.4).
+    // bound a run records moves it, whichever part holds the row, so it only rises within a run (n55-design 2.4); ValueIn's memo, read
+    // per version, is stale with it, so no run reads another run's entries or keeps its keys.
     private void BeginRun()
     {
         if ((uint)++this.storageVersion == Frozen32)
@@ -142,6 +143,7 @@ public sealed partial class Binding
         }
 
         this.regionVersion = 0;
+        this.valueInVersion = -1;
         this.borrowVersion = 0;
         this.signatureWalks = 0;
         this.duplicateSteps = 0;
@@ -380,7 +382,7 @@ public sealed partial class Binding
 
         internal List<BindingObligation> Obligations { get; } = new();
 
-        internal HashSet<BindingObligation> ObligationSet { get; } = new();
+        internal HashSet<ObligationKey> ObligationSet { get; } = new();
 
         internal List<LibraryImport> Imports { get; } = new();
 

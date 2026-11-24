@@ -44,10 +44,13 @@ internal sealed partial class MirBorrows
         {
             ref readonly var data = ref this.body.Blocks[block];
             this.receivers[block] = -1;
+            var site = this.OpenAt(this.Location(block, data.Count));
             if (data.Terminator is { Kind: MirTerminatorKind.Drop, Place: { Root: >= 0 } place } && this.Dropping(block, place) == AccessKind.Observe)
             {
                 this.receivers[block] = this.Through(place) ? Reborrowed : this.Address(new(place.Root), ~0, this.Location(block, data.Count));
             }
+
+            types.CloseSite(site);
         }
 
         this.Work += this.body.Blocks.Length;

@@ -79,6 +79,27 @@ public class DeepRefinementPremiseBindingTest
         }));
     }
 
+    // R7-N5 B8 (DECISIONS BU-220; the Front's C-521 C2): ImplTable finds a path in its identity's row by declaring clause and root, so
+    // a Type declaring n Contracts that each refine one Contract C names n paths of (Type, C), and each lookup of one scans that row:
+    // a warm Bind compares about 3n^2 entries (5n^2 when C has a requirement), the bound the row form accepts (the suite's longest row
+    // is 13). Each program is valid; n is 64 and 512.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WideRefinementPathLookupsStayWithinTheRowBound(bool requirement)
+    {
+        int[] sizes = [64, 512];
+        foreach (var n in sizes)
+        {
+            var c = MinimalEmissionTest.Analyze(WideSource(n, requirement));
+            Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
+            var before = c.Binding.ConformancePathScans;
+            Assert.True(c.Bind().IsComplete);
+            var scans = c.Binding.ConformancePathScans - before;
+            Assert.True(scans >= n && scans <= (requirement ? 6L : 4L) * n * n, $"n {n}: {scans} path entries compared in a warm Bind");
+        }
+    }
+
     private static string Source(int depth, bool diamond, string? condition = null)
     {
         var source = new StringBuilder("public contract C0: Copy\n");
@@ -99,5 +120,23 @@ public class DeepRefinementPremiseBindingTest
         }
 
         return source.Append("group G\n    func inspect<T>(value: T)\n        T is C").Append(depth).Append("\n        ()").ToString();
+    }
+
+    // C, n Contracts D1..Dn refining it, and a struct declaring each Di; with a requirement, C's `m` and the struct's witness.
+    private static string WideSource(int n, bool requirement)
+    {
+        var source = new StringBuilder("public contract C\n").Append(requirement ? "    func m(self: ref/Self) -> i32\n" : string.Empty);
+        for (var i = 1; i <= n; i++)
+        {
+            source.Append("public contract D").Append(i).Append(": C\n");
+        }
+
+        source.Append("public struct S\n");
+        for (var i = 1; i <= n; i++)
+        {
+            source.Append("    Self is D").Append(i).Append('\n');
+        }
+
+        return source.Append(requirement ? "    public func m(self: ref/Self) -> i32 => 1\n" : string.Empty).ToString();
     }
 }

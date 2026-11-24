@@ -566,6 +566,7 @@ public sealed partial class Binding
         this.shapeContracts.Clear();
         this.shapeDependencies.Clear();
         this.shapeSharedSlots.Clear();
+        this.collisionSubstitutions.Clear(); // The last unification's terms (ContractOverlapScope reads them at once): none outlives its pass.
         this.collisionLeft = this.collisionRight = null;
         this.parameterShapeParties.Clear();
         this.parameterShapeFacts.Clear();

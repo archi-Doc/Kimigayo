@@ -179,6 +179,26 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
     }
 
+    // LinkAmbiguity (T's rulings 21 (ii) and 28 (1)): the manifest's external declarations are the native build's one list of the
+    // runtime's imports. Hello's manifest without WriteFile's declaration fails the object's inspection at its __imp_ reference, with the
+    // record left incomplete. Fail-before: the manifest declared no runtime import, and the build read them from the target row.
+    [Fact]
+    public async Task TheRuntimesImportsAreTheManifests()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = this.Hello("Hello");
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+        var declarations = manifest["externalDeclarations"]!.AsArray();
+        Assert.True(declarations.Remove(declarations.Single(static x => x!["symbol"]!.GetValue<string>() == "WriteFile")));
+        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken));
+        Assert.Equal("Unsupported actual object dependency: __imp_WriteFile U 0 0", error.Message);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+    }
+
     // Tatara G1203 (IMPL 20.3.2): build --Manifest takes a manifest named Name.link.json, as emit writes it. A manifest of another name
     // names no output and fails before any write: no record or lock beside it (dev 3245a057d built it, its record Native test.build.json).
     [Fact]
@@ -1202,6 +1222,150 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(ArtifactPaths.Create(project).Executable));
     }
 
+    // LinkAmbiguity (IMPL 20.4: an ambiguous native dependency is an error, never resolved by link order; design §1, Revisions 0-3a, its
+    // labels and base cells; fail-before: artifacts\tatara\linkambiguity-b\fail-before.txt): a symbol the link depends on, which no file
+    // loaded whole defines and two or more libraries define (each library's pick: the member its index names), fails the build before
+    // the link with one line per symbol, the record left incomplete and no executable, whatever the names (before and after kernel32
+    // and kimi_backend in name order) and at either level (rows 29, 30). Each row's libraries are Dependency's; row 22, which also has
+    // a Kind line, is AnInputInconsistentWithItsKindFailsBeforeTheLink's.
+    [Theory]
+    [InlineData("3", "codec", "O2", "'GetLastError': defined by the libraries codec and kernel32.")]
+    [InlineData("3", "zlib", "O2", "'GetLastError': defined by the libraries kernel32 and zlib.")]
+    [InlineData("4", "codec", "O2", "'__imp_WriteFile': defined by the libraries codec and kernel32.")]
+    [InlineData("4", "zlib", "O2", "'__imp_WriteFile': defined by the libraries kernel32 and zlib.")]
+    [InlineData("6", "codec", "O2", "'__chkstk': defined by the libraries codec and kimi_backend.")]
+    [InlineData("6", "zlib", "O2", "'__chkstk': defined by the libraries kimi_backend and zlib.")]
+    [InlineData("7", "alpha", "O2", "'codec_add': defined by the libraries alpha and codec.")]
+    [InlineData("7", "zlib", "O2", "'codec_add': defined by the libraries codec and zlib.")]
+    [InlineData("8", "alpha", "O2", "'f': defined by the libraries alpha and codec.")]
+    [InlineData("15", "alpha", "O2", "'f': defined by the libraries alpha and codec.")]
+    [InlineData("17", "codec", "O2", "'codec_add': defined by the libraries codec and codec2.\nAmbiguous native symbol 'codec_sub': defined by the libraries codec and codec2.")]
+    [InlineData("23", "codec", "O2", "'__imp_VirtualProtect': defined by the libraries codec and kernel32.")]
+    [InlineData("24", "codec", "O2", "'VirtualProtect': defined by the libraries codec and kernel32.")]
+    [InlineData("24", "zlib", "O2", "'VirtualProtect': defined by the libraries kernel32 and zlib.")]
+    [InlineData("25b", "codec", "O2", "'VirtualProtect': defined by the libraries kernel32 and zlib.")]
+    [InlineData("26", "alpha", "O2", "'g': defined by the libraries alpha and codec.")]
+    [InlineData("27", "alpha", "O2", "'f': defined by the libraries alpha and codec.")]
+    [InlineData("28", "alpha", "O2", "'b': defined by the libraries alpha and codec.")]
+    [InlineData("29", "alpha", "O0", "'codec_add': defined by the libraries alpha and codec.")]
+    [InlineData("29", "alpha", "O2", "'codec_add': defined by the libraries alpha and codec.")]
+    [InlineData("30", "codec", "O0", "'__chkstk': defined by the libraries codec and kimi_backend.")]
+    [InlineData("30", "codec", "O2", "'__chkstk': defined by the libraries codec and kimi_backend.")]
+    public async Task AnAmbiguousDependencyFailsBeforeTheLink(string row, string name, string level, string line)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        await this.AssertFailsBeforeTheLink(await this.Dependency(row, name, level), "Ambiguous native symbol " + line);
+    }
+
+    // Kind (IMPL 20.4: a native dependency inconsistent with its declared Kind is an error; kind-design.md §1, Revision 0 with its
+    // corrections 1-3, its labels and base cells; fail-before: artifacts\tatara\linkkind\fail-before.txt): a unit the link loads (a
+    // library input that is no archive, each library's pick) that its library's Kind does not admit, and a declared import that no import
+    // member defines but a library defines as code (K2, from the declarations: k8o2's only call O2 removes), fail the build before the
+    // link with every line in its order (§3), the record left incomplete and no executable. Row 22 is LinkAmbiguity's (a DLL as static
+    // zlib), which gains its Kind line. k5w is row 5's object as the input itself (an import member the link loads whole); k2p is row
+    // 2 twice (two static import libraries, each defining both called symbols: a line per library naming both, and the ambiguity
+    // lines); k13p is row 13 with a second library defining codec_add as code (K2's plural). On the base rows k2, k3, k5, k5w, k8o2,
+    // k9, k11, k13 and k13p built (k9, k13 and k13p with LLD's LNK4217 warning), k8 and k14 failed in LLD (an undefined
+    // __declspec(dllimport) codec_add; an unknown file type), and 22 and k2p lacked their Kind lines.
+    [Theory]
+    [InlineData("k2", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'codec_add'.")]
+    [InlineData("k2p", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'codec_add' and 'codec_sub'.\nNative library 'zlib' is declared static, but the link would load import members from it for 'codec_add' and 'codec_sub'.\nAmbiguous native symbol 'codec_add': defined by the libraries codec and zlib.\nAmbiguous native symbol 'codec_sub': defined by the libraries codec and zlib.")]
+    [InlineData("k3", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'GetTickCount'.")]
+    [InlineData("k5", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'codec_add'.")]
+    [InlineData("k5w", "codec", "Native library 'codec' is declared static, but its input is an import member, which the link loads whole.")]
+    [InlineData("k8", "codec", "Native function 'codec_add' is imported, but no import member defines it, and the library codec defines it as code.")]
+    [InlineData("k8o2", "codec", "Native function 'codec_add' is imported, but no import member defines it, and the library codec defines it as code.")]
+    [InlineData("k9", "codec", "Native library 'codec' is declared import, but its input is an object, which the link loads whole.\nNative function 'codec_add' is imported, but no import member defines it, and the library codec defines it as code.")]
+    [InlineData("k11", "codec", "Native library 'codec' is declared import, but the link would load code from it for 'codec_version'.")]
+    [InlineData("k13", "codec", "Native function 'codec_add' is imported, but no import member defines it, and the library zlib defines it as code.")]
+    [InlineData("k13p", "codec", "Native function 'codec_add' is imported, but no import member defines it, and the libraries alpha and zlib define it as code.")]
+    [InlineData("k14", "codec", "Native library 'codec' is declared import, but its input is a linked image (a DLL or shared object), not a library.")]
+    [InlineData("22", "alpha", "Native library 'zlib' is declared static, but its input is a linked image (a DLL or shared object), not a library.\nAmbiguous native symbol 'codec_add': defined by the libraries alpha and codec.")]
+    public async Task AnInputInconsistentWithItsKindFailsBeforeTheLink(string row, string name, string lines)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        await this.AssertFailsBeforeTheLink(await this.Dependency(row, name, "O2"), lines);
+    }
+
+    // Kind's valid rows (kind-design.md §1): an archive's import member no loaded unit references (k4), a bare object as a static input
+    // (k6), an import library (k7), a mixed library whose loaded members are its imports (k10), a long-format import library, objects
+    // whose definitions lie in .idata sections (k12; P-K3: built from clang objects), and k5w's object as an import input (k5wi): each
+    // builds; k4 and k6 run (the others import from a codec.dll no test has).
+    [Theory]
+    [InlineData("k4", true)]
+    [InlineData("k5wi", false)]
+    [InlineData("k6", true)]
+    [InlineData("k7", false)]
+    [InlineData("k10", false)]
+    [InlineData("k12", false)]
+    public async Task AnInputConsistentWithItsKindBuilds(string row, bool runs)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = await this.Dependency(row, "codec", "O2");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.True(File.Exists(ArtifactPaths.Create(project).Executable));
+        if (runs)
+        {
+            await RunsOk(ArtifactPaths.Create(project).Executable);
+        }
+    }
+
+    // A bare short import file (row 2's import library's codec_add member alone, its bytes as llvm-lib /def writes them; C-544 PB3) is
+    // no library, whatever its Kind (T's rulings 53 and 54): LLD refuses it with its fatal(), after which Tatara refuses every later
+    // call of its process, so the step reports it before the link, as it reports an image input (k14). On a24ce9194 k2m (static) failed
+    // before the link with the whole-input Import line and k7m (import) reached LLD's fatal, as both did on 330801e63; the rows have
+    // their own theory so that a fail-before run on such a base runs them last.
+    [Theory]
+    [InlineData("k2m", "Native library 'codec' is declared static, but its input is a bare import member, not a library.")]
+    [InlineData("k7m", "Native library 'codec' is declared import, but its input is a bare import member, not a library.")]
+    public async Task AShortImportFileFailsBeforeTheLink(string row, string line)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        await this.AssertFailsBeforeTheLink(await this.Dependency(row, "codec", "O2"), line);
+    }
+
+    // LinkAmbiguity's valid rows (design §1): an unreferenced definition (10), one library's two definers (11, its pick the member its
+    // index names, 25a), a weak reference (16), COMDAT copies across libraries (20, 21) and an /alternatename: whose source a library
+    // defines (28's twin) are no ambiguous dependency: each builds and runs.
+    [Theory]
+    [InlineData("10")]
+    [InlineData("11")]
+    [InlineData("16")]
+    [InlineData("20")]
+    [InlineData("21")]
+    [InlineData("25a")]
+    [InlineData("28t")]
+    public async Task AnUnambiguousDependencyBuilds(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = await this.Dependency(row, "alpha", "O2");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        await RunsOk(ArtifactPaths.Create(project).Executable);
+    }
+
+    // LinkAmbiguity's store (design §4, N5): a staged input's facts are read once per process and kept by its staged SHA-256, so a second
+    // build of the same library content, from another folder, reads the entry the first build kept. The store is process-wide and tests
+    // run in parallel: identity only, never absence or a count (T's ruling 4).
+    [Fact]
+    public async Task ASecondBuildReusesItsInputsFacts()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = await this.Dependency("10", "alpha", "O2");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        var hash = ArtifactFiles.Hash(Path.Combine(this.directory, "native", "codec.lib"));
+        var first = NativeToolchain.LinkInputs[hash];
+        var copy = Path.Combine(this.directory, "copy");
+        Directory.CreateDirectory(Path.Combine(copy, "native"));
+        foreach (var file in new[] { "Hello.kimiproj", "main.kimi", Path.Combine("native", "codec.lib") })
+        {
+            File.Copy(Path.Combine(this.directory, file), Path.Combine(copy, file));
+        }
+
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, Path.Combine(copy, "Hello.kimiproj"), out var second));
+        Assert.True(await second.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.Same(first, NativeToolchain.LinkInputs[hash]);
+    }
+
     [Fact]
     public async Task EmptySolutionFailsBuildAndEmitAndCannotRun()
     {
@@ -1316,6 +1480,30 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
     }
 
+    // The executable runs, writes "ok" and exits with 0.
+    private static async Task RunsOk(string executable)
+    {
+        var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+        using var process = Process.Start(start)!;
+        Assert.Equal("ok\n", await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken));
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(0, process.ExitCode);
+    }
+
+    // The dependency step fails the build before the link with exactly these lines in this order (LinkAmbiguity, Kind): the record
+    // incomplete, no executable.
+    private async Task AssertFailsBeforeTheLink(Project project, string lines)
+    {
+        Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        var text = this.console.Text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains(lines + "\n", text, StringComparison.Ordinal);
+        Assert.Equal(lines.Split('\n').Length, Regex.Count(text, "Ambiguous native symbol |Native library '|Native function '"));
+        Assert.DoesNotContain("lld-link", text, StringComparison.Ordinal);
+        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project).Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+        Assert.False(File.Exists(ArtifactPaths.Create(project).Executable));
+    }
+
     // The toolchain refuses the run before launch with this reason (IMPL 20.3, 20.3.2): exit 1, and the refusal, not another failure.
     private async Task AssertRunRefused(Project project, string reason)
     {
@@ -1370,6 +1558,239 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
         project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = "static", Input = $"native/{name}.lib" } };
         return project;
+    }
+
+    // LinkAmbiguity's rows (design §1): Hello.kimiproj at the level, whose main.kimi calls each import (int name(void)) and writes "ok",
+    // and its program libraries, static unless named, each native/<library>.lib built by Archive. name: the row's variant, the name of
+    // the library that holds codec's or alpha's part (before or after kernel32 and kimi_backend in name order). Rows 29 and 30 are
+    // P9's programs (an import called only under a condition O2 folds; codec_add(int, int)). Rows k<n> are Kind's (kind-design.md §1
+    // row n; k8o2 row 8's O2 twin; k5w, k5wi, k2p, k13p, k2m and k7m as their theories state; k2m and k7m write the short import
+    // header: Sig1 0, Sig2 0xFFFF, version 0, x64, no time stamp, 20 bytes of names, hint 0, a code import by name): a library named
+    // "codec:import" is import, "codec=mixed" reads native/mixed.lib; Long is a long-format import member from a clang object
+    // (__imp_codec_add in .idata$5 and its thunk; P-K3).
+    private async Task<Project> Dependency(string row, string name, string level)
+    {
+        const string Add = "int codec_add(void) { return 3; }\n";
+        const string X = "int alpha_x(void) { return 1; }\n";
+        const string Helper = "int helper(void);\nint codec_add(void) { return helper(); }\n";
+        const string Directive = "#pragma comment(linker, \"/alternatename:a=b\")\nint a(void);\nint codec_add(void) { return a(); }\n";
+        const string Long = "int (*__imp_codec_add)(void) __attribute__((section(\".idata$5\"))) = 0;\nint codec_add(void) { return __imp_codec_add(); }\n";
+        (string, string) m1 = ("m1", Add), alpha = ("m1", X);
+        (string Library, string Symbol)[] imports = [("codec", "codec_add")];
+        string[] libraries = ["codec"];
+        string? source = null;
+        switch (row)
+        {
+            case "3":
+                await Archive(name, ("m1", "unsigned GetLastError(void);\nint codec_add(void) { return (int)GetLastError(); }\n"), ("m2", "unsigned GetLastError(void) { return 0; }\n"));
+                (imports, libraries) = ([(name, "codec_add")], [name]);
+                break;
+            case "4":
+                await Archive(name, ("m1", "void *__imp_WriteFile = 0;\n" + Add));
+                (imports, libraries) = ([(name, "codec_add")], [name]);
+                break;
+            case "6":
+                await Archive(name, ("m1", "int codec_add(void) { volatile char buffer[8192]; buffer[0] = 3; return buffer[0]; }\n"), ("m2", "void __chkstk(void) { }\n"));
+                (imports, libraries) = ([(name, "codec_add")], [name]);
+                break;
+            case "7" or "22":
+                await Archive(name, alpha, ("m2", Add));
+                await Archive("codec", m1);
+                (imports, libraries) = ([(name, "alpha_x"), ("codec", "codec_add")], [name, "codec"]);
+                if (row == "22")
+                {
+                    await this.Image("zlib", "int zlib_f(void) { return 4; }\n" + Add);
+                    (imports, libraries) = ([.. imports, ("zlib", "zlib_f")], [.. libraries, "zlib"]);
+                }
+
+                break;
+            case "8" or "15":
+                await Archive("alpha", ("m1", (row == "15" ? "__attribute__((weak)) " : string.Empty) + "int f(void) { return 1; }\n" + X));
+                await Archive("codec", ("m1", "int f(void) { return 2; }\n" + Add), ("m2", "int f(void);\nint codec_use(void) { return f(); }\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add"), ("codec", "codec_use")], ["alpha", "codec"]);
+                break;
+            case "17":
+                await Archive("codec", ("m1", Add + "int codec_sub(void) { return 1; }\n"));
+                (imports, libraries) = ([("codec", "codec_add"), ("codec2", "codec_sub")], ["codec", "codec2=codec"]);
+                break;
+            case "23":
+                await this.ImportLibrary("codec", "VirtualProtect");
+                (imports, libraries) = ([("codec", "VirtualProtect")], ["codec:import"]);
+                break;
+            case "24":
+                await Archive(name, ("m1", "int VirtualProtect(void) { return 1; }\n"));
+                (imports, libraries) = ([(name, "VirtualProtect")], [name]);
+                break;
+            case "25a" or "25b":
+                (string, string) m2 = ("m2", "int helper(void) { return 2; }\n"), m3 = ("m3", "int VirtualProtect(void);\nint helper(void) { return VirtualProtect(); }\n");
+                await Archive("codec", [("m1", Helper), .. row == "25a" ? [m3, m2] : new[] { m2, m3 }]);
+                await Archive("zlib", ("z1", "int zlib_crc(void) { return 4; }\n"), ("z2", "int VirtualProtect(void) { return 1; }\n"));
+                (imports, libraries) = ([("codec", "codec_add"), ("zlib", "zlib_crc")], ["codec", "zlib"]);
+                break;
+            case "26":
+                await Archive("alpha", ("m1", "__declspec(selectany) int g = 1;\nint alpha_x(void) { return g; }\n"));
+                await Archive("codec", ("m1", "extern int g;\nint codec_add(void) { return g; }\n"), ("m2", "int g = 2;\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add")], ["alpha", "codec"]);
+                break;
+            case "27":
+                await Archive("alpha", alpha, ("m2", "int f(void) { return 1; }\n"));
+                await Archive("codec", ("m1", "#pragma comment(linker, \"/include:f\")\n" + Add), ("m2", "int f(void) { return 2; }\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add")], ["alpha", "codec"]);
+                break;
+            case "28" or "28t":
+                await Archive("alpha", [alpha, ("m2", "int b(void) { return 1; }\n"), .. row == "28t" ? [("m3", "int a(void) { return 5; }\n")] : Array.Empty<(string, string)>()]);
+                await Archive("codec", ("m1", Directive), ("m2", "int b(void) { return 2; }\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add")], ["alpha", "codec"]);
+                break;
+            case "29":
+                await Archive("alpha", alpha, ("m2", "int codec_add(int a, int b) { return 0; }\n"));
+                await Archive("codec", ("m1", "int codec_add(int a, int b) { return a + b; }\n"));
+                libraries = ["alpha", "codec"];
+                source = "group Native\n    #LibraryImport(\"alpha\", \"alpha_x\")\n    public unsafe func alphaX() -> i32\n    #LibraryImport(\"codec\", \"codec_add\")\n" +
+                    "    public unsafe func add(a: i32, b: i32) -> i32\nfunc pick(flag: bool) -> i32\n    var s: i32 = 0\n    if flag\n        unsafe => s = Native.add(40, -2)\n" +
+                    "    return s\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.alphaX()\n    let y = pick(false)\n" +
+                    "    require x + y == 1 else => $abort(\"alpha\")\n    Console.writeLine(\"ok\")\n";
+                break;
+            case "30":
+                await Archive("codec", ("m1", "void __chkstk(void) { }\nint codec_add(int a, int b) { return a + b; }\n"));
+                source = "group Native\n    #LibraryImport(\"codec\", \"codec_add\")\n    public unsafe func add(a: i32, b: i32) -> i32\npublic func main()\n" +
+                    "    var sum: i32 = 0\n    unsafe => sum = Native.add(40, -2)\n    require sum == 38 else => $abort(\"add\")\n    Console.writeLine(\"ok\")\n";
+                break;
+            case "10":
+                await Archive("codec", ("m1", Add + "int VirtualProtect(void) { return 1; }\n"));
+                break;
+            case "k2":
+                await this.ImportLibrary("codec", "codec_add");
+                break;
+            case "k2p":
+                await this.ImportLibrary("codec", "codec_add", "codec_sub");
+                await this.ImportLibrary("zlib", "codec_add", "codec_sub");
+                (imports, libraries) = ([("codec", "codec_add"), ("zlib", "codec_sub")], ["codec", "zlib"]);
+                break;
+            case "k3" or "k4":
+                await Archive("codec", m1, ("m2", "unsigned GetTickCount(void);\nint codec_tick(void) { return (int)GetTickCount(); }\n"));
+                await this.ImportLibrary("kernel32", "GetTickCount");
+                Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", Path.Combine(this.directory, "native"), "/out:mixed.lib", "codec.lib", "kernel32.lib"));
+                (imports, libraries) = ([("codec", "codec_add"), .. row == "k3" ? [("codec", "codec_tick")] : Array.Empty<(string, string)>()], ["codec=mixed"]);
+                break;
+            case "k5":
+                await Archive("codec", ("m1", Long));
+                break;
+            case "k2m" or "k7m":
+                byte[] importFile = [0, 0, 0xFF, 0xFF, 0, 0, 0x64, 0x86, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 4, 0, .. "codec_add\0codec.dll\0"u8];
+                File.WriteAllBytes(Path.Combine(Directory.CreateDirectory(Path.Combine(this.directory, "native")).FullName, "codec.lib"), importFile);
+                libraries = [row == "k2m" ? "codec" : "codec:import"];
+                break;
+            case "k6" or "k9" or "k5w" or "k5wi":
+                await Archive("object", ("m1", row.StartsWith("k5", StringComparison.Ordinal) ? Long : Add));
+                File.Copy(Path.Combine(this.directory, "native", "object.members", "m1.obj"), Path.Combine(this.directory, "native", "codec.lib"));
+                libraries = [row is "k6" or "k5w" ? "codec" : "codec:import"];
+                break;
+            case "k7" or "k14":
+                await (row == "k7" ? this.ImportLibrary("codec", "codec_add") : this.Image("codec", Add));
+                libraries = ["codec:import"];
+                break;
+            case "k8" or "k8o2":
+                await Archive("codec", ("m1", "int codec_add(int a, int b) { return a + b; }\n"));
+                libraries = ["codec:import"];
+                source = "group Native\n    #LibraryImport(\"codec\", \"codec_add\")\n    public unsafe func add(a: i32, b: i32) -> i32\nfunc pick(flag: bool) -> i32\n    var s: i32 = 0\n" +
+                    $"    if flag\n        unsafe => s = Native.add(40, -2)\n    return s\npublic func main()\n    let y = pick({(row == "k8" ? "true" : "false")})\n    require y >= 0 else => $abort(\"pick\")\n    Console.writeLine(\"ok\")\n";
+                break;
+            case "k10" or "k11":
+                await this.ImportLibrary("codec", "codec_add");
+                await Archive("stub", ("m1", "int codec_version(void) { return 1; }\n"));
+                Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", Path.Combine(this.directory, "native"), "/out:mixed.lib", "codec.lib", "stub.lib"));
+                await Archive("zlib", ("z1", "int codec_version(void);\nint zlib_f(void) { return codec_version(); }\n"));
+                imports = row == "k11" ? [("codec", "codec_add"), ("zlib", "zlib_f")] : imports;
+                libraries = row == "k11" ? ["codec=mixed:import", "zlib"] : ["codec=mixed:import"];
+                break;
+            case "k12":
+                await Archive(
+                    "codec",
+                    ("m1", Long + "extern char __head_codec[];\nvoid *__codec_head __attribute__((section(\".idata$7\"))) = __head_codec;\n"),
+                    ("head", "extern char __codec_iname[];\nchar __head_codec[20] __attribute__((section(\".idata$2\"))) = {0};\nvoid *__codec_name __attribute__((section(\".idata$2\"))) = __codec_iname;\n"),
+                    ("tail", "char __codec_iname[] __attribute__((section(\".idata$7\"))) = \"codec.dll\";\nvoid *__codec_end __attribute__((section(\".idata$5\"))) = 0;\n"));
+                libraries = ["codec:import"];
+                break;
+            case "k13" or "k13p":
+                await this.ImportLibrary("codec", "codec_other");
+                await Archive("zlib", ("z1", "int zlib_f(void) { return 4; }\n" + Add));
+                (imports, libraries) = ([("codec", "codec_add"), ("zlib", "zlib_f")], ["codec:import", "zlib"]);
+                if (row == "k13p")
+                {
+                    await Archive("alpha", alpha, ("m2", Add));
+                    (imports, libraries) = ([.. imports, ("alpha", "alpha_x")], [.. libraries, "alpha"]);
+                }
+
+                break;
+            case "11":
+                await Archive("codec", ("m1", Helper), ("m2", "int helper(void) { return 2; }\n"), ("m3", "int helper(void) { return 3; }\n"));
+                break;
+            case "16":
+                await Archive("alpha", alpha, ("m2", "int f(void) { return 1; }\n"));
+                await Archive("codec", ("m1", "extern int f(void) __attribute__((weak));\nint codec_add(void) { return f ? f() : 3; }\n"), ("m2", "int f(void) { return 2; }\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add")], ["alpha", "codec"]);
+                break;
+            case "20" or "21":
+                await Archive("alpha", ("m1", "__declspec(selectany) int g = 1;\nint alpha_x(void) { return g; }\n"));
+                await Archive("codec", [("m1", "__declspec(selectany) int g = 1;\nint codec_add(void) { return g + 2; }\n"), .. row == "21" ? [("m2", "extern int g;\nint codec_use(void) { return g; }\n")] : Array.Empty<(string, string)>()]);
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add"), .. row == "21" ? [("codec", "codec_use")] : Array.Empty<(string, string)>()], ["alpha", "codec"]);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(row));
+        }
+
+        source ??= "group Native\n" + string.Concat(imports.Select(static (x, i) => $"    #LibraryImport(\"{x.Library}\", \"{x.Symbol}\")\n    public unsafe func i{i}() -> i32\n")) +
+            "public func main()\n    var v: i32 = 0\n" + string.Concat(imports.Select(static (_, i) => $"    unsafe => v = Native.i{i}()\n")) + "    Console.writeLine(\"ok\")\n";
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
+        var supplies = string.Concat(libraries.Select(static x => x.Split('=', ':') switch
+        {
+            [var library, var input] when x.Contains('=') => $"    {library}={{ Kind=\"static\" Input=\"native/{input}.lib\" }}\n",
+            [var library, var kind] => $"    {library}={{ Kind=\"{kind}\" Input=\"native/{library}.lib\" }}\n",
+            [var library, var input, var kind] => $"    {library}={{ Kind=\"{kind}\" Input=\"native/{input}.lib\" }}\n",
+            [var library] => $"    {library}={{ Kind=\"static\" Input=\"native/{library}.lib\" }}\n",
+            _ => throw new ArgumentOutOfRangeException(nameof(row)),
+        }));
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\" Optimization=\"{level}\"\nNativeLibraries=\n  \"{TargetProfile.Windows.Target}\"=\n{supplies}");
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
+        return project;
+
+        // native/<library>.lib: each member's C source compiled by the pinned clang (rows 27 and 28 keep their linker directives:
+        // -fno-autolink drops them; probes.md P8) and archived by llvm-lib in this command-line order (llvm-lib writes its members in
+        // reverse, so its index names the command line's last definer of a symbol; P5).
+        async Task Archive(string library, params (string Member, string Source)[] members)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(this.directory, "native", library + ".members")).FullName;
+            foreach (var (member, text) in members)
+            {
+                File.WriteAllText(Path.Combine(folder, member + ".c"), text);
+                string[] autolink = text.Contains("#pragma", StringComparison.Ordinal) ? [] : ["-fno-autolink"];
+                string[] compile = ["--target=" + TargetProfile.Windows.Target, "-O2", "-fno-builtin", .. autolink, "-fno-stack-protector", "-fms-extensions", "-c", member + ".c", "-o", member + ".obj"];
+                Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", folder, compile));
+            }
+
+            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", folder, ["/out:" + Path.Combine("..", library + ".lib"), .. members.Select(static x => x.Member + ".obj")]));
+        }
+    }
+
+    // native/<library>.lib, a linked image (design §1 row 22; Kind's row 14): a DLL linked by lld-link from a clang object, its COFF
+    // symbol table kept (/debug:symtab), so a reader of whole files would see its definitions.
+    private async Task Image(string library, string source)
+    {
+        var native = Directory.CreateDirectory(Path.Combine(this.directory, "native")).FullName;
+        File.WriteAllText(Path.Combine(native, library + ".c"), source);
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", native, "--target=" + TargetProfile.Windows.Target, "-O2", "-fno-autolink", "-c", library + ".c", "-o", library + ".obj"));
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("lld-link", native, "/dll", "/noentry", "/nodefaultlib", "/debug:symtab", "/noimplib", "/out:" + library + ".dll", library + ".obj"));
+        File.Copy(Path.Combine(native, library + ".dll"), Path.Combine(native, library + ".lib"));
+    }
+
+    // native/<library>.lib, an import library exporting the symbols (llvm-lib /def; design §1 row 23).
+    private async Task ImportLibrary(string library, params string[] symbols)
+    {
+        var native = Directory.CreateDirectory(Path.Combine(this.directory, "native")).FullName;
+        File.WriteAllText(Path.Combine(native, library + ".def"), $"LIBRARY {library}\nEXPORTS\n" + string.Concat(symbols.Select(static x => $"    {x}\n")));
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", native, "/machine:x64", "/def:" + library + ".def", "/out:" + library + ".lib"));
     }
 
     // Hello.kimiproj at O2 into out/Hello.ll, its main.kimi writing the text, on the test's console.
