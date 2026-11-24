@@ -576,9 +576,11 @@ public class ClosureEnvironmentOriginTest
     // module's top-level statements or an accessor body has that body as its declaring body (SPEC 6.1.1, 11.3; PLAN G230-R), so the root
     // form (a top-level function naming a top-level statement's local: F's O3-16 (1)), a function nested in one (rf_nest) and one in a
     // getter naming the getter's local (acc_inv) are d6's: the relation's record at the input alone, the root form's call storing no
-    // borrow of `inner` since put's signature relates `v` to nothing (SPEC 15.4, 15.6.5). A Reborrow through such an input passed on is
-    // valid (T1, T2b; SPEC 15.6.3, 15.6.4) and an independent error beside it is its own record alone (T1x; T2, whose getter sees no
-    // document-local `read`, SPEC 6.1.1). The default template's edge (SPEC 7.2.3; F's O3-21
+    // borrow of `inner` since put's signature relates `v` to nothing (SPEC 15.4, 15.6.4). A root function passing its own input to one
+    // that needs it `during r` (rv2_relay_inv) and one returning its own input as `during r` of a top-level `var` r (rv8_var_bound: no
+    // record in the module body, the relation bounding no top-level region there) are the relation's record at the input alone. A
+    // Reborrow through such an input passed on is valid (T1, T2b; SPEC 15.6.3, 15.6.4) and an independent error beside it is its own
+    // record alone (T1x; T2, whose getter sees no document-local `read`, SPEC 6.1.1). The default template's edge (SPEC 7.2.3; F's O3-21
     // (4)): g, declared in a capture-free Closure literal that is f's default for `action`, has the Closure as its declaring body, whose
     // evaluating body is (f, 1): g's `during r` and `during q` name the Closure's local regions, fixed in g with no premise, so returning
     // x as `during q` is the relation's record (dt_lift4) and the pass-through twin is valid (dt_ok4); dev gave both the located limit.
@@ -619,6 +621,12 @@ public class ClosureEnvironmentOriginTest
     [InlineData(RootLocal + Read + Peek + "let bad: bool = 1\n", "TypeMismatch_Kd 1\n")] // T1x
     [InlineData(GetterLocal + "            " + Read + ReadInGetter)] // T2b_acc_reborrow
     [InlineData(Read + GetterLocal + ReadInGetter, "UnresolvedBinding_Kd read(x@follow@ref)")] // T2_acc_reborrow
+    [InlineData(
+        RootLocal + "func peek(v: ref/i32 during r) -> i32 => v@follow\nfunc relay(w: ref/i32) -> i32 => peek(w)\nlet k = relay(r)\n",
+        "UnprovenOriginRelation_Kd w)")] // rv2_relay_inv
+    [InlineData(
+        "let y: i32 = 1\nvar r = y@ref\nfunc f(v: ref/i32 during r, w: ref/i32) -> ref/i32 during r => w\nlet k = f(r, y@ref)@follow\nr = y@ref\n",
+        "UnprovenOriginRelation_Kd w\n")] // rv8_var_bound
     [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func outer(v: ref/i32 during r) -> i32\n        func inner(w: ref/i32 during r) -> ref/i32 during r => w\n        return inner(v)@follow\n    return outer(r)\npublic func main() => ()\n")] // a_nf_nest2
     [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func outer(v: ref/i32 during r) -> i32\n        func inner(w: ref/i32 during r) -> ref/i32 during p => w\n        return inner(v)@follow\n    return outer(r)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd w\n")] // a_nf_lift_nest2
     [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r: ref/i32 = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n")] // a_ann_res
