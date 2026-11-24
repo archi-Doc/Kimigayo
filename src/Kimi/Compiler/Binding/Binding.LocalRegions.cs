@@ -47,8 +47,8 @@ public sealed partial class Binding
     private readonly List<BoundOrigin> reachAtoms = new();
     private readonly HashSet<BoundOrigin> reachSeen = new(ReferenceEqualityComparer.Instance);
 
-    // ValueIn's reads once no body is being bound, per (Origin, body) and region-graph version (valueInVersion): a DAG of regions is read
-    // in turn, so an unmemoized reading is exponential in its depth; reused.
+    // ValueIn's reads once no body is being bound, per (Origin, body) and region-graph version (valueInVersion; stale at each run's start,
+    // BeginRun): a DAG of regions is read in turn, so an unmemoized reading is exponential in its depth; reused.
     private readonly Dictionary<(BoundOrigin Origin, Koto? Body), BoundOrigin> valueInReads = new();
 
     // The running pass's part of the rows (PassPart.Regions), which its steps write and reset; the driver hands it over (EnterPass),

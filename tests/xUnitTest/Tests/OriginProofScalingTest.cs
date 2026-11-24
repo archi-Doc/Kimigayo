@@ -204,6 +204,42 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.True(MirBorrowsTest.Grows(values, 2.5), $"ValueIn reads {string.Join(", ", values)}");
     }
 
+    // R7-N5 B8a (R7-O2's ValueIn memo, one run's): a second Bind of the same compilation, warm (the edit counter moved or not), reads every
+    // carried candidate again (as many ValueIn reads as the first run, never the first run's entries at an equal region-graph version).
+    [Theory]
+    [InlineData("chain", false)]
+    [InlineData("diamond", false)]
+    [InlineData("chain", true)]
+    [InlineData("diamond", true)]
+    public void ASecondRunReadsEveryCarriedCandidateAgain(string shape, bool invalidate)
+    {
+        var c = Carried(ErasedCarried(shape == "diamond", 4));
+        var first = CarriedMetrics(c);
+        if (invalidate)
+        {
+            c.InvalidateSourceAnalysis();
+        }
+
+        Assert.Equal(first.ValueInReads, CarriedMetrics(c).ValueInReads);
+    }
+
+    // R7-N5 B8a: after an edit that parses every node again, the memo holds the second run's entries alone, as many as the first run's,
+    // none keyed by a removed body or its Origins.
+    [Theory]
+    [InlineData("chain")]
+    [InlineData("diamond")]
+    public void AnEditLeavesNoEarlierRunInTheValueInMemo(string shape)
+    {
+        var source = ErasedCarried(shape == "diamond", 4);
+        var c = Carried(source);
+        CarriedMetrics(c);
+        var entries = ValueInMemo(c).Count;
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source.Replace("func f(", "func h(", StringComparison.Ordinal));
+        CarriedMetrics(c);
+        Assert.Equal(entries, ValueInMemo(c).Count);
+    }
+
     // SPEC 15.6.5, 23.1.2 (DECISIONS BU-62; PLAN G318): k Semantics binders and k declaration rows b >= x.s, each in one binder's borrow
     // cases, reach the last edge x.s >= a through x.s, which a failed clause leaves Unbound: the declaration judge's chain work grows with
     // the rows, never with the combinations of their conditions. Every size is invalid by the clause (15.3.3) and the chain (15.6.5).
@@ -446,11 +482,23 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         return source.Append("public func main() => ()\n").ToString();
     }
 
-    private static OriginProofMetrics CarriedMetrics(string source)
+    private static OriginProofMetrics CarriedMetrics(string source) => CarriedMetrics(Carried(source));
+
+    private static Compilation Carried(string source)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("carried.kimi", source));
+        return c;
+    }
+
+    // ValueIn's memo (Binding's private valueInReads), read by reflection: its entries outlive a run only through a defect.
+    private static System.Collections.ICollection ValueInMemo(Compilation c)
+        => (System.Collections.ICollection)typeof(Binding).GetField("valueInReads", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(c.Binding)!;
+
+    // One Bind, CheckStartup and Analyze of c, measured; every record fails the test.
+    private static OriginProofMetrics CarriedMetrics(Compilation c)
+    {
         var metrics = new OriginProofMetrics();
         c.Binding.OriginProofMetrics = metrics;
         c.Bind();
