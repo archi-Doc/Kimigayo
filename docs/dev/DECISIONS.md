@@ -7299,6 +7299,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded in part by R4-M241 (G841a, Q-722, 2026-11-24): U3c's "the pointee is judged at its own key" with `OwnPointer`'s
     Loan test (deleted), "until their own unit" for rule 5's `Any` row's E (now rule 4's), the pointee's entry for rule 4 at an
     `Any` layer (now `All`), and, in part, "Rule 4 ... is read where a node reads on" (also at a key that keeps the declared step).
+  - Superseded in part by R4-M243 (G841b, Q-729, 2026-11-24): U3b's first-step source (now each layer of the input's key) and its
+    rows' guard (now the layers' greatest), the G785 bullet's "an input whose key has no single layer ... keeps its referent's root
+    key", and U3c's layer gate (`Declared` no longer suppresses the reading of a key's other layers).
 - **R4-M220 Rule H: a local that a store of the body gives a value read from a holder is an A5 holder, and a Loan-free Case payload
   of a call's result carries nothing (the Case bound)** (2026-11-19, landed with the A5 one-tree landing, Q-539; Middle, A5; Major,
   an acceptance mover; the owner's O-209, O-359 (a), O-364 (a), O-383 (b) (verbatim 「O-383  b」) and O-424 (a); implementation
@@ -8171,6 +8174,42 @@ and migration obligations remain in force; no numeric cap changes are authorized
     rvBorrowTwiceMixedBad and r3MixRefCastBad, which the answered option counted closed, and its may row still limits
     r4MixOpenCastOk across holders: no single-holder reading is met on today's values); a slot-keyed read entry (it misses a
     non-holder's bytes); a `+ 0` clause for `p[n]`.
+- **R4-M243 W's first step reads every layer of the input's key, and a key that keeps the declared step still reads its layers without
+  an Origin (PLAN G841, Revision 3's clauses (1) H1 and (2) F2)** (2026-11-24; the Middle; G841b, Q-729, D-1239; Major, an acceptance
+  mover, class 1; design `middle\notes\g841-design.md` Revision 3, its review's C1 and C3) SPEC 15.6.4 item 4, 5.7 Calls, 15.6 Holders.
+  - **Rule.** `Reach.Keyed` and `Reach.Punned` read the argument at each layer its input key lists (`InputKey`, the key table's
+    per-entry `PastLayer`): a raw layer without an Origin (Its) and an exclusive borrow give a node at the key past them (typed where
+    the layer's Type designates the entry's Place, punned through its raw pointer rows otherwise), whatever else the key holds; the
+    punned reading takes each raw layer without an Origin, each raw layer stating one and each exclusive borrow whose referent is
+    punnable, its guard the layers' greatest; a layer a declaration states (`PastLayer.Any`) keeps the declared step in both (reading
+    a by-value input's Field layers punned decided a store the declared step leaves to the depth bound). `ReadAt` at a key that keeps
+    the declared step reads the holder by that step and reads on at its Its layers and borrows (`ReadLayers`, one with every other
+    key); `Node` sets `keyedBy` only at a key with no other part, as before. A Semantics `raw/`/`uniq/` input's key has one layer
+    whose Type is the old referent, so nothing changes there; `Keep`'s referent stays only `Arrive`'s receiving Type.
+  - **Departs from R4-M219**, each with the reason that no longer holds:
+    - (i) U3b's "W's first step reads the Places the argument names at the input's pointee or referent, read once in Keep": it reads
+      them at each layer of the input's key. The first step's Type came from the input's syntax, which names a layer only for a
+      Semantics input, while 15.6.4 item 4 (a Tuple element, an Option payload, a Field or a Type argument of an input) and 5.7
+      Calls decide per layer.
+    - (ii) G785's "an input whose key has no single layer (a shared borrow, a key at Binding's Limit) keeps its referent's root key":
+      a shared borrow is no layer a call writes through, and a key at Binding's Limit is read at the layers it lists, the declared
+      step covering the rest.
+    - (iii) U3c's "W reads a holder layer by layer only at a key whose parts are all layers the walked Type expression writes ... A
+      key with any other part ... keeps the declared step ... read by `Keyed`, `Node` and `ReadAt`": `Declared` adds the declared
+      step for the holder and no longer suppresses the reading of the key's other layers. A stated element beside an unstated one was
+      read as changing the unstated one, while 5.7 Calls decides per layer (R-G841-5).
+    - (iv) U3b's "the holder's state is read at the rows' guard": `Punned` reads every punned holder at the layers' greatest guard
+      (`Math.Max` over `MirWrites`' order). An input had one punning layer, whose rows' guard was its holder's; a by-value input may
+      pun holders at several layers, and a holder punned at one layer and not at another is one the other layer's Type designates,
+      read there as a typed node at that Type's own guard (`ReadAt`), so the greatest adds no step that node does not take.
+  - **Records (Q13):** invalid programs newly rejected only, with `ComparisonLoanConflict_Kd`: twoTupleSlotBad, twoTupleTwoBad,
+    twoTuplePunBad, h1OptSlotBad, h1TupUniqSlotBad, h1DispTupBad, h1MixTupleBad, h1MixStaticBad, h1Mix3Bad, h1Mix3OnlyBorrowBad,
+    xPairRawDeclBad (its valid twin xPairRawU8Ok accepted). No valid program moves.
+  - **Rejected:** a separate first-step rule for aggregates; a Tuple-only arm; the first step at the referent's root key for a
+    multi-layer input (it reads no element's own layer).
+  - **Known limit kept:** a by-value Tuple's value does not say which element holds which address (one set per value), so an
+    element's Place may also be read punned at another element's raw layer (as past a holder, `ReadPart`); no valid row moved by it
+    (PLAN G1361: p3CrossU8Ok, a valid by-value Tuple form, rejected on dev before this unit as after it).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -17197,6 +17236,8 @@ resumed by R4-M86 (2026-10-20).
     class 1, extending `HiddenWritableBelow` past rc, a writer test per form.
   - Superseded in part by BU-236 (D-940): "Binding's Limit and an Unsupported entry make the contract the Limit" reads "Binding's
     Limit makes the contract the Limit".
+  - Superseded in part by BU-257 (C-527, Q-747; the owner's C-527 Q1 (a)): `HiddenKinds`' reads (Content, Chain) are bounded by
+    the Type the call binds (`CanCarryLoan`); the Value row and the fills stay in the callee's terms.
 - **BU-232 Past the holder a kept binding's hidden raw layer addresses, a declaration's `Holds Any` applies only where the declaring
   code acts (PLAN G964)** (2026-11-19; Front, Binding; Q17 class 3; Major, an acceptance mover; F's G964 rulings 1-12, the owner's
   O-398 (a); reviews in Q-517's cells; D-742; Q-517 folded into Q-539, landing with the A5 one-tree landing) SPEC 15.6.4, 5.7 Calls.
@@ -18451,6 +18492,35 @@ resumed by R4-M86 (2026-10-20).
     may refute it); a Refuted answer for a source-less region (8.3.1); a memo without a measured need (`OccurrenceVariance` runs per
     call-region read on Binding's hot path; its nested `visitedParts` query changes no answer; the window's RP8 Bind reading decides).
   - Open: PLAN G1030 (1)-(3).
+- **BU-257 The kept-Type record keeps an input's reads only where the Type the call binds can carry a Loan or an address (PLAN G841
+  clause (3)'s Binding prerequisite, C-527)** (Front, 2026-11-24; Binding; Q-747, D-1243; Major, an acceptance mover, class 3; the owner's
+  C-527 Q1 (a) and Q2 (b), verbatim 「C-527 a, b」; F's C-527 rulings 1-5) SPEC 15.6.4, 15.6, 3.2.1, 15.8.2. Supersedes in part BU-231.
+  - Rule: at the root of a binding of the called function's own abstract Type, `HiddenKinds` keeps an input's Content and Chain rows
+    only where a value of the Type the call binds there can carry a Loan or an address (`Binding.CanCarryLoan`, SPEC 15.6's Type-level
+    predicate: a fold over Holdings' entries that pass on, `Passes`, the row the hold walk's Loans fact reads too). A borrow, a raw
+    layer, an erased environment, an abstract part or a part Binding did not bind carries; a Function Item and a Scalar do not; a
+    concrete Closure carries what its captures hold (Q2 (b): an owned `raw/u8` capture carries an address). The Value row and a handed
+    callable's fill stay in the callee's terms for every binding, the fill's R gate (`MayRetain`) reading the callee's-terms row
+    (`FilledKinds`' `gate`). The storage walk publishes the bound Type with the root (`storageBound`). At Binding's Limit the predicate
+    makes the contract the Limit.
+  - Reads O-360 (a)'s Content/Chain sentence ("Content/Chain for an input whose referent or pointee Type holds it") through O-353 (a)
+    ("the instantiated-contract sentence decides which storage may retain"), by Q1 (a); O-360 (a)'s Value sentence and G935 ruling 16
+    (2) (fills) are unchanged.
+  - Supersedes in part BU-231's Rule, its reading of the called function's own abstract Type in the callee's terms for the reads
+    (`HiddenKinds`: "never by the binding's Origins, which are the caller's, nor by the Type the call binds it to: every binding gets
+    the declared record's rows"): for the reads, the Type the call binds decides. The reason that no longer holds: the declared reads
+    stood in for what may hide inside the binding (the hold walk walks none; its Origins are the caller's), but whether a storage may
+    retain a read is the instantiated contract's question (O-353 (a), Q1 (a)), and a binding that can carry no Loan or address
+    retains none (SPEC 15.6.4's oneLayer).
+  - Moves (class 3, newly accepted): keepS1OneOk, keepRefTOk, holderShownOk, enumFreeShownOk, neverShownOk, nestedShownOk,
+    optResultOk, itemResultOk, closureOwnedResultOk, closureEmptyResultOk, closureTupleCapOk
+    (`MirBorrowsTest.AKeptTypesReadsAreKeptOnlyWhereItsBindingCanCarryALoan`); every invalid row keeps its record. Two record rows
+    lose a kept read by Q1 (a): `RetentionTest`'s readVolatile (T is PrimitiveInteger) and trade<T> with T = u64. Scaling:
+    `TypeDagScalingTest.AKeptRootsBoundIsDecidedOncePerDistinctPart` (linear in the bound Type's distinct parts).
+  - Rejected: dropping every callee's-terms row at a Loan-free binding (accepts fillShownBad and mkConcWnBad, against G935 ruling 16
+    (2)); the intersection with the instantiated rows for every binding (accepts keepS1RawBad and G841c's W2); SPEC 15.6's callable
+    clause read literally for a concrete Closure (the owner's Q2 (a)); A5 testing the case Type at the kept entry.
+  - Open: PLAN G1366 (one publisher of SPEC 15.6's Type-level Loan predicate).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -31127,6 +31197,35 @@ R8-M* and R9-M* by the stage of the recording unit.
     fault), and any other exception is the command's fault, `CheckFaulted_Kd` without a location and its `errors` entry, exit 2. The
     startup's place and consequence stand (a startup failure ends the project loop). The Open line's `TestCommand`'s type lists (G1012)
     close; G1012 keeps the `finally`'s fault.
+  - Amended by PLAN G1010 (R9 part B, Q-724, 2026-11-24): `Project.TryCreate` and `DependencyResolver.Load` classify only their own
+    reads, `IsReadFailure` around each read call (the path's naming, the file's read, the listing, each source read) and the
+    configuration's two types around `ProjectFile.Load` (its deserializer's span a recorded limit, PLAN G1363); any other exception in
+    a load propagates. The check entry owns the load's unit result (`CheckService.Load`: Blocked `ProjectLoadFailed_Kd` per failure,
+    or one `CheckFaulted_Kd` at the project file), which `check --Format json` publishes and every language-server unit of the
+    project shares; `WorkspaceCheck.Reusable` is the one reuse rule (a loaded project or a unit's result kept while its inputs are
+    valid, unless Faulted). A load's every reason is written once through the service and logged. `ProjectFile`'s map checks own a
+    key's kind: one reader of a setting name, a key that is not a name the configuration's own note, so no reader exception leaves
+    `ProjectFile.Load` for a text `ConfigurationText` accepts (R9 part B's Revision 2). The Open line's `Project.TryCreate`'s
+    catch-all (G1010) closes; G1010 keeps N5's contracts.
+
+- **R9-M13 The command line's one option table** (Middle, 2026-11-24; PLAN G1236, G1237; Q-750, D-1246; Major; the owner's O-525, O-526,
+  O-527 (a); design review REVISE then ACCEPT WITH CONDITIONS, implementation review ACCEPT WITH CONDITIONS)
+  - `KimiOptions` owns the options of every command but lsp's (PLAN G1251): one table, a row per option (name as IMPL spells it, kind
+    `Value`/`Boolean`/`BareBoolean`/`Flag`/`Removed`, the commands that take it, the values IMPL lists for it), and one reader,
+    `KimiOptions.Read(command, args)`: the values by row name, the inputs, the invalid options' texts in order. `KimiOptions.From` gives
+    the compiler options (`Manifest`, `NoBuild`, `Report` added).
+  - Rule (O-525, O-526): an option word (`SimpleParserHelper.IsOptionName`) names the row whose name equals it after its leading dashes,
+    ignoring case; a word of dashes alone is an input; a value is never an option word; a Boolean value reads as `bool.TryParse` reads it
+    and a listed value exactly but ignoring case; `--no-build` and `--locked` stand alone. An unknown option, a removed one (its removal
+    text), a missing value, a value outside the listed set and a repeated option in any spelling are invalid. `CommandExecution.Execute`
+    prints each on standard error before the action (exit 1); `TestOptions.Read` binds first, so `kimi test` reads `--Format`, and
+    `TestOptions.Validate` raises the first (exit 2). `restore` takes `--Target` (O-527 (a)); a quoted option word is an option on every
+    command; a help request runs no command and lists no options (PLAN G1367).
+  - Deleted: `ExpandFlags`, `RemovedOption`, the `[SimpleOption]` attributes and the three `Options` classes, `TestOptions`' name list,
+    value rule, `--Format` check and Boolean conversion, `CheckCommand`'s `OrdinalIgnoreCase` comparison and its "Unknown --Format" text,
+    `TestCommand`'s raw `--format` scan. Command names keep the parser's case-insensitive reading (IMPL is silent).
+  - Rejected: the parser's binding kept for every command, test on a `[SimpleOption]` class (value sets, bare Booleans, flags and removed
+    rows would still need a reader beside it: two owners); a pre-check before the parser binds (a second copy of the rule).
 
 ## Tatara (adopted 2026-11-19)
 
@@ -31698,6 +31797,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     IMPL change); an ordinal `--Name` match (C4: narrower than the parser's rule); the first hit only in the command layer (N4-2); the
     command's console writer (standard output, where `check --Format json` puts its document); copying `-Dll` beside the test
     output's `Kimi.dll` (an output the next `PreserveNewest` build does not restore).
+  - Superseded in part by R9-M13 (2026-11-24): (i) the Reading is now `KimiOptions.Read`'s own rule (names after their leading dashes, ignoring case), pinned by `CommandOptionsTest.ARemovedOptionIsNamedAsTheReaderBindsAnOption`; (ii) `Removed` is `Kind.Removed` rows of the one table (texts kept), `RemovedOption` is deleted, its two readers are the reader's errors; (iii) consequence (4): `check T --Target --LlvmBin` reports "Missing value: --Target" and the removal; (iv) the `--` sentence stands; (v) consequence (2): a help request runs no command and lists no options; (vi) consequence (3) holds for every option word on every command. Consequences (1) and (5) stand.
 - **T-M16 The toolchain root's `windows_x64` removed** (Tatara, 2026-11-22; the plan's unit B6b6, PLAN G1210 and G1228-G1230,
   Q-649, D-1066; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §7; design review C-437 with T's rulings N6-1 and
   N6-2, and T's rulings on C-444's N4-N6 (`units\B6\brief-b6b6-impl.md`); the Middle's implementation review C-452, ACCEPT, C1 met
@@ -31881,6 +31981,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: an exact object check (leafness needs disassembly; a copy of LLVM's decision), a forced entry for leaves (O2 cost), an
     IR `uwtable` check in the build (a second copy of the emitter's rule). The fact's removal is staged as PLAN G1271 states
     (removal condition: Tatara B7b7 lands).
+  - Amended by T-M43 (LinkAmbiguity phase A, 2026-11-24): the staged removal is done (PLAN G1271; B7's ruling 2):
+    `ObjectFacts.HasUnwind`, `inspect.cpp`'s unwind scans (COFF `.pdata`, ELF `.eh_frame`) and `tatara_flag` kind 0 are gone;
+    kind 0 returns -1 and its number is never reused; the tool comparison compares the default-library fact only.
 - **T-M22 Tatara's ELF side: one link export for both LLD drivers, one inspection for COFF and ELF** (Tatara, 2026-11-22; the plan's
   unit B7b1, Q-665, D-1099; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.1 §3.1; the Middle's reviews, C-445
   of the design and C-456 of the implementation, ACCEPT WITH CONDITIONS; Major).
@@ -31898,6 +32001,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     design's first reading: no managed path would link an ELF, and a test calling the export directly would bypass Tatara's lock,
     against `tatara.h`'s "callers serialize calls"); the flavor chosen from the target triple inside Tatara (a consumer deciding by
     syntax what the row publishes, B7b7's `Format`).
+  - Amended by T-M43 (2026-11-24): flag 0 is removed (see T-M21's line); `tatara_inspect` also reads archives.
 - **T-M23 Volatile access is two Raw intrinsics** (Tatara, 2026-11-23; OSF2). `Raw.readVolatile<T>(storage: raw/T) -> T` and
   `Raw.writeVolatile<T>(storage: raw/T, value: T)`, `unsafe`, `T is PrimitiveInteger`, on every target (the owner's O-489 (d) (a),
   plan decisions 36-43; design B10 Revision 2.1 §5; Q-678, D-1127). `IntrinsicId` +2 (`VolatileRead`, `VolatileWrite`; limit 27 → 29
@@ -32553,3 +32657,26 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   windows, never closes them), detection by hashing (a write and a restore pass it), LLD reading memory (its driver takes paths);
   emitting from the optimized module (the plan's §8 candidate 1: about 2 % of a warm O2 build line, but 27 of 6,981 fixtures'
   objects change by the use-list order) stays a later unit on this ABI after an owner question (design §5, §11).
+- **T-M43 Tatara's inspect reads archives** (Tatara, 2026-11-24; PLAN G1329, D-1191, Q-748, D-1244; Major; design
+  `artifacts\handoff\tatara\units\LinkAmbiguity\design.md` Revisions 0-3a, phase A of §5; the Middle's C-514 and C-533, ACCEPT;
+  T's rulings (a), 19, 22, 32 and B7's rulings 1-2). `tatara_inspect` accepts an archive and reads each member as llvm-nm does (COFF
+  and ELF objects; COFF short import members by their import type, code `T X` and `T __imp_X`; bitcode members through
+  `IRObjectFile`, since lld-link links them), and a whole input in the same formats (one predicate: a lone short import member or
+  bitcode object is read as a member is); kinds 1 and 2 hold one block per member in archive order, each ended by an empty line (an
+  object is one member); text kinds **4** (each member's form: `o` relocatable, `i` short import member, `s` linked image), **5** (the
+  defined names whose section admits copies: COFF `IMAGE_SCN_LNK_COMDAT` selecting any, same size, exact match or largest; ELF a
+  `GRP_COMDAT` group's sections; a bitcode member's names in a comdat selecting any, exact match, largest or same size, from its IR
+  symbol table; a `nodeduplicate` bitcode comdat's names are ordinary definitions by T's reading (i) of ruling 32, not by a claim
+  about LLD), **6** (a COFF member's `.drectve` `/include:` and `/alternatename:` references, and a bitcode member's COFF linker
+  options, split by LLVM's Windows command-line tokenizer as lld-link splits them, with LLD's four prefixes `/`, `-`, `/?`, `-?` and
+  any case, a reference missing a name skipped, every other option LLD's: the archive's headers hold no `lld/COFF` parser or option
+  table) and **7** (the archive's symbol index, each entry's member by its position); flag kind **2** (archive). A thin archive fails
+  (1, "thin archive"); a malformed archive fails with LLVM's text (1, Tatara can run again); so do a short import member LLD calls
+  broken ("broken import library": LLD's size and name check, which `COFFImportFile` lacks) and a listed name that is empty or holds
+  a line break (the texts are lines; an empty line ends a block). The index names members by their position in archive order;
+  llvm-lib writes its members in reverse command-line order, so its index, naming the command line's last definer, names the first
+  definer in member order. `Tatara.ObjectFacts` is `(Members, Index, IsArchive, HasDefaultLibrary)`, one representation (an object
+  is `Members[0]`, which `NativeBuild.Inspect` reads). No build reads an archive yet: the read is a published fact whose reader, the
+  native build's dependency step, lands with G1329's phase B (removal condition of that temporary state: phase B lands). Phase B's
+  full entry supersedes this one. Rejected: LLD's private COFF directive parser declared in Tatara (a mirror of an internal ABI), a
+  second managed reader of archives, keeping `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact).

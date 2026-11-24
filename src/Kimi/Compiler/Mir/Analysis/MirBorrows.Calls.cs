@@ -153,8 +153,8 @@ internal sealed partial class MirBorrows
         this.walkComposes = plan.Composes;
         var position = this.slotPositions[written.Output];
         var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
-        // The input's layer and its pointee or referent, the Type the store writes through it at: W's first step reads the Places the
-        // argument names at it (Writes; SPEC 5.7 Calls, 15.6.4), and each holder receives at it (Arrive).
+        // The input's pointee or referent, the Type each holder receives at (Arrive); W's first step reads the Places the argument names
+        // at every layer of the input's key (Writes; SPEC 5.7 Calls, 15.6.4).
         var input = cases.TypeOf(this.Input(call, position));
         BoundType? referent = input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
         // The Φ_E rule's site 1: where the walk's input key lies wholly in the callee's kept binding (KeptKey), the first step is route 1,
