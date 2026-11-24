@@ -63,7 +63,6 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.EffectBoundRejections"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.InferredArrayLengths"] = "never written: the library writes no length hole",
         ["NodeColumns.ArrayInferenceShapes"] = "never written: the library writes no fixed-array annotation with a hole",
-        ["NodeColumns.BaseCallFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.ReceiverOperations"] = "released at the freeze: its library rows are read only by the HIR publisher at the library's publication, before the freeze, and TryGetReceiverOperation refuses a library node (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.MemberSelections"] = "released at the freeze: the library pass's member accesses' sides and selections, its lookups' working state, no reader reads after it (R7-N5 B1b-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.InferredConstructionTargets"] = "released at the freeze: the library pass's construction qualifiers left open for their constructions, its working state, no reader reads after it (R7-N5 B1b-2; TheFreezeReleasesTheLibrarysWorkingState)",
