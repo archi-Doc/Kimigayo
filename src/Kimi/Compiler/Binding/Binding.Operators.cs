@@ -124,14 +124,12 @@ public sealed partial class Binding
                 var decision = this.OperatorApplicabilityOf(unary, operand, null, scope);
                 return decision.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, decision);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
-                if (!this.CheckDestination(unary, unary.Operand, operand, scope) || !this.FitsUpdateResult(unary, unary.Operand, operand))
-                {
-                    return this.FailRoute(unary, unary.Operand, operand, null, scope);
-                }
-
-                // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
-                var update = this.OperatorApplicabilityOf(unary, operand, null, scope);
-                return update.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, update);
+                // SPEC 13.7.1, 23.1.2: the route reads no verdict of the destination, so it is judged whatever the destination gave, its
+                // record beside the destination's; a refused update keeps no Type. Increment and decrement apply to integer and wrapping
+                // integer Types, never to floats (SPEC 13.2).
+                var refused = !this.CheckDestination(unary, unary.Operand, operand, scope) || !this.FitsUpdateResult(unary, unary.Operand, operand);
+                var update = this.OperatorApplicabilityOf(unary, this.UpdateOperand(unary, unary.Operand, operand), null, scope);
+                return update.Failure != BindingFailure.None ? this.FailOperator(unary, unary, update) : Complete(unary, refused ? null : operand);
             case KotoKind.Dereference:
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
                 return operand.IsPointer ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
@@ -172,36 +170,33 @@ public sealed partial class Binding
         }
 
         var bound = this.BindNode(binary.Left, scope, context);
-        var left = assignment ? bound : this.ReadReferent(binary.Left, bound);
-        // SPEC 15.1.6 (R7-E4 rulings 8, 9, 15): a write that names a reference binding's mode (ReferenceBindingAssignment's one decision: an
-        // update, or an `=` to a non-reassignable binding, whatever the value) records it ahead of literal fitting and compound applicability;
-        // an `=` to a reassignable one is a rebind, bound and judged below as any `=`.
-        var referenceBinding = assignment && left?.SafeReferent is not null ? ReferenceBindingAssignment(binary.Left, binary) : null;
-        if (referenceBinding is { } binding && left?.SafeReferent is { } bindingReferent && (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)))
+        var left = !assignment ? this.ReadReferent(binary.Left, bound) : kind == KotoKind.Equals ? bound : this.UpdateOperand(binary, binary.Left, bound);
+        // SPEC 15.1.6 (R7-E4 rulings 8, 9, 15): an `=` that names a reference binding's mode (ReferenceBindingAssignment's one decision: an
+        // `=` to a non-reassignable binding, whatever the value) records it ahead of the value's fit; an `=` to a reassignable one is a
+        // rebind, bound and judged below as any `=`. An update names the mode at its destination check, its route judged below.
+        var referenceBinding = kind == KotoKind.Equals ? ReferenceBindingAssignment(binary.Left, bound, binary) : null;
+        if (referenceBinding is { } binding && IsUnfittedLiteral(binary.Right))
         {
-            var value = this.BindNode(binary.Right, scope, bindingReferent);
-            this.RecordWrite(binary, binding, binary.Left);
-            return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, value, scope);
+            this.BindNode(binary.Right, scope, bound!.SafeReferent);
+            return this.RecordWrite(binary, binding, binary.Left);
         }
 
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
         var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
-        if (kind == KotoKind.Equals && referenceBinding is { } assigned)
+        if (referenceBinding is { } assigned)
         {
             return this.RecordWrite(binary, assigned, binary.Left);
         }
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
-        // SPEC 23.1.2: whether the destination admits the write does not rest on the value, so a failed value does not hide it. SPEC 5.7: a
-        // write admits a `during self` layer's Place only with null at every layer, which the value decides (JudgeHolderPlace).
-        if (assignment && left is not null &&
-            (!this.CheckDestination(binary, binary.Left, left, scope) || (kind != KotoKind.Equals && !this.FitsUpdateResult(binary, binary.Left, left))))
-        {
-            return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, right, scope);
-        }
-
-        if (assignment && left is not null && kind == KotoKind.Equals)
+        // SPEC 13.7.1, 13.7.2, 23.1.2: whether the destination admits the write reads the target only, never the value, and the route and
+        // the value's fit read no verdict of it, so each is judged whatever the other gave, its records beside the other's; a refused node
+        // keeps no Type. SPEC 5.7: a write admits a `during self` layer's Place only with null at every layer, which the value decides
+        // (JudgeHolderPlace).
+        var refused = assignment && bound is not null &&
+            (!this.CheckDestination(binary, binary.Left, bound, scope) || (kind != KotoKind.Equals && !this.FitsUpdateResult(binary, binary.Left, bound)));
+        if (!refused && assignment && bound is not null && kind == KotoKind.Equals)
         {
             this.JudgeHolderPlace(binary.Left, binary.Right, binary);
         }
@@ -213,10 +208,10 @@ public sealed partial class Binding
 
         var result = decision.Failure != BindingFailure.None ? this.FailOperator(binary, binary, decision)
             : left is null || right is null ? Complete(binary, null) : this.CompleteBinary(binary, left, right, scope, decision);
-        // A typed target reaching here was admitted: every refusal above (CheckDestination, a reference binding's mode record) returns at
-        // once and the Holder record fails no node, so a failure recorded since is its value's fit (AdmittedMisfit).
-        SetAdmittedMisfit(binary, misfit: left is not null && binary.BindingFailure != BindingFailure.None);
-        return result;
+        // An admitted typed target's failure recorded since its destination check is its value's fit (AdmittedMisfit): the Holder record
+        // fails no node, and a reference binding's mode record returns above.
+        SetAdmittedMisfit(binary, misfit: !refused && left is not null && binary.BindingFailure != BindingFailure.None);
+        return refused ? Complete(binary, null) : result;
     }
 
     // A literal may receive a Type from the known right operand only after that ordered operation is legal.
@@ -251,14 +246,12 @@ public sealed partial class Binding
             : this.FailOperator(binary, binary, decision);
     }
 
-    // SPEC 23.1.2: the route of a compound assignment or update whose destination failed reads neither the destination's authority nor its
-    // Holder, so it stays a verdict, on the read Type: its failure is the node's other problem. A route a fit alone refuses stays with the
-    // mismatch family (E3).
-    private BoundType? FailRoute(Koto operation, Koto destination, BoundType operand, BoundType? right, BindingScope scope)
-    {
-        var route = this.OperatorApplicabilityOf(operation, this.ReadReferent(destination, operand), right, scope);
-        return route.Failure == BindingFailure.None ? null : this.FailOperator(operation, operation, route);
-    }
+    // SPEC 15.1.6, 13.7.1, 13.3.4: the operand a compound assignment's or update's route reads. An update of a reference binding, whose mode
+    // its destination check records (ReferenceBindingAssignment, the one predicate both read), computes in the read Type its layers reach,
+    // a query that writes no adaptation (a raw pointer is no read Type, so its own Type stays); any other update reads its destination's
+    // Type, as the admitted path does.
+    private BoundType? UpdateOperand(Koto operation, Koto target, BoundType? type)
+        => ReferenceBindingAssignment(target, type, operation) is not null && this.ReadTypeReferent(type, target) is { } read ? read : type;
 
     // SPEC 13.7.1, 3.4, 15.1.5: the one destination check of an assignment, compound assignment, increment or decrement, run once the
     // operands and route have bound, whatever they gave: the target is located with write permission under the path, `let`/`var` and
@@ -273,7 +266,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (type is { SafeReferent: not null } && ReferenceBindingAssignment(target, operation) is { } referenceBinding)
+        if (ReferenceBindingAssignment(target, type, operation) is { } referenceBinding)
         {
             this.RecordWrite(operation, referenceBinding, target);
             return false;

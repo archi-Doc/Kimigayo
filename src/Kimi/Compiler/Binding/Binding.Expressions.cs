@@ -7,13 +7,20 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference. The one decision of a write's code there, from the
-    // binding and the operation (R7-E4 rulings 8, 9, 15): an update through it, and an `=` to it unless it is reassignable, names that mode
-    // and the spellings that bind or update a value instead, whatever the value's form; an `=` to a reassignable one (`var`: on a borrowed
-    // path a reassignable reference) is a rebind, judged as any `=`: its value fits the binding's Type (a borrow, or an owner temporary at
-    // `ref/U`, SPEC 10.2) or is the value's mismatch. A binding whose stored Type is itself a reference, on an owned path, gets the ordinary
-    // mismatch. A guard candidate is a shared layer that grants Read only (SPEC 14.8.3).
-    private static BindingFailure? ReferenceBindingAssignment(Koto target, Koto operation)
+    // binding, the target's Type and the operation (R7-E4 rulings 8, 9, 15), read alike by a plain write, the destination check and an
+    // update's route operand (BindBinary, CheckDestination, UpdateOperand): through a target whose Type has a safe layer, an update, and an
+    // `=` unless the binding is reassignable, names that mode and the spellings that bind or update a value instead, whatever the value's
+    // form; an `=` to a reassignable one (`var`: on a borrowed path a reassignable reference) is a rebind, judged as any `=`: its value fits
+    // the binding's Type (a borrow, or an owner temporary at `ref/U`, SPEC 10.2) or is the value's mismatch. A binding whose stored Type is
+    // itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that grants Read only (SPEC
+    // 14.8.3).
+    private static BindingFailure? ReferenceBindingAssignment(Koto target, BoundType? targetType, Koto operation)
     {
+        if (targetType?.SafeReferent is null)
+        {
+            return null;
+        }
+
         var (mode, symbol) = KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.PatternCandidate } candidate }
             ? (BindingFailure.SharedPathAccess, candidate)
             : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { SafeReferent: not null } type } local } &&
