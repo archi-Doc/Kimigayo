@@ -12,6 +12,9 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private readonly FormationCauseRows formationCauses;
 
+    // PROTOTYPE (E3e Rev 2): the written occurrences JudgeOccurrence judged in this pass (ResetPass empties it).
+    private readonly HashSet<Koto> judgedOccurrences = new(ReferenceEqualityComparer.Instance);
+
     // Conformance verifications and agreements in progress: a limit context, not an obligation (the obligation table holds the paths
     // being verified), read by ResolveConformance alone: inside them a conformance limited by OCC-X stays Unknown.
     private int conformanceChecks;
@@ -26,9 +29,6 @@ public sealed partial class Binding
 
     // FailedWrittenType's child walk, made once (FailedWrittenChild).
     private FailedWrittenChild? failedWrittenChild;
-
-    // PROTOTYPE (E3e Rev 2): the written occurrences JudgeOccurrence judged in this pass (ResetPass empties it).
-    private readonly HashSet<Koto> judgedOccurrences = new(ReferenceEqualityComparer.Instance);
 
     // The change signal (invalidations) at the start of the latest walk of the pass's environments, -1 at the pass's start (ResetPass):
     // a walk that changed the binding moved the signal past it (ValidateConstraintEnvironments).
