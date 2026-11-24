@@ -18,7 +18,8 @@ namespace Kimi.Compiler.Mir;
 // (its Place asks every position after the walk and before any own-step entry it makes).
 // Cost: positions are made on demand, the first time a view asks (none in a view that asks none), and kept per view: a read's by its Place,
 // a borrow's by its location and a whole local's lender by the local, so each store is followed and each position's run copied once per
-// view; the lender chain is a loop, not a recursion. Each store followed and each step copied is Work. Reader: MirBorrows.Addresses' Place (R-C).
+// view; the lender chain is a loop, not a recursion. Each store followed and each step copied is Work. Lent resolves in its own step
+// buffer, so the one step walk may ask it. Readers: MirBorrows.Addresses' Place (R-C); MirBorrows.Puns' PunRead (LentExactly).
 // Must not issue a Loan, carry a value, record a problem, intern projections or compare Types.
 internal sealed partial class MirBorrows
 {
@@ -30,6 +31,7 @@ internal sealed partial class MirBorrows
     private readonly List<int> lenderSteps = []; // Lender: the projections still to take from the Place followed, the next one last.
     private readonly List<int> lenderLocals = []; // Lender: the whole locals passed with no step left, whose lender the walk's is.
     private MirStep[] lentSteps = [];
+    private MirStep[] lentWalk = []; // Lent's own step buffer (Resolved).
     private MirStep[] suffixes = []; // Resolve: the steps after each Deref passed.
     private int[] lentAt = []; // By location: a borrow's exact lent position, -1 for none, or Unmade.
     private int[] lenderOf = []; // By local: the borrow its whole reference holds (Lender), -1 for none, or Unmade.
@@ -47,8 +49,7 @@ internal sealed partial class MirBorrows
             return known;
         }
 
-        this.lending.Clear();
-        var lent = this.Resolve(place.Root, this.placeSteps.Walk(place, reborrow: false, ref this.walk));
+        var lent = this.Resolved(place, reborrow: false);
         this.lentOf.Add((place.Root, place.Projection), lent);
         return lent;
     }
@@ -127,6 +128,50 @@ internal sealed partial class MirBorrows
             lent = lent < 0 || length == 0 ? lent : this.Exact(this.lentRuns[lent].Root, lent, this.suffixes.AsSpan(start, length));
         }
 
+        return lent;
+    }
+
+    // Whether every Place a reference may refer to has an exact lent position: the Place the borrow it holds lends (Lender), as a
+    // Reborrow of it lends, or, for a whole local stored more than once (not an argument: its initial value is the caller's), each
+    // referring store's (MirBorrows.Loans' Referring): a Ref's Place, or the referent of the reference a Reborrow, Copy or Move reads.
+    // Exact, it is a Place the body forms by Type-keeping steps alone (Lender follows no Cast, call or Adt), which its own Type
+    // designates (MirBorrows.Puns' PunRead).
+    private bool LentExactly(MirPlace reference)
+    {
+        this.Lend();
+        if (this.Resolved(reference, reborrow: true) >= 0)
+        {
+            return true;
+        }
+
+        if (reference is not { Root: >= 0, Projection: 0 } || this.body.Locals[reference.Root].Kind == MirLocalKind.Arg ||
+            !this.Referring(reference.Root, out var store) || store < 0)
+        {
+            return false;
+        }
+
+        for (; store >= 0; store = this.referStores[(2 * store) + 1])
+        {
+            ref readonly var statement = ref this.body.Statements[this.referStores[2 * store]];
+            var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
+            var lent = rvalue.Kind == MirRvalueKind.Ref
+                ? this.Resolved(rvalue.Place, reborrow: false) : this.Resolved(this.body.Operands[rvalue.Start].Place, reborrow: true);
+            if (lent < 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Resolve over a Place's walk in Lent's own step buffer, so that the one step walk's buffer stays as it is (PunRead asks inside it).
+    private int Resolved(MirPlace place, bool reborrow)
+    {
+        (this.walk, this.lentWalk) = (this.lentWalk, this.walk);
+        this.lending.Clear();
+        var lent = this.Resolve(place.Root, this.placeSteps.Walk(place, reborrow, ref this.walk));
+        (this.walk, this.lentWalk) = (this.lentWalk, this.walk);
         return lent;
     }
 

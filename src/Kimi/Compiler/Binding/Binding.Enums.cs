@@ -554,7 +554,7 @@ public sealed partial class Binding
                 if (!this.FitsStructurallyAt(result, expected, use))
                 {
                     return !this.FitsTypeAt(result, expected, use, out var contract, null) && contract.IsCondition
-                        ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
+                        ? this.RecordMismatch(use, use, result, expected, contract) : this.RecordTypeMismatch(use, use, result, expected);
                 }
 
                 if (!this.FitsValueAt(result, expected, use, use, out var failure))
@@ -866,9 +866,10 @@ public sealed partial class Binding
 
             // The acquisition and the fit are independent (PLAN G262): a failed acquisition is deferred, the fit judged on the Type it
             // supplies, and the failure explains the payload where its structure fits, as a candidate's does (TryCandidate). A payload's
-            // Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
+            // located limits are judged first (JudgeSelectedInput): a Borrow of a static root fails it, its relations waiting for P42, and a
+            // Shortened Reborrow is recorded beside it, its fit judged.
             var fits = this.AdaptInput(source, FixedPattern.Open(type), actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
-                (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsValueAt(adaptedType, type, source, source, out failure));
+                (this.JudgeSelectedInput(source, kind, type.Semantics, actual, adaptedType) || this.FitsValueAt(adaptedType, type, source, source, out failure));
             var acquisition = this.acquisitionFailure is { } deferred && (fits || this.FitsStructuralPartAt(adaptedType, type, source))
                 ? deferred : default(AcquisitionFailure?);
             if (acquisition is { } failed)
@@ -883,7 +884,9 @@ public sealed partial class Binding
             }
             else if (!fits)
             {
-                this.Fail(use, BindingFailure.TypeMismatch);
+                // A Case construction reports its own failure, with its sides (ruling 14). B1 none: a kept acquisition beside a misfit
+                // takes the condition arm above, never this one (the Front's C-439 c3a-c3c), so no record joins TransferRequired_Kd here.
+                this.RecordTypeMismatch(use, use, adaptedType, type);
             }
 
             if (!fits || acquisition is not null)
@@ -943,7 +946,7 @@ public sealed partial class Binding
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
-                this.Fail(use, ConstraintFailureOf(formation), formation == ConstraintProof.Unknown);
+                this.RecordConstraint(use, formation, [], formation == ConstraintProof.Unknown);
                 continue;
             }
 

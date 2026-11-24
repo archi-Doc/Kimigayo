@@ -367,7 +367,6 @@ internal struct NodeColumns
     internal StampedColumn<BoundArgumentOperation, Binding.PassCounter> ReceiverOperations; // Work: the receiver or storage operation selected for a call or member access, released at the freeze (Binding.ArgumentOperations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
     internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
-    internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
     internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
@@ -449,7 +448,6 @@ internal struct NodeColumns
         this.ReceiverOperations.Grow(length);
         this.InferredArrayLengths.Grow(length);
         this.ArrayInferenceShapes.Grow(length);
-        this.BaseCallFailures.Grow(length);
         this.ResultContexts.Grow(length);
         this.CallableConstraints.Grow(length);
         this.UniqIndexing.Grow(length);
@@ -508,7 +506,6 @@ internal struct NodeColumns
         this.ReceiverOperations.Release();
         this.InferredArrayLengths.Freeze(binding);
         this.ArrayInferenceShapes.Freeze(binding);
-        this.BaseCallFailures.Freeze(binding);
         this.ResultContexts.Release();
         this.CallableConstraints.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
@@ -591,7 +588,6 @@ internal struct NodeColumns
             ReceiverOperations = this.ReceiverOperations.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
             ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
-            BaseCallFailures = this.BaseCallFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
             CallableConstraints = this.CallableConstraints.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),

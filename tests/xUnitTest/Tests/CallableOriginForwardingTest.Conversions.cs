@@ -198,6 +198,14 @@ public partial class CallableOriginForwardingTest
 
     private const string OwnStatic = "func k(p: ref/i32, q: ref/i32, s: ref/i32 during static) -> i32\n";
 
+    private const string R1aApply = "func apply(f: () -> i32) -> i32 => f()\n";
+
+    private const string R1aConstant = "func constant() -> ref/i32 during s => $abort(\"no\")\n";
+
+    private const string R1aPick = "func pick<T>(x: T, y: T) -> T => x@move\n";
+
+    private const string R1aSink = "func sink() -> uniq/(ref/i32 during s) during t => $abort(\"no\")\n";
+
     private const string RcvK = "func k(p: ref/i32, q: ref/i32) -> i32\n    var n: i32 = 0\n";
 
     private const string RcvP = "    let c = func [var n] (x: ref/i32 during p) -> i32\n        n = n + 1\n        return n\n";
@@ -920,6 +928,25 @@ public partial class CallableOriginForwardingTest
     // limited position is its own located limit, the element's as a direct argument's (x-order-i; cdb04ab61 located only e@move).
     [InlineData("x-order-q", RunOrder + OwnK + OwnCq + "    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (c@move, q))\n", "")]
     [InlineData("x-order-i", RunOrder + "func k(p: ref/i32, q: ref/i32) -> i32\n    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    var r3 = p\n    let e2 = func [r3] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (e2@move, q))\n", "Unsupported_Kd e2@move; Unsupported_Kd e@move")]
+    // R1-a (PLAN G1030's call-region part; SPEC 15.3.6, 15.4.4, 15.6.4, 10.1, 15.2.3, 8.3.1): a call's region that its bound call's result
+    // names only covariantly and that has no recorded bound is complete (CallRegionComplete): with no source it has no answer, so the
+    // erasure's Owned is Unknown, the candidate applicable, and its Constraint record at the argument after selection (the class: an
+    // erasure at a call argument over a call region complete at the use, G1030's located limit before: r1a-ocall, a covariant Type
+    // argument r1a-gen, a nested generic call r1a-idt, a recorded lower bound r1a-fill-ord); a later slot solve that keeps it beside
+    // another open region does not reopen it (r1a-fill-later; r1a-fill-inv, the
+    // `let` declaration having fixed it, 15.4.4, though `u@follow = g` makes that open region static). G1030 keeps a region a later write
+    // can bound (r1a-inv, under `uniq`), one with a recorded bound (r1a-fill-before, pick's slot region) and a `var` region a later
+    // assignment may still refute (r1a-var-late, valid by O-406 (a) as v-late-q).
+    [InlineData("r1a-ocall", R1aApply + R1aConstant + "func use()\n    let v = constant()\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-ocall-ok", "func applyG<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return 0\n" + R1aConstant + "func use()\n    let v = constant()\n    let k = func [v] () -> i32 => v@follow\n    let r = applyG(k@ref)\n", "")]
+    [InlineData("r1a-gen", R1aApply + "func mko() -> Option<ref/i32 during s> => $abort(\"no\")\nfunc use()\n    let o = mko()\n    let k = func [o] () -> i32 => 0\n    let r = apply(k)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-idt", R1aApply + R1aConstant + "func idt<T>(x: T) -> T => x@move\nfunc use()\n    let v = idt(constant())\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-fill-ord", R1aApply + R1aConstant + R1aPick + "func use(q: ref/i32)\n    let v = constant()\n    let z = pick(v, q)\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-fill-later", R1aApply + R1aConstant + R1aPick + "func use()\n    let v = constant()\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n    let w = constant()\n    let z = pick(v, w)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-fill-inv", R1aApply + R1aConstant + R1aPick + R1aSink + "func use(g: ref/i32 during static)\n    let v = constant()\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n    let u = sink()\n    let z = pick(v, u@follow)\n    u@follow = g\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-fill-before", R1aApply + R1aConstant + R1aPick + "func use()\n    let v = constant()\n    let w = constant()\n    let z = pick(v, w)\n    let k = func [z] () -> i32 => z@follow\n    let r = apply(k)\n", "Unsupported_Kd k")]
+    [InlineData("r1a-inv", R1aApply + R1aSink + "func use()\n    let u = sink()\n    let k = func [u@move] () -> i32 => 0\n    let r = apply(k)\n", "Unsupported_Kd k")]
+    [InlineData("r1a-var-late", "func run(f: () -> i32) -> i32 => 0\nfunc run<F>(f: F) -> i32 => 1\n" + R1aConstant + "func use()\n    var x: i32 = 1\n    var r = constant()\n    let c = func [r] () -> i32 => r@follow\n    let n = run(c@move)\n    r = x@ref\n", "Unsupported_Kd c@move")]
     public void ApplicabilityJudgesTheErasureRowsConditions(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 

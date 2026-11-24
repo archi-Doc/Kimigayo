@@ -1,4 +1,4 @@
-// Reading an IR module, making a target machine and leaving an output file as opt and llc do (internal.h).
+// Reading an IR module and making a target machine as opt and llc do (internal.h).
 #include "internal.h"
 
 #include "llvm/IR/DiagnosticHandler.h"
@@ -68,39 +68,4 @@ std::unique_ptr<TargetMachine> tatara::createMachine(const Triple& triple, Strin
     }
 
     return std::unique_ptr<TargetMachine>(target->createTargetMachine(triple, cpu, features, options, relocation, code, level));
-}
-
-int tatara::openOutput(TataraResult& outcome, StringRef path, sys::fs::OpenFlags flags, const char* prefix, raw_ostream& message)
-{
-    int descriptor = -1;
-    if (std::error_code error = sys::fs::openFileForWrite(path, descriptor, sys::fs::CD_CreateAlways, flags)) {
-        message << prefix << path << ": " << error.message() << "\n";
-        return -1;
-    }
-
-    outcome.output = path.str();
-    outcome.outputDescriptor = descriptor;
-    return descriptor;
-}
-
-bool tatara::closeOutput(TataraResult& outcome, raw_fd_ostream& stream, const char* prefix, raw_ostream& message)
-{
-    stream.close();
-    outcome.outputDescriptor = -1;
-    if (!stream.has_error()) {
-        return true;
-    }
-
-    message << prefix << outcome.output << ": " << stream.error().message() << "\n";
-    stream.clear_error();
-    return false;
-}
-
-int32_t tatara::removeOutput(StringRef path, raw_ostream& message)
-{
-    if (std::error_code error = sys::fs::remove(path)) {
-        message << "Tatara: cannot remove " << path << ": " << error.message() << "\n";
-    }
-
-    return 1;
 }

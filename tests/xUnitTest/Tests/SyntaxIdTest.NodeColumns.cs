@@ -201,7 +201,7 @@ public partial class SyntaxIdTest
     // would satisfy; PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
     // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
-    // under a holed annotation; BaseCallFailures, a `base` reference that calls nothing;
+    // under a holed annotation;
     // B2a-2's ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
     // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UniqIndexing, a Dictionary's
     // user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
@@ -246,7 +246,6 @@ public partial class SyntaxIdTest
     [InlineData("ReceiverOperations", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
     [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
     [InlineData("ArrayInferenceShapes", "let values: [_ of i32] = []\n")]
-    [InlineData("BaseCallFailures", "open struct Base\n    public let value: i32 = 7\n    public func read(self: ref/Self) -> i32 => 1\nstruct Derived : Base\n    func f(self: ref/Self) -> i32 => base()\n()", DiagnosticCode.InvalidBaseCall_Kd)]
     [InlineData("ReachedThroughBorrow", "struct S1\n    internal var x: Array<i32>\nstruct S2\n    internal var x: Array<S1>\nfunc f(s: S2) -> i32 => s.x[0].x[0]\n")]
     [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("CallableConstraints", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", DiagnosticCode.UnprovenConstraint_Kd)]

@@ -13,7 +13,7 @@ public sealed partial class Binding
     {
         if (this.MemberSideOf((MemberAccessKoto)ReferenceName(use)) != MemberSide.Type)
         {
-            return this.Fail(use, BindingFailure.BoundMethodValue);
+            return this.FailBoundMethodValue(use, KotoHelper.UnwrapParentheses(use).BoundSymbol?.Declaration); // The group holds no symbol: the use's.
         }
 
         BoundType? selected = null;

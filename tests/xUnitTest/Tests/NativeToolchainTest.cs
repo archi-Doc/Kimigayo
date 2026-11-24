@@ -33,7 +33,7 @@ public sealed class NativeToolchainTest : IDisposable
 
     public NativeToolchainTest() => Directory.CreateDirectory(this.directory);
 
-    public void Dispose() => Directory.Delete(this.directory, true);
+    public void Dispose() => TestFolder.Delete(this.directory);
 
     // IMPL 20.4: a staged copy is a snapshot named by its hash, held with read sharing only until its caller releases it (StagedHold): a
     // change of the original does not reach it, a damaged copy is staged again and an intact one reused, and no temporary copy remains.
@@ -824,8 +824,8 @@ public sealed class NativeToolchainTest : IDisposable
     // memcpy, memmove and memset, which every module defines and which save nonvolatile registers at O2; Tatara B7r4) built from its
     // manifest, so no function of the object has an entry: its executable has no exception table, and it builds (dev 9ec1e3d02 refused
     // it: "Invalid _fltused definition, unwind information or hidden default library."); its twin that calls builds with entries; that
-    // twin's IR naming a default library (a linker option), built from its manifest, is refused before the link. An edited IR's
-    // manifest takes its irSha256. On the installed toolchain.
+    // twin's IR naming a default library (a linker option), built from its manifest, is refused before the link, its object released
+    // (Intermediates). An edited IR's manifest takes its irSha256. On the installed toolchain.
     [Theory]
     [InlineData("leaf")]
     [InlineData("call")]
@@ -865,6 +865,7 @@ public sealed class NativeToolchainTest : IDisposable
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, token));
         Assert.Equal("Invalid _fltused definition or hidden default library.", error.Message);
         Assert.False(File.Exists(paths.Executable));
+        File.Delete(paths.Stem + ".obj"); // The failed build released its object (Intermediates).
     }
 
     // IMPL 20.3.2 and 20.4 (a native build reads no toolchain root and uses no search path; T's ruling 1 on LC3 Revision 1, a defect
@@ -1092,6 +1093,80 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
+    // IMPL 20.3.2 "A native build compiles the IR its record names" (Intermediates): the build writes its O2 text and object from the
+    // bytes Tatara returns and holds each from its creation, the text until emit has read it and the object to the build's end, so
+    // emit, the inspection and LLD read what the build wrote. Each row builds Changed at its level and keeps its object, then builds
+    // Held from its manifest, its IR asking LLVM to warn of every stack frame (WarnAtEmit): Tatara reports emit's warning when emit
+    // returns. "obj": at the warning (before the build creates the object) and at "Built: " (after the link, the object still held)
+    // Changed's object is written over Held's; "ll": at the warning (the text still held over emit's call) the text is overwritten.
+    // The last change is refused and the build read its own bytes: the executable prints Held, or the text is the redacted optimized
+    // module; after the build the same change succeeds. Fail-before (StagedHold 6402e91e3): every change succeeded, and the obj rows'
+    // executables printed Changed while their records named Held's IR. On the installed toolchain.
+    [Theory]
+    [InlineData("O0", "obj")]
+    [InlineData("O2", "obj")]
+    [InlineData("O2", "ll")]
+    public async Task AnIntermediateIsHeldFromItsCreationThroughItsLastRead(string level, string file)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var token = TestContext.Current.CancellationToken;
+        var changed = this.Hello("Changed");
+        changed.ProjectFile.Optimization = level;
+        Assert.True(await changed.Build(token), this.console.Text);
+        var project = this.Hello("Held");
+        project.ProjectFile.Optimization = level;
+        Assert.True(await project.Generate(token), this.console.Text);
+        var paths = ArtifactPaths.Create(project);
+        WarnAtEmit(paths);
+        var intermediate = paths.Stem + "." + file;
+        var bytes = file == "obj" ? File.ReadAllBytes(intermediate) : "changed"u8.ToArray();
+        var hooked = false;
+        Exception? refused = null;
+        var error = await Record.ExceptionAsync(() => NativeToolchain.BuildManifest(
+            paths.Manifest,
+            (severity, text) =>
+            {
+                if (severity == DiagnosticSeverity.Warning && !hooked)
+                {
+                    hooked = true;
+                    refused = Record.Exception(Change);
+                }
+                else if (file == "obj" && text.StartsWith("Built: ", StringComparison.Ordinal))
+                {
+                    refused = Record.Exception(Change);
+                }
+            },
+            token));
+
+        Assert.True(hooked, "LLVM reported no stack-size warning.");
+        Assert.Null(error?.Message);
+        // What the build read: the executable's text (the object LLD linked) or the text's first line (the text emit compiled).
+        string read;
+        if (file == "obj")
+        {
+            using var run = Process.Start(new ProcessStartInfo(paths.Executable) { RedirectStandardOutput = true, CreateNoWindow = true })!;
+            read = (await run.StandardOutput.ReadToEndAsync(token)).Trim();
+            await run.WaitForExitAsync(token);
+        }
+        else
+        {
+            read = File.ReadLines(intermediate).First();
+        }
+
+        Assert.True(
+            refused is not null && ArtifactFiles.IsOutputFailure(refused) && read.StartsWith(file == "obj" ? "Held" : "; ModuleID = '/_/project", StringComparison.Ordinal),
+            $"The {file}'s last change was {(refused is null ? "accepted" : "refused")}, and the build read \"{read}\".");
+        Change();
+
+        // The foreign change of the intermediate, Changed's object or another text, by a writer that shares everything (as an editor's or
+        // a sync client's may), so only the hold's own sharing refuses it.
+        void Change()
+        {
+            using var writer = new FileStream(intermediate, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+            writer.Write(bytes);
+        }
+    }
+
     // IMPL 20.4, 21.4.7 (the Tatara plan's decision 24, change W5; B7r4): a supplied static library's member that the link pulls (for
     // codec_add) and that gives a non-weak memcpy beside the module's fails the link whatever the library's name, before kimi_backend in
     // name order or after it: LLD's duplicate between the module's object and the staged library's member; the member that only defines
@@ -1229,8 +1304,8 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // The pair's IR asks LLVM to warn of every stack frame ("warn-stack-size"="0" in the functions' attribute group) and its manifest
-    // takes the edited IR's hash, so Tatara's emit reports a Warning on the build's report after the staging and before the link
-    // (StagedHold's hook).
+    // takes the edited IR's hash, so Tatara's emit reports a Warning on the build's report after the staging and before the link, when
+    // emit has returned and before the build writes the object (StagedHold's and Intermediates' hook).
     private static void WarnAtEmit(ArtifactPaths paths)
     {
         var ir = File.ReadAllText(paths.Ir);
