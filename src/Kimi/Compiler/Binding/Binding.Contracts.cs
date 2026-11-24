@@ -92,8 +92,8 @@ public sealed partial class Binding
     /// representative, not a preference among members.
     /// Two declared directly are distinct conformances that collide (SPEC 8.9.1; the clause has its DuplicateBinding_Kd), and without a
     /// reference several are distinct (SPEC 8.4.3): both are ambiguous, none is selected, and each reader says what an ambiguity is for
-    /// it. `candidates` counts the candidates read: 0 for none; with a selection, the members of the one conformance it represents (a
-    /// reader binding one member, a specification, reads it: BindAssociatedName); without one, more than one, an ambiguity. A query by
+    /// it. `candidates` counts the candidates read: 0 for none; with a selection, the members of the one conformance it represents, whose
+    /// associated Types are one (PrepareAssociatedBindings keys the set's binding by each); without one, more than one, an ambiguity. A query by
     /// declaration reads declarations only and not `scope` (ContractSolver's unthreaded list); a bound reference's selection is a judgment.
     /// </summary>
     private BoundConformance? SelectConformance(BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site, out int candidates)

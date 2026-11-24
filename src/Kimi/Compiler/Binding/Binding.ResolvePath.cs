@@ -793,7 +793,7 @@ public sealed partial class Binding
         }
 
         var environment = scope.EvaluatedPremises;
-        var search = this.SearchAssociated(type, environment, name, contract);
+        var search = this.SearchAssociated(type, environment, name, contract, projection);
         if (search is { Found: { } associated, Alternative: null })
         {
             if (this.UnappliedFamily(associated.Declaration, false))
@@ -1083,7 +1083,7 @@ public sealed partial class Binding
         // they register every one may (G621's early read); a parameter's, a pair target's or `Self`'s candidates are premises, completed
         // later (an override's selection), so its Name stays a projection. The former decides with evidence.
         var associable = IsCore(left) && (left.Declaration is not (StructKoto or EnumKoto) || left.Kind != BindingSymbolKind.Type || !this.impls.Reached(ImplTable.AdmissionPoint.SelfClauses) ||
-            (left.Named.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null).Found is not null));
+            (left.Named.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null, member).Found is not null));
         return new(associable ? PathEnd.Projection : PathEnd.Unresolved, null, member);
     }
 
