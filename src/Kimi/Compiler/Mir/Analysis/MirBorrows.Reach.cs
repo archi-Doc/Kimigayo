@@ -16,13 +16,13 @@ namespace Kimi.Compiler.Mir;
 // ReadPart; SPEC 15.6 Holders: every element with every layer of the key the holder was reached at): there each element is typed, punned or
 // read nothing at each layer, and a holder it writes takes the record of that layer's storage and is read on at the key past it, at that
 // Type's guard; a call input's key is the called function's parameter key (InputKey), so a layer its own Type parameters' bindings hide
-// adds no reach; a holder that may afterwards hold the call's own pointer at a raw layer without an Origin, at a reading key and at one
-// that keeps the declared step alike, reaches storage the body does not own, with that layer's record (OwnPointer; SPEC 15.6.4's
-// composition), and a key with a part that is no layer the walked Type expression writes keeps the declared step for the holder beside the
-// reading of its other layers (PunKey.Declared; SPEC 5.7 Calls). At the first step the reading path's Type is the pointee or referent of
-// each layer of the input's key, one an argument holds by value included (SPEC 15.6 Holders, 5.7 Calls, 15.6.4): a holder whose Place it
-// does not designate (MirBorrows.PunTypes' Designates) is read punned
-// (SPEC 5.2), its state read as well at the guard of that Type's raw pointer raw Places, each a layer read at its own key (Reading; never
+// adds no reach; a holder that may afterwards hold the call's own pointer at a raw layer without an Origin, at a reading key, at one
+// that keeps the declared step and at the call's result key alike (MirBorrows.Calls' KeepResult), reaches storage the body does not own,
+// with that layer's record (OwnPointer; SPEC 15.6.4's composition), and a key with a part that is no layer the walked Type expression
+// writes keeps the declared step for the holder beside the reading of its other layers (PunKey.Declared; SPEC 5.7 Calls). At the first
+// step the reading path's Type is the pointee or referent of each layer of the input's key, one an argument holds by value included (SPEC
+// 15.6 Holders, 5.7 Calls, 15.6.4): a holder whose Place it does not designate (MirBorrows.PunTypes' Designates) is read punned (SPEC 5.2),
+// its state read as well at the guard of that Type's raw pointer raw Places, each a layer read at its own key (Reading; never
 // the whole Type's guard: a part that is no raw Place is not read), and storage the body does not own is reached, with those layers'
 // record, where that guard steps over an `owner` Scalar's byte or a byte that a punned write may not change, a reference's or a handle's
 // (Punned; MirBorrows.PunTypes' PlaceBytes).
@@ -990,8 +990,8 @@ internal sealed partial class MirBorrows
     // Its or Any; never a layer stating an Origin, `static` included, nor a hidden one, which has no past entry), the call may write its own
     // pointer at that layer, also as a Tuple element or a declaration's or an environment's layer, which may address that storage, and
     // store through it at the next one; at the first step and past a holder alike, at a key read layer by layer and at one that keeps the
-    // declared step (ReadAt). A5 judges no Type there: what the call stores takes the layer's record (the A5 value redesign's rule 5),
-    // Binding's entry being the bound: at an Its layer the Reached entry of its pointee (Written's place, Received; a kept pointee's kept
+    // declared step (ReadAt), and at the result's key (MirBorrows.Calls' KeepResult: ResultWrites' entries). A5 judges no Type there:
+    // what the call stores takes the layer's record (the A5 value redesign's rule 5), Binding's entry being the bound: at an Its layer the Reached entry of its pointee (Written's place, Received; a kept pointee's kept
     // entry), at an Any layer the output's All (Written with no place).
     private void OwnPointer(int key, OutputRetention output)
     {

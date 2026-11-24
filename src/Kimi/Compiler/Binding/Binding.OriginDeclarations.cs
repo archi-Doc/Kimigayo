@@ -431,8 +431,7 @@ public sealed partial class Binding
     {
         if (use.BindingFailure == BindingFailure.None)
         {
-            this.prerequisites[use] = (this.prerequisiteStore.Count, 1);
-            this.prerequisiteStore.Add(set);
+            this.RecordRead(use, set);
             this.Fail(use, BindingFailure.MissingName, true);
         }
     }
