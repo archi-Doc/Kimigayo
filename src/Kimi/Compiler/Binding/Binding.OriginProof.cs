@@ -471,20 +471,16 @@ public sealed partial class Binding
     // when none; `slot` itself where the premises cannot be read (MaxOriginPremiseDepth), so A5 keeps its located limit there.
     private BoundOrigin RequiredSlotBound(BoundOrigin slot, Koto use, in CallableInstance comparison, ulong condition)
     {
-        if (this.RentPremises(use) is not { } environment)
+        if (this.BeginRequest(use, comparison, slot, null) is not { } environment)
         {
             return slot;
         }
 
         BoundOrigin bound = BoundOrigin.Static;
-        environment.Comparison = comparison;
-        environment.Shorter = slot;
         try
         {
             var closure = environment.Closure;
-            this.CollectOriginResolvers(environment);
             var target = closure.Node(slot, out _);
-            this.ExtractOriginPremises(environment, use);
             _ = closure.Close(target, -1, condition);
             var first = true;
             for (var node = 0; node < closure.NodeCount; node++)
@@ -499,7 +495,7 @@ public sealed partial class Binding
         }
         finally
         {
-            this.ReturnPremises(environment);
+            this.EndRequest(environment);
         }
 
         return bound;

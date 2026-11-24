@@ -494,8 +494,9 @@ public sealed partial class Binding
                 var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
                 var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
                 var structural = this.ResultStructure();
+                // SPEC 15.3.4, 15.6.5 (R7-O3 O3-A): the result fit is at the value, inside the accessor's body, as a function's (BindFunctionParts).
                 if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
-                    actual is not null && accessor.Result is { } result && !this.FitsValueAt(actual, result, syntax, body, out var failure))
+                    actual is not null && accessor.Result is { } result && !this.FitsValueAt(actual, result, body, body, out var failure))
                 {
                     this.FailMismatch(body, body, actual, result, failure);
                 }

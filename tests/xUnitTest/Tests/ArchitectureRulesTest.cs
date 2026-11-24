@@ -329,6 +329,7 @@ public class ArchitectureRulesTest
         "Binding.Operators.cs:NonNumericOperand=2 kind",
         "Binding.OriginDiagnostics.cs:IsExcludedInputOrigin=1 record",
         "Binding.OriginInheritance.cs:CompleteImplementationOrigins=2 formed",
+        "Binding.OriginPremises.cs:Environment=2 key", // PLAN G1082: a premise session environment's key, a comparison's required signature and each enclosing one.
         "Binding.OriginRequirements.cs:PairOrdinal=1 key",
         "Binding.OwnedConversions.cs:JudgeErasedOwned=2 key", // R7-O2 O2-N's N-B3a: an Owned obligation's Type against the use's published subject, which deferral is the use's last
         "Binding.PairCases.cs:CaseType=2 unchanged",
@@ -500,7 +501,7 @@ public class ArchitectureRulesTest
     // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
     // them (G163); fixed-fixed entailment has one owner, so OriginPremiseClosure.AddEdge has one caller, the premise catalog's writer
     // (AddPremiseEdge, bu20's C0d).
-    [InlineData("Mir reads of an Origin's slot, binder or forming body", "src/Kimi/Compiler/Mir", "*.cs", @"(\b[Oo]rigin|[Aa]tom)\w*\??\.(Slot|Binder|Body)\b|\.EvaluatingBody\b", 0)]
+    [InlineData("Mir reads of an Origin's slot, binder or forming body", "src/Kimi/Compiler/Mir", "*.cs", @"(\b[Oo]rigin|[Aa]tom)\w*\??\.(Slot|Binder|Body)\b|\.DeclaringBody\b", 0)]
     [InlineData("Premise edges written outside the premise catalog's writer", "src/Kimi/Compiler", "*.cs", @"(?<!this)\.AddEdge\(", 1)]
     // DECISIONS BU-105 (R7-D1): BindingSymbol.Resolving is the variable binding's own Running flag until R7-D2 d4 makes the variable
     // binding a declaration query; the header's use of it went to Binding.DeclQuery. A property pattern reads it too.
@@ -509,7 +510,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. None is left: R7-E3 E3b-1 records the unbound slot as a related location (UnboundSlotFact.Note went).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 9)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 7)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 0)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
