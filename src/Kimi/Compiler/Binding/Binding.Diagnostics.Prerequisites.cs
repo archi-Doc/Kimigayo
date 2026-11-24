@@ -16,8 +16,14 @@ namespace Kimi.Compiler;
 // between passes and cleared by ResetPrerequisites with the other Binding facts.
 // A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
 // BindType: BeginConsultation, EndConsultation); a judgment frame (BeginConsultation(use) before a validation check's proof,
-// RequireConstraintInFrame after it; its reads become the outcome's prerequisites only when the outcome is the use's record); a site
-// frame (BeginConsultation(element) around a pass element that publishes facts and records no proof, DropConsultation after it).
+// RequireConstraintInFrame after it); a site frame (BeginConsultation(element) around a pass element that publishes facts and records
+// no proof, DropConsultation after it). The range rule (SPEC 23.1.2), one for both writers of a node's range, EndConsultation (a frame's
+// reads) and RecordRead (a check's one read outside any frame): a check's reads explain only a failure first written by that check, so
+// a failure first written inside a frame, its own proof's write at the use included, takes the frame's reads; a failure the node held
+// when the check began (an earlier check's record: a declaration's validation before the walk binds it, a call's obligation before its
+// Types' frame, a base rule's node an earlier check failed) keeps its own inputs and gains no read, since its failure did not read
+// them. Held is a snapshot taken when the check begins (BeginConsultation; RecordRead, which its check calls before it writes): no check
+// clears its frame's node inside the frame (ClearFailure resets a node before it is bound, or re-fails one outside any frame).
 // This concern preserves the existing cause order and performs no diagnostic rendering.
 // A node of a module the running pass does not bind keeps its columns, the state its own pass left: the recorder writes such a node's
 // state and failure in the pass's entry for it (PassPart.ForeignFailures), and every read of a node's state or failure here and in the
@@ -40,6 +46,9 @@ public sealed partial class Binding
     private uint prerequisiteWalk = FirstQuery;
     private int consultationStart = -1;
     private Koto? consultationNode;
+
+    // Whether the open frame's node held a failure when the frame began (BeginConsultation): the range rule's snapshot.
+    private bool consultationHeld;
 
     // The pass's change signal (ValidateConstraintEnvironments): advanced by every write of what an environment's judgment reads, in the
     // step that writes it: each Fail call, whether or not the node held a failure already (a conformance's, an identity's or an Access
@@ -430,27 +439,32 @@ public sealed partial class Binding
     private bool BuiltOn(Koto parent, Koto place)
         => IsGroup(parent) || (this.NextPathStep(parent, out var next) is not (PathStep.Root or PathStep.Candidate or PathStep.Receiver) && ReferenceEquals(next, place));
 
-    private (int Start, Koto? Node) BeginConsultation(Koto node)
+    private (int Start, Koto? Node, bool Held) BeginConsultation(Koto node)
     {
-        var parent = (this.consultationStart, this.consultationNode);
-        this.consultationStart = this.consulted.Count;
-        this.consultationNode = node;
+        var parent = (this.consultationStart, this.consultationNode, this.consultationHeld);
+        (this.consultationStart, this.consultationNode, this.consultationHeld) = (this.consulted.Count, node, this.RecordedFailure(node) != BindingFailure.None);
         return parent;
     }
 
     // SPEC 23.1.2: a check run outside any frame records its one read as the node's prerequisite range, the range EndConsultation writes
-    // for a frame's reads: CompleteDependent's cause and each Place it rests, RestOnRepeatedSet's set, a failed base rule's part.
+    // for a frame's reads, by the range rule (none for a node that holds a failure): CompleteDependent's cause and each Place it rests,
+    // RestOnRepeatedSet's set, a failed base rule's part.
     private void RecordRead(Koto node, Koto read)
     {
-        this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
-        this.prerequisiteStore.Add(read);
+        if (this.RecordedFailure(node) == BindingFailure.None)
+        {
+            this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
+            this.prerequisiteStore.Add(read);
+        }
     }
 
-    private void EndConsultation(Koto node, (int Start, Koto? Node) parent)
+    // SPEC 23.1.2: a frame's reads become its node's prerequisites when the node did not resolve, by the range rule (none for a node held
+    // when the frame began, whose frame is dropped).
+    private void EndConsultation(Koto node, (int Start, Koto? Node, bool Held) parent)
     {
         var start = this.consultationStart;
         var count = this.consulted.Count - start;
-        if (count != 0 && node.BindingState != BindingState.Resolved)
+        if (count != 0 && !this.consultationHeld && node.BindingState != BindingState.Resolved)
         {
             this.prerequisites[node] = (this.prerequisiteStore.Count, count);
             for (var i = start; i < start + count; i++)
@@ -462,23 +476,23 @@ public sealed partial class Binding
         this.DropConsultation(parent);
     }
 
-    // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame, a site frame): nothing becomes its prerequisite.
-    // A frame's one end (EndConsultation's too): its reads leave the collector, and the enclosing frame is open again.
-    private void DropConsultation((int Start, Koto? Node) parent)
+    // Closes a frame whose reads explain no outcome of its node (a site frame, a proof that answered no Error): nothing becomes its
+    // prerequisite. A frame's one end (EndConsultation's too): its reads leave the collector, and the enclosing frame is open again.
+    private void DropConsultation((int Start, Koto? Node, bool Held) parent)
     {
         this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
-        (this.consultationStart, this.consultationNode) = parent;
+        (this.consultationStart, this.consultationNode, this.consultationHeld) = parent;
     }
 
     // R7-C6 a (PLAN G651 a1; BU-161's third form): the site frame of a judgment's proof query (a QuerySite at a node) asked during the pass
     // with no consultation frame open, opened by the proof channel's outermost scope (BeginProof) and dropped at its close (EndProof), so
     // its reads explain nothing; null where it opens none: inside a frame the frame is the site, Nested and AfterPass name no node, and
     // after the pass no node is failed (Binding.TypeHeight, RefuseProof).
-    private (int Start, Koto? Node)? OpenQuerySite(QuerySite site)
+    private (int Start, Koto? Node, bool Held)? OpenQuerySite(QuerySite site)
         => this.producing && this.consultationNode is null && site.Node is { } node ? this.BeginConsultation(node) : null;
 
     // Closes the frame OpenQuerySite opened, if any.
-    private void CloseQuerySite((int Start, Koto? Node)? parent)
+    private void CloseQuerySite((int Start, Koto? Node, bool Held)? parent)
     {
         if (parent is { } opened)
         {
@@ -491,14 +505,14 @@ public sealed partial class Binding
     // own is read by no check of that call (CompleteUnselected; DECISIONS U4b), and the binding result of a declaration that a container
     // or a Property contains is read by no verdict of it (BindContainedDeclarations, BindVariableCore; DECISIONS G52-1). ResumeConsultation
     // reopens the frame.
-    private (int Start, Koto? Node) SuspendConsultation()
+    private (int Start, Koto? Node, bool Held) SuspendConsultation()
     {
-        var parent = (this.consultationStart, this.consultationNode);
-        (this.consultationStart, this.consultationNode) = (-1, null);
+        var parent = (this.consultationStart, this.consultationNode, this.consultationHeld);
+        (this.consultationStart, this.consultationNode, this.consultationHeld) = (-1, null, false);
         return parent;
     }
 
-    private void ResumeConsultation((int Start, Koto? Node) parent) => (this.consultationStart, this.consultationNode) = parent;
+    private void ResumeConsultation((int Start, Koto? Node, bool Held) parent) => (this.consultationStart, this.consultationNode, this.consultationHeld) = parent;
 
     // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2), R7-E5 c1: whether the open consultation is `site`'s own check. A
     // failure's own checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity

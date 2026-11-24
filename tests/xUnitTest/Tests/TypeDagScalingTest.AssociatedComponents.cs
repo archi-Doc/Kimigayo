@@ -59,7 +59,11 @@ public partial class TypeDagScalingTest
     // conformance check, its early exit included, and no other definition reports a Language record for its Resource failure; the twin
     // fails R1's header instead. C4 ruling 20: the header's own record is independent of the limit (its check reads the header or the
     // layout, not the inference), so the rows read the header codes too: DuplicateBinding_Kd and InvalidInlineLayout_Kd
-    // at the declaration (an entry's third part names its site, else the definition's `Self is RC`).
+    // at the declaration (an entry's third part names its site, else the definition's `Self is RC`). C-545 B2 (F's twins rv1-f and
+    // rv1-s, labelled before any run by SPEC 8.3.3 Limits, 23.1.1-23.1.2): std9-ok whose contract and definitions gain
+    // `g(self: ref/Self, x: ref/Box)`, Box resting on a syntax recovery (lim-box) or well formed (lim-box-s), still holds the one
+    // AnalysisLimit_Kd at R0, which depends on nothing the check found, and no AssociatedTypeInferenceFailed_Kd; records of a check
+    // reading Box (g's comparison) may rest.
     [Theory]
     [InlineData("std9-z1", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R0")]
     [InlineData("std9-z2", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R0")]
@@ -71,6 +75,8 @@ public partial class TypeDagScalingTest
     [InlineData("lim-dup", "AnalysisLimit_Kd@struct R0 {h, h} | DuplicateBinding_Kd@struct R0 {h, h}@struct")]
     [InlineData("lim-layout", "AnalysisLimit_Kd@struct R0 | InvalidInlineLayout_Kd@struct R0@struct")]
     [InlineData("lim-dup-r1", "AnalysisLimit_Kd@struct R0 | DuplicateBinding_Kd@struct R1 {h, h}@struct")]
+    [InlineData("lim-box", "AnalysisLimit_Kd@struct R0")]
+    [InlineData("lim-box-s", "AnalysisLimit_Kd@struct R0")]
     public void TheLimitRecordIsTheComponentsOneAndAStandingErrorStays(string form, string records)
     {
         var ok = Verification.AssociatedInferenceWorkloads.RingWithZ(true, "i32");
@@ -82,6 +88,9 @@ public partial class TypeDagScalingTest
             "lim-dup" => ok.Replace("struct R0\n", "struct R0 {h, h}\n", StringComparison.Ordinal),
             "lim-layout" => ok.Replace("struct R0\n", "struct R0\n    var next: Option<R0>\n", StringComparison.Ordinal),
             "lim-dup-r1" => ok.Replace("struct R1\n", "struct R1 {h, h}\n", StringComparison.Ordinal),
+            "lim-box" or "lim-box-s" => $"open struct L0<X>\n    public var n: i32 = 0\nopen struct Box : L0<i32{(form == "lim-box" ? string.Empty : ">")}\n" +
+                ok.Replace("    func f(self: ref/Self) -> Self.Z\n", "    func f(self: ref/Self) -> Self.Z\n    func g(self: ref/Self, x: ref/Box) -> i32\n", StringComparison.Ordinal)
+                    .Replace("    public func f(self: ref/Self) -> i32 => 0\n", "    public func f(self: ref/Self) -> i32 => 0\n    public func g(self: ref/Self, x: ref/Box) -> i32 => 0\n", StringComparison.Ordinal),
             "conf9-ef" => Verification.AssociatedInferenceWorkloads.RingWithConflict(true),
             "conf9-fe" => Verification.AssociatedInferenceWorkloads.RingWithConflict(false),
             _ => Verification.AssociatedInferenceWorkloads.NestedRing(form == "nest9-ab"),

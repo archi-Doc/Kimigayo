@@ -78,7 +78,7 @@ public sealed partial class Binding
 
     // The site frame the outermost proof scope opened at its judgment's node (BeginProof, OpenQuerySite), closed with that scope (EndProof);
     // null: none opened.
-    private (int Start, Koto? Node)? proofSite;
+    private (int Start, Koto? Node, bool Held)? proofSite;
 
     // What the proof scope in progress read: the slot of the channel's stack at its depth.
     private ref ProofReads ScopeReads => ref this.proofScopes[this.proofNesting];

@@ -36,11 +36,11 @@ public partial class LayoutAttributeBindingTest
     }
 
     // SPEC 6.7.1, 23.1.2: a C-layout struct whose stored Fields lie in two fragments fails the split requirement, independent of a syntax
-    // error in the split Field's initializer (fixing either leaves the other), so both are reported. The struct's own
-    // InvalidTypeFormation_Kd, dependent on the split, stands for it while the Field's record derives from the recovery its initializer
-    // read (ValidateLayoutFragments' Transitional). Twins: the split alone (r1) and the syntax error alone (q1d).
+    // error in the split Field's initializer (fixing either leaves the other), so both are reported: the Field's own record, held before
+    // its frame read the initializer's recovery, does not rest on it (PLAN G1141's q1a), beside the struct's InvalidTypeFormation_Kd,
+    // dependent on the split (ValidateLayoutFragments' Transitional). Twins: the split alone (r1) and the syntax error alone (q1d).
     [Theory]
-    [InlineData("q1a", "#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n\nstruct P\n    var b: i32 = 1 +\n\nfunc use(p: P) -> i32 => 0\n\npublic func main() => ()\n", "InvalidTypeFormation_Kd: struct P | MissingSyntax_Kd: var b: i32 = 1 +")]
+    [InlineData("q1a", "#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n\nstruct P\n    var b: i32 = 1 +\n\nfunc use(p: P) -> i32 => 0\n\npublic func main() => ()\n", "InvalidTypeFormation_Kd: struct P | SplitCLayoutStorage_Kd: var b: i32 = 1 + | MissingSyntax_Kd: var b: i32 = 1 +")]
     [InlineData("r1", "#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n\nstruct P\n    var b: i32 = 0\n\nfunc use(p: P) -> i32 => 0\n\npublic func main() => ()\n", "InvalidTypeFormation_Kd: struct P | SplitCLayoutStorage_Kd: var b: i32 = 0")]
     [InlineData("q1d", "#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n    var b: i32 = 1 +\n\nfunc use(p: P) -> i32 => 0\n\npublic func main() => ()\n", "MissingSyntax_Kd: var b: i32 = 1 +")]
     public void ASplitCLayoutStructIsReportedBesideItsFieldsSyntaxError(string form, string program, string records)
