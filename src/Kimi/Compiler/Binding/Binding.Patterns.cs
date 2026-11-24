@@ -165,6 +165,10 @@ public sealed partial class Binding
                 return this.Fail(match, BindingFailure.TypeMismatch);
             }
 
+            // SPEC 17.3: the operand is acquired as an owned value (a Copy Place copied, a non-Copy Place moved, a temporary
+            // transferred), so the try's Subject is by value and its success payload a part of it (OwnedPart; R7-C6 a, the Middle's
+            // C-520 C1: D2's rule for a transferred Subject).
+            plan.Mode = SubjectMode.ByValue;
             propagation.SelectOption(subject.Symbol == this.Library.Option);
             if (!propagation.SemanticsIndexed)
             {
@@ -651,18 +655,25 @@ public sealed partial class Binding
     }
 
     // SPEC 15.1.6, 3.5.2: the one acquisition rule of a Pattern binding, a match arm's or a for loop's item (SPEC 14.6.2;
-    // CompleteIterationAcquisitions): a binding reached through a reference layer borrows its Place; an owned part is copied or
-    // transferred by its complete stored Type, and one whose Copy proof is Error, neither assumed Copy nor Non-Copy, is Deferred (HIR
-    // Failed). Its plan stays buildable and its coverage stays the Patterns' (Invalid means a located Pattern or guard failure; SPEC
-    // 14.8.4, 23.1.2; DECISIONS R4-M179). A binding has no Copy requirement of its own, so it records no failure: the proof reads the
-    // declaration's failed Constraint, whose record is reported (SPEC 23.1.2; DECISIONS BU-110).
+    // CompleteIterationAcquisitions): a binding reached through a reference layer borrows its Place; a part of an owned Subject or
+    // iteration item (OwnedPart: `match o@move`, a temporary Subject, every loop item) is transferred with its responsibility ("Payload
+    // Copy capability changes no binding Type"), so it Moves and no Copy is asked (R7-C6 a, F's C8 ruling 24: a query is asked only
+    // where a judgment needs its answer). The one binding left with Owned access, a whole-Subject binding of a Subject borrowed in place
+    // or of a reference-typed temporary, has a reference layer's Type, whose Copy its Semantics decides (SPEC 3.5.2): Copied for `ref/`,
+    // `objref/` and raw, Moved (the Reborrow) for `uniq/` and `objuniq/`; its Pattern Type passed ValidatePatternType's recheck, so any
+    // other verdict there is a broken contract (F's C8 ruling 27, amending R4-M179). Its plan stays buildable and its coverage stays the
+    // Patterns' (Invalid means a located Pattern or guard failure; SPEC 14.8.4, 23.1.2).
     private void AcquireBinding(BoundMatch plan, int index)
     {
         var position = plan.PositionStorage[index];
-        var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType!, position.Source) : ConstraintProof.Refuted;
         var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-            : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
-            : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
+            : position.OwnedPart ? PatternAcquisition.Move
+            : this.ProveCopy(position.MatchedType!, position.Source) switch
+            {
+                ConstraintProof.Proven => PatternAcquisition.Copy,
+                ConstraintProof.Refuted => PatternAcquisition.Move,
+                var other => throw new InvalidOperationException($"A whole-Subject binding's reference layer has a {other} Copy proof (F's C8 ruling 27)."),
+            };
         plan.PositionStorage[index] = position with { Acquisition = acquisition };
     }
 
@@ -670,7 +681,7 @@ public sealed partial class Binding
     // (AcquireBinding reads no Copy proof for it): it is acquired where its plan's Patterns are bound, and its Borrow is formed there, before
     // the guards and bodies that state its atom bind (Binding.RawOrigins.Borrows; G147 ruling 37, D3: a Binding past a qualifying pair layer
     // of an owned Subject depends on the Subject Place itself, whose atom no other Borrow fills). Check acquires every binding again, the
-    // owned ones by their Copy proof.
+    // owned ones by AcquireBinding's rule.
     private void AcquireReferenceBindings(BoundMatch plan)
     {
         for (var i = 0; i < plan.PositionStorage.Count; i++)

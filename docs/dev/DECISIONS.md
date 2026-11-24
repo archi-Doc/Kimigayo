@@ -380,6 +380,10 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     native build's code (`src/Kimi/Build/**/*.cs`, `src/Kimi/Unit/Command/TataraCommand.cs` and `BuildCommand.cs`,
     `src/Kimi/Compiler/Core/*Profile.cs`), the eight runner files and the deadline; the LLVM tools and the allowed symbols leave (the
     runner starts no tool).
+  - Amended by T-M40 (NV2 U1, the owner's O-519 (a) and O-522 (a2)): a fixture that is built (its environment or fixture key
+    changed) is not run when its run key (its two executables, the four sidecars, the run scripts and the deadline) equals its
+    passed entry's executed within half of `-ReuseHours` (12 h); it is marked reused and keeps that execution's time, so every
+    fixture still runs at least every 24 hours.
 - **Q17 Open issues: one row per cause and a closing lane in each area** (2026-11-08, owner; [WORKFLOW](WORKFLOW.md) "Open issues";
   the Coordinator's proposal).
   - The owner (verbatim): 「PLANのOpen issuesは、1，2，3の対策で進めてください。」, to the Coordinator's three measures.
@@ -6012,6 +6016,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     G121 (a resolved match is not its case).
   - Amended by BU-251 (D-1163, Q-732, 2026-11-24): a Pattern the late recheck refutes keeps its kind and its test, and its plan,
     Invalid, is built; a failed guard or arm body is that part's own failure, not an Error match.
+  - Amended by R7-M94 (R7-C6 a, F's C8 ruling 27; the Middle's C-520 C2): after D2 and C-520 C1 the only Pattern binding asking Copy
+    is a whole-Subject binding of a Subject borrowed in place or of a reference-typed temporary, a reference layer whose Copy its
+    Semantics decides (Copy for `ref/`, `objref/`, raw; Move for `uniq/`, `objuniq/`); the Deferred and CopyOrMove acquisitions are
+    removed and any other verdict there is a broken contract. The reason that no longer holds: D2 moved every other Owned binding out
+    of the asking domain.
 
 - **R4-M180 An erased substitution binds no Origin (PLAN G157 (30))** (2026-11-07; the owner, R5's dialog, verbatim 「(A)で決定します。」;
   supersedes R5-M39's clause on a substitution's and a closure context's Origins and Inputs) SPEC 8.13.3. `TyCtxt.Erase(Subst)`, and
@@ -8859,6 +8868,9 @@ resumed by R4-M86 (2026-10-20).
   keeps projections unnormalized, so such a part can still reach `CopyProof` in the Place's context; PLAN G187). Skipping the table for
   parts whose components are all leaves recovered nothing (the review's variant), and no cheaper exact form is known, so the cost is
   accepted as recorded against exponential time on shared Types. Not temporary.
+  - Amended by R7-M94 (R7-C8 C6a-2, 2026-11-24): `OperandContexts`' clear parts are kept across one capability request
+    (`clearParts`, a query spanning the outermost request; its fixed inputs the declaration contexts' states, and a moved change
+    signal begins a new query; only a clear answer is kept).
 - **BU-20** (2026-10-21; A5 step 2 plan 2x-R14 under R4-M89) The intrinsic Contract table is a canonical table. `IntrinsicContract.Of`
   (`Binding/KimiLibraryKinds.cs`) has one row per `IntrinsicKind` and the columns Judged, Declaration, SelfRequirement and
   ConformanceJudged. `ProveConstraint`, a Contract's Self clause, `Register`, the conditional Self clause and `VerifyConformance` read
@@ -8939,6 +8951,9 @@ resumed by R4-M86 (2026-10-20).
   owner's X-2 candidate). Not temporary; the guard and the bound keep their conditions above.
   - Amendment (G352, U2.1 round 2, 2026-10-31; BU): `CandidateConstraintFailure` is deleted; a failed candidate's explanation reads
     its trial's clause fact (U2.1 r2-4's frame; PLAN G352).
+  - Superseded in part by R7-M94 (R7-C8 C6a-2, 2026-11-24): the engine's growth guard ("its second growth step Unknown") is deleted,
+    its removal condition met (PLAN G200): a proof past the limit forms a Type past H, BU-134's Resource record.
+    `ComponentSummaries.Reenters` stays (SPEC 8.3.3 Recursion, PLAN G369).
 
 - **BU-23** (2026-10-22; ruling on bu20's verify-first S1; PLAN G178; unit bu20 C0c) A constructor's or destructor's receiver `self` is
   a Place of its own: its symbol takes the reserved slot `ReceiverSlot` (`int.MinValue + 2`, beside `CallResultSlot`,
@@ -11459,6 +11474,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: the held instance alone as a Closure's child (a key holding a capture-free Closure would never pass 128 however its
     instance grows); a table in the collector (a consumer computing its owner's fact); a stored Subst height (+8 B per Subst, for a
     read that costs one load per bound Type).
+  - Amended by R7-M94 (R7-C8 C6a-2, 2026-11-24): the capability proof's growth guard is deleted; the component summary's re-entry
+    test is the one growth guard reading `Height`.
 
 - **BU-72 Binding publishes the Type identity a member or element access was resolved through, `HirTables.IdentityPremise`**
   (2026-10-31; temporary; unit bu94; the owner, verbatim 「(a) 今行う」, on "BU publishes the identity-premise fact before C3, and R5 does
@@ -12613,6 +12630,11 @@ resumed by R4-M86 (2026-10-20).
     `MovedPlace_Kd`; PLAN G471 for the match). Deciding at bind time through the shared rule: one rule, two decision times. The
     binding's own dependent record (G439's review option (a)): longer, and a loop's names are not walked by the pass; a `Fail` on
     them stayed across an edit and rebind and hid their hover (review 1 B-1).
+  - Superseded by R7-M94 (R7-C6 a, F's C8 rulings 24 and 27) for every Pattern binding: a part of an owned Subject or iteration item
+    is transferred with its responsibility (SPEC 15.1.6 "Payload Copy capability changes no binding Type"), Moves and asks no Copy;
+    the one binding left asking Copy, a whole-Subject binding of a Subject borrowed in place or of a reference-typed temporary, is a
+    reference layer whose Semantics decides it (R4-M179's amendment carries the rest). The reason that no longer holds: the rule asked
+    a Copy proof SPEC 15.1.6 does not need.
 
 - **BU-111 Virtual declaration and base call failures record closed causes** (2026-11-06; PLAN G89 follow-up, unit bu176; Major,
   G89-2's shape for the owner's G89 request) SPEC 6.4.1, 6.4.4, 23.1. `Binding.VirtualDeclarations` and `Binding.BaseCalls` kept
@@ -13227,6 +13249,8 @@ resumed by R4-M86 (2026-10-20).
     independent reviews each found a new gap against the code: every enumeration is a second copy of the measure).
   - Extended by BU-161 (PLAN G651 U1): judgment and site frames for the six passes a form reaches past H, and an Invalid environment
     that names its failed node; a refusal with no frame open stays `InternalInvariant_Kd`.
+  - Amended by R7-M94 (R7-C8 C6a-2, 2026-11-24): the dependents rule for a reader of a finished proof has one place,
+    `ProofRestsOnLimit`: a reader failing on an Error verdict whose cause a Resource record failed adds no record of its own.
 - **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
   R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
 - **BU-153 A Type's display does not recurse on the Type (PLAN G348, unit G348-d)** (2026-11-11; Front; Major; design
@@ -13336,6 +13360,10 @@ resumed by R4-M86 (2026-10-20).
     rule); a validator exemption (MIR would then decide a Binding fact).
   - Superseded in part by BU-228 (the sa unit, 2026-11-19): its owner `Binding.CopiesInEveryCase`, the 64-case clause and the readers;
     the rule, Copy evidence per Semantics case, stands, now in the capability engine (`ProveCopy`).
+  - Superseded in part by R7-M94 (R7-C6 a, F's C8 rulings 24, 27 and 29 C3): for a part of a transferred Subject the acquisition is
+    Move whatever its Semantics cases; the owned-part Copy/CopyOrMove labels (PLAN G642) have no remaining domain.
+    `Patterns.AcquireBinding` leaves the Binding readers: it asks Copy only of a reference layer, decided by its Semantics, not per
+    Semantics case.
 - **BU-143 A stated raw layer an input holds by value writes its Origin's members at any holder; Binding publishes the parts an input
   holds at its own address (PLAN G583)** (2026-11-09; Front, Binding; Major, an acceptance mover, with the Middle's G598-2a in one window;
   design review 2 ACCEPT after re-check; C-175; the owner's O-107 (a)) SPEC 15.6.4, 5.7 Calls, 5.2.1.
@@ -24805,6 +24833,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     so whether it is reached depends on the spelling (spm-a, spm-b); c2-4 makes it count the request of the subject's identity class.
     Superseded by R7-M44 (R7-C2c2 c2-4b commit (3)): an extending request counts its identity class's closure from its root; the
     residual is R7-M44's known limit.
+  - Amended by R7-M94 (R7-C8 C6a-2, 2026-11-24; G651 U2c's C2 predicate): after the pass a consultation frame takes no height
+    refusal either: one private predicate for the run's site (`RunSite`) is read by `RefuseHeight` and `RefusedConformance`; a
+    capability work's height refusal after the pass answers Unknown with no record, as the round bound's.
 - **R7-M39 Premise sessions (PLAN G778)** (Front, 2026-11-19; R7-C8 (plan revision 69 (B)); Major, behavior-preserving on every
   program's acceptance and records; one reviewer for design, implementation and cost (`front\notes\N4O\review.md`): design ACCEPT
   WITH NOTES, implementation ACCEPT, the cost fix 9fe0e2317 after the owner's O-299 (a), the merge reviews and the delta re-check of
@@ -26956,7 +26987,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     with dev f227e33ce).
 - **R7-M88 A Field step of no Type is a Place its write defines** (Middle, 2026-11-23; PLAN G1184, Z28's MIR half, Q-713, D-1188, a
   joint unit with the Front's F; Major; design `middle\notes\z28-design.md` Revisions 0-2 and its reviews; the order: M, then the
-  Front's F on M, then M3 on F) SPEC 23.1.2, 6.3.3, 6.3.4, 13.7.1.
+  Front's F on M, then M3 on F, Q-739) SPEC 23.1.2, 6.3.3, 6.3.4, 13.7.1.
   - `MirBody.Selects` is the one projection rule: whether a Place of a Type admits a step, and the Type it selects, none only for a
     stored Field whose own slot failed (BU-234's failed slot: the Field's symbol has no Type, `AdtDef.FieldSlotFailed`; its body-free
     arms are `SelectsPart`). `AdtDef.FieldType` is null for two more causes, an instance part past IMPL A.4's height (R7-T1) and a part
@@ -26977,6 +27008,18 @@ R8-M* and R9-M* by the stage of the recording unit.
     the builder's one reading of a node that may have no Type), none for a Field Place over a failed slot, so a receiver Place the
     step cannot index (a Type parameter an identity premise makes the struct) is its located `Unsupported_Kd` (Z28 unit F's fix
     commit 5de610425).
+  - M3 (Q-739, D-1227; design D3 (d); the Middle's C-493 read, M3-1; the unit M review's N-d): `MirMoveData` gives a constructor's
+    `_0` a Move Path per Field it places, by the one projection rule `Stored` reads (`MirBody.SelectsPart`: a stored Field, of no Type
+    where its own slot failed; a part the instance does not store stays out), no longer per Field with a stored Type. It relies on
+    BU-250's contract: every constructor write into an own Field whose slot failed is that Field Place, but an update's target, a
+    derived write until PLAN G1340 that defines nothing, as A1's update of an Uninitialized typed Field defines nothing (PLAN G1114).
+    Records (Q13): a constructor that never places such a Field reports `UninitializedPlace_Kd` at its exit (q07 4:12, SPEC 6.3.5;
+    also over an unresolved Type, q07m) and one placing a `let` one twice `ReassignedLet_Kd` (q06 6:9, SPEC 11.7), each its typed
+    twin's, independent records dev lost; an update-only constructor (G1340's u7) gains its typed twin's dependent exit record (4:12,
+    G1114), its independent 5:9 still lost (G1340). It supersedes G105's rule for G522's case (commit f5e9aaf7d, R4 #33: "A1 requires
+    no constructor Field without a stored Type"), whose reason no longer holds for a failed slot (`Stored` gave it no Place, so its
+    exit record read the failed input; since R7-M88 and BU-250 it is placed, and the exit check reads no Type); the rule stands for a
+    part the instance does not store.
   - A case reader of a written Place takes rule W (`MirCases.KnownTypeOf`), as A5's receiving part does: the pun rule's `Punning` with
     it (a Place of no Type has no bytes to pun); every other case reader reads a Place the validator states typed, by D1's first-step
     check (a step's prefix or the storage below a layer, `MirCases.Layer` included; a read, moved, borrowed, dropped or called Place,
@@ -26985,7 +27028,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     with F the false `UninitializedPlace_Kd` beside the Weak limit (e.w2, Milestone 41 11:9) and at a later read, and the false
     `MovedPlace_Kd` at a failed Field beside a moved sibling or over a partly moved root go. No acceptance move, no generated code.
   - Amends R7-M64's `Bounded` scope (a whole slot: now every admitted Place of no Type), adds `placing` beside R4-M132's term, and
-    retires the builder's "a Field Binding formed no stored Type for has no Place" (`Stored`, `Construct`). Rejected: a `MirAccess` or
+    retires the builder's "a Field Binding formed no stored Type for has no Place" (`Stored`, `Construct`), and, with M3,
+    `MirMoveData`'s "a child per Field with a stored Type" (G105's f5e9aaf7d filter). Rejected: a `MirAccess` or
     projection kind for the step (a vocabulary entry); a second copy of the struct test in the validator (the prototype's `Admits`
     term); skipping a first step in the admitted-step test (the prototype's `row.Prefix != 0`: `Copy(_1.w)` would pass, D1); admitting
     every null stored part (`AdtDef.FieldType` null; the review's C-ir1 and N-e: it would make a part the instance does not store, one
@@ -27224,6 +27268,65 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open, for C6a-2's design (ruling 22, the review's C1):** `VerifyConformance` names two sites (`SpecifiesContract(.., site)`
     beside `ProveSpecification(.., conformance.Use)`), which differ under `VerifyConformanceAgreement` and `ResolveConformance`'s
     `Nested`; inert in C6a-1.
+  - Amended by R7-M94 (R7-C8 C6a-2, 2026-11-24): the Staging's second commit landed. The site frame's one opener is the outermost
+    `BeginProof` (`OpenQuerySite`); the guard and `CapabilityWork.Parent` are deleted; a query no judgment needs is not asked (an
+    enum payload that is not a bare Place; a part of an owned Subject or iteration item, which Moves); the Open item is closed:
+    `VerifyConformance` names one site, `conformance.Use`.
+- **R7-M94 A capability proof keeps no growth guard; a proof query opens its site frame at the outermost proof scope (PLAN G200, G651
+  a1)** (Front, 2026-11-24; R7-C8 C6a-2, R7-C6 a's second commit, Q-738, D-1226; Major; design `front\notes\C8\design-ud3-d3-c6a.md`
+  R3.2 items 1-6, R3.4, R3.8.4, R3.8.6-7; F's C8 rulings 3-13, 22, 24, 25 and 27-30; the implementation review ACCEPT WITH CONDITIONS,
+  `C8\c6a2\review-impl.md`, C1-C5 met; the Middle's C-520 consent to the MIR goldens) SPEC 8.3.3 Limits, 15.1.6, 3.5, 23.1.2; IMPL
+  A.4. Gives R7-M93's site its behaviour; extends BU-161 (its third frame form), BU-134 and BU-19.
+  - **Site.** During the pass a proof query at a node runs inside the caller's frame, or in a site frame at its node where none is
+    open (BU-161's third form, opened by the outermost `BeginProof` and dropped by its `EndProof`: `OpenQuerySite`, the frame's one
+    opener). A query no judgment needs is not asked: an enum payload's Copy only for a bare-Place payload (B1), and none for a
+    transferred part (below). Inside a capability work the height refusal is `RefuseProof`'s in every pass state (the site's
+    declaration, or with no frame open the work scope's declaration, R7-M38's rule, until G651 a2-a4 frame the step; after the pass
+    Unknown with no record). A frame is a site only while the pass produces its failures: one predicate, `RunSite` (`producing` and
+    the open consultation node), read by `RefuseHeight` and `RefusedConformance` (G651 U2c's C2 predicate, carried here since C6a-2
+    lands first; U2c merges by meaning). A conformance's verification is the path's own judgment: its queries name
+    `conformance.Use`, whichever reader asks (F's C8 ruling 22, C1; `VerifyConformance`'s `site` parameter goes).
+  - **The capability proof's limit.** The growth guard and `CapabilityWork.Parent` are deleted (with them the C3c ratchet's row
+    `Binding.Capabilities.cs:RequestCapability=1 key`, the guard's Type comparison): a proof re-entering a declaration with ever
+    larger arguments forms a Type past H, which BU-134 refuses where it is formed (SPEC 8.3.3: never Unknown, never the order of
+    checks). Inside a capability work the refusal is `RefuseProof`'s per-declaration Refusal (F's C8 rulings 5 (b1) and 6 (F4-a):
+    one record a declaration and limit, `Refusal.Of`); other frames keep BU-161's per-frame records. Supersedes BU-22's growth guard
+    (its removal condition, PLAN G200, is met) and BU-71's capability reader; `ComponentSummaries.Reenters` stays (SPEC 8.3.3
+    Recursion, PLAN G369).
+  - **BU-134's dependents rule, one place** (Revision 2's B2, ruling 9's C1): `ProofRestsOnLimit(site, proof)`: a reader that fails
+    on a verdict other than Proven where the answer is no longer combined (`EndProof` leaves the cause in the channel), and the
+    verdict is an Error whose cause a Resource record failed, adds no record of its own (the refused site keeps its record; another
+    site is its dependent). Readers: the six acquisition and `@copy` Copy readers (`Conversions` x3, `ExplicitAdaptations`,
+    `ObjectViews`, `ValueCalls`' callee), the fill's Copy (`ArrayInference`) and the conformance check (`ValidateConformances`).
+  - **The Copy opt-in's readers** (ruling 25, as ruling 29 C1 corrects it): `NominalCopy`'s Error over a failed Copy opt-in rests on
+    the clause's own record (`CopyDeclaration.Failed`): a reader of the Type's Copy rests on a limit's record (`ProofRestsOnLimit`);
+    after a Language failure its readers keep their records as before (`RestsOnRecoveryOrLimit`).
+  - **BU-19's query, one capability request** (R1.6): `OperandContexts`' clear parts are kept across one capability request
+    (`clearParts`; its fixed inputs the declaration contexts' states, a moved change signal begins a new query; only a clear answer
+    is kept).
+  - **A transferred part Moves** (D2, F's C8 ruling 24; ruling 27; the Middle's C-520 C1 and C2): a part of an owned Subject or
+    iteration item, and a try's success payload (SPEC 17.3), is transferred with its responsibility and Moves with no Copy query
+    (SPEC 15.1.6). The one binding left asking Copy, a whole-Subject binding of a Subject borrowed in place or of a reference-typed
+    temporary, is a reference layer whose Semantics decides it (Copy for `ref/`, `objref/`, raw; Move for `uniq/`, `objuniq/`);
+    `PatternAcquisition.CopyOrMove` and `Deferred` are removed, and any other verdict there is a broken contract. Supersedes in part
+    BU-110, BU-138 (PLAN G642's labels and its reader list) and R4-M179.
+  - **Records (Q13).** Diagnostic snapshot: 0 differences (vs shared-base/e1f8eebcb; vs a61063573 on the merged head). The rows that
+    move are C6a's own: past H, `TypeHeightLimit_Kd` where dev had `UnprovenConstraint_Kd`, `TransferRequired_Kd` or
+    `InternalInvariant_Kd` (g200-*, r-*, t-kfield-R, t-static-R, t-dupc-R, r38-walk-R, r38-keep-R, n4-sel-R; the round bound's line:
+    `TypeIdentityTest`'s tw-copyblk, pqcopy at the use, O-321 (b)); one acceptance move, t-trymove-V (dev `TypeHeightLimit_Kd`, now
+    accepted). B1 (ruling 29 C2) removes dev's `InvalidConstraint_Kd` at a Case construction over a moved or temporary payload whose
+    Type's Copy opt-in failed (`return .Some(b@move)`, `.Some(V2.init())`): SPEC 3.5, a moved or temporary payload needs no Copy;
+    the opt-in keeps its `UnsatisfiedConstraint_Kd` (row e-move-bad-I; the corpus has no such program). Semantic HIR+MIR: 262
+    `@Copy -> @Move` / `copy -> move` lines of a transferred binding in 68 files, and one drop plan (ruling 28): Milestone30's
+    `drop _6 -> bb10 [keep]` becomes `[open ((_ as case 0) open (.0 elide))]`, the Subject temporary's drop eliding the payload the
+    item moved. Milestone30 and MirDropTest's interrupted Array literal with a printing drop give equal output at O0 and O2,
+    destruction order included; the MIR goldens have the Middle's consent (C-520).
+  - Rejected: a clause in `@copy` instead of `ProofRestsOnLimit` (one place, not a form); deriving every further record of a
+    Resource-failed node in `Record` (it would also derive an independent record at the refused node, SPEC 23.1.2); for BU-19's
+    query, a pass-lifetime memo stamped by the change signal (each direct `BindingState` write outside the recorder would need a
+    bump), a field on `BoundType` (shared by compilations) and a per-work cache (still quadratic).
+  - Open: PLAN G651 a2-a4 (the unframed steps); PLAN G1352 (a conformance's dependent `IncompatibleContractImplementation_Kd` beside
+    its witness's own record).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -30997,6 +31100,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     longer null), and the record's `kernel32` member is gone.
     - Amended by T-M35 (LC3 S1, 2026-11-24): a reserved name's staged copy is first looked up by its catalog hash and reused when
       its bytes still have it; `StageInput` stages its resource only when that copy is missing or changed.
+    - Amended by T-M41 (StagedHold, 2026-11-24): `StageInput` returns the staged copy held with read sharing only until the build
+      ends.
   - **A program cannot supply them:** a project's own `kimi_backend` entry (dev's legacy override) is an error, as a `kernel32` entry
     was: `NativeConfiguration.CheckReserved`, one note for both names, both record kinds and any target ("<name> is supplied by the
     compiler. Remove the <name> entry from NativeLibraries."); `EmissionArtifacts.CheckLibraryInputs` (was `ResolveBackend`) only
@@ -31419,6 +31524,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     locks); one lock per output directory; the record and the lock named from the IR (a manifest that fails to read would
     invalidate no record); the stem named from the manifest with any IR accepted (Revision 0: a manifest's IR can be one of its own
     build's files, C-450 B1, and the second derivation stays, B2).
+  - Amended by T-M41 (StagedHold, 2026-11-24): the staged libraries are held by the same rule.
 - **T-M18 The target table** (Tatara, 2026-11-22; the plan's unit B7a2, Q-660, D-1087; Major, behaviour-preserving; design
   `artifacts\handoff\tatara\units\B7\design-b7a.md` Revision 1 §2.1; design review C-440; the Middle's implementation review C-453,
   ACCEPT). Amends R5-M174.
@@ -31996,6 +32102,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   paired p50 B/A 0.977-1.014, peak commit within ±4.3 MiB. Rejected: identity (size, time) instead of the hash; a session's memory
   of what it staged; one rule hashing a program's input before its copy (unmeasured, two reads); a per-user cache outside the
   output; supplies from memory (a `tatara.h` ABI).
+  - Amended by T-M41 (StagedHold, 2026-11-24): `IsStaged` is `HoldStaged`, which returns the copy held with read sharing only until
+    the build ends.
 - **T-M36 The backend archive holds `__chkstk` alone (ABI 3)** (Tatara, 2026-11-24; the plan's unit B7r5, the owner's decision 24,
   Q-725, D-1205; Major; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.5.1 §3.6, §7.2, §7.3; implementation
   review C-506, the Middle's ACCEPT and the Back's ACCEPT WITH CONDITIONS, its C1 met; lands in window W5 with T-M37). Amends T-M8's
@@ -32113,3 +32221,41 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   `/vctoolsversion`/`/winsdkversion` (D1+, <= 0.09 ms). No product byte moves: every native fixture's executable (12,698) and the
   LC3 harness's six rows are byte-equal between base and head. IMPL 20.3.2 and 20.4 unchanged: their sentences now hold for LLD
   too.
+- **T-M40 A rebuilt fixture's run is reused when its executables did not change** (Tatara, 2026-11-24; NV2 U1, the owner's
+  O-519 (a), verbatim 「すべて推奨通り」 (K's OWNER line 11-24 05:35), and O-522 (a2), verbatim 「O-522 a2」 (K's dialog, 11-24
+  08:2x); Q-737, D-1224; Major; design `artifacts\handoff\tatara\units\NV2\u1-design.md`, T's rulings 8-11 and 18
+  (`rulings-rev0.md`); review C-530, the Middle's and the Back's ACCEPT, K's consent on the runner's hunks). Amends Q16. Each
+  `native-results.json` entry gains `runKey`: SHA-256 over the fixture's O0 and O2 executables (each linked record's
+  `executableSha256`, taken when the file the record names has that hash, IMPL 20.3.2), its four sidecars and the run environment
+  (`test-scalars.ps1`, `test-scalar-fixture.ps1`, `test-scalar-process.ps1`, `expected-output.ps1` and the deadline). A fixture
+  the base does not reuse whole is built; after the builds, one whose run key equals its passed base entry's, executed within half
+  of `-ReuseHours` (12 h), is not run: `results.json` marks it `reused` with this run's two linked builds, and its entry keeps the
+  base's log, execution time and run key with this run's fixture key. An entry executed 12-24 h ago is still reused whole when both
+  keys are equal, but a rebuild runs it again and refreshes its execution time (O-522 (a2): the daily execution rides on a rebuild
+  window whenever one falls in that band). Every build and its record checks run; an unlinked build or an executable that is not
+  its record's runs as before. Measured: K's kw336, kw338, kw339 and kw340 rebuilt byte-identical executables for 6,330, 6,349,
+  6,349 and 6,349 fixtures. Stated cost: a reused run keeps its execution time, so a fixture not rebuilt 12-24 h after its last
+  execution expires at 24 h and its next window builds and runs it (design §6 F1, bounded by (a2)). Rejected: keying on the IR or
+  the objects (the executable is what runs); the record's hash without the file (IMPL 20.3.2's windows would pass a lost
+  executable); a run environment without `test-scalars.ps1` (a run-loop change would land unrun in its window); refreshing the
+  execution time on reuse (Q16's daily execution); run reuse for any entry within `-ReuseHours` (O-519 (a) as first decided: the
+  daily execution no longer rode on rebuild windows, F1). Open: PLAN G1351 (the worker runs a linked record's file without the
+  hash check; pre-existing, the Middle's C-530 N-1).
+- **T-M41 A native build holds its staged libraries** (Tatara, 2026-11-24; D-1173, Q-740, D-1228; Major; design
+  `artifacts\handoff\tatara\units\StagedHold\design.md` Revision 0 with `brief-impl-refresh.md` and T's ruling 18
+  (`units\rulings-briefs-20261124.md`); the Middle's implementation review C-531, ACCEPT, which covers the design). Extends T-M17's
+  hold to every file whose hash the record names and Tatara reads afterwards. `HoldStaged` opens a staged copy
+  `<stem>.native/<hash>.lib` (`ArtifactPaths.Native`) with read sharing only and reads its hash from that handle, so IMPL 20.4's
+  reuse check and the hold's start are one step; `StageInput` and `StageSupply` return the held copy, holding it again after a
+  `Replace` (a copy changed or gone before that hold: an `IOException` "The staged library changed before the build held it:
+  <path>.", an output failure); `ResolveLibraries` adds each to `Run`'s list as soon as it is staged, before `CheckSupply` and the
+  manifest's assertion, and `Run`'s `finally` releases them with the private executable's delete, on every outcome. The record's
+  rows, their paths and every executable byte are unchanged; only handle lifetimes move. LLD 22.1.8 opens its inputs with read
+  access, sharing read, write and delete, for read and mapped inputs alike, and drops an input it cannot open without an error
+  (probed, design §3), so the hold admits it and refuses a foreign write, replacement or deletion of a copy, a rename of its folder
+  and an open without read sharing (which would make LLD drop the library silently). The executable needs no hold: its hash is
+  checked at its use (`run --no-build`). IMPL unchanged (IMPL 20.4, `docs/impl/20-compilation-configuration.md:140-141`, "the linker
+  receives those bytes", read as a guarantee over the build's duration; no Kimi command writes a staged copy). Rejected: LLD reading
+  held buffers (a `tatara.h` ABI, as T-M17); a check after the link (a write and a restore pass it); a private folder per build (a
+  copy per build); a byte-range lock (no deletion or rename refused); a hold from the link only (no structural start). Open: PLAN
+  G1353 (a held copy left to finalization when `StageInput`'s temporary delete throws; the Middle's C-531 N-1).
