@@ -489,9 +489,17 @@ public sealed partial class Binding
             return this.Record(call, BindingFailure.NoApplicableCandidate, []);
         }
 
-        // The callee's failure is the call's own record, which reads no argument: an argument judged after it would become its
-        // prerequisite (SPEC 23.1.2), so the arguments are then bound on their own, outside the call's consultation (CompleteUnselected).
-        if (!this.AcquireValueCallee(call, scope, receiver, out var receiverOperation))
+        // SPEC 7.7.3, 10.1.1, 23.1.2: the callee's acquisition and the argument match (MapValueCallArguments) are independent requirements
+        // of the call, neither reading an argument part, so the match is judged whatever the acquisition gave, its record beside the
+        // callee's, which keeps the node's slot. The parts are then bound on their own, outside the call's consultation (CompleteUnselected),
+        // none a prerequisite of either record.
+        var acquired = this.AcquireValueCallee(call, scope, receiver, out var receiverOperation);
+        if (!MapValueCallArguments(call, signature).Valid)
+        {
+            return this.Record(call, BindingFailure.NoApplicableCandidate, []);
+        }
+
+        if (!acquired)
         {
             return null;
         }
@@ -512,13 +520,6 @@ public sealed partial class Binding
 
         var parameters = signature.Components[0];
         var count = ReferenceEquals(parameters, BoundType.Unit) ? 0 : parameters.Components.Count;
-        // SPEC 10.1.1 (MapValueCallArguments): the arguments are matched before any part; the record reads no part, so the parts are then
-        // bound on their own (CompleteUnselected) and none is its prerequisite.
-        if (!MapValueCallArguments(call, signature).Valid)
-        {
-            return this.Record(call, BindingFailure.NoApplicableCandidate, []);
-        }
-
         // A per-call input is one bound by the callee's own binder; an input written over a fixed Origin of the calling body is fitted
         // as written.
         var ownBinder = CalleeBinder(call.Method.BoundType, signature);
