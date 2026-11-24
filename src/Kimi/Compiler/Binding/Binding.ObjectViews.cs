@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<VariableKoto> objectErasureAliases = new();
-    private readonly ObjectErasureFailureRows objectErasureFailures;
 
     internal readonly record struct ObjectErasureEvidence(BoundType Source, BoundType Target, FunctionKoto? Entry);
 
@@ -24,6 +23,9 @@ public sealed partial class Binding
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
         => this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
+    // SPEC 15.8.1: erasing a payload behind a view needs its complete data Type Owned. An Owned proof that read a region with no answer yet
+    // (ValueIn's deferral fact, while a body is bound) is the erasure's obligation (BindingObligationKind.Owned), judged once the body is
+    // bound (JudgeErasedOwned, the one deferral path; the owner's O-481 (b), R7-O2 A1+A2's D2): the view's evidence stands until then.
     private bool RequireObjectErasure(Koto use, Koto operand, BoundType source, BoundType target)
     {
         if (ReferenceEquals(source, target))
@@ -38,15 +40,24 @@ public sealed partial class Binding
             return false;
         }
 
+        var held = this.readsUnboundedRegion;
+        this.readsUnboundedRegion = false;
         var proof = inherited ? ConstraintProof.Proven : this.ProveOwned(source, use);
-        if (proof == ConstraintProof.Proven)
+        var deferred = proof == ConstraintProof.Unknown && this.readsUnboundedRegion && this.formingBody.IsBody;
+        this.readsUnboundedRegion = held;
+        if (proof == ConstraintProof.Proven || deferred)
         {
             this.objectErasures[use] = new(source, target, entry);
+            if (deferred)
+            {
+                this.AddObligation(new(BindingObligationKind.Owned, use, BindingDeadline.BodyOrigins, source));
+            }
+
             return true;
         }
 
-        this.objectErasureFailures[use] = (source, target);
-        this.RequireConstraint(use, proof, this.capabilityMode);
+        // SPEC 15.2.3: the record keeps the proposition `source is Owned` (its Constraint fact), whose subject and Contract it shows.
+        this.RequireConstraint(use, proof, this.capabilityMode, proposition: this.InternConstraint(new(ConstraintKind.Contract, source, contract: this.Library.Owned)));
         return false;
     }
 
@@ -209,7 +220,7 @@ public sealed partial class Binding
                 return this.Record(conversion, BindingFailure.InvalidAssignment, []);
             }
 
-            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
+            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
             {
                 return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }
@@ -254,22 +265,5 @@ public sealed partial class Binding
         // A present row's Source is a Type, so the column's default, an absent row, has none.
         internal bool TryGetValue(Koto use, out ObjectErasureEvidence evidence)
             => (evidence = use.SyntaxOwner is { } table ? table.Hir.Families.ObjectErasures.Get(use.SyntaxId, binding) : default).Source is not null;
-    }
-
-    /// <summary>The `objectErasureFailures` family's one accessor (DECISIONS BU-220): a pass family, the erasure an operation's Owned proof
-    /// did not prove (SPEC 3.4.3), stored by the recorder (RecordedFact, SetRecordedFact) for the constraint failure it explains (a present
-    /// row always has its Source). Its members keep the names its readers use.</summary>
-    private readonly struct ObjectErasureFailureRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(BoundType Source, BoundType Target), PassCounter> Family(ref NodeColumns columns) => ref columns.ObjectErasureFailures;
-
-        internal (BoundType Source, BoundType Target) this[Koto use]
-        {
-            set => binding.SetRecordedFact(use, Family, value);
-        }
-
-        internal bool TryGetValue(Koto use, out (BoundType Source, BoundType Target) erasure)
-            => (erasure = binding.RecordedFact(use, Family)).Source is not null;
     }
 }

@@ -11,8 +11,10 @@ namespace Kimi.Compiler;
 //   fact lives is R7-P2's, the record's form this file's).
 // - Outputs: per party, in this order: Related(declaration, 3) "candidate"; its pair, Actual then Expected at one site (an unfixed
 //   reference's Actual alone); its packed Reason (CandidateFlags, the two receivers a byte each plus one, and above them the receiver
-//   parameter's ordinal plus one), absent when zero; its refuted clause, Related(clause, 4) "constraint" then its Constraint; the
-//   retained implementation, Related(implementation, 6), that keeps its declaring Type as its implementation-side Self (SPEC 8.6.2).
+//   parameter's ordinal plus one), absent when zero; its checked part, Checked (the argument part checked against its expected Type
+//   whose own resolution there failed, SPEC 10.5.1; CheckedFact, read by CheckedPartText only), absent when none; its refuted clause,
+//   Related(clause, 4) "constraint" then its Constraint; the retained implementation, Related(implementation, 6), that keeps its
+//   declaring Type as its implementation-side Self (SPEC 8.6.2).
 // - Invariants: a selection's record is the subject's facts before the first party, then each party's entries after its Related (role 3
 //   or 5) up to the next party Related, in the order its adapter renders them; read by position, never by FactOf or a fixed index; no
 //   Count (the adapter counts the parties). The scratch keeps its capacity, so a warm rebind of a rejected call allocates nothing.
@@ -20,7 +22,9 @@ namespace Kimi.Compiler;
 //   decided); no message text is recorded.
 public sealed partial class Binding
 {
-    // The parties of the selection being recorded, cleared by each recorder after its record (RecordSelection), capacity kept.
+    // The facts of the selection-family record being built: a selection's candidates, a rejected candidate's checked part, a constructor
+    // check's parties, an unbound slot's Type parameter and waiting argument, a pending judgment's argument and slot; cleared by the
+    // recorder after its record (RecordSelection), capacity kept.
     private readonly List<ProblemFact> candidateFacts = [];
 
     // A candidate's closed reasons, the low byte of its packed Reason.
@@ -37,7 +41,7 @@ public sealed partial class Binding
     }
 
     // The one candidate-fact builder: appends one party's facts to the scratch in the invariant's order.
-    private void CandidateFacts(FunctionKoto function, ReferenceConstraintFailure? refuted, CandidateFlags flags = CandidateFlags.None, (Koto At, BoundType Actual, BoundType? Expected)? pair = null, (SemanticsKind Actual, SemanticsKind Required, int Parameter)? receivers = null)
+    private void CandidateFacts(FunctionKoto function, ReferenceConstraintFailure? refuted, CandidateFlags flags = CandidateFlags.None, (Koto At, BoundType Actual, BoundType? Expected)? pair = null, (SemanticsKind Actual, SemanticsKind Required, int Parameter)? receivers = null, CheckedPartFailure? checkedPart = null)
     {
         var site = this.FactSite(function);
         this.candidateFacts.Add(new(ProblemFactKind.Related, site, 3));
@@ -60,6 +64,11 @@ public sealed partial class Binding
         if (reason != 0)
         {
             this.candidateFacts.Add(new(ProblemFactKind.Reason, site, reason));
+        }
+
+        if (checkedPart is { } part)
+        {
+            this.candidateFacts.Add(this.CheckedFact(part));
         }
 
         if (refuted is { } failure)
@@ -94,7 +103,7 @@ public sealed partial class Binding
         {
             var function = (FunctionKoto)this.compilation.SyntaxOf(facts[i++].Site);
             var (actual, expected, reason) = ((BoundType?)null, (BoundType?)null, 0L);
-            var (clause, constraint, implementation) = ((IsKoto?)null, (BoundConstraint?)null, (Koto?)null);
+            var (clause, constraint, implementation, checkedPart) = ((IsKoto?)null, (BoundConstraint?)null, (Koto?)null, (string?)null);
             for (; i < facts.Length && facts[i] is not { Kind: ProblemFactKind.Related, Value: 3 }; i++)
             {
                 switch (facts[i])
@@ -107,6 +116,9 @@ public sealed partial class Binding
                         break;
                     case { Kind: ProblemFactKind.Reason }:
                         reason = facts[i].Value;
+                        break;
+                    case { Kind: ProblemFactKind.Checked }:
+                        checkedPart = this.CheckedPartText(facts[i]);
                         break;
                     case { Kind: ProblemFactKind.Related, Value: 4 }:
                         clause = (IsKoto)this.compilation.SyntaxOf(facts[i].Site);
@@ -176,6 +188,11 @@ public sealed partial class Binding
                     : $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
             }
 
+            if (checkedPart is not null)
+            {
+                label = $"{function.Name}: {checkedPart}";
+            }
+
             if (clause is not null && constraint is not null)
             {
                 var subject = ClauseSubject(constraint) is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
@@ -206,5 +223,19 @@ public sealed partial class Binding
         // literal are distinct problems at distinct locations (SPEC 23.3, 23.1).
         var at = node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
         node.ReportIn(store, problem.Requirement, problem.Code, evidence: [parties], related: candidates, note: shapeNote, at: at, condition: problem.Condition);
+    }
+
+    // SPEC 10.5.1 (PLAN G924 AF-3b): a candidate party's checked part as its Checked fact, written by both party builders (CandidateFacts,
+    // FailCallableCandidates); the Value's packing is BindingReport's (KeepChecked).
+    private ProblemFact CheckedFact(in CheckedPartFailure failure)
+        => new(ProblemFactKind.Checked, this.FactSite(failure.Part), this.report.KeepChecked(failure.Expected, failure.Outcome == CallSelection.Ambiguous));
+
+    // SPEC 10.5.1 (PLAN G924 AF-3b): a rejected candidate's or Callable premise candidate's reason from its Checked fact, the one reader
+    // both adapters call (ReportCandidates, ReportCallableCandidates): the Type, the part and its own resolution's outcome there.
+    private string CheckedPartText(in ProblemFact fact)
+    {
+        var (expected, ambiguous) = this.report.Checked(fact);
+        return $"at {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}, {DiagnosticText.Bound(this.compilation.SyntaxOf(fact.Site).ToString(), 48).Text} " +
+            (ambiguous ? "is ambiguous" : "has no applicable candidate");
     }
 }

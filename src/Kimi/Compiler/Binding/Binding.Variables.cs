@@ -86,7 +86,7 @@ public sealed partial class Binding
                 // unresolved Origin with the stored reference's Origin would reject ref/ref/T
                 // initializers before the ordinary lifetime constraints can be inferred.
                 if (variable.InitializerKoto is { } value && !TyCtxt.StorageMatches(inferred, declared) &&
-                    this.ReadTypeReferent(inferred, scope) is { } referent && TyCtxt.StorageMatches(referent, declared))
+                    this.ReadTypeReferent(inferred, scope, variable) is { } referent && TyCtxt.StorageMatches(referent, declared))
                 {
                     this.adaptations[value] = new(ExpectedAdaptationKind.ReferentRead, referent);
                     inferred = referent;

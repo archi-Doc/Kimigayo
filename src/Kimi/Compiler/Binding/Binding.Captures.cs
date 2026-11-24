@@ -1,11 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Capture formation (SPEC 7.7.2): which binding a capture entry or a use in an omitted-list Closure captures, the environment binding
-// it initializes and how (CaptureAcquisition), and the repeated names of a written list. A failed capture's facts and record belong to
-// Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its call receiver to Binding.ClosureReceivers.
-// Interim (DECISIONS BU-184; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case (until
-// PLAN G254's unit), and a captured pair target or projection under an identity premise (until PLAN G170's query), are a located
-// Unsupported_Kd at a written entry; an omitted list's use of one reports InvalidCaptureBinding_Kd instead.
+// it initializes and how (CaptureAcquisition), the enclosing regions its entries name (BoundClosure.Carried, its own entries' regions;
+// CarryRegions, SPEC 15.6.5, R7-O2 A1; read by Binding.CarriedRegion, which admits them and reads what is carried in turn), and the
+// repeated names of a written list. A literal's written header is bound only in the scope ClosureHeaderScope gives (R7-O2 O2-H), which
+// records first the literal's evaluating body and the regions its written entries name, in its Carried and in each enclosing omitted
+// list's that forwards the entry (ForwardsThrough, the one statement of forwarding); it forms no capture. An omitted list's own entries
+// are its body's uses, recorded as each captures.
+// A failed capture's facts and record belong to Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its
+// call receiver to Binding.ClosureReceivers.
+// Interim (DECISIONS BU-184; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case where the
+// bare Reborrow rule names no layer or has its limit (until PLAN G254's family limit and G254c), and a captured pair target or projection
+// under an identity premise (until PLAN G170's query), are a located Unsupported_Kd at a written entry; an omitted list's use of one
+// reports InvalidCaptureBinding_Kd instead.
 
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -27,6 +34,16 @@ public sealed partial class Binding
             PropertyAccessorKoto accessor => symbol.Name == "self" || (symbol.Name == "value" && accessor.AccessorKind == PropertyAccessorKind.Set),
             _ => false,
         };
+
+    // SPEC 7.7.2 (Nested Closures): a Closure whose scope is `scope` captures only what its immediately enclosing activation owns; an
+    // enclosing omitted list forwards the capture of `source` (`outer`, that Closure), an explicit list or a named function does not
+    // (false). `outer` is null when the immediately enclosing activation owns `source`. The one statement of forwarding: Capture forms the
+    // forwarded capture, ClosureHeaderScope records its regions before a header binds.
+    private static bool ForwardsThrough(BindingSymbol source, BindingScope scope, out FunctionKoto? outer)
+    {
+        outer = scope.Parent?.Function is { } enclosing && !ReferenceEquals(source.Scope.Function, enclosing) ? enclosing : null;
+        return outer is null || (outer.IsAnonymous && outer.Captures is null);
+    }
 
     // SPEC 7.7.2: a binding a Closure body can capture: an outer runtime local or parameter (a pattern's, a loop's, an environment's, an
     // accessor's storage among them); Types, Containers, static storage and named functions are never captures. The one kind rule of an
@@ -105,8 +122,42 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 15.6.5, 7.7.2, 15.4.4 (R7-O2 O2-H; the owner's O-487 (a)): the scope in which every binding of a literal's written header is
+    // bound (BindClosureHeader, the header probe ClosureSignatureFits, FailClosureHeader and the call-signature evidence InferClosureHeader
+    // each take it here, the one way to it), with what the header's Owned proofs read recorded first, so CarriedRegion reads a complete
+    // set at any of them: the literal's plan (created when absent) and its evaluating body, the body the literal is in (this is its one
+    // writer); and the regions its written list's entries name, each entry's binding's Type fixed by its declaration, in the literal's
+    // Carried and in that of each enclosing omitted list that forwards the entry (ForwardsThrough). It forms no environment binding: the
+    // entries' and the forwarded captures' bindings, their slots and their order are Capture's, at the literal's binding
+    // (CaptureEntriesFail), which records the same regions again for nothing (CarryOrigin keeps a region once), so a probe records exactly
+    // the regions of the captures the binding forms. Two exceptions reach only rejected programs (rule W): an entry CaptureEntriesFail
+    // refuses before Capture (a receiver, a helper carrier) has its regions recorded, and a literal a probe reads that is never bound (its
+    // call failed) leaves an enclosing omitted list's Carried with regions it does not capture. An omitted list's own entries are its
+    // body's uses, recorded as each captures (Capture).
+    private BindingScope ClosureHeaderScope(FunctionKoto literal)
+    {
+        var scope = this.scopes[literal];
+        var plan = literal.ClosureStorage ??= new();
+        plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
+        foreach (var capture in literal.Captures ?? [])
+        {
+            if (this.Lookup(capture.Name, scope.Parent!, literal) is not { Type: { } type } source)
+            {
+                continue;
+            }
+
+            this.CarryRegions(plan, type);
+            for (var at = scope; ForwardsThrough(source, at, out var outer) && outer is { ClosureStorage: { } enclosing }; at = this.scopes[outer])
+            {
+                this.CarryRegions(enclosing, type);
+            }
+        }
+
+        return scope;
+    }
+
     // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. Any
-    // Type is held but those of the interim rows below (PLAN G254, G170).
+    // Type is held but those of the interim rows below (PLAN G254's family limit, G254c, G170).
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (entry is null && IsContextualBinding(source))
@@ -114,11 +165,14 @@ public sealed partial class Binding
             return null; // SPEC 7.7.2: contextual self and a setter's value are never captured implicitly.
         }
 
-        if (scope.Parent?.Function is { } outer && !ReferenceEquals(source.Scope.Function, outer))
+        if (!ForwardsThrough(source, scope, out var outer))
         {
-            // A nested closure can capture only what its immediately enclosing activation owns.
-            // An inferred outer environment may forward the capture; an explicit list may not.
-            if (!outer.IsAnonymous || outer.Captures is not null || this.Capture(outer, source, this.scopes[outer]) is not { } forwarded)
+            return null;
+        }
+
+        if (outer is not null)
+        {
+            if (this.Capture(outer, source, this.scopes[outer]) is not { } forwarded)
             {
                 return null;
             }
@@ -144,13 +198,16 @@ public sealed partial class Binding
 
         // Interim rows, as before G721: a located Unsupported_Kd at a written entry, and for an omitted list a function-level Unsupported
         // that surfaces no record, so the use reports InvalidCaptureBinding_Kd (a pre-existing Language error on a valid program).
-        // (1) Removal condition PLAN G254's unit: a pair layer (SPEC 13.5.5) other than the original `s/T` whose bare acquisition the
-        // one plan (SPEC 8.14) makes a Reborrow in some admitted case, the owner case's own included (BareReborrows): a body's bare use
-        // of it would Reborrow there, and no rule contains that Reborrow in the call receiver (G254). The original (a Parameter) was
-        // captured before G721 and stays: its forms are G254's own.
+        // (1) Removal condition: the bare Reborrow rule names an adaptation family (PLAN G254's family limit) and carries its limit
+        // (PLAN G254c). A pair layer (SPEC 13.5.5) other than the original `s/T` whose complete plan (SPEC 8.14, BareAcquisition)
+        // Reborrows in some admitted case where that rule names no layer (ReborrowedType null: a family, OuterOrigin having no family row)
+        // or has its limit (an owner case's target beside an invariant case, which a body's use reaches through the call receiver): a
+        // body's bare use of it would Reborrow there, uncontained in the call receiver. Every other such layer is captured, its uses
+        // named by the rule; an incomplete plan's use has no plan (SPEC 8.14). The original (a Parameter) was captured before G721 and stays.
         // (2) Removal condition PLAN G170's identity query: an abstract Type dev did not capture (a pair target, a projection) where an
         // identity premise is available in scope (HasTypeIdentity, SPEC 8.2.3), which may make it a pair layer that no plan reads.
-        if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareReborrows(type, function)) ||
+        if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareAcquisition(type, function, out var reborrow) == SemanticsMask.None &&
+                reborrow != SemanticsMask.None && (this.ReborrowedType(type, function, BoundOrigin.Static, [], out var limit) is null || limit)) ||
             (type is { IsAbstract: true, IsPairLayer: false, Kind: not BoundTypeKind.Parameter } && HasTypeIdentity(this.ConstraintScope(function))))
         {
             if (entry is { } written)
@@ -194,8 +251,57 @@ public sealed partial class Binding
         environment.Slot = index;
         environment.MutableCapture = false;
         plan.Storage.Add(new(source, environment));
+        this.CarryRegions(plan, type);
         scope.Values[source.Name] = environment;
         return environment;
+    }
+
+    // SPEC 15.6.5 (R7-O2 A1): the Closure's fact of the regions it carries (BoundClosure.Carried): each local region an entry's Type names
+    // (the source's: an entry's binding holds it, by value or under a borrow of its slot) that the evaluating body reads as its value, a
+    // region of that body or one it carries, kept once; each distinct part of the Type once (DECISIONS BU-19).
+    private void CarryRegions(BoundClosure plan, BoundType type) => this.CarryPart(plan, type, this.visitedParts.Begin(this.storageVersion));
+
+    private void CarryPart(BoundClosure plan, BoundType type, uint query)
+    {
+        if (!type.CarriesAnyOrigin)
+        {
+            return;
+        }
+
+        this.CarryOrigin(plan, type.Origin);
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            this.CarryOrigin(plan, type.OriginArguments[i]);
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query))
+            {
+                this.CarryPart(plan, type.Components[i], query);
+            }
+        }
+    }
+
+    // Each region slot `origin` names, kept once: the Closure's own entries' regions alone, with no test of whether one is carried; the
+    // walk admits them, and reads what is carried in turn through their values, once no body is being bound (CarriedRegions; R7-O2
+    // A1+A2: the capture formation reads no candidate).
+    private void CarryOrigin(BoundClosure plan, BoundOrigin? origin)
+    {
+        if (origin is null)
+        {
+            return;
+        }
+
+        if (SlotRegion(origin) && !plan.Carried.Contains(origin))
+        {
+            plan.Carried.Add(origin);
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            this.CarryOrigin(plan, origin.Operands[i]);
+        }
     }
 
     // SPEC 7.7.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
@@ -203,7 +309,7 @@ public sealed partial class Binding
     // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot. A bare entry that
     // Reborrows an enclosing Closure's environment binding `u: uniq/T during o` is contained in that Closure's call receiver too, so its
     // binding has `uniq/T during meet(o, ρ)`, a pair layer that meet on its outer-Origin slot where its plan Reborrows the layer: the bare
-    // Reborrow's one rule, BareReborrowLayer and ReborrowedType (DECISIONS R4-M123's 7.7.2, R4-M126 P4, PLAN G254); an enclosing local's
+    // Reborrow's one rule, ReborrowedType (DECISIONS R4-M123's 7.7.2, R4-M126 P4, PLAN G254); an enclosing local's
     // or parameter's keeps its Type (BU-28).
     private BindingFailure? CaptureEntry(FunctionKoto function, CaptureKoto capture, BindingSymbol source, BindingSymbol environment)
     {
@@ -223,9 +329,9 @@ public sealed partial class Binding
 
                 environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
                 if (bare is HirAcquire.Reborrow or HirAcquire.ByCase && this.EnvironmentContainment(source) is { } receiver &&
-                    this.BareReborrowLayer(type, function) is { } layer)
+                    this.ReborrowedType(type, function, receiver, [], out _) is { } reborrowed)
                 {
-                    environment.Type = this.ReborrowedType(type, layer, receiver);
+                    environment.Type = reborrowed; // No limit: the enclosing entry's row (1) held the source's (Capture).
                 }
 
                 return null;

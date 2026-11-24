@@ -116,7 +116,7 @@ public sealed partial class Binding
         this.AddResults(join);
         var conflict = PartsConflict.None;
         Koto? cause = null;
-        var common = this.CommonTypeByParts(start, this.positionParts.Count, this.ConstraintScope(join), ref conflict, ref cause);
+        var common = this.CommonTypeByParts(start, this.positionParts.Count, this.ConstraintScope(join), join, ref conflict, ref cause);
         shape = this.PartsShape(start, this.positionParts.Count);
         this.ClosePosition(start);
         defaults = (conflict & PartsConflict.Defaults) != 0;
@@ -248,18 +248,25 @@ public sealed partial class Binding
     private void CloseHeldParts(int start) => this.heldParts.RemoveRange(start, this.heldParts.Count - start);
 
     // SPEC 10.5.1 (DECISIONS BU-43): whether a join's results hold a part that awaits its call (AwaitsCall).
-    private bool HoldsPartAwaitingCall(Koto join)
+    private bool HoldsPartAwaitingCall(Koto join) => this.AwaitedKinds(join) != 0;
+
+    // SPEC 10.5.1, 14.9.2 step 1 (ArgFlow ruling 63): whether a join's results hold a part checked against the expected Type at each
+    // candidate's Type, a nested call, construction or Case awaiting its call.
+    private bool HoldsCheckedPart(Koto join) => (this.AwaitedKinds(join) & ((1 << (int)PartKind.Call) | (1 << (int)PartKind.Case))) != 0;
+
+    // The kinds of the parts of a join's results that await their call (AwaitedKind), one bit each.
+    private int AwaitedKinds(Koto join)
     {
         var start = this.positionParts.Count;
         this.AddResults(join);
-        var holds = false;
-        for (var i = start; !holds && i < this.positionParts.Count; i++)
+        var kinds = 0;
+        for (var i = start; i < this.positionParts.Count; i++)
         {
-            holds = this.AwaitsCall(this.positionParts[i]);
+            kinds |= this.AwaitedKind(this.positionParts[i]) is { } kind ? 1 << (int)kind : 0;
         }
 
         this.ClosePosition(start);
-        return holds;
+        return kinds;
     }
 
     // The first aggregate part of [start, end), which stands for the position's shape; null when there is none.
@@ -315,7 +322,7 @@ public sealed partial class Binding
 
     // SPEC 14.9.2 step 2: the common Type of the typed parts of [start, end), literals of it (BesideLiterals) and safe reference layers
     // over it included; `typed` tells whether there is one; null when there is none or they conflict.
-    private BoundType? PositionType(int start, int end, BindingScope scope, out bool typed)
+    private BoundType? PositionType(int start, int end, BindingScope scope, QuerySite site, out bool typed)
     {
         var types = this.partTypes;
         types.Clear();
@@ -331,9 +338,9 @@ public sealed partial class Binding
         }
 
         typed = types.Count > 0;
-        var common = typed ? this.SelectCommonType(types, scope, out _) : null;
+        var common = typed ? this.SelectCommonType(types, scope, site, out _) : null;
         types.Clear();
-        return literal ? this.BesideLiterals(common, scope) : common;
+        return literal ? this.BesideLiterals(common, scope, site) : common;
     }
 
     // A typed part of a position, PositionType's (neither a literal nor an aggregate, with a supplied Type): its Type, which its
@@ -346,7 +353,7 @@ public sealed partial class Binding
     // length, Dictionaries by key and value); without one, its literals' defaults' (SPEC 10.2); with no part, Never. A failed part
     // (PartFailed) is removed from the position, `cause` receiving the first, and the formation runs over the others, every position
     // for its conflicts (SPEC 23.1.2). Null when a conflict or a failed part prevents it, or a part is still unbound without waiting.
-    private BoundType? CommonTypeByParts(int start, int end, BindingScope scope, ref PartsConflict conflict, ref Koto? cause)
+    private BoundType? CommonTypeByParts(int start, int end, BindingScope scope, QuerySite site, ref PartsConflict conflict, ref Koto? cause)
     {
         for (var i = start; i < end;)
         {
@@ -363,7 +370,7 @@ public sealed partial class Binding
             }
         }
 
-        var common = this.PositionType(start, end, scope, out var typed);
+        var common = this.PositionType(start, end, scope, site, out var typed);
         if (typed)
         {
             conflict |= common is null ? PartsConflict.Typed : PartsConflict.None;
@@ -387,7 +394,7 @@ public sealed partial class Binding
                 {
                     var child = this.positionParts.Count;
                     this.AddPartsAt(start, end, i);
-                    var part = this.CommonTypeByParts(child, this.positionParts.Count, scope, ref conflict, ref cause);
+                    var part = this.CommonTypeByParts(child, this.positionParts.Count, scope, site, ref conflict, ref cause);
                     this.ClosePosition(child);
                     formed &= part is not null;
                     children[i] = part!;
@@ -401,14 +408,14 @@ public sealed partial class Binding
             }
         }
 
-        common = this.DefaultsType(start, end, scope, out var conflicts);
+        common = this.DefaultsType(start, end, scope, site, out var conflicts);
         conflict |= conflicts ? PartsConflict.Defaults : PartsConflict.None;
         return common;
     }
 
     // SPEC 14.9.2 step 3, 10.2: the common Type of the literals' defaults of [start, end), Never with no part; `conflicts` tells whether
     // they conflict.
-    private BoundType? DefaultsType(int start, int end, BindingScope scope, out bool conflicts)
+    private BoundType? DefaultsType(int start, int end, BindingScope scope, QuerySite site, out bool conflicts)
     {
         conflicts = false;
         var types = this.partTypes;
@@ -426,7 +433,7 @@ public sealed partial class Binding
             return end == start ? BoundType.Never : null;
         }
 
-        var common = this.SelectCommonType(types, scope, out _);
+        var common = this.SelectCommonType(types, scope, site, out _);
         types.Clear();
         conflicts = common is null;
         return common;

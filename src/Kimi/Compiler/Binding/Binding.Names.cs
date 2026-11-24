@@ -108,7 +108,7 @@ public sealed partial class Binding
         if (symbol.ConditionalDeclaration is not null && symbol.Kind != BindingSymbolKind.Function)
         {
             var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
-            var proof = this.ProveMemberConditions(symbol, conditionalType, scope);
+            var proof = this.ProveMemberConditions(symbol, conditionalType, scope, node);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(node, proof, this.capabilityMode);
@@ -212,7 +212,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (!operation.IsStandard || (update && !property.Setter.IsStandard))
+            if (!DirectAccess(node, property))
             {
                 if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) &&
                     (pathSelection.Path is not null || this.ObjectCases(sourceType, scope, out _) != SemanticsMask.None) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
@@ -240,8 +240,8 @@ public sealed partial class Binding
                     input = this.PropertyUpdateInput(node, updateExpression);
                 }
 
-                if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
-                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
+                if ((!StorageAccess(node, operation) && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
+                    (update && !StorageAccess(node, property.Setter) && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
                 {
                     return null;
                 }

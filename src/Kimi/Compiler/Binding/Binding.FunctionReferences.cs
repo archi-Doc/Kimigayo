@@ -183,7 +183,7 @@ public sealed partial class Binding
 
             if (pendingProof)
             {
-                return pending is { } fact ? this.FailClauseRecord(use, fact, unresolved: false) : this.Fail(use, BindingFailure.UnprovenConstraint);
+                return pending is { } fact ? this.FailClauseRecord(use, fact, unresolved: false) : this.RecordConstraint(use, ConstraintProof.Unknown, []);
             }
 
             var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);
@@ -405,7 +405,7 @@ public sealed partial class Binding
             if (this.InferReferenceSlots(symbol, function, required, frame, container, true, true, explicitReference) &&
                 (explicitReference is null || this.ExplicitReferenceAgrees(explicitReference, frame, count, true, function, scope)))
             {
-                if (ReferenceSlotsComplete(function, frame.Types, frame.Lengths) && (proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths)) != ConstraintProof.Proven)
+                if (ReferenceSlotsComplete(function, frame.Types, frame.Lengths) && (proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, use, frame.Lengths)) != ConstraintProof.Proven)
                 {
                     this.referenceSlotFailure = (-1, ReferenceSlotFailure.Constraint);
                 }
@@ -438,7 +438,7 @@ public sealed partial class Binding
             }
         }
 
-        proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths);
+        proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, use, frame.Lengths);
         var parameters = required.Components[0];
         var binder = required.Binder;
         for (var i = 0; i < count; i++)
@@ -589,7 +589,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!(this.IsSubtype(written, bound) && this.IsSubtype(bound, written)) && !(commonOrigins && this.CommonOriginType(written, bound, out _) is not null))
+                if (!(this.IsSubtype(written, bound) && this.IsSubtype(bound, written)) && !(commonOrigins && this.CommonOriginType(written, bound, explicitReference, out _) is not null))
                 {
                     return false;
                 }
@@ -710,7 +710,7 @@ public sealed partial class Binding
                 }
             }
 
-            return slot is { } found && this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths) == ConstraintProof.Proven &&
+            return slot is { } found && this.ReferenceArgumentProof(function, frame.Types, scope, container, use, frame.Lengths) == ConstraintProof.Proven &&
                 this.FunctionReferenceFits(use, symbol, function, required, scope, boundFrame: frame, presolved: true) ? (found.Slot, found.Parameters) : null;
         }
         finally
@@ -721,18 +721,18 @@ public sealed partial class Binding
     }
 
     // A substitution must be a valid complete Type, and the Constraints hold for it, as for a call (SPEC 8.1.3, 10.1 step 5).
-    private ConstraintProof ReferenceArgumentProof(FunctionKoto function, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? container, ReadOnlySpan<BoundLength?> lengths = default)
+    private ConstraintProof ReferenceArgumentProof(FunctionKoto function, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? container, QuerySite site, ReadOnlySpan<BoundLength?> lengths = default)
     {
         var count = function.GenericArguments.Count;
-        var proof = this.CheckConstraints(function.TypeConstraints, SubstitutionOf(function, container, arguments[..count], lengths.IsEmpty ? default : lengths[..count]), scope);
+        var proof = this.CheckConstraints(function.TypeConstraints, SubstitutionOf(function, container, arguments[..count], lengths.IsEmpty ? default : lengths[..count]), scope, site);
         var clauses = this.TakeUnknownFact(); // The clause list's U fact, for the reference's record.
         var held = this.HoldClause(null); // Each clause list's clause fact (G351a), for the reference's record and its trial's (G352).
-        proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope), true);
+        proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope, site), true);
         held = this.HoldClause(held);
-        proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
+        proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function, site), true);
         if (container is not null)
         {
-            proof = CombineProof(proof, this.CheckTypeConstraints(container, scope), true);
+            proof = CombineProof(proof, this.CheckTypeConstraints(container, scope, site), true);
             held = this.HoldClause(held); // A Type's formation leaves its clause fact (G354 (2)).
         }
 
@@ -740,7 +740,7 @@ public sealed partial class Binding
         {
             var argumentProof = function.GenericArguments[i] is LengthParameterKoto
                 ? i < lengths.Length && lengths[i] is { } length && this.ProveLength(length, scope.Function) ? ConstraintProof.Proven : ConstraintProof.Refuted
-                : this.CheckTypeConstraints(arguments[i]!, scope);
+                : this.CheckTypeConstraints(arguments[i]!, scope, site);
             proof = CombineProof(proof, argumentProof, true);
             held = this.HoldClause(held);
         }
@@ -816,7 +816,7 @@ public sealed partial class Binding
             // Keep Unknown distinct from Refuted so another reference cannot win by missing proof.
             if (frame is null && !presolved)
             {
-                proof = this.ReferenceArgumentProof(function, [], scope, container);
+                proof = this.ReferenceArgumentProof(function, [], scope, container, use);
             }
 
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)

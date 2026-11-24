@@ -33,7 +33,7 @@ public sealed partial class Binding
                 var type = this.BindType(syntax, scope);
                 if (mode is { } bindingMode && type is not null)
                 {
-                    this.RequireConstraint(syntax, this.CheckTypeConstraints(type, scope), bindingMode);
+                    this.RequireConstraint(syntax, this.CheckTypeConstraints(type, scope, syntax), bindingMode);
                 }
             }
         }

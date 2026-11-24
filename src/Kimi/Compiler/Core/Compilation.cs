@@ -42,6 +42,15 @@ public partial class Compilation
         ("release", static (_, _, debug) => new(!debug)),
     ];
 
+    // The Kimi library's Conditions in a compilation without a target (the Tatara plan's F1 (a), B7b6): windows-x64's built-in Conditions
+    // under the default preparation (Debug off, as KimiLibrary.Of's freeze), SPEC 22 ¶1's validity basis, as DECISIONS BU-130 derives the
+    // target-less width from the profile's target. Only the library's Kotonoha reads them: its declarations are selected by Conditions
+    // (Kimi.Windows where `windows` holds), and only tests, benchmarks and the library store's TargetTriple.Invalid key make a compilation
+    // without a target (every product path prepares one before any Binding, Project.CheckFrontEnd), so this never decides a user
+    // program's validity; a program source keeps the compilation's own Conditions (none: its Condition Names stay unknown).
+    private static readonly IReadOnlyDictionary<string, BasicValue> TargetlessLibraryConditions = BuiltInConditions(
+        TargetTriple.Parse(TargetProfile.Windows.Target), IrTarget.Create(TargetTriple.Parse(TargetProfile.Windows.Target)), debug: false);
+
     /// <summary>Gets the version and deterministic module identity of this compiler build.</summary>
     public static string CompilerVersion { get; } =
         $"{CompilerRelease.Version} ({typeof(Compilation).Module.ModuleVersionId:D})";
@@ -296,12 +305,7 @@ public partial class Compilation
         {
             // Rebuild target-dependent conditional compilation variables.
             var debug = this.Project.KimiOptions.Debug;
-            var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal);
-            foreach (var (name, value) in Conditions)
-            {
-                variables.Add(name, value(targetTriple, irTarget, debug));
-            }
-
+            var variables = BuiltInConditions(targetTriple, irTarget, debug);
             for (var i = 0; i < (settings?.Count ?? 0); i++)
             {
                 variables.Add(settings![i].Name, settings[i].Value);
@@ -383,8 +387,22 @@ public partial class Compilation
 
     internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {
-        var variables = this.moduleVariables?.GetValueOrDefault(koto.CodeContext.Kotonoha) ?? this.Variables;
+        var module = koto.CodeContext.Kotonoha;
+        var variables = this.moduleVariables?.GetValueOrDefault(module) ??
+            (module.Syntax.IsLibrary && this.TargetTriple == TargetTriple.Invalid ? TargetlessLibraryConditions : this.Variables);
         return variables.TryGetValue(koto.IdentifierName, out basicValue);
+    }
+
+    // The built-in Conditions of a target and a Debug setting, one value per row of the one table.
+    private static Dictionary<string, BasicValue> BuiltInConditions(TargetTriple triple, IrTarget target, bool debug)
+    {
+        var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal);
+        foreach (var (name, value) in Conditions)
+        {
+            variables.Add(name, value(triple, target, debug));
+        }
+
+        return variables;
     }
 
     private static bool IsCondition(string name)

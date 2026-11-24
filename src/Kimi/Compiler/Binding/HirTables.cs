@@ -332,6 +332,7 @@ internal struct NodeColumns
     internal PagedColumn<BoundOrigin?[]?> OpenOrigins; // Kept: a source's open regions, a KeyedRow by key (Binding.OpenOrigins.cs).
     internal StampedColumn<BoundOrigin[]?, Binding.EditCounter> AssociatedOrigins; // Edit: an associated Type declaration's Origin parameters (Binding.AssociatedOrigins.cs).
     internal StampedColumn<Binding.ObjectErasureEvidence, Binding.PassCounter> ObjectErasures; // Pass: an operation's or immutable alias's erased-view evidence (Binding.ObjectViews.cs).
+    internal StampedColumn<Binding.DeferredDefault?, Binding.PassCounter> DeferredDefaults; // Pass: a result slot's deferred default, its atom and inputs (Binding.Origins.Annotations.cs).
     internal StampedColumn<BoundType?, Binding.PassCounter> InheritedOriginTypes; // Pass: the inherited contract's Type an omitted Origin takes (Binding.OriginInheritance.cs).
     internal StampedColumn<bool?, Binding.PassCounter> DeferredConstraints; // Pass: whether a clause waits for the conformances (Binding.Constraints.cs).
     internal StampedColumn<BoundMatch?, Binding.PassCounter> Matches; // Pass: the plan of a match the pass indexed (Binding.Patterns.cs).
@@ -367,7 +368,6 @@ internal struct NodeColumns
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
     internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
     internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
-    internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
     internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
@@ -419,6 +419,7 @@ internal struct NodeColumns
         this.Matches.Grow(length);
         this.Adaptations.Grow(length);
         this.ObjectErasures.Grow(length);
+        this.DeferredDefaults.Grow(length);
         this.OriginDeclarations.Grow(length);
         this.DiscoveredOrigins.Grow(length);
         this.OriginRequirementNodes.Grow(length);
@@ -449,7 +450,6 @@ internal struct NodeColumns
         this.InferredArrayLengths.Grow(length);
         this.ArrayInferenceShapes.Grow(length);
         this.BaseCallFailures.Grow(length);
-        this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
         this.CallableConstraints.Grow(length);
         this.UniqIndexing.Grow(length);
@@ -488,6 +488,7 @@ internal struct NodeColumns
         this.ImplicitConstructorDecisions.Freeze(binding);
         this.AssociatedOrigins.Freeze(binding);
         this.ObjectErasures.Freeze(binding);
+        this.DeferredDefaults.Freeze(binding);
         this.InheritedOriginTypes.Freeze(binding);
         this.DeferredConstraints.Freeze(binding);
         this.Matches.Freeze(binding);
@@ -508,7 +509,6 @@ internal struct NodeColumns
         this.InferredArrayLengths.Freeze(binding);
         this.ArrayInferenceShapes.Freeze(binding);
         this.BaseCallFailures.Freeze(binding);
-        this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
         this.CallableConstraints.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
@@ -561,6 +561,7 @@ internal struct NodeColumns
             Matches = this.Matches.Renumbered(length),
             Adaptations = this.Adaptations.Renumbered(length),
             ObjectErasures = this.ObjectErasures.Renumbered(length),
+            DeferredDefaults = this.DeferredDefaults.Renumbered(length),
             OriginDeclarations = this.OriginDeclarations.Renumbered(length),
             DiscoveredOrigins = this.DiscoveredOrigins.Renumbered(length),
             OriginRequirementNodes = this.OriginRequirementNodes.Renumbered(length),
@@ -591,7 +592,6 @@ internal struct NodeColumns
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
             ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
             BaseCallFailures = this.BaseCallFailures.Renumbered(length),
-            ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
             CallableConstraints = this.CallableConstraints.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),

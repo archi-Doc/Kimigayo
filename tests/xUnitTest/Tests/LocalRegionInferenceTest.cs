@@ -329,16 +329,16 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
     public void AVarPairLocalsSlotIsALocalRegion(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
 
-    // PLAN G572's recorded limit, a region at the shorter end (DECISIONS BU-127; the owner's O-174 (a), PLAN G758): with the slot a
-    // region, a Closure writing `o` into its `[var last]` capture of a `var` pair local (r18) and BU-127's i1 have their concrete twins'
-    // records. Valid forms rejected, accepted on dev only because the slot stayed `o`; G572's lift accepts them.
+    // A region at the shorter end (R7-O2 A1, lifting PLAN G572's recorded limit, DECISIONS BU-127; the owner's O-174 (a), PLAN G758): with
+    // the slot a region, a Closure writing `o` into its `[var last]` capture of a `var` pair local (r18) and BU-127's i1 read the carried
+    // region at its value, as their concrete twins do (SPEC 15.6.5's Closure sentence). Each was rejected with UnprovenOriginRelation_Kd.
     [Theory]
-    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is ref\n    var last = x\n    var c = func [var last] (value: s/T) -> ()\n        last = value\n    c(x)\n", "1*UnprovenOriginRelation_Kd")] // m-t1-r18-PR
-    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    var last = x\n    var c = func [var last] (value: s/T) -> ()\n        last = value\n    c(x)\n", "1*UnprovenOriginRelation_Kd")] // m-t1-r18-POR
-    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is ref\n    var r = x\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(s/T) = u\n        _ = h@follow\n    outer()\n", "2*UnprovenOriginRelation_Kd")] // m-t12-i1-PR
-    [InlineData("func f(x: ref/i32) -> ()\n    var last = x\n    var c = func [var last] (value: ref/i32 during x) -> ()\n        last = value\n    c(x)\n", "1*UnprovenOriginRelation_Kd")] // m-t1-r18-cr
-    [InlineData("func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n", "2*UnprovenOriginRelation_Kd")] // m-t12-i1-cr
-    public void AVarPairLocalsRegionAtTheShorterEndIsG572sLimit(string source, string records)
+    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is ref\n    var last = x\n    var c = func [var last] (value: s/T) -> ()\n        last = value\n    c(x)\n", "clean")] // m-t1-r18-PR
+    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    var last = x\n    var c = func [var last] (value: s/T) -> ()\n        last = value\n    c(x)\n", "clean")] // m-t1-r18-POR
+    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is ref\n    var r = x\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(s/T) = u\n        _ = h@follow\n    outer()\n", "clean")] // m-t12-i1-PR
+    [InlineData("func f(x: ref/i32) -> ()\n    var last = x\n    var c = func [var last] (value: ref/i32 during x) -> ()\n        last = value\n    c(x)\n", "clean")] // m-t1-r18-cr
+    [InlineData("func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n", "clean")] // m-t12-i1-cr
+    public void AVarPairLocalsRegionAtTheShorterEndReadsAsItsValue(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
 
     [Fact]

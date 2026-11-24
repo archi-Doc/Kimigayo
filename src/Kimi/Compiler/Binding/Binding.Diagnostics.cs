@@ -574,7 +574,7 @@ public sealed partial class Binding
             // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1): the check's selection.
             var name = DiagnosticTypeName(core);
             var registered = this.uniqIndexing.GetValueOrDefault(index).Conformance;
-            var byKey = this.SelectConformance(core, uniqIndexable, owner.Scope, out var candidates) is null && candidates != 0; // by declaration: no scope read
+            var byKey = this.SelectConformance(core, uniqIndexable, owner.Scope, QuerySite.AfterPass, out var candidates) is null && candidates != 0; // by declaration: no scope read
             return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
                 byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
                 $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";
@@ -611,7 +611,6 @@ public sealed partial class Binding
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
-        this.pendingJudgments?.Clear();
         this.writeTargets?.Clear();
         this.takeLayers?.Clear();
         this.captureFailures?.Clear();
@@ -727,14 +726,11 @@ public sealed partial class Binding
             diagnosticCause = missing; // What the outcome rests on is consulted; the record explains itself by missing information.
         }
 
-        this.RecordConstraint(use, diagnosticCause);
+        // SPEC 8.3, 23.1.2: an invalid Constraint, with the part its check named as the cause it rests on (a Cause fact, Value -1: a Binding
+        // cause at the site, never shown); a cause whose own record is missing information makes this record derived from that one
+        // (ReportConstraint). Later validators still see an invalid node. The guard above leaves RecordConstraint's read always passing.
+        this.RecordConstraint(use, ConstraintProof.Error, diagnosticCause is null ? [] : [new(ProblemFactKind.Cause, this.FactSite(diagnosticCause), -1)]);
     }
-
-    // SPEC 8.3, 23.1.2: an invalid Constraint, with the part its check named as the cause it rests on (a Cause fact, Value -1: a Binding
-    // cause at the site, never shown); a cause whose own record is missing information makes this record derived from that one
-    // (ReportConstraint). Later validators still see an invalid node.
-    private void RecordConstraint(Koto use, Koto? cause)
-        => this.Record(use, BindingFailure.InvalidConstraint, cause is null ? [] : [new(ProblemFactKind.Cause, this.FactSite(cause), -1)]);
 
     // The part a node's InvalidConstraint problem names as its cause, or null.
     private Koto? ConstraintCause(Koto node)

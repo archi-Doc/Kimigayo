@@ -25,8 +25,9 @@
 //   whether it takes one as an invocation's input (FormReads, PlanRow.KeptAdjust and KeptInput; DECISIONS D-986); ClosureEffects finds
 //   one capture use's (Binding.ClosureReceivers).
 // - Invariants: a consumer's uses come in evaluation order, its calls' inputs last and in CallPlan.Of's order, each call's after its
-//   Call (an application Binding did not resolve under the form Call: its arguments after Call(0), its one call, which has no plan);
-//   the rule reads no other walk state.
+//   Call (an application Binding did not resolve under the form Call: its arguments after Call(0), its one call, which has no plan; a
+//   write's or an update's target whose accessor calls Binding did not plan, CallsAccessor: its receiver after Call(0)); the rule reads
+//   no other walk state.
 // - Prohibitions: the rule writes nothing; no record keeps a second copy of a use's Adjust.
 // The publisher's record of the uses (RowUses) writes the rows (DECISIONS R4-M142). A take's claim is read from the rows alone, before
 // NeedOf's read of the node: its consumer's (the column), an earlier call's or its container's discard (the plan row; PLAN G426).
@@ -61,8 +62,9 @@ public sealed partial class Binding
     // ClosureEffects' record (TakeRecord), which keeps every child's once per consumer and selection.
     private interface IHirUses
     {
-        // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal (an application Binding did not resolve: 0, its one
-        // call, which has no plan); -1 after the last. Its inputs are the call's receiver and arguments (SPEC 15.6.7).
+        // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal (an application Binding did not resolve, or a target
+        // whose accessor calls it did not plan: 0, which has no plan); -1 after the last. Its inputs are the call's receiver and arguments
+        // (SPEC 15.6.7).
         void Call(int ordinal);
 
         // A call of the consumer Binding committed whose inputs the selection does not take (a user index's other call, SelectionMode).
@@ -158,6 +160,14 @@ public sealed partial class Binding
                 break;
             case MemberAccessKoto member when op is HirOp.Field or HirOp.PrimitiveOp: // A stored Field or Tuple element, or a sequence's metadata.
                 var adaptation = this.receiverOperations.TryGetValue(member, out var receiver) ? HirAdjust.Of(receiver) : HirAdaptation.None;
+                if (member.BoundSymbol?.Property is { } property && CallsAccessor(member, property))
+                {
+                    // SPEC 11.3.1, 13.7.1, 13.7.2, 15.6.7 (DECISIONS Z27): a target whose operation calls an accessor Binding did not plan
+                    // (an Error's form: a planned one is a Call, NameOp) gives those calls its receiver as their input, as an unresolved
+                    // application gives its arguments (G1178).
+                    uses.Call(0);
+                }
+
                 uses.Use(member.Left, adaptation, UseKind.InPlace);
                 break;
             case IndexKoto index when op == HirOp.Index:

@@ -155,6 +155,9 @@ public sealed partial class Binding
     [Transitional("R7", Reason = "The row stands for per-problem inputs (d4: a repeated let beside its initializer's syntax error; k2: a repeated Signature whose later header is a recovery), until R7-E5 states what each problem's check read.")]
     private static bool JudgedByDeclaredNames(BindingFailure failure) => failure == BindingFailure.Duplicate;
 
+    // A record of a reached implementation limit: its code's category is Resource (SPEC 23.1.1).
+    private static bool IsResource(DiagnosticCode code) => DiagnosticEntries.TryGet(code, out var entry) && entry.Category == DiagnosticCategory.Resource;
+
     // PLAN G1073, the failed-slot fact: a slot is stated when it has its Type or Binding recorded a cause at its TypeSource (its record
     // reported or resting on a reported one), so a published slot of no Type is the failed slot. The HIR publisher's slot rows read it
     // (HasFacts, SlotsStated); a node with a slot neither typed nor failed is Broken. One direction only: a Closure whose written result
@@ -346,7 +349,7 @@ public sealed partial class Binding
         this.Invalidated();
 
         // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
-        if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
+        if (this.consultationStart >= 0 && !this.ChecksOwnSite(node))
         {
             this.consulted.Add(node);
         }
@@ -441,24 +444,20 @@ public sealed partial class Binding
     {
         var start = this.consultationStart;
         var count = this.consulted.Count - start;
-        if (count != 0)
+        if (count != 0 && node.BindingState != BindingState.Resolved)
         {
-            if (node.BindingState != BindingState.Resolved)
+            this.prerequisites[node] = (this.prerequisiteStore.Count, count);
+            for (var i = start; i < start + count; i++)
             {
-                this.prerequisites[node] = (this.prerequisiteStore.Count, count);
-                for (var i = start; i < start + count; i++)
-                {
-                    this.prerequisiteStore.Add(this.consulted[i]);
-                }
+                this.prerequisiteStore.Add(this.consulted[i]);
             }
-
-            this.consulted.RemoveRange(start, count);
         }
 
-        (this.consultationStart, this.consultationNode) = parent;
+        this.DropConsultation(parent);
     }
 
     // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame, a site frame): nothing becomes its prerequisite.
+    // A frame's one end (EndConsultation's too): its reads leave the collector, and the enclosing frame is open again.
     private void DropConsultation((int Start, Koto? Node) parent)
     {
         this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
@@ -479,9 +478,9 @@ public sealed partial class Binding
 
     private void ResumeConsultation((int Start, Koto? Node) parent) => (this.consultationStart, this.consultationNode) = parent;
 
-    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2): whether the open consultation is `site`'s own check. A failure's own
-    // checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity premise
-    // error (IdentityPremiseErrorRead).
+    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2), R7-E5 c1: whether the open consultation is `site`'s own check. A
+    // failure's own checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity
+    // premise error (IdentityPremiseErrorRead); a failure (Fail) or a read (Consulted) of the frame's own node is no prerequisite of it.
     private bool ChecksOwnSite(Koto site) => ReferenceEquals(site, this.consultationNode);
 
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
@@ -489,8 +488,8 @@ public sealed partial class Binding
     /// <param name="dependency">The node whose result was read.</param>
     private void Consulted(Koto dependency)
     {
-        if (this.consultationStart >= 0 && this.RecordedState(dependency) != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode) &&
-            !this.IsWaitingPart(dependency))
+        if (this.consultationStart >= 0 && this.RecordedState(dependency) != BindingState.Resolved && !this.ChecksOwnSite(dependency) &&
+            !this.IsCheckedCall(dependency))
         {
             this.consulted.Add(dependency);
         }
@@ -515,9 +514,10 @@ public sealed partial class Binding
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
     // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
-    // requirement judged: the caller passes the problem's (CollectIssue: the node's recorded failure).
-    private bool IsDerived(Koto node, BindingFailure failure)
-        => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node))) ||
+    // requirement judged and `code` its record's code: the caller passes the problem's (CollectProblem: the slot's or a further one's);
+    // each row reads the node's recorded inputs.
+    private bool IsDerived(Koto node, BindingFailure failure, DiagnosticCode code)
+        => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node, code))) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.RestsOnReported(node)) ||
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
@@ -532,22 +532,23 @@ public sealed partial class Binding
             this.KeepsPremiseErrorContext(premise));
 
     // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
-    // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any
-    // other, from that record and adds none; a refusal at its own site stays its own record. The one place of the rule; the walk
-    // reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
-    private bool RestsOnRecoveryOrLimit(Koto node)
+    // holding a reached implementation limit (HoldsLimit) derives every outcome, Unproven, Invalid or any other, from that record and
+    // adds none; a refusal at its own site stays its own record: a problem whose own code is Resource is never derived from a limit,
+    // and a Language problem beside a limit at one node is judged by its own inputs (the problem's code, not its node's first failure;
+    // for the slot's issue the two are one). The one place of the rule; the walk reuses the prerequisite storage of PrerequisiteKeys;
+    // both run only at publication.
+    private bool RestsOnRecoveryOrLimit(Koto node, DiagnosticCode code)
     {
-        if (!this.prerequisites.ContainsKey(node) && !this.partPrerequisites.ContainsKey(node))
+        var pending = this.prerequisitePending;
+        if (!this.PushPrerequisites(node, pending))
         {
             return false;
         }
 
         var visits = this.prerequisiteVisits;
-        var pending = this.prerequisitePending;
         visits.Add(node);
-        this.PushPrerequisites(node, pending);
         var found = false;
-        var limit = !this.ResourceFailed(node);
+        var limit = !IsResource(code);
         while (pending.TryPop(out var cause))
         {
             if (!visits.Add(cause))
@@ -555,7 +556,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (IsRecovery(cause, out _) || (limit && this.ResourceFailed(cause)))
+            if (IsRecovery(cause, out _) || (limit && this.HoldsLimit(cause)))
             {
                 found = true;
                 pending.Clear();
@@ -602,8 +603,29 @@ public sealed partial class Binding
 
     // A node whose failure is a reached implementation limit: its record's category is Resource (SPEC 23.1.1).
     private bool ResourceFailed(Koto node)
-        => this.RecordedFailure(node) is var failure && failure != BindingFailure.None && DiagnosticEntries.TryGet(this.CodeOf(node, failure), out var entry) &&
-            entry.Category == DiagnosticCategory.Resource;
+        => this.RecordedFailure(node) is var failure && failure != BindingFailure.None && IsResource(this.CodeOf(node, failure));
+
+    // SPEC 8.3.3 (Limits), 23.1.1: an input holds a reached implementation limit when its slot's failure is Resource (ResourceFailed: a
+    // Binding limit is recorded through Fail alone, CaseLimit, TypeHeightLimit, PremiseClosureLimit and ResolutionWorkLimit) or one of its
+    // problems is, whatever its first record (F's ruling 339, the review's B1). The limit half's one input test (RestsOnRecoveryOrLimit),
+    // read only at publication; a valid program has no problem and pays the slot's test alone.
+    private bool HoldsLimit(Koto node)
+    {
+        if (this.ResourceFailed(node))
+        {
+            return true;
+        }
+
+        for (var i = this.report.Count == 0 ? -1 : this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
+        {
+            if (IsResource(this.report.Problem(i).Code))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
     // operands still unresolved when Binding ends are prerequisites.
@@ -741,6 +763,34 @@ public sealed partial class Binding
         }
 
         return pending.Count != count;
+    }
+
+    /// <summary>PLAN G651 a1 (R7-C6 a, F's C8 rulings 9 and 13): where a proof query is asked from, an input of every proof entry and
+    /// every proof opener (BeginProof's callers at nesting 0), so a query that names no site does not compile: the node of the judgment
+    /// that needs the answer (a Koto converts to it: the node whose validity, acquisition or published plan reads the verdict); Nested,
+    /// no frame of its own: a scope inside a running proof or capability work (a connective's operand, a clause of a clause list, a
+    /// work's read), a query SubstituteType's family asks while it forms a Type, or a publication whose checks open their own site
+    /// frames, whose site is the open frame's; AfterPass, a query after Binding's pass (MIR, R7-M38's after-pass rule, PLAN G651 U2).
+    /// Nested and AfterPass are one value, a query that opens no frame of its own; their two names are the census's reading.
+    /// SubstituteType's family takes no site: its refusal reads the open consultation frame, the site's one carrier (BU-134, BU-161);
+    /// the frame at a judgment's node where none is open is R7-C6 a's second commit (the outermost BeginProof).</summary>
+    internal readonly struct QuerySite
+    {
+        private QuerySite(Koto node) => this.Node = node;
+
+        /// <summary>Gets a scope nested in a running proof or capability work.</summary>
+        internal static QuerySite Nested => default;
+
+        /// <summary>Gets a query after Binding's pass.</summary>
+        internal static QuerySite AfterPass => default;
+
+        /// <summary>Gets the judgment's node; null for Nested and AfterPass.</summary>
+        internal Koto? Node { get; }
+
+        /// <summary>The judgment at a node.</summary>
+        /// <param name="node">The node whose judgment needs the answer.</param>
+        /// <returns>The site at the node.</returns>
+        public static implicit operator QuerySite(Koto node) => new(node);
     }
 
     // R7-N5 E (DECISIONS BU-220 as R7-N5 B2a-2 and B4 amend it): the Prerequisites family's one accessor, a node's consultation range in

@@ -217,9 +217,11 @@ public sealed partial class Binding
         return type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef;
     }
 
-    // SPEC 13.5.5, 15.6.1: a followed pair layer met into the walk (MeetLayers' pair layers, MeetStep's pair follow); whether it is shared.
+    // SPEC 13.5.5, 15.6.1, 8.15.2: a followed pair layer met into the walk (MeetLayers' pair layers, MeetStep's pair follow) by its cases
+    // under the walk's case assignment (CaseAdmitted, PathAuthority's rule); whether it is shared.
     private bool MeetPair(ref ContainmentWalk walk, BoundType? pair, SemanticsMask admitted)
     {
+        admitted = !walk.Cases.IsEmpty && TryPairLayer(pair, out var whole, out _) ? CaseAdmitted(whole, admitted, walk.Cases) : admitted;
         var slot = this.FollowedSlot(pair, admitted, out var shared, out var inPlace);
         walk.Dereferenced |= !inPlace;
         this.MeetOuter(ref walk, shared ? slot : null, shared ? null : slot, inPlace);
@@ -326,13 +328,16 @@ public sealed partial class Binding
     // 15.6.1): Met, the Origins met; Unbounded, the slots of followed pair layers that do not restart the dependency, kept until a layer
     // outside them that exists in every case is met (in their borrow cases they outlive every layer outside them, a premise of those cases
     // alone, so such a layer makes them redundant: MeetOuter); Dereferenced, whether some layer met dereferences in every admitted case
-    // (an owner case selects its operand Place).
-    private struct ContainmentWalk
+    // (an owner case selects its operand Place); Cases, the case assignment the walk's pair steps read (ReachOf; empty for every case),
+    // read as data and never copied, which belongs to this walk and not to a sub-walk it starts (an element's PlaceOrigin).
+    private ref struct ContainmentWalk
     {
         internal BoundOrigin? Met { get; set; }
 
         internal BoundOrigin? Unbounded { get; set; }
 
         internal bool Dereferenced { get; set; }
+
+        internal ReadOnlySpan<PairCase> Cases { get; init; }
     }
 }
