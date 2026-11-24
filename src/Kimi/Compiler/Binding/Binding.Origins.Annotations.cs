@@ -95,7 +95,7 @@ public sealed partial class Binding
         return slot < 0 ? null : type!.Kind == BoundTypeKind.Slice ? type.Origin : slot < type.OriginArguments.Count ? type.OriginArguments[slot] : null;
     }
 
-    // An atom of a body local (a FieldKoto's Type or region), or a meet with one.
+    // An atom of a body local's annotation or set (a FieldKoto's Type), not its region slot, which its body reads, or a meet with one.
     private static bool LocalAtom(BoundOrigin origin)
     {
         for (var i = 0; i < origin.Operands.Count; i++)
@@ -106,7 +106,7 @@ public sealed partial class Binding
             }
         }
 
-        return origin.Binder is { } binder && OriginOwner(binder) is FieldKoto;
+        return origin.Binder is { } binder && OriginOwner(binder) is FieldKoto && !SlotRegion(origin);
     }
 
     // SPEC 8.13.1: whether a node is one of a `specialize func` header's Type arguments.
@@ -384,9 +384,19 @@ public sealed partial class Binding
 
                 (use is MemberAccessKoto member ? member.Left : use).BoundSymbol = symbol;
                 carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
-                if (symbol is { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { TypeKoto: not null } } && this.UnlinkedLocalType(use, carrier))
+                if (symbol is { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { TypeKoto: not null } annotated })
                 {
-                    carrier = null;
+                    // SPEC 15.3.4 (PLAN G230 (A)): a declaration's plain name of an annotated body local whose top Origin it omits is that
+                    // local's region (LocalRegionSlot), the atom its body reads; any other selection of the annotation's own atoms keeps
+                    // the located limit (UnlinkedLocalType).
+                    if (!this.formingBody.IsBody && use is IdentifierNameKoto && symbol.Type is null && this.originAtoms.TryGetValue((annotated, OriginKind.Inference, -1), out var region))
+                    {
+                        scalar = region;
+                    }
+                    else if (this.UnlinkedLocalType(use, carrier))
+                    {
+                        carrier = null;
+                    }
                 }
 
                 return true; // An unsuitable nearest candidate never falls through.
@@ -396,13 +406,11 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 15.3.4 (DECISIONS BU-56, an interim until PLAN G230's (A)): a declaration's written Origin (a name or projection, bound with
-    // no body outside a local's own declaration) that names a body local's written Type (its set's Type or its annotation) reads that
-    // annotation's atoms, formed outside every body, or the local's region where the body binds the header again (BindFunction):
-    // nothing links either to the local in its body. Where the Origin the name selects is a body local's atom, not a parameter's or a
-    // contract's, the name is a located Unsupported_Kd and resolves to nothing a judge could read; a name that selects no Origin keeps
-    // its own failure. A Closure's header is bound in its evaluating body and keeps EnclosingAtom's rule; an unannotated local has the
-    // Type its body gives it before the header is bound there again. A re-query over the annotation (WrittenProjection) decides nothing.
+    // SPEC 15.3.4 (PLAN G230 (A)'s remaining limit, DECISIONS BU-56 narrowed): a declaration's written Origin (bound with no body) that
+    // selects an atom of a body local's set or annotation which no body reads: a projection of an annotated local or of a set, or a
+    // plain name bound before the local's declaration formed its region (a declaration bound ahead of the local). The name is a located
+    // Unsupported_Kd and resolves to nothing a judge could read; a name that selects no Origin keeps its own failure. A Closure's header is
+    // bound in its evaluating body and keeps EnclosingAtom's rule.
     private bool UnlinkedLocalType(Koto use, BoundType? type)
     {
         if (this.formingBody.IsBody || use is not (IdentifierNameKoto or MemberAccessKoto) || OriginOwner(use) is FieldKoto)

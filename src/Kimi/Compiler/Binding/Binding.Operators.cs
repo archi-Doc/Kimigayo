@@ -262,9 +262,9 @@ public sealed partial class Binding
 
     // SPEC 13.7.1, 3.4, 15.1.5: the one destination check of an assignment, compound assignment, increment or decrement, run once the
     // operands and route have bound, whatever they gave: the target is located with write permission under the path, `let`/`var` and
-    // Property permissions. It reads the target, never the value's Type. An update of a reference binding names the binding's mode
-    // (SPEC 15.1.6); a plain write's mode record rests on its value (BindBinary). An update of a `during self` layer's Place or an
-    // enclosing one is the allowlist's (JudgeHolderPlace; SPEC 5.7).
+    // Property permissions. It reads the target, never the value's Type. A write whose code is a reference binding's mode
+    // (ReferenceBindingAssignment's one decision, SPEC 15.1.6) records it. An update of a `during self` layer's Place or an enclosing one
+    // is the allowlist's (JudgeHolderPlace; SPEC 5.7).
     private bool CheckDestination(Koto operation, Koto target, BoundType type, BindingScope scope)
     {
         if (!this.ValidPropertyWritePath(target, scope))
@@ -273,14 +273,13 @@ public sealed partial class Binding
             return false;
         }
 
-        var write = operation is BinaryKoto { Akind: KotoKind.Equals };
-        if (!write && type is { SafeReferent: not null } &&
-            ReferenceBindingAssignment(target, operation) is { } referenceBinding)
+        if (type is { SafeReferent: not null } && ReferenceBindingAssignment(target, operation) is { } referenceBinding)
         {
             this.RecordWrite(operation, referenceBinding, target);
             return false;
         }
 
+        var write = operation is BinaryKoto { Akind: KotoKind.Equals };
         if (!this.WritablePlace(target, this.PathFold(target, [])) &&
             !(write && (CanInitializeLocal(target, scope) || (IsSpecialField(target, out var constructor) && constructor.IsConstructor))))
         {

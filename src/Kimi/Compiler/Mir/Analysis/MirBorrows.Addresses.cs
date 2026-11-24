@@ -13,9 +13,10 @@ namespace Kimi.Compiler.Mir;
 // A `during self` layer is decided from the MIR Place path, by the stored step Binding publishes (TyCtxt.StoredStep: Own), never by an
 // Origin. A Place a location uses that is a layer or a Tuple or fixed array enclosing one inline (SPEC 5.7: read element by element)
 // has one own-step row (ownAt): through no borrow or raw Deref by its own steps (R-A; Z5-R2); past one, after the walk, by its exact
-// lent position (MirBorrows.Lent) where it has one, else by its own steps (Place, R-C; Z5-R1), the row a read, Copy or Move carries
-// with its parents whole (MirBorrows.Values' Layered). A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing
-// one inline issues its ordinary Loan and no mark: it sets the view's `tabling` bit, the base's mark condition (Owns). PQ-10, narrowed
+// lent position (MirBorrows.Lent: the entry of the body Place its owner step applies to, LentPlace) where it has one, else by its own
+// steps (Place, R-C; Z5-R1; G1276), the row a read, Copy or Move carries with its parents whole (MirBorrows.Values' Layered). A non-raw
+// Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline issues its ordinary Loan and no mark: it sets the
+// view's `tabling` bit, the base's mark condition (Owns). PQ-10, narrowed
 // (registered for X-2, PD28): a read whose row is Unplaced in a view with `tabling` set is a located Unsupported_Kd at the read, making
 // the view a producer. An own-step entry makes its root borrowed, so the root's accesses are listed for its departures
 // (MirBorrows.OwnSteps), and the view a producer where an access may depart it (OwnSteps' MayDepart, D5, R4-M141); it exposes its
@@ -122,15 +123,17 @@ internal sealed partial class MirBorrows
 
     // R-C (SPEC 5.7 Reading a Field through a dereference, 15.6 Addresses, 15.6 Holders): after the walk, where Exposed is final
     // (MirBorrows.Lent's precondition), each own-step row past a borrow or raw Deref is decided by one Owner walk over one step run: the
-    // Place's exact lent position where it has one, else its own steps. Over a position, an owner the position's steps name from its root
-    // (Named) gives its own-step entry, direct; else an owner among the run's last steps, which are the Place's own after its last Deref,
-    // gives the entry of the Place those name (past one: the base's row); else an owner (in the lenders' steps, no Place naming it),
-    // Unplaced; none, -1. Over the own steps (no exact position), an owner past the last Deref gives its entry past one (the base's row);
-    // none, Unplaced. So no row is less than the base's: Unplaced only where neither run names an owner. A read carries its row's entry with
-    // its parents whole (Values' Layered); an Unplaced one carries its layer and is the location's limit where tabling is set, which makes
-    // the view a producer (PQ-10 narrowed: the base marked a borrow of the view, so no program the base accepts is put at the limit). Every
-    // position is made before any entry, and no own-step entry, here or in the walk, refuses a lender: it exposes its owner's storage only
-    // (OwnerExposed), and no position is followed through an owner (Lender refuses a struct's and a Case's stores).
+    // Place's exact lent position where it has one, else its own steps. Over a position, an owner step gives the own-step entry of the
+    // body Place it applies to (MirBorrows.Lent's LentPlace, G1276): direct where that Place passes no borrow or raw Deref (the
+    // position's root for the first step; a later step's Prefix row from that root where it continues the previous step's Place by that
+    // step, or any step's in the first segment), else past its last Deref (the step's Prefix row from the root of the walk past whose
+    // Deref it follows: a lender's own Place, or the Place's own: the base's row); none, -1. Over the own steps (no exact position), an
+    // owner past the last Deref gives its entry past one (the base's row); none, Unplaced. So no row is less than the base's: Unplaced
+    // only where no position exists and the own steps name no owner (G1301's classes). A read carries its row's entry with its parents
+    // whole (Values' Layered); an Unplaced one carries its layer and is the location's limit where tabling is set, which makes the view
+    // a producer (PQ-10 narrowed: the base marked a borrow of the view, so no program the base accepts is put at the limit). Every
+    // position is made before any entry, and no own-step entry, here or in the walk, refuses a lender: it exposes its owner's storage
+    // only (OwnerExposed), and no position is followed through an owner (Lender refuses a struct's and a Case's stores).
     private void Place()
     {
         for (var i = 0; i < this.placing.Count; i++)
@@ -147,15 +150,9 @@ internal sealed partial class MirBorrows
             var entry = Unplaced;
             if (position >= 0)
             {
-                var own = this.placeSteps.Walk(place, reborrow: false, ref this.walk);
-                var tail = own - this.LastDeref(own) - 1; // The run's last steps, the Place's own after its last Deref (their Prefixes its rows).
                 var steps = this.LentRun(position, out var key);
-                var owner = this.RootOf(key);
-                var at = this.Owned(owner, steps, type);
-                entry = at < 0 ? -1
-                    : this.Named(steps, at) is var named and >= 0 ? this.OwnStep(new(owner, named), location)
-                    : at >= steps.Length - tail ? this.OwnStep(place with { Projection = steps[at].Prefix }, location)
-                    : Unplaced;
+                var at = this.Owned(this.RootOf(key), steps, type);
+                entry = at < 0 ? -1 : this.OwnStep(this.LentPlace(position, at), location);
             }
             else if (this.Owned(place, type) is var at and >= 0)
             {
@@ -168,22 +165,6 @@ internal sealed partial class MirBorrows
         }
 
         this.producing |= this.tabling && unplaced > 0; // N8: an Unplaced read's limit is the replay's to record (D5).
-    }
-
-    // The owner Place's projection where a position's steps before its owner step name a Place of the body from the position's root (the
-    // root, or a prefix of the innermost lender's Place: each step's Prefix the row of the steps before it); Unplaced where they do not.
-    private int Named(ReadOnlySpan<MirStep> steps, int at)
-    {
-        for (var i = 1; i <= at; i++)
-        {
-            var row = this.body.Projections[steps[i].Prefix];
-            if (steps[0].Prefix != 0 || steps[i].Prefix == 0 || row.Prefix != steps[i - 1].Prefix || row.Kind != steps[i - 1].Kind || row.Arg != steps[i - 1].Arg)
-            {
-                return Unplaced;
-            }
-        }
-
-        return at == 0 ? 0 : steps[at].Prefix;
     }
 
     // A root key's root (Key's inverse).
