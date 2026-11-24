@@ -189,8 +189,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 15.1.6: the selected arm's body locals, left to right, from the Places its binding positions selected, each as its Adjust
     // acquires it: Copied, moved, by case, or borrowed in the mode its path grants; a for loop's are its iteration bindings (SPEC 14.6.1).
-    // A failed one (Failed: a match or for binding whose Copy proof is Error) takes a value derived from that failure, as Operand gives
-    // (BU-103, BU-110, R4-M179).
+    // A failed one (Failed: a binding a failed late recheck left unacquired; BU-251's Invalid leaf aside) takes a value derived from that
+    // failure, as Operand gives (BU-103, BU-110, R4-M179): no acquisition is lowered, and the match rests on that record.
     private void Bind(BoundMatch plan, int pattern, int start)
     {
         for (var i = pattern; i < plan.Positions[pattern].End; i++)

@@ -134,15 +134,14 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
     internal bool Reads => this.Acquire is HirAcquire.Copy or HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase or HirAcquire.Temporary ||
         (this.Acquire == HirAcquire.None && this.Adaptation == HirAdaptation.SharedBorrow);
 
-    // A Pattern binding (SPEC 15.1.6): Copied, or borrowed in the mode its path grants; an owned part whose Copy is not proven is
-    // transferred, which an instance whose Type is Copy performs as a Copy. One whose Pattern Type check failed (None) or whose Copy proof
-    // is Error (Deferred) failed (SPEC 23.1.2; DECISIONS BU-103).
+    // A Pattern binding (SPEC 15.1.6): Copied, transferred, or borrowed in the mode its path grants (Binding.AcquireBinding). One whose
+    // Pattern Type check failed (None) failed (SPEC 23.1.2; DECISIONS BU-103).
     internal static HirAdjust Of(PatternAcquisition acquisition, PatternAccessMode access) => acquisition switch
     {
         PatternAcquisition.Copy => new(HirAcquire.Copy, HirAdaptation.None),
-        PatternAcquisition.Move or PatternAcquisition.CopyOrMove => new(HirAcquire.Move, HirAdaptation.None),
+        PatternAcquisition.Move => new(HirAcquire.Move, HirAdaptation.None),
         PatternAcquisition.Borrow => new(HirAcquire.None, access == PatternAccessMode.Exclusive ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow),
-        PatternAcquisition.None or PatternAcquisition.Deferred => new(HirAcquire.Failed, HirAdaptation.None),
+        PatternAcquisition.None => new(HirAcquire.Failed, HirAdaptation.None),
         _ => throw new UnreachableException(),
     };
 
