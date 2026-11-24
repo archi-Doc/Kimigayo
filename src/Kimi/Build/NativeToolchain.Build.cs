@@ -190,9 +190,10 @@ internal static partial class NativeToolchain
     /// (a)): should the process end between the success record and the move, or the move and the invalidation both fail (one IOException
     /// naming both, the move's as its inner exception), the attempt's success record stays, naming a hash no file at the path has. run
     /// --no-build runs only an executable whose hash the record names, so it refuses that one, and the next build invalidates the record.
-    /// From the pair's hash to its end the build holds its IR open for reading only (G1202), and each staged library from its check, released
-    /// with the private file on every outcome (StagedHold): a write, replacement or deletion of either fails meanwhile, so Tatara compiles
-    /// and LLD links the bytes the record names.</summary>
+    /// From the pair's hash to its end the build holds its IR open for reading only (G1202), each staged library from its check, released
+    /// with the private file on every outcome (StagedHold), and its O2 text and object from their creation, which the build writes from
+    /// Tatara's returned bytes, the text until emit has read it (Intermediates): a write, replacement or deletion of any of them fails
+    /// meanwhile, so Tatara compiles and LLD links the bytes the record names and what the build derived from them.</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -251,16 +252,17 @@ internal static partial class NativeToolchain
             tools.Add("tatara", new JsonObject { ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion });
 
             // The staged libraries, each held with read sharing only from its check to the build's end, so LLD links the bytes the record
-            // names; the finally releases them with the private file on every outcome (StagedHold).
+            // names; the finally releases them with the private file on every outcome (StagedHold). The object is held from its creation
+            // (Compile) to the build's end, so the inspection and LLD read the object emit produced (Intermediates).
             var libraries = new List<FileStream>();
             var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe"; // Private until the commit moves it into place.
             try
             {
                 this.ResolveLibraries(libraries);
                 WriteRecord(this.paths.Record, this.record);
-                var obj = this.Compile(tatara);
-                var undefined = this.Inspect(tatara, obj);
-                this.Link(tatara, obj, libraries, undefined, executable);
+                using var obj = this.Compile(tatara);
+                var undefined = this.Inspect(tatara, obj.Name);
+                this.Link(tatara, obj.Name, libraries, undefined, executable);
                 this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
                 this.context.CancellationToken.ThrowIfCancellationRequested();
                 WriteRecord(this.paths.Record, this.record);
@@ -306,6 +308,31 @@ internal static partial class NativeToolchain
             if (supply is null || expectedKind != kind || (expectedHash is not null && !expectedHash.Equals(hash, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new InvalidDataException($"Native library '{name}' does not match its NativeLibraries Kind or Sha256 assertion.");
+            }
+        }
+
+        // An intermediate the build writes, held from its creation (Intermediates; DECISIONS T-M17's rule): created with write access and
+        // read sharing only, written, flushed and returned open, so until the caller releases it no write, replacement or deletion of it,
+        // no rename of its folder and no open without read sharing succeeds; a reader that does not share write is refused too. LLVM's and
+        // LLD's opens for reading share read, write and delete, so emit, the inspection and LLD read the bytes written (Intermediates'
+        // design §3, probed). A failure after the open closes the handle and propagates.
+        private static FileStream Hold(string path, byte[] bytes)
+        {
+            var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+            var held = false;
+            try
+            {
+                file.Write(bytes);
+                file.Flush();
+                held = true;
+                return file;
+            }
+            finally
+            {
+                if (!held)
+                {
+                    file.Dispose();
+                }
             }
         }
 
@@ -381,20 +408,20 @@ internal static partial class NativeToolchain
         }
 
         // The object: the IR verified, for O2 optimized, its module paths redacted, written and verified again, then compiled and
-        // written. Tatara returns each output and the build writes it.
-        private string Compile(Tatara tatara)
+        // written. Tatara returns each output and the build writes it through Hold: the O2 text is held until emit has read it, and the
+        // object is returned held, for Run to release at the build's end.
+        private FileStream Compile(Tatara tatara)
         {
-            var selectedIr = this.paths.Ir;
-            if (this.optimization == "O2")
+            var obj = this.paths.Stem + ".obj";
+            var level = this.optimization[1] - '0';
+            if (this.optimization != "O2")
             {
-                selectedIr = this.paths.Stem + ".ll";
-                var ir = ModulePathPattern().Replace(tatara.Optimize(this.context, this.paths.Ir), m => Redact(m.Value, this.directory));
-                File.WriteAllBytes(selectedIr, Utf8.GetBytes(ir));
+                return Hold(obj, tatara.Emit(this.context, this.paths.Ir, obj, level));
             }
 
-            var obj = this.paths.Stem + ".obj";
-            File.WriteAllBytes(obj, tatara.Emit(this.context, selectedIr, obj, this.optimization[1] - '0'));
-            return obj;
+            var ir = ModulePathPattern().Replace(tatara.Optimize(this.context, this.paths.Ir), m => Redact(m.Value, this.directory));
+            using var optimized = Hold(this.paths.Stem + ".ll", Utf8.GetBytes(ir));
+            return Hold(obj, tatara.Emit(this.context, optimized.Name, obj, level));
         }
 
         // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the module
@@ -438,8 +465,8 @@ internal static partial class NativeToolchain
         // The executable: linked to Run's private file, so neither a failed link nor any failure before the commit publishes it, then the
         // record's linked state, naming the private file's hash, which Run's commit publishes before the file. LLD reads no environment
         // (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds no VC or
-        // Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1). LLD opens each held library by its
-        // path, for reading, which the hold admits (StagedHold).
+        // Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1). LLD opens the held object and each
+        // held library by its path, for reading, which the holds admit (StagedHold, Intermediates).
         private void Link(Tatara tatara, string obj, List<FileStream> libraries, string undefined, string executable)
         {
             var link = new string[libraries.Count + 9];
