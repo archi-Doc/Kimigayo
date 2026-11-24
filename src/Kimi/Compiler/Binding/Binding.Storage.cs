@@ -23,11 +23,11 @@ public sealed partial class Binding
     // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
     // (R5-M39). The formation owns its height refusals inside the instance collector's answer frame (Binding.TypeHeight, R7-T1) and,
-    // after Binding's run, in every frame (PLAN G651 U2a): a stored Type past IMPL A.4's height leaves its part null and the instance's
-    // HeightLimit set, the cause every reader of the instance reads (Binding's storage walk a limit, Layout its HeightLimit), so no record
-    // is made here inside the frame and none at a second reader; after the run outside the frame G651's site-less record is made beside
-    // it (U2b gives those readers a site). During the run the refusal is recorded at its site, or site-less in a pass not yet framed
-    // (a1-a4), and HeightLimit stays false.
+    // after Binding's run, under every after-run owner (PLAN G651 U2b): a stored Type past IMPL A.4's height leaves its part null and the
+    // instance's HeightLimit set, the cause every reader of the instance reads (Binding's storage walk a limit, Layout its HeightLimit),
+    // so no record is made here; each return of a refused instance outside a storage walk is a read answered to the innermost after-run
+    // owner (AnswerSite, R3.4), the walk's own reads answering through PrepareTypeStorage (R3.5). During the run the refusal is recorded
+    // at its site, or site-less in a pass not yet framed (a1-a4), and HeightLimit stays false.
     internal AdtDef.InstanceStorage Instance(BoundType type)
     {
         var adt = type.Symbol!.Adt;
@@ -40,7 +40,7 @@ public sealed partial class Binding
         {
             // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
             // refreshes it in this run) is never current, so the refreshed ADT forms it again.
-            var formation = this.OpenStorageFormation();
+            var formation = this.OpenFormation();
             try
             {
                 this.Substitute(type, adt, instance);
@@ -51,6 +51,11 @@ public sealed partial class Binding
             }
 
             instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
+        }
+
+        if (instance.HeightLimit && this.storageStack.Count == 0)
+        {
+            this.AnswerSite(type); // PLAN G651 U2b R3.4: a read of the refused instance, fresh or memoized, outside a storage walk.
         }
 
         return instance;
